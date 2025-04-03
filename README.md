@@ -4,7 +4,7 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 ## Features
 
-- **Automated Python Version Management**: Uses asdf to set a specific Python version (3.11.11)
+- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (3.11.11)
 - **Virtual Environment Creation**: Creates a Python virtual environment in your project directory
 - **Auto-activation**: Configures direnv to automatically activate/deactivate your environment when you enter/exit the directory
 - **Environment Variable Management**: Creates a secure .env file for storing environment variables
@@ -15,7 +15,9 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 - macOS/Linux with zsh
 - Homebrew
-- asdf (with Python plugin installed and Python 3.11.11 available)
+- Either of these Python version managers:
+  - asdf (with Python plugin added and Python 3.11.11 installed)
+  - pyenv (with Python 3.11.11 installed)
 - direnv
 
 ## Installation
@@ -38,7 +40,7 @@ All of the examples assume that you have installed the script in your home direc
 ```
 
 This will:
-- Configure asdf to use Python 3.11.11 in the current directory
+- Configure either asdf or pyenv (whichever is available) to use Python 3.11.11 in the current directory
 - Create a Python virtual environment (default is .venv or specify a custom name)
 - Set up direnv for auto-activation when entering the directory
 - Create a secure .env file for environment variables
@@ -56,7 +58,7 @@ After setup, run `direnv allow` to activate the environment.
 
 This removes all artifacts created by the initialization:
 - .venv directory (or custom named directory)
-- .tool-versions file (asdf configuration)
+- .tool-versions file (asdf configuration) or .python-version file (pyenv configuration)
 - .envrc file (direnv configuration)
 - .env file
 - Removes the related patterns from .gitignore (but keeps the file itself)
@@ -65,13 +67,15 @@ This removes all artifacts created by the initialization:
 
 ```bash
 ~/pyve.sh --help     # Show help message
-~/pyve.sh --version  # Show script version
+~/pyve.sh --version  # Show script version (current: 0.2.0)
 ~/pyve.sh --config   # Show configuration details
 ```
 
 ## Troubleshooting
 
 The script performs prerequisite checks before initialization to ensure all required tools are available. If any tool is missing, it will provide an error message indicating what needs to be installed.
+
+The script is compatible with both macOS and Linux systems, with appropriate handling for platform-specific differences.
 
 ## License
 
