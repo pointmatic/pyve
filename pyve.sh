@@ -1,5 +1,14 @@
 #!/usr/bin/env zsh
-
+#
+# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+#
+# This source code is licensed under the Mozilla Public License Version 2.0 found in the
+# LICENSE file in the root directory of this source tree.
+# 
+#============================================================================================================================================================================================
+#
+# This script is designed to set up a Python virtual environment in the current directory.
+#
 # Name: pyve.sh
 # Usage: ~/pyve.sh {--init <directory_name> | --purge <directory_name> | --help | --version | --config | }
 # Description:
@@ -22,7 +31,7 @@
 #     - Otherwise, accept one parameter <directory_name> (or nothing for default).
 #       - No directory name defaults to '.venv' for the 
 #         Python virtual environment config.
-#     - assign <directory_name> param to DIRNAME.
+#     - assign <directory_name> param to VENV_DIR_NAME.
 #     - write environment variables to .envrc.
 #     - Supports Dotenv
 #       - Creates .env file in the current directory
@@ -36,10 +45,17 @@
 #   - Deletes the .env file
 
 # script version
-VERSION="0.1.1"
+VERSION="0.1.2"
 
 # asdf configuration
 PYTHONVERSION="3.11.11"
+ASDF_FILE_NAME=".tool-versions"
+DEFAULT_VENV_DIR_NAME=".venv" 
+#VENV_DIR_NAME is based on a parameter passed to the script, decided in init_config_dir_name()
+ENV_FILE_NAME=".env"
+DIRENV_FILE_NAME=".envrc"
+GIT_DIR_NAME=".git"
+GITIGNORE_FILE_NAME=".gitignore"
 
 function show_help() {
     echo "\nHELP: Pyve.sh - Python Virtual Environment Setup Script\n"
@@ -69,19 +85,70 @@ function show_config() {
     echo "  Default directory name: .venv"
 }
 
-function purge() {
-    echo "\nDeleting Python virtual environment..."
-    rm -rf .venv
-    echo "\nDeleting asdf .tool-versions file..."
-    rm -f .tool-versions
-    echo "\nDeleting .envrc file..."
-    rm -f .envrc
-    echo "\nDeleting .env file..."
-    rm -f .env
+function append_pattern_to_gitignore() {
+    # Check if .gitignore file is missing
+    if [[ ! -f "$GITIGNORE_FILE_NAME" ]]; then
+        echo "\nCreating .gitignore file and adding pattern '$1'..."
+        echo "$1" > $GITIGNORE_FILE_NAME
+    else
+        # Check if the pattern is already in .gitignore
+        if ! grep -q "$1" $GITIGNORE_FILE_NAME; then
+            echo "$1" >> $GITIGNORE_FILE_NAME
+            echo "\nPattern '$1' added to $GITIGNORE_FILE_NAME."
+        else
+            echo "\nPattern '$1' already exists in $GITIGNORE_FILE_NAME."
+        fi
+    fi
+}
 
+function remove_pattern_from_gitignore() {
+    # Check if .gitignore file is missing
+    if [[ ! -f "$GITIGNORE_FILE_NAME" ]]; then
+        echo "\n.$GITIGNORE_FILE_NAME file not found. No changes made."
+        return
+    else
+        # Check if the pattern is in .gitignore
+        if grep -q "$1" $GITIGNORE_FILE_NAME; then
+            sed -i "/$1/d" $GITIGNORE_FILE_NAME
+            echo "\nPattern '$1' removed from $GITIGNORE_FILE_NAME."
+        else
+            echo "\nPattern '$1' does not exist in $GITIGNORE_FILE_NAME."
+        fi
+    fi
+}
+
+function purge_config_dir_name() {
+    # Check if a second parameter is provided
+    if [[ $# -eq 2 ]]; then
+        VENV_DIR_NAME="$2"
+    else
+        echo "\nYou didn't provide a virtual environment directory (that's fine)."
+        echo "We'll use the default, which is '$DEFAULT_VENV_DIR_NAME'."
+        echo "\nFYI, usage: ~/pyve.sh --purge <directory_name>\n"
+        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
+    fi
+}
+
+function purge() {
+    purge_config_dir_name "$@"
+
+    echo "\nDeleting Python virtual environment..."
+    rm -rf "$VENV_DIR_NAME"
+    echo "\nDeleting asdf $ASDF_FILE_NAME file..."
+    rm -f "$ASDF_FILE_NAME"
+    echo "\nDeleting $DIRENV_FILE_NAME file..."
+    rm -f "$DIRENV_FILE_NAME"
+    echo "\nDeleting $ENV_FILE_NAME file..."
+    rm -f "$ENV_FILE_NAME"
+    echo "\nRemoving $GITIGNORE_FILE_NAME file artifacts..."
+    remove_pattern_from_gitignore "$VENV_DIR_NAME"
+    remove_pattern_from_gitignore "$ASDF_FILE_NAME"
+    remove_pattern_from_gitignore "$DIRENV_FILE_NAME"
+    remove_pattern_from_gitignore "$ENV_FILE_NAME"
     echo "\nAll artifacts of the Python virtual environment have been deleted."
 }
 
+# not used
 function has_root_privileges() {
     if [[ $EUID -ne 0 ]]; then
         echo "\nThis script must be run as root. Please run it with sudo."
@@ -131,77 +198,95 @@ function init_ready() {
 
 function init_dotenv() {
     # Check if .env file already exists
-    if [[ -f ".env" ]]; then
-        echo "\nOops! .env file already exists! (found .env) \nNo change.\n"
+    if [[ -f "$ENV_FILE_NAME" ]]; then
+        echo "\nDotenv file already exists! (found $ENV_FILE_NAME) \nNo change.\n"
         #exit 1
     else
         # Create .env file and set permissions
-        touch .env
-        chmod 600 .env
-        echo "\n.env file created successfully!\n"
+        touch $ENV_FILE_NAME
+        chmod 600 $ENV_FILE_NAME
+        echo "\n$ENV_FILE_NAME file created successfully!\n"
+        append_pattern_to_gitignore "$ENV_FILE_NAME"
     fi
 }
 
 function init_config_dir_name() {
     # Check if a second parameter is provided
     if [[ $# -eq 2 ]]; then
-        DIRNAME="$2"
+        VENV_DIR_NAME="$2"
     else
         echo "\nYou didn't provide a virtual environment directory (that's fine)."
-        echo "Default is '.venv', so we'll use that."
+        echo "We'll use the default, which is '$DEFAULT_VENV_DIR_NAME'."
         echo "\nFYI, usage: ~/pyve.sh --init <directory_name>\n"
-        
-        DIRNAME=".venv"
+        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
     fi
     # Check if the directory name has a valid spelling
-    if [[ ! $DIRNAME =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    if [[ ! $VENV_DIR_NAME =~ ^[a-zA-Z0-9._-]+$ ]]; then
         echo "\nInvalid directory name. Please provide a valid directory name."
+        exit 1
+    fi
+    # Final sanity control...
+    # Check if the directory name conflicts with $ENV_FILE_NAME, $GIT_DIR_NAME, $GITIGNORE_FILE_NAME, $ASDF_FILE_NAME, or $DIRENV_FILE_NAME
+    if [[ $VENV_DIR_NAME == $ENV_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Python environment variable file name.\nPlease provide another name." 
+    elif [[ $VENV_DIR_NAME == $GIT_DIR_NAME ]]; then
+        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Git configuration directory name.\nPlease provide another name." 
+    elif [[ $VENV_DIR_NAME == $GITIGNORE_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Git configuration file to ignore certain patterns.\nPlease provide another name." 
+    elif [[ $VENV_DIR_NAME == $ASDF_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the asdf configuration file name.\nPlease provide another name." 
+    elif [[ $VENV_DIR_NAME == $DIRENV_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Direnv configuration file name. Please provide another name."
         exit 1
     fi
 }
 
 function init_asdf() {
-        # Check if asdf .tool-versions file exists
-        if [[ -f ".tool-versions" ]]; then
-            echo "\nOops! asdf has already been configured for this directory! (found .tool-versions) \nNo change.\n"
-            #exit 1
-        else
-            echo "\nChecking for current Python version..."
-            which python
-            python --version
-            echo "\nConfiguring Python version..."
-            asdf set python "$PYTHONVERSION"
-            echo "\nVersion set now to Python $PYTHONVERSION.\nNOTE: this version won't be active until you run 'direnv allow' to activate the environment.\n"
-        fi
+    # Check if asdf .tool-versions file exists
+    if [[ -f "$ASDF_FILE_NAME" ]]; then
+        echo "\nasdf has already been configured for this directory! (found $ASDF_FILE_NAME) \nNo change.\n"
+        #exit 1
+    else
+        echo "\nChecking for current Python version..."
+        which python
+        python --version
+        echo "\nConfiguring Python version..."
+        asdf set python "$PYTHONVERSION"
+        echo "\nVersion set now to Python $PYTHONVERSION.\nNOTE: this version won't be active until you run 'direnv allow' to activate the environment.\n"
+        append_pattern_to_gitignore "$ASDF_FILE_NAME"
+    fi
 }
 
 function init_venv() {
     # Configure Python virtual environment, but check first if .venv already exists
-    if [[ -d ".venv" || -d "$DIRNAME" ]]; then
-        echo "\nOops! Python virtual environment is already set up! (found ${DIRNAME}) \nNo change.\n"
+    if [[ -d "$VENV_DIR_NAME" ]]; then
+        echo "\nPython virtual environment is already set up! (found ${VENV_DIR_NAME}) \nNo change.\n"
         #exit 1
     else
-        python -m venv "$DIRNAME"
+        python -m venv "$VENV_DIR_NAME"
+        append_pattern_to_gitignore "$VENV_DIR_NAME"
     fi
 }
 
 function init_direnv() {
     # Configure for direnv, but check first if .envrc already exists
     if [[ -f ".envrc" ]]; then
-        echo "\nOops! Direnv has already been configured for this directory! (found .envrc) \nNo change.\n"
+        echo "\nDirenv has already been configured for this directory! (found .envrc) \nNo change.\n"
         #exit 1
     else
         echo "\nConfiguring direnv for automated virtual environment activation..."
-        if [[ -d "$DIRNAME" ]]; then
-            echo "Great! $DIRNAME exists."
+        if [[ -d "$VENV_DIR_NAME" ]]; then
+            echo "Great! $VENV_DIR_NAME exists."
         else
-            echo "\nERROR: Python virtual environment config directory, \"$DIRNAME\" does not exist!\n"
+            echo "\nERROR: Python virtual environment config directory, \"$VENV_DIR_NAME\" does not exist!\n"
             exit 1
         fi
 
+        append_pattern_to_gitignore "$DIRENV_FILE_NAME"
+
         # Write the Python venv environment configuration to .envrc
-        echo "export VIRTUAL_ENV=\"\$PWD/$DIRNAME\"
-    export PATH=\"\$PWD/$DIRNAME/bin:\$PATH\"" > .envrc
+        echo "export VIRTUAL_ENV=\"\$PWD/$VENV_DIR_NAME\"
+    export PATH=\"\$PWD/$VENV_DIR_NAME/bin:\$PATH\"" > .envrc
 
         echo ".envrc created successfully!\ndirenv is ready to go!\n"
         echo "Run 'direnv allow' to activate the environment."
@@ -238,7 +323,7 @@ elif [[ $1 == "--config" ]]; then
     show_config
     exit 0
 elif [[ $1 == "--purge" ]]; then
-    purge
+    purge "$@"
     exit 0
 elif [[ $1 == "--init" ]]; then
     init "$@"
@@ -248,4 +333,3 @@ else
     show_help
     exit 1
 fi
-
