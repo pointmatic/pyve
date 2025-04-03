@@ -90,15 +90,15 @@ function show_config() {
 function append_pattern_to_gitignore() {
     # Check if .gitignore file is missing
     if [[ ! -f "$GITIGNORE_FILE_NAME" ]]; then
-        echo "\nCreating .gitignore file and adding pattern '$1'..."
+        echo "Creating .gitignore file and adding pattern '$1'..."
         echo "$1" > $GITIGNORE_FILE_NAME
     else
         # Check if the pattern is already in .gitignore
         if ! grep -q "$1" $GITIGNORE_FILE_NAME; then
             echo "$1" >> $GITIGNORE_FILE_NAME
-            echo "\nPattern '$1' added to $GITIGNORE_FILE_NAME."
+            echo "Pattern '$1' added to $GITIGNORE_FILE_NAME."
         else
-            echo "\nPattern '$1' already exists in $GITIGNORE_FILE_NAME."
+            echo "Pattern '$1' already exists in $GITIGNORE_FILE_NAME."
         fi
     fi
 }
@@ -106,15 +106,22 @@ function append_pattern_to_gitignore() {
 function remove_pattern_from_gitignore() {
     # Check if .gitignore file is missing
     if [[ ! -f "$GITIGNORE_FILE_NAME" ]]; then
-        echo "\n.$GITIGNORE_FILE_NAME file not found. No changes made."
+        echo "$GITIGNORE_FILE_NAME file not found. No changes made."
         return
     else
         # Check if the pattern is in .gitignore
         if grep -q "$1" $GITIGNORE_FILE_NAME; then
-            sed -i "/$1/d" $GITIGNORE_FILE_NAME
-            echo "\nPattern '$1' removed from $GITIGNORE_FILE_NAME."
+            # OS-specific sed command
+            if [[ "$(uname)" == "Darwin" ]]; then
+                # macOS (BSD) sed
+                sed -i '' "/$1/d" $GITIGNORE_FILE_NAME
+            else
+                # GNU sed (Linux)
+                sed -i "/$1/d" $GITIGNORE_FILE_NAME
+            fi
+            echo "Pattern '$1' removed from $GITIGNORE_FILE_NAME."
         else
-            echo "\nPattern '$1' does not exist in $GITIGNORE_FILE_NAME."
+            echo "\nFYI: Pattern '$1' does not exist in $GITIGNORE_FILE_NAME."
         fi
     fi
 }
@@ -126,7 +133,7 @@ function purge_config_dir_name() {
     else
         echo "\nYou didn't provide a virtual environment directory (that's fine)."
         echo "We'll use the default, which is '$DEFAULT_VENV_DIR_NAME'."
-        echo "\nFYI, usage: ~/pyve.sh --purge <directory_name>\n"
+        echo "\nFYI, usage: ~/pyve.sh --purge <directory_name>."
         VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
     fi
 }
@@ -136,18 +143,21 @@ function purge() {
 
     echo "\nDeleting Python virtual environment..."
     rm -rf "$VENV_DIR_NAME"
+    remove_pattern_from_gitignore "$VENV_DIR_NAME"
+
     echo "\nDeleting asdf $ASDF_FILE_NAME file..."
     rm -f "$ASDF_FILE_NAME"
+    remove_pattern_from_gitignore "$ASDF_FILE_NAME"
+
     echo "\nDeleting $DIRENV_FILE_NAME file..."
     rm -f "$DIRENV_FILE_NAME"
+    remove_pattern_from_gitignore "$DIRENV_FILE_NAME"
+
     echo "\nDeleting $ENV_FILE_NAME file..."
     rm -f "$ENV_FILE_NAME"
-    echo "\nRemoving $GITIGNORE_FILE_NAME file artifacts..."
-    remove_pattern_from_gitignore "$VENV_DIR_NAME"
-    remove_pattern_from_gitignore "$ASDF_FILE_NAME"
-    remove_pattern_from_gitignore "$DIRENV_FILE_NAME"
     remove_pattern_from_gitignore "$ENV_FILE_NAME"
-    echo "\nAll artifacts of the Python virtual environment have been deleted."
+
+    echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
 }
 
 # not used
