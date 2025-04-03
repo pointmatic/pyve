@@ -64,14 +64,16 @@ function show_help() {
     echo "- autocreate a virtual environment (python venv)"
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
+    echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
     echo "\nUsage: ~/pyve.sh {--init <directory_name> | --purge <directory_name> | --help | --version | --config}"
-    echo "Description:"
+    echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
     echo "  --config:  Show the configuration of this script"
+    echo 
 }
 
 function show_version() {
