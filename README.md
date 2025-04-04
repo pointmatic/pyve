@@ -7,18 +7,20 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 - **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (3.11.11)
 - **Virtual Environment Creation**: Creates a Python virtual environment in your project directory
 - **Auto-activation**: Configures direnv to automatically activate/deactivate your environment when you enter/exit the directory
-- **Environment Variable Management**: Creates a secure .env file for storing environment variables
+- **Environment Variable Management**: Creates a secure .env file for storing environment variables (with chmod 600 permissions)
 - **Git Integration**: Automatically adds appropriate patterns to .gitignore
 - **Clean Removal**: Easily remove all virtual environment artifacts with a single command
 
 ## Requirements
 
-- macOS/Linux with zsh
-- Homebrew
+- macOS/Linux with zsh/bash
+- Homebrew (for macOS users, future feature will auto-install asdf or pyenv)
 - Either of these Python version managers:
   - asdf (with Python plugin added and Python 3.11.11 installed)
   - pyenv (with Python 3.11.11 installed)
 - direnv
+
+The script will check for these prerequisites before initialization and provide helpful error messages if anything is missing.
 
 ## Installation
 
@@ -43,7 +45,7 @@ This will:
 - Configure either asdf or pyenv (whichever is available) to use Python 3.11.11 in the current directory
 - Create a Python virtual environment (default is .venv or specify a custom name)
 - Set up direnv for auto-activation when entering the directory
-- Create a secure .env file for environment variables
+- Create a secure .env file for environment variables with restricted permissions (chmod 600)
 - Add appropriate patterns to .gitignore
 
 The script checks for existing files and won't overwrite them if they already exist. If a file already exists, the script will notify you and continue with the next steps.
