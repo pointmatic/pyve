@@ -108,7 +108,7 @@ This removes all artifacts created by the initialization:
 
 The script performs prerequisite checks before initialization to ensure all required tools are available. If any tool is missing, it will provide an error message indicating what needs to be installed.
 
-The script is compatible with both macOS and Linux systems, with appropriate handling for platform-specific differences.
+The script is compatible with current macOS command-line (Z shell). Future support for other shells and platforms is planned.
 
 ## License
 
