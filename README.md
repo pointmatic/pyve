@@ -4,20 +4,28 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 ## Features
 
-- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (3.11.11)
+- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (default 3.11.11, but customizable)
 - **Virtual Environment Creation**: Creates a Python virtual environment in your project directory
 - **Auto-activation**: Configures direnv to automatically activate/deactivate your environment when you enter/exit the directory
 - **Environment Variable Management**: Creates a secure .env file for storing environment variables (with chmod 600 permissions)
 - **Git Integration**: Automatically adds appropriate patterns to .gitignore
 - **Clean Removal**: Easily remove all virtual environment artifacts with a single command
 
+### Planned Features
+- Support for configurable default Python version (stored in a config in the user's home directory)
+- Automated installation of asdf or pyenv
+- Automated addition of Python plugin using asdf
+- Automated installation of a Python version using either asdf or pyenv
+- Support for Windows Subsystem for Linux (WSL)
+- Support for bash
+- Support for Linux
+
 ## Requirements
 
-- macOS/Linux with zsh/bash
-- Homebrew (for macOS users, future feature will auto-install asdf or pyenv)
+- macOS with Z shell (future support for bash/Linux/WSL)
 - Either of these Python version managers:
-  - asdf (with Python plugin added and Python 3.11.11 installed)
-  - pyenv (with Python 3.11.11 installed)
+  - asdf (with Python plugin added and required Python version installed)
+  - pyenv (with required Python version installed)
 - direnv
 
 The script will check for these prerequisites before initialization and provide helpful error messages if anything is missing.
@@ -37,12 +45,33 @@ All of the examples assume that you have installed the script in your home direc
 
 ### Initialize a Python Virtual Environment
 
+Basic usage with default settings (Python 3.11.11 and .venv directory):
 ```bash
-~/pyve.sh --init [directory_name]
+~/pyve.sh --init
+```
+
+With custom virtual environment directory:
+```bash
+~/pyve.sh --init my_venv
+```
+
+With custom Python version:
+```bash
+~/pyve.sh --init --pythonversion 3.10.9
+```
+
+With both custom directory and Python version:
+```bash
+~/pyve.sh --init my_venv --pythonversion 3.10.9
+```
+
+You can also use shortened parameter forms:
+```bash
+~/pyve.sh -i my_venv -pv 3.10.9
 ```
 
 This will:
-- Configure either asdf or pyenv (whichever is available) to use Python 3.11.11 in the current directory
+- Configure either asdf or pyenv (whichever is available) to use the specified Python version in the current directory
 - Create a Python virtual environment (default is .venv or specify a custom name)
 - Set up direnv for auto-activation when entering the directory
 - Create a secure .env file for environment variables with restricted permissions (chmod 600)
@@ -56,6 +85,8 @@ After setup, run `direnv allow` to activate the environment.
 
 ```bash
 ~/pyve.sh --purge [directory_name]
+# or 
+~/pyve.sh -p [directory_name]
 ```
 
 This removes all artifacts created by the initialization:
@@ -68,9 +99,9 @@ This removes all artifacts created by the initialization:
 ### Additional Commands
 
 ```bash
-~/pyve.sh --help     # Show help message
-~/pyve.sh --version  # Show script version (current: 0.2.0)
-~/pyve.sh --config   # Show configuration details
+~/pyve.sh --help     # or -h: Show help message
+~/pyve.sh --version  # or -v: Show script version (current: 0.2.1)
+~/pyve.sh --config   # or -c: Show configuration details
 ```
 
 ## Troubleshooting
