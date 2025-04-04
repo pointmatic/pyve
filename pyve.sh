@@ -7,22 +7,25 @@
 # 
 #============================================================================================================================================================================================
 #
-# This script is designed to set up a Python virtual environment in the current directory.
+# This script is designed to set up a Python virtual environment in the current directory for MacOS using Z shell.
+# In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init <directory_name> | --purge <directory_name> | --help | --version | --config | }
+# Usage: ~/pyve.sh {--init <directory_name> --pythonversion <python_version> | --purge <directory_name> | --help | --version | --config | }
 # Description:
-# There are three functions:
-#   1. --init: Initialize the Python virtural environment
-#   2. --purge: Delete all the artifacts of the Python virtual environment
-#   3. --help: Show this help message
-#   4. --version: Show the version of this script
-#   5. --config: Show the configuration of this script
+# There are five functions:
+#   1. --init / -i: Initialize the Python virtual environment 
+#      NOTE: --pythonversion / -pv is optional
+#      FORMAT: #.#.#, example 3.11.11
+#   2. --purge / -p: Delete all the artifacts of the Python virtual environment
+#   3. --help / -p: Show this help message
+#   4. --version / -v: Show the version of this script
+#   5. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
 #   Initializes Python environment with a sane setup
-#   - Runs asdf (or if not installed, pyenv) to set Python to version 3.11.11
+#   - Runs asdf (or if not installed, pyenv) to set Python to version 3.11.11 (or the version you provide)
 #   - Runs venv to configure local environment for pip packages
 #     - Checks if .venv (or an provided dir name) already exists in the current directory
 #   - Configures direnv 
@@ -39,22 +42,26 @@
 #
 #   2. --purge: Delete all the artifacts of the Python virtual environment
 #   Deletes the Python virtual environment and all its artifacts
-#   - Deletes the asdf .tool-versions file
+#   - Deletes the asdf .tool-versions or pyenv .python-version file
 #   - Deletes the .venv directory (default) or <directory_name> (if provided)
 #   - Deletes the .envrc file
 #   - Deletes the .env file
+#   - Removes the .gitignore artifacts
+#
+#   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 # configuration constants
-PYTHONVERSION="3.11.11"
+DEFAULT_PYTHON_VERSION="3.11.11"
+#PYTHON_VERSION is based on a parameter passed to the script, decided in init_parse_args()
 ASDF_FILE_NAME=".tool-versions"
 USE_ASDF="true"
 PYENV_FILE_NAME=".python-version"
 USE_PYENV="false"
 DEFAULT_VENV_DIR_NAME=".venv" 
-#VENV_DIR_NAME is based on a parameter passed to the script, decided in init_config_dir_name()
+#VENV_DIR_NAME is based on a parameter passed to the script, decided in init_parse_args()
 ENV_FILE_NAME=".env"
 DIRENV_FILE_NAME=".envrc"
 GIT_DIR_NAME=".git"
@@ -86,7 +93,7 @@ function show_version() {
 function show_config() {
     echo "Configuration:"
     echo "  Environment vars filename: .env"
-    echo "  Python version: $PYTHONVERSION"
+    echo "  Default Python version: $DEFAULT_PYTHON_VERSION"
     echo "  Default directory name: .venv"
 }
 
@@ -181,8 +188,9 @@ function init_ready() {
 
     # Check if homebrew is installed
     if [[ "$(uname)" == "Darwin" ]] && ! command -v brew &> /dev/null; then
-        echo "\nError: Homebrew is not installed. Please install Homebrew first."
-        exit 1
+#        echo "\nError: Homebrew is not installed. Please install Homebrew first."
+        echo "\nWarning: Homebrew is not found.\nA future version will require Homebrew to automate some installations."
+#        exit 1
     fi
 
     # Check if asdf is installed
@@ -206,16 +214,16 @@ function init_ready() {
             exit 1
         fi
         # Check if Python version is installed
-        if ! asdf list python | grep -q "$PYTHONVERSION"; then
-            echo "\nError: Python version $PYTHONVERSION is not installed in asdf."
-            echo "Run: asdf install python $PYTHONVERSION"
+        if ! asdf list python | grep -q "$PYTHON_VERSION"; then
+            echo "\nError: Python version $PYTHON_VERSION is not installed in asdf."
+            echo "Run: asdf install python $PYTHON_VERSION"
             exit 1
         fi
     elif [[ $USE_PYENV == "true" ]]; then
         # Check if Python version is installed
-        if ! pyenv versions | grep -q "$PYTHONVERSION"; then
-            echo "\nError: Python version $PYTHONVERSION is not installed in pyenv."
-            echo "Run: pyenv install $PYTHONVERSION"
+        if ! pyenv versions | grep -q "$PYTHON_VERSION"; then
+            echo "\nError: Python version $PYTHON_VERSION is not installed in pyenv."
+            echo "Run: pyenv install $PYTHON_VERSION"
             exit 1
         fi
     fi
@@ -242,52 +250,16 @@ function init_dotenv() {
     fi
 }
 
-function init_config_dir_name() {
-    # Check if a second parameter is provided
-    if [[ $# -eq 2 ]]; then
-        VENV_DIR_NAME="$2"
-        echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
-    else
-        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
-        echo "\nUsing the default Venv directory: $VENV_DIR_NAME"
-    fi
-    # Check if the directory name has a valid spelling
-    if [[ ! $VENV_DIR_NAME =~ ^[a-zA-Z0-9._-]+$ ]]; then
-        echo "\nInvalid directory name. Please provide a valid directory name."
-        exit 1
-    fi
-    # Final sanity control...
-    # Check if the directory name conflicts with $ENV_FILE_NAME, $GIT_DIR_NAME, $GITIGNORE_FILE_NAME, $ASDF_FILE_NAME, or $DIRENV_FILE_NAME
-    if [[ $VENV_DIR_NAME == $ENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Python environment variable file name.\nPlease provide another name." 
-    elif [[ $VENV_DIR_NAME == $GIT_DIR_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Git configuration directory name.\nPlease provide another name." 
-    elif [[ $VENV_DIR_NAME == $GITIGNORE_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Git configuration file to ignore certain patterns.\nPlease provide another name." 
-    elif [[ $VENV_DIR_NAME == $ASDF_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the asdf configuration file name.\nPlease provide another name." 
-    elif [[ $VENV_DIR_NAME == $PYENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the pyenv configuration file name.\nPlease provide another name." 
-    elif [[ $VENV_DIR_NAME == $DIRENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($VENV_DIR_NAME) conflicts with the Direnv configuration file name. Please provide another name."
-    else
-        return 0 # no conflict, continue
-    fi
-
-    # If we reach this point, the directory name conflicts with one of the reserved names
-    exit 1 # error
-}
-
 function init_python_versioning() {
     # Configure for asdf or pyenv
     if [[ $USE_ASDF == "true" ]]; then
         VERSION_FILE_NAME="$ASDF_FILE_NAME"
         VERSION_APP="asdf"
-        LOCAL_VERSION_COMMAND="asdf set python $PYTHONVERSION"
+        LOCAL_VERSION_COMMAND="asdf set python $PYTHON_VERSION"
     elif [[ $USE_PYENV == "true" ]]; then
         VERSION_FILE_NAME="$PYENV_FILE_NAME"
         VERSION_APP="pyenv"
-        LOCAL_VERSION_COMMAND="pyenv local $PYTHONVERSION"
+        LOCAL_VERSION_COMMAND="pyenv local $PYTHON_VERSION"
     fi
 
     # Check if the version file already exists
@@ -297,13 +269,13 @@ function init_python_versioning() {
         echo "\nChecking for current Python version..."
         which python
         python --version
-        echo "\nConfiguring Python version using asdf..."
+        echo "\nConfiguring Python version using $VERSION_APP..."
         eval "$LOCAL_VERSION_COMMAND"
         if [[ $? -ne 0 ]]; then
             echo "\nError: Failed to set Python version using $VERSION_APP."
             exit 1
         fi
-        echo "Python $PYTHONVERSION is now set locally for this directory."
+        echo "Python $PYTHON_VERSION is now set locally for this directory."
         echo "NOTE: For new projects, the Python version won't be active"
         echo "until you run 'direnv allow' to activate the environment."
         append_pattern_to_gitignore "$VERSION_FILE_NAME"
@@ -341,13 +313,98 @@ function init_direnv() {
     export PATH=\"\$PWD/$VENV_DIR_NAME/bin:\$PATH\"" > $DIRENV_FILE_NAME
 
         echo "Confirmed: '$DIRENV_FILE_NAME' created successfully!"
-        echo "Run 'direnv allow' to activate the environment (if you see a warning below)."
+        echo "\nRun 'direnv allow' to activate the environment (if you see a warning below)."
+    fi
+}
+
+function validate_venv_dir_name() {
+    # Check if the directory name has a valid spelling
+    if [[ ! $1 =~ ^[a-zA-Z0-9._-]+$ ]]; then
+        echo "\nInvalid directory name. Please provide a valid directory name."
+        exit 1
+    fi
+    # Final sanity control...
+    # Check if the directory name conflicts with $ENV_FILE_NAME, $GIT_DIR_NAME, $GITIGNORE_FILE_NAME, $ASDF_FILE_NAME, or $DIRENV_FILE_NAME
+    if [[ $1 == $ENV_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the Python environment variable file name.\nPlease provide another name." 
+    elif [[ $1 == $GIT_DIR_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the Git configuration directory name.\nPlease provide another name." 
+    elif [[ $1 == $GITIGNORE_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the Git configuration file to ignore certain patterns.\nPlease provide another name." 
+    elif [[ $1 == $ASDF_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the asdf configuration file name.\nPlease provide another name." 
+    elif [[ $1 == $PYENV_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the pyenv configuration file name.\nPlease provide another name." 
+    elif [[ $1 == $DIRENV_FILE_NAME ]]; then
+        echo "\nError: The Venv directory name ($1) conflicts with the Direnv configuration file name. Please provide another name."
+    else
+        return 0 # no conflict, continue
+    fi
+
+    # If we reach this point, the directory name conflicts with one of the reserved names
+    exit 1 # error
+}
+
+function validate_python_version() {
+    # Check if the Python version has a valid spelling
+    if [[ ! $1 =~ '^[0-9]+\.[0-9]+\.[0-9]+$' ]]; then
+        echo "\nInvalid Python version ($1). Please provide a valid Python version."
+        exit 1
+    fi
+}
+
+function init_parse_args() {
+    if [[ $# -eq 1 ]]; then
+        # simple case, use defaults
+        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
+        echo "\nUsing the default Venv directory: $VENV_DIR_NAME"
+        PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
+        echo "\nUsing the default Python version: $PYTHON_VERSION"
+    elif [[ $# -eq 4 ]]; then
+        # max params --init <directory_name> --pythonversion|-pv <python_version>
+        if [[ $3 != "--pythonversion" ]] && [[ $3 != "-pv" ]]; then
+            # something is wrong
+            echo "\nError: parameter formatting problem."
+            echo "--init <optional_directory_name> --pythonversion <python_version>"
+            echo "Note: you can also use abbreviations -i and -pv" 
+            exit 1
+        fi
+        VENV_DIR_NAME="$2"
+        validate_venv_dir_name "$VENV_DIR_NAME"
+        echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
+        PYTHON_VERSION="$4"
+        validate_python_version "$PYTHON_VERSION"
+        echo "\nUsing the Python version you provided: $PYTHON_VERSION"
+    elif [[ $# -eq 2 ]]; then
+        if [[ $2 == "--pythonversion" ]] || [[ $2 == "-pv" ]]; then
+            echo "\nError: you need to specify a python version.\n"
+            exit 1
+        fi
+        # second param is the directory name
+        VENV_DIR_NAME="$2"
+        validate_venv_dir_name "$VENV_DIR_NAME"
+        echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
+        PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
+        echo "\nUsing the default Python version: $PYTHON_VERSION"
+    elif [[ $# -eq 3 ]]; then
+        if [[ $2 != "--pythonversion" ]] && [[ $2 != "-pv" ]]; then
+            # something is wrong
+            echo "\nError: parameter formatting problem."
+            echo "--init <optional_directory_name> --pythonversion <python_version>"
+            echo "Note: you can also use abbreviations -i and -pv" 
+            exit 1
+        fi
+        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
+        echo "\nUsing the default Venv directory: $VENV_DIR_NAME"
+        PYTHON_VERSION="$3"
+        echo "\nUsing the Python version you provided: $PYTHON_VERSION"
+        validate_python_version "$PYTHON_VERSION"
     fi
 }
 
 function init() {
+    init_parse_args "$@"
     if init_ready; then
-        init_config_dir_name "$@"
         init_dotenv
         init_python_versioning
         init_venv
@@ -366,19 +423,19 @@ if [[ $# -eq 0 ]]; then
     exit 1
 fi
 # Check for the first parameter
-if [[ $1 == "--help" ]]; then
+if [[ $1 == "--help" ]] || [[ $1 == "-h" ]]; then
     show_help
     exit 0
-elif [[ $1 == "--version" ]]; then
+elif [[ $1 == "--version" ]] || [[ $1 == "-v" ]]; then
     show_version
     exit 0
-elif [[ $1 == "--config" ]]; then
+elif [[ $1 == "--config" ]] || [[ $1 == "-c" ]]; then
     show_config
     exit 0
-elif [[ $1 == "--purge" ]]; then
+elif [[ $1 == "--purge" ]] || [[ $1 == "-p" ]]; then
     purge "$@"
     exit 0
-elif [[ $1 == "--init" ]]; then
+elif [[ $1 == "--init" ]] || [[ $1 == "-i" ]]; then
     init "$@"
     exit 0
 else
