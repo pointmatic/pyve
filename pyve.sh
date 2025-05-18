@@ -66,7 +66,7 @@ ENV_FILE_NAME=".env"
 DIRENV_FILE_NAME=".envrc"
 GIT_DIR_NAME=".git"
 GITIGNORE_FILE_NAME=".gitignore"
-MAC_OS_GITIGNORE_CONTENT="# Pyve\n.DS_Store"
+MAC_OS_GITIGNORE_CONTENT=".DS_Store"
 
 function show_help() {
     echo "\nHELP: Pyve.sh - Python Virtual Environment Setup Script\n"
@@ -156,6 +156,8 @@ function purge_config_dir_name() {
 }
 
 function purge() {
+    purge_misc_artifacts
+
     purge_config_dir_name "$@"
 
     echo "\nDeleting Python virtual environment..."
@@ -181,8 +183,6 @@ function purge() {
     echo "\nDeleting $ENV_FILE_NAME file..."
     rm -f "$ENV_FILE_NAME"
     remove_pattern_from_gitignore "$ENV_FILE_NAME"
-
-    purge_misc_artifacts
 
     echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
 }
@@ -422,11 +422,11 @@ function init_parse_args() {
 function init() {
     init_parse_args "$@"
     if init_ready; then
+        init_misc_artifacts
         init_dotenv
         init_python_versioning
         init_venv
         init_direnv
-        init_misc_artifacts
         # no success message, since we need the user to pay attention to 'direnv allow'
     else
         echo "\nError: Failed to configure Python virtual environment."
