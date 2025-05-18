@@ -66,6 +66,7 @@ ENV_FILE_NAME=".env"
 DIRENV_FILE_NAME=".envrc"
 GIT_DIR_NAME=".git"
 GITIGNORE_FILE_NAME=".gitignore"
+MAC_OS_GITIGNORE_CONTENT="# Pyve\n.DS_Store"
 
 function show_help() {
     echo "\nHELP: Pyve.sh - Python Virtual Environment Setup Script\n"
@@ -136,6 +137,13 @@ function remove_pattern_from_gitignore() {
     fi
 }
 
+function purge_misc_artifacts() {
+    # On macOS, remove special content from .gitignore
+    if [[ "$(uname)" == "Darwin" ]]; then
+        remove_pattern_from_gitignore "$MAC_OS_GITIGNORE_CONTENT"
+    fi
+}
+
 function purge_config_dir_name() {
     # Check if a second parameter is provided
     if [[ $# -eq 2 ]]; then
@@ -173,6 +181,8 @@ function purge() {
     echo "\nDeleting $ENV_FILE_NAME file..."
     rm -f "$ENV_FILE_NAME"
     remove_pattern_from_gitignore "$ENV_FILE_NAME"
+
+    purge_misc_artifacts
 
     echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
 }
@@ -247,6 +257,13 @@ function init_dotenv() {
         chmod 600 $ENV_FILE_NAME
         echo "\nCreated '$ENV_FILE_NAME' file with limited permissions (chmod 600)."
         append_pattern_to_gitignore "$ENV_FILE_NAME"
+    fi
+}
+
+function init_misc_artifacts() {
+    # On macOS, add special content to .gitignore
+    if [[ "$(uname)" == "Darwin" ]]; then
+        append_pattern_to_gitignore "$MAC_OS_GITIGNORE_CONTENT"
     fi
 }
 
@@ -409,6 +426,7 @@ function init() {
         init_python_versioning
         init_venv
         init_direnv
+        init_misc_artifacts
         # no success message, since we need the user to pay attention to 'direnv allow'
     else
         echo "\nError: Failed to configure Python virtual environment."
