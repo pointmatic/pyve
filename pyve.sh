@@ -220,7 +220,7 @@ function init_ready() {
         # Check if Python plugin is added in asdf
         if ! asdf plugin list | grep -q "python"; then
             echo "\nError: Python plugin is not added in asdf."
-            echo "Run: asdf add python"
+            echo "Run: asdf plugin add python"
             exit 1
         fi
         # Check if Python version is installed
