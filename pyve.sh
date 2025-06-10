@@ -51,7 +51,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.1"
+VERSION="0.2.2"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.11.11"
