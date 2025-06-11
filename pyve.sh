@@ -51,7 +51,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.2"
+VERSION="0.2.3"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.11.11"
@@ -198,7 +198,7 @@ function init_ready() {
 
     # Check if homebrew is installed
     if [[ "$(uname)" == "Darwin" ]] && ! command -v brew &> /dev/null; then
-#        echo "\nError: Homebrew is not installed. Please install Homebrew first."
+#        echo "\nERROR: Homebrew is not installed. Please install Homebrew first."
         echo "\nWarning: Homebrew is not found.\nA future version will require Homebrew to automate some installations."
 #        exit 1
     fi
@@ -206,12 +206,23 @@ function init_ready() {
     # Check if asdf is installed
     if command -v asdf &> /dev/null; then
         echo "\nFound asdf, so we'll use that for Python versioning."
-        USE_ASDF="true"
+        # TODO: if asdf shims path is in the PATH
+        if [[ "$PATH" == *"$HOME/.asdf/shims"* ]]; then
+            USE_ASDF="true"
+        else
+            echo "\nERROR: asdf shims path is not in the PATH. Please add it to the PATH."
+            # using a here-document to avoid issues with special characters (works for bash and zsh)
+            cat << 'EOF'
+Run: echo -e '\n# Prepend the existing PATH with asdf\nexport PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.zprofile; source ~/.zprofile;
+EOF
+            echo "\n"
+            exit 1
+        fi
     elif command -v pyenv &> /dev/null; then
         echo "\nFound pyenv, so we'll use that for Python versioning."
         USE_PYENV="true"
     else
-        echo "\nError: Neither asdf nor pyenv is installed. Please install one of them first."
+        echo "\nERROR: Neither asdf nor pyenv is installed. Please install one of them first."
         echo "We need a Python version manager to set up the environment."
         exit 1
     fi
@@ -219,20 +230,20 @@ function init_ready() {
     if [[ $USE_ASDF == "true" ]]; then
         # Check if Python plugin is added in asdf
         if ! asdf plugin list | grep -q "python"; then
-            echo "\nError: Python plugin is not added in asdf."
+            echo "\nERROR: Python plugin is not added in asdf."
             echo "Run: asdf plugin add python"
             exit 1
         fi
         # Check if Python version is installed
         if ! asdf list python | grep -q "$PYTHON_VERSION"; then
-            echo "\nError: Python version $PYTHON_VERSION is not installed in asdf."
+            echo "\nERROR: Python version $PYTHON_VERSION is not installed in asdf."
             echo "Run: asdf install python $PYTHON_VERSION"
             exit 1
         fi
     elif [[ $USE_PYENV == "true" ]]; then
         # Check if Python version is installed
         if ! pyenv versions | grep -q "$PYTHON_VERSION"; then
-            echo "\nError: Python version $PYTHON_VERSION is not installed in pyenv."
+            echo "\nERROR: Python version $PYTHON_VERSION is not installed in pyenv."
             echo "Run: pyenv install $PYTHON_VERSION"
             exit 1
         fi
@@ -240,7 +251,7 @@ function init_ready() {
 
     # Check if direnv is installed
     if ! command -v direnv &> /dev/null; then
-        echo "\nError: direnv is not installed. Please install direnv first."
+        echo "\nERROR: direnv is not installed. Please install direnv first."
         exit 1
     fi
 
@@ -289,7 +300,7 @@ function init_python_versioning() {
         echo "\nConfiguring Python version using $VERSION_APP..."
         eval "$LOCAL_VERSION_COMMAND"
         if [[ $? -ne 0 ]]; then
-            echo "\nError: Failed to set Python version using $VERSION_APP."
+            echo "\nERROR: Failed to set Python version using $VERSION_APP."
             exit 1
         fi
         echo "Python $PYTHON_VERSION is now set locally for this directory."
@@ -343,17 +354,17 @@ function validate_venv_dir_name() {
     # Final sanity control...
     # Check if the directory name conflicts with $ENV_FILE_NAME, $GIT_DIR_NAME, $GITIGNORE_FILE_NAME, $ASDF_FILE_NAME, or $DIRENV_FILE_NAME
     if [[ $1 == $ENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the Python environment variable file name.\nPlease provide another name." 
+        echo "\nERROR: The Venv directory name ($1) conflicts with the Python environment variable file name.\nPlease provide another name." 
     elif [[ $1 == $GIT_DIR_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the Git configuration directory name.\nPlease provide another name." 
+        echo "\nERROR: The Venv directory name ($1) conflicts with the Git configuration directory name.\nPlease provide another name." 
     elif [[ $1 == $GITIGNORE_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the Git configuration file to ignore certain patterns.\nPlease provide another name." 
+        echo "\nERROR: The Venv directory name ($1) conflicts with the Git configuration file to ignore certain patterns.\nPlease provide another name." 
     elif [[ $1 == $ASDF_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the asdf configuration file name.\nPlease provide another name." 
+        echo "\nERROR: The Venv directory name ($1) conflicts with the asdf configuration file name.\nPlease provide another name." 
     elif [[ $1 == $PYENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the pyenv configuration file name.\nPlease provide another name." 
+        echo "\nERROR: The Venv directory name ($1) conflicts with the pyenv configuration file name.\nPlease provide another name." 
     elif [[ $1 == $DIRENV_FILE_NAME ]]; then
-        echo "\nError: The Venv directory name ($1) conflicts with the Direnv configuration file name. Please provide another name."
+        echo "\nERROR: The Venv directory name ($1) conflicts with the Direnv configuration file name. Please provide another name."
     else
         return 0 # no conflict, continue
     fi
@@ -381,7 +392,7 @@ function init_parse_args() {
         # max params --init <directory_name> --pythonversion|-pv <python_version>
         if [[ $3 != "--pythonversion" ]] && [[ $3 != "-pv" ]]; then
             # something is wrong
-            echo "\nError: parameter formatting problem."
+            echo "\nERROR: parameter formatting problem."
             echo "--init <optional_directory_name> --pythonversion <python_version>"
             echo "Note: you can also use abbreviations -i and -pv" 
             exit 1
@@ -394,7 +405,7 @@ function init_parse_args() {
         echo "\nUsing the Python version you provided: $PYTHON_VERSION"
     elif [[ $# -eq 2 ]]; then
         if [[ $2 == "--pythonversion" ]] || [[ $2 == "-pv" ]]; then
-            echo "\nError: you need to specify a python version.\n"
+            echo "\nERROR: you need to specify a python version.\n"
             exit 1
         fi
         # second param is the directory name
@@ -406,7 +417,7 @@ function init_parse_args() {
     elif [[ $# -eq 3 ]]; then
         if [[ $2 != "--pythonversion" ]] && [[ $2 != "-pv" ]]; then
             # something is wrong
-            echo "\nError: parameter formatting problem."
+            echo "\nERROR: parameter formatting problem."
             echo "--init <optional_directory_name> --pythonversion <python_version>"
             echo "Note: you can also use abbreviations -i and -pv" 
             exit 1
@@ -429,7 +440,7 @@ function init() {
         init_direnv
         # no success message, since we need the user to pay attention to 'direnv allow'
     else
-        echo "\nError: Failed to configure Python virtual environment."
+        echo "\nERROR: Failed to configure Python virtual environment."
         exit 1
     fi
 }
