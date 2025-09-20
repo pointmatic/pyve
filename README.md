@@ -37,9 +37,17 @@ The script will check for these prerequisites before initialization and provide 
    ```bash
    chmod +x pyve.sh
    ```
-3. It works best if you move the script to a directory in your PATH or to your home directory. 
+3. Install it to your local bin and create a convenience symlink `pyve`:
+   ```bash
+   ./pyve.sh --install
+   ```
+   This will:
+   - Create `$HOME/.local/bin` (if it doesn't exist)
+   - Add `$HOME/.local/bin` to your PATH via `~/.zprofile` (if not already present)
+   - Copy `pyve.sh` to `$HOME/.local/bin/pyve.sh` and make it executable
+   - Create a symlink `$HOME/.local/bin/pyve` -> `$HOME/.local/bin/pyve.sh`
 
-All of the examples assume that you have installed the script in your home directory. 
+After installation, you can run `pyve` from any directory.
 
 ## Usage
 
@@ -47,27 +55,27 @@ All of the examples assume that you have installed the script in your home direc
 
 Basic usage with default settings (Python 3.13.7 and .venv directory):
 ```bash
-~/pyve.sh --init
+pyve --init
 ```
 
 With custom virtual environment directory:
 ```bash
-~/pyve.sh --init my_venv
+pyve --init my_venv
 ```
 
 With custom Python version:
 ```bash
-~/pyve.sh --init --python-version 3.10.9
+pyve --init --python-version 3.10.9
 ```
 
 With both custom directory and Python version:
 ```bash
-~/pyve.sh --init my_venv --python-version 3.10.9
+pyve --init my_venv --python-version 3.10.9
 ```
 
 You can also use shortened parameter forms:
 ```bash
-~/pyve.sh -i my_venv
+pyve -i my_venv
 ```
 
 This will:
@@ -84,7 +92,7 @@ After setup, run `direnv allow` to activate the environment.
 ### Set Only the Local Python Version (no venv/direnv)
 
 ```bash
-~/pyve.sh --python-version 3.13.7
+pyve --python-version 3.13.7
 ```
 
 This will set the requested Python version locally in the current directory using either asdf or pyenv (auto-installing the version if available), without creating a virtual environment or configuring direnv.
@@ -92,9 +100,9 @@ This will set the requested Python version locally in the current directory usin
 ### Remove a Python Virtual Environment
 
 ```bash
-~/pyve.sh --purge [directory_name]
+pyve --purge [directory_name]
 # or 
-~/pyve.sh -p [directory_name]
+pyve -p [directory_name]
 ```
 
 This removes all artifacts created by the initialization:
@@ -107,9 +115,11 @@ This removes all artifacts created by the initialization:
 ### Additional Commands
 
 ```bash
-~/pyve.sh --help     # or -h: Show help message
-~/pyve.sh --version  # or -v: Show script version (current: 0.2.4)
-~/pyve.sh --config   # or -c: Show configuration details
+pyve --help        # or -h: Show help message
+pyve --version     # or -v: Show script version (current: 0.2.5)
+pyve --config      # or -c: Show configuration details
+pyve --install     # Install to ~/.local/bin and create 'pyve' symlink
+pyve --uninstall   # Remove installed script and 'pyve' symlink from ~/.local/bin
 ```
 
 ## Troubleshooting
@@ -117,6 +127,18 @@ This removes all artifacts created by the initialization:
 The script performs prerequisite checks before initialization to ensure all required tools are available. If any tool is missing, it will provide an error message indicating what needs to be installed.
 
 The script is compatible with current macOS command-line (Z shell). Future support for other shells and platforms is planned.
+
+Backward compatibility: If you prefer not to install, you can still run the script directly via its path (e.g., `~/pyve.sh --init`).
+
+### Uninstallation
+
+To remove the installed files:
+
+```bash
+pyve --uninstall
+```
+
+This removes `$HOME/.local/bin/pyve` and `$HOME/.local/bin/pyve.sh`. If `$HOME/.local/bin` was added to your PATH via `~/.zprofile`, you may remove that line manually if desired.
 
 ## License
 

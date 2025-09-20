@@ -11,7 +11,7 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --help | --version | --config }
 # Description:
 # There are five functions:
 #   1. --init / -i: Initialize the Python virtual environment 
@@ -19,9 +19,11 @@
 #      FORMAT: #.#.#, example 3.13.7
 #   2. --python-version <ver>: Set the Python version in the current directory without creating a virtual environment
 #   3. --purge / -p: Delete all the artifacts of the Python virtual environment
-#   4. --help / -h: Show this help message
-#   5. --version / -v: Show the version of this script
-#   6. --config / -c: Show the configuration of this script
+#   4. --install: Install this script to $HOME/.local/bin and create a 'pyve' symlink
+#   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
+#   6. --help / -h: Show this help message
+#   7. --version / -v: Show the version of this script
+#   8. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -52,7 +54,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.4"
+VERSION="0.2.5"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -77,13 +79,15 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
     echo "             Optional --python-version <ver> to select a specific Python version"
     echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
+    echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, and create a 'pyve' symlink"
+    echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
     echo "  --config:  Show the configuration of this script"
@@ -469,6 +473,102 @@ function init() {
     fi
 }
 
+# Install this script into $HOME/.local/bin and create a 'pyve' symlink
+function install_self() {
+    TARGET_BIN_DIR="$HOME/.local/bin"
+    TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
+    TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
+
+    echo "\nInstalling pyve to $TARGET_BIN_DIR ..."
+
+    # Ensure bin dir exists
+    if [[ ! -d "$TARGET_BIN_DIR" ]]; then
+        echo "Creating $TARGET_BIN_DIR ..."
+        mkdir -p "$TARGET_BIN_DIR"
+        if [[ $? -ne 0 ]]; then
+            echo "\nERROR: Failed to create $TARGET_BIN_DIR."
+            exit 1
+        fi
+    else
+        echo "Found $TARGET_BIN_DIR."
+    fi
+
+    # Ensure PATH contains bin dir (persist to ~/.zprofile if missing)
+    if [[ ":$PATH:" != *":$TARGET_BIN_DIR:"* ]]; then
+        echo "Adding $TARGET_BIN_DIR to PATH via ~/.zprofile ..."
+        echo "\n# Added by pyve installer\nexport PATH=\"$TARGET_BIN_DIR:$PATH\"" >> ~/.zprofile
+        if [[ -f ~/.zprofile ]]; then
+            source ~/.zprofile 2>/dev/null || true
+        fi
+    else
+        echo "$TARGET_BIN_DIR is already on PATH."
+    fi
+
+    # Resolve current script path
+    CURRENT_SCRIPT="$0"
+    if [[ ! -f "$CURRENT_SCRIPT" ]]; then
+        if command -v readlink &> /dev/null; then
+            CURRENT_SCRIPT=$(readlink -f "$0" 2>/dev/null)
+        elif command -v greadlink &> /dev/null; then
+            CURRENT_SCRIPT=$(greadlink -f "$0" 2>/dev/null)
+        fi
+    fi
+    if [[ ! -f "$CURRENT_SCRIPT" ]]; then
+        echo "\nERROR: Cannot locate the current script to copy (got: $CURRENT_SCRIPT). Please run via a file path."
+        exit 1
+    fi
+
+    cp "$CURRENT_SCRIPT" "$TARGET_SCRIPT_PATH"
+    if [[ $? -ne 0 ]]; then
+        echo "\nERROR: Failed to copy script to $TARGET_SCRIPT_PATH."
+        exit 1
+    fi
+    chmod +x "$TARGET_SCRIPT_PATH"
+    echo "Installed script to $TARGET_SCRIPT_PATH and made it executable."
+
+    # Create/update symlink 'pyve' -> 'pyve.sh'
+    if [[ -L "$TARGET_SYMLINK_PATH" || -e "$TARGET_SYMLINK_PATH" ]]; then
+        LINK_TARGET=$(readlink "$TARGET_SYMLINK_PATH" 2>/dev/null)
+        if [[ "$LINK_TARGET" != "pyve.sh" && "$LINK_TARGET" != "$TARGET_SCRIPT_PATH" ]]; then
+            echo "Updating existing symlink or file at $TARGET_SYMLINK_PATH ..."
+            rm -f "$TARGET_SYMLINK_PATH"
+            ln -s "$TARGET_SCRIPT_PATH" "$TARGET_SYMLINK_PATH"
+        else
+            echo "Symlink $TARGET_SYMLINK_PATH already set."
+        fi
+    else
+        ln -s "$TARGET_SCRIPT_PATH" "$TARGET_SYMLINK_PATH"
+        echo "Created symlink $TARGET_SYMLINK_PATH -> $TARGET_SCRIPT_PATH"
+    fi
+
+    echo "\nInstallation complete. You can now run 'pyve --help' from any directory."
+}
+
+# Uninstall this script from $HOME/.local/bin by removing the script and symlink
+function uninstall_self() {
+    TARGET_BIN_DIR="$HOME/.local/bin"
+    TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
+    TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
+
+    echo "\nUninstalling pyve from $TARGET_BIN_DIR ..."
+
+    if [[ -L "$TARGET_SYMLINK_PATH" ]] || [[ -e "$TARGET_SYMLINK_PATH" ]]; then
+        echo "Removing symlink or file: $TARGET_SYMLINK_PATH"
+        rm -f "$TARGET_SYMLINK_PATH"
+    else
+        echo "No symlink found at $TARGET_SYMLINK_PATH."
+    fi
+
+    if [[ -f "$TARGET_SCRIPT_PATH" ]]; then
+        echo "Removing installed script: $TARGET_SCRIPT_PATH"
+        rm -f "$TARGET_SCRIPT_PATH"
+    else
+        echo "No installed script found at $TARGET_SCRIPT_PATH."
+    fi
+
+    echo "\nUninstall complete. Note: If $TARGET_BIN_DIR was added to your PATH via ~/.zprofile, that line remains; you can remove it manually if desired."
+}
+
 # Check if the script is run with a parameter
 if [[ $# -eq 0 ]]; then
     echo "\nNo parameters provided. Please provide a parameter."
@@ -487,6 +587,12 @@ elif [[ $1 == "--config" ]] || [[ $1 == "-c" ]]; then
     exit 0
 elif [[ $1 == "--purge" ]] || [[ $1 == "-p" ]]; then
     purge "$@"
+    exit 0
+elif [[ $1 == "--install" ]]; then
+    install_self
+    exit 0
+elif [[ $1 == "--uninstall" ]]; then
+    uninstall_self
     exit 0
 elif [[ $1 == "--python-version" ]]; then
     set_python_version_only "$@"

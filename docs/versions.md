@@ -1,5 +1,28 @@
 # Pyve Version History
 
+## version 0.2.5 Requirements [Implemented]
+Add an --install flag to the pyve.sh script that will... 
+- create a $HOME/.local/bin directory (if not already created)
+- add $HOME/.local/bin to the PATH (if not already in the PATH)
+- copy pyve.sh from the current directory to $HOME/.local/bin
+- make pyve.sh executable ($HOME/.local/bin/pyve.sh)
+- update the README.md to include the --install flag
+- create a symlink from $HOME/.local/bin/pyve to $HOME/.local/bin/pyve.sh
+- update the README.md to mention the easy usage of the pyve symlink (without the .sh extension)
+
+### Implementation Notes
+- Implemented `--install` with idempotent operations:
+  - Created `$HOME/.local/bin` when missing.
+  - Ensured `$HOME/.local/bin` is on PATH by appending an export line to `~/.zprofile` if needed, and sourcing it in the current shell for immediate availability.
+  - Copied the running script to `$HOME/.local/bin/pyve.sh` and set executable bit.
+  - Created/updated symlink `$HOME/.local/bin/pyve` -> `$HOME/.local/bin/pyve.sh`.
+- Nuances:
+  - PATH persistence is applied via `~/.zprofile` (Z shell on macOS). If users rely on different startup files, they may need to adjust accordingly.
+  - Script path resolution uses `$0` with a fallback to `readlink -f` (or `greadlink -f` if available). If invoked in a way where `$0` is not a file path, the installer will prompt with an ERROR.
+  - README updated to document `--install` and examples using the `pyve` symlink.
+  - Added a complementary `--uninstall` command that removes `$HOME/.local/bin/pyve` and `$HOME/.local/bin/pyve.sh` without modifying PATH automatically.
+
+
 ## version 0.2.4 Requirements [Implemented]
 - Change --pythonversion to --python-version
 - Remove the -pv parameter abbreviation since it is a non-standard abbreviation
