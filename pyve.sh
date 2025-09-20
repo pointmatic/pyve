@@ -306,6 +306,49 @@ function init_misc_artifacts() {
     fi
 }
 
+# Set only the local Python version without venv/direnv changes
+function set_python_version_only() {
+    # Expecting: --python-version <version>
+    if [[ $# -ne 2 ]]; then
+        echo "\nERROR: parameter formatting problem."
+        echo "Usage: pyve --python-version <python_version>"
+        exit 1
+    fi
+
+    PYTHON_VERSION="$2"
+    validate_python_version "$PYTHON_VERSION"
+
+    # Prepare environment and detect manager
+    source_shell_profiles
+    detect_version_manager
+    ensure_python_version_installed
+
+    # Set local version via version manager only
+    if [[ $USE_ASDF == "true" ]]; then
+        echo "\nConfiguring Python version using asdf..."
+        asdf set python "$PYTHON_VERSION"
+        if [[ $? -ne 0 ]]; then
+            echo "\nERROR: Failed to set Python version using asdf."
+            exit 1
+        fi
+        echo "Python $PYTHON_VERSION is now set locally for this directory."
+        echo "Refreshing asdf shims so the shell picks up the new version..."
+        asdf reshim python "$PYTHON_VERSION" 2>/dev/null || asdf reshim python || asdf reshim
+    elif [[ $USE_PYENV == "true" ]]; then
+        echo "\nConfiguring Python version using pyenv..."
+        pyenv local "$PYTHON_VERSION"
+        if [[ $? -ne 0 ]]; then
+            echo "\nERROR: Failed to set Python version using pyenv."
+            exit 1
+        fi
+        echo "Python $PYTHON_VERSION is now set locally for this directory."
+        echo "Refreshing pyenv shims so the shell picks up the new version..."
+        if command -v pyenv &> /dev/null; then
+            pyenv rehash 2>/dev/null || true
+        fi
+    fi
+}
+
 function init_python_versioning() {
     # Configure for asdf or pyenv
     if [[ $USE_ASDF == "true" ]]; then
