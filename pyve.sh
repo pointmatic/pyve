@@ -11,21 +11,22 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init <directory_name> --pythonversion <python_version> | --purge <directory_name> | --help | --version | --config | }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --help | --version | --config }
 # Description:
 # There are five functions:
 #   1. --init / -i: Initialize the Python virtual environment 
-#      NOTE: --pythonversion / -pv is optional
-#      FORMAT: #.#.#, example 3.11.11
-#   2. --purge / -p: Delete all the artifacts of the Python virtual environment
-#   3. --help / -p: Show this help message
-#   4. --version / -v: Show the version of this script
-#   5. --config / -c: Show the configuration of this script
+#      NOTE: --python-version is optional
+#      FORMAT: #.#.#, example 3.13.7
+#   2. --python-version <ver>: Set the Python version in the current directory without creating a virtual environment
+#   3. --purge / -p: Delete all the artifacts of the Python virtual environment
+#   4. --help / -h: Show this help message
+#   5. --version / -v: Show the version of this script
+#   6. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
 #   Initializes Python environment with a sane setup
-#   - Runs asdf (or if not installed, pyenv) to set Python to version 3.11.11 (or the version you provide)
+#   - Runs asdf (or if not installed, pyenv) to set Python to the default version (or the version you provide)
 #   - Runs venv to configure local environment for pip packages
 #     - Checks if .venv (or an provided dir name) already exists in the current directory
 #   - Configures direnv 
@@ -51,10 +52,10 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.3"
+VERSION="0.2.4"
 
 # configuration constants
-DEFAULT_PYTHON_VERSION="3.11.11"
+DEFAULT_PYTHON_VERSION="3.13.7"
 #PYTHON_VERSION is based on a parameter passed to the script, decided in init_parse_args()
 ASDF_FILE_NAME=".tool-versions"
 USE_ASDF="true"
@@ -76,10 +77,12 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init <directory_name> | --purge <directory_name> | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
+    echo "             Optional --python-version <ver> to select a specific Python version"
+    echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
@@ -187,31 +190,31 @@ function purge() {
     echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
 }
 
-function init_ready() {
-    # source the Z shell configuration
+# Helper: source user shell profiles to ensure version managers are on PATH
+function source_shell_profiles() {
     if [[ -f ~/.zshrc ]]; then
         source ~/.zshrc
     fi
     if [[ -f ~/.zprofile ]]; then
         source ~/.zprofile
     fi
+}
 
-    # Check if homebrew is installed
+# Helper: warn if Homebrew missing on macOS (non-fatal)
+function check_homebrew_warning() {
     if [[ "$(uname)" == "Darwin" ]] && ! command -v brew &> /dev/null; then
-#        echo "\nERROR: Homebrew is not installed. Please install Homebrew first."
         echo "\nWarning: Homebrew is not found.\nA future version will require Homebrew to automate some installations."
-#        exit 1
     fi
+}
 
-    # Check if asdf is installed
+# Helper: detect which Python version manager to use (asdf preferred, then pyenv)
+function detect_version_manager() {
     if command -v asdf &> /dev/null; then
         echo "\nFound asdf, so we'll use that for Python versioning."
-        # TODO: if asdf shims path is in the PATH
         if [[ "$PATH" == *"$HOME/.asdf/shims"* ]]; then
             USE_ASDF="true"
         else
             echo "\nERROR: asdf shims path is not in the PATH. Please add it to the PATH."
-            # using a here-document to avoid issues with special characters (works for bash and zsh)
             cat << 'EOF'
 Run: echo -e '\n# Prepend the existing PATH with asdf\nexport PATH="${ASDF_DATA_DIR:-$HOME/.asdf}/shims:$PATH"' >> ~/.zprofile; source ~/.zprofile;
 EOF
@@ -226,35 +229,56 @@ EOF
         echo "We need a Python version manager to set up the environment."
         exit 1
     fi
+}
 
+# Helper: ensure requested Python version is installed (auto-install if available)
+function ensure_python_version_installed() {
     if [[ $USE_ASDF == "true" ]]; then
-        # Check if Python plugin is added in asdf
         if ! asdf plugin list | grep -q "python"; then
             echo "\nERROR: Python plugin is not added in asdf."
             echo "Run: asdf plugin add python"
             exit 1
         fi
-        # Check if Python version is installed
         if ! asdf list python | grep -q "$PYTHON_VERSION"; then
-            echo "\nERROR: Python version $PYTHON_VERSION is not installed in asdf."
-            echo "Run: asdf install python $PYTHON_VERSION"
-            exit 1
+            echo "\nPython version $PYTHON_VERSION is not installed in asdf. Checking availability..."
+            if asdf list all python | grep -q "^\s*${PYTHON_VERSION}$"; then
+                echo "Installing Python $PYTHON_VERSION via asdf..."
+                asdf install python "$PYTHON_VERSION"
+                if [[ $? -ne 0 ]]; then
+                    echo "\nERROR: Failed to install Python $PYTHON_VERSION via asdf."
+                    exit 1
+                fi
+            else
+                echo "\nERROR: Python version $PYTHON_VERSION is not available via asdf."
+                exit 1
+            fi
         fi
     elif [[ $USE_PYENV == "true" ]]; then
-        # Check if Python version is installed
         if ! pyenv versions | grep -q "$PYTHON_VERSION"; then
-            echo "\nERROR: Python version $PYTHON_VERSION is not installed in pyenv."
-            echo "Run: pyenv install $PYTHON_VERSION"
-            exit 1
+            echo "\nPython version $PYTHON_VERSION is not installed in pyenv. Attempting install..."
+            pyenv install -s "$PYTHON_VERSION"
+            if [[ $? -ne 0 ]]; then
+                echo "\nERROR: Failed to install Python $PYTHON_VERSION via pyenv."
+                exit 1
+            fi
         fi
     fi
+}
 
-    # Check if direnv is installed
+# Helper: ensure direnv is installed (required for init flow)
+function check_direnv_installed() {
     if ! command -v direnv &> /dev/null; then
         echo "\nERROR: direnv is not installed. Please install direnv first."
         exit 1
     fi
+}
 
+function init_ready() {
+    source_shell_profiles
+    check_homebrew_warning
+    detect_version_manager
+    ensure_python_version_installed
+    check_direnv_installed
     return 0 # success
 }
 
@@ -389,12 +413,12 @@ function init_parse_args() {
         PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
         echo "\nUsing the default Python version: $PYTHON_VERSION"
     elif [[ $# -eq 4 ]]; then
-        # max params --init <directory_name> --pythonversion|-pv <python_version>
-        if [[ $3 != "--pythonversion" ]] && [[ $3 != "-pv" ]]; then
+        # max params --init <directory_name> --python-version <python_version>
+        if [[ $3 != "--python-version" ]]; then
             # something is wrong
             echo "\nERROR: parameter formatting problem."
-            echo "--init <optional_directory_name> --pythonversion <python_version>"
-            echo "Note: you can also use abbreviations -i and -pv" 
+            echo "--init <optional_directory_name> --python-version <python_version>"
+            echo "Note: you can also use abbreviation -i for --init" 
             exit 1
         fi
         VENV_DIR_NAME="$2"
@@ -404,7 +428,7 @@ function init_parse_args() {
         validate_python_version "$PYTHON_VERSION"
         echo "\nUsing the Python version you provided: $PYTHON_VERSION"
     elif [[ $# -eq 2 ]]; then
-        if [[ $2 == "--pythonversion" ]] || [[ $2 == "-pv" ]]; then
+        if [[ $2 == "--python-version" ]]; then
             echo "\nERROR: you need to specify a python version.\n"
             exit 1
         fi
@@ -415,11 +439,11 @@ function init_parse_args() {
         PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
         echo "\nUsing the default Python version: $PYTHON_VERSION"
     elif [[ $# -eq 3 ]]; then
-        if [[ $2 != "--pythonversion" ]] && [[ $2 != "-pv" ]]; then
+        if [[ $2 != "--python-version" ]]; then
             # something is wrong
             echo "\nERROR: parameter formatting problem."
-            echo "--init <optional_directory_name> --pythonversion <python_version>"
-            echo "Note: you can also use abbreviations -i and -pv" 
+            echo "--init <optional_directory_name> --python-version <python_version>"
+            echo "Note: you can also use abbreviation -i for --init" 
             exit 1
         fi
         VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
@@ -463,6 +487,9 @@ elif [[ $1 == "--config" ]] || [[ $1 == "-c" ]]; then
     exit 0
 elif [[ $1 == "--purge" ]] || [[ $1 == "-p" ]]; then
     purge "$@"
+    exit 0
+elif [[ $1 == "--python-version" ]]; then
+    set_python_version_only "$@"
     exit 0
 elif [[ $1 == "--init" ]] || [[ $1 == "-i" ]]; then
     init "$@"

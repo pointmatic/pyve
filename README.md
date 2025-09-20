@@ -4,7 +4,7 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 ## Features
 
-- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (default 3.11.11, but customizable)
+- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (default 3.13.7, but customizable)
 - **Virtual Environment Creation**: Creates a Python virtual environment in your project directory
 - **Auto-activation**: Configures direnv to automatically activate/deactivate your environment when you enter/exit the directory
 - **Environment Variable Management**: Creates a secure .env file for storing environment variables (with chmod 600 permissions)
@@ -24,9 +24,9 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 - macOS with Z shell (future support for bash/Linux/WSL)
 - Either of these Python version managers:
-  - asdf (with Python plugin added and required Python version installed)
-  - pyenv (with required Python version installed)
-- direnv
+  - asdf (with Python plugin added). Pyve will auto-install the requested Python version via `asdf install python <version>` if available.
+  - pyenv. Pyve will auto-install the requested Python version via `pyenv install -s <version>` if available.
+- direnv (required for the `--init` flow; not required for standalone `--python-version`)
 
 The script will check for these prerequisites before initialization and provide helpful error messages if anything is missing.
 
@@ -45,7 +45,7 @@ All of the examples assume that you have installed the script in your home direc
 
 ### Initialize a Python Virtual Environment
 
-Basic usage with default settings (Python 3.11.11 and .venv directory):
+Basic usage with default settings (Python 3.13.7 and .venv directory):
 ```bash
 ~/pyve.sh --init
 ```
@@ -57,17 +57,17 @@ With custom virtual environment directory:
 
 With custom Python version:
 ```bash
-~/pyve.sh --init --pythonversion 3.10.9
+~/pyve.sh --init --python-version 3.10.9
 ```
 
 With both custom directory and Python version:
 ```bash
-~/pyve.sh --init my_venv --pythonversion 3.10.9
+~/pyve.sh --init my_venv --python-version 3.10.9
 ```
 
 You can also use shortened parameter forms:
 ```bash
-~/pyve.sh -i my_venv -pv 3.10.9
+~/pyve.sh -i my_venv
 ```
 
 This will:
@@ -80,6 +80,14 @@ This will:
 The script checks for existing files and won't overwrite them if they already exist. If a file already exists, the script will notify you and continue with the next steps.
 
 After setup, run `direnv allow` to activate the environment.
+
+### Set Only the Local Python Version (no venv/direnv)
+
+```bash
+~/pyve.sh --python-version 3.13.7
+```
+
+This will set the requested Python version locally in the current directory using either asdf or pyenv (auto-installing the version if available), without creating a virtual environment or configuring direnv.
 
 ### Remove a Python Virtual Environment
 
@@ -100,7 +108,7 @@ This removes all artifacts created by the initialization:
 
 ```bash
 ~/pyve.sh --help     # or -h: Show help message
-~/pyve.sh --version  # or -v: Show script version (current: 0.2.1)
+~/pyve.sh --version  # or -v: Show script version (current: 0.2.4)
 ~/pyve.sh --config   # or -c: Show configuration details
 ```
 
