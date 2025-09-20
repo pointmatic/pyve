@@ -504,16 +504,42 @@ function install_self() {
         echo "$TARGET_BIN_DIR is already on PATH."
     fi
 
-    # Resolve current script path
-    CURRENT_SCRIPT="$0"
-    if [[ ! -f "$CURRENT_SCRIPT" ]]; then
-        if command -v readlink &> /dev/null; then
-            CURRENT_SCRIPT=$(readlink -f "$0" 2>/dev/null)
-        elif command -v greadlink &> /dev/null; then
-            CURRENT_SCRIPT=$(greadlink -f "$0" 2>/dev/null)
+    # Resolve current script path (zsh-friendly with robust fallbacks)
+    CURRENT_SCRIPT=""
+    # 1) zsh special: current executing file
+    if [[ -n "${(%):-%x}" ]] && [[ -f "${(%):-%x}" ]]; then
+        CURRENT_SCRIPT="${(%):-%x}"
+    fi
+    # 2) $0 if it points to a file
+    if [[ -z "$CURRENT_SCRIPT" ]] && [[ -n "$0" ]] && [[ -f "$0" ]]; then
+        CURRENT_SCRIPT="$0"
+    fi
+    # 3) command -v $0 (resolved via PATH)
+    if [[ -z "$CURRENT_SCRIPT" ]] && command -v -- "$0" &> /dev/null; then
+        CANDIDATE=$(command -v -- "$0")
+        if [[ -f "$CANDIDATE" ]]; then
+            CURRENT_SCRIPT="$CANDIDATE"
         fi
     fi
-    if [[ ! -f "$CURRENT_SCRIPT" ]]; then
+    # 4) Common local names in the current directory
+    if [[ -z "$CURRENT_SCRIPT" ]] && [[ -f "./pyve.sh" ]]; then
+        CURRENT_SCRIPT="./pyve.sh"
+    fi
+    if [[ -z "$CURRENT_SCRIPT" ]] && [[ -f "./pyve" ]]; then
+        CURRENT_SCRIPT="./pyve"
+    fi
+    # 5) Final attempt with readlink/greadlink for absolute path
+    if [[ -n "$CURRENT_SCRIPT" ]]; then
+        if command -v readlink &> /dev/null; then
+            RESOLVED=$(readlink -f "$CURRENT_SCRIPT" 2>/dev/null)
+            if [[ -n "$RESOLVED" ]]; then CURRENT_SCRIPT="$RESOLVED"; fi
+        elif command -v greadlink &> /dev/null; then
+            RESOLVED=$(greadlink -f "$CURRENT_SCRIPT" 2>/dev/null)
+            if [[ -n "$RESOLVED" ]]; then CURRENT_SCRIPT="$RESOLVED"; fi
+        fi
+    fi
+
+    if [[ -z "$CURRENT_SCRIPT" ]] || [[ ! -f "$CURRENT_SCRIPT" ]]; then
         echo "\nERROR: Cannot locate the current script to copy (got: $CURRENT_SCRIPT). Please run via a file path."
         exit 1
     fi
