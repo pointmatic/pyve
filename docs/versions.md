@@ -1,6 +1,13 @@
 # Pyve Version History
 
-## version 0.2.5 Requirements [Implemented]
+## References
+- Building Guide: `docs/building.md`
+- Planning Guide: `docs/planning.md`
+- Testing Guide: `docs/testing.md`
+- Dependencies Guide: `docs/dependencies.md`
+- Decision Log: `docs/decisions.md`
+
+## v0.2.5 Requirements [Implemented]
 Add an --install flag to the pyve.sh script that will... 
 - create a $HOME/.local/bin directory (if not already created)
 - add $HOME/.local/bin to the PATH (if not already in the PATH)
@@ -10,7 +17,7 @@ Add an --install flag to the pyve.sh script that will...
 - create a symlink from $HOME/.local/bin/pyve to $HOME/.local/bin/pyve.sh
 - update the README.md to mention the easy usage of the pyve symlink (without the .sh extension)
 
-### Implementation Notes
+### Notes
 - Implemented `--install` with idempotent operations:
   - Created `$HOME/.local/bin` when missing.
   - Ensured `$HOME/.local/bin` is on PATH by appending an export line to `~/.zprofile` if needed, and sourcing it in the current shell for immediate availability.
@@ -23,14 +30,14 @@ Add an --install flag to the pyve.sh script that will...
   - Added a complementary `--uninstall` command that removes `$HOME/.local/bin/pyve` and `$HOME/.local/bin/pyve.sh` without modifying PATH automatically.
 
 
-## version 0.2.4 Requirements [Implemented]
+## v0.2.4 Requirements [Implemented]
 - Change --pythonversion to --python-version
 - Remove the -pv parameter abbreviation since it is a non-standard abbreviation
 - Change default Python version 3.11.11 to 3.13.7
 - If the prescribed --python-version is not installed (by asdf or pyenv), check to see if it is available to install. If so, install it in asdf or pyenv and try again. If not, exit with an error message.
 - Add support for setting the --python-version without the --init flag. This will set the Python version in the current directory without creating a virtual environment.
 
-### Implementation Notes
+### Notes
 - Implemented the requirements for 0.2.4 as follows:
   - Switched to `--python-version` (removed `-pv`) across comments, help, and argument parsing.
   - Added standalone `--python-version <ver>` command to set only the local Python version (no venv/direnv changes).
@@ -42,5 +49,5 @@ Add an --install flag to the pyve.sh script that will...
   - Updated `README.md` examples and version references to reflect these changes.
   - Refactored `init_ready()` into helper functions (`source_shell_profiles`, `check_homebrew_warning`, `detect_version_manager`, `ensure_python_version_installed`, `check_direnv_installed`) to improve readability.
 
-## version 0.2.3
+## v0.2.3 [Implemented]
 - Initial documented release
