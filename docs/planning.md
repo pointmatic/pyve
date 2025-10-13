@@ -6,6 +6,7 @@ This document explains how to plan versions and produce a technical design from 
 - Establish phased progression toward v1.0.0.
 - Capture requirements per phase and map them to semantic versions.
 - Keep `docs/versions.md` as the authoritative log of implemented work.
+ - Ensure plans and designs align with the master codebase spec in `docs/codebase_spec.md` and relevant language addenda in `docs/specs/`.
 
 ## Phases and Versioning
 - Version format: `v{major}.{minor}.{incremental}{micro}` where `{micro}` is optional `a|b|c|...`.
@@ -31,8 +32,9 @@ Include:
 
 ## Planning Workflow
 1. Draft or update `docs/technical_design.md` covering the above.
-2. Propose the next semantic version in `docs/versions.md` with `[Next]` if broader work is planned.
-3. Break work into requirements under that version.
-4. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/decisions.md` (date, context, decision, consequences).
-5. Implement; log using the versions file (tick items, add Notes, mark `[Implemented]`). Reference any new decision log entries in the version's `### Notes`.
-6. For bugfixes or unlogged changes, append microversions.
+2. Reconcile the design and component inventory with `docs/codebase_spec.md` and applicable addenda in `docs/specs/`.
+3. Propose the next semantic version in `docs/versions.md` with `[Next]` if broader work is planned.
+4. Break work into requirements under that version.
+5. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/decisions.md` (date, context, decision, consequences).
+6. Implement; log using the versions file (tick items, add Notes, mark `[Implemented]`). Reference any new decision log entries in the version's `### Notes`.
+7. For bugfixes or unlogged changes, append microversions.

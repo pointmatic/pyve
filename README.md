@@ -13,9 +13,11 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 ### Planned Features
 - Support for configurable default Python version (stored in a config in the user's home directory)
-- Automated installation of asdf or pyenv
-- Automated addition of Python plugin using asdf
-- Automated installation of a Python version using either asdf or pyenv
+- Version management:
+   - Automated installation of asdf
+   - Automated installation of pyenv
+   - Automated addition of Python plugin using asdf or pyenv
+   - Automated installation of a Python version using either asdf or pyenv
 - Support for Windows Subsystem for Linux (WSL)
 - Support for bash
 - Support for Linux

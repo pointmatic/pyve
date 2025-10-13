@@ -6,6 +6,7 @@ Thank you for contributing! This guide explains how to work on this project, ali
 - Planning guide: `docs/planning.md`
 - Testing guide: `docs/testing.md`
 - Decision log: `docs/decisions.md`
+- Codebase spec (master): `docs/codebase_spec.md`
 
 ## Project Setup
 - Python 3.11+
