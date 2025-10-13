@@ -1,4 +1,4 @@
-# Pyve Version History
+# Project Version History
 
 ## References
 - Building Guide: `docs/guides/building_guide.md`

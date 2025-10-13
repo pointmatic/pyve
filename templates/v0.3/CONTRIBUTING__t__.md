@@ -9,21 +9,17 @@ Thank you for contributing! This guide explains how to work on this project, ali
 - Codebase spec (master): `docs/specs/codebase_spec.md`
 
 ## Project Setup
-- Python 3.11+
-- Create/activate a virtualenv.
+- Ensure required runtimes and tools are installed for this codebase (see `docs/specs/codebase_spec.md`).
+- Create/activate a local development environment appropriate to the stack (e.g., venv, Node version manager, language toolchains).
 - Consider using Pyve to automatically set up your local Python environment (see https://github.com/pointmatic/pyve).
-- Install top‑level packages one at a time (see Dependency Policy), then run tests:
-  ```bash
-  python -m pip install -r requirements.txt
-  pytest -q
-  ```
+- Install dependencies per the dependency policy, then run the test suite using the project’s standard commands.
 
 ## Dependency Policy
 - See `docs/guides/dependencies_guide.md` for the single source of truth on dependency and version management (apps vs libs, `requirements.in` → `requirements.txt`, update workflow).
 
 ## Command Policy
-- OK: `pip install {package}` (one at a time), `pytest`, invoking program entry points (e.g., `python -m merge_docs.cli`).
-- Not OK: destructive commands like `rm`, `mv`. Ask before deleting/renaming files (prefer `git mv`).
+- **OK:** installing a single dependency at a time via your ecosystem tool, running tests, invoking documented entry points.
+- **Not OK:** destructive commands like `rm`, `mv` without review. Ask before deleting/renaming files (prefer `git mv`).
 
 ## Versioning Workflow
 - All work is tracked in `docs/specs/versions_spec.md`.
@@ -42,27 +38,27 @@ Thank you for contributing! This guide explains how to work on this project, ali
 
 ## README Checklist
 When creating a minimal README for a new project stub, include:
-- **Project summary**: One‑sentence purpose and audience.
-- **Prerequisites**: Python version, virtualenv, credentials expectations.
-- **Installation**: Install from `requirements.txt` per dependency policy.
-- **Quickstart**: One or two commands to verify something runs (e.g., placeholder extraction).
-- **Usage**: Main CLI commands/flags or a link to `docs/specs/technical_design_spec.md` for details.
-- **Configuration**: Env vars/flags (e.g., `SHEET_ID`, `TEMPLATE_DOC_ID`, `OUTPUT_FOLDER_ID`).
-- **Examples**: Pointers to `examples/` and sample flows.
+- **Project summary**: one-sentence purpose and audience.
+- **Prerequisites**: required runtimes/tools; environment setup expectations.
+- **Installation**: how to install/build or a note that the repo is source-only.
+- **Quickstart**: one or two commands to verify something runs.
+- **Usage**: main CLI commands/flags or link to `docs/specs/technical_design_spec.md`.
+- **Configuration**: primary env vars/flags/files.
+- **Examples**: pointers to `examples/` and sample flows (if applicable).
 - **Docs links**: `docs/guides/building_guide.md`, `docs/guides/planning_guide.md`, `docs/guides/testing_guide.md`, `docs/specs/decisions_spec.md`, `docs/specs/versions_spec.md`.
-- **Contributing**: Link to `CONTRIBUTING.md`.
-- **Security**: Don’t commit secrets; how to provide `credentials.json` locally.
-- **License**: If applicable.
+- **Contributing**: link to `CONTRIBUTING.md`.
+- **Security**: don’t commit secrets; where to place local credentials (if any).
+- **License**: if applicable.
 
 ## Testing
 - Strategy levels: Minimal, Moderate, Complete (see `docs/guides/testing_guide.md`).
-- Aim to keep `pytest -q` green.
+- Aim to keep the test suite green.
 - Use sample data in `examples/` where applicable.
 
 ## Coding
-- Language: Python 3.11+.
-- Keep imports at the top of files.
-- Add clear, minimal code; avoid unused abstractions.
+- Follow language and style conventions for this codebase.
+- Keep imports/includes at the top as appropriate for the language.
+- Add clear, minimal code; avoid unnecessary abstractions.
 
 ## Commits and PRs
 - Keep changes scoped to the current version requirements.
@@ -74,8 +70,5 @@ When creating a minimal README for a new project stub, include:
 - Follow least-privilege principles for Google API scopes and sharing.
 
 ## Running the CLI
-- Placeholder extraction example:
-  ```bash
-  python -m merge_docs.cli extract examples/template.txt
-  ```
-- Future commands will be documented in `docs/technical_design.md` and the README.
+- Provide examples in the README and/or `docs/specs/technical_design_spec.md` matched to this project’s interfaces.
+- Keep examples minimal and self‑verifying where possible.

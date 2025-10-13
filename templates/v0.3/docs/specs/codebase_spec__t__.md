@@ -1,18 +1,28 @@
 # Codebase Specification
 
 ## Repository
-- **Name:** Pyve
-- **Summary:** Generic Python environment management tool (shell-based) with room for multi-language components.
+- **Name:** <ProjectName>
+- **Summary:** Short, neutral description of the codebase (avoid language- or project-specific branding in this template).
 - **Status:** internal tool
 - **Owners/Contacts:** 
+
+## Quality
+- Quality Level: experiment | prototype | production | secure
+- Guidance (apply based on chosen level):
+  - Experiment: speed over rigor; minimal tests; throwaway acceptable.
+  - Prototype: validate function/UX; basic error handling; smoke tests.
+  - Production: reliability, observability, CI/CD, SLOs, on-call readiness.
+  - Secure: threat modeling, hardening, least-privilege, audits/compliance.
+- Entry/Exit criteria:
+  - Define minimum gates (tests, lint, coverage, reviews, security scans) per level.
 
 ## Components
 List each deliverable or scriptable unit and its key traits.
 - **Name:** 
 - **Kind:** application | library | cli | script
 - **Language:** shell | python | cpp | ruby | sql | other
-- **Paths:** e.g., `pyve.sh`, `scripts/`, `src/`
-- **Entrypoints/Commands:** e.g., `./pyve.sh --help`
+- **Paths:** e.g., `scripts/`, `src/`, top-level utilities
+- **Entrypoints/Commands:** e.g., `./tool.sh --help`, `python -m package.cli`
 - **Audience:** end-user | internal ops | dev-only
 
 ## Runtime & Platforms
