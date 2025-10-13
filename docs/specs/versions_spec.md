@@ -8,11 +8,6 @@
 - Decision Log: `docs/decisions.md`
 - Codebase Spec: `docs/codebase_spec.md`
 
-## v0.2.7 Tweak doc directories [Implemented]
-- [x] Move Guides to `docs/guides/`(typically read only files)
-- [x] Move Specs to `docs/specs/` (edited as the codebase evolves)
-- [x] Suffix the filenames with `_guide` or `_spec` for easy identification of the purpose and use of the file.
-
 ## v0.2.6 Codebase Specification [Implemented]
 Provide a generic way to specify any codebase's structure and dependencies in a language-neutral way. This will help Pyve to generate the appropriate files for any codebase.
 - [x] Implement `docs/specs/codebase_spec.md` (general doc)
