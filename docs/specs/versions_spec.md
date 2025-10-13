@@ -1,23 +1,48 @@
 # Pyve Version History
 
 ## References
-- Building Guide: `docs/building.md`
-- Planning Guide: `docs/planning.md`
-- Testing Guide: `docs/testing.md`
-- Dependencies Guide: `docs/dependencies.md`
-- Decision Log: `docs/decisions.md`
-- Codebase Spec: `docs/codebase_spec.md`
+- Building Guide: `docs/guides/building_guide.md`
+- Planning Guide: `docs/guides/planning_guide.md`
+- Testing Guide: `docs/guides/testing_guide.md`
+- Dependencies Guide: `docs/guides/dependencies_guide.md`
+- Decision Log: `docs/specs/decisions_spec.md`
+- Codebase Spec: `docs/specs/codebase_spec.md`
+
+## v0.2.9 
+This version will help facilitate collaborative, LLM-friendly, and industry-standard development practices in any codebase when the programmer uses Pyve. The templates directory contains meta documents that Pyve will use to initialize documentation stubs in local git repository. 
+- [ ] Copy the generic guides into any project for any language(s).
+- [ ] Copy blank spec docs so the repository is ready for collaborative development with LLMs. 
+- [ ] In a new project, pyve.sh will copy files in the same structure in the templates directory as if it were root.
+- [ ] Review all the templates directory documents to confirm the are generalized
+  - [ ] No Python-specific language details (unless it's just an example, and except of course `/templates/docs/specs/lang/{lang}_spec.md`)
+  - [ ] No project-specific details. 
+  - [ ] Do not change the anchors or references, since when Pyve copies the files, they will have the correct anchors and references.
+
+## v0.2.8 Documentation Templates [Implemented]
+Note that the directory structure in `docs` directory has changed,
+- [x] Re-read all those `doc` directory documents and root documents (README.md, CONTRIBUTING.md)
+- [x] Update any anchors, links, and references to reflect the new structure and doc names. 
+
+### Notes
+- Updated references in specs and guides to use `docs/guides/*_guide.md` and `docs/specs/*_spec.md` paths.
+- Fixed links to versions spec, decisions spec, and technical design spec where applicable.
 
 ## v0.2.7 Tweak doc directories [Implemented]
 - [x] Move Guides to `docs/guides/`(typically read only files)
 - [x] Move Specs to `docs/specs/` (edited as the codebase evolves)
 - [x] Suffix the filenames with `_guide` or `_spec` for easy identification of the purpose and use of the file.
 
+### Notes
+- Implemented manually
+
 ## v0.2.6 Codebase Specification [Implemented]
 Provide a generic way to specify any codebase's structure and dependencies in a language-neutral way. This will help Pyve to generate the appropriate files for any codebase.
 - [x] Implement `docs/specs/codebase_spec.md` (general doc)
 - [x] Implement `docs/specs/lang/<lang>.md` (language-specific docs) for Python and Shell
 - [x] Update the format of this file. 
+
+### Notes
+- Implemented manually
 
 ## v0.2.5 Requirements [Implemented]
 Add an --install flag to the pyve.sh script that will... 

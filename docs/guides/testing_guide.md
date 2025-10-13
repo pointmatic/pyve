@@ -13,7 +13,7 @@ This document outlines testing strategies and how to apply them during developme
   - Pros: balanced effort; Cons: potential gaps in coverage.
 - **Complete**
   - Full testing framework and plan (e.g., `pytest`).
-  - Unit tests planned in `docs/technical_design.md` and implemented before advancing out of a phase.
+  - Unit tests planned in `docs/specs/technical_design_spec.md` and implemented before advancing out of a phase.
   - Include CI integration, coverage targets, and pre-merge gates.
 
 ## Recommendations

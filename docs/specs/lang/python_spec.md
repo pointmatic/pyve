@@ -1,14 +1,14 @@
 # Python Addendum
 
 ## Scope
-- Applies to components with `Language: python` in `docs/codebase_spec.md`.
+- Applies to components with `Language: python` in `docs/specs/codebase_spec.md`.
 
 ## Runtimes
 - Supported versions: specify a matrix (e.g., 3.11, 3.12).
 - Pin CI interpreters to what you support.
 
 ## Dependency Policy
-- Authoritative doc: `docs/dependencies.md`.
+- Authoritative doc: `docs/guides/dependencies_guide.md`.
 - Applications: use `requirements.in` → `pip-compile --generate-hashes` → install from `requirements.txt`.
 - Libraries: declare bounded ranges in `pyproject.toml`; test with `constraints.txt`.
 

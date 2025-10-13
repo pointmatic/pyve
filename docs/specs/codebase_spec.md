@@ -25,7 +25,7 @@ List each deliverable or scriptable unit and its key traits.
 - **Artifacts:** none | wheel | binary | container
 - **Versioning:** SemVer | date-based; changelog location
 
-## Dependencies (Authoritative: `docs/dependencies.md`)
+## Dependencies (Authoritative: `docs/guides/dependencies_guide.md`)
 Define per component type and reference language addenda.
 - **Python app:** `requirements.in` → `pip-compile` → `requirements.txt` (hashes). Install from lockfile
 - **Python lib:** ranges in `pyproject.toml`; test with `constraints.txt`
@@ -70,6 +70,6 @@ Define per component type and reference language addenda.
 - Short list to be fleshed out later
 
 ## Language Addenda
-- **Python:** `docs/specs/python.md`
-- **Shell:** `docs/specs/shell.md`
-- Others as needed: `docs/specs/cpp.md`, `docs/specs/ruby.md`, `docs/specs/sql.md`
+- **Python:** `docs/specs/lang/python_spec.md`
+- **Shell:** `docs/specs/lang/shell_spec.md`
+- Others as needed: `docs/specs/lang/cpp_spec.md`, `docs/specs/lang/ruby_spec.md`, `docs/specs/lang/sql_spec.md`

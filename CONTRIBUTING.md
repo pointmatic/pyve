@@ -2,11 +2,11 @@
 
 Thank you for contributing! This guide explains how to work on this project, aligned with the docs in `docs/`.
 
-- Building guide: `docs/building.md`
-- Planning guide: `docs/planning.md`
-- Testing guide: `docs/testing.md`
-- Decision log: `docs/decisions.md`
-- Codebase spec (master): `docs/codebase_spec.md`
+- Building guide: `docs/guides/building_guide.md`
+- Planning guide: `docs/guides/planning_guide.md`
+- Testing guide: `docs/guides/testing_guide.md`
+- Decision log: `docs/specs/decisions_spec.md`
+- Codebase spec (master): `docs/specs/codebase_spec.md`
 
 ## Project Setup
 - Python 3.11+
@@ -19,26 +19,26 @@ Thank you for contributing! This guide explains how to work on this project, ali
   ```
 
 ## Dependency Policy
-- See `docs/dependencies.md` for the single source of truth on dependency and version management (apps vs libs, `requirements.in` → `requirements.txt`, update workflow).
+- See `docs/guides/dependencies_guide.md` for the single source of truth on dependency and version management (apps vs libs, `requirements.in` → `requirements.txt`, update workflow).
 
 ## Command Policy
 - OK: `pip install {package}` (one at a time), `pytest`, invoking program entry points (e.g., `python -m merge_docs.cli`).
 - Not OK: destructive commands like `rm`, `mv`. Ask before deleting/renaming files (prefer `git mv`).
 
 ## Versioning Workflow
-- All work is tracked in `docs/versions.md`.
+- All work is tracked in `docs/specs/versions_spec.md`.
 - Add a new version at the top with a checklist of requirements.
 - Implementation should only address the listed requirements for the targeted version.
 - Mark completed items `[x]`; append `[Implemented]` to the version title when everything is complete.
 - Microversions `a/b/c/...` are used for quick bugfixes/error follow‑ups not already captured (e.g., `v0.0.2a`).
 - Propose broader work as the next semantic version with `[Next]` for review.
-- Record major decisions in `docs/decisions.md` and reference them in the current version's `### Notes`.
+- Record major decisions in `docs/specs/decisions_spec.md` and reference them in the current version's `### Notes`.
   - Example “Decision reference” bullet for Notes:
-    - Decision: [2025-10-12: Switch to Service Account Auth](docs/decisions.md#2025-10-12-switch-to-service-account-auth) — requires sharing Sheet/Doc with the service account; update CI secrets.
+    - Decision: [2025-10-12: Switch to Service Account Auth](docs/specs/decisions_spec.md#2025-10-12-switch-to-service-account-auth) — requires sharing Sheet/Doc with the service account; update CI secrets.
 
 ## Planning
-- For significant features, update or create `docs/technical_design.md` (see `docs/planning.md` for structure).
-- Add a `[Next]` version in `docs/versions.md` to outline upcoming work.
+- For significant features, update or create `docs/specs/technical_design_spec.md` (see `docs/guides/planning_guide.md` for structure).
+- Add a `[Next]` version in `docs/specs/versions_spec.md` to outline upcoming work.
 
 ## README Checklist
 When creating a minimal README for a new project stub, include:
@@ -46,16 +46,16 @@ When creating a minimal README for a new project stub, include:
 - **Prerequisites**: Python version, virtualenv, credentials expectations.
 - **Installation**: Install from `requirements.txt` per dependency policy.
 - **Quickstart**: One or two commands to verify something runs (e.g., placeholder extraction).
-- **Usage**: Main CLI commands/flags or a link to `docs/technical_design.md` for details.
+- **Usage**: Main CLI commands/flags or a link to `docs/specs/technical_design_spec.md` for details.
 - **Configuration**: Env vars/flags (e.g., `SHEET_ID`, `TEMPLATE_DOC_ID`, `OUTPUT_FOLDER_ID`).
 - **Examples**: Pointers to `examples/` and sample flows.
-- **Docs links**: `docs/building.md`, `docs/planning.md`, `docs/testing.md`, `docs/decisions.md`, `docs/versions.md`.
+- **Docs links**: `docs/guides/building_guide.md`, `docs/guides/planning_guide.md`, `docs/guides/testing_guide.md`, `docs/specs/decisions_spec.md`, `docs/specs/versions_spec.md`.
 - **Contributing**: Link to `CONTRIBUTING.md`.
 - **Security**: Don’t commit secrets; how to provide `credentials.json` locally.
 - **License**: If applicable.
 
 ## Testing
-- Strategy levels: Minimal, Moderate, Complete (see `docs/testing.md`).
+- Strategy levels: Minimal, Moderate, Complete (see `docs/guides/testing_guide.md`).
 - Aim to keep `pytest -q` green.
 - Use sample data in `examples/` where applicable.
 

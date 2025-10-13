@@ -15,18 +15,18 @@ Copy/paste this snippet when adding a new decision:
 
 ## 2025-10-12: Dependency and Version Management Policy
 - Context: Prior guidance pinned only top-level packages in `requirements.txt` without ranges and discouraged constraints/lock tooling. We want a reliable, updatable, and LLM-friendly workflow that preserves reproducibility.
-- Decision: Adopt `docs/dependencies.md` as the single source of truth.
+- Decision: Adopt `docs/guides/dependencies_guide.md` as the single source of truth.
   - Applications: use `pip-tools` with `requirements.in` (ranges) → compiled `requirements.txt` (exact pins + hashes). Install strictly from the lockfile. Update via `pip-compile --upgrade` with tests and audits.
   - Libraries: declare bounded ranges in `pyproject.toml`; avoid hard pins for consumers; test with `constraints.txt`.
 - Consequences: Clear policy for updates, fewer breakages from unbounded installs, deterministic deploys, and explicit separation between app and library practices.
-- Links: See `docs/dependencies.md`.
+- Links: See `docs/guides/dependencies_guide.md`.
 
 ## 2025-10-12: Documentation Split and Process Clarification
 - Context: `docs/versions.md` was carrying process guidance that made it noisy.
-- Decision: Create separate docs for process and keep `versions.md` focused on history.
-  - `docs/building.md`: roles, workflow, dependencies, commands policy.
-  - `docs/planning.md`: phases, versioning, how to author `technical_design.md`.
-  - `docs/testing.md`: testing strategies and guidance.
+- Decision: Create separate docs for process and keep versions history in `docs/specs/versions_spec.md`.
+  - `docs/guides/building_guide.md`: roles, workflow, dependencies, commands policy.
+  - `docs/guides/planning_guide.md`: phases, versioning, how to author `technical_design_spec.md`.
+  - `docs/guides/testing_guide.md`: testing strategies and guidance.
 - Consequences: Clearer responsibilities, easier onboarding; `versions.md` remains a concise history.
 
 ## 2025-10-12: Dependency Pinning Policy (Superseded by 2025-10-12: Dependency and Version Management Policy)
@@ -41,5 +41,5 @@ Copy/paste this snippet when adding a new decision:
 
 ## 2025-10-12: Versioning and Microversions
 - Context: Need structured logging of changes and bugfixes.
-- Decision: Use semantic versions `v{major}.{minor}.{incremental}`; append microversions `a/b/c/...` for quick follow‑up bugfixes not already captured in `docs/versions.md` (e.g., `v0.0.2a`). Use `[Next]` tag to propose a future semantic version tied to a broader plan.
+- Decision: Use semantic versions `v{major}.{minor}.{incremental}`; append microversions `a/b/c/...` for quick follow‑up bugfixes not already captured in `docs/specs/versions_spec.md` (e.g., `v0.0.2a`). Use `[Next]` tag to propose a future semantic version tied to a broader plan.
 - Consequences: Transparent history; clear separation between planned work and immediate fixes.

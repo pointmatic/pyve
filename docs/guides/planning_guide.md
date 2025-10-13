@@ -5,8 +5,8 @@ This document explains how to plan versions and produce a technical design from 
 ## Goals
 - Establish phased progression toward v1.0.0.
 - Capture requirements per phase and map them to semantic versions.
-- Keep `docs/versions.md` as the authoritative log of implemented work.
- - Ensure plans and designs align with the master codebase spec in `docs/codebase_spec.md` and relevant language addenda in `docs/specs/`.
+- Keep `docs/specs/versions_spec.md` as the authoritative log of implemented work.
+ - Ensure plans and designs align with the master codebase spec in `docs/specs/codebase_spec.md` and relevant language addenda in `docs/specs/lang/`.
 
 ## Phases and Versioning
 - Version format: `v{major}.{minor}.{incremental}{micro}` where `{micro}` is optional `a|b|c|...`.
@@ -17,7 +17,7 @@ This document explains how to plan versions and produce a technical design from 
 - Incremental (patch) increments as requirements are split into smaller deliverables within a phase.
 - Microversions (`a/b/c/...`) to log quick bugfixes or small follow-ups requested by the human when not already captured in `docs/versions.md` (e.g., `v0.0.2a`).
 
-## Creating a Technical Design (`docs/technical_design.md`)
+## Creating a Technical Design (`docs/specs/technical_design_spec.md`)
 Include:
 - Overview: scope, problem to solve, constraints.
 - Stack: languages, libraries, tools.
@@ -31,10 +31,10 @@ Include:
 - Next Steps: actionable backlog aligned to phases.
 
 ## Planning Workflow
-1. Draft or update `docs/technical_design.md` covering the above.
-2. Reconcile the design and component inventory with `docs/codebase_spec.md` and applicable addenda in `docs/specs/`.
-3. Propose the next semantic version in `docs/versions.md` with `[Next]` if broader work is planned.
+1. Draft or update `docs/specs/technical_design_spec.md` covering the above.
+2. Reconcile the design and component inventory with `docs/specs/codebase_spec.md` and applicable addenda in `docs/specs/lang/`.
+3. Propose the next semantic version in `docs/specs/versions_spec.md` with `[Next]` if broader work is planned.
 4. Break work into requirements under that version.
-5. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/decisions.md` (date, context, decision, consequences).
+5. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/specs/decisions_spec.md` (date, context, decision, consequences).
 6. Implement; log using the versions file (tick items, add Notes, mark `[Implemented]`). Reference any new decision log entries in the version's `### Notes`.
 7. For bugfixes or unlogged changes, append microversions.
