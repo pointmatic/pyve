@@ -8,6 +8,17 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.1 Template Installation [Implemented]
+- [x] Change `pyve.sh` so that on the `--install` flag (which must be run from the git repo root of the Pyve codebase), it records the current path (`pwd`) in a new `~/.pyve/source_path` file. 
+- [x] Change `pyve.sh` so that if the `~/.pyve/source_path` file already exists, handoff control (`{source_path}/pyve.sh --install`) so the newer version can replace the existing `~/.local/bin/pyve.sh`.
+- [x] Change `pyve.sh` to install the latest version of templates from this codebase directory structure `templates` directory in the user's home directory (e.g., `~/.pyve/templates/`) when the `--install` flag is used. So if `v0.3` is the latest version, it will copy the template files as-is from `./templates/v0.3` into `~/.pyve/templates/v0.3/`.
+- [x] Change `pyve.sh` to remove the `~/.pyve` directory when the `--uninstall` flag is used.
+
+### Notes
+- Record `pwd` to `~/.pyve/source_path` on `--install`.
+- Copy current latest templates to `~/.pyve/templates/{latest}` on `--install`.
+- `--uninstall` should remove `~/.pyve` cleanly.
+
 ## v0.3.0 Template Generalization [Implemented]
 This is a complex change, so please ask questions if there are any ambiguities. 
 The `templates` directory contains versioned meta documents that Pyve will use when developers need to initialize or upgrade documentation stubs in a local git repository. It will help them create a consistent codebase structure with ideal, industry standard documentation and instructions. And an LLM can help support those standards and policies. Currently, the `templates` directory contains the `v0.3` directory, which will be a release of Pyve documentation templates accompanying any v0.3.x of Pyve. 

@@ -13,13 +13,13 @@
 # Name: pyve.sh
 # Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --help | --version | --config }
 # Description:
-# There are five functions:
+# There are eight functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
 #   2. --python-version <ver>: Set the Python version in the current directory without creating a virtual environment
 #   3. --purge / -p: Delete all the artifacts of the Python virtual environment
-#   4. --install: Install this script to $HOME/.local/bin and create a 'pyve' symlink
+#   4. --install: Install this script to $HOME/.local/bin and create a 'pyve' symlink; also record repo path and install latest documentation templates to ~/.pyve/templates/{latest}
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --help / -h: Show this help message
 #   7. --version / -v: Show the version of this script
@@ -54,7 +54,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.2.5"
+VERSION="0.3.1"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -70,6 +70,63 @@ DIRENV_FILE_NAME=".envrc"
 GIT_DIR_NAME=".git"
 GITIGNORE_FILE_NAME=".gitignore"
 MAC_OS_GITIGNORE_CONTENT=".DS_Store"
+# Pyve home and template locations
+PYVE_HOME="$HOME/.pyve"
+PYVE_SOURCE_PATH_FILE="$PYVE_HOME/source_path"
+PYVE_TEMPLATES_DIR="$PYVE_HOME/templates"
+
+# Ensure Pyve home directories exist
+function ensure_pyve_home() {
+    mkdir -p "$PYVE_TEMPLATES_DIR" 2>/dev/null || true
+}
+
+# Find latest templates version directory name (e.g., v0.3) under given source path
+function find_latest_template_version() {
+    local SOURCE_PATH="$1"
+    if [[ -z "$SOURCE_PATH" || ! -d "$SOURCE_PATH/templates" ]]; then
+        echo ""
+        return 0
+    fi
+    # List v* directories, sort, take last, and print basename
+    local LATEST_DIR
+    LATEST_DIR=$(ls -1d "$SOURCE_PATH"/templates/v* 2>/dev/null | sort | tail -n 1)
+    if [[ -z "$LATEST_DIR" ]]; then
+        echo ""
+    else
+        basename "$LATEST_DIR"
+    fi
+}
+
+# Record the Pyve source path (repo root) for future updates
+function record_source_path() {
+    local SOURCE_PATH="$1"
+    ensure_pyve_home
+    echo "$SOURCE_PATH" > "$PYVE_SOURCE_PATH_FILE"
+    echo "Recorded Pyve source path to $PYVE_SOURCE_PATH_FILE"
+}
+
+# Copy the latest templates from the repo to ~/.pyve/templates/{latest}
+function copy_latest_templates_to_home() {
+    local SOURCE_PATH="$1"
+    local LATEST_VERSION
+    LATEST_VERSION=$(find_latest_template_version "$SOURCE_PATH")
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo "\nWARNING: No versioned templates found under '$SOURCE_PATH/templates'. Skipping template copy."
+        return 0
+    fi
+    ensure_pyve_home
+    local SRC_DIR="$SOURCE_PATH/templates/$LATEST_VERSION"
+    local DEST_DIR="$PYVE_TEMPLATES_DIR/$LATEST_VERSION"
+    echo "Copying templates from '$SRC_DIR' to '$DEST_DIR' ..."
+    mkdir -p "$DEST_DIR"
+    # Use rsync if available for cleaner sync, else fallback to cp -R
+    if command -v rsync &> /dev/null; then
+        rsync -a --delete "$SRC_DIR/" "$DEST_DIR/"
+    else
+        cp -R "$SRC_DIR/." "$DEST_DIR/"
+    fi
+    echo "Templates copied to $DEST_DIR"
+}
 
 function show_help() {
     echo "\nHELP: Pyve.sh - Python Virtual Environment Setup Script\n"
@@ -86,7 +143,7 @@ function show_help() {
     echo "             Optional --python-version <ver> to select a specific Python version"
     echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
-    echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, and create a 'pyve' symlink"
+    echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, create a 'pyve' symlink, record the repo path, and copy the latest documentation templates to \"$HOME/.pyve/templates/{latest}\""
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
@@ -518,12 +575,29 @@ function init() {
 
 # Install this script into $HOME/.local/bin and create a 'pyve' symlink
 function install_self() {
+    # v0.3.1: If a newer source path is recorded, hand off install to that script
+    if [[ -f "$PYVE_SOURCE_PATH_FILE" ]]; then
+        RECORDED_SOURCE_PATH=$(cat "$PYVE_SOURCE_PATH_FILE" 2>/dev/null)
+        if [[ -n "$RECORDED_SOURCE_PATH" && -d "$RECORDED_SOURCE_PATH" && "$RECORDED_SOURCE_PATH" != "$PWD" ]]; then
+            if [[ -f "$RECORDED_SOURCE_PATH/pyve.sh" ]]; then
+                echo "\nDetected recorded source at '$RECORDED_SOURCE_PATH'. Handing off install to the newer script..."
+                "$RECORDED_SOURCE_PATH/pyve.sh" --install
+                return $?
+            elif [[ -f "$RECORDED_SOURCE_PATH/pyve" ]]; then
+                echo "\nDetected recorded source at '$RECORDED_SOURCE_PATH'. Handing off install to the newer script..."
+                "$RECORDED_SOURCE_PATH/pyve" --install
+                return $?
+            else
+                echo "\nWARNING: Recorded source path exists but no pyve script found at '$RECORDED_SOURCE_PATH'. Proceeding with current script."
+            fi
+        fi
+    fi
+
     TARGET_BIN_DIR="$HOME/.local/bin"
     TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
     TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
 
     echo "\nInstalling pyve to $TARGET_BIN_DIR ..."
-
     # Ensure bin dir exists
     if [[ ! -d "$TARGET_BIN_DIR" ]]; then
         echo "Creating $TARGET_BIN_DIR ..."
@@ -610,6 +684,15 @@ function install_self() {
         echo "Created symlink $TARGET_SYMLINK_PATH -> $TARGET_SCRIPT_PATH"
     fi
 
+    # v0.3.1: Record source path and copy latest templates
+    local SOURCE_PATH="$PWD"
+    if [[ ! -d "$SOURCE_PATH/templates" ]]; then
+        echo "\nWARNING: Expected 'templates' directory under current path ($SOURCE_PATH). Ensure you run --install from the Pyve repo root."
+    else
+        record_source_path "$SOURCE_PATH"
+        copy_latest_templates_to_home "$SOURCE_PATH"
+    fi
+
     echo "\nInstallation complete. You can now run 'pyve --help' from any directory."
 }
 
@@ -620,7 +703,6 @@ function uninstall_self() {
     TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
 
     echo "\nUninstalling pyve from $TARGET_BIN_DIR ..."
-
     if [[ -L "$TARGET_SYMLINK_PATH" ]] || [[ -e "$TARGET_SYMLINK_PATH" ]]; then
         echo "Removing symlink or file: $TARGET_SYMLINK_PATH"
         rm -f "$TARGET_SYMLINK_PATH"
@@ -633,6 +715,12 @@ function uninstall_self() {
         rm -f "$TARGET_SCRIPT_PATH"
     else
         echo "No installed script found at $TARGET_SCRIPT_PATH."
+    fi
+
+    # v0.3.1: Remove ~/.pyve directory
+    if [[ -d "$PYVE_HOME" ]]; then
+        echo "Removing $PYVE_HOME ..."
+        rm -rf "$PYVE_HOME"
     fi
 
     echo "\nUninstall complete. Note: If $TARGET_BIN_DIR was added to your PATH via ~/.zprofile, that line remains; you can remove it manually if desired."
