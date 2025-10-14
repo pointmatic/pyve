@@ -54,7 +54,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.1"
+VERSION="0.3.1d"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -465,8 +465,8 @@ function init_direnv() {
         append_pattern_to_gitignore "$DIRENV_FILE_NAME"
 
         # Write the Python venv environment configuration to .envrc
-        echo "export VIRTUAL_ENV=\"\$PWD/$VENV_DIR_NAME\"
-    export PATH=\"\$PWD/$VENV_DIR_NAME/bin:\$PATH\"" > $DIRENV_FILE_NAME
+        echo "export VIRTUAL_ENV=\"$PWD/$VENV_DIR_NAME\"
+    export PATH=\"$PWD/$VENV_DIR_NAME/bin:$PATH\"" > $DIRENV_FILE_NAME
 
         echo "Confirmed: '$DIRENV_FILE_NAME' created successfully!"
         echo "\nRun 'direnv allow' to activate the environment (if you see a warning below)."
@@ -565,7 +565,13 @@ function init() {
         init_dotenv
         init_python_versioning
         init_venv
+
+        # v0.3.2: Initialize documentation templates from ~/.pyve/templates/{latest}
+        init_copy_templates
+
+        # this needs to run last so that the 'direnv allow' instruction is close to the end of the output.
         init_direnv
+
         # no success message, since we need the user to pay attention to 'direnv allow'
     else
         echo "\nERROR: Failed to configure Python virtual environment."
@@ -573,22 +579,156 @@ function init() {
     fi
 }
 
+# v0.3.2 helpers: initialize documentation templates
+function ensure_project_pyve_dirs() {
+    mkdir -p ./.pyve/status 2>/dev/null || true
+}
+
+function fail_if_status_present() {
+    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
+        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting to avoid making it worse."
+        exit 1
+    fi
+}
+
+function write_init_status() {
+    ensure_project_pyve_dirs
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pyve --init $@" > ./.pyve/status/init
+}
+
+function strip_template_suffix() {
+    # Usage: strip_template_suffix <filename>
+    local name="$1"
+    # Remove __t__* before extension (handles zero or more chars)
+    echo "$name" | sed -E 's/__t__[^.]*\.(md)$/\.\1/; s/__t__\.(md)$/\.\1/' 2>/dev/null || echo "$name"
+}
+
+function list_template_files() {
+    local SRC_DIR="$1"
+    # Root docs
+    find "$SRC_DIR" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
+    # Guides and Specs
+    find "$SRC_DIR/docs/guides" -type f -name "*__t__*.md" 2>/dev/null
+    find "$SRC_DIR/docs/specs" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
+    # Language specs (copy all available for now)
+    find "$SRC_DIR/docs/specs/lang" -type f -name "*__t__*.md" -o -type f -name "*_spec__t__*.md" 2>/dev/null
+}
+
+function target_path_for_source() {
+    local SRC_DIR="$1"; shift
+    local FILE="$1"
+    local REL="${FILE#$SRC_DIR/}"
+    local DEST="$REL"
+    # Strip template suffix from filename parts
+    local BASENAME=$(basename "$DEST")
+    local DIRNAME=$(dirname "$DEST")
+    local STRIPPED=$(echo "$BASENAME" | sed -E 's/__t__[^.]*\.(md)$/\.md/; s/__t__\.(md)$/\.\1/')
+    echo "$DIRNAME/$STRIPPED"
+}
+
+function init_copy_templates() {
+    # Determine latest templates in ~/.pyve
+    local HOME_SRC="$PYVE_HOME"
+    local LATEST_VERSION
+    LATEST_VERSION=$(find_latest_template_version "$HOME_SRC")
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo "\nWARNING: No templates found under $PYVE_HOME/templates. Skipping template initialization."
+        return 0
+    fi
+    local SRC_DIR="$PYVE_TEMPLATES_DIR/$LATEST_VERSION"
+
+    # Temporarily disable xtrace (set -x) to reduce noise, if currently enabled
+    local HAD_XTRACE=0
+    if [[ -o xtrace ]]; then
+        HAD_XTRACE=1
+        unsetopt xtrace
+    fi
+
+    echo "\nCopying documentation templates from the installed cache..."
+
+    # Guard: fail if any status files exist already
+    ensure_project_pyve_dirs
+    fail_if_status_present
+
+    # Build list and preflight check for non-identical overwrites
+    local CONFLICTS=()
+    while IFS= read -r FILE; do
+        [[ -z "$FILE" ]] && continue
+        local DEST_REL
+        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+        local DEST_ABS="./$DEST_REL"
+        if [[ -f "$DEST_ABS" ]]; then
+            if ! cmp -s "$FILE" "$DEST_ABS"; then
+                CONFLICTS+=("$DEST_REL")
+            fi
+        fi
+    done < <(list_template_files "$SRC_DIR")
+
+    if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
+        echo "\nERROR: Initialization would overwrite modified files. Aborting. Conflicts:"
+        for f in "${CONFLICTS[@]}"; do echo " - $f"; done
+        exit 1
+    fi
+
+    # Copy files, stripping __t__* suffix
+    while IFS= read -r FILE; do
+        [[ -z "$FILE" ]] && continue
+        local DEST_REL
+        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+        local DEST_ABS="./$DEST_REL"
+        mkdir -p "$(dirname "$DEST_ABS")"
+        cp "$FILE" "$DEST_ABS"
+    done < <(list_template_files "$SRC_DIR")
+
+    # Record version used in the project
+    if command -v pyve &> /dev/null; then
+        pyve --version > ./.pyve/version 2>/dev/null || echo "Version: $VERSION" > ./.pyve/version
+    else
+        echo "Version: $VERSION" > ./.pyve/version
+    fi
+
+    # Write status file with args
+    write_init_status "$@"
+
+    echo "Template initialization complete from version $LATEST_VERSION."
+
+    # Restore xtrace if it was previously enabled
+    if [[ $HAD_XTRACE -eq 1 ]]; then
+        setopt xtrace
+    fi
+}
+
 # Install this script into $HOME/.local/bin and create a 'pyve' symlink
 function install_self() {
-    # v0.3.1: If a newer source path is recorded, hand off install to that script
-    if [[ -f "$PYVE_SOURCE_PATH_FILE" ]]; then
+    # v0.3.1: If a newer source path is recorded, hand off install to that script (without looping)
+    # Guard to prevent recursion
+    if [[ -z "$PYVE_SKIP_HANDOFF" ]] && [[ -f "$PYVE_SOURCE_PATH_FILE" ]]; then
         RECORDED_SOURCE_PATH=$(cat "$PYVE_SOURCE_PATH_FILE" 2>/dev/null)
-        if [[ -n "$RECORDED_SOURCE_PATH" && -d "$RECORDED_SOURCE_PATH" && "$RECORDED_SOURCE_PATH" != "$PWD" ]]; then
-            if [[ -f "$RECORDED_SOURCE_PATH/pyve.sh" ]]; then
-                echo "\nDetected recorded source at '$RECORDED_SOURCE_PATH'. Handing off install to the newer script..."
-                "$RECORDED_SOURCE_PATH/pyve.sh" --install
-                return $?
-            elif [[ -f "$RECORDED_SOURCE_PATH/pyve" ]]; then
-                echo "\nDetected recorded source at '$RECORDED_SOURCE_PATH'. Handing off install to the newer script..."
-                "$RECORDED_SOURCE_PATH/pyve" --install
-                return $?
-            else
-                echo "\nWARNING: Recorded source path exists but no pyve script found at '$RECORDED_SOURCE_PATH'. Proceeding with current script."
+        # Resolve an indicator of where this script lives
+        local CURRENT_SCRIPT_DIR=""
+        if [[ -n "${(%):-%x}" ]] && [[ -f "${(%):-%x}" ]]; then
+            CURRENT_SCRIPT_DIR=$(cd "$(dirname "${(%):-%x}")" && pwd)
+        elif [[ -n "$0" ]] && [[ -f "$0" ]]; then
+            CURRENT_SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+        fi
+        # Only handoff if recorded path exists, differs from PWD, and current script is not already under recorded path
+        if [[ -n "$RECORDED_SOURCE_PATH" && -d "$RECORDED_SOURCE_PATH" ]]; then
+            local REC_ABS
+            REC_ABS=$(cd "$RECORDED_SOURCE_PATH" && pwd)
+            local PWD_ABS
+            PWD_ABS=$(pwd)
+            if [[ "$REC_ABS" != "$PWD_ABS" ]] && [[ -n "$CURRENT_SCRIPT_DIR" ]] && [[ "$CURRENT_SCRIPT_DIR" != "$REC_ABS"* ]]; then
+                if [[ -f "$REC_ABS/pyve.sh" ]]; then
+                    echo "\nDetected recorded source at '$REC_ABS'. Handing off install to the sourcecode script..."
+                    ( export PYVE_SKIP_HANDOFF=1; cd "$REC_ABS" && ./pyve.sh --install )
+                    return $?
+                elif [[ -f "$REC_ABS/pyve" ]]; then
+                    echo "\nDetected recorded source at '$REC_ABS'. Handing off install to the sourcecode script..."
+                    ( export PYVE_SKIP_HANDOFF=1; cd "$REC_ABS" && ./pyve --install )
+                    return $?
+                else
+                    echo "\nWARNING: Recorded source path exists but no pyve script found at '$REC_ABS'. Proceeding with current script."
+                fi
             fi
         fi
     fi
@@ -597,7 +737,7 @@ function install_self() {
     TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
     TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
 
-    echo "\nInstalling pyve to $TARGET_BIN_DIR ..."
+    echo "\nInstalling Pyve $VERSION to $TARGET_BIN_DIR ..."
     # Ensure bin dir exists
     if [[ ! -d "$TARGET_BIN_DIR" ]]; then
         echo "Creating $TARGET_BIN_DIR ..."
@@ -693,7 +833,7 @@ function install_self() {
         copy_latest_templates_to_home "$SOURCE_PATH"
     fi
 
-    echo "\nInstallation complete. You can now run 'pyve --help' from any directory."
+    echo "\nInstallation of Pyve $VERSION complete. You can now run 'pyve --help' from any directory."
 }
 
 # Uninstall this script from $HOME/.local/bin by removing the script and symlink

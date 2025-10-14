@@ -8,6 +8,25 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.2 Template Initialization [Implemented]
+Change `pyve.sh` so the initialization process copies the latest version of certain templates from the user's `~/.pyve/templates/{version}/*` directory into the user's local git repo (current user directory, invoked at the root of a codebase project) when the `--init` flag is used.  
+- [x] Check first to see if any files in the local git repo would be overwritten by the template files and are not identical to the template files. If so, fail the init process with a message.
+- [x] Record the now current version of the Pyve command in a version config file in the local git repo: (e.g., `~/pyve.sh --version > ./.pyve/version`)
+- [x] Track whether the init process completed 
+  - [x] Use some status file and write the arguments that were passed to `pyve.sh` script.
+  - [x] The status file should be named `./.pyve/status/init`
+  - [x] At the beginning of the init operation, if any file is already present in the `./.pyve/status` directory, something might be broken, so fail...don't make it worse.
+- [x] When copying template files (all of which have a suffix `__t__*.md`, where `*` is any characters or no characters), copy files to the local git repo with the suffix removed, but retain the file extension. (e.g., `my_template__t__1234abc.md` -> `my_template.md`)
+- [x] Root Docs: `~/.pyve/templates/{version}/*` to `.`
+- [x] Guides: `~/.pyve/templates/{version}/docs/guides/*` to `./docs/guides/`
+- [x] Specs: `~/.pyve/templates/{version}/docs/specs/*` to `./docs/specs/`
+- [x] Languages: `~/.pyve/templates/{version}/docs/specs/lang/{lang}_spec.md` to `./docs/specs/lang/` (depending on which languages are initialized with asdf) 
+- [x] Change the version in `./.pyve/version` file to the new version.
+
+### Notes
+- Preflight: if any target file would be overwritten and is not identical, abort with a clear message.
+- Record run state in `./.pyve/status/init` and the active template version in `./.pyve/version`.
+
 ## v0.3.1 Template Installation [Implemented]
 - [x] Change `pyve.sh` so that on the `--install` flag (which must be run from the git repo root of the Pyve codebase), it records the current path (`pwd`) in a new `~/.pyve/source_path` file. 
 - [x] Change `pyve.sh` so that if the `~/.pyve/source_path` file already exists, handoff control (`{source_path}/pyve.sh --install`) so the newer version can replace the existing `~/.local/bin/pyve.sh`.
