@@ -8,6 +8,80 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.8 Persistence in Templates [Implemented]
+- [x] General guidelines for persistence `docs/guides/persistence_guide__t__.md`
+  - [x] Coverage of architectures: OLTP, OLAP, NoSQL, caching, object storage, time-series, search, message queues
+  - [x] Decision framework for choosing storage technologies
+  - [x] Data modeling and schema design (normalization, indexing, migrations)
+- [x] Production operations for persistence `docs/guides/persistence_operations_guide__t__.md`
+  - [x] Backup/recovery strategies (RTO/RPO, tools, testing)
+  - [x] Data migration (big bang, phased, parallel run, strangler pattern)
+  - [x] Performance optimization (query tuning, database config, caching, sharding/partitioning)
+  - [x] Scalability strategies (vertical/horizontal scaling, auto-scaling)
+  - [x] High availability (replication, failover, multi-region)
+  - [x] Security & governance (encryption, access control, audit logging, compliance)
+  - [x] Data lifecycle management (storage tiers, lifecycle policies, deletion strategies)
+  - [x] Cost management (optimization, pricing models)
+- [x] Move infrastructure runbooks to make room for other runbooks
+
+### Notes
+- Created `templates/v0.3/docs/guides/persistence_guide__t__.md` (500+ lines) covering:
+  - Decision matrix for choosing storage technologies (8 factors: data structure, access patterns, consistency, scale, query complexity, latency, durability, cost)
+  - Common architecture patterns (web app, analytics, real-time/event-driven, microservices)
+  - Data storage patterns:
+    - Relational databases (PostgreSQL, MySQL, SQLite, CockroachDB)
+    - NoSQL: Key-value stores (Redis, Memcached, DynamoDB), Document stores (MongoDB, Firestore), Graph databases (Neo4j, Neptune), Wide-column stores (Cassandra, ScyllaDB)
+    - Caching (Redis, Memcached, Varnish, CDN) with strategies (cache-aside, write-through, write-behind, refresh-ahead)
+    - Object storage (S3, GCS, Azure Blob, MinIO, Tigris)
+    - Data warehouses & lakes (BigQuery, Snowflake, Redshift, Databricks, ClickHouse)
+    - Time-series databases (Prometheus, InfluxDB, TimescaleDB)
+    - Search engines (Elasticsearch, Meilisearch, Typesense, Algolia)
+    - Message queues & event streams (Kafka, RabbitMQ, SQS, Redis Streams, Pulsar)
+  - Data modeling & schema design:
+    - Relational design (normalization, indexing strategies, data types, constraints)
+    - NoSQL patterns (embed vs reference, key design, data structures)
+    - Schema versioning & migrations (expand-contract, dual writes, tools: Flyway, Liquibase, Alembic)
+- Created `templates/v0.3/docs/guides/persistence_operations_guide__t__.md` (900+ lines) covering:
+  - Backup & recovery:
+    - Backup types (full, incremental, differential, continuous) with frequency and retention policies
+    - Tools for relational (PostgreSQL, MySQL, RDS), NoSQL (MongoDB, Redis, Cassandra), object storage (S3)
+    - Recovery procedures (RTO/RPO tiers, recovery steps, testing backups)
+  - Data migration:
+    - Strategies (big bang, phased, parallel run, strangler pattern) with pros/cons
+    - Tools (AWS DMS, GCP Database Migration Service, Flyway, Liquibase, dbt)
+    - Best practices (pre/during/post-migration)
+  - Performance optimization:
+    - Query optimization (identifying slow queries, EXPLAIN analysis, indexing, query rewriting)
+    - Database tuning (PostgreSQL/MySQL configuration, connection pooling with PgBouncer/ProxySQL)
+    - Caching strategies (application-level with Redis, database-level with materialized views)
+    - Sharding & partitioning (range/hash partitioning, application-level sharding)
+  - Scalability strategies:
+    - Vertical scaling (scale up) vs horizontal scaling (scale out)
+    - Read replicas (setup, routing, replication lag considerations)
+    - Auto-scaling (managed services, self-managed monitoring)
+  - High availability:
+    - Replication (synchronous vs asynchronous, configuration)
+    - Failover (automatic tools: Patroni, MHA; failover process; split-brain prevention)
+    - Multi-region deployments (active-passive, active-active, read replicas)
+  - Security & governance:
+    - Encryption (at rest: TDE, column-level, application-level; in transit: SSL/TLS, VPN)
+    - Access control (authentication methods, RBAC, row-level security)
+    - Audit logging (what to log, tools: pgaudit, managed services)
+    - Compliance (GDPR, HIPAA, PCI DSS, SOC 2)
+  - Data lifecycle management:
+    - Storage tiers (hot, warm, cold, glacier/archive)
+    - Lifecycle policies (automatic transitions, S3 lifecycle, database partitioning)
+    - Data deletion (soft delete, hard delete, anonymization)
+  - Cost management:
+    - Optimization strategies (right-sizing, reserved capacity, storage optimization, query optimization)
+    - Pricing models (instance-based, serverless, storage+compute)
+    - Cost comparison (managed vs self-managed vs serverless)
+- Separation of concerns (Option B):
+  - `persistence_guide.md`: Patterns, architectures, decision-making, data modeling (what and when)
+  - `persistence_operations_guide.md`: Production operations, procedures, commands (how to operate)
+  - Designed to avoid token limit issues for LLMs while maintaining comprehensive coverage
+  - Cross-references between guides for easy navigation
+
 ## v0.3.7 Infrastructure in Templates [Implemented]
 - [x] Add infrastructure templates to the Pyve repo
 - [x] Add mentions of Podman, Alpine Linux, `ash` shell
