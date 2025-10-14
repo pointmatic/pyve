@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --help | --version | --config }
 # Description:
-# There are eight functions:
+# There are nine functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -21,9 +21,10 @@
 #   3. --purge / -p: Delete all the artifacts of the Python virtual environment
 #   4. --install: Install this script to $HOME/.local/bin and create a 'pyve' symlink; also record repo path and install latest documentation templates to ~/.pyve/templates/{latest}
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
-#   6. --help / -h: Show this help message
-#   7. --version / -v: Show the version of this script
-#   8. --config / -c: Show the configuration of this script
+#   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
+#   7. --help / -h: Show this help message
+#   8. --version / -v: Show the version of this script
+#   9. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -54,7 +55,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.3"
+VERSION="0.3.5"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -136,7 +137,7 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
@@ -145,6 +146,7 @@ function show_help() {
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
     echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, create a 'pyve' symlink, record the repo path, and copy the latest documentation templates to \"$HOME/.pyve/templates/{latest}\""
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
+    echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
     echo "  --config:  Show the configuration of this script"
@@ -978,6 +980,77 @@ function uninstall_self() {
     echo "\nUninstall complete. Note: If $TARGET_BIN_DIR was added to your PATH via ~/.zprofile, that line remains; you can remove it manually if desired."
 }
 
+# v0.3.5: Update templates from source repo to ~/.pyve/templates/{newer_version}
+function update_templates() {
+    # Read the source path from ~/.pyve/source_path
+    if [[ ! -f "$PYVE_SOURCE_PATH_FILE" ]]; then
+        echo "\nERROR: Source path file not found at $PYVE_SOURCE_PATH_FILE."
+        echo "Please run 'pyve --install' from the Pyve repository first."
+        exit 1
+    fi
+
+    local SOURCE_PATH
+    SOURCE_PATH=$(cat "$PYVE_SOURCE_PATH_FILE" 2>/dev/null)
+    if [[ -z "$SOURCE_PATH" || ! -d "$SOURCE_PATH" ]]; then
+        echo "\nERROR: Invalid source path recorded in $PYVE_SOURCE_PATH_FILE."
+        echo "Please run 'pyve --install' from the Pyve repository to update the source path."
+        exit 1
+    fi
+
+    echo "\nChecking for template updates from source: $SOURCE_PATH"
+
+    # Find the latest version in the source repo
+    local SOURCE_LATEST_VERSION
+    SOURCE_LATEST_VERSION=$(find_latest_template_version "$SOURCE_PATH")
+    if [[ -z "$SOURCE_LATEST_VERSION" ]]; then
+        echo "\nWARNING: No versioned templates found in source at '$SOURCE_PATH/templates'."
+        exit 0
+    fi
+
+    echo "Latest version in source: $SOURCE_LATEST_VERSION"
+
+    # Find the latest version in the home directory
+    local HOME_LATEST_VERSION
+    HOME_LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
+    if [[ -z "$HOME_LATEST_VERSION" ]]; then
+        echo "No templates currently installed in $PYVE_TEMPLATES_DIR."
+        HOME_LATEST_VERSION="v0.0"
+    else
+        echo "Current version in home: $HOME_LATEST_VERSION"
+    fi
+
+    # Compare versions (simple string comparison works for v0.3 format)
+    if [[ "$SOURCE_LATEST_VERSION" > "$HOME_LATEST_VERSION" ]] || [[ "$SOURCE_LATEST_VERSION" == "$HOME_LATEST_VERSION" && ! -d "$PYVE_TEMPLATES_DIR/$SOURCE_LATEST_VERSION" ]]; then
+        echo "\nNewer version available: $SOURCE_LATEST_VERSION"
+        local SRC_DIR="$SOURCE_PATH/templates/$SOURCE_LATEST_VERSION"
+        local DEST_DIR="$PYVE_TEMPLATES_DIR/$SOURCE_LATEST_VERSION"
+        
+        # Ensure destination doesn't already exist (keep immutable)
+        if [[ -d "$DEST_DIR" ]]; then
+            echo "Template version $SOURCE_LATEST_VERSION already exists at $DEST_DIR."
+            echo "Templates are kept immutable once written. No update needed."
+        else
+            echo "Copying templates from '$SRC_DIR' to '$DEST_DIR' ..."
+            mkdir -p "$DEST_DIR"
+            # Use rsync if available for cleaner sync, else fallback to cp -R
+            if command -v rsync &> /dev/null; then
+                rsync -a "$SRC_DIR/" "$DEST_DIR/"
+            else
+                cp -R "$SRC_DIR/." "$DEST_DIR/"
+            fi
+            echo "Templates copied to $DEST_DIR"
+            
+            # Update the version file in ~/.pyve/version
+            echo "Version: $VERSION" > "$PYVE_HOME/version"
+            echo "Updated version file to $VERSION"
+        fi
+    else
+        echo "\nTemplates are already up to date (version $HOME_LATEST_VERSION)."
+    fi
+
+    echo "\nTemplate update complete."
+}
+
 # Check if the script is run with a parameter
 if [[ $# -eq 0 ]]; then
     echo "\nNo parameters provided. Please provide a parameter."
@@ -1005,6 +1078,9 @@ elif [[ $1 == "--uninstall" ]]; then
     exit 0
 elif [[ $1 == "--python-version" ]]; then
     set_python_version_only "$@"
+    exit 0
+elif [[ $1 == "--update" ]]; then
+    update_templates
     exit 0
 elif [[ $1 == "--init" ]] || [[ $1 == "-i" ]]; then
     init "$@"

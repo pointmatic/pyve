@@ -8,6 +8,20 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.5 Template Update [Implemented]
+Change `pyve.sh` to perform an update from of Pyve repo template documents into the user's home directory on `--update` flag (similar to `--install`).
+- [x] Read the source path from `~/.pyve/source_path` file
+- [x] Check if there is a newer version in Pyve `{source_path}/templates/` than is in the home directory `~/.pyve/templates/` directory. If so, copy the newer version to `~/.pyve/templates/{newer_version}`, which could have multiple versions.
+- [x] Change the version in `./.pyve/version` file to the new version.
+
+### Notes
+- Keep `~/.pyve/templates/{version}` immutable once written; add newer versions side-by-side.
+- Reuse install-time copy logic; do not mutate `source_path` here.
+- Implemented `update_templates()` function that reads source path, compares versions, and copies newer templates.
+- Version comparison uses string comparison which works for v0.X format.
+- Templates are kept immutable; if a version already exists in `~/.pyve/templates/`, it won't be overwritten.
+- Updates `~/.pyve/version` file to track the pyve version that performed the update.
+
 ## v0.3.4 Documentation Revision [Implemented]
 With all the new documentation templates, I updated Pyve's documents to be in line with its templates. 
 - [x] Added missing docs (`implementation_options_spec.md`, `python_guide.md`)
