@@ -20,7 +20,7 @@
 - Success criteria
   - Smoke tests on macOS: `--install`, `--init` (fresh and re-run), `--purge`, `--version`, `--config`.
   - Docs updated per release: `README.md`, `docs/specs/versions_spec.md`, decisions in `docs/specs/decisions_spec.md`.
-  - Shell quality gates pass: `shellcheck` clean; `shfmt` consistent formatting.
+  - Syntax check passes: `zsh -n pyve.sh`; smoke tests cover main flows.
   - User-facing output is concise; final `direnv allow` message appears last; template copy noise is suppressed with logs in `./.pyve/status/init_copy.log`.
 
 ## Quality
@@ -32,7 +32,7 @@
   - Secure: threat modeling, hardening, least-privilege, audits/compliance.
 - Entry/Exit criteria:
   - Minimum gates for Prototype (Pyve):
-    - Shell lint/format: `shellcheck` clean for `pyve.sh`; `shfmt` consistent formatting.
+    - Syntax check: `zsh -n pyve.sh` passes.
     - Basic tests: manual smoke tests for `--install`, `--init` (fresh/re-run), `--purge`, `--version`, `--config` on macOS (zsh).
     - Documentation: `README.md` usage up to date; `docs/specs/versions_spec.md` updated per release; decisions logged in `docs/specs/decisions_spec.md`.
     - Safety: no destructive operations without explicit prompts/messages; idempotent behavior for re-runs where applicable.
@@ -81,41 +81,10 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 - No network protocols or integrations.
 
 ### Tooling
-- Lint/format: `shellcheck` (lint), `shfmt` (format) for `pyve.sh`.
+- Syntax check: `zsh -n pyve.sh`.
+- Smoke tests: exercise `--install`, `--init` (fresh/re-run), `--purge`, `--version`, `--config`.
 - Docs: version history and notes in `docs/specs/versions_spec.md`; decisions in `docs/specs/decisions_spec.md`; project docs in `docs/guides/` and `docs/specs/`.
-- Hooks (optional): pre-commit with `shellcheck`/`shfmt` recipes later.
-- CI: deferred until Production; aim for smoke tests on macOS runners.
-
-Commands (local):
-
-```bash
-# Lint
-shellcheck pyve.sh
-
-# Format (in-place)
-shfmt -w -i 2 -bn -ci pyve.sh
-```
-
-Optional pre-commit snippet: `.pre-commit-config.yaml`
-
-```yaml
-repos:
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.3.0
-    hooks:
-      - id: codespell
-        args: ["-L", "teh"]
-  - repo: https://github.com/jumanjihouse/pre-commit-hooks
-    rev: 3.0.0
-    hooks:
-      - id: shfmt
-        args: ["-i", "2", "-bn", "-ci"]
-  - repo: https://github.com/koalaman/shellcheck-precommit
-    rev: v0.10.0
-    hooks:
-      - id: shellcheck
-        files: ^pyve\.sh$
-```
+- Future CI: containerized tests (e.g., Podman + Alpine with zsh) to run targeted test scripts that exercise features/options.
 
 ## Candidate Option (Template)
 - Summary

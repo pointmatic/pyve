@@ -39,14 +39,13 @@ List each deliverable or scriptable unit and its key traits.
 Define per component type and reference language addenda.
 - **Python app:** `requirements.in` → `pip-compile` → `requirements.txt` (hashes). Install from lockfile
 - **Python lib:** ranges in `pyproject.toml`; test with `constraints.txt`
-- **Shell:** external tools (brew/apt names + versions)
-  - `shellcheck` (brew: `shellcheck`)
-  - `shfmt` (brew: `shfmt`)
-  - `pre-commit` (brew: `pre-commit`) — manages hook environments (e.g., pulls `codespell` as configured)
+- **Shell:** local tools
+  - zsh available on macOS; syntax check via `zsh -n pyve.sh`
+  - Project validation via smoke tests: `--install`, `--init`, `--purge`, `--version`, `--config`
 - **C/C++:** manager (vcpkg/conan/brew/apt), min/max versions
 - **Ruby:** bundler/Gemfile policy if applicable
 - **SQL:** DB engines and version constraints
-- **Update cadence:** routine schedule; audit tools (`pip-audit`, `shellcheck`, etc.)
+- **Update cadence:** routine schedule; audit tools (`pip-audit`, etc.)
 
 ## Testing
 - **Frameworks:** pytest | gtest | bats | rspec | sql tests
