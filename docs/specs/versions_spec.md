@@ -8,6 +8,55 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.7 Infrastructure in Templates [Implemented]
+- [x] Add infrastructure templates to the Pyve repo
+- [x] Add mentions of Podman, Alpine Linux, `ash` shell
+- [x] Add operational runbooks for major platforms
+
+### Notes
+- Created comprehensive `templates/v0.3/docs/guides/infrastructure_guide__t__.md` (400+ lines) covering:
+  - Infrastructure as Code (IaC): principles, tool selection, directory structure, state management
+  - Configuration Management: 12-factor app principles, env vars, platform-specific config
+  - Secrets Management: principles, strategies (platform stores, external managers), rotation
+  - Deployment Strategies: rolling, blue-green, canary, feature flags, health checks, rollback
+  - Scaling: horizontal/vertical scaling, auto-scaling configuration, platform-specific guidance
+  - Monitoring & Observability: logs, metrics, traces, alerting best practices
+  - Cost Management: optimization strategies, tracking, budgets
+  - Disaster Recovery: backup strategy, RTO/RPO, high availability patterns
+  - Security: network security, access control, compliance
+  - Platform-Specific Guidance: when to use Fly.io, AWS, GCP, Azure, Heroku, Kubernetes
+  - Runbooks: structure for vendor-specific operational procedures
+  - Infrastructure Readiness Checklist
+- Enhanced `templates/v0.3/docs/specs/implementation_options_spec__t__.md`:
+  - Expanded "Infrastructure & Hosting" section with detailed considerations (deployment, configuration, secrets, scaling, monitoring, cost, governance, operations, developer experience)
+  - Expanded "Packaging & Distribution" section with container runtime comparison (Docker vs Podman), base image options (Alpine Linux vs Ubuntu/Debian), and deployment considerations
+- Enhanced `templates/v0.3/docs/specs/technical_design_spec__t__.md`:
+  - Added IaC, platform-specific config (Dockerfile/Containerfile, docker-compose.yml/podman-compose.yml), and environment parity to Configuration section
+  - Added deployment mechanism, health checks, monitoring during rollout, and zero-downtime strategies to Rollout & Migration section
+- Enhanced `templates/v0.3/docs/specs/codebase_spec__t__.md`:
+  - Added Docker/Podman clarification to Build & Packaging section
+  - Added new "Infrastructure (if deployed)" section with provider, regions, IaC, platform config, container runtime (Docker vs Podman), base images (Alpine Linux with `ash` shell), secrets, scaling, monitoring, cost tracking, disaster recovery, and access control
+- Updated `templates/v0.3/docs/guides/llm_onramp_guide__t__.md`:
+  - Added infrastructure_guide.md to reading order (position #7)
+  - Updated minimal prompt to include infrastructure guide
+- Podman mentions throughout:
+  - Consistently referenced as "Podman (free and open alternative)" or "Podman (a free and open alternative)"
+  - Noted as daemonless and rootless in implementation_options_spec
+  - Containerfile mentioned alongside Dockerfile
+  - podman-compose.yml mentioned alongside docker-compose.yml
+- Alpine Linux and `ash` shell mentions:
+  - Specifically called out as minimal base image option
+  - Noted in codebase_spec Infrastructure section: "Alpine Linux (minimal, uses `ash` shell)"
+  - Included in implementation_options_spec considerations for container size optimization
+- Created operational runbooks in `templates/v0.3/docs/runbooks/`:
+  - `README__t__.md`: Overview, best practices, runbook structure, integration with other docs, quick reference commands
+  - `fly_io_runbook__t__.md`: Complete operational procedures for Fly.io (setup, deploy, scale, monitor, debug, rollback, secrets, backup, destroy, cost optimization)
+  - `aws_runbook__t__.md`: Complete operational procedures for AWS ECS/Fargate (setup, deploy, scale, monitor, debug, rollback, secrets, backup, destroy, cost optimization)
+  - `gcp_runbook__t__.md`: Complete operational procedures for GCP Cloud Run/GKE (setup, deploy, scale, monitor, debug, rollback, secrets, backup, destroy, cost optimization)
+  - `kubernetes_runbook__t__.md`: Complete operational procedures for Kubernetes (setup, deploy, scale, monitor, debug, rollback, secrets, backup, destroy, cost optimization)
+  - Each runbook includes platform-specific commands, configuration examples, troubleshooting guides, and cost optimization tips
+  - Runbooks complement infrastructure_guide.md by providing concrete, executable procedures vs general patterns
+
 ## v0.3.6 Template Upgrade [Implemented]
 Change `pyve.sh` to upgrade the local git repository from the user's home directory on `--upgrade` flag (similar to `--init`)
 - [x] Read the `{old_version}` (e.g., `v0.3.0`) from the local git repo `./.pyve/version` file

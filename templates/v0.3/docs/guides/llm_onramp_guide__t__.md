@@ -13,9 +13,10 @@ This short guide is the single entrypoint you can paste to an LLM so it orients 
 4. docs/specs/implementation_options_spec.md — options, tradeoffs, selection rationale.
 5. docs/specs/technical_design_spec.md — goals, architecture, quality level, interfaces.
 6. docs/guides/dependencies_guide.md — policy (language-agnostic). See docs/guides/lang/* for language specifics.
-7. docs/guides/building_guide.md — roles, implementation rules, ticking checklists, Notes.
-8. docs/guides/planning_guide.md — planning flow and relationship to versions.
-9. docs/guides/testing_guide.md — testing strategy and expectations.
+7. docs/guides/infrastructure_guide.md — infrastructure patterns, deployment, scaling, monitoring (if deployed).
+8. docs/guides/building_guide.md — roles, implementation rules, ticking checklists, Notes.
+9. docs/guides/planning_guide.md — planning flow and relationship to versions.
+10. docs/guides/testing_guide.md — testing strategy and expectations.
 
 ## Operating Rules for the LLM
 - Implement only the targeted version’s checklist in docs/specs/versions_spec.md.
@@ -44,6 +45,7 @@ Please read the following in order and then implement only the current version i
 - docs/specs/implementation_options_spec.md
 - docs/specs/technical_design_spec.md
 - docs/guides/dependencies_guide.md (+ docs/guides/lang/*)
+- docs/guides/infrastructure_guide.md (if deployed)
 - docs/guides/building_guide.md
 - docs/guides/planning_guide.md
 - docs/guides/testing_guide.md

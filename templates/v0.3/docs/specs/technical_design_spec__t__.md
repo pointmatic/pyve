@@ -37,6 +37,9 @@ Describe major components/services, their responsibilities, and interactions.
 ## Configuration
 - Configuration surfaces (env vars, files, flags) and defaults.
 - Secrets management approach (do not commit secrets).
+- **Infrastructure as Code:** Terraform/Pulumi/CloudFormation files location and state management.
+- **Platform-specific config:** fly.toml, app.yaml, Dockerfile/Containerfile (Podman), docker-compose.yml/podman-compose.yml, k8s manifests, etc.
+- **Environment parity:** ensuring dev/staging/prod consistency.
 
 ## Algorithms / Processing
 - Principal algorithms, workflows, or pipelines with step‑by‑step notes.
@@ -61,6 +64,10 @@ Describe major components/services, their responsibilities, and interactions.
 
 ## Rollout & Migration
 - Deployment plan, feature flags, migration/compatibility strategy, and rollback plan.
+- **Deployment mechanism:** CI/CD pipeline, manual CLI, platform automation (git-push, webhooks).
+- **Health checks:** readiness/liveness probes, smoke tests, canary validation.
+- **Monitoring during rollout:** metrics to watch, alerting thresholds, rollback triggers.
+- **Zero-downtime strategy:** blue-green, canary, rolling updates, database migrations.
 
 ## Open Questions
 - Outstanding decisions or risks to resolve.

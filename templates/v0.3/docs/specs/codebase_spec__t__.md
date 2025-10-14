@@ -32,7 +32,7 @@ List each deliverable or scriptable unit and its key traits.
 
 ## Build & Packaging
 - **Build systems:** none | Make/CMake | setuptools/poetry/hatch | other
-- **Artifacts:** none | wheel | binary | container
+- **Artifacts:** none | wheel | binary | container (Docker/Podman)
 - **Versioning:** SemVer | date-based; changelog location
 
 ## Dependencies (Authoritative: `docs/guides/dependencies_guide.md`)
@@ -70,6 +70,20 @@ Define per component type and reference language addenda.
 ## Configuration
 - **Mechanisms:** env vars | .env | config files | CLI flags
 - **Key variables:** names and meaning
+
+## Infrastructure (if deployed)
+- **Provider:** Fly.io | AWS | GCP | Azure | Heroku | on-prem | Kubernetes | none
+- **Regions/Zones:** deployment locations and failover strategy
+- **IaC:** Terraform/Pulumi/CloudFormation location and state management (e.g., `infra/`, remote state)
+- **Platform config:** fly.toml, app.yaml, Dockerfile/Containerfile (Podman), docker-compose.yml/podman-compose.yml, k8s manifests location
+- **Container runtime:** Docker | Podman (free and open alternative) | other
+- **Base images:** Alpine Linux (minimal, uses `ash` shell) | Ubuntu | Debian | distroless | other
+- **Secrets:** how/where secrets are stored and accessed (env vars, secret manager, vault)
+- **Scaling:** current configuration (instances, resources) and auto-scaling policies
+- **Monitoring:** dashboards, alerts, log aggregation (CloudWatch, Stackdriver, Grafana)
+- **Cost tracking:** budget alerts, cost allocation tags, optimization strategies
+- **Disaster recovery:** backup strategy, RTO/RPO targets, runbook location
+- **Access control:** who can deploy, admin access, audit logging
 
 ## Observability
 - **Logging:** format/levels (if applicable)

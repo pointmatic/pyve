@@ -27,16 +27,30 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 - Considerations: productivity, flexibility, community, support
 
 ### Packaging & Distribution
-- Candidates: <list>
-- Considerations: deployment targets, size, startup, reproducibility
+- Candidates: <native binary | wheel | container (Docker/Podman) | zip/tarball>
+- Considerations:
+  - **Deployment targets:** OS compatibility, architecture (x86_64/arm64)
+  - **Size:** Minimal base images (Alpine Linux) vs full-featured (Ubuntu/Debian)
+  - **Container runtime:** Docker vs Podman (free and open alternative, daemonless, rootless)
+  - **Startup time:** Cold start performance, initialization overhead
+  - **Reproducibility:** Lockfiles, pinned base images, build caching
 
 ### Data & State
 - Candidates: <DBs / caches>
 - Considerations: consistency, latency, durability, cost, ops
 
 ### Infrastructure & Hosting
-- Candidates: <cloud/platform/orchestration>
-- Considerations: scalability, cost, governance, platform fit
+- Candidates: <Fly.io | AWS | GCP | Azure | Heroku | on-prem | Kubernetes>
+- Considerations:
+  - **Deployment:** IaC (Terraform/Pulumi/CloudFormation), CLI, web console, git-push
+  - **Configuration:** env vars, config files, platform-specific (fly.toml, app.yaml, Dockerfile)
+  - **Secrets:** platform secret stores vs external (Vault, 1Password, AWS Secrets Manager)
+  - **Scaling:** auto-scaling policies, manual controls, cost implications
+  - **Monitoring:** built-in vs external (Datadog, New Relic, Prometheus, Grafana)
+  - **Cost:** pricing model, egress fees, commitment discounts, cost predictability
+  - **Governance:** compliance, data residency, vendor lock-in risk, multi-region support
+  - **Operations:** deployment frequency, rollback ease, debugging tools, platform maturity
+  - **Developer experience:** local dev parity, documentation quality, community support
 
 ### Authentication & Security
 - Candidates: <protocols/secret mgmt>
