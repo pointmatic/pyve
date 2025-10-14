@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --help | --version | --config }
 # Description:
-# There are nine functions:
+# There are ten functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -22,9 +22,10 @@
 #   4. --install: Install this script to $HOME/.local/bin and create a 'pyve' symlink; also record repo path and install latest documentation templates to ~/.pyve/templates/{latest}
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
-#   7. --help / -h: Show this help message
-#   8. --version / -v: Show the version of this script
-#   9. --config / -c: Show the configuration of this script
+#   7. --upgrade: Upgrade the local git repository documentation templates to a newer version from ~/.pyve/templates/
+#   8. --help / -h: Show this help message
+#   9. --version / -v: Show the version of this script
+#   10. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -55,7 +56,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.5"
+VERSION="0.3.6"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -137,7 +138,7 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
@@ -147,6 +148,7 @@ function show_help() {
     echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, create a 'pyve' symlink, record the repo path, and copy the latest documentation templates to \"$HOME/.pyve/templates/{latest}\""
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
+    echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
     echo "  --config:  Show the configuration of this script"
@@ -1051,6 +1053,138 @@ function update_templates() {
     echo "\nTemplate update complete."
 }
 
+# v0.3.6: Upgrade local repository templates to newer version from ~/.pyve/templates/
+function upgrade_status_fail_if_any_present() {
+    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
+        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting upgrade to avoid making it worse."
+        exit 1
+    fi
+}
+
+function write_upgrade_status() {
+    mkdir -p ./.pyve/status 2>/dev/null || true
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pyve --upgrade $@" > ./.pyve/status/upgrade
+}
+
+function upgrade_templates() {
+    # Enforce status cleanliness at the beginning (spec requirement)
+    upgrade_status_fail_if_any_present
+
+    # Read the old version from the local git repo
+    if [[ ! -f ./.pyve/version ]]; then
+        echo "\nERROR: No version file found at ./.pyve/version."
+        echo "This directory does not appear to have been initialized with pyve templates."
+        echo "Run 'pyve --init' first to initialize this repository."
+        exit 1
+    fi
+
+    local OLD_VERSION_FULL
+    OLD_VERSION_FULL=$(cat ./.pyve/version 2>/dev/null)
+    local OLD_MM
+    OLD_MM=$(echo "$OLD_VERSION_FULL" | grep -Eo '[0-9]+\.[0-9]+' | head -n1)
+    if [[ -z "$OLD_MM" ]]; then
+        echo "\nERROR: Could not parse version from ./.pyve/version (content: $OLD_VERSION_FULL)."
+        exit 1
+    fi
+    local OLD_VERSION="v$OLD_MM"
+    echo "\nCurrent project template version: $OLD_VERSION"
+
+    # Find the latest version available in ~/.pyve/templates/
+    local HOME_LATEST_VERSION
+    HOME_LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
+    if [[ -z "$HOME_LATEST_VERSION" ]]; then
+        echo "\nERROR: No templates found in $PYVE_TEMPLATES_DIR."
+        echo "Run 'pyve --update' first to download templates from the source repository."
+        exit 1
+    fi
+    echo "Latest available template version: $HOME_LATEST_VERSION"
+
+    # Check if there's a newer version
+    if [[ "$HOME_LATEST_VERSION" > "$OLD_VERSION" ]]; then
+        echo "\nNewer version available: $HOME_LATEST_VERSION"
+        local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/$HOME_LATEST_VERSION"
+        local OLD_TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/$OLD_VERSION"
+        
+        if [[ ! -d "$TEMPLATE_DIR" ]]; then
+            echo "\nERROR: Template directory not found at $TEMPLATE_DIR."
+            exit 1
+        fi
+
+        # Build list of template files to process
+        local -a FILES=()
+        FILES=(${(@f)"$(list_template_files "$TEMPLATE_DIR")"})
+        
+        if [[ ${#FILES[@]} -eq 0 ]]; then
+            echo "\nWARNING: No template files found in $TEMPLATE_DIR."
+            return 0
+        fi
+
+        local UPGRADED=0
+        local SKIPPED_MODIFIED=0
+        local FILE
+        
+        echo "\nUpgrading templates..."
+        for FILE in "${FILES[@]}"; do
+            [[ -z "$FILE" ]] && continue
+            
+            local DEST_REL
+            DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
+            local DEST_ABS="./$DEST_REL"
+            
+            # Check if the destination file exists
+            if [[ -f "$DEST_ABS" ]]; then
+                # Check if it's identical to the old version
+                local OLD_TEMPLATE_FILE
+                OLD_TEMPLATE_FILE=$(echo "$FILE" | sed "s|$HOME_LATEST_VERSION|$OLD_VERSION|")
+                
+                if [[ -f "$OLD_TEMPLATE_FILE" ]] && cmp -s "$OLD_TEMPLATE_FILE" "$DEST_ABS"; then
+                    # Identical to old version, safe to overwrite
+                    mkdir -p "$(dirname "$DEST_ABS")"
+                    cp "$FILE" "$DEST_ABS"
+                    echo "  Upgraded: $DEST_REL"
+                    UPGRADED=$((UPGRADED+1))
+                else
+                    # Not identical to old version, create suffixed copy
+                    local SUFFIXED_NAME="${DEST_ABS%.*}__t__${HOME_LATEST_VERSION}.${DEST_ABS##*.}"
+                    mkdir -p "$(dirname "$SUFFIXED_NAME")"
+                    cp "$FILE" "$SUFFIXED_NAME"
+                    echo "  Warning: Modified file detected. Created: ${SUFFIXED_NAME##*/}"
+                    echo "           Original file not modified: $DEST_REL"
+                    SKIPPED_MODIFIED=$((SKIPPED_MODIFIED+1))
+                fi
+            else
+                # File doesn't exist, copy it
+                mkdir -p "$(dirname "$DEST_ABS")"
+                cp "$FILE" "$DEST_ABS"
+                echo "  Added: $DEST_REL"
+                UPGRADED=$((UPGRADED+1))
+            fi
+        done
+
+        # Update the version file
+        if command -v pyve &> /dev/null; then
+            pyve --version > ./.pyve/version 2>/dev/null || echo "Version: $VERSION" > ./.pyve/version
+        else
+            echo "Version: $VERSION" > ./.pyve/version
+        fi
+
+        # Write status file
+        write_upgrade_status "$@"
+
+        echo "\nUpgrade complete."
+        echo "  Upgraded/Added: $UPGRADED files"
+        echo "  Skipped (modified): $SKIPPED_MODIFIED files"
+        if [[ $SKIPPED_MODIFIED -gt 0 ]]; then
+            echo "\nNote: Modified files were preserved. Review the __t__${HOME_LATEST_VERSION} files and merge changes manually."
+        fi
+    elif [[ "$HOME_LATEST_VERSION" == "$OLD_VERSION" ]]; then
+        echo "\nTemplates are already at the latest version ($OLD_VERSION)."
+    else
+        echo "\nCurrent version ($OLD_VERSION) is newer than available templates ($HOME_LATEST_VERSION)."
+        echo "Run 'pyve --update' to check for newer templates from the source repository."
+    fi
+}
+
 # Check if the script is run with a parameter
 if [[ $# -eq 0 ]]; then
     echo "\nNo parameters provided. Please provide a parameter."
@@ -1081,6 +1215,9 @@ elif [[ $1 == "--python-version" ]]; then
     exit 0
 elif [[ $1 == "--update" ]]; then
     update_templates
+    exit 0
+elif [[ $1 == "--upgrade" ]]; then
+    upgrade_templates
     exit 0
 elif [[ $1 == "--init" ]] || [[ $1 == "-i" ]]; then
     init "$@"

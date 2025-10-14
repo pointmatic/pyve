@@ -8,6 +8,32 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.6 Template Upgrade [Implemented]
+Change `pyve.sh` to upgrade the local git repository from the user's home directory on `--upgrade` flag (similar to `--init`)
+- [x] Read the `{old_version}` (e.g., `v0.3.0`) from the local git repo `./.pyve/version` file
+- [x] Check if there is a newer version (e.g., `v0.3.1`) in `~/.pyve/templates/` directory. If so:
+  - [x] Compare and conditionally copy any files that would normally be copied by `--init`, but don't fail if any files are not identical.
+    - [x] Identical to older version: copy the new file and overwrite the old file
+    - [x] Not identical to older version: copy the new file and suffix it with `__t__{newer_version}` and warn the user that the newer version was not applied for that file.
+- [x] Track whether the upgrade process completed 
+  - [x] Use some status file and write the arguments that were passed to `pyve.sh` script.
+  - [x] The status file should be named `./.pyve/status/upgrade`
+  - [x] At the beginning of the upgrade operation, if any file is already present in the `./.pyve/status` directory, something might be broken, so fail...don't make it worse.
+- [x] Change the version in `./.pyve/version` file to the new version.
+
+### Notes
+- Perform guarded copy/compare; never overwrite non-identical files silently.
+- Use `./.pyve/status/upgrade` to ensure idempotency and to fail fast if a previous run left state.
+- Implemented `upgrade_templates()` function that reads the current project version and compares with available templates.
+- Uses `upgrade_status_fail_if_any_present()` to enforce status cleanliness before starting.
+- For each template file:
+  - If the local file is identical to the old template version, it overwrites with the new version.
+  - If the local file has been modified, it creates a new file with suffix `__t__{newer_version}` and warns the user.
+  - If the file doesn't exist locally, it adds it.
+- Updates `./.pyve/version` file to the new version after successful upgrade.
+- Writes status to `./.pyve/status/upgrade` with timestamp and arguments.
+- Provides clear summary of upgraded/added files and skipped modified files.
+
 ## v0.3.5 Template Update [Implemented]
 Change `pyve.sh` to perform an update from of Pyve repo template documents into the user's home directory on `--update` flag (similar to `--install`).
 - [x] Read the source path from `~/.pyve/source_path` file
