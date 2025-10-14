@@ -8,6 +8,45 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.8c Data Warehouse Runbook [Implemented]
+- [x] Create data warehouse runbook covering OLAP databases
+- [x] ClickHouse operations (table engines, partitioning, materialized views, distributed tables)
+- [x] BigQuery operations (partitioning, clustering, cost optimization, scheduled queries)
+- [x] Redshift operations (distribution styles, sort keys, VACUUM/ANALYZE, Spectrum)
+- [x] Snowflake operations (virtual warehouses, time travel, cloning, Snowpipe)
+
+### Notes
+- Created `data_warehouse_runbook__t__.md` (650+ lines) covering:
+  - **ClickHouse**: Installation, table engines (MergeTree, ReplacingMergeTree, Distributed), data loading, materialized views, query optimization, monitoring
+  - **BigQuery**: Dataset/table creation, partitioning, clustering, query optimization, cost optimization, scheduled queries
+  - **Redshift**: Cluster creation, distribution styles (KEY, ALL, EVEN), sort keys (compound, interleaved), COPY from S3, VACUUM/ANALYZE, Redshift Spectrum
+  - **Snowflake**: Database/warehouse creation, clustering, external tables, data loading, Snowpipe, time travel, zero-copy cloning, cost optimization
+  - Common patterns: ETL/ELT, incremental loads, data modeling (star schema)
+- Complements existing OLTP database runbooks with OLAP-specific operations
+- Updated persistence runbooks README to include data warehouse category
+
+## v0.3.8b Generalize/Split Persistence Ops [Implemented]
+- [x] Generalize the persistence operations guide
+- [x] Split the platform/product-specific details into runbooks
+
+### Notes
+- Refactored `persistence_operations_guide__t__.md` from 913 lines to 848 lines (7% reduction)
+- Removed all platform-specific commands and configurations
+- Replaced with general concepts, strategies, and references to runbooks
+- Created 5 comprehensive persistence runbooks (4,822 lines total):
+  - **PostgreSQL Runbook** (987 lines): Installation, backup/recovery, replication, performance tuning, monitoring, troubleshooting, security, upgrades
+  - **MySQL Runbook** (1,053 lines): Installation, backup/recovery (mysqldump, XtraBackup, binary logs), replication, performance tuning, monitoring, troubleshooting, security, upgrades
+  - **MongoDB Runbook** (922 lines): Installation, backup/recovery (mongodump, oplog, snapshots), replica sets, sharding, performance tuning, monitoring, troubleshooting, security, upgrades
+  - **Redis Runbook** (969 lines): Installation, backup/recovery (RDB, AOF), replication, Sentinel, clustering, performance tuning, monitoring, troubleshooting, security, upgrades
+  - **Cloud Databases Runbook** (891 lines): AWS (RDS, Aurora, DynamoDB, ElastiCache), GCP (Cloud SQL, Spanner, Firestore, Memorystore), Azure (Azure Database, Cosmos DB, Azure Cache)
+- Created README (56 lines) explaining runbook structure and usage
+- Benefits of separation:
+  - **Operations guide:** General strategies, concepts, decision-making (what and when)
+  - **Runbooks:** Platform-specific commands, configurations, procedures (how to implement)
+  - **Easier maintenance:** Update platform-specific details without changing general guide
+  - **Better discoverability:** Users can jump directly to their platform's runbook
+  - **Reduced cognitive load:** Focused documentation for specific use cases
+
 ## v0.3.8 Persistence in Templates [Implemented]
 - [x] General guidelines for persistence `docs/guides/persistence_guide__t__.md`
   - [x] Coverage of architectures: OLTP, OLAP, NoSQL, caching, object storage, time-series, search, message queues

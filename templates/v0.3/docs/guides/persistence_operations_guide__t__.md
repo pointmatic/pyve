@@ -1,7 +1,14 @@
 # Persistence Operations Guide
 
 ## Purpose
-This guide covers production operations for data persistence systems. It complements `persistence_guide.md` (patterns and architectures) and provides operational procedures for backup, migration, performance, scaling, availability, security, and cost management.
+This guide covers production operations for data persistence systems. It complements `persistence_guide.md` (patterns and architectures) and provides general operational strategies for backup, migration, performance, scaling, availability, security, and cost management.
+
+**For platform-specific commands and procedures**, see the [persistence runbooks](../runbooks/persistence/):
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md)
+- [MySQL Runbook](../runbooks/persistence/mysql_runbook__t__.md)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md)
+- [Redis Runbook](../runbooks/persistence/redis_runbook__t__.md)
+- [Cloud Databases Runbook](../runbooks/persistence/cloud_databases_runbook__t__.md)
 
 ## Scope
 - Backup and recovery strategies
@@ -73,92 +80,38 @@ This guide covers production operations for data persistence systems. It complem
 
 ### Backup Tools
 
-#### Relational Databases
+Backup tools vary by database platform. Choose tools based on your requirements:
 
-**PostgreSQL:**
-```bash
-# Logical backup (SQL dump)
-pg_dump -h localhost -U postgres -d mydb > backup.sql
+**Logical backups:**
+- Export data as SQL, JSON, or other portable formats
+- Pros: Platform-independent, human-readable, selective restore
+- Cons: Slower, larger size, requires database processing
+- Examples: pg_dump (PostgreSQL), mysqldump (MySQL), mongodump (MongoDB)
 
-# Physical backup (binary)
-pg_basebackup -h localhost -U postgres -D /backup/dir -Ft -z -P
+**Physical backups:**
+- Copy raw database files
+- Pros: Faster, smaller size, exact replica
+- Cons: Platform-specific, requires downtime or special tools
+- Examples: pg_basebackup (PostgreSQL), Percona XtraBackup (MySQL), filesystem snapshots
 
-# Continuous archiving (WAL)
-# Configure postgresql.conf:
-# wal_level = replica
-# archive_mode = on
-# archive_command = 'cp %p /archive/%f'
-```
+**Continuous archiving:**
+- Ship transaction logs for point-in-time recovery
+- Pros: Minimal data loss (RPO in seconds)
+- Cons: Complex setup, requires storage for logs
+- Examples: WAL archiving (PostgreSQL), binary logs (MySQL), oplog (MongoDB)
 
-**MySQL:**
-```bash
-# Logical backup
-mysqldump -u root -p mydb > backup.sql
+**Managed service backups:**
+- Automated backups with configurable retention
+- Point-in-time recovery (PITR)
+- Cross-region replication
+- Examples: AWS RDS, GCP Cloud SQL, Azure Database, MongoDB Atlas
 
-# Physical backup (Percona XtraBackup)
-xtrabackup --backup --target-dir=/backup/dir
-xtrabackup --prepare --target-dir=/backup/dir
-```
-
-**Managed services:**
-- **AWS RDS:** Automated daily backups, 1-35 day retention, point-in-time recovery
-- **GCP Cloud SQL:** Automated daily backups, 7-365 day retention, point-in-time recovery
-- **Azure Database:** Automated backups, 7-35 day retention, geo-redundant backups
-
-#### NoSQL Databases
-
-**MongoDB:**
-```bash
-# Logical backup
-mongodump --uri="mongodb://localhost:27017/mydb" --out=/backup/dir
-
-# Restore
-mongorestore --uri="mongodb://localhost:27017/mydb" /backup/dir
-
-# Managed: MongoDB Atlas automated backups
-```
-
-**Redis:**
-```bash
-# RDB snapshot (point-in-time)
-# Configure redis.conf:
-# save 900 1      # Save after 900s if 1 key changed
-# save 300 10     # Save after 300s if 10 keys changed
-# save 60 10000   # Save after 60s if 10000 keys changed
-
-# AOF (append-only file, more durable)
-# Configure redis.conf:
-# appendonly yes
-# appendfsync everysec
-
-# Manual snapshot
-redis-cli BGSAVE
-```
-
-**Cassandra:**
-```bash
-# Snapshot (per-node)
-nodetool snapshot -t backup_name keyspace_name
-
-# Restore
-# 1. Stop Cassandra
-# 2. Copy snapshot files to data directory
-# 3. Start Cassandra
-```
-
-#### Object Storage
-
-**S3:**
-```bash
-# Enable versioning (keeps all versions of objects)
-aws s3api put-bucket-versioning --bucket my-bucket --versioning-configuration Status=Enabled
-
-# Cross-region replication
-aws s3api put-bucket-replication --bucket my-bucket --replication-configuration file://replication.json
-
-# Lifecycle policy (automatic archival)
-aws s3api put-bucket-lifecycle-configuration --bucket my-bucket --lifecycle-configuration file://lifecycle.json
-```
+**For specific commands and procedures**, see:
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md#backup--recovery)
+- [MySQL Runbook](../runbooks/persistence/mysql_runbook__t__.md#backup--recovery)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md#backup--recovery)
+- [Redis Runbook](../runbooks/persistence/redis_runbook__t__.md#backup--recovery)
+- [Cloud Databases Runbook](../runbooks/persistence/cloud_databases_runbook__t__.md)
 
 ### Recovery Procedures
 
@@ -288,11 +241,28 @@ aws s3api put-bucket-lifecycle-configuration --bucket my-bucket --lifecycle-conf
 
 ### Migration Tools
 
-- **AWS DMS:** Database Migration Service (heterogeneous migrations)
+**Cloud migration services:**
+- **AWS DMS:** Database Migration Service (heterogeneous migrations, continuous replication)
 - **GCP Database Migration Service:** MySQL, PostgreSQL to Cloud SQL
-- **Flyway/Liquibase:** Schema migrations
-- **dbt:** Data transformation
-- **Custom scripts:** Python, SQL, ETL tools
+- **Azure Database Migration Service:** SQL Server, MySQL, PostgreSQL to Azure
+
+**Schema migration tools:**
+- **Flyway:** Version-controlled SQL migrations, rollback support
+- **Liquibase:** Database-agnostic migrations, XML/YAML/SQL formats
+- **Alembic:** Python-based migrations for SQLAlchemy
+- **Django/Rails migrations:** Framework-integrated schema versioning
+
+**Data transformation:**
+- **dbt:** SQL-based transformations, testing, documentation
+- **Apache Airflow:** Workflow orchestration for complex migrations
+- **Talend/Pentaho:** ETL tools for data integration
+
+**Custom scripts:**
+- Python (pandas, SQLAlchemy) for data manipulation
+- SQL (INSERT INTO ... SELECT) for same-database migrations
+- Shell scripts for orchestration
+
+**For platform-specific migration procedures**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Migration Best Practices
 
@@ -322,220 +292,181 @@ aws s3api put-bucket-lifecycle-configuration --bucket my-bucket --lifecycle-conf
 
 #### Identifying Slow Queries
 
-**PostgreSQL:**
-```sql
--- Enable slow query logging
-ALTER SYSTEM SET log_min_duration_statement = 1000; -- Log queries >1s
-SELECT pg_reload_conf();
+Most databases provide tools to identify slow queries:
 
--- View slow queries
-SELECT query, calls, total_time, mean_time
-FROM pg_stat_statements
-ORDER BY mean_time DESC
-LIMIT 10;
-```
+**Slow query logging:**
+- Enable logging for queries exceeding a threshold (e.g., 1 second)
+- Review logs periodically to identify problematic queries
+- Examples: PostgreSQL slow query log, MySQL slow query log, MongoDB profiler
 
-**MySQL:**
-```sql
--- Enable slow query log
-SET GLOBAL slow_query_log = 'ON';
-SET GLOBAL long_query_time = 1;
+**Query statistics:**
+- Track query execution time, frequency, and resource usage
+- Identify most expensive queries by total time or average time
+- Examples: pg_stat_statements (PostgreSQL), performance_schema (MySQL), MongoDB profiler
 
--- View slow queries
-SELECT * FROM mysql.slow_log
-ORDER BY query_time DESC
-LIMIT 10;
-```
+**Application Performance Monitoring (APM):**
+- Instrument application code to track database queries
+- Correlate slow queries with application endpoints
+- Examples: New Relic, Datadog, AppDynamics
+
+**For platform-specific commands**, see:
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md#identifying-slow-queries)
+- [MySQL Runbook](../runbooks/persistence/mysql_runbook__t__.md#identifying-slow-queries)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md#identifying-slow-queries)
 
 #### Query Analysis
 
-**Use EXPLAIN to understand execution:**
+**Use EXPLAIN to understand query execution:**
+- Shows how the database plans to execute a query
+- Identifies missing indexes, inefficient joins, full table scans
+- Available in most relational databases (EXPLAIN in SQL, explain() in MongoDB)
 
-```sql
--- PostgreSQL
-EXPLAIN ANALYZE SELECT * FROM users WHERE email = 'alice@example.com';
+**Common issues to look for:**
+- **Full table/collection scans:** Database reads all rows instead of using an index
+- **Missing indexes:** Queries filter or sort on unindexed columns
+- **Unused indexes:** Indexes exist but aren't used by queries
+- **Inefficient joins:** Wrong join order, missing indexes on join columns
+- **SELECT *:** Fetching unnecessary columns increases I/O and network transfer
+- **N+1 queries:** Fetching related data in a loop instead of a single query
+- **Large result sets:** Returning too many rows without pagination
 
--- Look for:
--- - Seq Scan (bad, should use index)
--- - Index Scan (good)
--- - Nested Loop (can be slow for large datasets)
--- - Hash Join (good for large datasets)
-```
-
-**Common issues:**
-- Missing indexes
-- Unused indexes
-- Inefficient joins
-- SELECT * (fetching unnecessary columns)
-- N+1 queries
+**For platform-specific EXPLAIN usage**, see the [persistence runbooks](../runbooks/persistence/).
 
 #### Optimization Techniques
 
-**Add indexes:**
-```sql
--- Single column index
-CREATE INDEX idx_users_email ON users(email);
+**Indexing strategies:**
+- **Single-column indexes:** For queries filtering on one column
+- **Composite indexes:** For queries filtering on multiple columns (order matters)
+- **Partial indexes:** Index subset of rows matching a condition
+- **Covering indexes:** Include all columns needed by query (avoid table lookup)
+- **Full-text indexes:** For text search queries
+- **Geospatial indexes:** For location-based queries
 
--- Composite index
-CREATE INDEX idx_orders_user_date ON orders(user_id, created_at);
+**Query optimization:**
+- **Select only needed columns:** Avoid SELECT *, specify required fields
+- **Use JOINs instead of N+1 queries:** Fetch related data in single query
+- **Add WHERE clauses:** Filter data at database level, not application
+- **Use pagination:** Limit result sets with LIMIT/OFFSET or cursor-based pagination
+- **Avoid functions in WHERE:** Index can't be used if column is wrapped in function
+- **Use prepared statements:** Reuse query plans, prevent SQL injection
 
--- Partial index
-CREATE INDEX idx_active_users ON users(email) WHERE active = true;
+**Caching:**
+- Cache query results in application (Redis, Memcached)
+- Use materialized views for expensive aggregations
+- Cache at CDN level for static data
 
--- Covering index
-CREATE INDEX idx_users_email_name ON users(email) INCLUDE (name);
-```
-
-**Optimize queries:**
-```sql
--- Bad: SELECT *
-SELECT * FROM users WHERE id = 1;
-
--- Good: Select only needed columns
-SELECT id, name, email FROM users WHERE id = 1;
-
--- Bad: N+1 queries
-SELECT * FROM users;
--- Then for each: SELECT * FROM orders WHERE user_id = ?
-
--- Good: JOIN
-SELECT users.*, orders.*
-FROM users
-LEFT JOIN orders ON orders.user_id = users.id;
-```
+**For specific indexing commands**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Database Tuning
 
-#### PostgreSQL Configuration
+Database configuration varies by platform, but general principles apply:
 
-```ini
-# Memory settings (for 16GB RAM server)
-shared_buffers = 4GB              # 25% of RAM
-effective_cache_size = 12GB       # 75% of RAM
-work_mem = 64MB                   # Per query operation
-maintenance_work_mem = 1GB        # For VACUUM, CREATE INDEX
+**Memory settings:**
+- **Buffer pool/cache:** Allocate 50-75% of RAM for database cache
+- **Work memory:** Memory per query operation (sort, hash join)
+- **Maintenance memory:** Memory for maintenance operations (vacuum, index creation)
 
-# Connection settings
-max_connections = 100
-shared_preload_libraries = 'pg_stat_statements'
+**Connection settings:**
+- **Max connections:** Limit concurrent connections (typically 100-500)
+- **Connection pooling:** Reuse connections to reduce overhead
+- **Timeouts:** Close idle connections to free resources
 
-# WAL settings
-wal_buffers = 16MB
-checkpoint_completion_target = 0.9
-```
+**Storage settings:**
+- **Write-ahead logging (WAL):** Configure size and checkpointing
+- **Fsync settings:** Balance durability vs. performance
+- **Compression:** Enable compression for storage savings
 
-#### MySQL Configuration
+**Query planner:**
+- **Statistics:** Keep table statistics up-to-date for optimal query plans
+- **Cost parameters:** Tune planner costs for SSD vs. HDD
 
-```ini
-# Memory settings (for 16GB RAM server)
-innodb_buffer_pool_size = 12GB    # 70-80% of RAM
-innodb_log_file_size = 512MB
-innodb_flush_log_at_trx_commit = 2
-
-# Connection settings
-max_connections = 150
-thread_cache_size = 16
-```
+**For platform-specific configuration**, see:
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md#performance-tuning)
+- [MySQL Runbook](../runbooks/persistence/mysql_runbook__t__.md#performance-tuning)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md#performance-tuning)
+- [Redis Runbook](../runbooks/persistence/redis_runbook__t__.md#performance-tuning)
 
 #### Connection Pooling
 
-**PgBouncer (PostgreSQL):**
-```ini
-[databases]
-mydb = host=localhost port=5432 dbname=mydb
+Connection pooling reduces overhead by reusing database connections:
 
-[pgbouncer]
-listen_addr = 0.0.0.0
-listen_port = 6432
-auth_type = md5
-pool_mode = transaction
-max_client_conn = 1000
-default_pool_size = 25
-```
+**Database-level pooling:**
+- Standalone proxy that pools connections
+- Examples: PgBouncer (PostgreSQL), ProxySQL (MySQL)
+- Pros: Centralized, language-agnostic, reduces database load
+- Cons: Additional component to manage
 
-**Application-level (Python):**
-```python
-from sqlalchemy import create_engine
+**Application-level pooling:**
+- Built into database drivers/ORMs
+- Examples: SQLAlchemy (Python), HikariCP (Java), node-postgres (Node.js)
+- Pros: Simple setup, no additional infrastructure
+- Cons: Per-application, less efficient for microservices
 
-engine = create_engine(
-    'postgresql://user:pass@localhost/mydb',
-    pool_size=20,
-    max_overflow=10,
-    pool_timeout=30,
-    pool_recycle=3600
-)
-```
+**Configuration parameters:**
+- **Pool size:** Number of persistent connections (typically 10-50)
+- **Max overflow:** Additional connections if pool exhausted
+- **Timeout:** Wait time for available connection
+- **Recycle:** Close and recreate connections after duration
+
+**For specific pooling setup**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Caching Strategies
 
-**Application-level:**
-```python
-import redis
-import json
+**Application-level caching:**
+- Cache query results in memory (Redis, Memcached)
+- Cache at multiple levels (in-process, distributed)
+- Set appropriate TTL based on data freshness requirements
+- Implement cache invalidation strategy (time-based, event-based)
 
-cache = redis.Redis(host='localhost', port=6379)
+**Caching patterns:**
+- **Cache-aside:** Application checks cache, then database
+- **Write-through:** Write to cache and database simultaneously
+- **Write-behind:** Write to cache, asynchronously write to database
+- **Refresh-ahead:** Proactively refresh cache before expiration
 
-def get_user(user_id):
-    # Check cache
-    cached = cache.get(f'user:{user_id}')
-    if cached:
-        return json.loads(cached)
-    
-    # Query database
-    user = db.query(User).filter(User.id == user_id).first()
-    
-    # Store in cache (TTL 1 hour)
-    cache.setex(f'user:{user_id}', 3600, json.dumps(user))
-    
-    return user
-```
+**Database-level caching:**
+- **Query result cache:** Database caches query results (MySQL query cache)
+- **Materialized views:** Pre-computed query results stored as table
+- **Read replicas:** Route read queries to replicas to reduce primary load
 
-**Database-level (materialized views):**
-```sql
--- Create materialized view
-CREATE MATERIALIZED VIEW user_stats AS
-SELECT user_id, COUNT(*) as order_count, SUM(total) as total_spent
-FROM orders
-GROUP BY user_id;
+**CDN caching:**
+- Cache static data at edge locations
+- Reduce latency for geographically distributed users
+- Examples: CloudFront, Cloudflare, Fastly
 
--- Refresh periodically
-REFRESH MATERIALIZED VIEW user_stats;
-
--- Query (fast)
-SELECT * FROM user_stats WHERE user_id = 123;
-```
+**For caching implementation examples**, see the [Redis Runbook](../runbooks/persistence/redis_runbook__t__.md).
 
 ### Sharding & Partitioning
 
 **Partitioning (single database):**
-```sql
--- Range partitioning by date
-CREATE TABLE orders (
-    id SERIAL,
-    user_id INT,
-    created_at TIMESTAMP,
-    total DECIMAL
-) PARTITION BY RANGE (created_at);
-
-CREATE TABLE orders_2024_01 PARTITION OF orders
-FOR VALUES FROM ('2024-01-01') TO ('2024-02-01');
-
-CREATE TABLE orders_2024_02 PARTITION OF orders
-FOR VALUES FROM ('2024-02-01') TO ('2024-03-01');
-```
+- Split large table into smaller partitions
+- Partitions stored in same database
+- Transparent to application (queries work on partitioned table)
+- Types: Range (by date), Hash (even distribution), List (by category)
+- Benefits: Improved query performance, easier maintenance, parallel operations
 
 **Sharding (multiple databases):**
-```python
-def get_shard(user_id):
-    """Route user to shard based on ID"""
-    shard_count = 4
-    shard_id = user_id % shard_count
-    return shard_connections[shard_id]
+- Split data across multiple database instances
+- Each shard is independent database
+- Application routes queries to correct shard
+- Shard key determines data distribution (user_id, tenant_id, geography)
+- Benefits: Horizontal scaling, improved performance, isolation
 
-def get_user(user_id):
-    shard = get_shard(user_id)
-    return shard.query(User).filter(User.id == user_id).first()
-```
+**Sharding strategies:**
+- **Hash-based:** Distribute data evenly using hash function
+- **Range-based:** Partition by ranges (e.g., user_id 1-1000, 1001-2000)
+- **Geography-based:** Shard by region for data locality
+- **Directory-based:** Lookup table maps keys to shards
+
+**Challenges:**
+- Cross-shard queries (scatter-gather, expensive)
+- Rebalancing shards (data migration)
+- Distributed transactions (avoid or use saga pattern)
+- Hotspots (uneven data distribution)
+
+**For platform-specific partitioning**, see:
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md#sharding--partitioning)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md#sharding)
 
 ---
 
@@ -561,34 +492,34 @@ def get_user(user_id):
 
 #### Read Replicas
 
-**Setup (PostgreSQL):**
-```bash
-# On primary, enable replication
-# postgresql.conf:
-wal_level = replica
-max_wal_senders = 3
+Read replicas improve read performance by distributing read queries across multiple database instances:
 
-# Create replication user
-CREATE ROLE replicator WITH REPLICATION LOGIN PASSWORD 'password';
+**Setup:**
+- Configure primary database for replication
+- Create replica instances that stream changes from primary
+- Route write queries to primary, read queries to replicas
 
-# On replica
-pg_basebackup -h primary-host -D /var/lib/postgresql/data -U replicator -P
-pg_ctl start
-```
+**Replication methods:**
+- **Asynchronous:** Replica lags behind primary (eventual consistency)
+- **Synchronous:** Replica confirms write before primary acknowledges (strong consistency, higher latency)
+- **Semi-synchronous:** Hybrid approach (at least one replica confirms)
 
 **Application routing:**
-```python
-# Write to primary
-primary_db.execute("INSERT INTO users ...")
-
-# Read from replica
-replica_db.execute("SELECT * FROM users ...")
-```
+- Route writes to primary
+- Route reads to replicas (with load balancing)
+- Read from primary after write if immediate consistency needed
 
 **Considerations:**
-- Replication lag (seconds to minutes)
-- Eventual consistency
-- Read-after-write consistency (read from primary after write)
+- **Replication lag:** Replica may be seconds to minutes behind primary
+- **Eventual consistency:** Reads may return stale data
+- **Read-after-write consistency:** Read from primary after write to see latest data
+- **Failover:** Promote replica to primary if primary fails
+
+**For platform-specific replication setup**, see:
+- [PostgreSQL Runbook](../runbooks/persistence/postgresql_runbook__t__.md#replication--high-availability)
+- [MySQL Runbook](../runbooks/persistence/mysql_runbook__t__.md#replication--high-availability)
+- [MongoDB Runbook](../runbooks/persistence/mongodb_runbook__t__.md#replication--high-availability)
+- [Cloud Databases Runbook](../runbooks/persistence/cloud_databases_runbook__t__.md)
 
 #### Sharding
 
@@ -600,20 +531,28 @@ replica_db.execute("SELECT * FROM users ...")
 
 ### Auto-Scaling
 
-**Managed services:**
-- **AWS Aurora Serverless:** Auto-scales compute based on load
-- **DynamoDB:** Auto-scales read/write capacity
-- **BigQuery:** Serverless, auto-scales compute
+**Managed service auto-scaling:**
+- Automatically adjust compute and storage based on load
+- Pay-per-use pricing (serverless options)
+- Examples: Aurora Serverless, DynamoDB on-demand, BigQuery, Cosmos DB serverless
 
-**Self-managed:**
-```python
-# Monitor and scale read replicas
-if cpu_usage > 80%:
-    add_read_replica()
+**Self-managed auto-scaling:**
+- Monitor metrics (CPU, memory, connections, query latency)
+- Add/remove read replicas based on load
+- Scale vertically (instance size) during maintenance windows
+- Use infrastructure as code (Terraform, CloudFormation) for automation
 
-if cpu_usage < 20% and replica_count > min_replicas:
-    remove_read_replica()
-```
+**Auto-scaling strategies:**
+- **Reactive:** Scale based on current metrics (CPU >80%, add replica)
+- **Predictive:** Scale based on historical patterns (scale up before peak hours)
+- **Scheduled:** Scale at specific times (scale up during business hours)
+
+**Considerations:**
+- Scaling lag (time to provision new instances)
+- Connection draining (gracefully close connections before scaling down)
+- Cost optimization (balance performance vs. cost)
+
+**For cloud-specific auto-scaling**, see the [Cloud Databases Runbook](../runbooks/persistence/cloud_databases_runbook__t__.md).
 
 ---
 
@@ -621,44 +560,55 @@ if cpu_usage < 20% and replica_count > min_replicas:
 
 ### Replication
 
+Replication provides high availability and disaster recovery by maintaining multiple copies of data:
+
 **Synchronous replication:**
-- Write confirmed after replica acknowledges
-- Strong consistency (no data loss)
-- Higher latency
+- Write confirmed only after replica(s) acknowledge
+- **Pros:** Strong consistency, no data loss
+- **Cons:** Higher latency (wait for replica), reduced availability if replica fails
+- **Use for:** Financial transactions, critical data
 
 **Asynchronous replication:**
-- Write confirmed immediately
-- Eventual consistency
-- Lower latency
+- Write confirmed immediately, replica catches up
+- **Pros:** Lower latency, higher availability
+- **Cons:** Eventual consistency, potential data loss if primary fails
+- **Use for:** Most web applications, read-heavy workloads
 
-**Configuration (PostgreSQL):**
-```ini
-# Synchronous
-synchronous_commit = on
-synchronous_standby_names = 'replica1,replica2'
+**Semi-synchronous replication:**
+- Write confirmed after at least one replica acknowledges
+- **Pros:** Balance between consistency and performance
+- **Cons:** More complex configuration
+- **Use for:** Important but not critical data
 
-# Asynchronous
-synchronous_commit = off
-```
+**For platform-specific replication configuration**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Failover
 
-**Automatic failover tools:**
-- **Patroni (PostgreSQL):** With etcd/Consul/ZooKeeper
-- **MHA (MySQL):** Master High Availability
-- **Managed services:** RDS, Cloud SQL (built-in)
+Failover is the process of switching to a standby database when the primary fails:
 
-**Failover process:**
-1. Detect primary failure (health checks)
-2. Elect new primary (consensus)
-3. Promote replica to primary
-4. Redirect traffic
-5. Rejoin old primary as replica
+**Automatic failover:**
+- Detect primary failure through health checks
+- Elect new primary using consensus algorithm
+- Promote replica to primary
+- Redirect application traffic to new primary
+- Rejoin old primary as replica when recovered
 
-**Considerations:**
-- **Split-brain:** Two nodes think they're primary (use fencing)
-- **Data loss:** Async replication may lose recent writes
-- **Failover time:** 30-60 seconds
+**Failover tools:**
+- **Self-managed:** Patroni (PostgreSQL), MHA (MySQL), Redis Sentinel, MongoDB replica sets
+- **Managed services:** AWS RDS Multi-AZ, GCP Cloud SQL HA, Azure Database HA (automatic)
+
+**Failover considerations:**
+- **Split-brain:** Two nodes think they're primary (use fencing/STONITH to prevent)
+- **Data loss:** Asynchronous replication may lose recent writes (use synchronous for zero data loss)
+- **Failover time:** Typically 30-60 seconds for automatic failover
+- **Application impact:** Connection errors during failover (implement retry logic)
+
+**Manual failover:**
+- Planned maintenance or testing
+- Controlled promotion of replica
+- Verify data consistency before switching traffic
+
+**For platform-specific failover procedures**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Multi-Region Deployments
 
@@ -689,16 +639,13 @@ synchronous_commit = off
 - **Application-level:** Encrypt before storing
 
 **In transit:**
-```bash
-# PostgreSQL: Require SSL
-# postgresql.conf
-ssl = on
-ssl_cert_file = '/path/to/server.crt'
-ssl_key_file = '/path/to/server.key'
+- Encrypt data transmitted between client and database
+- Use SSL/TLS for all connections
+- Enforce encryption (reject non-encrypted connections)
+- Use certificate validation to prevent man-in-the-middle attacks
+- Examples: SSL/TLS for PostgreSQL/MySQL, TLS for MongoDB/Redis
 
-# Client connection
-psql "postgresql://user@host/db?sslmode=require"
-```
+**For platform-specific encryption setup**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Access Control
 
@@ -709,31 +656,18 @@ psql "postgresql://user@host/db?sslmode=require"
 - SSO/SAML
 
 **Authorization (RBAC):**
-```sql
--- Create roles
-CREATE ROLE readonly;
-CREATE ROLE readwrite;
-CREATE ROLE admin;
+- Create roles with specific permissions (read, write, admin)
+- Assign roles to users (principle of least privilege)
+- Grant permissions at database, schema, table, or column level
+- Use groups/roles for easier management
 
--- Grant permissions
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO readonly;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO readwrite;
-GRANT ALL PRIVILEGES ON DATABASE mydb TO admin;
+**Row-Level Security (RLS):**
+- Control which rows users can access
+- Implement multi-tenancy (users see only their data)
+- Define policies based on user attributes
+- Available in PostgreSQL, some managed services
 
--- Assign role to user
-GRANT readonly TO alice;
-```
-
-**Row-Level Security (PostgreSQL):**
-```sql
--- Enable RLS
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-
--- Policy: users see only their orders
-CREATE POLICY user_orders ON orders
-FOR SELECT
-USING (user_id = current_user_id());
-```
+**For platform-specific access control**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Audit Logging
 
@@ -745,9 +679,11 @@ USING (user_id = current_user_id());
 - Permission changes (GRANT, REVOKE)
 
 **Tools:**
-- **PostgreSQL:** `pgaudit` extension
-- **MySQL:** Audit plugin
-- **Managed services:** CloudTrail, Cloud Audit Logs
+- **Self-managed:** pgaudit (PostgreSQL), audit plugin (MySQL), audit logging (MongoDB)
+- **Managed services:** CloudTrail (AWS), Cloud Audit Logs (GCP), Azure Monitor (Azure)
+- **Third-party:** Splunk, Datadog, Sumo Logic
+
+**For platform-specific audit logging**, see the [persistence runbooks](../runbooks/persistence/).
 
 ### Compliance
 
