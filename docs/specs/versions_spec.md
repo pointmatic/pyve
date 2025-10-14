@@ -8,6 +8,40 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.9 Analytics & BI in Templates [Implemented]
+- [x] General guidelines for analytics `docs/guides/analytics_guide__t__.md`
+  - [x] Choosing BI tools (self-hosted vs cloud, open-source vs commercial)
+  - [x] Architecture patterns (embedded analytics, self-service, centralized)
+  - [x] Data modeling for analytics (metrics, dimensions, semantic layers)
+  - [x] Performance considerations (caching, pre-aggregation, query optimization)
+- [x] Analytics runbooks `docs/runbooks/analytics/`
+  - [x] Looker runbook (LookML, explores, dashboards, deployment)
+  - [x] Metabase runbook (setup, questions, dashboards, embedding)
+  - [x] Superset runbook (installation, charts, dashboards, SQL Lab)
+  - [x] Tableau runbook (workbooks, data sources, publishing)
+- [x] Create README for analytics runbooks directory
+
+### Notes
+- Created `analytics_guide__t__.md` (650+ lines) covering:
+  - BI tool selection criteria (team size, technical expertise, use case, budget)
+  - Decision matrix comparing self-hosted open-source, cloud open-source, and commercial cloud options
+  - Architecture patterns: Centralized, self-service, embedded, hybrid (data mesh)
+  - Semantic layer concepts (metrics, dimensions, LookML examples)
+  - Data modeling for analytics (star schema, metrics vs dimensions)
+  - Performance optimization (caching strategies, pre-aggregation, query optimization)
+  - Embedding analytics (iframe, JavaScript SDK, API-based, multi-tenancy)
+  - Self-service enablement (data catalog, training, governance)
+  - Security & governance (access control, RLS, audit logging)
+  - Cost optimization strategies
+- Created 4 comprehensive analytics runbooks (2,850+ lines total):
+  - **Looker Runbook** (700+ lines): LookML syntax, models/views/explores, PDTs, embedding (signed URLs, SSO), user management, RLS, performance optimization, administration
+  - **Metabase Runbook** (550+ lines): Docker/JAR installation, visual query builder, SQL queries, dashboards, embedding (public sharing, signed embedding), user management, sandboxing, caching, administration
+  - **Superset Runbook** (650+ lines): Docker/Kubernetes/pip installation, SQL Lab, 40+ chart types, native filters, cross-filtering, semantic layer, embedding (guest tokens), RLS, async queries, Celery configuration
+  - **Tableau Runbook** (650+ lines): Desktop/Server/Cloud setup, data sources, calculated fields, parameters, dashboards, publishing, embedding (JavaScript API, trusted auth), RLS, extracts, TSM administration
+- Created README (50+ lines) explaining runbook structure and tool selection guidance
+- Complements existing persistence documentation with analytics/visualization layer
+- Provides clear separation: persistence (data storage) → analytics (data presentation)
+
 ## v0.3.8c Data Warehouse Runbook [Implemented]
 - [x] Create data warehouse runbook covering OLAP databases
 - [x] ClickHouse operations (table engines, partitioning, materialized views, distributed tables)
