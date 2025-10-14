@@ -8,6 +8,9 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.2a Bugfixes [Implemented]
+- [x] Several rounds of fixes and tests to remove noisy template copying, skip gracefully on re-init. `--install` and `--init` tested. `--init` fresh and re-installs work correctly. 
+
 ## v0.3.2 Template Initialization [Implemented]
 Change `pyve.sh` so the initialization process copies the latest version of certain templates from the user's `~/.pyve/templates/{version}/*` directory into the user's local git repo (current user directory, invoked at the root of a codebase project) when the `--init` flag is used.  
 - [x] Check first to see if any files in the local git repo would be overwritten by the template files and are not identical to the template files. If so, fail the init process with a message.

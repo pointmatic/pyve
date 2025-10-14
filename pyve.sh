@@ -54,7 +54,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.1d"
+VERSION="0.3.1a"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -637,32 +637,61 @@ function init_copy_templates() {
     fi
     local SRC_DIR="$PYVE_TEMPLATES_DIR/$LATEST_VERSION"
 
-    # Temporarily disable xtrace (set -x) to reduce noise, if currently enabled
+    # Temporarily disable tracing to reduce noise, if currently enabled
     local HAD_XTRACE=0
-    if [[ -o xtrace ]]; then
+    if [[ -o xtrace ]] || [[ "$-" == *x* ]]; then
         HAD_XTRACE=1
-        unsetopt xtrace
+        set +x 2>/dev/null || true
+        unsetopt xtrace 2>/dev/null || true
     fi
 
     echo "\nCopying documentation templates from the installed cache..."
 
-    # Guard: fail if any status files exist already
+    # Guard status: if only init status exists, skip copying; otherwise fail if other status files exist
     ensure_project_pyve_dirs
+    if [[ -f ./.pyve/status/init ]]; then
+        # Are there any files other than benign ones? (init, init_copy.log, .DS_Store)
+        if ls -A ./.pyve/status 2>/dev/null | grep -Ev '^(init|init_copy\.log|\.DS_Store)$' >/dev/null; then
+            echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting to avoid making it worse."
+            # Restore tracing if disabled
+            if [[ $HAD_XTRACE -eq 1 ]]; then
+                set -x 2>/dev/null || true
+                setopt xtrace 2>/dev/null || true
+            fi
+            exit 1
+        else
+            echo "Templates already initialized previously; skipping template copy."
+            # Restore tracing if disabled
+            if [[ $HAD_XTRACE -eq 1 ]]; then
+                set -x 2>/dev/null || true
+                setopt xtrace 2>/dev/null || true
+            fi
+            return 0
+        fi
+    fi
+    # No init status file present; ensure there aren't any unexpected status files
     fail_if_status_present
 
-    # Build list and preflight check for non-identical overwrites
+    # Build list and preflight check for non-identical overwrites (no subshells)
+    local -a FILES=()
     local CONFLICTS=()
-    while IFS= read -r FILE; do
-        [[ -z "$FILE" ]] && continue
-        local DEST_REL
-        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
-        local DEST_ABS="./$DEST_REL"
-        if [[ -f "$DEST_ABS" ]]; then
-            if ! cmp -s "$FILE" "$DEST_ABS"; then
-                CONFLICTS+=("$DEST_REL")
+    local FILE
+    local LOG_FILE="./.pyve/status/init_copy.log"
+    : > "$LOG_FILE" 2>/dev/null || true
+    {
+        FILES=(${(@f)"$(list_template_files "$SRC_DIR")"})
+        for FILE in "$FILES[@]"; do
+            [[ -z "$FILE" ]] && continue
+            local DEST_REL
+            DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+            local DEST_ABS="./$DEST_REL"
+            if [[ -f "$DEST_ABS" ]]; then
+                if ! cmp -s "$FILE" "$DEST_ABS"; then
+                    CONFLICTS+=("$DEST_REL")
+                fi
             fi
-        fi
-    done < <(list_template_files "$SRC_DIR")
+        done
+    } >> "$LOG_FILE" 2>&1
 
     if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
         echo "\nERROR: Initialization would overwrite modified files. Aborting. Conflicts:"
@@ -671,14 +700,16 @@ function init_copy_templates() {
     fi
 
     # Copy files, stripping __t__* suffix
-    while IFS= read -r FILE; do
-        [[ -z "$FILE" ]] && continue
-        local DEST_REL
-        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
-        local DEST_ABS="./$DEST_REL"
-        mkdir -p "$(dirname "$DEST_ABS")"
-        cp "$FILE" "$DEST_ABS"
-    done < <(list_template_files "$SRC_DIR")
+    {
+        for FILE in "$FILES[@]"; do
+            [[ -z "$FILE" ]] && continue
+            local DEST_REL
+            DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+            local DEST_ABS="./$DEST_REL"
+            mkdir -p "$(dirname "$DEST_ABS")"
+            cp "$FILE" "$DEST_ABS"
+        done
+    } >> "$LOG_FILE" 2>&1
 
     # Record version used in the project
     if command -v pyve &> /dev/null; then
@@ -692,9 +723,10 @@ function init_copy_templates() {
 
     echo "Template initialization complete from version $LATEST_VERSION."
 
-    # Restore xtrace if it was previously enabled
+    # Restore tracing if it was previously enabled
     if [[ $HAD_XTRACE -eq 1 ]]; then
-        setopt xtrace
+        set -x 2>/dev/null || true
+        setopt xtrace 2>/dev/null || true
     fi
 }
 
