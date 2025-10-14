@@ -13,6 +13,17 @@ Copy/paste this snippet when adding a new decision:
 - Links: PR(s), discussion, related version(s) and Notes anchors.
 ```
 
+## 2025-10-13: Install Handoff and Idempotency Policies
+- Context: Version mismatches and noisy failures during install/init.
+- Decision:
+  - Install handoff: delegate to recorded source or local ./pyve.sh when appropriate; guard with PYVE_SKIP_HANDOFF.
+  - Idempotent init: treat `./.pyve/status/init` (and benign files) as safe; skip copy; fail on unexpected status files.
+  - Identical-target install: skip copy if identical; ensure executable and symlink.
+  - Noise suppression: disable tracing in [init_copy_templates()](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:628:0-698:1), log to `./.pyve/status/init_copy.log`.
+  - Direnv guidance ordering: print last in `--init`.
+- Consequences: Reliable installs, repeatable init, cleaner UX.
+- Links: [pyve.sh](cci:7://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:0:0-0:0), [docs/specs/versions_spec.md](cci:7://file:///Users/pointmatic/Documents/Code/pyve/docs/specs/versions_spec.md:0:0-0:0) (v0.3.2a and v0.3.3 Notes), `docs/guides/building_guide.md`.
+
 ## 2025-10-12: Dependency and Version Management Policy
 - Context: Prior guidance pinned only top-level packages in `requirements.txt` without ranges and discouraged constraints/lock tooling. We want a reliable, updatable, and LLM-friendly workflow that preserves reproducibility.
 - Decision: Adopt `docs/guides/dependencies_guide.md` as the single source of truth.

@@ -1,76 +1,33 @@
 # Dependency and Version Management
 
-This doc is the single source of truth for managing Python dependencies and versions.
-It is optimized so an LLM can safely update packages while keeping environments reproducible.
+This document is the single source of truth for managing dependencies and runtime versions across this codebase. Keep guidance language‑agnostic here; provide language‑specific details in `docs/guides/lang/`.
+
+## Principles
+- **Reproducibility:** lock exact versions where appropriate to ensure repeatable builds.
+- **Clarity of intent:** express allowed ranges for libraries intended to be consumed by others.
+- **Automation:** use tooling to consistently update, audit, and test dependency sets.
 
 ## Choose the strategy by project type
-- **Applications/services (deployable apps):** lock exact versions for repeatable builds.
-- **Libraries (to be published/consumed by others):** specify version ranges; do not hard‑pin transitive deps for users.
+- **Applications/services (deployable apps):** lock dependencies via a generated lockfile appropriate to the ecosystem (e.g., Python: `requirements.txt` with hashes; Node: `package-lock.json`/`pnpm-lock.yaml`; Ruby: `Gemfile.lock`).
+- **Libraries (published/consumed by others):** declare bounded version ranges; avoid hard‑pinning transitive dependencies for consumers; test against min/max ranges.
 
-## Applications: use pip‑tools with requirements.in → requirements.txt
-- **Author intent in `requirements.in`** using ranges (PEP 440): prefer `~=` or bounded `<`.
-  ```
-  fastapi~=0.115
-  uvicorn[standard]>=0.23,<0.32
-  pydantic>=2.6,<3
-  httpx>=0.27,<0.28
-  ```
-- **Compile locked pins (including transitives) to `requirements.txt`** with hashes:
-  ```bash
-  pip-compile --generate-hashes
-  # update to latest within allowed ranges
-  pip-compile --upgrade --generate-hashes
-  ```
-- **Install for dev/CI/prod** strictly from the compiled lockfile:
-  ```bash
-  python -m pip install -r requirements.txt
-  ```
-- **Multiple environments** (optional):
-  - `base.in`, `dev.in`, `test.in`, `prod.in`. Compile each to `.txt`.
-  - Share pins by referencing: put `-r base.txt` at the top of others.
+## Language‑specific guides
+See `docs/guides/lang/` for concrete workflows, tools, and examples:
+- Python: `docs/guides/lang/python_guide.md`
+- Additional languages may add `docs/guides/lang/<language>_guide.md`.
 
-## Libraries: declare ranges in pyproject.toml
-- In `pyproject.toml`:
-  ```toml
-  [project]
-  dependencies = [
-    "pydantic>=2.6,<3",
-    "httpx>=0.27,<0.28",
-  ]
-  ```
-- Do not pin exact versions for consumers. Test with a periodically updated `constraints.txt` in CI:
-  ```bash
-  python -m pip install -c constraints.txt -e .[dev]
-  ```
+## Update workflow (generic)
+1. Assess updates using ecosystem tools (e.g., check outdated packages).
+2. Update within allowed ranges; regenerate lockfiles as needed.
+3. Install from lockfiles only in CI and production.
+4. Run tests, type checks, and security audits.
+5. For breaking changes, deliberately change declared ranges and iterate fixes.
 
-## Version spec guidance (PEP 440)
-- **Prefer:**
-  - Compatible release: `requests~=2.32` → `>=2.32,<3.0`.
-  - Bounded ranges: `>=1.4,<2.0`.
-- **Avoid:**
-  - Unbounded `>=` with no upper cap.
-  - Pinning direct deps in libraries.
-- **Markers/extras:** `importlib-metadata>=6; python_version<"3.10"`, `uvicorn[standard]`.
+## Security & Supply Chain
+- Use ecosystem audit tools regularly.
+- Prefer hashes/signatures where supported.
+- Consider SBOM generation if applicable.
 
-## When and how to update
-- **Check updates:** `pip list --outdated`, `pip index versions <pkg>`.
-- **Automate PRs:** Dependabot/Renovate (optional).
-- **Security:** `pip-audit` (or `uv audit`) regularly.
-- **Routine cycle:**
-  1. Update within allowed ranges: `pip-compile --upgrade`.
-  2. `pip install -r requirements.txt`.
-  3. Run tests and type checks; scan changelogs for notable changes.
-  4. For breaking/major upgrades, widen ranges deliberately in `.in` (or `pyproject.toml`) and iterate on fixes.
-
-## Extra safeguards
-- Pin the Python runtime in CI and docs (e.g., 3.11/3.12) and test what you claim to support.
-- Use a temporary `constraints.txt` to hot‑fix a bad upstream release across multiple lockfiles.
-- Split `dev` tooling into a separate `dev.in` to keep production lean and deterministic.
-
-## Quick recipes
-- **Add a new package (app):**
-  1. Add a bounded spec to `requirements.in`.
-  2. Run `pip-compile --generate-hashes`.
-  3. `pip install -r requirements.txt` and commit both files.
-- **Bump everything allowed (app):** `pip-compile --upgrade --generate-hashes` then reinstall and test.
-- **Library policy:** keep ranges narrow enough to be safe but broad enough to avoid dependency hell; use CI matrices to test min/max versions within your ranges.
+## CI Considerations
+- Pin supported runtime versions in CI matrices.
+- Test across supported OS/arch/runtime combinations where feasible.

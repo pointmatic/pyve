@@ -8,6 +8,12 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.4 Documentation Revision [Implemented]
+With all the new documentation templates, I updated Pyve's documents to be in line with its templates. 
+- [x] Added missing docs (`implementation_options_spec.md`, `python_guide.md`)
+- [x] Filled in Pyve-specific details in other docs
+- [x] Updated README
+
 ## v0.3.3 Template Purge [Implemented]
 Change `pyve.sh` to remove the special Pyve documents in local git repo on --purge flag
 - [x] Obtain the version from the local git repo `./.pyve/version` file

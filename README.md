@@ -49,6 +49,11 @@ The script will check for these prerequisites before initialization and provide 
    - Copy `pyve.sh` to `$HOME/.local/bin/pyve.sh` and make it executable
    - Create a symlink `$HOME/.local/bin/pyve` -> `$HOME/.local/bin/pyve.sh`
 
+Notes:
+- If run outside the source repo, `pyve --install` will delegate to the recorded source path from `~/.pyve/source_path` so the latest repo code is installed.
+- If run inside the source repo but invoked via the installed binary, it hands off to local `./pyve.sh --install` to ensure the repo version is used.
+- If the target `~/.local/bin/pyve.sh` already matches the current script, copying is skipped without error; the executable bit and `pyve` symlink are still ensured.
+
 After installation, you can run `pyve` from any directory.
 
 ## Usage
@@ -89,6 +94,14 @@ This will:
 
 The script checks for existing files and won't overwrite them if they already exist. If a file already exists, the script will notify you and continue with the next steps.
 
+Template initialization notes (v0.3.2+):
+- Copies documentation templates from `~/.pyve/templates/{latest}` into the repo.
+- Fails if copying would overwrite non-identical files.
+- Records the tool version to `./.pyve/version` and writes a status marker at `./.pyve/status/init`.
+- Idempotent: if only benign status files (`init`, `init_copy.log`, `.DS_Store`) are present, it skips copying and prints a clear message.
+- Detailed copy logs are written to `./.pyve/status/init_copy.log`.
+- The last message printed is a reminder to run `direnv allow`.
+
 After setup, run `direnv allow` to activate the environment.
 
 ### Set Only the Local Python Version (no venv/direnv)
@@ -114,11 +127,16 @@ This removes all artifacts created by the initialization:
 - .env file
 - Removes the related patterns from .gitignore (but keeps the file itself)
 
+Template purge notes (v0.3.3):
+- Removes only documentation files that are byte-for-byte identical to the recorded template version (`v{major.minor}`).
+- Modified files are preserved with a warning; they are not deleted.
+- Writes purge status to `./.pyve/status/purge` and fails fast if other status files exist at start.
+
 ### Additional Commands
 
 ```bash
 pyve --help        # or -h: Show help message
-pyve --version     # or -v: Show script version (current: 0.2.5)
+pyve --version     # or -v: Show script version
 pyve --config      # or -c: Show configuration details
 pyve --install     # Install to ~/.local/bin and create 'pyve' symlink
 pyve --uninstall   # Remove installed script and 'pyve' symlink from ~/.local/bin

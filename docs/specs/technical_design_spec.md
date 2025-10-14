@@ -1,87 +1,66 @@
-# Technical Design: Google Sheets → Google Docs Data Merge
+# Technical Design
 
 ## Overview
-A CLI tool automates document generation by merging rows from a Google Sheet into copies of a Google Docs template. Placeholders in the template like `{_placeholder_name_}` are replaced with values from matching column names in the sheet.
+Summarize the problem, the target users, and the outcomes this design aims to deliver. Keep this section concise and business‑oriented.
 
-## Languages and Stack
-- Language: Python 3.11+
-- Libraries:
-  - google-api-python-client (Docs, Drive, Sheets)
-  - google-auth, google-auth-oauthlib, google-auth-httplib2
-  - gspread (optional convenience for Sheets reads)
-  - python-dotenv (config)
-- Execution: CLI (invoked locally or in CI)
+## Goals and Non‑Goals
+- Goals: bullet list of measurable objectives.
+- Non‑Goals: explicitly out‑of‑scope items to avoid scope creep.
 
-## Google Resources
-- Data sheet: a Google Sheets document with a header row. Each subsequent row represents a merge record.
-- Template doc: a Google Docs document with placeholders `{_Column_Header_Name_}`.
+## Architecture
+- High‑level diagram and narrative of the system boundaries, data/control flows, and trust boundaries.
+- Deployment targets and runtime assumptions.
 
-## Authentication
-- OAuth client credentials JSON for installed app flow (local development) with offline access token stored locally.
-- Service Account alternative for headless execution; requires Doc and Sheet sharing to the service account.
-- Scopes:
-  - https://www.googleapis.com/auth/documents
-  - https://www.googleapis.com/auth/drive
-  - https://www.googleapis.com/auth/spreadsheets.readonly
+## Quality
+- Quality Level: experiment | prototype | production | secure
+- Guidance (apply based on chosen level):
+  - Experiment: speed over rigor; minimal tests; throwaway acceptable.
+  - Prototype: validate function/UX; basic error handling; smoke tests.
+  - Production: reliability, observability, CI/CD, SLOs, on-call readiness.
+  - Secure: threat modeling, hardening, least-privilege, audits/compliance.
+- Entry/Exit criteria:
+  - Define minimum gates (tests, lint, coverage, reviews, security scans) per level.
+
+## Components
+Describe major components/services, their responsibilities, and interactions.
+- Component A: purpose, inputs/outputs, key dependencies.
+- Component B: purpose, inputs/outputs, key dependencies.
+
+## Data Model
+- Core entities, schemas, and relationships.
+- Storage engines and retention policies (if applicable).
+
+## Interfaces
+- External APIs, CLIs, or UIs, with key endpoints/commands and contracts.
+- Internal module interfaces as needed.
 
 ## Configuration
-- `.env` or CLI flags:
-  - SHEET_ID
-  - TEMPLATE_DOC_ID
-  - OUTPUT_FOLDER_ID (Drive folder to store generated docs)
-  - ROW_FILTER (optional A1 notation or query to limit rows)
-  - DRY_RUN (boolean)
+- Configuration surfaces (env vars, files, flags) and defaults.
+- Secrets management approach (do not commit secrets).
 
-## Placeholder Convention
-- Template placeholders use `{_placeholder_name_}`.
-- Matching is case-insensitive on header names after trimming and replacing spaces with underscores.
-- Missing values default to empty string unless `--strict` is set (then fail the row with an error).
-
-## Merge Algorithm
-1. Resolve configuration and authenticate.
-2. Read header row and data rows from the Sheet.
-3. For each row:
-   - Build a mapping: `header -> cell_value`.
-   - Compute replacements for all placeholders present in the template.
-   - Duplicate the template in Drive to a new Doc. Name pattern: `<TemplateName> - <PrimaryKey or RowIndex>`.
-   - Use Docs API `batchUpdate` with `replaceAllText` requests for each placeholder.
-   - Move the new Doc to `OUTPUT_FOLDER_ID` (if provided).
-4. Emit a run summary (success/fail counts, links to created Docs).
+## Algorithms / Processing
+- Principal algorithms, workflows, or pipelines with step‑by‑step notes.
+- Alternatives considered and rationale.
 
 ## Error Handling & Resilience
-- Validate that required IDs are accessible before processing.
-- Row-level errors do not stop the run; collect and report them.
-- Exponential backoff for 429/5xx responses.
-- Idempotency key per row (optional) to prevent duplicates if re-running.
+- Failure modes, timeouts/retries/backoff, idempotency, and fallback strategies.
 
-## Performance
-- Batch read all rows from Sheets in one call.
-- Group `replaceAllText` operations per document into a single `batchUpdate` call.
-- Parallelize per-row document creation with a small worker pool (configurable), respecting QPS limits.
+## Performance & Scalability
+- Expected load, latency/throughput targets, and scaling strategies.
+- Caching/indexing/parallelism plans.
 
-## Logging & Observability
-- Structured logs to stdout.
-- Optional CSV/JSON report file with row index, status, and new Doc URL.
+## Security & Privacy
+- Threat model overview and mitigations.
+- Permissions, least‑privilege, and data protection.
 
-## Security
-- Never commit credentials; read from environment/secret store.
-- Limit OAuth scopes to only what’s required.
-- Principle of least privilege on Drive folder sharing.
+## Observability
+- Logging, metrics, tracing, and run reporting.
 
-## CLI Sketch
-```
-merge-docs \
-  --sheet-id <SHEET_ID> \
-  --template-id <TEMPLATE_DOC_ID> \
-  --output-folder-id <FOLDER_ID> \
-  [--row-filter "A2:Z"] \
-  [--strict] \
-  [--dry-run]
-```
+## Testing Strategy
+- Unit, integration, and end‑to‑end coverage plans; test data.
 
-## Next Steps
-- Scaffold Python project with entrypoint `merge_docs/cli.py`.
-- Implement auth helpers and clients for Sheets, Docs, Drive.
-- Implement placeholder extraction and normalization.
-- Add tests for placeholder mapping and Docs API requests.
-- Provide example template and sample sheet in `examples/`.
+## Rollout & Migration
+- Deployment plan, feature flags, migration/compatibility strategy, and rollback plan.
+
+## Open Questions
+- Outstanding decisions or risks to resolve.

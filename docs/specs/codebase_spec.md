@@ -6,6 +6,16 @@
 - **Status:** internal tool
 - **Owners/Contacts:** 
 
+## Quality
+- Quality Level: experiment | prototype | production | secure
+- Guidance (apply based on chosen level):
+  - Experiment: speed over rigor; minimal tests; throwaway acceptable.
+  - Prototype: validate function/UX; basic error handling; smoke tests.
+  - Production: reliability, observability, CI/CD, SLOs, on-call readiness.
+  - Secure: threat modeling, hardening, least-privilege, audits/compliance.
+- Entry/Exit criteria:
+  - Define minimum gates (tests, lint, coverage, reviews, security scans) per level.
+
 ## Components
 List each deliverable or scriptable unit and its key traits.
 - **Name:** 
@@ -30,6 +40,9 @@ Define per component type and reference language addenda.
 - **Python app:** `requirements.in` → `pip-compile` → `requirements.txt` (hashes). Install from lockfile
 - **Python lib:** ranges in `pyproject.toml`; test with `constraints.txt`
 - **Shell:** external tools (brew/apt names + versions)
+  - `shellcheck` (brew: `shellcheck`)
+  - `shfmt` (brew: `shfmt`)
+  - `pre-commit` (brew: `pre-commit`) — manages hook environments (e.g., pulls `codespell` as configured)
 - **C/C++:** manager (vcpkg/conan/brew/apt), min/max versions
 - **Ruby:** bundler/Gemfile policy if applicable
 - **SQL:** DB engines and version constraints
