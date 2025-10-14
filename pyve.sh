@@ -54,7 +54,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.1a"
+VERSION="0.3.3"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -249,6 +249,9 @@ function purge() {
     remove_pattern_from_gitignore "$ENV_FILE_NAME"
 
     echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
+
+    # v0.3.3: Also purge Pyve documentation templates from this repo if identical to recorded template version
+    purge_templates "$@"
 }
 
 # Helper: source user shell profiles to ensure version managers are on PATH
@@ -730,6 +733,71 @@ function init_copy_templates() {
     fi
 }
 
+# v0.3.3 helpers: purge documentation templates that match the recorded template version
+function read_project_major_minor() {
+    # Extract major.minor from ./.pyve/version (expects something like 'Version: 0.3.1')
+    if [[ ! -f ./.pyve/version ]]; then
+        echo ""
+        return 0
+    fi
+    local MM
+    MM=$(grep -Eo '[0-9]+\.[0-9]+' ./.pyve/version 2>/dev/null | head -n1)
+    echo "$MM"
+}
+
+function purge_status_fail_if_any_present() {
+    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
+        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting purge to avoid making it worse."
+        exit 1
+    fi
+}
+
+function write_purge_status() {
+    mkdir -p ./.pyve/status 2>/dev/null || true
+    echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pyve --purge $@" > ./.pyve/status/purge
+}
+
+function purge_templates() {
+    # Enforce status cleanliness at the beginning (spec requirement)
+    purge_status_fail_if_any_present
+
+    local MM
+    MM=$(read_project_major_minor)
+    if [[ -z "$MM" ]]; then
+        echo "\nWARNING: Could not determine project template version from ./.pyve/version. Skipping template purge."
+        return 0
+    fi
+    local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/v$MM"
+    if [[ ! -d "$TEMPLATE_DIR" ]]; then
+        echo "\nWARNING: Template directory '$TEMPLATE_DIR' not found. Skipping template purge."
+        return 0
+    fi
+
+    local REMOVED=0
+    local SKIPPED_MODIFIED=0
+    local FILE
+    # Use same mapping as init_copy_templates: iterate template files and compute target paths
+    while IFS= read -r FILE; do
+        [[ -z "$FILE" ]] && continue
+        local DEST_REL
+        DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
+        local DEST_ABS="./$DEST_REL"
+        if [[ -f "$DEST_ABS" ]]; then
+            if cmp -s "$FILE" "$DEST_ABS"; then
+                rm -f "$DEST_ABS"
+                REMOVED=$((REMOVED+1))
+            else
+                echo "Warning: Not removing modified file: $DEST_REL"
+                SKIPPED_MODIFIED=$((SKIPPED_MODIFIED+1))
+            fi
+        fi
+    done < <(list_template_files "$TEMPLATE_DIR")
+
+    write_purge_status "$@"
+
+    echo "\nTemplate purge complete. Removed: $REMOVED; Skipped (modified): $SKIPPED_MODIFIED."
+}
+
 # Install this script into $HOME/.local/bin and create a 'pyve' symlink
 function install_self() {
     # v0.3.1: If a newer source path is recorded, hand off install to that script (without looping)
@@ -749,6 +817,7 @@ function install_self() {
             REC_ABS=$(cd "$RECORDED_SOURCE_PATH" && pwd)
             local PWD_ABS
             PWD_ABS=$(pwd)
+            # Case A: we're outside the source dir -> handoff to recorded source
             if [[ "$REC_ABS" != "$PWD_ABS" ]] && [[ -n "$CURRENT_SCRIPT_DIR" ]] && [[ "$CURRENT_SCRIPT_DIR" != "$REC_ABS"* ]]; then
                 if [[ -f "$REC_ABS/pyve.sh" ]]; then
                     echo "\nDetected recorded source at '$REC_ABS'. Handing off install to the sourcecode script..."
@@ -761,6 +830,11 @@ function install_self() {
                 else
                     echo "\nWARNING: Recorded source path exists but no pyve script found at '$REC_ABS'. Proceeding with current script."
                 fi
+            # Case B: we're inside the source dir but executing via installed binary -> handoff locally to ./pyve.sh
+            elif [[ "$REC_ABS" == "$PWD_ABS" ]] && [[ -n "$CURRENT_SCRIPT_DIR" ]] && [[ "$CURRENT_SCRIPT_DIR" != "$PWD_ABS"* ]] && [[ -f "$PWD_ABS/pyve.sh" ]]; then
+                echo "\nDetected execution from installed binary within the source directory. Handing off install to ./pyve.sh..."
+                ( export PYVE_SKIP_HANDOFF=1; ./pyve.sh --install )
+                return $?
             fi
         fi
     fi
@@ -833,13 +907,19 @@ function install_self() {
         exit 1
     fi
 
-    cp "$CURRENT_SCRIPT" "$TARGET_SCRIPT_PATH"
-    if [[ $? -ne 0 ]]; then
-        echo "\nERROR: Failed to copy script to $TARGET_SCRIPT_PATH."
-        exit 1
+    # Copy script unless target already has identical contents
+    if [[ -f "$TARGET_SCRIPT_PATH" ]] && cmp -s "$CURRENT_SCRIPT" "$TARGET_SCRIPT_PATH"; then
+        echo "Target already up to date at $TARGET_SCRIPT_PATH (identical contents)."
+    else
+        cp "$CURRENT_SCRIPT" "$TARGET_SCRIPT_PATH"
+        if [[ $? -ne 0 ]]; then
+            echo "\nERROR: Failed to copy script to $TARGET_SCRIPT_PATH."
+            exit 1
+        fi
+        echo "Installed script to $TARGET_SCRIPT_PATH."
     fi
     chmod +x "$TARGET_SCRIPT_PATH"
-    echo "Installed script to $TARGET_SCRIPT_PATH and made it executable."
+    echo "Ensured $TARGET_SCRIPT_PATH is executable."
 
     # Create/update symlink 'pyve' -> 'pyve.sh'
     if [[ -L "$TARGET_SYMLINK_PATH" || -e "$TARGET_SYMLINK_PATH" ]]; then

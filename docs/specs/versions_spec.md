@@ -8,6 +8,32 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.3.3 Template Purge [Implemented]
+Change `pyve.sh` to remove the special Pyve documents in local git repo on --purge flag
+- [x] Obtain the version from the local git repo `./.pyve/version` file
+- [x] Remove only documents that are identical to the files in `~/.pyve/templates/{version}/*`
+- [x] Warn with file names not identical, but don't remove those. 
+- [x] Track whether the purge process completed 
+  - [x] Use some status file and write the arguments that were passed to `pyve.sh` script.
+  - [x] The status file should be named `./.pyve/status/purge`
+  - [x] At the beginning of the purge operation, if any file is already present in the `./.pyve/status` directory, something might be broken, so fail...don't make it worse.
+
+### Notes
+- Only delete files that are byte-for-byte identical to the corresponding template for the recorded version.
+- Use `./.pyve/status/purge` to track and guard runs; never remove modified files.
+- Init message ordering: the `direnv allow` reminder is printed last in `--init` for visibility.
+- Template copy noise suppression during `--init`:
+  - Disables shell tracing within copy routine.
+  - Avoids subshell/process substitution in loops.
+  - Redirects detailed copy logs to `./.pyve/status/init_copy.log`.
+- Idempotent re-init behavior:
+  - If `./.pyve/status/init` exists (and only benign files like `init_copy.log`/`.DS_Store`), template copy is skipped with a clear message.
+  - Unexpected extra files under `./.pyve/status/` still trigger a safe abort.
+- Robust install handoff logic:
+  - Outside the source repo, `--install` hands off to the recorded source path (`~/.pyve/source_path`).
+  - Inside the source repo but invoked via the installed binary, `--install` hands off to local `./pyve.sh` to ensure the latest source and `VERSION` are used.
+- Install identical-target handling: if `~/.local/bin/pyve.sh` is identical, skip copying without error but ensure the executable bit and symlink are correct.
+
 ## v0.3.2a Bugfixes [Implemented]
 - [x] Several rounds of fixes and tests to remove noisy template copying, skip gracefully on re-init. `--install` and `--init` tested. `--init` fresh and re-installs work correctly. 
 
