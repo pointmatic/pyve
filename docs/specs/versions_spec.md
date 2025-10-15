@@ -8,8 +8,82 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.3.14 [Next]
-- [ ] TBD
+## v0.4.3 LLM Q&A Phase 3 (Secure/Compliance)
+Focus: Add questions for secure/compliance requirements
+- [ ] Add Phase 3 question templates to `docs/guides/llm_qa_guide__t__.md`:
+  - [ ] Advanced security questions (10-20)
+  - [ ] Compliance questions (GDPR, HIPAA, etc.)
+  - [ ] Audit and incident response questions
+- [ ] Mark Phase 3 sections in `templates/v0.4/docs/specs/security_spec__t__.md`
+- [ ] Add fourth example Q&A session (secure-level healthcare platform)
+
+## v0.4.2 LLM Q&A Phase 2 (Production Readiness)
+Focus: Add questions for production-grade projects
+- [ ] Add Phase 2 question templates to `docs/guides/llm_qa_guide__t__.md`:
+  - [ ] Infrastructure questions (5-10)
+  - [ ] Basic security questions (4-8)
+  - [ ] Operations questions (4-8)
+- [ ] Add phase tags to remaining spec templates:
+  - [ ] `templates/v0.4/docs/specs/implementation_options_spec__t__.md`
+  - [ ] `templates/v0.4/docs/specs/security_spec__t__.md` (Phase 1 vs Phase 2 sections)
+- [ ] Add third example Q&A session (production-level web API)
+- [ ] Update `templates/v0.4/docs/guides/planning_guide__t__.md` to explain Q&A phase alignment with version phases
+
+## v0.4.1 LLM Q&A Phase 1 (Core Technical)
+Focus: Add questions for filling out core technical specs
+- [ ] Add Phase 1 question templates to `docs/guides/llm_qa_guide__t__.md`:
+  - [ ] Architecture questions (3-10, varies by Quality)
+  - [ ] Technical stack questions (3-8)
+  - [ ] Development workflow questions (2-5)
+- [ ] Add phase tags to spec templates:
+  - [ ] `templates/v0.4/docs/specs/technical_design_spec__t__.md` (mark Phase 0 vs Phase 1 sections)
+  - [ ] `templates/v0.4/docs/specs/codebase_spec__t__.md` (mark Phase 0 vs Phase 1 sections)
+- [ ] Add second example Q&A session (prototype-level web app)
+
+## v0.4.0 LLM Q&A Foundation [Implemented]
+We need to edit the metadocuments in `templates/v0.4/docs/` to make it easier for LLMs to ask questions about a new project. When a developer sets up a new git repo, they run `pyve --init` which copies the metadocuments (that have already been "installed" from `templates/v0.4/docs/` into their home directory) to `docs/` in their git repo, current directory. The foundation documents for working on a project are in `docs/guides/` and `docs/runbooks/` (as references) and then `docs/specs/` is a custom specification for the developer to get from zero to v1.0.
+
+Focus: Create the core Q&A guide and establish the framework
+- [x] Create `templates/v0.4/docs/guides/llm_qa_guide__t__.md` with:
+  - [x] Q&A principles and workflow explanation
+  - [x] Phase-based approach (Phase 0, 1, 2, 3) definition
+  - [x] Quality-level intensity matrix
+  - [x] Instructions for LLMs on conducting Q&A sessions
+- [x] Create Phase 0 question templates (project basics only):
+  - [x] Project overview questions (5-8 questions)
+  - [x] Quality level selection questions
+  - [x] Primary language/framework questions
+- [x] Add one complete example Q&A session (experiment-level CLI tool)
+- [x] Update `templates/v0.4/docs/guides/llm_onramp_guide__t__.md` to reference the Q&A guide
+
+### Notes
+- **LLM Q&A Guides** (refactored into subdirectory for token efficiency):
+  - `templates/v0.4/docs/guides/llm_qa/README__t__.md` (150 lines) - Overview and reading flow
+  - `templates/v0.4/docs/guides/llm_qa/llm_qa_principles__t__.md` (280 lines) - Q&A methodology
+  - `templates/v0.4/docs/guides/llm_qa/llm_qa_phase0_questions__t__.md` (370 lines) - Phase 0 questions
+  - Q&A principles: Progressive disclosure, quality-aware questioning, context/examples, confirmation, iteration support
+  - Phase definitions: Phase 0 (project basics), Phase 1 (core technical), Phase 2 (production), Phase 3 (secure/compliance)
+  - Quality-level intensity matrix: Question counts vary from 5 (experiment) to 80+ (secure compliance)
+  - Instructions for LLMs: Starting sessions, conducting Q&A, filling specs, completing sessions
+  - Phase 0 question templates: Quality level selection, project overview, language/framework, component structure, repository basics
+  - Complete example Q&A session: Experiment-level CLI tool (merge-docs) with full dialogue
+  - Special case handling: "I don't know yet", "use defaults", vague answers, scope creep, Quality upgrades
+  - Integration guidance: Relationship to Planning, Building, and Onramp guides
+  - Tips for effective Q&A: Do's and don'ts for LLM facilitators
+- **Updated LLM Onramp Guide**: `templates/v0.4/docs/guides/llm_onramp_guide__t__.md`
+  - Added "New Projects vs Existing Projects" section distinguishing Q&A workflow from direct implementation
+  - Added llm_qa/ subdirectory as first item in reading order for new projects
+  - Split minimal prompt into two versions: new projects (Q&A first) vs existing projects (direct implementation)
+  - Updated references to point to new subdirectory structure
+- **Design decisions:**
+  - **Subdirectory structure for token efficiency:** Split monolithic guide (650+ lines) into focused files (150-370 lines each)
+    - LLMs load only what they need: principles + current phase (~400-700 lines vs 1600-2000 for all phases)
+    - Token savings: 60-70% reduction per Q&A session
+  - Progressive disclosure over upfront information gathering (reduces user fatigue)
+  - Quality-aware questioning intensity (experiment needs 5-10 questions, secure needs 40-80)
+  - Phase-based approach aligns with existing version phase system (Phase 0 → v0.0.x, Phase 1 → v0.1.x, etc.)
+  - Real-time spec filling (don't wait until end) for better feedback loop
+  - Support for "I don't know yet" and "use defaults" to avoid blocking on uncertain decisions
 
 ## v0.3.13 Authentication & Authorization in Templates [Implemented]
 Authentication & Authorization guide `docs/guides/web/web_auth_guide__t__.md`
