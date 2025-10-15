@@ -8,6 +8,289 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.13 LLM Q&A Phase 16 (Security Governance) [Implemented]
+Focus: Security governance for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase16_questions__t__.md`:
+  - [x] Security policies questions (formal policies, review process)
+  - [x] Risk assessment questions (methodology, frequency, documentation)
+  - [x] Third-party security questions (vendor assessment, contracts, monitoring)
+  - [x] Security metrics questions (KPIs, tracking, reporting)
+- [x] `llm_qa` directory README already includes Phase 16 in structure (completed in v0.4.4)
+- [x] root README updated with latest features and benefits. 
+
+### Notes
+- **Phase 16 Questions File** (~280 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase16_questions__t__.md`
+  - Security policies: Information Security, Acceptable Use, Access Control, Data Classification, Incident Response, Change Management, Vendor Management, BC/DR. Annual review, executive approval, employee acknowledgment
+  - Risk assessment: Methodology (identify, analyze likelihood × impact, prioritize, treat), frequency (annual comprehensive, quarterly review, ad-hoc), documentation (risk register, treatment plans, acceptance)
+  - Third-party security: Pre-contract assessment (questionnaire, SOC 2), risk categorization (critical/high/low), contract requirements (DPA, BAA, SLA, breach notification), ongoing monitoring (annual review, SOC 2 reports), offboarding
+  - Security metrics: Vulnerabilities (open by severity, MTTR, scan coverage, patch compliance), Incidents (count, MTTD, MTTR, recurrence), Access (MFA %, least privilege %, access reviews), Compliance (policy reviews, training, vendor assessments), Awareness (training completion, phishing rate)
+  - Tracking and reporting: Dashboards (Grafana, Datadog), reports (weekly, monthly, quarterly, annual)
+  - Resources: NIST Cybersecurity Framework, ISO 27001, CIS Controls, OWASP
+- **Design decisions:**
+  - 4 comprehensive questions covering security governance
+  - Required only for secure Quality level
+  - Sixth and final secure/compliance phase (11-16)
+  - Provides framework for maintaining and improving security program
+  - Emphasis on continuous improvement and measurement
+- **Milestone:** ALL 17 PHASES (0-16) NOW COMPLETE! 🎉
+
+## v0.4.12 LLM Q&A Phase 15 (Incident Response) [Implemented]
+Focus: Formal incident response procedures for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase15_questions__t__.md`:
+  - [x] Incident response team questions (roles, on-call, escalation)
+  - [x] Incident classification questions (severity levels, response times)
+  - [x] IR procedures questions (detection, containment, investigation, eradication, recovery, postmortem)
+  - [x] Breach notification questions (internal, users, regulatory, public)
+- [x] README already includes Phase 15 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 15 Questions File** (~270 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase15_questions__t__.md`
+  - IR team: Roles (Incident Commander, Technical Lead, Communications Lead, Security Analyst, Legal/Compliance), on-call rotation (primary/secondary, 24/7), escalation path (L1-L4)
+  - Incident classification: Severity levels (P0 Critical, P1 High, P2 Medium, P3 Low), response times (immediate, 15 min, 1 hour, next day), notification methods, escalation triggers
+  - IR procedures: Detection (monitoring, alerts, reports), Containment (isolate, block, disable), Investigation (logs, root cause, evidence), Eradication (remove threat, patch), Recovery (restore, verify, monitor), Postmortem (blameless, document, improve)
+  - Breach notification: Internal (IR team, executives, legal, board), User (GDPR 72h, HIPAA 60d, email/in-app), Regulatory (supervisory authority, HHS, state AGs), Public (press release, blog, media)
+  - Notification templates and timelines
+  - Resources: NIST SP 800-61, SANS, PagerDuty, Atlassian
+- **Design decisions:**
+  - 4 comprehensive questions covering formal incident response
+  - Required only for secure Quality level
+  - Fifth of six secure/compliance phases (11-16)
+  - Builds on basic incident response from Phase 5
+  - Critical for compliance and trust
+  - Emphasis on blameless postmortems and continuous improvement
+
+## v0.4.11 LLM Q&A Phase 14 (Audit Logging) [Implemented]
+Focus: Comprehensive audit logging for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase14_questions__t__.md`:
+  - [x] Audit log requirements questions (events to log, log format, immutability)
+  - [x] Audit log retention questions (retention period, storage, access, review)
+- [x] README already includes Phase 14 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 14 Questions File** (~190 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase14_questions__t__.md`
+  - Audit log requirements: Authentication events (login, logout, password changes, MFA), authorization events (permission changes, access denials), data access events (PII/PHI access, exports, modifications), administrative events (user management, config changes), security events (failed auth, suspicious activity)
+  - Log format: Structured JSON with required fields (timestamp, event_type, actor, action, resource, result, IP, user_agent, request_id)
+  - Immutability: Write-once storage, cryptographic signing, separate storage, access controls
+  - Retention: Compliance-driven (HIPAA 6 years, GDPR 1-7 years, SOC 2 1 year, PCI DSS 1 year) or risk-based (7+ years for high-risk)
+  - Storage: Hot storage (90 days), cold storage (archive), separate backup
+  - Access controls: Security/compliance team only, MFA required, all access logged
+  - Review: Automated monitoring, weekly/monthly/quarterly manual review, compliance audits
+  - Best practices: Log before/after, don't log secrets/PII, centralize, separate from app logs, test integrity
+- **Design decisions:**
+  - 2 focused questions covering audit logging comprehensively
+  - Required only for secure Quality level
+  - Fourth of six secure/compliance phases (11-16)
+  - Builds on basic logging from Phase 5
+  - Critical for compliance (HIPAA, SOC 2, PCI DSS)
+
+## v0.4.10 LLM Q&A Phase 13 (Advanced Security) [Implemented]
+Focus: Advanced security controls for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase13_questions__t__.md`:
+  - [x] Advanced encryption questions (detailed specifications, key management)
+  - [x] Secrets rotation questions (policies, automation, frequency)
+  - [x] Vulnerability management questions (scanning, remediation SLAs)
+  - [x] Penetration testing questions (frequency, scope, providers)
+  - [x] Security training questions (onboarding, ongoing, role-specific)
+- [x] README already includes Phase 13 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 13 Questions File** (~270 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase13_questions__t__.md`
+  - Advanced encryption: Database encryption (AES-256-GCM), file storage encryption, application-level encryption, TLS 1.3, mTLS, key management (KMS, HSM, Vault), key rotation (90 days)
+  - Secrets rotation: Rotation frequency (30-180 days by criticality), rotation process (manual, semi-automated, fully automated), zero-downtime rotation
+  - Vulnerability management: Dependency scanning (pip-audit, Snyk), container scanning (Trivy), infrastructure scanning (AWS Security Hub), code scanning (Bandit), remediation SLAs (Critical 24h, High 7d, Medium 30d, Low 90d)
+  - Penetration testing: Frequency (annual minimum), scope (web app, infrastructure, mobile), type (black/gray/white box), providers (external firms, bug bounty), process
+  - Security training: Onboarding (4-hour workshop), ongoing (quarterly), role-specific (backend, frontend, DevOps), content (OWASP Top 10, secure coding), verification
+- **Design decisions:**
+  - 5 comprehensive questions covering advanced security practices
+  - Required only for secure Quality level
+  - Third of six secure/compliance phases (11-16)
+  - Builds on basic security from Phase 4
+  - Practical guidance with specific tools and timelines
+
+## v0.4.9 LLM Q&A Phase 12 (Compliance Requirements) [Implemented]
+Focus: Regulatory compliance for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase12_questions__t__.md`:
+  - [x] Applicable regulations questions (GDPR, HIPAA, PCI DSS, SOC 2, CCPA, FERPA)
+  - [x] GDPR compliance questions (consent, right to access, deletion, portability, breach notification)
+  - [x] HIPAA compliance questions (PHI protection, access controls, audit logs, BAAs, breach notification)
+  - [x] PCI DSS compliance questions (card data storage, payment processors, SAQ, scanning)
+  - [x] SOC 2 compliance questions (Trust Service Criteria, controls)
+- [x] README already includes Phase 12 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 12 Questions File** (~280 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase12_questions__t__.md`
+  - Applicable regulations: GDPR, HIPAA, PCI DSS, SOC 2, CCPA, FERPA - when each applies
+  - GDPR compliance: Consent mechanisms, data subject rights (access, deletion, portability, rectification), breach notification (72 hours), DPAs
+  - HIPAA compliance: PHI protection (encryption, de-identification), access controls (RBAC, MFA), audit logs (6-year retention), BAAs, breach notification (60 days), Security Officer
+  - PCI DSS compliance: Card data handling (never store CVV), payment processors (Stripe, Square), SAQ levels (A, A-EP, D), network security, quarterly scanning
+  - SOC 2 compliance: Trust Service Criteria (Security, Availability, Confidentiality, Processing Integrity, Privacy), Type I vs Type II, audit process
+  - Compliance resources and links provided
+- **Design decisions:**
+  - 5 comprehensive questions covering major regulations
+  - Required only for secure Quality level
+  - Second of six secure/compliance phases (11-16)
+  - Practical guidance for each regulation
+  - Emphasis on using third-party services to reduce compliance burden (e.g., Stripe for PCI)
+
+## v0.4.8 LLM Q&A Phase 11 (Threat Modeling) [Implemented]
+Focus: Threat modeling for secure Quality
+- [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase11_questions__t__.md`:
+  - [x] Threat identification questions (critical threats to application)
+  - [x] Attack surface questions (entry points, vulnerabilities)
+  - [x] Threat mitigation questions (controls, defenses)
+- [x] README already includes Phase 11 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 11 Questions File** (~180 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase11_questions__t__.md`
+  - Threat identification questions: Data breach, account takeover, denial of service, data tampering, privilege escalation, supply chain attacks
+  - Attack surface questions: Web UI, API endpoints, database, file uploads, third-party integrations, infrastructure, authentication
+  - Threat mitigation questions: Specific mitigations for each threat type (encryption, MFA, rate limiting, input validation, audit logging, dependency scanning)
+  - Reference to threat modeling frameworks: STRIDE, PASTA, VAST, Attack Trees
+- **Design decisions:**
+  - 3 focused questions covering threat modeling fundamentals
+  - Required only for secure Quality level
+  - First of six secure/compliance phases (11-16)
+  - Comprehensive coverage of common threats and mitigations
+  - Practical examples for each threat category
+
+## v0.4.7 LLM Q&A Phase 10 (Analytics & Observability) [Implemented]
+Focus: Analytics and observability for production/secure Quality
+- [x] Create `docs/guides/llm_qa/llm_qa_phase10_questions__t__.md`:
+  - [x] Business analytics questions (metrics, dashboards, reporting)
+  - [x] Application metrics questions (custom metrics, instrumentation)
+  - [x] Distributed tracing questions (tracing strategy, tools)
+  - [x] Alerting strategy questions (alert rules, notification channels)
+  - [x] Dashboard design questions (key metrics, visualization)
+- [x] README already includes Phase 10 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 10 Questions File** (~210 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase10_questions__t__.md`
+  - Business analytics questions: User metrics (DAU/MAU), engagement, revenue, product metrics, analytics tools (Mixpanel, Amplitude, Google Analytics)
+  - Application metrics questions: Request metrics, database metrics, cache metrics, business events, instrumentation (Prometheus, APM tools, OpenTelemetry)
+  - Distributed tracing questions: Use cases (microservices, performance debugging), tools (Jaeger, Zipkin, Datadog, X-Ray), sampling strategy
+  - Alerting strategy questions: Alert categories (P0-P3), alert rules, notification channels (PagerDuty, Slack, email), response times
+  - Dashboard design questions: Dashboard types (service health, infrastructure, business), tools (Grafana, Datadog), key metrics, visualization best practices
+- **Design decisions:**
+  - 5 questions covering analytics and advanced observability
+  - Optional phase (builds on basic monitoring from Phases 2 and 5)
+  - Comprehensive coverage of business and technical metrics
+  - Practical alerting strategy with severity levels
+  - Focus on actionable dashboards and insights
+
+## v0.4.6 LLM Q&A Phase 9 (Background Jobs) [Implemented]
+Focus: Background job processing for production/secure Quality
+- [x] Create `docs/guides/llm_qa/llm_qa_phase9_questions__t__.md`:
+  - [x] Job queue questions (queue technology, message broker)
+  - [x] Worker architecture questions (worker processes, scaling)
+  - [x] Job scheduling questions (cron, recurring jobs)
+  - [x] Retry logic questions (failure handling, exponential backoff)
+  - [x] Job monitoring questions (job status, failed jobs, alerting)
+- [x] README already includes Phase 9 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 9 Questions File** (~200 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase9_questions__t__.md`
+  - Job queue questions: Redis+Celery, Redis+RQ, PostgreSQL+pg_boss, RabbitMQ, AWS SQS, Kafka - pros/cons/use cases
+  - Worker architecture questions: Number of workers, concurrency, queue routing, scaling strategy, resource limits
+  - Job scheduling questions: Cron jobs, recurring jobs, one-time delayed, scheduling tools (Celery Beat, APScheduler, cloud schedulers)
+  - Retry logic questions: Max retries, exponential backoff, retry conditions, dead letter queue, idempotency
+  - Job monitoring questions: Queue depth, job duration, success/failure rate, worker health, monitoring tools (Flower, Grafana, Datadog)
+- **Design decisions:**
+  - 5 questions covering all background job concerns
+  - Optional phase (can skip for synchronous-only applications)
+  - Comprehensive coverage of popular job queue technologies
+  - Practical examples for worker configuration and monitoring
+  - Focus on reliability and observability
+
+## v0.4.5 LLM Q&A Phase 8 (API Design) [Implemented]
+Focus: API design for production/secure Quality
+- [x] Create `docs/guides/llm_qa/llm_qa_phase8_questions__t__.md`:
+  - [x] API style questions (REST, GraphQL, gRPC)
+  - [x] API versioning questions (versioning strategy, deprecation)
+  - [x] API documentation questions (OpenAPI/Swagger, examples)
+  - [x] Rate limiting questions (per-user, per-IP, burst limits)
+  - [x] Webhooks questions (event notifications, retry logic)
+- [x] README already includes Phase 8 in structure (completed in v0.4.4)
+
+### Notes
+- **Phase 8 Questions File** (~180 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase8_questions__t__.md`
+  - API style questions: REST vs GraphQL vs gRPC, pros/cons, use cases
+  - API versioning questions: URL path, header, query parameter strategies, deprecation policy
+  - API documentation questions: OpenAPI/Swagger, Postman, Markdown, content requirements
+  - Rate limiting questions: Per-user, per-IP, per-endpoint, tiered limits, burst handling
+  - Webhooks questions: Events, payload, security (HMAC), retry logic, management
+- **Design decisions:**
+  - 5 questions covering all API design concerns
+  - Optional phase (can skip for CLI-only or UI-only projects)
+  - Comprehensive coverage of REST, GraphQL, and gRPC
+  - Practical examples for each approach
+  - Integration with rate limiting from Phase 4 (Security Basics)
+
+## v0.4.4 LLM Q&A Phase Restructuring (Phases 2-7) [Implemented]
+Focus: Split Phase 2 into focused phases and add feature-specific phases
+- [x] Rename current Phase 2 file: `llm_qa_phase2_questions__t__.md` → `llm_qa_phase2-5_archive__t__.md`
+- [x] Create `docs/guides/llm_qa/llm_qa_phase2_questions__t__.md` (Infrastructure):
+  - [x] Hosting platform questions (6 questions)
+  - [x] Regions/availability, scaling, monitoring, cost, IaC questions
+- [x] Create `docs/guides/llm_qa/llm_qa_phase3_questions__t__.md` (Authentication & Authorization):
+  - [x] Authentication method questions (OAuth, passwords, magic links, API keys)
+  - [x] Session management questions (cookies, timeouts, security)
+  - [x] MFA questions (basic implementation, not advanced secure-level)
+  - [x] Authorization questions (RBAC, permissions, resource-level)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase4_questions__t__.md` (Security Basics):
+  - [x] Secrets management questions (development, production)
+  - [x] Data encryption questions (at rest, in transit, basic application-level)
+  - [x] Input validation questions (SQL injection, XSS, CSRF prevention)
+  - [x] Rate limiting questions (brute force prevention, API abuse)
+  - [x] Basic security audit questions (dependency scanning, code scanning)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase5_questions__t__.md` (Operations):
+  - [x] Deployment process questions (8 questions)
+  - [x] Health checks, rollback, logging, incidents, backup, config, performance questions
+- [x] Create `docs/guides/llm_qa/llm_qa_phase6_questions__t__.md` (Data & Persistence):
+  - [x] Database design questions (schema, relationships, normalization)
+  - [x] Data migration questions (migration strategy, rollback)
+  - [x] Backup strategy questions (frequency, retention, testing)
+  - [x] Caching strategy questions (cache layers, invalidation)
+  - [x] Data modeling questions (entities, validation, constraints)
+- [x] Create `docs/guides/llm_qa/llm_qa_phase7_questions__t__.md` (User Interface):
+  - [x] Frontend framework questions (React, Vue, Svelte, vanilla)
+  - [x] Component architecture questions (component library, design system)
+  - [x] State management questions (Redux, Zustand, Context API)
+  - [x] Accessibility questions (WCAG compliance, screen readers, keyboard navigation)
+  - [x] Responsive design questions (mobile-first, breakpoints, testing)
+  - [x] UI performance questions (lazy loading, code splitting, bundle size)
+- [x] Rename current Phase 3 file: `llm_qa_phase3_questions__t__.md` → `llm_qa_phase11-16_archive__t__.md`
+- [x] Update README with new phase structure (Phases 0-16)
+- [x] Update planning guide with new phase alignment table
+
+### Notes
+- **Breaking change:** Phase numbering changes from 0-3 to 0-16
+- **Migration path:** Old Phase 2 → New Phases 2-5, Old Phase 3 → New Phases 11-16
+- **New phases created:**
+  - Phase 2: Infrastructure (6 questions, ~200 lines)
+  - Phase 3: Authentication & Authorization (6 questions, ~200 lines)
+  - Phase 4: Security Basics (5 questions, ~180 lines)
+  - Phase 5: Operations (8 questions, ~220 lines)
+  - Phase 6: Data & Persistence (5 questions, ~180 lines)
+  - Phase 7: User Interface (6 questions, ~200 lines)
+- **Archived files:**
+  - `llm_qa_phase2-5_archive__t__.md` (old Phase 2, 750 lines)
+  - `llm_qa_phase11-16_archive__t__.md` (old Phase 3, 1000+ lines)
+- **Token efficiency:** Each new phase ~6-10K tokens vs 23-30K for old Phase 2
+- **Time per phase:** 10-25 minutes vs 30-60 minutes for old Phase 2
+- **Quality mapping:**
+  - experiment: Phases 0-1
+  - prototype: Phases 0-1, 6-7 (as needed)
+  - production: Phases 0-7 (core), 8-10 (as needed)
+  - secure: Phases 0-16 (all)
+- **README updated:** New phase structure with 4 categories (Foundation, Production Readiness, Feature-Specific, Secure/Compliance)
+- **Planning guide updated:** Comprehensive phase alignment tables for all 17 phases
+
 ## v0.4.3 LLM Q&A Phase 3 (Secure/Compliance) [Implemented]
 Focus: Add questions for secure/compliance requirements
 - [x] Add Phase 3 question templates to `docs/guides/llm_qa/llm_qa_phase3_questions__t__.md`:

@@ -30,82 +30,119 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 
 ### Question Files (Read Based on Phase)
 
-**`llm_qa_phase0_questions__t__.md`** - Project basics (5-10 questions)
-- Quality level selection
-- Project overview (problem, users, success criteria)
-- Language and framework
-- Component structure
-- Repository basics
+#### Foundation Phases (Required for All)
+
+**`llm_qa_phase0_questions__t__.md`** - Project Basics (10 questions)
+- Quality level selection, project overview, language/framework, component structure, repository basics
 - Example Q&A session (experiment-level CLI tool)
 
-**`llm_qa_phase1_questions__t__.md`** - Core technical (10-25 questions)
-- Architecture (system boundaries, components, data flow)
-- Technical stack (libraries, database, API type, build tools)
-- Development workflow (testing, linting, dependencies)
+**`llm_qa_phase1_questions__t__.md`** - Core Technical (13 questions)
+- Architecture, technical stack, development workflow
 - Example Q&A session (prototype-level web app)
 
-**`llm_qa_phase2_questions__t__.md`** - Production readiness (20-40 questions)
-- Infrastructure (hosting, scaling, monitoring)
-- Security basics (authentication, secrets, encryption)
-- Operations (deployment, rollback, incident response)
-- Example Q&A session (production-level web API)
+#### Production Readiness Phases (Required for production/secure)
 
-**`llm_qa_phase3_questions__t__.md`** - Secure/compliance (40-80 questions)
-- Advanced security (threat modeling, hardening, penetration testing)
-- Compliance (GDPR, HIPAA, PCI DSS, SOC 2)
-- Audit logging and incident response
-- Example Q&A session (secure-level healthcare platform)
+**`llm_qa_phase2_questions__t__.md`** - Infrastructure (6 questions)
+- Hosting platform, regions/availability, scaling, monitoring, cost, IaC
+
+**`llm_qa_phase3_questions__t__.md`** - Authentication & Authorization (6 questions)
+- Auth methods, session management, MFA, RBAC, permissions, resource access
+
+**`llm_qa_phase4_questions__t__.md`** - Security Basics (5 questions)
+- Secrets management, encryption, input validation, rate limiting, security auditing
+
+**`llm_qa_phase5_questions__t__.md`** - Operations (8 questions)
+- Deployment, health checks, rollback, logging, incidents, backup, config, performance monitoring
+
+#### Feature-Specific Phases (Optional, as needed)
+
+**`llm_qa_phase6_questions__t__.md`** - Data & Persistence (5 questions)
+- Database design, migrations, backups, caching, data modeling
+
+**`llm_qa_phase7_questions__t__.md`** - User Interface (6 questions)
+- Frontend framework, component architecture, state management, accessibility, responsive design, UI performance
+
+**`llm_qa_phase8_questions__t__.md`** - API Design (5 questions)
+- API style, versioning, documentation, rate limiting, webhooks
+
+**`llm_qa_phase9_questions__t__.md`** - Background Jobs (5 questions)
+- Job queues, worker architecture, scheduling, retry logic, monitoring
+
+**`llm_qa_phase10_questions__t__.md`** - Analytics & Observability (5 questions)
+- Business analytics, application metrics, tracing, alerting, dashboards
+
+#### Secure/Compliance Phases (Required for secure Quality only)
+
+**`llm_qa_phase11_questions__t__.md`** - Threat Modeling (3 questions)
+- Threat identification, attack surfaces, mitigations
+
+**`llm_qa_phase12_questions__t__.md`** - Compliance Requirements (5 questions)
+- GDPR, HIPAA, PCI DSS, SOC 2, applicable regulations
+
+**`llm_qa_phase13_questions__t__.md`** - Advanced Security (5 questions)
+- Advanced encryption, secrets rotation, vulnerability management, pen testing, security training
+
+**`llm_qa_phase14_questions__t__.md`** - Audit Logging (2 questions)
+- Audit log requirements, retention policy
+
+**`llm_qa_phase15_questions__t__.md`** - Incident Response (4 questions)
+- IR team, incident classification, procedures, breach notification
+
+**`llm_qa_phase16_questions__t__.md`** - Security Governance (4 questions)
+- Security policies, risk assessment, vendor management, metrics
 
 ## Reading Flow
 
-### For New Projects (Phase 0)
+### General Pattern (All Phases)
 
-1. Read `llm_qa_principles__t__.md` to understand the Q&A approach
-2. Read `llm_qa_phase0_questions__t__.md` for questions to ask
-3. Conduct Phase 0 Q&A (5-10 minutes)
-4. Fill out minimal specs in `docs/specs/`
-5. Confirm with developer before starting implementation
+1. Read `llm_qa_principles__t__.md` to understand the Q&A approach (first time only)
+2. Read the specific phase question file (e.g., `llm_qa_phase2_questions__t__.md`)
+3. Conduct Q&A for that phase (10-30 minutes depending on phase)
+4. Fill out relevant specs in `docs/specs/` as you go
+5. Confirm with developer before proceeding to next phase or implementation
 
-**Token load:** ~400-500 lines (~12-15K tokens)
-
-### For Phase 1 (Before First Feature)
-
-1. Read `llm_qa_principles__t__.md` (refresh on principles)
-2. Read `llm_qa_phase1_questions__t__.md` for questions to ask
-3. Conduct Phase 1 Q&A (15-30 minutes)
-4. Fill out core technical specs
-5. Confirm with developer before implementing features
-
-**Token load:** ~500-600 lines (~15-18K tokens)
-
-### For Phase 2 (Before Production)
-
-1. Read `llm_qa_principles__t__.md` (refresh on principles)
-2. Read `llm_qa_phase2_questions__t__.md` for questions to ask
-3. Conduct Phase 2 Q&A (30-60 minutes)
-4. Fill out production readiness specs
-5. Confirm with developer before deploying
-
-**Token load:** ~600-800 lines (~18-24K tokens)
-
-### For Phase 3 (Secure/Compliance)
-
-1. Read `llm_qa_principles__t__.md` (refresh on principles)
-2. Read `llm_qa_phase3_questions__t__.md` for questions to ask
-3. Conduct Phase 3 Q&A (60-120 minutes)
-4. Fill out security and compliance specs
-5. Confirm with developer before proceeding
-
-**Token load:** ~700-1000 lines (~21-30K tokens)
+**Token load per phase:** ~200-400 lines (~6-12K tokens) vs ~1600-2000 lines (~60-80K tokens) for monolithic approach
 
 ## Quick Reference
 
-| Phase | When | Duration | Questions | Files to Read |
-|-------|------|----------|-----------|---------------|
-| **Phase 0** | After `pyve --init` | 5-10 min | 5-10 | principles + phase0 |
-| **Phase 1** | Before v0.1.0 | 15-30 min | 10-25 | principles + phase1 |
-| **Phase 2** | Before production | 30-60 min | 20-40 | principles + phase2 |
-| **Phase 3** | For secure Quality | 60-120 min | 40-80 | principles + phase3 |
+### Foundation Phases (All Projects)
+| Phase | Name | When | Duration | Questions |
+|-------|------|------|----------|-----------|
+| **0** | Project Basics | After `pyve --init` | 5-10 min | 10 |
+| **1** | Core Technical | Before v0.1.0 | 15-20 min | 13 |
+
+### Production Readiness Phases (production/secure Quality)
+| Phase | Name | When | Duration | Questions |
+|-------|------|------|----------|-----------|
+| **2** | Infrastructure | Before production | 15-20 min | 6 |
+| **3** | Auth & Authz | Before production | 15-20 min | 6 |
+| **4** | Security Basics | Before production | 15-20 min | 5 |
+| **5** | Operations | Before production | 20-25 min | 8 |
+
+### Feature-Specific Phases (As Needed)
+| Phase | Name | When | Duration | Questions |
+|-------|------|------|----------|-----------|
+| **6** | Data & Persistence | When designing data layer | 15-20 min | 5 |
+| **7** | User Interface | When building UI | 15-20 min | 6 |
+| **8** | API Design | When designing API | 15-20 min | 5 |
+| **9** | Background Jobs | When adding workers | 15-20 min | 5 |
+| **10** | Analytics & Observability | When adding analytics | 15-20 min | 5 |
+
+### Secure/Compliance Phases (secure Quality Only)
+| Phase | Name | When | Duration | Questions |
+|-------|------|------|----------|-----------|
+| **11** | Threat Modeling | For secure Quality | 15-20 min | 3 |
+| **12** | Compliance | For secure Quality | 20-30 min | 5 |
+| **13** | Advanced Security | For secure Quality | 20-25 min | 5 |
+| **14** | Audit Logging | For secure Quality | 10-15 min | 2 |
+| **15** | Incident Response | For secure Quality | 15-20 min | 4 |
+| **16** | Security Governance | For secure Quality | 15-20 min | 4 |
+
+### Quality Level Mapping
+- **experiment**: Phases 0-1
+- **prototype**: Phases 0-1, 6-7 (as needed)
+- **production**: Phases 0-7 (core), 8-10 (as needed)
+- **secure**: Phases 0-16 (all)
 
 ## Integration with Other Guides
 
@@ -140,9 +177,14 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 
 ## Token Efficiency
 
-By splitting into separate files, LLMs can load only what they need:
+By splitting into 17 focused phase files, LLMs can load only what they need:
 
-- **Monolithic approach:** 1600-2000 lines (~60-80K tokens) for all phases
-- **Modular approach:** 400-1000 lines (~12-30K tokens) per session
+- **Old monolithic approach:** 1600-2000 lines (~60-80K tokens) for all phases
+- **New modular approach:** 200-400 lines (~6-12K tokens) per phase
 
-**Savings:** 60-70% reduction in token load per Q&A session
+**Savings:** 80-90% reduction in token load per Q&A session
+
+**Example:** For a production-level web app:
+- Old approach: Load all phases (~80K tokens)
+- New approach: Load Phases 0,1,2,3,4,5,6,7 individually (~8 sessions × 10K tokens = ~80K total, but spread across multiple sessions)
+- Benefit: Never load more than ~12K tokens at once, can pause/resume between phases

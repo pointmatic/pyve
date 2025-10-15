@@ -35,20 +35,47 @@ Include:
 
 The LLM Q&A process (see `docs/guides/llm_qa/`) aligns naturally with version phases:
 
+### Foundation Phases (All Projects)
 | Q&A Phase | Version Phase | When | What Gets Filled |
 |-----------|---------------|------|------------------|
 | **Phase 0** | Before v0.0.x | After `pyve --init` | Project basics, Quality level, language/framework |
 | **Phase 1** | Before v0.1.0 | Before first feature | Architecture, technical stack, development workflow |
-| **Phase 2** | Before production | Before deploying | Infrastructure, security basics, operations |
-| **Phase 3** | For secure Quality | When compliance needed | Advanced security, compliance, audits |
+
+### Production Readiness Phases (production/secure Quality)
+| Q&A Phase | Version Phase | When | What Gets Filled |
+|-----------|---------------|------|------------------|
+| **Phase 2** | Before production | Before deploying | Infrastructure (hosting, scaling, monitoring) |
+| **Phase 3** | Before production | Before deploying | Authentication & Authorization |
+| **Phase 4** | Before production | Before deploying | Security Basics (secrets, encryption, input validation) |
+| **Phase 5** | Before production | Before deploying | Operations (deployment, logging, incidents) |
+
+### Feature-Specific Phases (As Needed)
+| Q&A Phase | Version Phase | When | What Gets Filled |
+|-----------|---------------|------|------------------|
+| **Phase 6** | As needed | When designing data layer | Data & Persistence |
+| **Phase 7** | As needed | When building UI | User Interface |
+| **Phase 8** | As needed | When designing API | API Design |
+| **Phase 9** | As needed | When adding workers | Background Jobs |
+| **Phase 10** | As needed | When adding analytics | Analytics & Observability |
+
+### Secure/Compliance Phases (secure Quality Only)
+| Q&A Phase | Version Phase | When | What Gets Filled |
+|-----------|---------------|------|------------------|
+| **Phase 11** | For secure Quality | When compliance needed | Threat Modeling |
+| **Phase 12** | For secure Quality | When compliance needed | Compliance Requirements (GDPR, HIPAA, etc.) |
+| **Phase 13** | For secure Quality | When compliance needed | Advanced Security |
+| **Phase 14** | For secure Quality | When compliance needed | Audit Logging |
+| **Phase 15** | For secure Quality | When compliance needed | Incident Response |
+| **Phase 16** | For secure Quality | When compliance needed | Security Governance |
 
 **Workflow:**
 1. **New project:** Conduct Phase 0 Q&A → fill basic specs → implement v0.0.x (setup)
 2. **Before first feature:** Conduct Phase 1 Q&A → fill technical specs → implement v0.1.x (first feature)
-3. **Before production:** Conduct Phase 2 Q&A → fill production specs → deploy
-4. **If secure Quality:** Conduct Phase 3 Q&A → fill compliance specs → harden
+3. **Before production:** Conduct Phases 2-5 Q&A → fill production specs → deploy
+4. **Feature-specific:** Conduct Phases 6-10 as needed → fill feature specs → implement
+5. **If secure Quality:** Conduct Phases 11-16 Q&A → fill compliance specs → harden
 
-This ensures specs are filled progressively as the project matures, avoiding overwhelming upfront documentation.
+This ensures specs are filled progressively as the project matures, avoiding overwhelming upfront documentation. Each phase takes 10-30 minutes, allowing for incremental progress.
 
 ## Planning Workflow
 1. **For new projects:** Use Q&A guides (see above) to fill initial specs.

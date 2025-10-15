@@ -1,26 +1,6 @@
 # Pyve: Python Virtual Environment Configurator
 
-Pyve is a command-line tool that simplifies setting up and managing Python virtual environments. It combines several best practices into a single, easy-to-use script.
-
-## Features
-
-- **Flexible Python Version Management**: Uses either asdf or pyenv to set a specific Python version (default 3.13.7, but customizable)
-- **Virtual Environment Creation**: Creates a Python virtual environment in your project directory
-- **Auto-activation**: Configures direnv to automatically activate/deactivate your environment when you enter/exit the directory
-- **Environment Variable Management**: Creates a secure .env file for storing environment variables (with chmod 600 permissions)
-- **Git Integration**: Automatically adds appropriate patterns to .gitignore
-- **Clean Removal**: Easily remove all virtual environment artifacts with a single command
-
-### Planned Features
-- Support for configurable default Python version (stored in a config in the user's home directory)
-- Version management:
-   - Automated installation of asdf
-   - Automated installation of pyenv
-   - Automated addition of Python plugin using asdf or pyenv
-   - Automated installation of a Python version using either asdf or pyenv
-- Support for Windows Subsystem for Linux (WSL)
-- Support for bash
-- Support for Linux
+Pyve is an opinionated command-line tool that simplifies setting up and managing Python virtual environments, and supports developer in planning, building, testing, and maintaining a project from v0.0 to production release v1.0. It combines several best practices made available in a single, easy-to-use script.
 
 ## Requirements
 
@@ -32,9 +12,99 @@ Pyve is a command-line tool that simplifies setting up and managing Python virtu
 
 The script will check for these prerequisites before initialization and provide helpful error messages if anything is missing.
 
+## Quick Start
+
+Copy and paste this into your macOS terminal:
+
+```bash
+git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh --install; pyve --help
+```
+
+### Initialize a Python Virtual Environment
+
+In a single shell command (`pyve --init`), Pyve will:
+
+- **Flexible Python Version Management**: Use either asdf or pyenv to set a specific Python version (default 3.13.7, but customizable)
+- **Virtual Environment Creation**: Create a Python virtual environment in your project directory
+- **Auto-activation**: Configure direnv to automatically activate/deactivate your environment when you enter/exit the directory
+- **Environment Variable Management**: Create a secure .env file for storing environment variables (with chmod 600 permissions)
+- **Git Integration**: Automatically add appropriate patterns to .gitignore
+- **Foundation Documenation**: Copy foundation documentation (great for any project) from Pyve template library into your project directory
+
+### Purge
+
+And similarly, in a single shell command (`pyve --purge`), Pyve will:
+- **Clean Removal**: Easily remove all virtual environment artifacts with a single command
+
+### Comprehensive Documentation
+
+You can list all the documentation packages (`pyve --list`) to see all the topics Pyve can help you with. 
+
+Pyve also supports your project with comprehensive documentation, including:
+- Technical design
+- Implementation options
+- Codebase specs
+- Formal version management tracking
+
+### LLM collaboration
+
+With Pyve, you can more easily use LLMs to generate documentation, plan and break downfeatures, implement bite-size chunks, fix bugs, and develop other project artifacts. 
+
+### Other
+There are several other commands described below.
+
 ## Installation
 
-1. Clone this repository or download the script
+### Concepts
+
+#### Installation
+It is important to understand some basics about how Pyve works. It needs to be "installed" into the user's home directory, and have the PATH variable updated to include it so it can be run from any directory. The script is installed to `~/.local/bin` and a convenience symlink `pyve` is created in the same directory. The script is made executable and the `pyve` symlink is created.
+
+#### Initialization
+
+1. Pyve will help the Python developer initialize a new Python project in seconds in a virtual environment with automatic activation/deactivation.
+2. It also copies some foundation documentation from its template library into the project directory.
+
+#### Documentation Packages
+
+Pyve has a comprehensive library of documentation packages that help you explore all the features you might need. These can help you decide on and document which features to use in your project and record them in your project specs (`docs/specs/`).
+- Analytics
+- Infrastructure
+- Persistence
+- Web
+
+#### LLM Q&A
+
+Pyve can assist you with step-by-step Q&A across 16 phases of software development:
+
+##### Foundation Phases (All Projects) ✅
+- Phase 0: Project Basics (10 questions)
+- Phase 1: Core Technical (13 questions)
+
+##### Production Readiness Phases (production/secure) ✅
+- Phase 2: Infrastructure (6 questions)
+- Phase 3: Authentication & Authorization (6 questions)
+- Phase 4: Security Basics (5 questions)
+- Phase 5: Operations (8 questions)
+
+##### Feature-Specific Phases (As Needed) ✅
+- Phase 6: Data & Persistence (5 questions)
+- Phase 7: User Interface (6 questions)
+- Phase 8: API Design (5 questions)
+- Phase 9: Background Jobs (5 questions)
+- Phase 10: Analytics & Observability (5 questions)
+
+##### Secure/Compliance Phases (secure Quality Only) ✅
+- Phase 11: Threat Modeling (3 questions)
+- Phase 12: Compliance Requirements (5 questions)
+- Phase 13: Advanced Security (5 questions)
+- Phase 14: Audit Logging (2 questions)
+- Phase 15: Incident Response (4 questions)
+- Phase 16: Security Governance (4 questions)
+
+### Installation Steps
+
+1. Clone this repository
 2. Make the script executable:
    ```bash
    chmod +x pyve.sh
@@ -159,6 +229,19 @@ pyve --uninstall
 ```
 
 This removes `$HOME/.local/bin/pyve` and `$HOME/.local/bin/pyve.sh`. If `$HOME/.local/bin` was added to your PATH via `~/.zprofile`, you may remove that line manually if desired.
+
+### Future Feature Ideas
+- Create Python or Homebrew package for installation
+- Choice of various standard software licenses to automatically install into your project
+- Version management tool installation:
+   - Automated installation of asdf
+   - Automated installation of pyenv
+   - Automated addition of Python plugin using asdf or pyenv
+   - Automated installation of a Python version using either asdf or pyenv
+- Support for other platforms:
+   - Windows Subsystem for Linux (WSL)
+   - bash
+   - Linux
 
 ## License
 

@@ -73,6 +73,35 @@
       "category": "application",
       "guides": [],
       "runbooks": []
+    },
+    "llm_qa": {
+      "name": "LLM Q&A Guide",
+      "description": "Comprehensive 17-phase Q&A system for LLMs to help developers fill out project specifications - from experiment to secure production",
+      "category": "planning",
+      "guides": [
+        "llm_qa/llm_qa_principles__t__.md",
+        "llm_qa/llm_qa_phase0_questions__t__.md",
+        "llm_qa/llm_qa_phase1_questions__t__.md",
+        "llm_qa/llm_qa_phase2_questions__t__.md",
+        "llm_qa/llm_qa_phase3_questions__t__.md",
+        "llm_qa/llm_qa_phase4_questions__t__.md",
+        "llm_qa/llm_qa_phase5_questions__t__.md",
+        "llm_qa/llm_qa_phase6_questions__t__.md",
+        "llm_qa/llm_qa_phase7_questions__t__.md",
+        "llm_qa/llm_qa_phase8_questions__t__.md",
+        "llm_qa/llm_qa_phase9_questions__t__.md",
+        "llm_qa/llm_qa_phase10_questions__t__.md",
+        "llm_qa/llm_qa_phase11_questions__t__.md",
+        "llm_qa/llm_qa_phase12_questions__t__.md",
+        "llm_qa/llm_qa_phase13_questions__t__.md",
+        "llm_qa/llm_qa_phase14_questions__t__.md",
+        "llm_qa/llm_qa_phase15_questions__t__.md",
+        "llm_qa/llm_qa_phase16_questions__t__.md",
+        "llm_qa/llm_qa_phase2-5_archive__t__.md",
+        "llm_qa/llm_qa_phase11-16_archive__t__.md",
+        "llm_qa/README__t__.md"
+      ],
+      "runbooks": []
     }
   }
 }
