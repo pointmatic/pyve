@@ -9,15 +9,52 @@
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
 ## v0.3.13 Authentication & Authorization in Templates [Next]
+Authentication & Authorization guide `docs/guides/web/web_auth_guide__t__.md`
 - [ ] 
 
-## v0.3.12 UI Design Patterns & Architecture in Templates [Next]
+## v0.3.12b Tweaks for Web UI [Implemented]
+- [x] Add references for React, Vue, and Svelte
+
+## v0.3.12 UI Design Patterns & Architecture in Templates [Implemented]
 UI architecture guide `docs/guides/web/web_ui_architecture_guide__t__.md`
-- [ ] Architectural patterns (MVC, MVVM, MVP, Component-based)
-- [ ] State management patterns (local, global, reactive)
-- [ ] Common UI patterns (forms, navigation, data tables, modals, notifications)
-- [ ] Design principles (separation of concerns, composition, reusability)
-- [ ] Best practices (accessibility, performance, responsive design, error handling) 
+- [x] Architectural patterns (MVC, MVVM, MVP, Component-based)
+- [x] State management patterns (local, global, reactive, immutable)
+- [x] Common UI patterns (forms, navigation, data tables, modals, notifications, loading states, infinite scroll)
+- [x] Design principles (separation of concerns, composition, single responsibility, DRY)
+- [x] Best practices (accessibility, performance, responsive design, error handling, security)
+
+### Notes
+- **Architectural Patterns** (900+ lines total):
+  - **MVC** - Traditional server-side pattern for Flask/FastAPI apps
+  - **MVVM** - Reactive pattern for Streamlit, Reflex, Dash
+  - **MVP** - Testing-focused pattern with passive views
+  - **Component-based** - Modern composable architecture
+- **State Management**:
+  - **Local state** - Component-specific data
+  - **Global state** - App-wide shared data
+  - **Reactive state** - Auto-updating UI patterns
+  - **Immutable state** - Predictable updates with frozen dataclasses
+- **Common UI Patterns**:
+  - Forms with validation and feedback
+  - Navigation and routing
+  - Data tables with pagination and sorting
+  - Modals and dialogs
+  - Notifications and toasts
+  - Loading states and progress indicators
+  - Infinite scroll with HTMX
+- **Design Principles**:
+  - Separation of concerns (data/business/presentation)
+  - Composition over inheritance
+  - Single responsibility per component
+  - DRY (Don't Repeat Yourself)
+- **Best Practices**:
+  - **Accessibility** - Semantic HTML, ARIA labels, keyboard navigation, screen reader support
+  - **Performance** - Lazy loading, caching, pagination, debouncing
+  - **Responsive Design** - Mobile-first, breakpoints, flexible layouts
+  - **Error Handling** - Try-catch with feedback, fallback UI, validation
+  - **Security** - Input sanitization, CSRF protection, authentication, environment variables
+- **Architecture Decision Framework** - When to use each pattern and state management approach
+- **Resources** - Tools (Figma, DevTools, Lighthouse), learning materials, testing frameworks 
 
 ## v0.3.11b Doc Packages Enhancements [Implemented]
 - [x] Add package metadata file `templates/v0.3/docs/.packages.json` with descriptions, file counts, and categories
