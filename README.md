@@ -22,9 +22,11 @@ git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh --install; pyve
 
 ### Initialize a Python Virtual Environment
 
-In a single shell command (`pyve --init`), Pyve will:
+Go to the root of your git project directory and run `pyve --init` to initialize your Python virtual environment. 
 
-- **Run asdf or pyenv**: No need to interact directly with `asdf``pyenv` tools anymore to install Python versions set a specific Python version. Pyve defaults to a configured stable Python version (usually the latest), but it is customizable.
+In that single shell command, Pyve will:
+
+- **Run asdf or pyenv**: No need to interact directly with `asdf` or `pyenv` tools anymore to install Python versions set a specific Python version. Pyve defaults to a configured stable Python version (usually the latest), but it is customizable.
 - **Create a virtual environment**: Yes, instead of having to set up and manually activate or deactivate your virtual environment, Pyve does it for you.
 - **Auto-activate and auto-deactivate**: Using `direnv`, Pyve configures your project to automatically activate/deactivate your environment when you enter/exit the project directory
 - **Create/copy .env**: Yet another little detail, but Pyve will set up an empty secrets/environment variable file or copy your default secrets file into your project directory. The secure `.env` file has `chmod 600` permissions (read and write for owner only)
@@ -34,13 +36,13 @@ In a single shell command (`pyve --init`), Pyve will:
 ### Purge
 
 And similarly, in a single shell command (`pyve --purge`), Pyve will:
-- **Clean Removal**: Easily remove all virtual environment artifacts with a single command
+- **Cleanly remove**: Actually, it gently and cleanly removes Pyve. If you have added your own secrets to the `~/.local/.env` file, it will not remove it. If you have modified any of the documentation files, it will leave any that you have modified. Even if Pyve was the creator of the .gitignore file, it will only remove the patterns that Pyve added. 
 
 ### Comprehensive Documentation
 
 You can list all the documentation packages (`pyve --list`) to see all the topics Pyve can help you with. 
 
-Pyve also supports your project with comprehensive documentation, including:
+Topics include:
 - Technical design
 - Implementation options
 - Codebase specs
@@ -48,7 +50,7 @@ Pyve also supports your project with comprehensive documentation, including:
 
 ### LLM collaboration
 
-With Pyve, you can more easily use LLMs to generate documentation, plan and break downfeatures, implement bite-size chunks, fix bugs, and develop other project artifacts. 
+With Pyve, you can more easily use LLMs to generate documentation, plan and break downfeatures, implement bite-size chunks, fix bugs, and develop other project artifacts. It includes an LLM onramp doc (`docs/guides/llm_onramp_guide.md`) you can hand to your LLM to get started.
 
 ### Other
 There are several other commands described below.
@@ -58,12 +60,12 @@ There are several other commands described below.
 ### Concepts
 
 #### Installation
-It is important to understand some basics about how Pyve works. It needs to be "installed" into the user's home directory, and have the PATH variable updated to include it so it can be run from any directory. The script is installed to `~/.local/bin` and a convenience symlink `pyve` is created in the same directory. The script is made executable and the `pyve` symlink is created.
+Pyve is mostly automatic, but it needs to be "installed" into the user's home directory. In the process it will update your PATH variable to include the Pyve script path so it can be run from any directory. The script is installed to `~/.local/bin` and a convenience symlink `pyve` is created in the same directory. After that, you can just type `pyve` to see the help message, and you're ready to go!
 
 #### Initialization
 
 1. Pyve will help the Python developer initialize a new Python project in seconds in a virtual environment with automatic activation/deactivation.
-2. It also copies some foundation documentation from its template library into the project directory.
+2. It also copies some foundation documentation from its template library into your git project directory.
 
 #### Documentation Packages
 
@@ -105,11 +107,7 @@ Pyve can assist you with step-by-step Q&A across 16 phases of software developme
 ### Installation Steps
 
 1. Clone this repository
-2. Make the script executable:
-   ```bash
-   chmod +x pyve.sh
-   ```
-3. Install it to your local bin and create a convenience symlink `pyve`:
+2. Automatically install it to your local bin directory and create a convenience symlink `pyve`:
    ```bash
    ./pyve.sh --install
    ```
@@ -205,11 +203,17 @@ Template purge notes (v0.3.3):
 ### Additional Commands
 
 ```bash
-pyve --help        # or -h: Show help message
-pyve --version     # or -v: Show script version
-pyve --config      # or -c: Show configuration details
-pyve --install     # Install to ~/.local/bin and create 'pyve' symlink
-pyve --uninstall   # Remove installed script and 'pyve' symlink from ~/.local/bin
+pyve --help                           # or -h: Show help message
+pyve --version                        # or -v: Show script version
+pyve --config                         # or -c: Show configuration details
+pyve --install                        # Install to ~/.local/bin and create 'pyve' symlink
+pyve --uninstall                      # Remove installed script and 'pyve' symlink from ~/.local/bin
+pyve --update                         # Update documentation templates from source repo to ~/.pyve/templates/
+pyve --upgrade                        # Upgrade local project templates to newer version from ~/.pyve/templates/
+pyve --list                           # List available and installed documentation packages
+pyve --add <package> [pkg2 ...]       # Add one or more documentation packages (e.g., web, persistence, llm_qa)
+pyve --remove <package> [pkg2 ...]    # Remove one or more documentation packages
+pyve --init --local-env               # Initialize with .env copied from ~/.local/.env template
 ```
 
 ## Troubleshooting
