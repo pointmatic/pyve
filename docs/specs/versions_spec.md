@@ -8,9 +8,79 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.3.13 Authentication & Authorization in Templates [Next]
+## v0.3.14 [Next]
+- [ ] TBD
+
+## v0.3.13 Authentication & Authorization in Templates [Implemented]
 Authentication & Authorization guide `docs/guides/web/web_auth_guide__t__.md`
-- [ ] 
+- [x] General guide on authentication & authorization
+- [x] Auth runbooks for each framework
+- [x] Coverage in the foundation specs docs
+
+### Notes
+- **Main Auth Guide** (600+ lines): `docs/guides/web/web_auth_guide__t__.md`
+  - Authentication strategies: Session-based, JWT tokens, OAuth 2.0, Passwordless
+  - Authorization patterns: RBAC, Permission-based, Resource-level
+  - Security best practices: Password security, MFA, Rate limiting, CSRF, Session security
+  - Secrets management: Environment variables, AWS/GCP secret managers
+  - Production considerations: HTTPS/TLS, Audit logging, GDPR compliance
+  - Decision framework by use case and security requirements
+  
+- **Flask Auth Runbook** (550+ lines): `docs/runbooks/web/flask_auth_runbook__t__.md`
+  - **Google OAuth setup** - Complete walkthrough from Google Cloud Console to production
+  - Complete Flask app with Google OAuth, session management, RBAC
+  - **HTMX security patterns** - CSRF protection, protected endpoints, authentication state
+  - User management CRUD with authorization checks
+  - Audit logging implementation
+  - Production deployment guide
+  - Testing examples
+  - Security checklist
+  
+- **FastAPI Auth Runbook** (400+ lines): `docs/runbooks/web/fastapi_auth_runbook__t__.md`
+  - JWT token authentication (access + refresh tokens)
+  - OAuth2 with Google integration
+  - Dependency injection for auth
+  - Role-based access control
+  - API key authentication
+  - Rate limiting with slowapi
+  - Complete CRUD example with permissions
+  - Testing with TestClient
+  
+- **Reflex Auth Runbook** (350+ lines): `docs/runbooks/web/reflex_auth_runbook__t__.md`
+  - Pure Python authentication
+  - State-based auth management
+  - Database integration with SQLAlchemy
+  - Google OAuth for Reflex
+  - Protected routes and role guards
+  - Session persistence with browser storage
+  - User management CRUD
+  
+- **Streamlit Auth Expansion** (500+ lines): Enhanced `docs/runbooks/web/streamlit_runbook__t__.md`
+  - Simple password protection
+  - Multi-user auth with streamlit-authenticator
+  - Role-based access control
+  - Google OAuth integration
+  - Database-backed authentication
+  - Secrets management with st.secrets
+  - Session timeout implementation
+  - Security best practices and password validation
+  
+- **Security Spec** (400+ lines): `docs/specs/security_spec__t__.md`
+  - Authentication requirements (passwords, OAuth, sessions, MFA)
+  - Authorization requirements (RBAC, permissions)
+  - Data protection (encryption at rest/transit, data minimization)
+  - Secrets management (development and production)
+  - Input validation (SQL injection, XSS, CSRF prevention)
+  - Rate limiting patterns
+  - Monitoring and logging requirements
+  - Incident response procedures
+  - Compliance (GDPR, HIPAA, PCI DSS)
+  - Security checklist by phase (dev, testing, staging, production)
+  - Security headers configuration
+  
+**Total documentation: ~2,800 lines**
+
+**Key focus:** Flask + HTMX + Google OAuth for CRUD applications (as requested)
 
 ## v0.3.12b Tweaks for Web UI [Implemented]
 - [x] Add references for React, Vue, and Svelte
