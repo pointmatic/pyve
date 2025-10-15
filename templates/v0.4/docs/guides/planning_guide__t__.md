@@ -31,11 +31,31 @@ Include:
 - CLI/Interface Sketch: commands, flags, examples.
 - Next Steps: actionable backlog aligned to phases.
 
+## Q&A Phase Alignment with Version Phases
+
+The LLM Q&A process (see `docs/guides/llm_qa/`) aligns naturally with version phases:
+
+| Q&A Phase | Version Phase | When | What Gets Filled |
+|-----------|---------------|------|------------------|
+| **Phase 0** | Before v0.0.x | After `pyve --init` | Project basics, Quality level, language/framework |
+| **Phase 1** | Before v0.1.0 | Before first feature | Architecture, technical stack, development workflow |
+| **Phase 2** | Before production | Before deploying | Infrastructure, security basics, operations |
+| **Phase 3** | For secure Quality | When compliance needed | Advanced security, compliance, audits |
+
+**Workflow:**
+1. **New project:** Conduct Phase 0 Q&A → fill basic specs → implement v0.0.x (setup)
+2. **Before first feature:** Conduct Phase 1 Q&A → fill technical specs → implement v0.1.x (first feature)
+3. **Before production:** Conduct Phase 2 Q&A → fill production specs → deploy
+4. **If secure Quality:** Conduct Phase 3 Q&A → fill compliance specs → harden
+
+This ensures specs are filled progressively as the project matures, avoiding overwhelming upfront documentation.
+
 ## Planning Workflow
-1. Draft or update `docs/specs/technical_design_spec.md` covering the above.
-2. Reconcile the design and component inventory with `docs/specs/codebase_spec.md` and applicable addenda in `docs/specs/lang/`.
-3. Propose the next semantic version in `docs/specs/versions_spec.md` with `[Next]` if broader work is planned.
-4. Break work into requirements under that version.
-5. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/specs/decisions_spec.md` (date, context, decision, consequences).
-6. Implement; log using the versions file (tick items, add Notes, mark `[Implemented]`). Reference any new decision log entries in the version's `### Notes`.
-7. For bugfixes or unlogged changes, append microversions.
+1. **For new projects:** Use Q&A guides (see above) to fill initial specs.
+2. Draft or update `docs/specs/technical_design_spec.md` covering the above.
+3. Reconcile the design and component inventory with `docs/specs/codebase_spec.md` and applicable addenda in `docs/specs/lang/`.
+4. Propose the next semantic version in `docs/specs/versions_spec.md` with `[Next]` if broader work is planned.
+5. Break work into requirements under that version.
+6. Review with human; revise as needed. When a design/scope decision is approved, add an entry to `docs/specs/decisions_spec.md` (date, context, decision, consequences).
+7. Implement; log using the versions file (tick items, add Notes, mark `[Implemented]`). Reference any new decision log entries in the version's `### Notes`.
+8. For bugfixes or unlogged changes, append microversions.

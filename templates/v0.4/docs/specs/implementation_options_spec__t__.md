@@ -1,10 +1,12 @@
 # Implementation Options
 
+<!-- Phase 0: Project Basics -->
 ## Context and Constraints
 - Business goals and success criteria
 - Constraints: compliance, deadlines, budget, team skills, legacy systems
 - Assumptions and out-of-scope items
 
+<!-- Phase 0: Project Basics -->
 ## Quality
 - Quality Level: experiment | prototype | production | secure
 - Guidance (apply based on chosen level):
@@ -18,14 +20,17 @@
 ## Option Matrix
 Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 
+<!-- Phase 0: Project Basics -->
 ### Languages & Runtimes
 - Candidates: <list>
 - Considerations: team proficiency, ecosystem maturity, performance, tooling
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ### Frameworks (web/CLI/worker)
 - Candidates: <list>
 - Considerations: productivity, flexibility, community, support
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ### Packaging & Distribution
 - Candidates: <native binary | wheel | container (Docker/Podman) | zip/tarball>
 - Considerations:
@@ -35,10 +40,12 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
   - **Startup time:** Cold start performance, initialization overhead
   - **Reproducibility:** Lockfiles, pinned base images, build caching
 
+<!-- Phase 1: Core Technical -->
 ### Data & State
 - Candidates: <DBs / caches>
 - Considerations: consistency, latency, durability, cost, ops
 
+<!-- Phase 0: Project Basics (deployment decision) | Phase 2: Production Readiness (details) -->
 ### Infrastructure & Hosting
 - Candidates: <Fly.io | AWS | GCP | Azure | Heroku | on-prem | Kubernetes>
 - Considerations:
@@ -52,18 +59,22 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
   - **Operations:** deployment frequency, rollback ease, debugging tools, platform maturity
   - **Developer experience:** local dev parity, documentation quality, community support
 
+<!-- Phase 2: Production Readiness | Phase 3: Secure/Compliance -->
 ### Authentication & Security
 - Candidates: <protocols/secret mgmt>
 - Considerations: complexity, compliance, user experience, risk
 
+<!-- Phase 2: Production Readiness -->
 ### Observability
 - Candidates: <logging/metrics/tracing>
 - Considerations: visibility, cost, integration effort
 
+<!-- Phase 1: Core Technical -->
 ### Protocols & Integration
 - Candidates: <HTTP/gRPC/events>
 - Considerations: interoperability, latency, versioning, error handling
 
+<!-- Phase 1: Core Technical -->
 ### Tooling
 - Candidates: <dependency managers, linters, formatters, test frameworks>
 - Considerations: consistency, automation, local/CI parity

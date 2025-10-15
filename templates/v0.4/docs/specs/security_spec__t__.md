@@ -18,6 +18,7 @@ This specification defines security requirements and best practices for all proj
 
 ---
 
+<!-- Phase 2: Production Readiness (basic auth) | Phase 3: Secure/Compliance (MFA, advanced) -->
 ## Authentication Requirements
 
 ### Password-Based Authentication
@@ -117,6 +118,7 @@ is_valid = totp.verify(user_code, valid_window=1)
 
 ---
 
+<!-- Phase 2: Production Readiness -->
 ## Authorization Requirements
 
 ### Role-Based Access Control (RBAC)
@@ -168,6 +170,7 @@ def can_edit_post(user, post):
 
 ---
 
+<!-- Phase 2: Production Readiness (encryption basics) | Phase 3: Secure/Compliance (advanced) -->
 ## Data Protection
 
 ### Encryption at Rest
@@ -239,6 +242,7 @@ Talisman(app,
 
 ---
 
+<!-- Phase 2: Production Readiness -->
 ## Secrets Management
 
 ### Development
@@ -311,6 +315,7 @@ DATABASE_URL = db_secrets['url']
 
 ---
 
+<!-- Phase 2: Production Readiness -->
 ## Input Validation & Sanitization
 
 ### SQL Injection Prevention
@@ -388,9 +393,8 @@ csrf = CSRFProtect(app)
 
 ---
 
-## Rate Limiting
-
-### Login Attempts
+<!-- Phase 2: Production Readiness -->
+## Rate Limiting & DDoS Protection Attempts
 
 **Prevent brute force:**
 - [ ] **5 attempts per IP per minute:** For login endpoints
@@ -423,6 +427,7 @@ def login():
 
 ---
 
+<!-- Phase 2: Production Readiness (basic logging) | Phase 3: Secure/Compliance (audit logs) -->
 ## Monitoring & Logging
 
 ### Security Event Logging
@@ -486,6 +491,7 @@ def log_security_event(event, user=None, status='success', details=None):
 
 ---
 
+<!-- Phase 2: Production Readiness (basic) | Phase 3: Secure/Compliance (formal procedures) -->
 ## Incident Response
 
 ### Security Breach Procedures
@@ -525,6 +531,7 @@ We take security seriously and apologize for any inconvenience.
 
 ---
 
+<!-- Phase 3: Secure/Compliance -->
 ## Compliance
 
 ### GDPR (EU Users)

@@ -8,37 +8,95 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.4.3 LLM Q&A Phase 3 (Secure/Compliance)
+## v0.4.3 LLM Q&A Phase 3 (Secure/Compliance) [Implemented]
 Focus: Add questions for secure/compliance requirements
-- [ ] Add Phase 3 question templates to `docs/guides/llm_qa_guide__t__.md`:
-  - [ ] Advanced security questions (10-20)
-  - [ ] Compliance questions (GDPR, HIPAA, etc.)
-  - [ ] Audit and incident response questions
-- [ ] Mark Phase 3 sections in `templates/v0.4/docs/specs/security_spec__t__.md`
-- [ ] Add fourth example Q&A session (secure-level healthcare platform)
+- [x] Add Phase 3 question templates to `docs/guides/llm_qa/llm_qa_phase3_questions__t__.md`:
+  - [x] Advanced security questions (threat modeling, MFA, encryption, vulnerabilities, pen testing, training)
+  - [x] Compliance questions (GDPR, HIPAA, PCI DSS, SOC 2)
+  - [x] Audit logging and incident response questions (formal procedures)
+  - [x] Security governance questions (policies, risk assessment, vendor management, metrics)
+- [x] Phase 3 sections already marked in `templates/v0.4/docs/specs/security_spec__t__.md` (completed in v0.4.2)
+- [x] Add fourth example Q&A session (secure-level healthcare platform)
 
-## v0.4.2 LLM Q&A Phase 2 (Production Readiness)
+### Notes
+- **Phase 3 Questions File** (1000+ lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase3_questions__t__.md`
+  - Threat modeling questions (3): Threat identification, attack surfaces, mitigations
+  - Compliance questions (5): Applicable regulations, GDPR, HIPAA, PCI DSS, SOC 2
+  - Advanced security questions (7): MFA, encryption details, secrets rotation, vulnerability management, penetration testing, security training
+  - Audit logging questions (2): Audit log requirements, retention policy
+  - Incident response questions (4): IR team, incident classification, IR procedures, breach notification
+  - Security governance questions (4): Security policies, risk assessment, third-party security, security metrics
+  - Complete example Q&A session: Secure-level healthcare platform (HIPAA + GDPR compliant) with comprehensive dialogue
+  - 24 total questions covering all secure Quality requirements
+- **Phase 3 Tags**: Already added in v0.4.2 to `security_spec__t__.md` (9 major sections tagged)
+- **Design decisions:**
+  - 24 questions for Phase 3 (most comprehensive, only for secure Quality)
+  - Compliance-focused: Covers GDPR, HIPAA, PCI DSS, SOC 2, CCPA, FERPA
+  - Example shows real-world healthcare scenario with specific compliance requirements
+  - Questions ensure formal security governance and incident response procedures
+  - Only required for secure Quality level (experiment/prototype/production can skip)
+
+## v0.4.2 LLM Q&A Phase 2 (Production Readiness) [Implemented]
 Focus: Add questions for production-grade projects
-- [ ] Add Phase 2 question templates to `docs/guides/llm_qa_guide__t__.md`:
-  - [ ] Infrastructure questions (5-10)
-  - [ ] Basic security questions (4-8)
-  - [ ] Operations questions (4-8)
-- [ ] Add phase tags to remaining spec templates:
-  - [ ] `templates/v0.4/docs/specs/implementation_options_spec__t__.md`
-  - [ ] `templates/v0.4/docs/specs/security_spec__t__.md` (Phase 1 vs Phase 2 sections)
-- [ ] Add third example Q&A session (production-level web API)
-- [ ] Update `templates/v0.4/docs/guides/planning_guide__t__.md` to explain Q&A phase alignment with version phases
+- [x] Add Phase 2 question templates to `docs/guides/llm_qa/llm_qa_phase2_questions__t__.md`:
+  - [x] Infrastructure questions (6 questions: hosting, regions, scaling, monitoring, cost, IaC)
+  - [x] Security basics questions (6 questions: authentication, authorization, secrets, encryption, input validation, audits)
+  - [x] Operations questions (8 questions: deployment, health checks, rollback, logging, incidents, backup, config, performance)
+- [x] Add phase tags to remaining spec templates:
+  - [x] `templates/v0.4/docs/specs/implementation_options_spec__t__.md` (11 sections tagged)
+  - [x] `templates/v0.4/docs/specs/security_spec__t__.md` (9 major sections tagged Phase 2 vs Phase 3)
+- [x] Add third example Q&A session (production-level web API)
+- [x] Update `templates/v0.4/docs/guides/planning_guide__t__.md` to explain Q&A phase alignment with version phases
 
-## v0.4.1 LLM Q&A Phase 1 (Core Technical)
+### Notes
+- **Phase 2 Questions File** (750 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase2_questions__t__.md`
+  - Infrastructure questions: Hosting platform, regions/availability, scaling strategy, monitoring/alerting, cost management, IaC
+  - Security basics questions: Authentication (OAuth, passwords), authorization (RBAC), secrets management, data encryption, input validation, security audits
+  - Operations questions: Deployment process, health checks, rollback strategy, logging, incident response, backup/recovery, configuration management, performance monitoring
+  - Complete example Q&A session: Production-level web API (Fly.io + PostgreSQL + OAuth + monitoring) with full dialogue
+  - 20 total questions covering all production readiness concerns
+- **Phase Tags Added**:
+  - `implementation_options_spec__t__.md`: Tagged 11 sections (Languages, Frameworks, Packaging, Data, Infrastructure, Auth, Observability, Protocols, Tooling)
+  - `security_spec__t__.md`: Tagged 9 major sections distinguishing Phase 2 (basic production security) from Phase 3 (compliance/advanced)
+  - Tags clarify when to fill each section: Phase 2 for production Quality, Phase 3 for secure Quality
+- **Planning Guide Updated**:
+  - Added "Q&A Phase Alignment with Version Phases" section with table showing Phase 0→v0.0.x, Phase 1→v0.1.x, Phase 2→production, Phase 3→secure
+  - Workflow explanation showing progressive spec filling as project matures
+  - Integration with existing planning workflow
+- **Design decisions:**
+  - 20 questions for Phase 2 (vs 13 for Phase 1, 10 for Phase 0) reflecting production complexity
+  - Security split: Phase 2 covers basics (auth, secrets, encryption), Phase 3 covers compliance (GDPR, HIPAA, audits)
+  - Example shows realistic production deployment with specific tools (Fly.io, Sentry, OAuth)
+  - Questions map to multiple spec files (codebase, technical_design, security, implementation_options)
+
+## v0.4.1 LLM Q&A Phase 1 (Core Technical) [Implemented]
 Focus: Add questions for filling out core technical specs
-- [ ] Add Phase 1 question templates to `docs/guides/llm_qa_guide__t__.md`:
-  - [ ] Architecture questions (3-10, varies by Quality)
-  - [ ] Technical stack questions (3-8)
-  - [ ] Development workflow questions (2-5)
-- [ ] Add phase tags to spec templates:
-  - [ ] `templates/v0.4/docs/specs/technical_design_spec__t__.md` (mark Phase 0 vs Phase 1 sections)
-  - [ ] `templates/v0.4/docs/specs/codebase_spec__t__.md` (mark Phase 0 vs Phase 1 sections)
-- [ ] Add second example Q&A session (prototype-level web app)
+- [x] Add Phase 1 question templates to `docs/guides/llm_qa/llm_qa_phase1_questions__t__.md`:
+  - [x] Architecture questions (5 questions: system boundaries, components, data flow, dependencies, scalability)
+  - [x] Technical stack questions (4 questions: libraries, database, API type, build tools)
+  - [x] Development workflow questions (4 questions: testing, code quality, dependencies, CI/CD)
+- [x] Add phase tags to spec templates:
+  - [x] `templates/v0.4/docs/specs/technical_design_spec__t__.md` (mark Phase 0 vs Phase 1 vs Phase 2 sections)
+  - [x] `templates/v0.4/docs/specs/codebase_spec__t__.md` (mark Phase 0 vs Phase 1 vs Phase 2 sections)
+- [x] Add second example Q&A session (prototype-level web app)
+
+### Notes
+- **Phase 1 Questions File** (450 lines): `templates/v0.4/docs/guides/llm_qa/llm_qa_phase1_questions__t__.md`
+  - Architecture questions: System boundaries, key components, data flow, external dependencies, scalability needs
+  - Technical stack questions: Key libraries, database/storage, API/interface type, build/package tools
+  - Development workflow questions: Testing approach, code quality tools, dependency management, CI/CD
+  - Complete example Q&A session: Prototype-level web app (React + FastAPI + PostgreSQL) with full dialogue
+  - Quality-aware questioning: Experiment skips most questions, prototype gets basics, production/secure get comprehensive coverage
+- **Phase Tags Added**:
+  - `technical_design_spec__t__.md`: Tagged 14 sections with Phase 0, Phase 1, or Phase 2 markers
+  - `codebase_spec__t__.md`: Tagged 13 sections with Phase 0, Phase 1, or Phase 2 markers
+  - Tags use HTML comments (invisible to users, visible to LLMs): `<!-- Phase X: Description -->`
+  - Multi-phase sections noted: e.g., `<!-- Phase 1 (production/secure) | Phase 2 -->`
+- **Design decisions:**
+  - 13 total questions for Phase 1 (vs 10 in Phase 0), adjustable by Quality level
+  - Questions map directly to spec sections for clear traceability
+  - Example dialogue shows realistic back-and-forth with clarifications and confirmations
+  - Phase tags enable LLMs to understand which sections to fill during each Q&A phase
 
 ## v0.4.0 LLM Q&A Foundation [Implemented]
 We need to edit the metadocuments in `templates/v0.4/docs/` to make it easier for LLMs to ask questions about a new project. When a developer sets up a new git repo, they run `pyve --init` which copies the metadocuments (that have already been "installed" from `templates/v0.4/docs/` into their home directory) to `docs/` in their git repo, current directory. The foundation documents for working on a project are in `docs/guides/` and `docs/runbooks/` (as references) and then `docs/specs/` is a custom specification for the developer to get from zero to v1.0.
