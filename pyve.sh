@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
 # Description:
-# There are ten functions:
+# There are thirteen functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -23,9 +23,12 @@
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
 #   7. --upgrade: Upgrade the local git repository documentation templates to a newer version from ~/.pyve/templates/
-#   8. --help / -h: Show this help message
-#   9. --version / -v: Show the version of this script
-#   10. --config / -c: Show the configuration of this script
+#   8. --list: List available and installed documentation packages
+#   9. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
+#   10. --remove <package>: Remove a documentation package
+#   11. --help / -h: Show this help message
+#   12. --version / -v: Show the version of this script
+#   13. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -56,7 +59,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.6"
+VERSION="0.3.11b"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -76,6 +79,7 @@ MAC_OS_GITIGNORE_CONTENT=".DS_Store"
 PYVE_HOME="$HOME/.pyve"
 PYVE_SOURCE_PATH_FILE="$PYVE_HOME/source_path"
 PYVE_TEMPLATES_DIR="$PYVE_HOME/templates"
+PYVE_PACKAGES_CONF=".pyve/packages.conf"
 
 # Ensure Pyve home directories exist
 function ensure_pyve_home() {
@@ -138,17 +142,22 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
     echo "             Optional --python-version <ver> to select a specific Python version"
+    echo "             Optional --packages <pkg1> <pkg2> ... to install doc packages during init"
+    echo "             Note: Only foundation docs are copied on init (v0.3.11+)"
     echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
     echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, create a 'pyve' symlink, record the repo path, and copy the latest documentation templates to \"$HOME/.pyve/templates/{latest}\""
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
     echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
+    echo "  --list:    List available and installed documentation packages with descriptions"
+    echo "  --add <package> [pkg2 ...]: Add one or more documentation packages (e.g., web, persistence, infrastructure)"
+    echo "  --remove <package> [pkg2 ...]: Remove one or more documentation packages"
     echo "  --help:    Show this help message"
     echo "  --version: Show the version of this script"
     echo "  --config:  Show the configuration of this script"
@@ -517,51 +526,59 @@ function validate_python_version() {
 }
 
 function init_parse_args() {
-    if [[ $# -eq 1 ]]; then
-        # simple case, use defaults
-        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
+    # v0.3.11b: Support --packages flag
+    VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
+    PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
+    INIT_PACKAGES=()
+    
+    local i=2  # Start from second arg (first is --init)
+    while [[ $i -le $# ]]; do
+        local arg="${!i}"
+        
+        if [[ "$arg" == "--python-version" ]]; then
+            i=$((i+1))
+            if [[ $i -gt $# ]]; then
+                echo "\nERROR: --python-version requires a version number."
+                exit 1
+            fi
+            PYTHON_VERSION="${!i}"
+            validate_python_version "$PYTHON_VERSION"
+            echo "\nUsing the Python version you provided: $PYTHON_VERSION"
+        elif [[ "$arg" == "--packages" ]]; then
+            # Collect all remaining args as packages
+            i=$((i+1))
+            while [[ $i -le $# ]]; do
+                local pkg="${!i}"
+                if [[ "$pkg" == --* ]]; then
+                    i=$((i-1))  # Back up to process this flag
+                    break
+                fi
+                INIT_PACKAGES+=("$pkg")
+                i=$((i+1))
+            done
+        elif [[ "$arg" != --* ]]; then
+            # Assume it's the venv directory name
+            VENV_DIR_NAME="$arg"
+            validate_venv_dir_name "$VENV_DIR_NAME"
+            echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
+        else
+            echo "\nERROR: Unknown flag: $arg"
+            echo "Usage: pyve --init [<directory_name>] [--python-version <version>] [--packages <pkg1> <pkg2> ...]"
+            exit 1
+        fi
+        
+        i=$((i+1))
+    done
+    
+    if [[ "$VENV_DIR_NAME" == "$DEFAULT_VENV_DIR_NAME" ]]; then
         echo "\nUsing the default Venv directory: $VENV_DIR_NAME"
-        PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
+    fi
+    if [[ "$PYTHON_VERSION" == "$DEFAULT_PYTHON_VERSION" ]]; then
         echo "\nUsing the default Python version: $PYTHON_VERSION"
-    elif [[ $# -eq 4 ]]; then
-        # max params --init <directory_name> --python-version <python_version>
-        if [[ $3 != "--python-version" ]]; then
-            # something is wrong
-            echo "\nERROR: parameter formatting problem."
-            echo "--init <optional_directory_name> --python-version <python_version>"
-            echo "Note: you can also use abbreviation -i for --init" 
-            exit 1
-        fi
-        VENV_DIR_NAME="$2"
-        validate_venv_dir_name "$VENV_DIR_NAME"
-        echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
-        PYTHON_VERSION="$4"
-        validate_python_version "$PYTHON_VERSION"
-        echo "\nUsing the Python version you provided: $PYTHON_VERSION"
-    elif [[ $# -eq 2 ]]; then
-        if [[ $2 == "--python-version" ]]; then
-            echo "\nERROR: you need to specify a python version.\n"
-            exit 1
-        fi
-        # second param is the directory name
-        VENV_DIR_NAME="$2"
-        validate_venv_dir_name "$VENV_DIR_NAME"
-        echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
-        PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
-        echo "\nUsing the default Python version: $PYTHON_VERSION"
-    elif [[ $# -eq 3 ]]; then
-        if [[ $2 != "--python-version" ]]; then
-            # something is wrong
-            echo "\nERROR: parameter formatting problem."
-            echo "--init <optional_directory_name> --python-version <python_version>"
-            echo "Note: you can also use abbreviation -i for --init" 
-            exit 1
-        fi
-        VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
-        echo "\nUsing the default Venv directory: $VENV_DIR_NAME"
-        PYTHON_VERSION="$3"
-        echo "\nUsing the Python version you provided: $PYTHON_VERSION"
-        validate_python_version "$PYTHON_VERSION"
+    fi
+    
+    if [[ ${#INIT_PACKAGES[@]} -gt 0 ]]; then
+        echo "\nWill install packages after init: ${INIT_PACKAGES[*]}"
     fi
 }
 
@@ -575,6 +592,12 @@ function init() {
 
         # v0.3.2: Initialize documentation templates from ~/.pyve/templates/{latest}
         init_copy_templates
+
+        # v0.3.11b: Install packages if specified
+        if [[ ${#INIT_PACKAGES[@]} -gt 0 ]]; then
+            echo "\nInstalling documentation packages..."
+            add_package "${INIT_PACKAGES[@]}"
+        fi
 
         # this needs to run last so that the 'direnv allow' instruction is close to the end of the output.
         init_direnv
@@ -603,6 +626,382 @@ function write_init_status() {
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pyve --init $@" > ./.pyve/status/init
 }
 
+# v0.3.11: Doc package management functions
+# v0.3.11b: Enhanced with metadata support
+
+function get_package_metadata() {
+    # Read package metadata from .packages.json
+    # Usage: get_package_metadata <SRC_DIR> <package_name> <field>
+    local SRC_DIR="$1"
+    local PACKAGE="$2"
+    local FIELD="$3"
+    local METADATA_FILE="$SRC_DIR/docs/.packages.json"
+    
+    if [[ ! -f "$METADATA_FILE" ]]; then
+        echo ""
+        return 0
+    fi
+    
+    # Use python or jq if available, otherwise return empty
+    if command -v python3 &> /dev/null; then
+        python3 -c "import json, sys; data=json.load(open('$METADATA_FILE')); print(data.get('packages', {}).get('$PACKAGE', {}).get('$FIELD', ''))" 2>/dev/null || echo ""
+    elif command -v jq &> /dev/null; then
+        jq -r ".packages.\"$PACKAGE\".\"$FIELD\" // empty" "$METADATA_FILE" 2>/dev/null || echo ""
+    else
+        echo ""
+    fi
+}
+
+function get_available_packages() {
+    # Returns list of available doc packages based on subdirectories
+    local SRC_DIR="$1"
+    local -a PACKAGES=()
+    
+    # Check for subdirectories in guides and runbooks
+    if [[ -d "$SRC_DIR/docs/guides" ]]; then
+        for dir in "$SRC_DIR/docs/guides"/*; do
+            if [[ -d "$dir" && "$(basename "$dir")" != "lang" ]]; then
+                PACKAGES+=("$(basename "$dir")")
+            fi
+        done
+    fi
+    
+    # Deduplicate by converting to associative array
+    local -A UNIQUE_PACKAGES
+    for pkg in "${PACKAGES[@]}"; do
+        UNIQUE_PACKAGES[$pkg]=1
+    done
+    
+    # Return sorted unique packages
+    printf '%s\n' "${(@k)UNIQUE_PACKAGES}" | sort
+}
+
+function read_packages_conf() {
+    # Read selected packages from .pyve/packages.conf
+    if [[ -f "$PYVE_PACKAGES_CONF" ]]; then
+        grep -v '^#' "$PYVE_PACKAGES_CONF" | grep -v '^[[:space:]]*$' | sort -u
+    fi
+}
+
+function write_packages_conf() {
+    # Write packages to .pyve/packages.conf
+    # Usage: write_packages_conf package1 package2 ...
+    ensure_project_pyve_dirs
+    {
+        echo "# Pyve documentation packages"
+        echo "# One package name per line"
+        echo "# Available packages: web, persistence, infrastructure, analytics, mobile"
+        echo ""
+        for pkg in "$@"; do
+            echo "$pkg"
+        done
+    } > "$PYVE_PACKAGES_CONF"
+}
+
+function add_package() {
+    # Add one or more packages to the configuration
+    # v0.3.11b: Support space-separated packages
+    # Usage: add_package pkg1 [pkg2 pkg3 ...]
+    
+    if [[ $# -eq 0 ]]; then
+        echo "\nERROR: No packages specified."
+        echo "Usage: pyve --add <package> [package2 package3 ...]"
+        exit 1
+    fi
+    
+    # Get latest version
+    local LATEST_VERSION
+    LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo "\nERROR: No templates found in $PYVE_TEMPLATES_DIR."
+        echo "Run 'pyve --update' first to download templates."
+        exit 1
+    fi
+    
+    local SRC_DIR="$PYVE_TEMPLATES_DIR/$LATEST_VERSION"
+    
+    # Get available packages
+    local -a AVAILABLE
+    AVAILABLE=(${(@f)"$(get_available_packages "$SRC_DIR")"})
+    
+    # Validate all packages first
+    local -a TO_ADD=()
+    for PACKAGE in "$@"; do
+        local VALID=0
+        for pkg in "${AVAILABLE[@]}"; do
+            if [[ "$pkg" == "$PACKAGE" ]]; then
+                VALID=1
+                break
+            fi
+        done
+        
+        if [[ $VALID -eq 0 ]]; then
+            echo "\nERROR: Package '$PACKAGE' not found."
+            echo "Available packages:"
+            for pkg in "${AVAILABLE[@]}"; do
+                echo "  - $pkg"
+            done
+            exit 1
+        fi
+        TO_ADD+=("$PACKAGE")
+    done
+    
+    # Read current packages
+    local -a CURRENT
+    CURRENT=(${(@f)"$(read_packages_conf)"})
+    
+    # Add packages (skip duplicates)
+    local -a ADDED=()
+    local -a SKIPPED=()
+    for PACKAGE in "${TO_ADD[@]}"; do
+        local ALREADY_ADDED=0
+        for pkg in "${CURRENT[@]}"; do
+            if [[ "$pkg" == "$PACKAGE" ]]; then
+                ALREADY_ADDED=1
+                SKIPPED+=("$PACKAGE")
+                break
+            fi
+        done
+        
+        if [[ $ALREADY_ADDED -eq 0 ]]; then
+            CURRENT+=("$PACKAGE")
+            ADDED+=("$PACKAGE")
+        fi
+    done
+    
+    # Write updated config
+    if [[ ${#ADDED[@]} -gt 0 ]]; then
+        write_packages_conf "${CURRENT[@]}"
+        
+        echo "\nAdding packages..."
+        for PACKAGE in "${ADDED[@]}"; do
+            echo "  - $PACKAGE"
+            copy_package_files "$SRC_DIR" "$PACKAGE"
+        done
+        
+        echo "\nSuccessfully added ${#ADDED[@]} package(s)."
+    fi
+    
+    if [[ ${#SKIPPED[@]} -gt 0 ]]; then
+        echo "\nAlready installed (skipped):"
+        for pkg in "${SKIPPED[@]}"; do
+            echo "  - $pkg"
+        done
+    fi
+}
+
+function remove_package() {
+    # Remove one or more packages from the configuration
+    # v0.3.11b: Support space-separated packages
+    # Usage: remove_package pkg1 [pkg2 pkg3 ...]
+    
+    if [[ $# -eq 0 ]]; then
+        echo "\nERROR: No packages specified."
+        echo "Usage: pyve --remove <package> [package2 package3 ...]"
+        exit 1
+    fi
+    
+    # Read current packages
+    local -a CURRENT
+    CURRENT=(${(@f)"$(read_packages_conf)"})
+    
+    # Check which packages to remove
+    local -a TO_REMOVE=()
+    local -a NOT_FOUND=()
+    for PACKAGE in "$@"; do
+        local FOUND=0
+        for pkg in "${CURRENT[@]}"; do
+            if [[ "$pkg" == "$PACKAGE" ]]; then
+                FOUND=1
+                TO_REMOVE+=("$PACKAGE")
+                break
+            fi
+        done
+        
+        if [[ $FOUND -eq 0 ]]; then
+            NOT_FOUND+=("$PACKAGE")
+        fi
+    done
+    
+    # Remove packages from list
+    local -a NEW_PACKAGES
+    for pkg in "${CURRENT[@]}"; do
+        local SHOULD_REMOVE=0
+        for remove_pkg in "${TO_REMOVE[@]}"; do
+            if [[ "$pkg" == "$remove_pkg" ]]; then
+                SHOULD_REMOVE=1
+                break
+            fi
+        done
+        
+        if [[ $SHOULD_REMOVE -eq 0 ]]; then
+            NEW_PACKAGES+=("$pkg")
+        fi
+    done
+    
+    # Write updated config
+    if [[ ${#TO_REMOVE[@]} -gt 0 ]]; then
+        write_packages_conf "${NEW_PACKAGES[@]}"
+        
+        echo "\nRemoving packages..."
+        for PACKAGE in "${TO_REMOVE[@]}"; do
+            echo "  - $PACKAGE"
+            remove_package_files "$PACKAGE"
+        done
+        
+        echo "\nSuccessfully removed ${#TO_REMOVE[@]} package(s)."
+    fi
+    
+    if [[ ${#NOT_FOUND[@]} -gt 0 ]]; then
+        echo "\nNot currently installed (skipped):"
+        for pkg in "${NOT_FOUND[@]}"; do
+            echo "  - $pkg"
+        done
+    fi
+}
+
+function copy_package_files() {
+    # Copy files for a specific package
+    local SRC_DIR="$1"
+    local PACKAGE="$2"
+    
+    local -a FILES=()
+    
+    # Find package files in guides and runbooks
+    if [[ -d "$SRC_DIR/docs/guides/$PACKAGE" ]]; then
+        FILES+=(${(@f)"$(find "$SRC_DIR/docs/guides/$PACKAGE" -type f -name "*__t__*.md" 2>/dev/null)"})
+    fi
+    if [[ -d "$SRC_DIR/docs/runbooks/$PACKAGE" ]]; then
+        FILES+=(${(@f)"$(find "$SRC_DIR/docs/runbooks/$PACKAGE" -type f -name "*__t__*.md" 2>/dev/null)"})
+    fi
+    
+    local COPIED=0
+    for FILE in "${FILES[@]}"; do
+        [[ -z "$FILE" ]] && continue
+        local DEST_REL
+        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+        local DEST_ABS="./$DEST_REL"
+        
+        # Skip if file already exists and is identical
+        if [[ -f "$DEST_ABS" ]] && cmp -s "$FILE" "$DEST_ABS"; then
+            continue
+        fi
+        
+        mkdir -p "$(dirname "$DEST_ABS")"
+        cp "$FILE" "$DEST_ABS"
+        echo "  Copied: $DEST_REL"
+        COPIED=$((COPIED+1))
+    done
+    
+    echo "Copied $COPIED files for package '$PACKAGE'."
+}
+
+function remove_package_files() {
+    # Remove files for a specific package
+    local PACKAGE="$1"
+    
+    # Get current version
+    local MM
+    MM=$(read_project_major_minor)
+    if [[ -z "$MM" ]]; then
+        echo "\nWARNING: Could not determine project version. Skipping file removal."
+        return 0
+    fi
+    
+    local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/v$MM"
+    if [[ ! -d "$TEMPLATE_DIR" ]]; then
+        echo "\nWARNING: Template directory not found. Skipping file removal."
+        return 0
+    fi
+    
+    local -a FILES=()
+    
+    # Find package files in templates
+    if [[ -d "$TEMPLATE_DIR/docs/guides/$PACKAGE" ]]; then
+        FILES+=(${(@f)"$(find "$TEMPLATE_DIR/docs/guides/$PACKAGE" -type f -name "*__t__*.md" 2>/dev/null)"})
+    fi
+    if [[ -d "$TEMPLATE_DIR/docs/runbooks/$PACKAGE" ]]; then
+        FILES+=(${(@f)"$(find "$TEMPLATE_DIR/docs/runbooks/$PACKAGE" -type f -name "*__t__*.md" 2>/dev/null)"})
+    fi
+    
+    local REMOVED=0
+    local SKIPPED=0
+    for FILE in "${FILES[@]}"; do
+        [[ -z "$FILE" ]] && continue
+        local DEST_REL
+        DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
+        local DEST_ABS="./$DEST_REL"
+        
+        if [[ -f "$DEST_ABS" ]]; then
+            if cmp -s "$FILE" "$DEST_ABS"; then
+                rm -f "$DEST_ABS"
+                echo "  Removed: $DEST_REL"
+                REMOVED=$((REMOVED+1))
+            else
+                echo "  Skipped (modified): $DEST_REL"
+                SKIPPED=$((SKIPPED+1))
+            fi
+        fi
+    done
+    
+    echo "Removed $REMOVED files, skipped $SKIPPED modified files."
+}
+
+function list_packages() {
+    # List available and installed packages
+    # v0.3.11b: Show descriptions from metadata
+    local LATEST_VERSION
+    LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
+    if [[ -z "$LATEST_VERSION" ]]; then
+        echo "\nNo templates installed. Run 'pyve --update' to download templates."
+        return 0
+    fi
+    
+    local SRC_DIR="$PYVE_TEMPLATES_DIR/$LATEST_VERSION"
+    local -a AVAILABLE
+    AVAILABLE=(${(@f)"$(get_available_packages "$SRC_DIR")"})
+    
+    local -a INSTALLED
+    INSTALLED=(${(@f)"$(read_packages_conf)"})
+    
+    echo "\nAvailable documentation packages:"
+    echo ""
+    for pkg in "${AVAILABLE[@]}"; do
+        local STATUS="  "
+        for installed in "${INSTALLED[@]}"; do
+            if [[ "$installed" == "$pkg" ]]; then
+                STATUS="✓ "
+                break
+            fi
+        done
+        
+        # Get description from metadata
+        local DESC
+        DESC=$(get_package_metadata "$SRC_DIR" "$pkg" "description")
+        
+        if [[ -n "$DESC" ]]; then
+            echo "  $STATUS$pkg"
+            echo "      $DESC"
+        else
+            echo "  $STATUS$pkg"
+        fi
+    done
+    
+    if [[ ${#INSTALLED[@]} -eq 0 ]]; then
+        echo "\nNo packages currently installed."
+        echo "Use 'pyve --add <package> [package2 ...]' to add packages."
+    else
+        echo "\nInstalled packages:"
+        for pkg in "${INSTALLED[@]}"; do
+            echo "  - $pkg"
+        done
+    fi
+    
+    echo "\nUsage:"
+    echo "  pyve --add <package> [package2 ...]     Add one or more packages"
+    echo "  pyve --remove <package> [package2 ...]  Remove one or more packages"
+}
+
 function strip_template_suffix() {
     # Usage: strip_template_suffix <filename>
     local name="$1"
@@ -612,13 +1011,32 @@ function strip_template_suffix() {
 
 function list_template_files() {
     local SRC_DIR="$1"
+    local MODE="${2:-all}"  # all, foundation, or package name
+    
     # Root docs
     find "$SRC_DIR" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
-    # Guides and Specs
-    find "$SRC_DIR/docs/guides" -type f -name "*__t__*.md" 2>/dev/null
+    
+    # Foundation docs (top-level guides)
+    find "$SRC_DIR/docs/guides" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
+    
+    # Specs (always included)
     find "$SRC_DIR/docs/specs" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
-    # Language specs (copy all available for now)
+    
+    # Language specs (always included)
     find "$SRC_DIR/docs/specs/lang" -type f -name "*__t__*.md" -o -type f -name "*_spec__t__*.md" 2>/dev/null
+    find "$SRC_DIR/docs/guides/lang" -type f -name "*__t__*.md" 2>/dev/null
+    
+    # Package-specific docs (only if mode is 'all' or specific package)
+    if [[ "$MODE" == "all" ]]; then
+        # Include all packages
+        find "$SRC_DIR/docs/guides" -mindepth 2 -type f -name "*__t__*.md" ! -path "*/lang/*" 2>/dev/null
+        find "$SRC_DIR/docs/runbooks" -type f -name "*__t__*.md" 2>/dev/null
+    elif [[ "$MODE" != "foundation" ]]; then
+        # Include specific package
+        find "$SRC_DIR/docs/guides/$MODE" -type f -name "*__t__*.md" 2>/dev/null
+        find "$SRC_DIR/docs/runbooks/$MODE" -type f -name "*__t__*.md" 2>/dev/null
+    fi
+    # If MODE is "foundation", we only include the files already listed above
 }
 
 function target_path_for_source() {
@@ -680,13 +1098,14 @@ function init_copy_templates() {
     fail_if_status_present
 
     # Build list and preflight check for non-identical overwrites (no subshells)
+    # v0.3.11: Only copy foundation docs on init
     local -a FILES=()
     local CONFLICTS=()
     local FILE
     local LOG_FILE="./.pyve/status/init_copy.log"
     : > "$LOG_FILE" 2>/dev/null || true
     {
-        FILES=(${(@f)"$(list_template_files "$SRC_DIR")"})
+        FILES=(${(@f)"$(list_template_files "$SRC_DIR" "foundation")"})
         for FILE in "$FILES[@]"; do
             [[ -z "$FILE" ]] && continue
             local DEST_REL
@@ -1111,8 +1530,21 @@ function upgrade_templates() {
         fi
 
         # Build list of template files to process
+        # v0.3.11: Honor packages.conf if it exists
         local -a FILES=()
-        FILES=(${(@f)"$(list_template_files "$TEMPLATE_DIR")"})
+        local -a INSTALLED_PACKAGES
+        INSTALLED_PACKAGES=(${(@f)"$(read_packages_conf)"})
+        
+        if [[ ${#INSTALLED_PACKAGES[@]} -gt 0 ]]; then
+            # Copy foundation + installed packages
+            FILES=(${(@f)"$(list_template_files "$TEMPLATE_DIR" "foundation")"})
+            for pkg in "${INSTALLED_PACKAGES[@]}"; do
+                FILES+=(${(@f)"$(list_template_files "$TEMPLATE_DIR" "$pkg")"})
+            done
+        else
+            # No packages.conf, copy only foundation (v0.3.11 behavior)
+            FILES=(${(@f)"$(list_template_files "$TEMPLATE_DIR" "foundation")"})
+        fi
         
         if [[ ${#FILES[@]} -eq 0 ]]; then
             echo "\nWARNING: No template files found in $TEMPLATE_DIR."
@@ -1218,6 +1650,27 @@ elif [[ $1 == "--update" ]]; then
     exit 0
 elif [[ $1 == "--upgrade" ]]; then
     upgrade_templates
+    exit 0
+elif [[ $1 == "--list" ]]; then
+    list_packages
+    exit 0
+elif [[ $1 == "--add" ]]; then
+    if [[ $# -lt 2 ]]; then
+        echo "\nERROR: --add requires at least one package name."
+        echo "Usage: pyve --add <package> [package2 package3 ...]"
+        exit 1
+    fi
+    shift  # Remove --add from args
+    add_package "$@"
+    exit 0
+elif [[ $1 == "--remove" ]]; then
+    if [[ $# -lt 2 ]]; then
+        echo "\nERROR: --remove requires at least one package name."
+        echo "Usage: pyve --remove <package> [package2 package3 ...]"
+        exit 1
+    fi
+    shift  # Remove --remove from args
+    remove_package "$@"
     exit 0
 elif [[ $1 == "--init" ]] || [[ $1 == "-i" ]]; then
     init "$@"

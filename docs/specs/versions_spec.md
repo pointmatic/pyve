@@ -8,16 +8,69 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.3.12 Authentication & Authorization in Doc Templates [Next]
+## v0.3.13 Authentication & Authorization in Templates [Next]
 - [ ] 
 
-## v0.3.11 UI Design Patterns & Architecture in Templates [Next]
-- [ ] UI architecture guide `docs/guides/ui_architecture_guide__t__.md`
-  - [ ] Architectural patterns (MVC, MVVM, MVP, Component-based)
-  - [ ] State management patterns (local, global, reactive)
-  - [ ] Common UI patterns (forms, navigation, data tables, modals, notifications)
-  - [ ] Design principles (separation of concerns, composition, reusability)
-  - [ ] Best practices (accessibility, performance, responsive design, error handling) 
+## v0.3.12 UI Design Patterns & Architecture in Templates [Next]
+UI architecture guide `docs/guides/web/web_ui_architecture_guide__t__.md`
+- [ ] Architectural patterns (MVC, MVVM, MVP, Component-based)
+- [ ] State management patterns (local, global, reactive)
+- [ ] Common UI patterns (forms, navigation, data tables, modals, notifications)
+- [ ] Design principles (separation of concerns, composition, reusability)
+- [ ] Best practices (accessibility, performance, responsive design, error handling) 
+
+## v0.3.11b Doc Packages Enhancements [Implemented]
+- [x] Add package metadata file `templates/v0.3/docs/.packages.json` with descriptions, file counts, and categories
+- [x] Enhance `--list` to show package descriptions from metadata
+- [x] Support bulk operations with space-separated packages: `pyve --add web persistence infrastructure`
+- [x] Support bulk operations with space-separated packages: `pyve --remove web persistence`
+- [x] Add `--init --packages <pkg1> <pkg2>` to initialize with specific packages
+- [x] Update help text to reflect space-separated syntax
+
+### Notes
+- **Package metadata**: Created `.packages.json` with descriptions, categories, and file lists for each package
+- **Metadata reading**: Uses Python 3 (fallback to jq) to parse JSON metadata
+- **Enhanced --list**: Shows package descriptions and usage examples
+  ```
+  Available documentation packages:
+  
+    ✓ web
+        Web UI frameworks and APIs - Streamlit, Gradio, Reflex, Marimo, Dash, Flask, FastAPI, Vue, Svelte
+      persistence
+        Databases and data storage - PostgreSQL, MySQL, MongoDB, Redis, data warehouses, cloud databases
+  ```
+- **Bulk add**: `pyve --add web persistence infrastructure` validates all packages first, then adds them
+- **Bulk remove**: `pyve --remove web persistence` removes multiple packages at once
+- **Init with packages**: `pyve --init --packages web persistence` initializes and installs packages in one command
+- **Space-separated syntax**: Consistent Unix-style parameter handling throughout
+- **Version**: Bumped to 0.3.11b
+
+## v0.3.11 Doc Packages [Implemented]
+We're getting way too much documentation in Pyve to blindly install/init all docs for every project. 
+- [x] Change `pyve.sh` to only copy the foundation docs in the first level directories on `--init` or `--upgrade`
+- [x] Add a config file to define which doc packages to include besides the foundation docs, which `--upgrade` will honor
+- [x] Add an `--add` and `--remove` flag to `pyve.sh` to add or remove doc packages (by directory name) and in the config file
+  - Example: `pyve.sh --add web` or `pyve.sh --remove web` adds or removes all the files in the `web` subdirectories under `docs/guides` and `docs/runbooks`
+- [x] Add a `--list` flag to `pyve.sh` to list all available doc packages
+
+### Notes
+- **Foundation docs** (always copied on `--init`):
+  - Top-level guides: `building_guide`, `planning_guide`, `testing_guide`, `dependencies_guide`, `llm_onramp_guide`
+  - All specs: `docs/specs/*.md`
+  - Language-specific: `docs/guides/lang/*` and `docs/specs/lang/*`
+- **Doc packages** (opt-in via `--add`):
+  - `web` - Web UI frameworks and APIs (Streamlit, Flask, FastAPI, Vue, etc.)
+  - `persistence` - Databases and data storage (PostgreSQL, MongoDB, Redis, data warehouses)
+  - `infrastructure` - Cloud platforms and deployment (AWS, GCP, Kubernetes, Fly.io)
+  - `analytics` - BI tools (Looker, Metabase, Superset, Tableau)
+  - `mobile` - Mobile development (placeholder for future)
+- **Config file**: `.pyve/packages.conf` tracks selected packages
+- **Commands**:
+  - `pyve --list` - Show available and installed packages
+  - `pyve --add <package>` - Add package and copy its files
+  - `pyve --remove <package>` - Remove package and delete unmodified files
+- **Upgrade behavior**: `--upgrade` now respects `.pyve/packages.conf` and only upgrades foundation + installed packages
+- **Version**: Bumped to 0.3.11
 
 ## v0.3.10 Python-Friendly Web UI in Templates [Implemented]
 - [x] General UI guide `docs/guides/ui_guide__t__.md`
@@ -29,7 +82,7 @@
   - [x] When to use modern JS frameworks (Vue, Svelte)
   - [x] Styling approaches (Tailwind, Pico CSS, DaisyUI, component libraries)
   - [x] Design tools (Figma, Excalidraw, Balsamiq, Penpot)
-  - [x] Common UI patterns (forms, auth flows, state management, routing)
+  - [x] Common UI patterns (forms, auth flows, state management, routing)      d
 - [x] UI runbooks `docs/runbooks/ui/`
   - [x] Streamlit runbook (components, state, deployment, authentication)
   - [x] Gradio runbook (interfaces, blocks, deployment, sharing)

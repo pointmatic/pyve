@@ -1,0 +1,78 @@
+{
+  "version": "0.3.11b",
+  "packages": {
+    "web": {
+      "name": "Web Development",
+      "description": "Web UI frameworks and APIs - Streamlit, Gradio, Reflex, Marimo, Dash, Flask, FastAPI, Vue, Svelte",
+      "category": "application",
+      "guides": [
+        "web/web_ui_guide__t__.md"
+      ],
+      "runbooks": [
+        "web/streamlit_runbook__t__.md",
+        "web/gradio_runbook__t__.md",
+        "web/reflex_runbook__t__.md",
+        "web/marimo_runbook__t__.md",
+        "web/dash_runbook__t__.md",
+        "web/flask_htmx_runbook__t__.md",
+        "web/fastapi_jinja2_runbook__t__.md",
+        "web/vue_svelte_runbook__t__.md",
+        "web/README__t__.md"
+      ]
+    },
+    "persistence": {
+      "name": "Data Persistence",
+      "description": "Databases and data storage - PostgreSQL, MySQL, MongoDB, Redis, data warehouses, cloud databases",
+      "category": "infrastructure",
+      "guides": [
+        "persistence/persistence_guide__t__.md",
+        "persistence/persistence_operations_guide__t__.md",
+        "persistence/analytics_guide__t__.md"
+      ],
+      "runbooks": [
+        "persistence/postgresql_runbook__t__.md",
+        "persistence/mysql_runbook__t__.md",
+        "persistence/mongodb_runbook__t__.md",
+        "persistence/redis_runbook__t__.md",
+        "persistence/data_warehouse_runbook__t__.md",
+        "persistence/cloud_databases_runbook__t__.md",
+        "persistence/README__t__.md"
+      ]
+    },
+    "infrastructure": {
+      "name": "Infrastructure & Deployment",
+      "description": "Cloud platforms and deployment - AWS, GCP, Kubernetes, Fly.io, Docker, CI/CD",
+      "category": "infrastructure",
+      "guides": [
+        "infrastructure/infrastructure_guide__t__.md"
+      ],
+      "runbooks": [
+        "infrastructure/aws_runbook__t__.md",
+        "infrastructure/gcp_runbook__t__.md",
+        "infrastructure/kubernetes_runbook__t__.md",
+        "infrastructure/fly_io_runbook__t__.md",
+        "infrastructure/README__t__.md"
+      ]
+    },
+    "analytics": {
+      "name": "Analytics & BI",
+      "description": "Business intelligence and analytics tools - Looker, Metabase, Superset, Tableau, data visualization",
+      "category": "application",
+      "guides": [],
+      "runbooks": [
+        "analytics/looker_runbook__t__.md",
+        "analytics/metabase_runbook__t__.md",
+        "analytics/superset_runbook__t__.md",
+        "analytics/tableau_runbook__t__.md",
+        "analytics/README__t__.md"
+      ]
+    },
+    "mobile": {
+      "name": "Mobile Development",
+      "description": "Mobile app development - iOS, Android, React Native, Flutter (placeholder for future)",
+      "category": "application",
+      "guides": [],
+      "runbooks": []
+    }
+  }
+}
