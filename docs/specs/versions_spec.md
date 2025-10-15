@@ -8,7 +8,65 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.3.9 Analytics & BI in Templates [Implemented]
+## v0.3.12 Authentication & Authorization in Doc Templates [Next]
+- [ ] 
+
+## v0.3.11 UI Design Patterns & Architecture in Templates [Next]
+- [ ] UI architecture guide `docs/guides/ui_architecture_guide__t__.md`
+  - [ ] Architectural patterns (MVC, MVVM, MVP, Component-based)
+  - [ ] State management patterns (local, global, reactive)
+  - [ ] Common UI patterns (forms, navigation, data tables, modals, notifications)
+  - [ ] Design principles (separation of concerns, composition, reusability)
+  - [ ] Best practices (accessibility, performance, responsive design, error handling) 
+
+## v0.3.10 Python-Friendly Web UI in Templates [Implemented]
+- [x] General UI guide `docs/guides/ui_guide__t__.md`
+  - [x] Decision framework by use case (prototype, dashboard, internal tool, customer-facing app)
+  - [x] Python-native frameworks (Streamlit, Gradio, Reflex, Marimo, Dash, NiceGUI)
+  - [x] Jupyter-based solutions (Marimo, Solara, Voila)
+  - [x] Python web frameworks + templating (Flask, FastAPI, Django brief mention)
+  - [x] HTMX pattern (server-driven interactivity with Python backends)
+  - [x] When to use modern JS frameworks (Vue, Svelte)
+  - [x] Styling approaches (Tailwind, Pico CSS, DaisyUI, component libraries)
+  - [x] Design tools (Figma, Excalidraw, Balsamiq, Penpot)
+  - [x] Common UI patterns (forms, auth flows, state management, routing)
+- [x] UI runbooks `docs/runbooks/ui/`
+  - [x] Streamlit runbook (components, state, deployment, authentication)
+  - [x] Gradio runbook (interfaces, blocks, deployment, sharing)
+  - [x] Reflex runbook (components, state management, events, deployment)
+  - [x] Marimo runbook (reactive notebooks, UI elements, deployment)
+  - [x] Dash runbook (callbacks, components, deployment)
+  - [x] Flask + HTMX runbook (templates, HTMX patterns, deployment)
+  - [x] FastAPI + Jinja2 runbook (templates, async patterns, deployment)
+  - [x] Vue/Svelte runbook (brief, for when Python isn't enough)
+- [x] Create README for UI runbooks directory
+
+### Notes
+- Created `ui_guide__t__.md` (850+ lines) covering:
+  - Decision framework by use case (prototype → dashboard → internal tool → customer app)
+  - Python-native frameworks: Streamlit (data apps), Gradio (ML demos), Reflex (full apps), Marimo (reactive notebooks), Dash (analytics), NiceGUI (simple tools)
+  - Jupyter-based solutions: Marimo, Solara, Voila
+  - Python web frameworks: Flask + Jinja2, FastAPI + Jinja2, Django (brief mention)
+  - HTMX pattern for server-driven interactivity without heavy JS
+  - Modern JS frameworks (Vue, Svelte) - when to reach for them
+  - Styling approaches: Tailwind CSS, Pico CSS, DaisyUI, component libraries
+  - Design tools: Figma, Excalidraw, Balsamiq, Penpot
+  - Common UI patterns: forms, authentication, state management, routing, data tables, real-time updates
+  - Deployment considerations for each framework type
+- Created 8 UI runbooks (2,400+ lines total):
+  - **Streamlit Runbook** (600+ lines): Components, state management, layouts, forms, caching, multi-page apps, authentication, deployment (Community Cloud, Docker)
+  - **Gradio Runbook** (250+ lines): Interface API, Blocks API, ML model examples, sharing, deployment (Hugging Face Spaces)
+  - **Reflex Runbook** (250+ lines): State management, components, forms, routing, deployment
+  - **Marimo Runbook** (200+ lines): Reactive notebooks, UI elements, dataframes, deployment as app
+  - **Dash Runbook** (250+ lines): Callbacks, components, multi-page apps, deployment
+  - **Flask + HTMX Runbook** (400+ lines): HTMX integration, forms, delete with confirmation, search with debounce, infinite scroll, authentication, deployment (Gunicorn, Docker)
+  - **FastAPI + Jinja2 Runbook** (350+ lines): Templates, forms, HTMX integration, API endpoints, authentication, WebSockets, background tasks, deployment (Uvicorn, Docker)
+  - **Vue/Svelte Runbook** (300+ lines): Brief coverage for when Python isn't enough, basic components, integration with Python backends, state management, routing, deployment
+- Created README (70+ lines) explaining runbook structure and quick selection guide
+- Focus on Python-first solutions, minimal JavaScript complexity
+- Practical, working examples throughout
+
+## v0.3.9 Analytics & BI in Doc Templates [Implemented]
 - [x] General guidelines for analytics `docs/guides/analytics_guide__t__.md`
   - [x] Choosing BI tools (self-hosted vs cloud, open-source vs commercial)
   - [x] Architecture patterns (embedded analytics, self-service, centralized)
