@@ -24,11 +24,11 @@ git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh --install; pyve
 
 In a single shell command (`pyve --init`), Pyve will:
 
-- **Flexible Python Version Management**: Use either asdf or pyenv to set a specific Python version (default 3.13.7, but customizable)
-- **Virtual Environment Creation**: Create a Python virtual environment in your project directory
-- **Auto-activation**: Configure direnv to automatically activate/deactivate your environment when you enter/exit the directory
-- **Environment Variable Management**: Create a secure .env file for storing environment variables (with chmod 600 permissions)
-- **Git Integration**: Automatically add appropriate patterns to .gitignore
+- **Run asdf or pyenv**: No need to interact directly with `asdf``pyenv` tools anymore to install Python versions set a specific Python version. Pyve defaults to a configured stable Python version (usually the latest), but it is customizable.
+- **Create a virtual environment**: Yes, instead of having to set up and manually activate or deactivate your virtual environment, Pyve does it for you.
+- **Auto-activate and auto-deactivate**: Using `direnv`, Pyve configures your project to automatically activate/deactivate your environment when you enter/exit the project directory
+- **Create/copy .env**: Yet another little detail, but Pyve will set up an empty secrets/environment variable file or copy your default secrets file into your project directory. The secure `.env` file has `chmod 600` permissions (read and write for owner only)
+- **Add .gitignore**: Automatically add appropriate patterns to .gitignore, including your `.env` file so your secrets are not committed to your repository. 
 - **Foundation Documenation**: Copy foundation documentation (great for any project) from Pyve template library into your project directory
 
 ### Purge

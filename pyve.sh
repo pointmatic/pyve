@@ -11,7 +11,7 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
 # Description:
 # There are thirteen functions:
 #   1. --init / -i: Initialize the Python virtual environment 
@@ -71,6 +71,7 @@ USE_PYENV="false"
 DEFAULT_VENV_DIR_NAME=".venv" 
 #VENV_DIR_NAME is based on a parameter passed to the script, decided in init_parse_args()
 ENV_FILE_NAME=".env"
+LOCAL_ENV_FILE="$HOME/.local/.env"
 DIRENV_FILE_NAME=".envrc"
 GIT_DIR_NAME=".git"
 GITIGNORE_FILE_NAME=".gitignore"
@@ -142,11 +143,12 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
     echo "             Optional --python-version <ver> to select a specific Python version"
+    echo "             Optional --local-env to copy from ~/.local/.env instead of creating empty .env"
     echo "             Optional --packages <pkg1> <pkg2> ... to install doc packages during init"
     echo "             Note: Only foundation docs are copied on init (v0.3.11+)"
     echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
@@ -364,10 +366,19 @@ function init_dotenv() {
     if [[ -f "$ENV_FILE_NAME" ]]; then
         echo "\nDotenv file already exists! (found $ENV_FILE_NAME) \nNo change."
     else
-        # Create .env file and set permissions
-        touch $ENV_FILE_NAME
-        chmod 600 $ENV_FILE_NAME
-        echo "\nCreated '$ENV_FILE_NAME' file with limited permissions (chmod 600)."
+        # Create .env file - either copy from ~/.local/.env or create empty
+        if [[ "$USE_LOCAL_ENV" == "true" ]] && [[ -f "$LOCAL_ENV_FILE" ]]; then
+            cp "$LOCAL_ENV_FILE" "$ENV_FILE_NAME"
+            chmod 600 "$ENV_FILE_NAME"
+            echo "\nCopied '$LOCAL_ENV_FILE' to '$ENV_FILE_NAME' with limited permissions (chmod 600)."
+        else
+            if [[ "$USE_LOCAL_ENV" == "true" ]]; then
+                echo "\nWARNING: --local-env specified but '$LOCAL_ENV_FILE' not found. Creating empty .env instead."
+            fi
+            touch $ENV_FILE_NAME
+            chmod 600 $ENV_FILE_NAME
+            echo "\nCreated '$ENV_FILE_NAME' file with limited permissions (chmod 600)."
+        fi
         append_pattern_to_gitignore "$ENV_FILE_NAME"
     fi
 }
@@ -527,8 +538,10 @@ function validate_python_version() {
 
 function init_parse_args() {
     # v0.3.11b: Support --packages flag
+    # v0.3.14: Support --local-env flag
     VENV_DIR_NAME="$DEFAULT_VENV_DIR_NAME"
     PYTHON_VERSION="$DEFAULT_PYTHON_VERSION"
+    USE_LOCAL_ENV="false"
     INIT_PACKAGES=()
     
     local i=2  # Start from second arg (first is --init)
@@ -544,6 +557,9 @@ function init_parse_args() {
             PYTHON_VERSION="${!i}"
             validate_python_version "$PYTHON_VERSION"
             echo "\nUsing the Python version you provided: $PYTHON_VERSION"
+        elif [[ "$arg" == "--local-env" ]]; then
+            USE_LOCAL_ENV="true"
+            echo "\nWill use local env template from ~/.local/.env (if available)"
         elif [[ "$arg" == "--packages" ]]; then
             # Collect all remaining args as packages
             i=$((i+1))
@@ -563,7 +579,7 @@ function init_parse_args() {
             echo "\nUsing the Venv directory you provided: $VENV_DIR_NAME"
         else
             echo "\nERROR: Unknown flag: $arg"
-            echo "Usage: pyve --init [<directory_name>] [--python-version <version>] [--packages <pkg1> <pkg2> ...]"
+            echo "Usage: pyve --init [<directory_name>] [--python-version <version>] [--local-env] [--packages <pkg1> <pkg2> ...]"
             exit 1
         fi
         
@@ -1368,6 +1384,18 @@ function install_self() {
         copy_latest_templates_to_home "$SOURCE_PATH"
     fi
 
+    # v0.3.14: Create ~/.local/.env template if it doesn't exist
+    if [[ ! -f "$LOCAL_ENV_FILE" ]]; then
+        mkdir -p "$(dirname "$LOCAL_ENV_FILE")" 2>/dev/null || true
+        touch "$LOCAL_ENV_FILE"
+        chmod 600 "$LOCAL_ENV_FILE"
+        echo "\nCreated empty env template at $LOCAL_ENV_FILE (chmod 600)."
+        echo "You can add your default environment variables to this file."
+        echo "Use 'pyve --init --local-env' to copy it to new projects."
+    else
+        echo "\nEnv template already exists at $LOCAL_ENV_FILE."
+    fi
+
     echo "\nInstallation of Pyve $VERSION complete. You can now run 'pyve --help' from any directory."
 }
 
@@ -1396,6 +1424,16 @@ function uninstall_self() {
     if [[ -d "$PYVE_HOME" ]]; then
         echo "Removing $PYVE_HOME ..."
         rm -rf "$PYVE_HOME"
+    fi
+
+    # v0.3.14: Remove ~/.local/.env if it's empty
+    if [[ -f "$LOCAL_ENV_FILE" ]]; then
+        if [[ ! -s "$LOCAL_ENV_FILE" ]]; then
+            echo "Removing empty env template: $LOCAL_ENV_FILE"
+            rm -f "$LOCAL_ENV_FILE"
+        else
+            echo "Keeping non-empty env template: $LOCAL_ENV_FILE (delete manually if desired)"
+        fi
     fi
 
     echo "\nUninstall complete. Note: If $TARGET_BIN_DIR was added to your PATH via ~/.zprofile, that line remains; you can remove it manually if desired."

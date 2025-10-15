@@ -8,6 +8,26 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.14 Local .env support [Implemented]
+Focus: User-defined environment variable template
+- [x] Support user-defined secrets file in `~/.local/.env`
+- [x] Support copying `~/.local/.env` to project directory on init with `--local-env` flag
+- [x] Create `~/.local/.env` (empty, chmod 600) during `--install`
+- [x] Delete `~/.local/.env` (if empty) during `--uninstall`
+- [x] Update help text and usage documentation
+- [x] Update root README
+
+### Notes
+- **Feature**: `--local-env` flag for `pyve --init`
+  - Default behavior: Creates empty `.env` file (chmod 600)
+  - With `--local-env`: Copies from `~/.local/.env` if it exists
+  - Falls back to empty file with warning if template not found
+- **Install behavior**: Creates empty `~/.local/.env` (chmod 600) if it doesn't exist
+- **Uninstall behavior**: Removes `~/.local/.env` only if empty, keeps non-empty files
+- **Use case**: Developers can maintain a master `.env` template with common secrets/environment variables
+- **Security**: All `.env` files created with chmod 600 (owner read/write only)
+- **Version**: Added in pyve.sh v0.3.14 (internal version tracking)
+
 ## v0.4.13 LLM Q&A Phase 16 (Security Governance) [Implemented]
 Focus: Security governance for secure Quality
 - [x] Split from archived Phase 3 (llm_qa_phase11-16_archive__t__.md)
