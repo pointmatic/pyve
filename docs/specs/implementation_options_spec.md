@@ -23,6 +23,7 @@
   - Syntax check passes: `zsh -n pyve.sh`; smoke tests cover main flows.
   - User-facing output is concise; final `direnv allow` message appears last; template copy noise is suppressed with logs in `./.pyve/status/init_copy.log`.
 
+<!-- Phase 0: Project Basics -->
 ## Quality
 - Quality Level: prototype
 - Guidance (apply based on chosen level):
@@ -39,53 +40,64 @@
     - Release: bump `VERSION` in `pyve.sh`; install verifies expected version via `pyve --version`.
   - Promotion to Production would add: automated tests in CI, wider OS/arch matrix (macOS + Linux, x86_64/arm64), stricter error handling/observability, and release automation.
 
+<!-- Phase 0: Project Basics -->
 ## Option Matrix
 Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 
+<!-- Phase 0: Project Basics -->
 ### Languages & Runtimes
 - Implementation language: Z shell (zsh) script; no bash target at this time.
 - Supported OS/arch: macOS (Apple Silicon and Intel) where zsh is the default shell.
 - Python stance: version-agnostic. Pyve orchestrates local version via `asdf` (or `pyenv`) and `venv`; a practical default is provided (`DEFAULT_PYTHON_VERSION` in `pyve.sh`) but not enforced.
 - Rationale: single-file shell approach minimizes dependencies and aligns with solo-maintainer constraints.
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ### Frameworks (web/CLI/worker)
 - CLI model via single Z shell script; no external CLI frameworks.
 - Rationale: minimal dependencies and straightforward installation.
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ### Packaging & Distribution
 - Form factor: single Z shell script (`pyve.sh`) installed to `~/.local/bin` with a `pyve` symlink.
 - Distribution: Git repository source; no Homebrew/PyPI package at this time.
 - Versioning: `VERSION` constant in `pyve.sh`; changes logged in `docs/specs/versions_spec.md`.
 - Install behavior: robust handoff to source repo when needed; identical-target copies are skipped but permissions/symlink ensured.
 
+<!-- Phase 1: Core Technical -->
 ### Data & State
 - No databases or services.
 - Local filesystem state only:
   - Project: `./.pyve/version`, `./.pyve/status/*` (init/purge logs and markers).
   - User cache: `~/.pyve/templates/v{major.minor}` stored immutably per version; `~/.pyve/source_path` recorded.
 
+<!-- Phase 0: Project Basics (deployment decision) | Phase 2: Production Readiness (details) -->
 ### Infrastructure & Hosting
 - Not applicable; local CLI tool with no hosted components.
 
+<!-- Phase 2: Production Readiness | Phase 3: Secure/Compliance -->
 ### Authentication & Security
 - No auth flows. Security stance:
   - Avoid destructive actions without explicit messaging; skip or fail safe.
   - Do not handle secrets beyond encouraging `.env` usage; never exfiltrate.
 
+<!-- Phase 2: Production Readiness -->
 ### Observability
 - CLI output only; concise messages with the `direnv allow` reminder printed last on `--init`.
 - Template copy runs quietly with details logged to `./.pyve/status/init_copy.log`.
 - Exit codes indicate success/failure; no metrics or tracing.
 
+<!-- Phase 1: Core Technical -->
 ### Protocols & Integration
 - No network protocols or integrations.
 
+<!-- Phase 1: Core Technical -->
 ### Tooling
 - Syntax check: `zsh -n pyve.sh`.
 - Smoke tests: exercise `--install`, `--init` (fresh/re-run), `--purge`, `--version`, `--config`.
 - Docs: version history and notes in `docs/specs/versions_spec.md`; decisions in `docs/specs/decisions_spec.md`; project docs in `docs/guides/` and `docs/specs/`.
 - Future CI: containerized tests (e.g., Podman + Alpine with zsh) to run targeted test scripts that exercise features/options.
 
+<!-- Template: Copy/paste this section to evaluate specific options in detail -->
 ## Candidate Option (Template)
 - Summary
 - Pros
@@ -95,9 +107,11 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 - Estimated effort
 - References
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ## Decision
 - Selected option(s) per domain with rationale
 - Deferred choices and triggers to revisit
 
+<!-- Phase 1: Core Technical -->
 ## Impact
 - Consequences to code structure, operations, cost, and team processes

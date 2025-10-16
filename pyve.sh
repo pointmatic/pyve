@@ -59,7 +59,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.4.18"
+VERSION="0.4.19"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -1041,6 +1041,12 @@ function list_template_files() {
     # Foundation docs (top-level guides)
     find "$SRC_DIR/docs/guides" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
     
+    # v0.4.19: Context docs (always included in foundation)
+    find "$SRC_DIR/docs/context" -type f -name "*__t__*.md" 2>/dev/null
+    
+    # v0.4.19: LLM Q&A docs (always included in foundation)
+    find "$SRC_DIR/docs/guides/llm_qa" -type f -name "*__t__*.md" 2>/dev/null
+    
     # Specs (always included)
     find "$SRC_DIR/docs/specs" -maxdepth 1 -type f -name "*__t__*.md" 2>/dev/null
     
@@ -1051,7 +1057,7 @@ function list_template_files() {
     # Package-specific docs (only if mode is 'all' or specific package)
     if [[ "$MODE" == "all" ]]; then
         # Include all packages
-        find "$SRC_DIR/docs/guides" -mindepth 2 -type f -name "*__t__*.md" ! -path "*/lang/*" 2>/dev/null
+        find "$SRC_DIR/docs/guides" -mindepth 2 -type f -name "*__t__*.md" ! -path "*/lang/*" ! -path "*/llm_qa/*" 2>/dev/null
         find "$SRC_DIR/docs/runbooks" -type f -name "*__t__*.md" 2>/dev/null
     elif [[ "$MODE" != "foundation" ]]; then
         # Include specific package

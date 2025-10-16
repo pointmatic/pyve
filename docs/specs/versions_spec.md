@@ -8,6 +8,46 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.19 Include Context, LLM Q&A in Foundation, various minor doc updates [Implemented]
+- [x] Add `docs/context/` to foundation template files
+- [x] Add `docs/guides/llm_qa/` to foundation template files
+- [x] Exclude `llm_qa` from package-specific search to avoid duplication
+- [x] Add missing phase comments to `implementation_options_spec__t__.md`
+- [x] Update `CONTRIBUTING.md` to be language-agnostic
+- [x] Add Configuration, Development, Security, and Acknowledgments sections to `README.md`
+
+### Notes
+- **Problem:** New directories added in v0.4.15 (`docs/context/` and `docs/guides/llm_qa/`) were not being copied during `--init`
+- **Root cause:** `list_template_files()` function didn't include these directories in foundation search
+- **Solution:** Explicitly add both directories to foundation template search
+- **Implementation:**
+  - Added `find "$SRC_DIR/docs/context" -type f -name "*__t__*.md"` to foundation search
+  - Added `find "$SRC_DIR/docs/guides/llm_qa" -type f -name "*__t__*.md"` to foundation search
+  - Excluded `llm_qa` from package wildcard search (line 1060: `! -path "*/llm_qa/*"`) to prevent duplication
+- **Files now included in foundation:**
+  - `docs/context/project_context__t__.md` (Project Context template)
+  - `docs/guides/llm_qa/README__t__.md` (LLM Q&A overview)
+  - `docs/guides/llm_qa/project_context_questions__t__.md` (Project Context Q&A)
+  - `docs/guides/llm_qa/llm_qa_principles__t__.md` (Q&A principles)
+  - All phase Q&A files (phase0-16)
+- **Rationale:** Project Context and LLM Q&A are core to the pyve workflow, not optional packages
+- **Phase comment consistency fixes:**
+  - Added `<!-- Phase 0: Project Basics -->` before `## Option Matrix` heading
+  - Added `<!-- Template: Copy/paste this section to evaluate specific options in detail -->` before `## Candidate Option (Template)`
+  - Added `<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->` before `## Decision`
+  - Added `<!-- Phase 1: Core Technical -->` before `## Impact`
+  - Ensures all major sections have phase comments for LLM guidance
+- **Documentation improvements:**
+  - Updated `CONTRIBUTING.md` to be language-agnostic (removed Python-specific examples, generalized setup/testing instructions)
+  - Added reference to Project Context Q&A in Planning section
+  - Updated README stub guidance to be stack-agnostic
+  - Added `README.md` sections to match template structure:
+    - **Configuration**: Environment variables, configuration files, CLI flags
+    - **Development**: Contributing guide, key documentation links, LLM collaboration guidance
+    - **Security**: File safety (non-destructive behavior), secrets management, development safety
+    - **Acknowledgments**: Credits to communities and methodologies
+- **Version bumped:** pyve.sh v0.4.18 → v0.4.19
+
 ## v0.4.18 Auto-gitignore .pyve Directory [Implemented]
 - [x] Add `.pyve` to `.gitignore` automatically during `--init`
 - [x] Remove `.pyve` from `.gitignore` during `--purge`

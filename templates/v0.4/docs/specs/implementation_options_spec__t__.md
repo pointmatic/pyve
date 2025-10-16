@@ -17,6 +17,7 @@
 - Entry/Exit criteria:
   - Define minimum gates (tests, lint, coverage, reviews, security scans) per level.
 
+<!-- Phase 0: Project Basics -->
 ## Option Matrix
 Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 
@@ -79,6 +80,7 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 - Candidates: <dependency managers, linters, formatters, test frameworks>
 - Considerations: consistency, automation, local/CI parity
 
+<!-- Template: Copy/paste this section to evaluate specific options in detail -->
 ## Candidate Option (Template)
 - Summary
 - Pros
@@ -88,9 +90,11 @@ Evaluate candidates for each domain. Capture tradeoffs and selection rationale.
 - Estimated effort
 - References
 
+<!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ## Decision
 - Selected option(s) per domain with rationale
 - Deferred choices and triggers to revisit
 
+<!-- Phase 1: Core Technical -->
 ## Impact
 - Consequences to code structure, operations, cost, and team processes

@@ -216,6 +216,45 @@ pyve --remove <package> [pkg2 ...]    # Remove one or more documentation package
 pyve --init --local-env               # Initialize with .env copied from ~/.local/.env template
 ```
 
+## Configuration
+
+Pyve has minimal configuration requirements:
+
+### Environment Variables
+- **Project-specific**: Use `.env` file in your project root for secrets and environment variables
+- **User template**: `~/.local/.env` serves as a template that can be copied to new projects with `--init --local-env`
+
+### Configuration Files
+- **`~/.pyve/source_path`**: Records pyve source repository location for install handoff
+- **`~/.pyve/templates/`**: Template cache directory (organized by version)
+- **`.pyve/version`**: Tracks installed template version (per project, never committed)
+- **`.pyve/status/`**: Operation logs (init, upgrade, purge timestamps)
+- **`.pyve/packages.conf`**: Tracks installed documentation packages (per project)
+
+### CLI Flags
+See `pyve --help` for all available commands and options.
+
+## Development
+
+### Contributing
+Follow the contribution process in `CONTRIBUTING.md`.
+
+### Key Documentation
+- **Project context**: `docs/context/project_context.md` - Business and organizational context for Pyve
+- **Dependency policy**: `docs/guides/dependencies_guide.md` - Version management and dependency practices
+- **Testing guidelines**: `docs/guides/testing_guide.md` - Testing strategies and commands
+- **Planning/design**: `docs/guides/planning_guide.md`, `docs/specs/technical_design_spec.md` - Feature planning and design process
+- **Decision log**: `docs/specs/decisions_spec.md` - Architectural and technical decisions with rationale
+- **Version history**: `docs/specs/versions_spec.md` - Detailed change tracking and release notes
+- **Codebase spec**: `docs/specs/codebase_spec.md` - Components, runtime, build, and quality standards
+- **Implementation options**: `docs/specs/implementation_options_spec.md` - Technology choices and trade-offs
+
+### LLM Collaboration
+If working with an LLM on Pyve development:
+- Start with `docs/guides/llm_onramp_guide.md` for reading order and operating rules
+- Use `docs/guides/llm_qa/` for structured Q&A sessions across development phases
+- Begin with Project Context Q&A (`docs/guides/llm_qa/project_context_questions.md`) before technical work
+
 ## Troubleshooting
 
 The script performs prerequisite checks before initialization to ensure all required tools are available. If any tool is missing, it will provide an error message indicating what needs to be installed.
@@ -247,6 +286,28 @@ This removes `$HOME/.local/bin/pyve` and `$HOME/.local/bin/pyve.sh`. If `$HOME/.
    - bash
    - Linux
 
+## Security
+
+### File Safety
+Pyve is designed to be gentle with your files:
+- **Non-destructive by default**: Won't overwrite files that differ from templates
+- **Smart upgrades**: Preserves modified files and creates suffixed copies (e.g., `filename__t__v0.4.md`) for manual review
+- **Interactive prompts**: Asks for confirmation before making changes when conflicts are detected
+- **Explicit permissions**: Like direnv, requires `direnv allow` before activation
+
+### Secrets Management
+- **Never commit secrets**: Pyve automatically adds `.env` and `.pyve/` to `.gitignore`
+- **Restricted permissions**: `.env` files are created with `chmod 600` (owner read/write only)
+- **Local state protection**: `~/.local/.env` template also has `chmod 600` permissions
+- **Least-privilege**: Follow least-privilege principles for credentials and tokens
+
+### Development Safety
+Scripts that modify local files carry inherent risk. Pyve mitigates this by:
+- Checking for existing files before creating new ones
+- Preserving user modifications during upgrades
+- Providing clear status messages about what will be changed
+- Logging detailed operations to `.pyve/status/` for audit trails
+
 ## License
 
 This project is licensed under the Mozilla Public License Version 2.0 - see the LICENSE file for details.
@@ -254,4 +315,10 @@ This project is licensed under the Mozilla Public License Version 2.0 - see the 
 ## Copyright
 
 Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+
+## Acknowledgments
+
+- Built with inspiration from modern Python development workflows
+- Thanks to the asdf, pyenv, and direnv communities for their excellent tools
+- Documentation structure influenced by design thinking and LLM collaboration patterns
 
