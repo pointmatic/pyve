@@ -8,6 +8,108 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.6 Smart Purge with Modified File Preservation [Implemented]
+- [x] Update `--purge` to delete all Pyve artifacts (Python env + docs + .pyve/)
+- [x] Preserve modified files in `docs-old-pyve/` directory
+- [x] Delete unmodified template files
+- [x] Handle edge cases (missing templates, custom files, Pyve-owned vs user-owned)
+
+### Notes
+- **Problem:** `--purge` only deletes Python environment, leaves `.pyve/` and `docs/` intact. This is confusing—purge should mean "remove Pyve from this project completely."
+- **Current behavior:**
+  ```bash
+  pyve --purge
+  # Deletes: .venv, .envrc, .env, .tool-versions
+  # Keeps: .pyve/, docs/
+  # Result: pyve --upgrade still works (confusing!)
+  ```
+- **Desired behavior:**
+  ```bash
+  pyve --purge
+  # Deletes: Python env + .pyve/ + unmodified docs
+  # Preserves: Modified docs → docs-old-pyve/
+  # Result: Project is clean, user content safe
+  ```
+- **Solution:** Smart purge with three-way comparison:
+  1. **Delete Python environment** (.venv, .envrc, .env, .tool-versions)
+  2. **For each file in docs/**:
+     - If identical to template → delete
+     - If modified by user → move to `docs-old-pyve/` (preserve directory structure)
+     - If custom file (not in templates) → move to `docs-old-pyve/`
+  3. **Delete empty docs/ directory**
+  4. **Delete .pyve/ directory**
+  5. **Clean .gitignore**
+- **Edge cases:**
+  - **No template version found** (e.g., v0.4 deleted by cleanup): Move entire `docs/` → `docs-old-pyve/` (can't compare, preserve everything)
+  - **User added custom files**: Move to `docs-old-pyve/` (preserve user content)
+  - **Pyve-owned vs user-owned** (v0.5.1 logic):
+    - Pyve-owned files (guides): Delete if matches template, preserve if modified
+    - User-owned files (specs): Always preserve (assume modified)
+- **Implementation:**
+  ```bash
+  function purge_templates() {
+      local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/$PROJECT_VERSION"
+      local PRESERVED=0
+      local DELETED=0
+      
+      if [[ ! -d "$TEMPLATE_DIR" ]]; then
+          # Can't compare, preserve everything
+          if [[ -d ./docs ]]; then
+              echo "\nTemplate version not found. Preserving all docs..."
+              mv ./docs ./docs-old-pyve
+              PRESERVED=$(find ./docs-old-pyve -type f | wc -l)
+          fi
+      else
+          # Smart comparison
+          echo "\nChecking documentation files for modifications..."
+          mkdir -p ./docs-old-pyve
+          
+          for FILE in $(find ./docs -type f 2>/dev/null); do
+              local TEMPLATE_FILE=$(find "$TEMPLATE_DIR" -name "$(basename "$FILE" | sed 's/__t__.*//')__t__*" 2>/dev/null | head -1)
+              
+              if [[ -n "$TEMPLATE_FILE" ]] && cmp -s "$FILE" "$TEMPLATE_FILE"; then
+                  # Identical to template, delete
+                  echo "  Deleted: $FILE (matches template)"
+                  rm -f "$FILE"
+                  DELETED=$((DELETED+1))
+              else
+                  # Modified or custom, preserve
+                  local REL_PATH="${FILE#./docs/}"
+                  local DEST_DIR="./docs-old-pyve/$(dirname "$REL_PATH")"
+                  mkdir -p "$DEST_DIR"
+                  mv "$FILE" "$DEST_DIR/"
+                  echo "  Preserved: $FILE → docs-old-pyve/$REL_PATH"
+                  PRESERVED=$((PRESERVED+1))
+              fi
+          done
+          
+          # Delete empty docs/ directory
+          find ./docs -type d -empty -delete 2>/dev/null
+          [[ -d ./docs ]] && rmdir ./docs 2>/dev/null
+      fi
+      
+      echo "\nDocumentation cleanup complete:"
+      echo "  Deleted: $DELETED files (matched templates)"
+      echo "  Preserved: $PRESERVED files (modified/custom)"
+      [[ $PRESERVED -gt 0 ]] && echo "\nModified files saved in docs-old-pyve/"
+  }
+  
+  # In purge_main(), after deleting Python env:
+  purge_templates
+  
+  # Delete .pyve/ directory
+  if [[ -d ./.pyve ]]; then
+      rm -rf ./.pyve
+      echo "\nDeleted .pyve/ directory"
+  fi
+  ```
+- **Rationale:**
+  - Semantically correct: purge = remove Pyve completely
+  - Safe: zero data loss for user modifications
+  - Clear: project is either using Pyve or not, no ambiguity
+  - Reuses existing smart comparison logic from upgrade
+- **Version bumped:** pyve.sh v0.5.5 → v0.5.6
+
 ## v0.5.5 Fix Empty Basename Bug in Cleanup [Implemented]
 - [x] Add validation check before printing/removing in `cleanup_old_templates()`
 - [x] Prevent empty "Removing:" line when no versions to clean

@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.5"
+VERSION="0.5.6"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -372,8 +372,17 @@ function purge() {
 
     echo "\nAll artifacts of the Python virtual environment have been deleted.\n"
 
-    # v0.3.3: Also purge Pyve documentation templates from this repo if identical to recorded template version
+    # v0.5.6: Smart purge of Pyve documentation (delete matching, preserve modified)
     purge_templates "$@"
+    
+    # v0.5.6: Delete .pyve/ directory to complete purge
+    if [[ -d ./.pyve ]]; then
+        echo "\nDeleting .pyve/ directory..."
+        rm -rf ./.pyve
+        echo "Deleted .pyve/ directory"
+    fi
+    
+    echo "\nPyve purge complete. Project is clean of all Pyve artifacts."
 }
 
 # Helper: source user shell profiles to ensure version managers are on PATH
@@ -1407,6 +1416,7 @@ function write_purge_status() {
     echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) pyve --purge $@" > ./.pyve/status/purge
 }
 
+# v0.5.6: Smart purge with modified file preservation
 function purge_templates() {
     # Enforce status cleanliness at the beginning (spec requirement)
     purge_status_fail_if_any_present
@@ -1414,38 +1424,73 @@ function purge_templates() {
     local MM
     MM=$(read_project_major_minor)
     if [[ -z "$MM" ]]; then
-        echo "\nWARNING: Could not determine project template version from ./.pyve/version. Skipping template purge."
+        # No version file, preserve everything if docs exists
+        if [[ -d ./docs ]]; then
+            echo "\nNo .pyve/version found. Preserving all documentation..."
+            mv ./docs ./docs-old-pyve
+            local PRESERVED=$(find ./docs-old-pyve -type f 2>/dev/null | wc -l | tr -d ' ')
+            echo "Preserved: $PRESERVED files → docs-old-pyve/"
+        fi
         return 0
     fi
+    
     local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/v$MM"
     if [[ ! -d "$TEMPLATE_DIR" ]]; then
-        echo "\nWARNING: Template directory '$TEMPLATE_DIR' not found. Skipping template purge."
+        # Template version not found, preserve everything
+        if [[ -d ./docs ]]; then
+            echo "\nTemplate version v$MM not found. Preserving all documentation..."
+            mv ./docs ./docs-old-pyve
+            local PRESERVED=$(find ./docs-old-pyve -type f 2>/dev/null | wc -l | tr -d ' ')
+            echo "Preserved: $PRESERVED files → docs-old-pyve/"
+        fi
         return 0
     fi
 
-    local REMOVED=0
-    local SKIPPED_MODIFIED=0
+    # Smart comparison: delete matching, preserve modified/custom
+    echo "\nChecking documentation files for modifications..."
+    local DELETED=0
+    local PRESERVED=0
     local FILE
-    # Use same mapping as init_copy_templates: iterate template files and compute target paths
-    while IFS= read -r FILE; do
-        [[ -z "$FILE" ]] && continue
-        local DEST_REL
-        DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
-        local DEST_ABS="./$DEST_REL"
-        if [[ -f "$DEST_ABS" ]]; then
-            if cmp -s "$FILE" "$DEST_ABS"; then
-                rm -f "$DEST_ABS"
-                REMOVED=$((REMOVED+1))
+    
+    # Iterate through all files in docs/
+    if [[ -d ./docs ]]; then
+        while IFS= read -r FILE; do
+            [[ -z "$FILE" ]] && continue
+            
+            # Find corresponding template file
+            local BASENAME=$(basename "$FILE")
+            local TEMPLATE_FILE=""
+            
+            # Search for template file (with __t__ suffix)
+            TEMPLATE_FILE=$(find "$TEMPLATE_DIR" -type f -name "*${BASENAME%.*}__t__*.${BASENAME##*.}" 2>/dev/null | head -1)
+            
+            if [[ -n "$TEMPLATE_FILE" ]] && cmp -s "$FILE" "$TEMPLATE_FILE"; then
+                # Identical to template, delete
+                echo "  Deleted: $FILE (matches template)"
+                rm -f "$FILE"
+                DELETED=$((DELETED+1))
             else
-                echo "Warning: Not removing modified file: $DEST_REL"
-                SKIPPED_MODIFIED=$((SKIPPED_MODIFIED+1))
+                # Modified or custom, preserve
+                local REL_PATH="${FILE#./docs/}"
+                local DEST_DIR="./docs-old-pyve/$(dirname "$REL_PATH")"
+                mkdir -p "$DEST_DIR"
+                mv "$FILE" "$DEST_DIR/"
+                echo "  Preserved: $FILE → docs-old-pyve/$REL_PATH"
+                PRESERVED=$((PRESERVED+1))
             fi
-        fi
-    done < <(list_template_files "$TEMPLATE_DIR")
+        done < <(find ./docs -type f 2>/dev/null)
+        
+        # Delete empty docs/ directories
+        find ./docs -type d -empty -delete 2>/dev/null
+        [[ -d ./docs ]] && rmdir ./docs 2>/dev/null || true
+    fi
 
     write_purge_status "$@"
 
-    echo "\nTemplate purge complete. Removed: $REMOVED; Skipped (modified): $SKIPPED_MODIFIED."
+    echo "\nDocumentation cleanup complete:"
+    echo "  Deleted: $DELETED files (matched templates)"
+    echo "  Preserved: $PRESERVED files (modified/custom)"
+    [[ $PRESERVED -gt 0 ]] && echo "\nModified files saved in docs-old-pyve/"
 }
 
 # Install this script into $HOME/.local/bin and create a 'pyve' symlink
