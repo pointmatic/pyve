@@ -3,3 +3,4 @@
 .tool-versions
 .venv
 .envrc
+.pyve
