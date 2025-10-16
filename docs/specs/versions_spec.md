@@ -8,7 +8,65 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.4.16 Repair Command for Old Projects [Implemented]
+## v0.4.18 Auto-gitignore .pyve Directory [Implemented]
+- [x] Add `.pyve` to `.gitignore` automatically during `--init`
+- [x] Remove `.pyve` from `.gitignore` during `--purge`
+
+### Notes
+- **Problem:** `.pyve/` directory contains local state (version, status files, logs) that should never be committed to version control
+- **Solution:** Automatically add `.pyve` to `.gitignore` during initialization
+- **Implementation:**
+  - `init_misc_artifacts()`: Adds `.pyve` pattern to `.gitignore` (or creates `.gitignore` if missing)
+  - `purge_misc_artifacts()`: Removes `.pyve` pattern from `.gitignore` during cleanup
+  - Uses existing `append_pattern_to_gitignore()` and `remove_pattern_from_gitignore()` infrastructure
+- **Rationale:** `.pyve/` is purely local infrastructure:
+  - `.pyve/version` - tracks which template version was installed locally
+  - `.pyve/status/` - tracks init/upgrade/purge operations
+  - `.pyve/packages.conf` - tracks which doc packages are installed
+  - None of these should be shared across team members or repositories
+- **Version bumped:** pyve.sh v0.4.17 → v0.4.18
+
+## v0.4.17 Smart Init with Interactive Upgrade [Implemented]
+- [x] Remove `--repair` command (superseded by smart init)
+- [x] Update `init_copy_templates()` to use upgrade's smart copy logic when conflicts detected
+- [x] Add interactive prompt when conflicts found:
+  - [x] List all conflicting files
+  - [x] Ask user to confirm continuation
+  - [x] If yes: use smart copy (preserve modified, create suffixed copies)
+  - [x] If no: abort gracefully
+- [x] Update `--upgrade` error message to suggest `pyve --init`
+- [x] Update help text to remove `--repair` references
+- [x] Report results like upgrade does (upgraded/added/skipped counts)
+
+### Notes
+- **Problem:** v0.4.16's `--repair` created "fake state" - wrote current version to `.pyve/version` even though templates were old
+- **Solution:** Make `--init` smart enough to handle all scenarios, eliminating need for separate `--repair` command
+- **Implementation:**
+  - `--init` now detects conflicts and prompts user interactively
+  - Uses same smart copy logic as `--upgrade`:
+    - Identical files → overwrite
+    - Modified files → preserve original, create `__t__v0.4` suffixed copy
+    - Missing files → add new
+  - Reports results: "Copied/Added: X files, Preserved: Y files"
+  - User can cancel if they don't want to proceed
+- **Behavior changes:**
+  - **Old behavior:** `--init` aborted with error if ANY file differed from template
+  - **New behavior:** `--init` prompts user and offers smart copy
+  - **Result:** Single command handles new projects, old projects, and partial upgrades
+- **Error message simplified:**
+  - `--upgrade` now suggests only `pyve --init` (not `--repair`)
+  - Explains what `--init` will do (safe, preserves modified files)
+- **Removed:**
+  - `repair_project()` function
+  - `--repair` command routing
+  - All `--repair` references in help text
+- **User experience:**
+  - **New projects:** `pyve --init` → copies templates, no prompts
+  - **Old projects:** `pyve --init` → detects conflicts, prompts, smart copy
+  - **Existing projects:** `pyve --init` → detects previous init, skips
+- **Version bumped:** pyve.sh v0.4.16 → v0.4.17
+
+## v0.4.16 Repair Command for Old Projects [Superseded by v0.4.17]
 - [x] Add `--repair` command to create missing infrastructure for old pyve projects
 - [x] Implement `repair_project()` function that:
   - [x] Creates `.pyve/version` file if missing

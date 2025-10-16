@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --repair | --list | --add <package> | --remove <package> | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
 # Description:
-# There are fourteen functions:
+# There are thirteen functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -23,13 +23,12 @@
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
 #   7. --upgrade: Upgrade the local git repository documentation templates to a newer version from ~/.pyve/templates/
-#   8. --repair: Repair missing pyve infrastructure for old projects (creates .pyve/version and .pyve/status/)
-#   9. --list: List available and installed documentation packages
-#   10. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
-#   11. --remove <package>: Remove a documentation package
-#   12. --help / -h: Show this help message
-#   13. --version / -v: Show the version of this script
-#   14. --config / -c: Show the configuration of this script
+#   8. --list: List available and installed documentation packages
+#   9. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
+#   10. --remove <package>: Remove a documentation package
+#   11. --help / -h: Show this help message
+#   12. --version / -v: Show the version of this script
+#   13. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -60,7 +59,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.4.16"
+VERSION="0.4.18"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -144,7 +143,7 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --repair | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
@@ -158,7 +157,6 @@ function show_help() {
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
     echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
-    echo "  --repair:  Repair missing pyve infrastructure for old projects (creates .pyve/version and .pyve/status/ only)"
     echo "  --list:    List available and installed documentation packages with descriptions"
     echo "  --add <package> [pkg2 ...]: Add one or more documentation packages (e.g., web, persistence, infrastructure)"
     echo "  --remove <package> [pkg2 ...]: Remove one or more documentation packages"
@@ -219,6 +217,9 @@ function remove_pattern_from_gitignore() {
 }
 
 function purge_misc_artifacts() {
+    # v0.4.18: Remove .pyve directory from .gitignore
+    remove_pattern_from_gitignore ".pyve"
+    
     # On macOS, remove special content from .gitignore
     if [[ "$(uname)" == "Darwin" ]]; then
         remove_pattern_from_gitignore "$MAC_OS_GITIGNORE_CONTENT"
@@ -386,6 +387,9 @@ function init_dotenv() {
 }
 
 function init_misc_artifacts() {
+    # v0.4.18: Add .pyve directory to .gitignore (local state, never commit)
+    append_pattern_to_gitignore ".pyve"
+    
     # On macOS, add special content to .gitignore
     if [[ "$(uname)" == "Darwin" ]]; then
         append_pattern_to_gitignore "$MAC_OS_GITIGNORE_CONTENT"
@@ -1137,23 +1141,79 @@ function init_copy_templates() {
         done
     } >> "$LOG_FILE" 2>&1
 
+    # v0.4.17: If conflicts found, prompt user for smart copy
     if [[ ${#CONFLICTS[@]} -gt 0 ]]; then
-        echo "\nERROR: Initialization would overwrite modified files. Aborting. Conflicts:"
+        echo "\nFound existing documentation files that differ from templates:"
         for f in "${CONFLICTS[@]}"; do echo " - $f"; done
-        exit 1
+        echo ""
+        echo "These files will be preserved. New templates will be copied with __t__${LATEST_VERSION} suffix."
+        echo -n "Continue with initialization? [y/N]: "
+        read -r RESPONSE
+        if [[ ! "$RESPONSE" =~ ^[Yy]$ ]]; then
+            echo "Initialization cancelled."
+            if [[ $HAD_XTRACE -eq 1 ]]; then
+                set -x 2>/dev/null || true
+                setopt xtrace 2>/dev/null || true
+            fi
+            exit 0
+        fi
+        
+        # Use smart copy logic (like upgrade does)
+        local UPGRADED=0
+        local SKIPPED_MODIFIED=0
+        echo "\nCopying templates..."
+        {
+            for FILE in "$FILES[@]"; do
+                [[ -z "$FILE" ]] && continue
+                local DEST_REL
+                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+                local DEST_ABS="./$DEST_REL"
+                
+                if [[ -f "$DEST_ABS" ]]; then
+                    if ! cmp -s "$FILE" "$DEST_ABS"; then
+                        # File exists and differs - create suffixed copy
+                        local SUFFIXED_NAME="${DEST_ABS%.*}__t__${LATEST_VERSION}.${DEST_ABS##*.}"
+                        mkdir -p "$(dirname "$SUFFIXED_NAME")"
+                        cp "$FILE" "$SUFFIXED_NAME"
+                        echo "  Created: ${SUFFIXED_NAME##*/} (original preserved)"
+                        SKIPPED_MODIFIED=$((SKIPPED_MODIFIED+1))
+                    else
+                        # Identical, safe to overwrite
+                        mkdir -p "$(dirname "$DEST_ABS")"
+                        cp "$FILE" "$DEST_ABS"
+                        echo "  Copied: $DEST_REL"
+                        UPGRADED=$((UPGRADED+1))
+                    fi
+                else
+                    # File doesn't exist, copy it
+                    mkdir -p "$(dirname "$DEST_ABS")"
+                    cp "$FILE" "$DEST_ABS"
+                    echo "  Added: $DEST_REL"
+                    UPGRADED=$((UPGRADED+1))
+                fi
+            done
+        } >> "$LOG_FILE" 2>&1
+        
+        echo "\nTemplate copy complete:"
+        echo "  Copied/Added: $UPGRADED files"
+        echo "  Preserved (created __t__ copies): $SKIPPED_MODIFIED files"
+        if [[ $SKIPPED_MODIFIED -gt 0 ]]; then
+            echo "\nNote: Review the __t__${LATEST_VERSION} files and merge changes manually."
+        fi
+    else
+        # No conflicts, simple copy
+        {
+            for FILE in "$FILES[@]"; do
+                [[ -z "$FILE" ]] && continue
+                local DEST_REL
+                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+                local DEST_ABS="./$DEST_REL"
+                mkdir -p "$(dirname "$DEST_ABS")"
+                cp "$FILE" "$DEST_ABS"
+            done
+        } >> "$LOG_FILE" 2>&1
+        echo "Template initialization complete from version $LATEST_VERSION."
     fi
-
-    # Copy files, stripping __t__* suffix
-    {
-        for FILE in "$FILES[@]"; do
-            [[ -z "$FILE" ]] && continue
-            local DEST_REL
-            DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
-            local DEST_ABS="./$DEST_REL"
-            mkdir -p "$(dirname "$DEST_ABS")"
-            cp "$FILE" "$DEST_ABS"
-        done
-    } >> "$LOG_FILE" 2>&1
 
     # Record version used in the project
     if command -v pyve &> /dev/null; then
@@ -1164,8 +1224,6 @@ function init_copy_templates() {
 
     # Write status file with args
     write_init_status "$@"
-
-    echo "Template initialization complete from version $LATEST_VERSION."
 
     # Restore tracing if it was previously enabled
     if [[ $HAD_XTRACE -eq 1 ]]; then
@@ -1512,50 +1570,6 @@ function update_templates() {
     echo "\nTemplate update complete."
 }
 
-# v0.4.16: Repair missing pyve infrastructure for old projects
-function repair_project() {
-    echo "\nRepairing pyve project infrastructure..."
-    
-    local REPAIRED=0
-    local ALREADY_OK=0
-    
-    # Check and create .pyve/version
-    if [[ ! -f ./.pyve/version ]]; then
-        mkdir -p ./.pyve 2>/dev/null || true
-        if command -v pyve &> /dev/null; then
-            pyve --version > ./.pyve/version 2>/dev/null || echo "Version: $VERSION" > ./.pyve/version
-        else
-            echo "Version: $VERSION" > ./.pyve/version
-        fi
-        echo "  ✓ Created .pyve/version"
-        REPAIRED=$((REPAIRED+1))
-    else
-        echo "  ✓ .pyve/version already exists"
-        ALREADY_OK=$((ALREADY_OK+1))
-    fi
-    
-    # Check and create .pyve/status/
-    if [[ ! -d ./.pyve/status ]]; then
-        mkdir -p ./.pyve/status 2>/dev/null || true
-        echo "  ✓ Created .pyve/status/ directory"
-        REPAIRED=$((REPAIRED+1))
-    else
-        echo "  ✓ .pyve/status/ already exists"
-        ALREADY_OK=$((ALREADY_OK+1))
-    fi
-    
-    # Summary
-    echo "\nRepair complete:"
-    echo "  Repaired: $REPAIRED items"
-    echo "  Already OK: $ALREADY_OK items"
-    
-    if [[ $REPAIRED -gt 0 ]]; then
-        echo "\nYou can now run 'pyve --upgrade' to update templates."
-    else
-        echo "\nNo repairs needed. Project infrastructure is intact."
-    fi
-}
-
 # v0.3.6: Upgrade local repository templates to newer version from ~/.pyve/templates/
 function upgrade_status_fail_if_any_present() {
     if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
@@ -1580,10 +1594,12 @@ function upgrade_templates() {
         echo "This project appears to be from an old pyve version (pre-v0.3.2) or was never initialized."
         echo ""
         echo "To fix:"
-        echo "  pyve --repair    # Minimal fix: create .pyve/version and .pyve/status/ only"
-        echo "  pyve --init      # Full fix: also copy missing templates (safe, checks conflicts)"
+        echo "  pyve --init"
         echo ""
-        echo "Recommendation: Try --repair first."
+        echo "This will safely initialize/upgrade your project:"
+        echo "  - Creates .pyve/version and .pyve/status/ infrastructure"
+        echo "  - Copies missing templates"
+        echo "  - Preserves modified files (creates __t__ suffixed copies for review)"
         exit 1
     fi
 
@@ -1740,9 +1756,6 @@ elif [[ $1 == "--update" ]]; then
     exit 0
 elif [[ $1 == "--upgrade" ]]; then
     upgrade_templates
-    exit 0
-elif [[ $1 == "--repair" ]]; then
-    repair_project
     exit 0
 elif [[ $1 == "--list" ]]; then
     list_packages
