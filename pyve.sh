@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.4"
+VERSION="0.5.5"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -129,8 +129,11 @@ function cleanup_old_templates() {
     if [[ $COUNT -gt 2 ]]; then
         echo "\nCleaning up old template versions (keeping latest 2)..."
         for ((i=0; i<COUNT-2; i++)); do
-            echo "  Removing: $(basename "${VERSIONS[$i]}")"
-            rm -rf "${VERSIONS[$i]}"
+            local VERSION_PATH="${VERSIONS[$i]}"
+            if [[ -n "$VERSION_PATH" && -d "$VERSION_PATH" ]]; then
+                echo "  Removing: $(basename "$VERSION_PATH")"
+                rm -rf "$VERSION_PATH"
+            fi
         done
         echo "Cleanup complete."
     fi

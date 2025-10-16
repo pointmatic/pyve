@@ -8,6 +8,32 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.5 Fix Empty Basename Bug in Cleanup [Implemented]
+- [x] Add validation check before printing/removing in `cleanup_old_templates()`
+- [x] Prevent empty "Removing:" line when no versions to clean
+
+### Notes
+- **Problem:** When running `--install` with 2 or fewer template versions, cleanup function prints empty "Removing:" line due to unvalidated array elements
+- **Bug output:**
+  ```
+  Cleaning up old template versions (keeping latest 2)...
+    Removing: 
+  Cleanup complete.
+  ```
+- **Root cause:** Loop iterates over array elements without checking if they're valid paths
+- **Solution:** Add validation before printing/removing:
+  ```bash
+  for ((i=0; i<COUNT-2; i++)); do
+      local VERSION_PATH="${VERSIONS[$i]}"
+      if [[ -n "$VERSION_PATH" && -d "$VERSION_PATH" ]]; then
+          echo "  Removing: $(basename "$VERSION_PATH")"
+          rm -rf "$VERSION_PATH"
+      fi
+  done
+  ```
+- **Rationale:** Defensive programming prevents confusing output, ensures only valid directories are removed
+- **Version bumped:** pyve.sh v0.5.4 → v0.5.5
+
 ## v0.5.4 Cleanup Old Template Versions [Implemented]
 - [x] Add `cleanup_old_templates()` function
 - [x] Call cleanup after installing new templates in `install_self()`
