@@ -8,6 +8,61 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.7 Gitignore Pyve-Owned Directories [Next]
+- [ ] Add `docs/guides/` to `.gitignore` during `--init`
+- [ ] Add `docs/runbooks/` to `.gitignore` during `--init`
+- [ ] Fix `PYVE_OWNED_DIRS` array (remove `docs/context`, add `docs/runbooks`)
+- [ ] Ensure Pyve-owned directories are never committed
+
+### Notes
+- **Problem:** Pyve-owned directories (`docs/guides/`, `docs/runbooks/`) are process documentation that should be regenerated from templates, not committed to version control. Users might accidentally commit them.
+- **Rationale from v0.5.1:**
+  - Pyve owns process guides (building, planning, testing, etc.) and runbooks
+  - These are always overwritten during `--upgrade` (no conflict detection)
+  - They should come from templates, not be customized per-project
+  - User-owned specs and context should be committed
+- **Solution:** Add Pyve-owned directories to `.gitignore` during `--init`:
+  ```bash
+  # In init_gitignore() or similar:
+  add_pattern_to_gitignore "docs/guides"
+  add_pattern_to_gitignore "docs/runbooks"
+  ```
+- **User-owned directories (should be committed):**
+  - `docs/specs/` - Technical specifications (codebase, technical design, etc.)
+  - `docs/context/` - Project context (filled out by user)
+  - `README.md`, `CONTRIBUTING.md` - Project docs
+- **Pyve-owned directories (should be gitignored):**
+  - `docs/guides/` - Process guides (building, planning, testing, dependencies, etc.)
+  - `docs/runbooks/` - Operational runbooks (domain-specific)
+- **Bug fix:** `PYVE_OWNED_DIRS` incorrectly included `docs/context` (user fills this out) and redundantly included `docs/guides/llm_qa` (already covered by `docs/guides`)
+- **Version bumped:** pyve.sh v0.5.6a → v0.5.7
+
+## v0.5.6a Smart Purge Root File Handling [Implemented]
+- [x] Add root-level template file handling (README.md, CONTRIBUTING.md)
+- [x] Delete root files if they match templates (just boilerplate)
+- [x] Keep and warn if root files are modified
+
+### Notes
+- **Problem:** Root-level template files (README.md, CONTRIBUTING.md) weren't being handled by purge. If user didn't modify them, they're just boilerplate and should be deleted. If modified, user should review manually.
+- **Solution:** Check root files separately from docs/ files:
+  - **If matches template**: Delete (user didn't customize it, just boilerplate)
+  - **If modified**: Keep and warn user to review manually
+- **Implementation:**
+  ```bash
+  # v0.5.6a: Check root-level template files
+  local ROOT_FILES=("README.md" "CONTRIBUTING.md")
+  for ROOT_FILE in "${ROOT_FILES[@]}"; do
+      if [[ -f "./$ROOT_FILE" ]]; then
+          if matches template:
+              Delete (just boilerplate)
+          elif modified:
+              Keep and warn user to review manually
+      fi
+  done
+  ```
+- **Rationale:** Root files are user-owned if modified, but if they match templates they're just unused boilerplate that should be cleaned up
+- **Version bumped:** pyve.sh v0.5.6 → v0.5.6a (microversion)
+
 ## v0.5.6 Smart Purge with Modified File Preservation [Implemented]
 - [x] Update `--purge` to delete all Pyve artifacts (Python env + docs + .pyve/)
 - [x] Preserve modified files in `docs-old-pyve/` directory

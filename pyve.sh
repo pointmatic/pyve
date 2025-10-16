@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.6"
+VERSION="0.5.6a"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -86,8 +86,7 @@ PYVE_PACKAGES_CONF=".pyve/packages.conf"
 # v0.5.1: Directories that Pyve owns (always overwrite, no conflict detection)
 PYVE_OWNED_DIRS=(
     "docs/guides"
-    "docs/context"
-    "docs/guides/llm_qa"
+    "docs/runbooks"
 )
 
 # Ensure Pyve home directories exist
@@ -1450,7 +1449,27 @@ function purge_templates() {
     echo "\nChecking documentation files for modifications..."
     local DELETED=0
     local PRESERVED=0
+    local ROOT_MODIFIED=0
     local FILE
+    
+    # v0.5.6a: Check root-level template files (README.md, CONTRIBUTING.md)
+    local ROOT_FILES=("README.md" "CONTRIBUTING.md")
+    for ROOT_FILE in "${ROOT_FILES[@]}"; do
+        if [[ -f "./$ROOT_FILE" ]]; then
+            local TEMPLATE_FILE=$(find "$TEMPLATE_DIR" -type f -name "${ROOT_FILE%.*}__t__*.${ROOT_FILE##*.}" 2>/dev/null | head -1)
+            
+            if [[ -n "$TEMPLATE_FILE" ]] && cmp -s "./$ROOT_FILE" "$TEMPLATE_FILE"; then
+                # Identical to template, delete (just boilerplate)
+                echo "  Deleted: $ROOT_FILE (matches template)"
+                rm -f "./$ROOT_FILE"
+                DELETED=$((DELETED+1))
+            elif [[ -n "$TEMPLATE_FILE" ]]; then
+                # Modified, keep and warn
+                echo "  Kept: $ROOT_FILE (modified - review manually)"
+                ROOT_MODIFIED=$((ROOT_MODIFIED+1))
+            fi
+        fi
+    done
     
     # Iterate through all files in docs/
     if [[ -d ./docs ]]; then
@@ -1491,6 +1510,7 @@ function purge_templates() {
     echo "  Deleted: $DELETED files (matched templates)"
     echo "  Preserved: $PRESERVED files (modified/custom)"
     [[ $PRESERVED -gt 0 ]] && echo "\nModified files saved in docs-old-pyve/"
+    [[ $ROOT_MODIFIED -gt 0 ]] && echo "\nWARNING: $ROOT_MODIFIED root file(s) modified. Review and delete manually if needed."
 }
 
 # Install this script into $HOME/.local/bin and create a 'pyve' symlink
