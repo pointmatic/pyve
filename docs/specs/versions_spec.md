@@ -8,11 +8,11 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.5.7 Gitignore Pyve-Owned Directories [Next]
-- [ ] Add `docs/guides/` to `.gitignore` during `--init`
-- [ ] Add `docs/runbooks/` to `.gitignore` during `--init`
-- [ ] Fix `PYVE_OWNED_DIRS` array (remove `docs/context`, add `docs/runbooks`)
-- [ ] Ensure Pyve-owned directories are never committed
+## v0.5.7 Gitignore Pyve-Owned Directories [Implemented]
+- [x] Add `docs/guides/` to `.gitignore` during `--init`
+- [x] Add `docs/runbooks/` to `.gitignore` during `--init`
+- [x] Fix `PYVE_OWNED_DIRS` array (remove `docs/context`, add `docs/runbooks`)
+- [x] Ensure Pyve-owned directories are never committed
 
 ### Notes
 - **Problem:** Pyve-owned directories (`docs/guides/`, `docs/runbooks/`) are process documentation that should be regenerated from templates, not committed to version control. Users might accidentally commit them.

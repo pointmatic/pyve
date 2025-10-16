@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.6a"
+VERSION="0.5.7"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -501,6 +501,10 @@ function init_dotenv() {
 function init_misc_artifacts() {
     # v0.4.18: Add .pyve directory to .gitignore (local state, never commit)
     append_pattern_to_gitignore ".pyve"
+    
+    # v0.5.7: Add Pyve-owned directories to .gitignore (regenerated from templates, never commit)
+    append_pattern_to_gitignore "docs/guides"
+    append_pattern_to_gitignore "docs/runbooks"
     
     # On macOS, add special content to .gitignore
     if [[ "$(uname)" == "Darwin" ]]; then
