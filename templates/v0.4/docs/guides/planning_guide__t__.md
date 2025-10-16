@@ -35,6 +35,11 @@ Include:
 
 The LLM Q&A process (see `docs/guides/llm_qa/`) aligns naturally with version phases:
 
+### Project Context Phase (Recommended for All)
+| Q&A Phase | Version Phase | When | What Gets Filled |
+|-----------|---------------|------|------------------|
+| **Project Context** | Before v0.0.x | Before Phase 0 | Problem, stakeholders, constraints, ecosystem, scope, timeline, Quality level |
+
 ### Foundation Phases (All Projects)
 | Q&A Phase | Version Phase | When | What Gets Filled |
 |-----------|---------------|------|------------------|
@@ -69,17 +74,21 @@ The LLM Q&A process (see `docs/guides/llm_qa/`) aligns naturally with version ph
 | **Phase 16** | For secure Quality | When compliance needed | Security Governance |
 
 **Workflow:**
-1. **New project:** Conduct Phase 0 Q&A → fill basic specs → implement v0.0.x (setup)
-2. **Before first feature:** Conduct Phase 1 Q&A → fill technical specs → implement v0.1.x (first feature)
-3. **Before production:** Conduct Phases 2-5 Q&A → fill production specs → deploy
-4. **Feature-specific:** Conduct Phases 6-10 as needed → fill feature specs → implement
-5. **If secure Quality:** Conduct Phases 11-16 Q&A → fill compliance specs → harden
+1. **New project:** Conduct Project Context Q&A → establish "agreement to go and build" → `docs/context/project_context.md`
+2. **Project setup:** Conduct Phase 0 Q&A → fill basic specs → implement v0.0.x (setup)
+3. **Before first feature:** Conduct Phase 1 Q&A → fill technical specs → implement v0.1.x (first feature)
+4. **Before production:** Conduct Phases 2-5 Q&A → fill production specs → deploy
+5. **Feature-specific:** Conduct Phases 6-10 as needed → fill feature specs → implement
+6. **If secure Quality:** Conduct Phases 11-16 Q&A → fill compliance specs → harden
 
-This ensures specs are filled progressively as the project matures, avoiding overwhelming upfront documentation. Each phase takes 10-30 minutes, allowing for incremental progress.
+This ensures specs are filled progressively as the project matures, avoiding overwhelming upfront documentation. Each phase takes 10-30 minutes, allowing for incremental progress. The Project Context phase establishes the "who, what, why, when, where" before diving into technical "how."
 
 ## Planning Workflow
-1. **For new projects:** Use Q&A guides (see above) to fill initial specs.
-2. Draft or update `docs/specs/technical_design_spec.md` covering the above.
+1. **For new projects:** 
+   - Start with Project Context Q&A to establish business/organizational context
+   - Use Phase 0+ Q&A guides to fill technical specs
+   - The Project Context informs Quality level and technical decisions
+2. Draft or update `docs/specs/technical_design_spec.md` covering the above (Overview/Goals should summarize key points from Project Context).
 3. Reconcile the design and component inventory with `docs/specs/codebase_spec.md` and applicable addenda in `docs/specs/lang/`.
 4. Propose the next semantic version in `docs/specs/versions_spec.md` with `[Next]` if broader work is planned.
 5. Break work into requirements under that version.

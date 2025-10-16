@@ -2,6 +2,7 @@
 
 Thank you for contributing! This guide explains how to work on this project, aligned with the docs in `docs/`.
 
+- Project context: `docs/context/project_context.md` (business/organizational context, if exists)
 - Building guide: `docs/guides/building_guide.md`
 - Planning guide: `docs/guides/planning_guide.md`
 - Testing guide: `docs/guides/testing_guide.md`
@@ -33,6 +34,7 @@ Thank you for contributing! This guide explains how to work on this project, ali
     - Decision: [2025-10-12: Switch to Service Account Auth](docs/specs/decisions_spec.md#2025-10-12-switch-to-service-account-auth) — requires sharing Sheet/Doc with the service account; update CI secrets.
 
 ## Planning
+- For new projects, start with Project Context Q&A (see `docs/guides/llm_qa/project_context_questions.md`) to establish business/organizational context before technical planning.
 - For significant features, update or create `docs/specs/technical_design_spec.md` (see `docs/guides/planning_guide.md` for structure).
 - Add a `[Next]` version in `docs/specs/versions_spec.md` to outline upcoming work.
 

@@ -1,12 +1,18 @@
 # Technical Design
 
+> **Note:** This document focuses on the technical "how." For business/organizational context (the "who, what, why, when, where"), see `docs/context/project_context.md`.
+
 <!-- Phase 0: Project Basics -->
 ## Overview
 Summarize the problem, the target users, and the outcomes this design aims to deliver. Keep this section concise and business‑oriented.
 
+**Guidance:** This should be a simplified summary of key points from the Project Context (if it exists). Focus on what's needed to understand the technical design below.
+
 ## Goals and Non‑Goals
 - Goals: bullet list of measurable objectives.
 - Non‑Goals: explicitly out‑of‑scope items to avoid scope creep.
+
+**Guidance:** Summarize the most relevant goals/non-goals from the Project Context's scope section.
 
 <!-- Phase 1: Core Technical -->
 ## Architecture
@@ -26,9 +32,11 @@ Summarize the problem, the target users, and the outcomes this design aims to de
 
 <!-- Phase 1: Core Technical -->
 ## Components
-Describe major components/services, their responsibilities, and interactions.
+Describe major **internal** components/services you're building, their responsibilities, and interactions.
 - Component A: purpose, inputs/outputs, key dependencies.
 - Component B: purpose, inputs/outputs, key dependencies.
+
+**Note:** This is about the architecture you're building. For external systems/services you integrate with (the ecosystem), see `docs/context/project_context.md` → Ecosystem section.
 
 <!-- Phase 1: Core Technical -->
 ## Data Model

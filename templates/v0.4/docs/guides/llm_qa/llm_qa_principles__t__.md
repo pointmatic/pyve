@@ -8,10 +8,12 @@ This guide explains how LLMs should conduct structured Q&A sessions with develop
 
 ### 1. Progressive Disclosure
 Don't ask everything upfront. Use a phased approach:
+- **Project Context:** Establish "who, what, why, when, where" (recommended for all, especially new projects)
 - **Phase 0:** Project basics (required for all projects)
 - **Phase 1:** Core technical details (required before first feature)
-- **Phase 2:** Production readiness (required for production Quality)
-- **Phase 3:** Security & compliance (required for secure Quality)
+- **Phase 2-5:** Production readiness (required for production Quality)
+- **Phase 6-10:** Feature-specific (as needed)
+- **Phase 11-16:** Security & compliance (required for secure Quality)
 
 ### 2. Quality-Aware Questioning
 Adjust question depth and quantity based on Quality level:
@@ -38,6 +40,23 @@ After each section:
 - Enable returning to update answers as project evolves
 
 ## Phase Definitions
+
+### Project Context Phase
+**When:** Before Phase 0 (first step for new projects)  
+**Duration:** 10-20 minutes  
+**Questions:** 8 questions  
+**Outcome:** `docs/context/project_context.md` with business/organizational context and Quality level recommendation
+
+**Topics:**
+- Problem statement and stakeholders
+- Success criteria and constraints
+- Ecosystem and integration context
+- Scope boundaries and timeline
+- Quality level recommendation
+
+**Read:** `project_context_questions__t__.md`
+
+**Philosophy:** Design thinking approach - understand the problem space before jumping to solutions. Answers "who, what, why, when, where" before diving into technical "how."
 
 ### Phase 0: Project Basics
 **When:** Immediately after `pyve --init`  
@@ -99,6 +118,7 @@ After each section:
 
 | Spec Section | Experiment | Prototype | Production | Secure |
 |--------------|-----------|-----------|------------|--------|
+| **Project Context** | Optional (5 min) | Recommended (10 min) | Recommended (15 min) | Recommended (20 min) |
 | **Phase 0: Project Basics** | 5 questions | 6 questions | 8 questions | 10 questions |
 | **Phase 1: Architecture** | Skip or 1 | 3-4 questions | 5-7 questions | 8-10 questions |
 | **Phase 1: Technical Stack** | 2-3 questions | 4-5 questions | 6-8 questions | 8-10 questions |
@@ -116,14 +136,21 @@ After each section:
 1. **Greet and explain:**
    ```
    I'll help you fill out the project specifications through a series of questions.
-   We'll start with the basics (Phase 0) and can expand later as your project grows.
-   This should take about 5-10 minutes.
+   
+   For new projects, we'll start with Project Context (10-20 min) to understand
+   the "who, what, why, when, where" before diving into technical details.
+   Then we'll cover the technical basics (Phase 0) and expand later as needed.
+   
+   For existing projects with clear context, we can skip to Phase 0.
+   
+   Which applies to you?
    ```
 
 2. **Determine current state:**
-   - Is this a brand new project? → Start with Phase 0
+   - Is this a brand new project? → Start with Project Context, then Phase 0
    - Does the project have partial specs? → Identify gaps and offer to fill them
    - Is the project upgrading Quality level? → Conduct appropriate phase Q&A
+   - Is context unclear or missing? → Offer Project Context Q&A
 
 3. **Set expectations:**
    - Tell them how many questions to expect
@@ -264,7 +291,7 @@ Use Q&A to create specs, then follow Building Guide to implement them.
 - **Onramp Guide:** Entry point for LLMs joining an existing project
 - **Q&A Guide:** Entry point for LLMs helping start a new project
 
-For new projects: Q&A Guide → fill specs → Onramp Guide → implement  
+For new projects: Project Context Q&A → Phase 0 Q&A → fill specs → Onramp Guide → implement  
 For existing projects: Onramp Guide → implement (Q&A only if specs incomplete)
 
 ## Tips for Effective Q&A
@@ -288,12 +315,13 @@ For existing projects: Onramp Guide → implement (Q&A only if specs incomplete)
 
 ## Next Steps After Q&A
 
-Once Phase 0 Q&A is complete:
+Once Project Context Q&A is complete:
 
-1. **Review filled specs** with developer
-2. **Start Phase 0 implementation** (v0.0.x - project setup)
-3. **When ready for features,** conduct Phase 1 Q&A
-4. **When ready for production,** conduct Phase 2 Q&A
-5. **If secure Quality,** conduct Phase 3 Q&A
+1. **Review `docs/context/project_context.md`** with developer
+2. **Proceed to Phase 0 Q&A** (project basics)
+3. **Start Phase 0 implementation** (v0.0.x - project setup)
+4. **When ready for features,** conduct Phase 1 Q&A
+5. **When ready for production,** conduct Phases 2-5 Q&A
+6. **If secure Quality,** conduct Phases 11-16 Q&A
 
-Each phase builds on the previous, creating a complete specification incrementally as the project matures.
+Each phase builds on the previous, creating a complete specification incrementally as the project matures. The Project Context serves as the foundation - the "agreement to go and build" that guides all subsequent technical decisions.

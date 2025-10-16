@@ -8,6 +8,54 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.15 Project Context Phase [Implemented]
+- [x] Review and revise the project brief concept → renamed to "Project Context"
+- [x] Build an LLM Q&A doc in the `llm_qa` document directory/package (in guides) that can be used before all the other Q&A to determine who, what, when, where, and why of a project before getting committed to the technical details.
+- [x] As appropriate, integrate this option into the `llm_qa_principles__t__.md` doc and the `README__t__.md` doc in the same directory. 
+- [x] Integrate the Project Context...
+  - [x] into other spec docs as appropriate
+  - [x] into the `planning_guide__t__.md`
+  - [x] into the `llm_onramp_guide__t__.md`
+  - [x] into root `README__t__.md`
+  - [x] into `CONTRIBUTING__t__.md`
+
+### Notes
+- **Renamed:** "Project Brief" → "Project Context" (better reflects purpose: understanding context before technical decisions)
+- **File structure:**
+  - Created `templates/v0.4/docs/context/` directory for business/organizational context
+  - Created `templates/v0.4/docs/context/project_context.md` template
+  - Created `templates/v0.4/docs/guides/llm_qa/project_context_questions__t__.md` Q&A guide
+  - Removed old `templates/v0.4/docs/specs/project_brief_spec__t__.md`
+- **Design decisions:**
+  - **Optional but recommended:** Project Context is optional for experiment Quality, recommended for all others
+  - **Iterative updates:** Living document with changelog section for tracking evolution
+  - **Quality level integration:** Project Context Q&A recommends Quality level based on constraints/compliance
+  - **Relationship to technical_design_spec:** Overview/Goals sections should summarize key points from Project Context
+  - **Terminology clarification:** "Components" in Project Context = external ecosystem; "Components" in technical_design_spec = internal architecture
+- **Project Context Q&A (8 questions, 10-20 min):**
+  1. Project vision & purpose (problem statement)
+  2. Primary stakeholders (decision makers, users, maintainers)
+  3. Success criteria & metrics (measurable outcomes)
+  4. Constraints & requirements (timeline, budget, compliance, technical)
+  5. Ecosystem & integration context (external systems to integrate with)
+  6. Scope & boundaries (in/out of scope for v1.0)
+  7. Timeline & milestones (target dates, flexibility)
+  8. Quality level recommendation (based on previous answers)
+- **Example Q&A sessions:** Two complete examples included
+  - Example 1: Internal sales dashboard (production Quality)
+  - Example 2: Personal expense tracker (experiment Quality)
+- **Integration points updated:**
+  - `llm_qa/README__t__.md`: Added Project Context Phase to structure and quick reference
+  - `llm_qa_principles__t__.md`: Added Project Context Phase definition and updated workflow
+  - `planning_guide__t__.md`: Added Project Context to Q&A alignment table and workflow
+  - `llm_onramp_guide__t__.md`: Updated new project workflow to include Project Context first
+  - `README__t__.md`: Added Project Context reference to Development section
+  - `CONTRIBUTING__t__.md`: Added Project Context reference and planning guidance
+  - `technical_design_spec__t__.md`: Added note about relationship to Project Context, guidance for Overview/Goals, clarified Components distinction
+- **Philosophy:** Design thinking approach - understand "who, what, why, when, where" before diving into technical "how"
+- **Outcome:** Creates "agreement to go and build" - foundation for all technical decisions
+- **Token efficiency:** ~500 lines (~15K tokens) for Project Context Q&A, keeps sessions manageable
+
 ## v0.4.14 Local .env support [Implemented]
 Focus: User-defined environment variable template
 - [x] Support user-defined secrets file in `~/.local/.env`

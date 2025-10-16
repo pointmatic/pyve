@@ -33,6 +33,7 @@ List configuration surfaces and where to set them:
 
 ## Development
 - Follow the contribution process in `CONTRIBUTING.md`.
+- Project context (business/organizational): `docs/context/project_context.md` (if exists).
 - Dependency and version policy: `docs/guides/dependencies_guide.md` (language‑agnostic) and `docs/guides/lang/` for language‑specific details.
 - Testing guidelines: `docs/guides/testing_guide.md`.
 - Planning/design: `docs/guides/planning_guide.md`, `docs/specs/technical_design_spec.md`.

@@ -12,8 +12,8 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 
 ## When to Use These Guides
 
-- **New projects:** When a developer runs `pyve --init` and needs help filling out `docs/specs/`
-- **Spec gaps:** When existing projects have incomplete specifications
+- **New projects:** When a developer runs `pyve --init` and needs help filling out `docs/specs/` and `docs/context/`
+- **Spec gaps:** When existing projects have incomplete specifications or missing context
 - **Quality upgrades:** When moving from experiment → prototype → production → secure
 
 ## File Structure
@@ -29,6 +29,14 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 - Integration with other guides
 
 ### Question Files (Read Based on Phase)
+
+#### Project Context Phase (Recommended for All)
+
+**`project_context_questions__t__.md`** - Project Context (8 questions)
+- Problem statement, stakeholders, success criteria, constraints, ecosystem, scope, timeline, Quality level recommendation
+- Establishes "who, what, why, when, where" before technical "how"
+- Creates `docs/context/project_context.md`
+- Two example Q&A sessions (internal dashboard, personal tool)
 
 #### Foundation Phases (Required for All)
 
@@ -96,14 +104,20 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 ### General Pattern (All Phases)
 
 1. Read `llm_qa_principles__t__.md` to understand the Q&A approach (first time only)
-2. Read the specific phase question file (e.g., `llm_qa_phase2_questions__t__.md`)
-3. Conduct Q&A for that phase (10-30 minutes depending on phase)
-4. Fill out relevant specs in `docs/specs/` as you go
-5. Confirm with developer before proceeding to next phase or implementation
+2. **[New projects]** Read `project_context_questions__t__.md` and conduct Project Context Q&A (10-20 min)
+3. Read the specific phase question file (e.g., `llm_qa_phase0_questions__t__.md`)
+4. Conduct Q&A for that phase (10-30 minutes depending on phase)
+5. Fill out relevant specs in `docs/specs/` and `docs/context/` as you go
+6. Confirm with developer before proceeding to next phase or implementation
 
-**Token load per phase:** ~200-400 lines (~6-12K tokens) vs ~1600-2000 lines (~60-80K tokens) for monolithic approach
+**Token load per phase:** ~200-500 lines (~6-15K tokens) vs ~1600-2000 lines (~60-80K tokens) for monolithic approach
 
 ## Quick Reference
+
+### Project Context Phase (Recommended for All)
+| Phase | Name | When | Duration | Questions |
+|-------|------|------|----------|-----------|
+| **Context** | Project Context | Before Phase 0 | 10-20 min | 8 |
 
 ### Foundation Phases (All Projects)
 | Phase | Name | When | Duration | Questions |
@@ -139,15 +153,15 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 | **16** | Security Governance | For secure Quality | 15-20 min | 4 |
 
 ### Quality Level Mapping
-- **experiment**: Phases 0-1
-- **prototype**: Phases 0-1, 6-7 (as needed)
-- **production**: Phases 0-7 (core), 8-10 (as needed)
-- **secure**: Phases 0-16 (all)
+- **experiment**: Project Context (optional), Phases 0-1
+- **prototype**: Project Context (recommended), Phases 0-1, 6-7 (as needed)
+- **production**: Project Context (recommended), Phases 0-7 (core), 8-10 (as needed)
+- **secure**: Project Context (recommended), Phases 0-16 (all)
 
 ## Integration with Other Guides
 
 - **LLM Onramp Guide** (`docs/guides/llm_onramp_guide.md`): Entry point for LLMs
-  - New projects: Use Q&A guides first, then follow onramp guide
+  - New projects: Project Context Q&A → Phase 0 Q&A → follow onramp guide
   - Existing projects: Skip Q&A, follow onramp guide directly
 
 - **Planning Guide** (`docs/guides/planning_guide.md`): Version planning workflow
@@ -161,14 +175,16 @@ Rather than presenting blank spec templates, LLMs use these guides to ask target
 ## Tips for LLMs
 
 ### Do:
+✅ Start with Project Context Q&A for new projects (establishes "why" before "how")  
 ✅ Read only the files you need (principles + current phase)  
 ✅ Ask one question at a time  
 ✅ Provide examples and context  
 ✅ Offer sensible defaults  
 ✅ Summarize and confirm understanding  
-✅ Fill specs as you go (real-time)  
+✅ Fill specs and context as you go (real-time)  
 
 ### Don't:
+❌ Skip Project Context for new projects (technical decisions need business context)  
 ❌ Read all phase files at once (unnecessary token load)  
 ❌ Ask all questions upfront (use progressive disclosure)  
 ❌ Use jargon without explanation  
@@ -186,5 +202,5 @@ By splitting into 17 focused phase files, LLMs can load only what they need:
 
 **Example:** For a production-level web app:
 - Old approach: Load all phases (~80K tokens)
-- New approach: Load Phases 0,1,2,3,4,5,6,7 individually (~8 sessions × 10K tokens = ~80K total, but spread across multiple sessions)
-- Benefit: Never load more than ~12K tokens at once, can pause/resume between phases
+- New approach: Load Project Context + Phases 0,1,2,3,4,5,6,7 individually (~9 sessions × 10K tokens = ~90K total, but spread across multiple sessions)
+- Benefit: Never load more than ~15K tokens at once, can pause/resume between phases
