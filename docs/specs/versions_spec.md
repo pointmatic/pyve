@@ -8,6 +8,33 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.16 Repair Command for Old Projects [Implemented]
+- [x] Add `--repair` command to create missing infrastructure for old pyve projects
+- [x] Implement `repair_project()` function that:
+  - [x] Creates `.pyve/version` file if missing
+  - [x] Creates `.pyve/status/` directory if missing
+  - [x] Reports what was repaired
+  - [x] Never touches existing files
+- [x] Update `--upgrade` error message to suggest `--repair` or `--init`
+- [x] Update help text to include `--repair` option
+- [x] Add command routing for `--repair` flag
+
+### Notes
+- **Problem:** Old pyve projects (pre-v0.3.2) don't have `.pyve/version` file, causing `--upgrade` to fail
+- **Solution:** New `--repair` command creates minimal infrastructure without touching existing files
+- **Implementation:**
+  - `repair_project()` function checks and creates:
+    - `.pyve/version` file (with current pyve version)
+    - `.pyve/status/` directory
+  - Reports what was repaired vs what was already OK
+  - Completely non-invasive: never modifies existing files
+- **Error message improvement:**
+  - `--upgrade` now provides clear guidance when `.pyve/version` is missing
+  - Explains the difference between `--repair` (minimal) and `--init` (full)
+  - Recommends trying `--repair` first for old projects
+- **Help text updated:** Added `--repair` to usage string and description
+- **Version bumped:** pyve.sh v0.3.14 → v0.4.16
+
 ## v0.4.15 Project Context Phase [Implemented]
 - [x] Review and revise the project brief concept → renamed to "Project Context"
 - [x] Build an LLM Q&A doc in the `llm_qa` document directory/package (in guides) that can be used before all the other Q&A to determine who, what, when, where, and why of a project before getting committed to the technical details.

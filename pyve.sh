@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --repair | --list | --add <package> | --remove <package> | --help | --version | --config }
 # Description:
-# There are thirteen functions:
+# There are fourteen functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -23,12 +23,13 @@
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
 #   7. --upgrade: Upgrade the local git repository documentation templates to a newer version from ~/.pyve/templates/
-#   8. --list: List available and installed documentation packages
-#   9. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
-#   10. --remove <package>: Remove a documentation package
-#   11. --help / -h: Show this help message
-#   12. --version / -v: Show the version of this script
-#   13. --config / -c: Show the configuration of this script
+#   8. --repair: Repair missing pyve infrastructure for old projects (creates .pyve/version and .pyve/status/)
+#   9. --list: List available and installed documentation packages
+#   10. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
+#   11. --remove <package>: Remove a documentation package
+#   12. --help / -h: Show this help message
+#   13. --version / -v: Show the version of this script
+#   14. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -59,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.3.14"
+VERSION="0.4.16"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -143,7 +144,7 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --repair | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
@@ -157,6 +158,7 @@ function show_help() {
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
     echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
+    echo "  --repair:  Repair missing pyve infrastructure for old projects (creates .pyve/version and .pyve/status/ only)"
     echo "  --list:    List available and installed documentation packages with descriptions"
     echo "  --add <package> [pkg2 ...]: Add one or more documentation packages (e.g., web, persistence, infrastructure)"
     echo "  --remove <package> [pkg2 ...]: Remove one or more documentation packages"
@@ -1510,6 +1512,50 @@ function update_templates() {
     echo "\nTemplate update complete."
 }
 
+# v0.4.16: Repair missing pyve infrastructure for old projects
+function repair_project() {
+    echo "\nRepairing pyve project infrastructure..."
+    
+    local REPAIRED=0
+    local ALREADY_OK=0
+    
+    # Check and create .pyve/version
+    if [[ ! -f ./.pyve/version ]]; then
+        mkdir -p ./.pyve 2>/dev/null || true
+        if command -v pyve &> /dev/null; then
+            pyve --version > ./.pyve/version 2>/dev/null || echo "Version: $VERSION" > ./.pyve/version
+        else
+            echo "Version: $VERSION" > ./.pyve/version
+        fi
+        echo "  ✓ Created .pyve/version"
+        REPAIRED=$((REPAIRED+1))
+    else
+        echo "  ✓ .pyve/version already exists"
+        ALREADY_OK=$((ALREADY_OK+1))
+    fi
+    
+    # Check and create .pyve/status/
+    if [[ ! -d ./.pyve/status ]]; then
+        mkdir -p ./.pyve/status 2>/dev/null || true
+        echo "  ✓ Created .pyve/status/ directory"
+        REPAIRED=$((REPAIRED+1))
+    else
+        echo "  ✓ .pyve/status/ already exists"
+        ALREADY_OK=$((ALREADY_OK+1))
+    fi
+    
+    # Summary
+    echo "\nRepair complete:"
+    echo "  Repaired: $REPAIRED items"
+    echo "  Already OK: $ALREADY_OK items"
+    
+    if [[ $REPAIRED -gt 0 ]]; then
+        echo "\nYou can now run 'pyve --upgrade' to update templates."
+    else
+        echo "\nNo repairs needed. Project infrastructure is intact."
+    fi
+}
+
 # v0.3.6: Upgrade local repository templates to newer version from ~/.pyve/templates/
 function upgrade_status_fail_if_any_present() {
     if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
@@ -1530,8 +1576,14 @@ function upgrade_templates() {
     # Read the old version from the local git repo
     if [[ ! -f ./.pyve/version ]]; then
         echo "\nERROR: No version file found at ./.pyve/version."
-        echo "This directory does not appear to have been initialized with pyve templates."
-        echo "Run 'pyve --init' first to initialize this repository."
+        echo ""
+        echo "This project appears to be from an old pyve version (pre-v0.3.2) or was never initialized."
+        echo ""
+        echo "To fix:"
+        echo "  pyve --repair    # Minimal fix: create .pyve/version and .pyve/status/ only"
+        echo "  pyve --init      # Full fix: also copy missing templates (safe, checks conflicts)"
+        echo ""
+        echo "Recommendation: Try --repair first."
         exit 1
     fi
 
@@ -1688,6 +1740,9 @@ elif [[ $1 == "--update" ]]; then
     exit 0
 elif [[ $1 == "--upgrade" ]]; then
     upgrade_templates
+    exit 0
+elif [[ $1 == "--repair" ]]; then
+    repair_project
     exit 0
 elif [[ $1 == "--list" ]]; then
     list_packages
