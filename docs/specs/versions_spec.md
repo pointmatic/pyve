@@ -8,6 +8,50 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.4 Cleanup Old Template Versions [Implemented]
+- [x] Add `cleanup_old_templates()` function
+- [x] Call cleanup after installing new templates in `install_self()`
+- [x] Keep only the latest 2 template versions
+- [x] Delete older versions to save disk space
+
+### Notes
+- **Problem:** Template directories accumulate over time in `~/.pyve/templates/`, consuming disk space unnecessarily. Each version is ~few MB, and users rarely need old versions after upgrading.
+- **Analysis:**
+  - Old versions provide minimal value after upgrade (no official rollback support)
+  - Multiple projects at different versions still only need latest version to upgrade
+  - Git history provides audit trail for template changes
+  - Disk space adds up over time (v0.3, v0.4.21, v0.5.0, v0.5.1, v0.5.2, v0.5.3, v0.5.4...)
+- **Solution:** Automatically cleanup old template versions during `--install`:
+  - Keep latest 2 versions (current + previous for safety)
+  - Delete all older versions
+  - Run cleanup after copying new templates
+- **Implementation:**
+  ```bash
+  # v0.5.4: Cleanup old template versions, keep latest 2
+  function cleanup_old_templates() {
+      local VERSIONS=($(ls -1d "$PYVE_TEMPLATES_DIR"/v* 2>/dev/null | sort -V))
+      local COUNT=${#VERSIONS[@]}
+      
+      if [[ $COUNT -gt 2 ]]; then
+          echo "\nCleaning up old template versions (keeping latest 2)..."
+          for ((i=0; i<COUNT-2; i++)); do
+              echo "  Removing: $(basename "${VERSIONS[$i]}")"
+              rm -rf "${VERSIONS[$i]}"
+          done
+          echo "Cleanup complete."
+      fi
+  }
+  
+  # In install_self(), after copy_latest_templates_to_home():
+  cleanup_old_templates
+  ```
+- **Rationale:**
+  - Saves disk space (removes ~few MB per old version)
+  - Simpler mental model (latest + previous only)
+  - Keeps one safety buffer (previous version) in case of issues
+  - Automatic, no user action required
+- **Version bumped:** pyve.sh v0.5.3 → v0.5.4
+
 ## v0.5.3 Update Decision Log [Implemented]
 - [x] Add decision entries for v0.5.0, v0.5.1, and v0.5.2
 

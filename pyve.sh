@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.3"
+VERSION="0.5.4"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -119,6 +119,21 @@ function migrate_template_directories() {
     # if [[ -d "$PYVE_TEMPLATES_DIR/v0.5" ]] && [[ ! -d "$PYVE_TEMPLATES_DIR/v0.5.0" ]]; then
     #     mv "$PYVE_TEMPLATES_DIR/v0.5" "$PYVE_TEMPLATES_DIR/v0.5.0"
     # fi
+}
+
+# v0.5.4: Cleanup old template versions, keep latest 2
+function cleanup_old_templates() {
+    local VERSIONS=($(ls -1d "$PYVE_TEMPLATES_DIR"/v* 2>/dev/null | sort -V))
+    local COUNT=${#VERSIONS[@]}
+    
+    if [[ $COUNT -gt 2 ]]; then
+        echo "\nCleaning up old template versions (keeping latest 2)..."
+        for ((i=0; i<COUNT-2; i++)); do
+            echo "  Removing: $(basename "${VERSIONS[$i]}")"
+            rm -rf "${VERSIONS[$i]}"
+        done
+        echo "Cleanup complete."
+    fi
 }
 
 # v0.5.0: Compare two semver strings (e.g., "0.4.20" vs "0.4.21")
@@ -1578,6 +1593,9 @@ function install_self() {
     else
         record_source_path "$SOURCE_PATH"
         copy_latest_templates_to_home "$SOURCE_PATH"
+        
+        # v0.5.4: Cleanup old template versions after installing new ones
+        cleanup_old_templates
     fi
 
     # v0.3.14: Create ~/.local/.env template if it doesn't exist
