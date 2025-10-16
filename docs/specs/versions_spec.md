@@ -8,6 +8,59 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.20 Clear Status After Manual Merge [Implemented]
+- [x] Add `--clear-status <operation>` command to mark manual merge complete
+- [x] Create `.pyve/action_needed` file when suffixed files are created during init/upgrade
+- [x] Update error messages to reference `.pyve/action_needed` file with clear instructions
+- [x] Auto-clean `.pyve/action_needed` when status is cleared
+- [x] Update `.pyve/version` when clearing upgrade status
+
+### Notes
+- **Problem:** When `--init` or `--upgrade` creates suffixed files (e.g., `filename__t__v0.4.md`) for manual merge, the status file blocks future operations with no clear way to signal "merge complete"
+- **User experience issues:**
+  - Status file remains after manual merge, blocking `--upgrade`
+  - Error message "One or more status files exist" is cryptic
+  - No guidance on how to clear the block
+  - `.pyve/version` shows old version until upgrade completes
+- **Solution:** Add explicit workflow for resolving manual merge state
+- **Implementation:**
+  - **New command:** `pyve --clear-status <operation>` where operation is `init` or `upgrade`
+  - **Action needed file:** `.pyve/action_needed` created when suffixed files are generated
+  - **File contents:**
+    ```
+    Manual merge required for the following files:
+      - docs/guides/building_guide__t__v0.4.md
+      - docs/specs/codebase_spec__t__v0.4.md
+    
+    To complete:
+    1. Review and merge changes from suffixed files
+    2. Delete suffixed files when satisfied
+    3. Run: pyve --clear-status init
+    
+    Until resolved, 'pyve --upgrade' is blocked.
+    ```
+  - **Enhanced error messages:**
+    - When status files exist, check for `.pyve/action_needed`
+    - If exists, display its contents
+    - If not, show generic "Run 'pyve --clear-status <operation>' to clear"
+  - **Clear status behavior:**
+    - Removes `.pyve/status/<operation>` file
+    - Removes `.pyve/action_needed` file
+    - For `upgrade`: updates `.pyve/version` to current version
+    - Confirms action: "Status cleared for <operation>. You can now run pyve --upgrade."
+- **User workflow:**
+  1. Run `pyve --init` or `pyve --upgrade`
+  2. If conflicts: suffixed files created, `.pyve/action_needed` written
+  3. User reviews and merges changes
+  4. User deletes suffixed files
+  5. User runs `pyve --clear-status init` (or `upgrade`)
+  6. Status cleared, operations unblocked
+- **Edge cases:**
+  - If no `.pyve/action_needed` exists, `--clear-status` still works (manual override)
+  - If suffixed files still exist, warn but allow clearing (user choice)
+  - `--clear-status` without operation shows usage
+- **Version bumped:** pyve.sh v0.4.19 → v0.4.20
+
 ## v0.4.19 Include Context, LLM Q&A in Foundation, various minor doc updates [Implemented]
 - [x] Add `docs/context/` to foundation template files
 - [x] Add `docs/guides/llm_qa/` to foundation template files

@@ -11,9 +11,9 @@
 # In the future, it may support Bash, Linux, and other shells, depending on interest.
 #
 # Name: pyve.sh
-# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> | --remove <package> | --help | --version | --config }
+# Usage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --clear-status <operation> | --list | --add <package> | --remove <package> | --help | --version | --config }
 # Description:
-# There are thirteen functions:
+# There are fourteen functions:
 #   1. --init / -i: Initialize the Python virtual environment 
 #      NOTE: --python-version is optional
 #      FORMAT: #.#.#, example 3.13.7
@@ -23,12 +23,13 @@
 #   5. --uninstall: Remove the installed script and 'pyve' symlink from $HOME/.local/bin
 #   6. --update: Update documentation templates from the Pyve source repo to ~/.pyve/templates/{newer_version}
 #   7. --upgrade: Upgrade the local git repository documentation templates to a newer version from ~/.pyve/templates/
-#   8. --list: List available and installed documentation packages
-#   9. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
-#   10. --remove <package>: Remove a documentation package
-#   11. --help / -h: Show this help message
-#   12. --version / -v: Show the version of this script
-#   13. --config / -c: Show the configuration of this script
+#   8. --clear-status <operation>: Clear status after manual merge (operation: init | upgrade)
+#   9. --list: List available and installed documentation packages
+#   10. --add <package>: Add a documentation package (e.g., web, persistence, infrastructure)
+#   11. --remove <package>: Remove a documentation package
+#   12. --help / -h: Show this help message
+#   13. --version / -v: Show the version of this script
+#   14. --config / -c: Show the configuration of this script
 #   Neither your own code nor Git is impacted by this script. This is only about setting up your Python environment.
 #
 #   1. --init: Initialize the Python virtural environment
@@ -59,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.4.19"
+VERSION="0.4.20"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -143,7 +144,7 @@ function show_help() {
     echo "- autoactivate and deactivate the virtual environment when you change directory (direnv)"
     echo "- auto-configure an environment variable file .env (ready for dotenv package in Python)"
     echo "- auto-configure a .gitignore file to ignore the virtual environment directory and other artifacts"
-    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
+    echo "\nUsage: ~/pyve.sh {--init [<directory_name>] [--python-version <python_version>] [--local-env] [--packages <pkg1> <pkg2> ...] | --python-version <python_version> | --purge [<directory_name>] | --install | --uninstall | --update | --upgrade | --clear-status <operation> | --list | --add <package> [pkg2 ...] | --remove <package> [pkg2 ...] | --help | --version | --config}"
     echo "\nDescription:"
     echo "  --init:    Initialize Python virtual environment"
     echo "             Optional directory name (default is .venv)"
@@ -157,6 +158,7 @@ function show_help() {
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
     echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
     echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
+    echo "  --clear-status <operation>: Clear status after manual merge (operation: init | upgrade)"
     echo "  --list:    List available and installed documentation packages with descriptions"
     echo "  --add <package> [pkg2 ...]: Add one or more documentation packages (e.g., web, persistence, infrastructure)"
     echo "  --remove <package> [pkg2 ...]: Remove one or more documentation packages"
@@ -1205,6 +1207,18 @@ function init_copy_templates() {
         echo "  Preserved (created __t__ copies): $SKIPPED_MODIFIED files"
         if [[ $SKIPPED_MODIFIED -gt 0 ]]; then
             echo "\nNote: Review the __t__${LATEST_VERSION} files and merge changes manually."
+            
+            # v0.4.20: Create action_needed file with list of suffixed files
+            local -a SUFFIXED_FILES=()
+            if [[ -d ./docs ]]; then
+                while IFS= read -r file; do
+                    SUFFIXED_FILES+=("$file")
+                done < <(find ./docs -type f -name "*__t__${LATEST_VERSION}.md" 2>/dev/null)
+            fi
+            if [[ ${#SUFFIXED_FILES[@]} -gt 0 ]]; then
+                write_action_needed "init" "${SUFFIXED_FILES[@]}"
+                echo "\nCreated .pyve/action_needed with merge instructions."
+            fi
         fi
     else
         # No conflicts, simple copy
@@ -1576,10 +1590,108 @@ function update_templates() {
     echo "\nTemplate update complete."
 }
 
+# v0.4.20: Write action_needed file when manual merge is required
+function write_action_needed() {
+    local OPERATION="$1"
+    shift
+    local -a SUFFIXED_FILES=("$@")
+    
+    ensure_project_pyve_dirs
+    local ACTION_FILE="./.pyve/action_needed"
+    
+    {
+        echo "Manual merge required for the following files:"
+        for file in "${SUFFIXED_FILES[@]}"; do
+            echo "  - $file"
+        done
+        echo ""
+        echo "To complete:"
+        echo "1. Review and merge changes from suffixed files"
+        echo "2. Delete suffixed files when satisfied"
+        echo "3. Run: pyve --clear-status $OPERATION"
+        echo ""
+        echo "Until resolved, 'pyve --upgrade' is blocked."
+    } > "$ACTION_FILE"
+}
+
+# v0.4.20: Clear status after manual merge
+function clear_status() {
+    if [[ $# -ne 2 ]]; then
+        echo "\nERROR: --clear-status requires an operation argument."
+        echo "Usage: pyve --clear-status <operation>"
+        echo "  where <operation> is: init | upgrade"
+        exit 1
+    fi
+    
+    local OPERATION="$2"
+    
+    if [[ "$OPERATION" != "init" ]] && [[ "$OPERATION" != "upgrade" ]]; then
+        echo "\nERROR: Invalid operation '$OPERATION'."
+        echo "Valid operations: init | upgrade"
+        exit 1
+    fi
+    
+    local STATUS_FILE="./.pyve/status/$OPERATION"
+    local ACTION_FILE="./.pyve/action_needed"
+    
+    if [[ ! -f "$STATUS_FILE" ]]; then
+        echo "\nNo status file found for operation '$OPERATION'."
+        echo "Nothing to clear."
+        exit 0
+    fi
+    
+    # Check if suffixed files still exist (warning, not blocking)
+    local SUFFIXED_COUNT=0
+    if [[ -d ./docs ]]; then
+        SUFFIXED_COUNT=$(find ./docs -type f -name "*__t__v*.md" 2>/dev/null | wc -l | tr -d ' ')
+    fi
+    
+    if [[ $SUFFIXED_COUNT -gt 0 ]]; then
+        echo "\nWARNING: Found $SUFFIXED_COUNT suffixed file(s) still present."
+        echo "You may want to review and delete them after merging."
+    fi
+    
+    # Remove status file
+    rm -f "$STATUS_FILE"
+    echo "\nRemoved status file: $STATUS_FILE"
+    
+    # Remove action_needed file if it exists
+    if [[ -f "$ACTION_FILE" ]]; then
+        rm -f "$ACTION_FILE"
+        echo "Removed action file: $ACTION_FILE"
+    fi
+    
+    # For upgrade, update the version file
+    if [[ "$OPERATION" == "upgrade" ]]; then
+        if command -v pyve &> /dev/null; then
+            pyve --version > ./.pyve/version 2>/dev/null || echo "Version: $VERSION" > ./.pyve/version
+        else
+            echo "Version: $VERSION" > ./.pyve/version
+        fi
+        echo "Updated .pyve/version to current version ($VERSION)"
+    fi
+    
+    echo "\nStatus cleared for '$OPERATION'."
+    if [[ "$OPERATION" == "init" ]]; then
+        echo "You can now run 'pyve --upgrade' if needed."
+    else
+        echo "You can now run 'pyve --upgrade' again."
+    fi
+}
+
 # v0.3.6: Upgrade local repository templates to newer version from ~/.pyve/templates/
 function upgrade_status_fail_if_any_present() {
     if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
-        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting upgrade to avoid making it worse."
+        echo "\nERROR: One or more status files exist under ./.pyve/status."
+        
+        # v0.4.20: Check for action_needed file and display it
+        if [[ -f ./.pyve/action_needed ]]; then
+            echo ""
+            cat ./.pyve/action_needed
+        else
+            echo "Run 'pyve --clear-status <operation>' to clear after resolving issues."
+            echo "  where <operation> is: init | upgrade"
+        fi
         exit 1
     fi
 }
@@ -1720,6 +1832,18 @@ function upgrade_templates() {
         echo "  Skipped (modified): $SKIPPED_MODIFIED files"
         if [[ $SKIPPED_MODIFIED -gt 0 ]]; then
             echo "\nNote: Modified files were preserved. Review the __t__${HOME_LATEST_VERSION} files and merge changes manually."
+            
+            # v0.4.20: Create action_needed file with list of suffixed files
+            local -a SUFFIXED_FILES=()
+            if [[ -d ./docs ]]; then
+                while IFS= read -r file; do
+                    SUFFIXED_FILES+=("$file")
+                done < <(find ./docs -type f -name "*__t__${HOME_LATEST_VERSION}.md" 2>/dev/null)
+            fi
+            if [[ ${#SUFFIXED_FILES[@]} -gt 0 ]]; then
+                write_action_needed "upgrade" "${SUFFIXED_FILES[@]}"
+                echo "\nCreated .pyve/action_needed with merge instructions."
+            fi
         fi
     elif [[ "$HOME_LATEST_VERSION" == "$OLD_VERSION" ]]; then
         echo "\nTemplates are already at the latest version ($OLD_VERSION)."
@@ -1762,6 +1886,9 @@ elif [[ $1 == "--update" ]]; then
     exit 0
 elif [[ $1 == "--upgrade" ]]; then
     upgrade_templates
+    exit 0
+elif [[ $1 == "--clear-status" ]]; then
+    clear_status "$@"
     exit 0
 elif [[ $1 == "--list" ]]; then
     list_packages
