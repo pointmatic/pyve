@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.4.21"
+VERSION="0.5.0"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -88,21 +88,85 @@ function ensure_pyve_home() {
     mkdir -p "$PYVE_TEMPLATES_DIR" 2>/dev/null || true
 }
 
-# Find latest templates version directory name (e.g., v0.3) under given source path
+# v0.5.0: Migrate old minor-version directories to patch-level directories
+function migrate_template_directories() {
+    # Migrate 0.4/ to 0.4.21/ if needed
+    if [[ -d "$PYVE_TEMPLATES_DIR/v0.4" ]] && [[ ! -d "$PYVE_TEMPLATES_DIR/v0.4.21" ]]; then
+        echo "Migrating templates from v0.4/ to v0.4.21/..."
+        mv "$PYVE_TEMPLATES_DIR/v0.4" "$PYVE_TEMPLATES_DIR/v0.4.21"
+        echo "Migration complete."
+    fi
+    
+    # Future migrations can be added here
+    # if [[ -d "$PYVE_TEMPLATES_DIR/v0.5" ]] && [[ ! -d "$PYVE_TEMPLATES_DIR/v0.5.0" ]]; then
+    #     mv "$PYVE_TEMPLATES_DIR/v0.5" "$PYVE_TEMPLATES_DIR/v0.5.0"
+    # fi
+}
+
+# v0.5.0: Compare two semver strings (e.g., "0.4.20" vs "0.4.21")
+# Returns: 0 if equal, 1 if v1 > v2, 2 if v1 < v2
+function compare_semver() {
+    local v1="$1"
+    local v2="$2"
+    
+    # Strip 'v' prefix if present
+    v1="${v1#v}"
+    v2="${v2#v}"
+    
+    # Split into major.minor.patch
+    local v1_major=$(echo "$v1" | cut -d. -f1)
+    local v1_minor=$(echo "$v1" | cut -d. -f2)
+    local v1_patch=$(echo "$v1" | cut -d. -f3)
+    
+    local v2_major=$(echo "$v2" | cut -d. -f1)
+    local v2_minor=$(echo "$v2" | cut -d. -f2)
+    local v2_patch=$(echo "$v2" | cut -d. -f3)
+    
+    # Compare major, then minor, then patch
+    if [[ $v1_major -gt $v2_major ]]; then return 1; fi
+    if [[ $v1_major -lt $v2_major ]]; then return 2; fi
+    if [[ $v1_minor -gt $v2_minor ]]; then return 1; fi
+    if [[ $v1_minor -lt $v2_minor ]]; then return 2; fi
+    if [[ $v1_patch -gt $v2_patch ]]; then return 1; fi
+    if [[ $v1_patch -lt $v2_patch ]]; then return 2; fi
+    return 0
+}
+
+# v0.5.0: Find latest templates version directory name (e.g., v0.5.0) under given source path
+# Now supports full semver comparison instead of simple string sort
 function find_latest_template_version() {
     local SOURCE_PATH="$1"
     if [[ -z "$SOURCE_PATH" || ! -d "$SOURCE_PATH/templates" ]]; then
         echo ""
         return 0
     fi
-    # List v* directories, sort, take last, and print basename
-    local LATEST_DIR
-    LATEST_DIR=$(ls -1d "$SOURCE_PATH"/templates/v* 2>/dev/null | sort | tail -n 1)
-    if [[ -z "$LATEST_DIR" ]]; then
-        echo ""
-    else
-        basename "$LATEST_DIR"
-    fi
+    
+    local LATEST=""
+    local DIR
+    
+    for DIR in "$SOURCE_PATH"/templates/v*; do
+        [[ ! -d "$DIR" ]] && continue
+        local VERSION=$(basename "$DIR")
+        
+        # Strip 'v' prefix for comparison
+        local VERSION_NUM="${VERSION#v}"
+        
+        # Skip if not valid semver (e.g., .DS_Store)
+        if [[ ! "$VERSION_NUM" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            continue
+        fi
+        
+        if [[ -z "$LATEST" ]]; then
+            LATEST="$VERSION"
+        else
+            compare_semver "$VERSION" "$LATEST"
+            if [[ $? -eq 1 ]]; then
+                LATEST="$VERSION"
+            fi
+        fi
+    done
+    
+    echo "$LATEST"
 }
 
 # Record the Pyve source path (repo root) for future updates
@@ -1087,6 +1151,9 @@ function target_path_for_source() {
 }
 
 function init_copy_templates() {
+    # v0.5.0: Migrate old template directories before using them
+    migrate_template_directories
+    
     # Determine latest templates in ~/.pyve
     local HOME_SRC="$PYVE_HOME"
     local LATEST_VERSION
@@ -1465,6 +1532,9 @@ function install_self() {
         echo "Created symlink $TARGET_SYMLINK_PATH -> $TARGET_SCRIPT_PATH"
     fi
 
+    # v0.5.0: Migrate old template directories before copying new ones
+    migrate_template_directories
+    
     # v0.3.1: Record source path and copy latest templates
     local SOURCE_PATH="$PWD"
     if [[ ! -d "$SOURCE_PATH/templates" ]]; then
@@ -1530,7 +1600,11 @@ function uninstall_self() {
 }
 
 # v0.3.5: Update templates from source repo to ~/.pyve/templates/{newer_version}
+# v0.5.0: Now uses semver comparison for patch-level versions
 function update_templates() {
+    # v0.5.0: Migrate old template directories before updating
+    migrate_template_directories
+    
     # Read the source path from ~/.pyve/source_path
     if [[ ! -f "$PYVE_SOURCE_PATH_FILE" ]]; then
         echo "\nERROR: Source path file not found at $PYVE_SOURCE_PATH_FILE."
@@ -1563,13 +1637,24 @@ function update_templates() {
     HOME_LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
     if [[ -z "$HOME_LATEST_VERSION" ]]; then
         echo "No templates currently installed in $PYVE_TEMPLATES_DIR."
-        HOME_LATEST_VERSION="v0.0"
+        HOME_LATEST_VERSION="v0.0.0"
     else
         echo "Current version in home: $HOME_LATEST_VERSION"
     fi
 
-    # Compare versions (simple string comparison works for v0.3 format)
-    if [[ "$SOURCE_LATEST_VERSION" > "$HOME_LATEST_VERSION" ]] || [[ "$SOURCE_LATEST_VERSION" == "$HOME_LATEST_VERSION" && ! -d "$PYVE_TEMPLATES_DIR/$SOURCE_LATEST_VERSION" ]]; then
+    # v0.5.0: Use semver comparison instead of string comparison
+    local NEED_UPDATE=0
+    compare_semver "$SOURCE_LATEST_VERSION" "$HOME_LATEST_VERSION"
+    local CMP_RESULT=$?
+    if [[ $CMP_RESULT -eq 1 ]]; then
+        # Source is newer
+        NEED_UPDATE=1
+    elif [[ $CMP_RESULT -eq 0 ]] && [[ ! -d "$PYVE_TEMPLATES_DIR/$SOURCE_LATEST_VERSION" ]]; then
+        # Same version but directory missing
+        NEED_UPDATE=1
+    fi
+    
+    if [[ $NEED_UPDATE -eq 1 ]]; then
         echo "\nNewer version available: $SOURCE_LATEST_VERSION"
         local SRC_DIR="$SOURCE_PATH/templates/$SOURCE_LATEST_VERSION"
         local DEST_DIR="$PYVE_TEMPLATES_DIR/$SOURCE_LATEST_VERSION"
@@ -1708,6 +1793,9 @@ function write_upgrade_status() {
 }
 
 function upgrade_templates() {
+    # v0.5.0: Migrate old template directories before upgrading
+    migrate_template_directories
+    
     # Enforce status cleanliness at the beginning (spec requirement)
     upgrade_status_fail_if_any_present
 
@@ -1729,13 +1817,20 @@ function upgrade_templates() {
 
     local OLD_VERSION_FULL
     OLD_VERSION_FULL=$(cat ./.pyve/version 2>/dev/null)
-    local OLD_MM
-    OLD_MM=$(echo "$OLD_VERSION_FULL" | grep -Eo '[0-9]+\.[0-9]+' | head -n1)
-    if [[ -z "$OLD_MM" ]]; then
-        echo "\nERROR: Could not parse version from ./.pyve/version (content: $OLD_VERSION_FULL)."
-        exit 1
+    # v0.5.0: Parse full semver (major.minor.patch) instead of just major.minor
+    local OLD_VERSION_NUM
+    OLD_VERSION_NUM=$(echo "$OLD_VERSION_FULL" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+    if [[ -z "$OLD_VERSION_NUM" ]]; then
+        # Fallback: try major.minor format for old projects
+        local OLD_MM
+        OLD_MM=$(echo "$OLD_VERSION_FULL" | grep -Eo '[0-9]+\.[0-9]+' | head -n1)
+        if [[ -z "$OLD_MM" ]]; then
+            echo "\nERROR: Could not parse version from ./.pyve/version (content: $OLD_VERSION_FULL)."
+            exit 1
+        fi
+        OLD_VERSION_NUM="$OLD_MM.0"
     fi
-    local OLD_VERSION="v$OLD_MM"
+    local OLD_VERSION="v$OLD_VERSION_NUM"
     echo "\nCurrent project template version: $OLD_VERSION"
 
     # Find the latest version available in ~/.pyve/templates/
@@ -1748,8 +1843,10 @@ function upgrade_templates() {
     fi
     echo "Latest available template version: $HOME_LATEST_VERSION"
 
-    # Check if there's a newer version
-    if [[ "$HOME_LATEST_VERSION" > "$OLD_VERSION" ]]; then
+    # v0.5.0: Use semver comparison instead of string comparison
+    compare_semver "$HOME_LATEST_VERSION" "$OLD_VERSION"
+    local CMP_RESULT=$?
+    if [[ $CMP_RESULT -eq 1 ]]; then
         echo "\nNewer version available: $HOME_LATEST_VERSION"
         local TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/$HOME_LATEST_VERSION"
         local OLD_TEMPLATE_DIR="$PYVE_TEMPLATES_DIR/$OLD_VERSION"
@@ -1851,7 +1948,7 @@ function upgrade_templates() {
                 echo "\nCreated .pyve/action_needed with merge instructions."
             fi
         fi
-    elif [[ "$HOME_LATEST_VERSION" == "$OLD_VERSION" ]]; then
+    elif [[ $CMP_RESULT -eq 0 ]]; then
         echo "\nTemplates are already at the latest version ($OLD_VERSION)."
     else
         echo "\nCurrent version ($OLD_VERSION) is newer than available templates ($HOME_LATEST_VERSION)."

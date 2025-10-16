@@ -8,6 +8,221 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.2 Deprecate --update Command [Next]
+- [ ] Add deprecation warning to `--update` command
+- [ ] Update help text to recommend `--install` instead
+- [ ] Update documentation to remove `--update` references
+- [ ] Plan for removal in v0.6.0
+
+### Notes
+- **Problem:** `--update` and `--install` have significant overlap, creating confusion about which to use
+- **Analysis:**
+  - `--install`: Copies pyve.sh + copies templates + records source path
+  - `--update`: Only copies templates (requires source_path already recorded)
+  - Both require access to source repo or recorded source_path
+  - `--install` is idempotent, can be run repeatedly without harm
+- **User confusion:**
+  - When to use `--install` vs `--update`?
+  - Answer: Just use `--install` for everything
+- **Solution:** Deprecate `--update` in favor of `--install`
+- **Implementation:**
+  - Add deprecation warning when `--update` is called:
+    ```bash
+    echo "\nWARNING: 'pyve --update' is deprecated and will be removed in v0.6.0."
+    echo "Use 'pyve --install' instead, which updates both the script and templates."
+    echo "Continuing with template update..."
+    ```
+  - Update help text:
+    ```bash
+    # Remove or mark as deprecated:
+    # echo "  --update:  Update documentation templates..."
+    
+    # Update --install description:
+    echo "  --install: Install/update this script and templates to ~/.local/bin"
+    echo "             Run this to get the latest pyve.sh and templates"
+    echo "             Safe to run multiple times (idempotent)"
+    ```
+  - Update README and guides to only mention `--install`
+  - Keep `--update` functional but warn users
+  - Remove entirely in v0.6.0
+- **Rationale:**
+  - Simpler mental model: one command for installation and updates
+  - Reduces maintenance burden (one code path instead of two)
+  - `--install` already does everything users need
+  - Only one user (you) affected, easy migration
+- **Migration path:**
+  - v0.5.2: Add deprecation warning, update docs
+  - v0.6.0: Remove `--update` command entirely
+- **Version bumped:** pyve.sh v0.5.1 → v0.5.2
+
+## v0.5.1 Pyve-Owned Directories [Next]
+- [ ] Define `PYVE_OWNED_DIRS` array for directories Pyve controls
+- [ ] Update conflict detection to skip owned directories
+- [ ] Always overwrite files in Pyve-owned directories during init/upgrade
+- [ ] Update documentation to explain ownership model
+
+### Notes
+- **Problem:** Some directories should be Pyve-controlled (e.g., `docs/guides/`) but current logic treats all files equally, creating suffixed copies even when Pyve should just overwrite
+- **User experience issue:**
+  - User runs `--upgrade`
+  - `docs/guides/building_guide.md` was modified locally
+  - Creates `building_guide__t__v0.5.md` suffixed copy
+  - But guides are process documentation that Pyve owns, not user specs
+- **Solution:** Define directory ownership model
+- **Implementation:**
+  - **Pyve-owned directories** (always overwrite, no conflict detection):
+    ```bash
+    PYVE_OWNED_DIRS=(
+        "docs/guides"
+        "docs/context"
+        "docs/guides/llm_qa"
+    )
+    ```
+  - **User-owned directories** (preserve on conflict, create suffixed copies):
+    ```bash
+    # Everything else, including:
+    # - docs/specs/
+    # - docs/decisions/
+    # - README.md
+    # - CONTRIBUTING.md
+    ```
+  - **Conflict detection logic:**
+    ```bash
+    function is_pyve_owned() {
+        local FILE="$1"
+        for DIR in "${PYVE_OWNED_DIRS[@]}"; do
+            if [[ "$FILE" == "$DIR"/* ]]; then
+                return 0  # Pyve owns this
+            fi
+        done
+        return 1  # User owns this
+    }
+    
+    # In init_copy_templates and upgrade_templates:
+    if is_pyve_owned "$DEST_REL"; then
+        # Always overwrite, no conflict check
+        cp "$FILE" "$DEST_ABS"
+    else
+        # Check for conflicts, create suffixed copy if needed
+        if ! cmp -s "$FILE" "$DEST_ABS"; then
+            # Create suffixed copy...
+        fi
+    fi
+    ```
+  - Update help text and docs to explain ownership model
+- **Rationale:**
+  - Process guides (building, planning, testing) are Pyve methodology, not project-specific
+  - Technical specs (codebase, technical design) are project-specific, user-owned
+  - Clear ownership prevents confusion about which files to edit
+  - Users can still add their own files to any directory
+- **Version bumped:** pyve.sh v0.5.0 → v0.5.1
+
+## v0.5.0 Patch-Level Template Versioning [Implemented]
+- [x] Store templates at patch level (e.g., `0.5.0/`, `0.5.1/`) instead of minor level (`0.5/`)
+- [x] Update `find_latest_template_version()` to compare full semver versions
+- [x] Update `--install` to create patch-level directories
+- [x] Update `--update` to create patch-level directories
+- [x] Update `--upgrade` to compare exact patch versions
+- [x] Add migration logic to handle existing `0.4/` → `0.4.21/` on first run
+- [x] Update `.pyve/version` format to store exact version
+
+### Notes
+- **Problem:** Templates stored at minor version level (e.g., `~/.pyve/templates/0.4/`) means all v0.4.x versions overwrite the same directory, making it impossible to upgrade from 0.4.20 → 0.4.21
+- **Root cause:** Version granularity is too coarse
+- **Current behavior:**
+  - User has project at v0.4.20
+  - Runs `pyve --update` (downloads v0.4.21)
+  - Templates stored in `~/.pyve/templates/0.4/` (overwrites v0.4.20)
+  - Runs `pyve --upgrade`
+  - Compares `0.4` vs `0.4` → "already up to date"
+  - Cannot upgrade to v0.4.21
+- **Expected behavior:**
+  - Templates stored at patch level: `~/.pyve/templates/0.4.21/`
+  - Project version: `.pyve/version` contains `Version: 0.4.20`
+  - `--upgrade` compares `0.4.20` < `0.4.21` → upgrade available
+- **Solution:** Store templates at full semver patch level
+- **Implementation:**
+  - **Directory structure:**
+    ```bash
+    ~/.pyve/templates/
+    ├── 0.4.20/
+    ├── 0.4.21/
+    ├── 0.5.0/
+    └── 0.5.1/
+    ```
+  - **Version comparison:**
+    ```bash
+    function compare_semver() {
+        # Compare two semver strings (e.g., "0.4.20" vs "0.4.21")
+        # Returns: 0 if equal, 1 if v1 > v2, 2 if v1 < v2
+        local v1="$1"
+        local v2="$2"
+        
+        # Split into major.minor.patch
+        local v1_major=$(echo "$v1" | cut -d. -f1)
+        local v1_minor=$(echo "$v1" | cut -d. -f2)
+        local v1_patch=$(echo "$v1" | cut -d. -f3)
+        
+        local v2_major=$(echo "$v2" | cut -d. -f1)
+        local v2_minor=$(echo "$v2" | cut -d. -f2)
+        local v2_patch=$(echo "$v2" | cut -d. -f3)
+        
+        # Compare major, then minor, then patch
+        if [[ $v1_major -gt $v2_major ]]; then return 1; fi
+        if [[ $v1_major -lt $v2_major ]]; then return 2; fi
+        if [[ $v1_minor -gt $v2_minor ]]; then return 1; fi
+        if [[ $v1_minor -lt $v2_minor ]]; then return 2; fi
+        if [[ $v1_patch -gt $v2_patch ]]; then return 1; fi
+        if [[ $v1_patch -lt $v2_patch ]]; then return 2; fi
+        return 0
+    }
+    ```
+  - **find_latest_template_version():**
+    ```bash
+    function find_latest_template_version() {
+        local TEMPLATES_DIR="$1"
+        local LATEST=""
+        
+        for DIR in "$TEMPLATES_DIR"/templates/*/; do
+            [[ ! -d "$DIR" ]] && continue
+            local VERSION=$(basename "$DIR")
+            
+            # Skip if not valid semver (e.g., .DS_Store)
+            if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                continue
+            fi
+            
+            if [[ -z "$LATEST" ]]; then
+                LATEST="$VERSION"
+            else
+                compare_semver "$VERSION" "$LATEST"
+                if [[ $? -eq 1 ]]; then
+                    LATEST="$VERSION"
+                fi
+            fi
+        done
+        
+        echo "$LATEST"
+    }
+    ```
+  - **Migration logic:**
+    ```bash
+    # On first run of v0.5.0, migrate old 0.4/ to 0.4.21/
+    if [[ -d ~/.pyve/templates/0.4 ]] && [[ ! -d ~/.pyve/templates/0.4.21 ]]; then
+        echo "Migrating templates from 0.4/ to 0.4.21/..."
+        mv ~/.pyve/templates/0.4 ~/.pyve/templates/0.4.21
+    fi
+    ```
+  - **--install and --update:** Create directories like `0.5.0/` not `0.5/`
+  - **--upgrade:** Compare full semver versions
+- **Breaking change:** Existing installations with `0.4/` will be migrated to `0.4.21/`
+- **Disk space:** Each patch version requires full template copy (~few MB per version)
+- **Rationale:**
+  - Enables patch-level upgrades (critical for bug fixes)
+  - Clear version tracking and audit trail
+  - Aligns with semantic versioning best practices
+- **Version bumped:** pyve.sh v0.4.21 → v0.5.0 (breaking change)
+
 ## v0.4.21 Fix Status Blocking Logic [Implemented]
 - [x] Update `upgrade_status_fail_if_any_present()` to only block when `action_needed` exists
 - [x] Update `fail_if_status_present()` to only block when `action_needed` exists
