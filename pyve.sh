@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.7"
+VERSION="0.5.8"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
