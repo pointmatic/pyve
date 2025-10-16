@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.4.20"
+VERSION="0.4.21"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -638,11 +638,16 @@ function ensure_project_pyve_dirs() {
     mkdir -p ./.pyve/status 2>/dev/null || true
 }
 
+# v0.4.21: Only block if action_needed exists (indicates incomplete merge)
 function fail_if_status_present() {
-    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
-        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting to avoid making it worse."
+    # Only block if action_needed file exists (indicates incomplete merge requiring user action)
+    if [[ -f ./.pyve/action_needed ]]; then
+        echo "\nERROR: Manual merge required."
+        echo ""
+        cat ./.pyve/action_needed
         exit 1
     fi
+    # Status files without action_needed = successful operations, don't block
 }
 
 function write_init_status() {
@@ -1264,11 +1269,16 @@ function read_project_major_minor() {
     echo "$MM"
 }
 
+# v0.4.21: Only block if action_needed exists (indicates incomplete merge)
 function purge_status_fail_if_any_present() {
-    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
-        echo "\nERROR: One or more status files exist under ./.pyve/status. Aborting purge to avoid making it worse."
+    # Only block if action_needed file exists (indicates incomplete merge requiring user action)
+    if [[ -f ./.pyve/action_needed ]]; then
+        echo "\nERROR: Manual merge required. Cannot purge until merge is complete."
+        echo ""
+        cat ./.pyve/action_needed
         exit 1
     fi
+    # Status files without action_needed = successful operations, don't block
 }
 
 function write_purge_status() {
@@ -1680,20 +1690,16 @@ function clear_status() {
 }
 
 # v0.3.6: Upgrade local repository templates to newer version from ~/.pyve/templates/
+# v0.4.21: Only block if action_needed exists (indicates incomplete merge)
 function upgrade_status_fail_if_any_present() {
-    if [[ -d ./.pyve/status ]] && [[ -n $(ls -A ./.pyve/status 2>/dev/null) ]]; then
-        echo "\nERROR: One or more status files exist under ./.pyve/status."
-        
-        # v0.4.20: Check for action_needed file and display it
-        if [[ -f ./.pyve/action_needed ]]; then
-            echo ""
-            cat ./.pyve/action_needed
-        else
-            echo "Run 'pyve --clear-status <operation>' to clear after resolving issues."
-            echo "  where <operation> is: init | upgrade"
-        fi
+    # Only block if action_needed file exists (indicates incomplete merge requiring user action)
+    if [[ -f ./.pyve/action_needed ]]; then
+        echo "\nERROR: Manual merge required."
+        echo ""
+        cat ./.pyve/action_needed
         exit 1
     fi
+    # Status files without action_needed = successful operations, don't block
 }
 
 function write_upgrade_status() {

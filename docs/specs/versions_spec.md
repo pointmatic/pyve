@@ -8,6 +8,44 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.4.21 Fix Status Blocking Logic [Implemented]
+- [x] Update `upgrade_status_fail_if_any_present()` to only block when `action_needed` exists
+- [x] Update `fail_if_status_present()` to only block when `action_needed` exists
+- [x] Update `purge_status_fail_if_any_present()` to only block when `action_needed` exists
+- [x] Allow normal status files from successful operations to coexist without blocking
+
+### Notes
+- **Problem:** Status files from successful operations (e.g., `.pyve/status/init`) block future operations even though nothing is wrong
+- **Root cause:** `upgrade_status_fail_if_any_present()` checks if ANY files exist in `.pyve/status/`, treating all status files as blocking
+- **Current behavior:**
+  - User runs `pyve --init` → creates `.pyve/status/init` (success marker)
+  - User runs `pyve --upgrade` → ERROR: "One or more status files exist"
+  - User must run `pyve --clear-status init` even though init succeeded
+- **Expected behavior:**
+  - Status files from successful operations should NOT block future operations
+  - Only block when `.pyve/action_needed` exists (indicating incomplete merge)
+- **Solution:** Change blocking logic to check for `action_needed` file first
+- **Implementation:**
+  - Update `upgrade_status_fail_if_any_present()`:
+    ```bash
+    # Only block if action_needed exists (indicates incomplete merge)
+    if [[ -f ./.pyve/action_needed ]]; then
+        echo "\nERROR: Manual merge required."
+        echo ""
+        cat ./.pyve/action_needed
+        exit 1
+    fi
+    # Status files without action_needed = successful operations, don't block
+    ```
+  - Update `init_status_fail_if_conflicts()` similarly
+  - Status files remain as audit trail but don't block operations
+  - `action_needed` file is the sole blocker
+- **Rationale:**
+  - Status files serve as audit trail (when operations ran)
+  - Blocking should only happen when user action is required
+  - Separates "operation history" from "operation incomplete"
+- **Version bumped:** pyve.sh v0.4.20 → v0.4.21
+
 ## v0.4.20 Clear Status After Manual Merge [Implemented]
 - [x] Add `--clear-status <operation>` command to mark manual merge complete
 - [x] Create `.pyve/action_needed` file when suffixed files are created during init/upgrade
