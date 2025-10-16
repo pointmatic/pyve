@@ -55,11 +55,11 @@
   - v0.6.0: Remove `--update` command entirely
 - **Version bumped:** pyve.sh v0.5.1 → v0.5.2
 
-## v0.5.1 Pyve-Owned Directories [Next]
-- [ ] Define `PYVE_OWNED_DIRS` array for directories Pyve controls
-- [ ] Update conflict detection to skip owned directories
-- [ ] Always overwrite files in Pyve-owned directories during init/upgrade
-- [ ] Update documentation to explain ownership model
+## v0.5.1 Pyve-Owned Directories [Implemented]
+- [x] Define `PYVE_OWNED_DIRS` array for directories Pyve controls
+- [x] Update conflict detection to skip owned directories
+- [x] Always overwrite files in Pyve-owned directories during init/upgrade
+- [x] Update documentation to explain ownership model
 
 ### Notes
 - **Problem:** Some directories should be Pyve-controlled (e.g., `docs/guides/`) but current logic treats all files equally, creating suffixed copies even when Pyve should just overwrite

@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.0"
+VERSION="0.5.1"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -83,9 +83,27 @@ PYVE_SOURCE_PATH_FILE="$PYVE_HOME/source_path"
 PYVE_TEMPLATES_DIR="$PYVE_HOME/templates"
 PYVE_PACKAGES_CONF=".pyve/packages.conf"
 
+# v0.5.1: Directories that Pyve owns (always overwrite, no conflict detection)
+PYVE_OWNED_DIRS=(
+    "docs/guides"
+    "docs/context"
+    "docs/guides/llm_qa"
+)
+
 # Ensure Pyve home directories exist
 function ensure_pyve_home() {
     mkdir -p "$PYVE_TEMPLATES_DIR" 2>/dev/null || true
+}
+
+# v0.5.1: Check if a file path is in a Pyve-owned directory
+function is_pyve_owned() {
+    local FILE="$1"
+    for DIR in "${PYVE_OWNED_DIRS[@]}"; do
+        if [[ "$FILE" == "$DIR"/* ]]; then
+            return 0  # Pyve owns this
+        fi
+    done
+    return 1  # User owns this
 }
 
 # v0.5.0: Migrate old minor-version directories to patch-level directories
@@ -1201,6 +1219,7 @@ function init_copy_templates() {
 
     # Build list and preflight check for non-identical overwrites (no subshells)
     # v0.3.11: Only copy foundation docs on init
+    # v0.5.1: Skip conflict detection for Pyve-owned directories
     local -a FILES=()
     local CONFLICTS=()
     local FILE
@@ -1213,6 +1232,12 @@ function init_copy_templates() {
             local DEST_REL
             DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
             local DEST_ABS="./$DEST_REL"
+            
+            # v0.5.1: Skip conflict check for Pyve-owned files
+            if is_pyve_owned "$DEST_REL"; then
+                continue  # Will be overwritten without conflict check
+            fi
+            
             if [[ -f "$DEST_ABS" ]]; then
                 if ! cmp -s "$FILE" "$DEST_ABS"; then
                     CONFLICTS+=("$DEST_REL")
@@ -1248,6 +1273,15 @@ function init_copy_templates() {
                 local DEST_REL
                 DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
                 local DEST_ABS="./$DEST_REL"
+                
+                # v0.5.1: Always overwrite Pyve-owned files
+                if is_pyve_owned "$DEST_REL"; then
+                    mkdir -p "$(dirname "$DEST_ABS")"
+                    cp "$FILE" "$DEST_ABS"
+                    echo "  Copied: $DEST_REL (Pyve-owned)"
+                    UPGRADED=$((UPGRADED+1))
+                    continue
+                fi
                 
                 if [[ -f "$DEST_ABS" ]]; then
                     if ! cmp -s "$FILE" "$DEST_ABS"; then
@@ -1889,6 +1923,15 @@ function upgrade_templates() {
             local DEST_REL
             DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
             local DEST_ABS="./$DEST_REL"
+            
+            # v0.5.1: Always overwrite Pyve-owned files
+            if is_pyve_owned "$DEST_REL"; then
+                mkdir -p "$(dirname "$DEST_ABS")"
+                cp "$FILE" "$DEST_ABS"
+                echo "  Upgraded: $DEST_REL (Pyve-owned)"
+                UPGRADED=$((UPGRADED+1))
+                continue
+            fi
             
             # Check if the destination file exists
             if [[ -f "$DEST_ABS" ]]; then
