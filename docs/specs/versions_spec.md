@@ -8,11 +8,27 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
-## v0.5.2 Deprecate --update Command [Next]
-- [ ] Add deprecation warning to `--update` command
-- [ ] Update help text to recommend `--install` instead
-- [ ] Update documentation to remove `--update` references
-- [ ] Plan for removal in v0.6.0
+## v0.5.3 Update Decision Log [Implemented]
+- [x] Add decision entries for v0.5.0, v0.5.1, and v0.5.2
+
+### Notes
+- **Problem:** Major architectural decisions from today's session (patch-level versioning, directory ownership model, command deprecation) were not documented in the decision log
+- **Solution:** Add three decision entries to `docs/specs/decisions_spec.md`:
+  - **Patch-Level Template Versioning (v0.5.0)**: Documents the move from minor to patch-level version directories and semver comparison
+  - **Pyve-Owned vs User-Owned Directory Model (v0.5.1)**: Documents the ownership model for automatic overwrite vs conflict preservation
+  - **Deprecate --update Command (v0.5.2)**: Documents the deprecation rationale and migration path
+- **Implementation:**
+  - Add entries at top of decision log (newest first)
+  - Follow standard format: Context, Decision, Consequences, Links
+  - Include references to versions_spec.md and relevant pyve.sh functions
+- **Rationale:** Decision log provides historical context for architectural choices, aids future maintenance and onboarding
+- **Version bumped:** pyve.sh v0.5.2 → v0.5.3
+
+## v0.5.2 Deprecate --update Command [Implemented]
+- [x] Add deprecation warning to `--update` command
+- [x] Update help text to recommend `--install` instead
+- [x] Mark `--update` as deprecated in help output
+- [x] Plan for removal in v0.6.0
 
 ### Notes
 - **Problem:** `--update` and `--install` have significant overlap, creating confusion about which to use

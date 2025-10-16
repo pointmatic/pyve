@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.1"
+VERSION="0.5.3"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -236,9 +236,11 @@ function show_help() {
     echo "             Note: Only foundation docs are copied on init (v0.3.11+)"
     echo "  --python-version <ver>: Set only the local Python version in the current directory (no venv/direnv changes)"
     echo "  --purge:   Delete all artifacts of the Python virtual environment"
-    echo "  --install: Install this script to \"$HOME/.local/bin\", ensure it's on your PATH, create a 'pyve' symlink, record the repo path, and copy the latest documentation templates to \"$HOME/.pyve/templates/{latest}\""
+    echo "  --install: Install/update this script and templates to \"$HOME/.local/bin\""
+    echo "             Run this to get the latest pyve.sh and templates"
+    echo "             Safe to run multiple times (idempotent)"
     echo "  --uninstall: Remove the installed script (pyve.sh) and the 'pyve' symlink from \"$HOME/.local/bin\""
-    echo "  --update:  Update documentation templates from the Pyve source repo to \"$HOME/.pyve/templates/{newer_version}\""
+    echo "  --update:  [DEPRECATED] Update templates only (use --install instead)"
     echo "  --upgrade: Upgrade the local git repository documentation templates to a newer version from \"$HOME/.pyve/templates/\""
     echo "  --clear-status <operation>: Clear status after manual merge (operation: init | upgrade)"
     echo "  --list:    List available and installed documentation packages with descriptions"
@@ -1635,7 +1637,13 @@ function uninstall_self() {
 
 # v0.3.5: Update templates from source repo to ~/.pyve/templates/{newer_version}
 # v0.5.0: Now uses semver comparison for patch-level versions
+# v0.5.2: DEPRECATED - use --install instead
 function update_templates() {
+    # v0.5.2: Show deprecation warning
+    echo "\n⚠️  WARNING: 'pyve --update' is deprecated and will be removed in v0.6.0."
+    echo "Use 'pyve --install' instead, which updates both the script and templates."
+    echo "Continuing with template update...\n"
+    
     # v0.5.0: Migrate old template directories before updating
     migrate_template_directories
     

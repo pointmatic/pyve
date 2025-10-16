@@ -13,6 +13,38 @@ Copy/paste this snippet when adding a new decision:
 - Links: PR(s), discussion, related version(s) and Notes anchors.
 ```
 
+## 2025-10-16: Deprecate --update Command in Favor of --install
+- Context: `--update` and `--install` had significant overlap, creating confusion about which to use. `--install` copies pyve.sh + templates + records source path, while `--update` only copies templates. Both require access to source repo, and `--install` is idempotent.
+- Decision: Deprecate `--update` in v0.5.2, remove entirely in v0.6.0:
+  - Add deprecation warning when `--update` is called
+  - Update help text to mark `--update` as deprecated and recommend `--install`
+  - Improve `--install` description to emphasize it's safe to run multiple times
+  - Keep `--update` functional but warn users
+- Consequences: Simpler mental model (one command for installation and updates), reduced maintenance burden (one code path instead of two), clearer user experience. Only one user affected, easy migration.
+- Links: [versions_spec.md v0.5.2](versions_spec.md), [pyve.sh update_templates()](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:1639:0-1720:1)
+
+## 2025-10-16: Pyve-Owned vs User-Owned Directory Model
+- Context: Process guides (building, planning, testing) are Pyve methodology and should stay in sync, but technical specs (codebase, technical design) are project-specific and user-owned. Prior logic treated all files equally, creating unwanted suffixed copies for guides.
+- Decision: Define explicit directory ownership model in v0.5.1:
+  - **Pyve-owned** (always overwrite): `docs/guides/`, `docs/context/`, `docs/guides/llm_qa/`
+  - **User-owned** (preserve on conflict): `docs/specs/`, `docs/decisions/`, `README.md`, `CONTRIBUTING.md`, everything else
+  - Implement `is_pyve_owned()` function to check ownership
+  - Skip conflict detection for Pyve-owned files during init/upgrade
+  - Always overwrite Pyve-owned files without creating suffixed copies
+- Consequences: Process guides stay in sync with Pyve methodology automatically, no more unwanted suffixed copies for guides, clear ownership model prevents confusion about which files to edit. Users can still add custom files anywhere.
+- Links: [versions_spec.md v0.5.1](versions_spec.md), [pyve.sh PYVE_OWNED_DIRS](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:86:0-91:1), [pyve.sh is_pyve_owned()](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:98:0-107:1)
+
+## 2025-10-16: Patch-Level Template Versioning
+- Context: Templates stored at minor version level (e.g., `~/.pyve/templates/v0.4/`) meant all v0.4.x versions overwrote the same directory, making it impossible to upgrade from 0.4.20 → 0.4.21. Version granularity was too coarse.
+- Decision: Store templates at full semver patch level in v0.5.0:
+  - Change directory structure: `v0.4/` → `v0.4.21/`, `v0.5.0/`, `v0.5.1/`
+  - Implement `compare_semver()` function for proper version comparison
+  - Update `find_latest_template_version()` to use semver comparison
+  - Add automatic migration logic (`v0.4/` → `v0.4.21/` on first run)
+  - Update all template operations (install, update, upgrade) to use patch-level dirs
+- Consequences: Enables patch-level upgrades (critical for bug fixes), clear version tracking and audit trail, aligns with semantic versioning best practices. Breaking change but migration is automatic and transparent. Each patch version requires full template copy (~few MB per version).
+- Links: [versions_spec.md v0.5.0](versions_spec.md), [pyve.sh compare_semver()](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:106:0-118:1), [pyve.sh migrate_template_directories()](cci:1://file:///Users/pointmatic/Documents/Code/pyve/pyve.sh:109:0-122:1)
+
 ## 2025-10-16: Interactive Init for Conflict Resolution
 - Context: Prior to v0.4.17, `--init` would abort with an error if ANY file differed from templates, leaving users stuck. Old projects (pre-v0.3.2) without `.pyve/version` couldn't use `--upgrade`. v0.4.16 introduced `--repair` but it created "fake state" (wrote current version even though templates were old).
 - Decision: Make `--init` smart enough to handle all scenarios:
