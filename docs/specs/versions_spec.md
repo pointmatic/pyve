@@ -8,6 +8,51 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.8 Add Repository Visibility & Location to Phase 0 Q&A [Implemented]
+- [x] Update `codebase_spec__t__.md` Repository section (add URL, Provider, Visibility)
+- [x] Add new Question 9 to `llm_qa_phase0_questions__t__.md` (Repository Location & Visibility)
+- [x] Shift old Q9 (Deployment) to Q10
+- [x] Create `templates/v0.5.8/` directory with updated templates
+
+### Notes
+- **Problem:** Templates track repository name but not visibility (public/private) or location (GitHub URL, GitLab URL, etc.). This information is important for:
+  - Setting up CI/CD (GitHub Actions vs GitLab CI)
+  - Configuring security (public repos need different security posture)
+  - Documentation (linking to source code)
+  - Collaboration (sharing repo with team)
+- **Current state:** Only tracks repository name in `codebase_spec.md`
+- **Solution:** Add repository metadata to Phase 0 Q&A:
+  - **Provider:** GitHub, GitLab, Bitbucket, other
+  - **Visibility:** public or private
+  - **URL:** Full repository URL
+- **Implementation:**
+  ```markdown
+  # In codebase_spec__t__.md:
+  ## Repository
+  - **Name:** <ProjectName>
+  - **URL:** https://github.com/username/repo-name
+  - **Provider:** GitHub | GitLab | Bitbucket | other
+  - **Visibility:** public | private
+  - **Summary:** Short description
+  - **Status:** internal tool | production service | open source
+  - **Owners/Contacts:**
+  
+  # In llm_qa_phase0_questions__t__.md:
+  **Question 9: Repository Location & Visibility**
+  Where will this repository be hosted?
+  
+  Provider: GitHub | GitLab | Bitbucket | other
+  Visibility: public | private
+  URL: ___________ (or "not created yet")
+  ```
+- **Rationale:**
+  - Captures essential metadata early in project lifecycle
+  - Helps LLMs make better decisions (e.g., CI/CD provider selection)
+  - Aligns with real-world workflow (repo is often created before coding starts)
+  - Public vs private affects security, licensing, and documentation decisions
+- **Template changes:** This requires creating `templates/v0.5.8/` with updated files
+- **Version bumped:** Templates v0.5.0 → v0.5.8 (no pyve.sh changes)
+
 ## v0.5.7 Gitignore Pyve-Owned Directories [Implemented]
 - [x] Add `docs/guides/` to `.gitignore` during `--init`
 - [x] Add `docs/runbooks/` to `.gitignore` during `--init`
