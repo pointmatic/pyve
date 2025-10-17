@@ -8,6 +8,233 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.7.0 Deprecate Documentation Features [Planned]
+- [ ] Add deprecation warnings to all documentation commands
+- [ ] Update help text to point users to devdoctalk
+- [ ] Mark `--upgrade`, `--list`, `--add`, `--remove`, `--clear-status` as deprecated
+- [ ] Keep functionality working but warn users
+- [ ] Update README to explain the split
+- [ ] Plan removal for v1.0.0
+
+### Notes
+- **Problem:** Pyve has grown to include two distinct products: Python environment management and documentation framework
+- **Solution:** Split into two focused products:
+  - **pyve**: Pure Python virtual environment management
+  - **devdoctalk**: Language-agnostic development documentation builder
+- **This version:** Deprecation warnings only, all features still work
+- **Next version (v1.0.0):** Complete removal of documentation features
+- **Migration:** Users should install devdoctalk separately
+- **Rationale:**
+  - Clear separation of concerns
+  - Pyve becomes simpler and more focused
+  - devdoctalk can support multiple languages (Python, JavaScript, Rust, etc.)
+  - Each product can evolve independently
+- **Deprecation messages:**
+  ```bash
+  pyve --upgrade
+  # WARNING: Documentation features are deprecated and will be removed in v1.0.0
+  # Please install 'devdoctalk' for documentation management:
+  #   https://github.com/pointmatic/devdoctalk
+  # Continuing with upgrade...
+  ```
+- **Version bumped:** pyve.sh v0.6.0 → v0.7.0
+
+---
+
+## v0.6.0 Rewrite as Pure Environment Manager [Planned]
+- [ ] Create `pyve_new.sh` from scratch (~600-700 lines)
+- [ ] Implement only environment management features
+- [ ] Fix xtrace issues with proper output handling
+- [ ] Consistent, professional messaging throughout
+- [ ] Simplified error handling
+- [ ] Remove all documentation/template functionality
+- [ ] Keep only: `--init`, `--purge`, `--python-version`, `--install`, `--uninstall`, `--help`, `--version`, `--config`
+- [ ] Test thoroughly before replacing `pyve.sh`
+
+### Notes
+- **Problem:** Current `pyve.sh` has accumulated technical debt:
+  - Mixed concerns (environment + documentation)
+  - Xtrace workarounds that don't fully work
+  - Inconsistent messaging and error handling
+  - 2,266 lines of complexity
+- **Solution:** Complete rewrite focused solely on Python environment management
+- **Scope:** ONLY environment management, NO documentation features
+- **Target:** ~600-700 lines of clean, maintainable code
+- **Module breakdown:**
+
+#### **Core Features (Environment Management Only)**
+
+**Commands:**
+- `--init [<dir>] [--python-version <ver>] [--local-env]` - Initialize Python environment
+- `--purge [<dir>]` - Remove all Python environment artifacts
+- `--python-version <ver>` - Set Python version without full init
+- `--install` - Install pyve to ~/.local/bin
+- `--uninstall` - Remove pyve from ~/.local/bin
+- `--help` / `-h` - Show help
+- `--version` / `-v` - Show version
+- `--config` / `-c` - Show configuration
+
+**What Gets Managed:**
+- Python version (asdf or pyenv)
+- Virtual environment (.venv or custom directory)
+- Environment activation (direnv with .envrc)
+- Environment variables (.env file)
+- `.gitignore` patterns
+
+**What Gets Removed:**
+- All template/documentation functionality
+- Package management (--list, --add, --remove)
+- Template upgrades (--upgrade, --update)
+- Status management (--clear-status)
+- ~/.pyve/templates/ directory
+- .pyve/ project directory
+
+#### **Implementation Approach**
+
+**1. Start Fresh:**
+- Create `pyve_new.sh` from scratch
+- Don't port old code, rewrite with lessons learned
+- Single file, ~600-700 lines total
+- Clean, modern shell scripting practices
+
+**2. Fix Xtrace Issues:**
+- No command substitution in output paths
+- Use explicit `printf` and `echo` for all user-facing output
+- Redirect stderr properly in all functions
+- Test with `set -x` enabled to verify clean output
+
+**3. Consistent Messaging:**
+- Standardized prefixes: `INFO:`, `WARNING:`, `ERROR:`
+- Clear, actionable error messages
+- Consistent formatting throughout
+- Professional tone
+
+**4. Simplified Architecture:**
+```bash
+# Configuration (lines 1-50)
+VERSION="0.6.0"
+DEFAULT_PYTHON_VERSION="3.13.7"
+# ... other constants
+
+# Utility Functions (lines 51-200)
+show_help()
+show_version()
+show_config()
+log_info()
+log_warning()
+log_error()
+append_to_gitignore()
+remove_from_gitignore()
+
+# Environment Detection (lines 201-350)
+source_shell_profiles()
+detect_version_manager()
+ensure_python_version_installed()
+check_direnv_installed()
+
+# Init Functions (lines 351-500)
+init()
+init_parse_args()
+init_python_versioning()
+init_venv()
+init_direnv()
+init_dotenv()
+init_gitignore()
+validate_venv_dir_name()
+validate_python_version()
+
+# Purge Functions (lines 501-600)
+purge()
+purge_parse_args()
+purge_python_versioning()
+purge_venv()
+purge_direnv()
+purge_dotenv()
+purge_gitignore()
+
+# Install/Uninstall (lines 601-700)
+install_self()
+uninstall_self()
+
+# Main Entry Point (lines 701-750)
+# Argument parsing and dispatch
+```
+
+**5. Testing Strategy:**
+- Test with `set -x` enabled (verify no xtrace pollution)
+- Test all flags and combinations
+- Test error conditions
+- Test on fresh system (no existing .venv, etc.)
+- Test upgrade path from v0.5.9
+
+### Implementation Plan
+
+**Phase 1: Core Structure (Week 1)**
+- [ ] Create `pyve_new.sh` skeleton
+- [ ] Implement configuration and constants
+- [ ] Implement utility functions (logging, gitignore)
+- [ ] Implement help/version/config
+
+**Phase 2: Environment Detection (Week 1)**
+- [ ] Implement shell profile sourcing
+- [ ] Implement version manager detection (asdf/pyenv)
+- [ ] Implement Python version installation
+- [ ] Implement direnv detection
+
+**Phase 3: Init Functionality (Week 2)**
+- [ ] Implement argument parsing
+- [ ] Implement Python versioning setup
+- [ ] Implement venv creation
+- [ ] Implement direnv configuration
+- [ ] Implement dotenv setup
+- [ ] Implement gitignore management
+
+**Phase 4: Purge Functionality (Week 2)**
+- [ ] Implement argument parsing
+- [ ] Implement removal of all artifacts
+- [ ] Implement gitignore cleanup
+
+**Phase 5: Install/Uninstall (Week 3)**
+- [ ] Implement self-installation
+- [ ] Implement symlink creation
+- [ ] Implement PATH management
+- [ ] Implement uninstallation
+
+**Phase 6: Testing & Polish (Week 3)**
+- [ ] Test all commands with xtrace enabled
+- [ ] Test error conditions
+- [ ] Test on clean system
+- [ ] Polish messaging
+- [ ] Update documentation
+
+**Phase 7: Migration (Week 4)**
+- [ ] Backup current pyve.sh → pyve_legacy.sh
+- [ ] Rename pyve_new.sh → pyve.sh
+- [ ] Test upgrade path
+- [ ] Update version to 0.6.0
+
+### Rationale
+- **Clean slate:** Rewriting allows us to apply lessons learned without technical debt
+- **Focus:** Pure environment management, no feature creep
+- **Quality:** Fix xtrace issues properly from the start
+- **Maintainability:** 600-700 lines is manageable, well-documented
+- **Professional:** Consistent messaging and error handling throughout
+
+### Breaking Changes
+- Removes all documentation features (--upgrade, --list, --add, --remove, --clear-status)
+- Users must migrate to devdoctalk for documentation management
+- .pyve/ directory no longer used (only for legacy cleanup)
+
+### Migration Path
+- v0.5.9 → v0.6.0: Documentation features removed, users warned
+- v0.6.0 → v0.7.0: Deprecation warnings for removed features
+- v0.7.0 → v1.0.0: Clean, focused Python environment manager
+
+### Version Bump
+- pyve.sh v0.5.9 → v0.6.0 (major rewrite, breaking changes)
+
+---
+
 ## v0.5.9 Suppress Xtrace Debug Output in Package Commands [Implemented]
 - [x] Add xtrace disable/restore logic to `list_packages()` function
 - [x] Add xtrace disable/restore logic to `add_package()` function
