@@ -4,3 +4,4 @@
 .venv
 .envrc
 .pyve
+pyve_upgrade_pyve_purge_error.log
