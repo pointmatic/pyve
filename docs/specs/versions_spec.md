@@ -8,6 +8,37 @@
 - Decision Log: `docs/specs/decisions_spec.md`
 - Codebase Spec: `docs/specs/codebase_spec.md`
 
+## v0.5.9 Suppress Xtrace Debug Output in Package Commands [Implemented]
+- [x] Add xtrace disable/restore logic to `list_packages()` function
+- [x] Add xtrace disable/restore logic to `add_package()` function
+- [x] Add xtrace disable/restore logic to `remove_package()` function
+- [x] Add xtrace disable/restore logic to `copy_package_files()` function
+- [x] Filter `DESC=` output from `get_package_metadata()` calls
+- [x] Wrap `DEST_REL` assignments to suppress xtrace output
+
+### Notes
+- **Problem:** When shell tracing (`set -x` or `setopt xtrace`) is enabled in the user's environment, `pyve --list` and `pyve --add` commands produce messy console output with debug lines like:
+  ```
+  DESC='Cloud platforms and deployment - AWS, GCP, Kubernetes, Fly.io, Docker, CI/CD'
+  DEST_REL=docs/guides/llm_qa/README.md
+  ```
+- **Root cause:** Zsh's xtrace feature prints variable assignments during command substitution. When `DESC=$(get_package_metadata ...)` or `DEST_REL=$(target_path_for_source ...)` execute with xtrace enabled, the assignments are traced and printed to the console.
+- **Solution:** Add xtrace detection and suppression to user-facing functions:
+  1. Detect if xtrace is enabled using `[[ -o xtrace ]] || [[ "$-" == *x* ]]`
+  2. Temporarily disable xtrace using `exec 3>&2 2>/dev/null; set +x; unsetopt xtrace; exec 2>&3 3>&-`
+  3. Execute function body with xtrace disabled
+  4. Restore xtrace at function exit if it was previously enabled
+  5. Filter `DESC=` lines from `get_package_metadata` output: `DESC=$(get_package_metadata ... 2>&1 | grep -v "^DESC=")`
+  6. Wrap `DEST_REL` assignments in command groups with stderr redirected
+- **Functions modified:**
+  - `list_packages()` - Clean output for `pyve --list`
+  - `add_package()` - Suppress debug output during package installation
+  - `remove_package()` - Suppress debug output during package removal
+  - `copy_package_files()` - Suppress debug output during file copying
+- **Result:** `pyve --list` now produces clean output. `pyve --add` still shows some `DEST_REL=` lines due to xtrace propagation through nested function calls, but core functionality works correctly.
+- **Recommendation:** Users with persistent xtrace output should run `set +x` and `unsetopt xtrace` before using pyve commands.
+- **Version:** pyve.sh v0.5.8 → v0.5.9 (script changes only, no template changes)
+
 ## v0.5.8 Add Repository Visibility & Location to Phase 0 Q&A [Implemented]
 - [x] Update `codebase_spec__t__.md` Repository section (add URL, Provider, Visibility)
 - [x] Add new Question 9 to `llm_qa_phase0_questions__t__.md` (Repository Location & Visibility)

@@ -60,7 +60,7 @@
 #   The other functions are self-explanatory.
 
 # script version
-VERSION="0.5.8"
+VERSION="0.5.9"
 
 # configuration constants
 DEFAULT_PYTHON_VERSION="3.13.7"
@@ -846,9 +846,27 @@ function add_package() {
     # v0.3.11b: Support space-separated packages
     # Usage: add_package pkg1 [pkg2 pkg3 ...]
     
+    # Temporarily disable tracing to reduce noise, if currently enabled
+    local HAD_XTRACE=0
+    if [[ -o xtrace ]] || [[ "$-" == *x* ]]; then
+        HAD_XTRACE=1
+    fi
+    
+    # Disable xtrace for the entire function body
+    {
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set +x 2>/dev/null
+            unsetopt xtrace 2>/dev/null
+        fi
+    
     if [[ $# -eq 0 ]]; then
         echo "\nERROR: No packages specified."
         echo "Usage: pyve --add <package> [package2 package3 ...]"
+        # Restore tracing if it was previously enabled
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set -x 2>/dev/null || true
+            setopt xtrace 2>/dev/null || true
+        fi
         exit 1
     fi
     
@@ -858,6 +876,11 @@ function add_package() {
     if [[ -z "$LATEST_VERSION" ]]; then
         echo "\nERROR: No templates found in $PYVE_TEMPLATES_DIR."
         echo "Run 'pyve --update' first to download templates."
+        # Restore tracing if it was previously enabled
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set -x 2>/dev/null || true
+            setopt xtrace 2>/dev/null || true
+        fi
         exit 1
     fi
     
@@ -884,6 +907,11 @@ function add_package() {
             for pkg in "${AVAILABLE[@]}"; do
                 echo "  - $pkg"
             done
+            # Restore tracing if it was previously enabled
+            if [[ $HAD_XTRACE -eq 1 ]]; then
+                set -x 2>/dev/null || true
+                setopt xtrace 2>/dev/null || true
+            fi
             exit 1
         fi
         TO_ADD+=("$PACKAGE")
@@ -931,6 +959,13 @@ function add_package() {
             echo "  - $pkg"
         done
     fi
+    
+    # Restore tracing if it was previously enabled
+    if [[ $HAD_XTRACE -eq 1 ]]; then
+        set -x 2>/dev/null || true
+        setopt xtrace 2>/dev/null || true
+    fi
+    } 2>/dev/null
 }
 
 function remove_package() {
@@ -938,9 +973,27 @@ function remove_package() {
     # v0.3.11b: Support space-separated packages
     # Usage: remove_package pkg1 [pkg2 pkg3 ...]
     
+    # Temporarily disable tracing to reduce noise, if currently enabled
+    local HAD_XTRACE=0
+    if [[ -o xtrace ]] || [[ "$-" == *x* ]]; then
+        HAD_XTRACE=1
+    fi
+    
+    # Disable xtrace for the entire function body
+    {
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set +x 2>/dev/null
+            unsetopt xtrace 2>/dev/null
+        fi
+    
     if [[ $# -eq 0 ]]; then
         echo "\nERROR: No packages specified."
         echo "Usage: pyve --remove <package> [package2 package3 ...]"
+        # Restore tracing if it was previously enabled
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set -x 2>/dev/null || true
+            setopt xtrace 2>/dev/null || true
+        fi
         exit 1
     fi
     
@@ -1001,12 +1054,29 @@ function remove_package() {
             echo "  - $pkg"
         done
     fi
+    
+    # Restore tracing if it was previously enabled
+    if [[ $HAD_XTRACE -eq 1 ]]; then
+        set -x 2>/dev/null || true
+        setopt xtrace 2>/dev/null || true
+    fi
+    } 2>/dev/null
 }
 
 function copy_package_files() {
     # Copy files for a specific package
     local SRC_DIR="$1"
     local PACKAGE="$2"
+    
+    # Temporarily disable tracing to reduce noise
+    local HAD_XTRACE=0
+    if [[ -o xtrace ]] || [[ "$-" == *x* ]]; then
+        HAD_XTRACE=1
+        exec 3>&2 2>/dev/null
+        set +x
+        unsetopt xtrace 2>/dev/null
+        exec 2>&3 3>&-
+    fi
     
     local -a FILES=()
     
@@ -1022,7 +1092,7 @@ function copy_package_files() {
     for FILE in "${FILES[@]}"; do
         [[ -z "$FILE" ]] && continue
         local DEST_REL
-        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+        DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE" 2>/dev/null)
         local DEST_ABS="./$DEST_REL"
         
         # Skip if file already exists and is identical
@@ -1037,6 +1107,12 @@ function copy_package_files() {
     done
     
     echo "Copied $COPIED files for package '$PACKAGE'."
+    
+    # Restore tracing if it was previously enabled
+    if [[ $HAD_XTRACE -eq 1 ]]; then
+        set -x 2>/dev/null || true
+        setopt xtrace 2>/dev/null || true
+    fi
 }
 
 function remove_package_files() {
@@ -1072,7 +1148,7 @@ function remove_package_files() {
     for FILE in "${FILES[@]}"; do
         [[ -z "$FILE" ]] && continue
         local DEST_REL
-        DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
+        DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE" 2>&1 | grep -v "^DEST_REL=")
         local DEST_ABS="./$DEST_REL"
         
         if [[ -f "$DEST_ABS" ]]; then
@@ -1093,10 +1169,28 @@ function remove_package_files() {
 function list_packages() {
     # List available and installed packages
     # v0.3.11b: Show descriptions from metadata
+    
+    # Temporarily disable tracing to reduce noise, if currently enabled
+    local HAD_XTRACE=0
+    if [[ -o xtrace ]] || [[ "$-" == *x* ]]; then
+        HAD_XTRACE=1
+        # Save stderr and redirect to /dev/null to suppress xtrace output
+        exec 3>&2 2>/dev/null
+        set +x
+        unsetopt xtrace
+        # Restore stderr now that xtrace is disabled
+        exec 2>&3 3>&-
+    fi
+    
     local LATEST_VERSION
     LATEST_VERSION=$(find_latest_template_version "$PYVE_HOME")
     if [[ -z "$LATEST_VERSION" ]]; then
         echo "\nNo templates installed. Run 'pyve --update' to download templates."
+        # Restore tracing if it was previously enabled
+        if [[ $HAD_XTRACE -eq 1 ]]; then
+            set -x 2>/dev/null || true
+            setopt xtrace 2>/dev/null || true
+        fi
         return 0
     fi
     
@@ -1119,8 +1213,8 @@ function list_packages() {
         done
         
         # Get description from metadata
-        local DESC
-        DESC=$(get_package_metadata "$SRC_DIR" "$pkg" "description")
+        local DESC=""
+        DESC=$(get_package_metadata "$SRC_DIR" "$pkg" "description" 2>&1 | grep -v "^DESC=")
         
         if [[ -n "$DESC" ]]; then
             echo "  $STATUS$pkg"
@@ -1143,6 +1237,12 @@ function list_packages() {
     echo "\nUsage:"
     echo "  pyve --add <package> [package2 ...]     Add one or more packages"
     echo "  pyve --remove <package> [package2 ...]  Remove one or more packages"
+    
+    # Restore tracing if it was previously enabled
+    if [[ $HAD_XTRACE -eq 1 ]]; then
+        set -x 2>/dev/null || true
+        setopt xtrace 2>/dev/null || true
+    fi
 }
 
 function strip_template_suffix() {
@@ -1262,7 +1362,7 @@ function init_copy_templates() {
         for FILE in "$FILES[@]"; do
             [[ -z "$FILE" ]] && continue
             local DEST_REL
-            DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+            DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE" 2>/dev/null)
             local DEST_ABS="./$DEST_REL"
             
             # v0.5.1: Skip conflict check for Pyve-owned files
@@ -1303,7 +1403,7 @@ function init_copy_templates() {
             for FILE in "$FILES[@]"; do
                 [[ -z "$FILE" ]] && continue
                 local DEST_REL
-                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE" 2>/dev/null)
                 local DEST_ABS="./$DEST_REL"
                 
                 # v0.5.1: Always overwrite Pyve-owned files
@@ -1364,7 +1464,7 @@ function init_copy_templates() {
             for FILE in "$FILES[@]"; do
                 [[ -z "$FILE" ]] && continue
                 local DEST_REL
-                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE")
+                DEST_REL=$(target_path_for_source "$SRC_DIR" "$FILE" 2>/dev/null)
                 local DEST_ABS="./$DEST_REL"
                 mkdir -p "$(dirname "$DEST_ABS")"
                 cp "$FILE" "$DEST_ABS"
@@ -2019,7 +2119,7 @@ function upgrade_templates() {
             [[ -z "$FILE" ]] && continue
             
             local DEST_REL
-            DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE")
+            DEST_REL=$(target_path_for_source "$TEMPLATE_DIR" "$FILE" 2>&1 | grep -v "^DEST_REL=")
             local DEST_ABS="./$DEST_REL"
             
             # v0.5.1: Always overwrite Pyve-owned files
