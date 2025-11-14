@@ -231,7 +231,12 @@ uninstall_self()
 - v0.7.0 → v1.0.0: Clean, focused Python environment manager
 
 ### Version Bump
-- pyve.sh v0.5.9 → v0.6.0 (major rewrite, breaking changes)
+- pyve.sh v0.5.x → v0.6.0 (major rewrite, breaking changes)
+
+---
+
+## v0.5.10 Fix .envrc static init [Implemented]
+- [x] Fix .envrc static init so the path direnv loads is dynamic (current)
 
 ---
 

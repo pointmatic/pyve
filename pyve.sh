@@ -614,8 +614,19 @@ function init_direnv() {
         append_pattern_to_gitignore "$DIRENV_FILE_NAME"
 
         # Write the Python venv environment configuration to .envrc
-        echo "export VIRTUAL_ENV=\"$PWD/$VENV_DIR_NAME\"
-    export PATH=\"$PWD/$VENV_DIR_NAME/bin:$PATH\"" > $DIRENV_FILE_NAME
+        # Use dynamic variables so direnv evaluates them fresh on each load
+        cat > $DIRENV_FILE_NAME << 'EOF'
+export VIRTUAL_ENV="$(pwd)/.venv"
+export PATH="$(pwd)/.venv/bin:$PATH"
+EOF
+        
+        # If using a custom venv directory name, update the .envrc accordingly
+        if [[ "$VENV_DIR_NAME" != "$DEFAULT_VENV_DIR_NAME" ]]; then
+            cat > $DIRENV_FILE_NAME << EOF
+export VIRTUAL_ENV="\$(pwd)/$VENV_DIR_NAME"
+export PATH="\$(pwd)/$VENV_DIR_NAME/bin:\$PATH"
+EOF
+        fi
 
         echo "Confirmed: '$DIRENV_FILE_NAME' created successfully!"
         echo "\nRun 'direnv allow' to activate the environment (if you see a warning below)."
