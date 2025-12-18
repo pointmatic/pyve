@@ -9,7 +9,7 @@
 
 <!-- Phase 0: Project Basics -->
 ## Quality
-- Quality Level: experiment | prototype | production | secure
+- Quality Level: prototype
 - Guidance (apply based on chosen level):
   - Experiment: speed over rigor; minimal tests; throwaway acceptable.
   - Prototype: validate function/UX; basic error handling; smoke tests.
@@ -22,17 +22,17 @@
 ## Components
 List each deliverable or scriptable unit and its key traits.
 - **Name:** 
-- **Kind:** application | library | cli | script
-- **Language:** shell | python | cpp | ruby | sql | other
-- **Paths:** e.g., `scripts/`, `src/`, top-level utilities
-- **Entrypoints/Commands:** e.g., `./pyve.sh --help`
-- **Audience:** end-user | internal ops | dev-only
+- **Kind:** cli scripts
+- **Language:** shell
+- **Paths:** is designed to install to $HOME/.local/bin and create a 'pyve' symlink
+- **Entrypoints/Commands:** To install, run `./pyve.sh --install`
+- **Audience:** dev-only
 
 <!-- Phase 0: Project Basics -->
 ## Runtime & Platforms
 - **OS targets:** macOS | Linux
-- **CPU/arch:** x86_64 | arm64
-- **Language runtimes/toolchains:** Python (versions), Bash/Zsh, GCC/Clang, Ruby/Node if used
+- **CPU/arch:** non-specific
+- **Language runtimes/toolchains:** Zsh
 
 <!-- Phase 0: Project Basics (basic) | Phase 1: Core Technical (detailed) -->
 ## Build & Packaging
