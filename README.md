@@ -2,6 +2,11 @@
 
 Pyve is a focused command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux. It combines Python version management, virtual environments, and direnv in a single, easy-to-use script.
 
+## Key Features
+- **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.
+- **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories. 
+- **Purge**: Remove all the Pyve artifacts, except if you've modified the `.env` file, Pyve will leave it and let you know that.
+
 ## Requirements
 
 - macOS or Linux with Bash

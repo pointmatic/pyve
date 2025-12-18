@@ -1,12 +1,17 @@
-# Pyve Version History
+# Pyve Version History\
+See `docs/guide_versions_spec.md`
 
-## References
-- Building Guide: `docs/guides/building_guide.md`
-- Planning Guide: `docs/guides/planning_guide.md`
-- Testing Guide: `docs/guides/testing_guide.md`
-- Dependencies Guide: `docs/guides/dependencies_guide.md`
-- Decision Log: `docs/specs/decisions_spec.md`
-- Codebase Spec: `docs/specs/codebase_spec.md`
+## v0.6.2 Cleanup [Implemented]
+- [x] Added a `Key Features` section to `README.md`. 
+- [x] Deleted all the remaining document generation and explanation files
+- [x] Deleted old pyve_deprecated.sh script
+- [x] Renamed and updated the guide on how to use this versions_spec.md file
+- [x] updated .gitignore to remove deprecated doc update log
+
+### Notes
+New Pyve is ready to use with simpler, tighter code and no extra fluff.
+
+--- 
 
 ## v0.6.1 Documentation Update [Implemented]
 - [x] Update README.md to reflect new focused tool
