@@ -1,6 +1,15 @@
 # Pyve Version History\
 See `docs/guide_versions_spec.md`
 
+## v0.6.6 Fix pipefail issue in version availability check [Implemented]
+- [x] Fixed `is_python_version_available` failing due to `set -euo pipefail` causing SIGPIPE errors
+- [x] Capture command output to variable before grepping to avoid pipe termination issues
+
+### Notes
+The original implementation piped `asdf list all python` directly to `grep -q`, which caused SIGPIPE when grep exited early after finding a match. With `pipefail` enabled, this caused the entire pipeline to fail.
+
+---
+
 ## v0.6.5 Python version installation prompt [Implemented]
 - [x] Added `prompt_yes_no` utility function in `lib/utils.sh`
 - [x] Modified `ensure_python_version_installed` to prompt user before installing unavailable Python versions

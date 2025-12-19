@@ -111,13 +111,16 @@ is_python_version_installed() {
 # Returns 0 if available, 1 if not
 is_python_version_available() {
     local version="$1"
+    local available_versions
     
     case "$VERSION_MANAGER" in
         asdf)
-            asdf list all python 2>/dev/null | grep -q "^${version}$"
+            available_versions="$(asdf list all python 2>/dev/null)" || return 1
+            printf '%s\n' "$available_versions" | grep -q "^${version}$"
             ;;
         pyenv)
-            pyenv install --list 2>/dev/null | grep -q "^[[:space:]]*${version}$"
+            available_versions="$(pyenv install --list 2>/dev/null)" || return 1
+            printf '%s\n' "$available_versions" | grep -q "^[[:space:]]*${version}$"
             ;;
         *)
             return 1
