@@ -150,6 +150,14 @@ The script checks for prerequisites (asdf/pyenv, direnv) before initialization a
 - **Restricted permissions**: `.env` files are created with `chmod 600` (owner read/write only)
 - **Smart purge**: Non-empty `.env` files are preserved during purge to prevent data loss
 
+## Future Feature Ideas
+- Create a Python or Homebrew package for installation
+- Version management tool installation:
+   - Automated installation of asdf
+   - Automated installation of pyenv
+   - Automated addition of Python plugin using asdf or pyenv
+   - Automated installation of a Python version using either asdf or pyenv
+
 ## License
 
 Mozilla Public License Version 2.0 - see LICENSE file.

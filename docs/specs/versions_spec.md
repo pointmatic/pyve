@@ -1,6 +1,10 @@
 # Pyve Version History\
 See `docs/guide_versions_spec.md`
 
+## v0.6.3 Python version bump [Implemented]
+- [x] Updated default Python version to 3.14.2 (latest)
+- [x] Added note in README.md about future feature ideas
+
 ## v0.6.2 Cleanup [Implemented]
 - [x] Added a `Key Features` section to `README.md`. 
 - [x] Deleted all the remaining document generation and explanation files
