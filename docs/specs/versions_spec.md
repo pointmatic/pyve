@@ -1,6 +1,20 @@
 # Pyve Version History\
 See `docs/guide_versions_spec.md`
 
+## v0.6.5 Python version installation prompt [Implemented]
+- [x] Added `prompt_yes_no` utility function in `lib/utils.sh`
+- [x] Modified `ensure_python_version_installed` to prompt user before installing unavailable Python versions
+- [x] Supports both asdf and pyenv installation flows
+
+### Notes
+When a requested Python version is not installed but is available via the version manager, pyve now prompts:
+```
+INFO: Python 3.14.2 is not installed but is available via asdf.
+Install Python 3.14.2 now? [y/n]:
+```
+
+---
+
 ## v0.6.4 Install fix [Implemented]
 - [x] Fixed `--install` bug where running from installed location tried to copy pyve.sh to itself
 - [x] Added `~/.local/.pyve_source` to store original source directory for reinstalls

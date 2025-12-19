@@ -36,6 +36,34 @@ log_success() {
 }
 
 #============================================================
+# User Prompts
+#============================================================
+
+# Prompt user for yes/no confirmation
+# Usage: prompt_yes_no "Question?"
+# Returns 0 for yes, 1 for no
+prompt_yes_no() {
+    local prompt="$1"
+    local response
+    
+    while true; do
+        printf "%s [y/n]: " "$prompt"
+        read -r response
+        case "$response" in
+            [Yy]|[Yy][Ee][Ss])
+                return 0
+                ;;
+            [Nn]|[Nn][Oo])
+                return 1
+                ;;
+            *)
+                printf "Please answer yes or no.\n"
+                ;;
+        esac
+    done
+}
+
+#============================================================
 # Gitignore Management
 #============================================================
 

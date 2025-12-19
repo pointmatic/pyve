@@ -185,6 +185,13 @@ ensure_python_version_installed() {
         return 1
     fi
     
+    # Prompt user before installing
+    log_info "Python $version is not installed but is available via $VERSION_MANAGER."
+    if ! prompt_yes_no "Install Python $version now?"; then
+        log_info "Installation cancelled."
+        return 1
+    fi
+    
     # Install it
     install_python_version "$version"
 }
