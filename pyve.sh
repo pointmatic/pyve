@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.6.3"
+VERSION="0.6.4"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -30,6 +30,7 @@ TARGET_BIN_DIR="$HOME/.local/bin"
 TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
 TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
 LOCAL_ENV_FILE="$HOME/.local/.env"
+SOURCE_DIR_FILE="$HOME/.local/.pyve_source"
 
 #============================================================
 # Resolve Script Directory and Source Libraries
@@ -438,7 +439,26 @@ set_python_version_only() {
 #============================================================
 
 install_self() {
+    local source_dir="$SCRIPT_DIR"
+    
+    # If running from installed location, read source dir from config
+    if [[ "$SCRIPT_DIR" == "$TARGET_BIN_DIR" ]]; then
+        if [[ -f "$SOURCE_DIR_FILE" ]]; then
+            source_dir="$(cat "$SOURCE_DIR_FILE")"
+            if [[ ! -d "$source_dir" ]] || [[ ! -f "$source_dir/pyve.sh" ]]; then
+                log_error "Source directory no longer exists: $source_dir"
+                log_error "Please run --install from the original pyve source directory."
+                exit 1
+            fi
+        else
+            log_error "Cannot reinstall: source directory not recorded."
+            log_error "Please run --install from the original pyve source directory."
+            exit 1
+        fi
+    fi
+    
     printf "\nInstalling pyve to %s...\n" "$TARGET_BIN_DIR"
+    printf "Source: %s\n" "$source_dir"
     
     # Create target directory if needed
     if [[ ! -d "$TARGET_BIN_DIR" ]]; then
@@ -447,16 +467,21 @@ install_self() {
     fi
     
     # Copy script
-    cp "$SCRIPT_DIR/pyve.sh" "$TARGET_SCRIPT_PATH"
+    cp "$source_dir/pyve.sh" "$TARGET_SCRIPT_PATH"
     chmod +x "$TARGET_SCRIPT_PATH"
     log_success "Installed pyve.sh"
     
     # Copy lib directory
-    if [[ -d "$SCRIPT_DIR/lib" ]]; then
+    if [[ -d "$source_dir/lib" ]]; then
         mkdir -p "$TARGET_BIN_DIR/lib"
-        cp "$SCRIPT_DIR/lib/"*.sh "$TARGET_BIN_DIR/lib/"
+        cp "$source_dir/lib/"*.sh "$TARGET_BIN_DIR/lib/"
         log_success "Installed lib/ helpers"
     fi
+    
+    # Save source directory for future reinstalls
+    mkdir -p "$(dirname "$SOURCE_DIR_FILE")"
+    printf "%s\n" "$source_dir" > "$SOURCE_DIR_FILE"
+    log_success "Recorded source directory"
     
     # Create symlink
     if [[ -L "$TARGET_SYMLINK_PATH" ]] || [[ -f "$TARGET_SYMLINK_PATH" ]]; then
@@ -552,6 +577,12 @@ uninstall_self() {
         else
             log_warning "$LOCAL_ENV_FILE preserved (contains data). Delete manually if desired."
         fi
+    fi
+    
+    # Remove source directory file
+    if [[ -f "$SOURCE_DIR_FILE" ]]; then
+        rm -f "$SOURCE_DIR_FILE"
+        log_success "Removed $SOURCE_DIR_FILE"
     fi
     
     # Remove PATH from profile (v0.6.1 feature)

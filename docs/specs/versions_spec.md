@@ -1,9 +1,18 @@
 # Pyve Version History\
 See `docs/guide_versions_spec.md`
 
+## v0.6.4 Install fix [Implemented]
+- [x] Fixed `--install` bug where running from installed location tried to copy pyve.sh to itself
+- [x] Added `~/.local/.pyve_source` to store original source directory for reinstalls
+- [x] Updated `uninstall_self()` to clean up source directory file
+
+---
+
 ## v0.6.3 Python version bump [Implemented]
 - [x] Updated default Python version to 3.14.2 (latest)
 - [x] Added note in README.md about future feature ideas
+
+---
 
 ## v0.6.2 Cleanup [Implemented]
 - [x] Added a `Key Features` section to `README.md`. 
