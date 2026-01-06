@@ -352,39 +352,100 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.13: Documentation and Polish
-**Goal:** Complete documentation and final polish.
+### v0.7.13a: Update README.md - Core Features
+**Goal:** Document backend selection and auto-detection.
 
-- [ ] Update README.md:
-  - Backend selection section
-  - Auto-detection priority
-  - Micromamba bootstrap instructions
-  - `pyve run` examples
-  - `pyve doctor` usage
-  - CI/CD integration examples
-- [ ] Update help text for all commands
-- [ ] Add troubleshooting section for micromamba
-- [ ] Create `docs/ci-cd-examples.md` with:
-  - GitHub Actions workflows
-  - GitLab CI examples
-  - Caching strategies
-- [ ] Update `CONTRIBUTING.md` with:
-  - Backend architecture
-  - Testing guidelines for both backends
-- [ ] Add examples to `pyve-run-examples.md`:
-  - Backend-specific examples
-  - Error handling examples
-- [ ] Final testing:
-  - Test all commands with both backends
-  - Test on clean system
-  - Test upgrade path from v0.6.6
-  - Test CI/CD workflows
+- [ ] Add "Backend Selection" section to README.md
+- [ ] Document auto-detection priority (environment.yml → config → venv)
+- [ ] Add backend selection examples
+- [ ] Document `--backend` flag usage
+- [ ] Add backend comparison table (venv vs micromamba)
 
 **Testing:**
-- All documentation accurate
-- Examples work as documented
-- Help text complete and clear
-- Upgrade path smooth
+- Examples are accurate and runnable
+- Backend selection clearly explained
+
+---
+
+### v0.7.13b: Update README.md - Micromamba Features
+**Goal:** Document micromamba-specific features.
+
+- [ ] Add "Micromamba Bootstrap" section
+- [ ] Document auto-bootstrap and manual bootstrap
+- [ ] Add `--auto-bootstrap` and `--bootstrap-to` flag documentation
+- [ ] Document environment naming resolution
+- [ ] Add lock file validation documentation
+
+**Testing:**
+- Bootstrap instructions work as documented
+- Environment naming examples accurate
+
+---
+
+### v0.7.13c: Update README.md - Commands and CI/CD
+**Goal:** Document new commands and CI/CD usage.
+
+- [ ] Add `pyve run` command section with examples
+- [ ] Add `pyve doctor` command section with examples
+- [ ] Add `--no-direnv` flag documentation
+- [ ] Add "CI/CD Integration" section
+- [ ] Add GitHub Actions and GitLab CI examples
+
+**Testing:**
+- Command examples work correctly
+- CI/CD examples are functional
+
+---
+
+### v0.7.13d: Create CI/CD Examples Documentation
+**Goal:** Comprehensive CI/CD integration guide.
+
+- [ ] Create `docs/ci-cd-examples.md`
+- [ ] Add GitHub Actions workflows (venv and micromamba)
+- [ ] Add GitLab CI examples
+- [ ] Document caching strategies for both backends
+- [ ] Add Docker examples
+- [ ] Add troubleshooting section
+
+**Testing:**
+- All CI/CD examples tested and working
+- Caching strategies verified
+
+---
+
+### v0.7.13e: Update Contributing and Examples
+**Goal:** Update developer documentation.
+
+- [ ] Update `CONTRIBUTING.md` with backend architecture
+- [ ] Add testing guidelines for both backends
+- [ ] Document module structure (lib/micromamba_*.sh)
+- [ ] Add examples to `docs/specs/pyve-run-examples.md`
+- [ ] Add backend-specific examples
+- [ ] Add error handling examples
+
+**Testing:**
+- Architecture documentation accurate
+- Examples comprehensive and working
+
+---
+
+### v0.7.13f: Final Testing and Polish
+**Goal:** Comprehensive testing and final polish.
+
+- [ ] Test all commands with venv backend
+- [ ] Test all commands with micromamba backend
+- [ ] Test on clean macOS system
+- [ ] Test on clean Linux system
+- [ ] Test upgrade path from v0.6.6
+- [ ] Test CI/CD workflows (GitHub Actions, GitLab CI)
+- [ ] Review all help text for completeness
+- [ ] Fix any discovered issues
+
+**Testing:**
+- All commands work correctly on both backends
+- Upgrade path is smooth
+- CI/CD workflows functional
+- Help text complete and accurate
 
 ---
 
