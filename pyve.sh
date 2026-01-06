@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.10"
+VERSION="0.7.11"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -93,7 +93,7 @@ pyve - Python Virtual Environment Manager
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
-                [--env-name <name>]
+                [--env-name <name>] [--no-direnv]
     pyve run <command> [args...]
     pyve --purge [<dir>]
     pyve --python-version <ver>
@@ -110,6 +110,7 @@ COMMANDS:
                         Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --strict to error on stale/missing lock files
                         Optional: --env-name <name> to specify environment name (micromamba)
+                        Optional: --no-direnv to skip .envrc creation (for CI/CD)
                         Optional: --local-env to copy ~/.local/.env template
 
     run                 Run a command in the active environment
@@ -140,6 +141,7 @@ EXAMPLES:
     pyve --init --backend venv           # Explicitly use venv backend
     pyve --init --backend micromamba     # Explicitly use micromamba backend
     pyve --init --local-env              # Copy ~/.local/.env template
+    pyve --init --no-direnv              # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
     pyve run python script.py            # Run script in environment
@@ -225,6 +227,7 @@ init() {
     local bootstrap_to="user"
     local strict_mode=false
     local env_name_flag=""
+    local no_direnv=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -277,6 +280,10 @@ init() {
                 fi
                 env_name_flag="$2"
                 shift 2
+                ;;
+            --no-direnv)
+                no_direnv=true
+                shift
                 ;;
             -*)
                 log_error "Unknown option: $1"
@@ -361,9 +368,13 @@ init() {
             log_warning "Environment created but verification failed"
         fi
         
-        # Configure direnv for micromamba
+        # Configure direnv for micromamba (unless --no-direnv)
         local env_path=".pyve/envs/$env_name"
-        init_direnv_micromamba "$env_name" "$env_path"
+        if [[ "$no_direnv" == false ]]; then
+            init_direnv_micromamba "$env_name" "$env_path"
+        else
+            log_info "Skipping .envrc creation (--no-direnv)"
+        fi
         
         # Create .env file
         init_dotenv "$use_local_env"
@@ -380,8 +391,12 @@ init() {
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
         printf "\nNext steps:\n"
-        printf "  1. Run 'direnv allow' to activate the environment\n"
-        printf "  2. Or use: pyve run <command> (coming in v0.7.10)\n"
+        if [[ "$no_direnv" == false ]]; then
+            printf "  1. Run 'direnv allow' to activate the environment\n"
+            printf "  2. Or use: pyve run <command>\n"
+        else
+            printf "  Use: pyve run <command> to execute in environment\n"
+        fi
         
         return 0
     fi
@@ -425,8 +440,12 @@ init() {
     # Create virtual environment
     init_venv "$venv_dir"
     
-    # Configure direnv
-    init_direnv_venv "$venv_dir"
+    # Configure direnv (unless --no-direnv)
+    if [[ "$no_direnv" == false ]]; then
+        init_direnv_venv "$venv_dir"
+    else
+        log_info "Skipping .envrc creation (--no-direnv)"
+    fi
     
     # Create .env file
     init_dotenv "$use_local_env"
@@ -435,7 +454,11 @@ init() {
     init_gitignore "$venv_dir"
     
     printf "\n✓ Python environment initialized successfully!\n"
-    printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
+    if [[ "$no_direnv" == false ]]; then
+        printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
+    else
+        printf "\nUse 'pyve run <command>' to execute commands in the environment.\n"
+    fi
 }
 
 init_python_version() {

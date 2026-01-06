@@ -3,6 +3,98 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.11 `--no-direnv` Flag [Implemented]
+- [x] Add `--no-direnv` CLI flag to `pyve --init`
+- [x] Skip `.envrc` creation when flag is set
+- [x] Update help text to document flag
+- [x] Add to CI/CD examples in documentation
+- [x] Ensure `pyve run` still works without direnv
+
+### Notes
+**Goal:** Add flag to skip direnv configuration for CI/CD.
+
+**Implementation Summary:**
+- Added `--no-direnv` flag parsing to `init()` function
+- Conditional `.envrc` creation for both venv and micromamba backends
+- Updated help text with flag documentation
+- Added CI/CD example to help text
+- Updated success messages based on direnv usage
+
+**Changes to `pyve.sh`:**
+- Version bumped from 0.7.10 to 0.7.11
+- Added `no_direnv` variable to `init()` function
+- Added `--no-direnv` flag parsing in argument loop
+- Wrapped `init_direnv_venv()` call in conditional check
+- Wrapped `init_direnv_micromamba()` call in conditional check
+- Updated success messages to reflect direnv status
+- Added flag to help text USAGE and COMMANDS sections
+- Added CI/CD example to EXAMPLES section
+
+**Behavior:**
+
+**With direnv (default):**
+```bash
+pyve --init
+# Creates .envrc
+# Success message: "Run 'direnv allow' to activate the environment"
+```
+
+**Without direnv (CI/CD mode):**
+```bash
+pyve --init --no-direnv
+# Skips .envrc creation
+# Success message: "Use 'pyve run <command>' to execute commands"
+```
+
+**Key Features:**
+- Works with both venv and micromamba backends
+- `pyve run` still works without direnv
+- Clear messaging about next steps based on mode
+- Useful for CI/CD environments where direnv isn't available
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.11
+- ✓ `--no-direnv` flag appears in help text
+- ✓ Flag parsing works correctly
+- ✓ Success messages updated appropriately
+- ✓ CI/CD example added to help
+
+**Use Cases:**
+
+**CI/CD Workflows:**
+```yaml
+# GitHub Actions example
+- name: Setup Python environment
+  run: |
+    pyve --init --no-direnv --backend micromamba
+    pyve run pytest
+```
+
+**Docker Builds:**
+```dockerfile
+RUN pyve --init --no-direnv
+RUN pyve run pip install -r requirements.txt
+```
+
+**Local Development (with direnv):**
+```bash
+pyve --init
+direnv allow
+# Environment auto-activates when entering directory
+```
+
+**Benefits:**
+- **CI/CD friendly** - No direnv dependency required
+- **Flexible** - Works with or without direnv
+- **Clear messaging** - Users know what to do next
+- **Backward compatible** - Default behavior unchanged
+
+**Next Steps:**
+- v0.7.12: `pyve doctor` command for diagnostics
+- v0.7.13: Documentation and polish
+
+---
+
 ## v0.7.10 `pyve run` Command Foundation [Implemented]
 - [x] Add `pyve run` command to CLI
 - [x] Implement `run_command()` function
