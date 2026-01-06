@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.6"
+VERSION="0.7.7"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -61,10 +61,24 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/micromamba.sh" ]]; then
-    source "$SCRIPT_DIR/lib/micromamba.sh"
+if [[ -f "$SCRIPT_DIR/lib/micromamba_core.sh" ]]; then
+    source "$SCRIPT_DIR/lib/micromamba_core.sh"
 else
-    printf "ERROR: Cannot find lib/micromamba.sh\n" >&2
+    printf "ERROR: Cannot find lib/micromamba_core.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/micromamba_bootstrap.sh" ]]; then
+    source "$SCRIPT_DIR/lib/micromamba_bootstrap.sh"
+else
+    printf "ERROR: Cannot find lib/micromamba_bootstrap.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/micromamba_env.sh" ]]; then
+    source "$SCRIPT_DIR/lib/micromamba_env.sh"
+else
+    printf "ERROR: Cannot find lib/micromamba_env.sh\n" >&2
     exit 1
 fi
 

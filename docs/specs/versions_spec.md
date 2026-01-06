@@ -3,6 +3,73 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.7 Code Refactoring - Modularize Micromamba [Implemented]
+- [x] Split `lib/micromamba.sh` (876 lines, 24 functions) into 3 focused modules
+- [x] Create `lib/micromamba_core.sh` with 5 detection functions
+- [x] Create `lib/micromamba_bootstrap.sh` with 4 installation functions
+- [x] Create `lib/micromamba_env.sh` with 15 environment management functions
+- [x] Update `pyve.sh` to source all 3 new modules
+- [x] Remove old `lib/micromamba.sh` using `git rm`
+- [x] Test all functions still work correctly
+
+### Notes
+**Goal:** Improve code organization by splitting large monolithic file into focused modules.
+
+**Rationale:**
+- `lib/micromamba.sh` had grown to 876 lines with 24 functions
+- Contains 5 distinct functional areas that should be separated
+- Better separation of concerns improves maintainability
+- Follows existing pattern (backend_detect.sh, env_detect.sh are separate)
+- Makes remaining v0.7.8-v0.7.13 implementations cleaner
+
+**Implementation Summary:**
+- Created `lib/micromamba_core.sh` (148 lines, 5 functions):
+  - `get_micromamba_path()` - Binary path detection
+  - `check_micromamba_available()` - Availability check
+  - `get_micromamba_version()` - Version extraction
+  - `get_micromamba_location()` - Location type (project/user/system)
+  - `error_micromamba_not_found()` - Error message helper
+
+- Created `lib/micromamba_bootstrap.sh` (285 lines, 4 functions):
+  - `get_micromamba_download_url()` - Platform-specific URL generation
+  - `bootstrap_install_micromamba()` - Download, extract, install
+  - `bootstrap_micromamba_interactive()` - Interactive installation menu
+  - `bootstrap_micromamba_auto()` - Non-interactive installation
+
+- Created `lib/micromamba_env.sh` (475 lines, 15 functions):
+  - Environment file detection (5 functions)
+  - Lock file validation (6 functions)
+  - Environment naming (4 functions)
+
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.6 to 0.7.7
+  - Replaced single `source lib/micromamba.sh` with 3 module sources
+  - Added error handling for each module
+
+- Removed old file:
+  - Used `git rm lib/micromamba.sh` to remove from repository
+
+**File Size Comparison:**
+- Before: 1 file × 876 lines = 876 lines
+- After: 3 files (148 + 285 + 475 = 908 lines)
+- Overhead: 32 lines (3.6%) for module headers and guards
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.7
+- ✓ `pyve --config` works correctly
+- ✓ All functions load without errors
+- ✓ No functional changes, pure refactoring
+- ✓ Module sourcing works correctly
+
+**Benefits Achieved:**
+- **Clearer organization** - Each file has single responsibility
+- **Easier navigation** - Find functions faster by category
+- **Better maintainability** - Smaller, focused files
+- **Improved testability** - Can test modules independently
+- **Scalability** - Room to grow each module without bloat
+
+---
+
 ## v0.7.6 Environment Naming [Implemented]
 - [x] Implement environment name resolution order (4 priorities)
 - [x] Add `sanitize_environment_name()` function
