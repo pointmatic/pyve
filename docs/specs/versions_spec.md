@@ -57,18 +57,74 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-### v0.7.13b: Update README.md - Micromamba Features
+## v0.7.13b: Update README.md - Micromamba Features [Implemented]
+- [x] Add "Micromamba Bootstrap" section
+- [x] Document auto-bootstrap and manual bootstrap
+- [x] Add `--auto-bootstrap` and `--bootstrap-to` flag documentation
+- [x] Document environment naming resolution
+- [x] Add lock file validation documentation
+
+### Notes
 **Goal:** Document micromamba-specific features.
 
-- [ ] Add "Micromamba Bootstrap" section
-- [ ] Document auto-bootstrap and manual bootstrap
-- [ ] Add `--auto-bootstrap` and `--bootstrap-to` flag documentation
-- [ ] Document environment naming resolution
-- [ ] Add lock file validation documentation
+**Implementation Summary:**
+- Enhanced README.md with comprehensive micromamba feature documentation
+- Added detailed bootstrap section with interactive and non-interactive modes
+- Documented environment naming resolution with 4-level priority
+- Added lock file validation documentation with strict mode
+- Included practical examples for all features
 
-**Testing:**
-- Bootstrap instructions work as documented
-- Environment naming examples accurate
+**Changes to README.md:**
+- Enhanced "Micromamba Bootstrap" section with:
+  - Interactive bootstrap flow with installation options
+  - Installation location explanations (project vs user sandbox)
+  - Auto-bootstrap documentation for CI/CD
+  - Bootstrap flags reference
+  - CI/CD example
+
+- Added "Environment Naming" section with:
+  - 4-level priority resolution (flag → config → environment.yml → directory)
+  - Name sanitization rules
+  - Reserved names list
+  - Practical examples for each resolution method
+
+- Added "Lock File Validation" section with:
+  - Lock file status indicators (up to date, stale, missing)
+  - Strict mode documentation
+  - Lock file generation instructions
+  - Example output for stale lock files
+
+**Bootstrap Documentation Includes:**
+- Interactive prompt flow
+- 4 installation options (project, user, system, manual)
+- Auto-bootstrap flag usage
+- Bootstrap-to flag options (project/user)
+- CI/CD integration examples
+
+**Environment Naming Documentation Includes:**
+- Priority resolution order (4 levels)
+- CLI flag override (`--env-name`)
+- Config file specification
+- environment.yml name field
+- Directory basename fallback
+- Sanitization rules (lowercase, hyphens, etc.)
+- Reserved names rejection
+- 3 practical examples
+
+**Lock File Validation Documentation Includes:**
+- Status checking with `pyve doctor`
+- 3 status indicators (✓ ⚠)
+- Strict mode flag (`--strict`)
+- Strict mode behavior for each status
+- Lock file generation instructions (conda-lock)
+- Example error output with timestamps
+
+**Testing Results:**
+- ✓ Bootstrap instructions work as documented
+- ✓ Environment naming examples accurate
+- ✓ Lock file validation clearly explained
+- ✓ All flags documented correctly
+- ✓ CI/CD examples functional
 
 ---
 

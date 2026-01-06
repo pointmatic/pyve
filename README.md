@@ -304,7 +304,11 @@ pyve doctor --verbose                # Detailed diagnostics
 
 ### Micromamba Bootstrap
 
-When micromamba backend is required but not found:
+Pyve can automatically install micromamba when needed, with both interactive and non-interactive modes.
+
+#### Interactive Bootstrap
+
+When micromamba backend is required but not found, Pyve prompts for installation:
 
 ```
 ERROR: Backend 'micromamba' required but not found.
@@ -321,12 +325,139 @@ Installation options:
 Choice [1]: _
 ```
 
-Non-interactive mode for CI/automation:
+**Installation Locations:**
+- **Project sandbox** (`.pyve/bin/micromamba`) - Isolated per-project, gitignored
+- **User sandbox** (`~/.pyve/bin/micromamba`) - Shared across projects, in home directory
+- **System package manager** - Uses `brew` (macOS) or `apt` (Linux)
+- **Manual** - Exit and install yourself
+
+#### Auto-Bootstrap (Non-Interactive)
+
+For CI/CD and automation, use `--auto-bootstrap` to skip prompts:
 
 ```bash
+# Auto-bootstrap to user sandbox (default)
 pyve --init --backend micromamba --auto-bootstrap
-pyve --init --backend micromamba --bootstrap-to project
-pyve --init --backend micromamba --bootstrap-to user
+
+# Explicitly specify installation location
+pyve --init --backend micromamba --auto-bootstrap --bootstrap-to user
+pyve --init --backend micromamba --auto-bootstrap --bootstrap-to project
+
+# CI/CD example
+pyve --init --backend micromamba --auto-bootstrap --no-direnv
+```
+
+**Bootstrap Flags:**
+- `--auto-bootstrap` - Install micromamba automatically without prompting
+- `--bootstrap-to project` - Install to `.pyve/bin/micromamba` (project-local)
+- `--bootstrap-to user` - Install to `~/.pyve/bin/micromamba` (user-wide)
+
+### Environment Naming
+
+Pyve automatically resolves environment names for micromamba using this priority:
+
+1. **`--env-name` flag** - Explicit CLI override (highest priority)
+   ```bash
+   pyve --init --backend micromamba --env-name myproject-dev
+   ```
+
+2. **`.pyve/config` file** - Project configuration
+   ```yaml
+   micromamba:
+     env_name: myproject
+   ```
+
+3. **`environment.yml` name field** - From environment file
+   ```yaml
+   name: myproject
+   dependencies:
+     - python=3.11
+   ```
+
+4. **Project directory basename** - Sanitized directory name (default)
+   ```bash
+   # In /path/to/my-ml-project
+   pyve --init --backend micromamba
+   # Environment name: my-ml-project
+   ```
+
+**Name Sanitization:**
+- Converts to lowercase
+- Replaces spaces and special characters with hyphens
+- Removes leading/trailing hyphens
+- Reserved names rejected: `base`, `root`, `default`, `conda`, `mamba`, `micromamba`
+
+**Examples:**
+```bash
+# Explicit name
+pyve --init --backend micromamba --env-name my-env
+
+# From environment.yml
+cat > environment.yml << EOF
+name: data-science-project
+dependencies:
+  - python=3.11
+  - pandas
+EOF
+pyve --init  # Uses name: data-science-project
+
+# Auto-generated from directory
+cd "My ML Project"
+pyve --init --backend micromamba  # Environment: my-ml-project
+```
+
+### Lock File Validation
+
+Pyve validates conda lock files to ensure reproducibility:
+
+#### Lock File Status
+
+```bash
+pyve doctor  # Check lock file status
+```
+
+**Status Indicators:**
+- ✓ **Up to date** - `conda-lock.yml` newer than `environment.yml`
+- ⚠ **Stale** - `environment.yml` modified after `conda-lock.yml`
+- ⚠ **Missing** - No `conda-lock.yml` found
+
+#### Strict Mode
+
+Use `--strict` to enforce lock file requirements:
+
+```bash
+# Error if lock file is stale or missing
+pyve --init --backend micromamba --strict
+
+# Useful for CI/CD to ensure reproducibility
+pyve --init --backend micromamba --strict --auto-bootstrap --no-direnv
+```
+
+**Strict Mode Behavior:**
+- **Missing lock file** - Exits with error, suggests generating with `conda-lock`
+- **Stale lock file** - Exits with error, shows timestamps, suggests regenerating
+- **Up-to-date lock file** - Proceeds normally
+
+**Generate Lock Files:**
+```bash
+# Install conda-lock
+pip install conda-lock
+
+# Generate lock file
+conda-lock -f environment.yml -p linux-64 -p osx-64
+
+# Or use micromamba
+micromamba env export > conda-lock.yml
+```
+
+**Example Output (Stale Lock File):**
+```
+⚠ Lock file: conda-lock.yml (stale)
+  environment.yml: 2026-01-06 02:15:30
+  conda-lock.yml:  2026-01-05 18:42:15
+
+ERROR: Lock file is stale (--strict mode)
+Regenerate with: conda-lock -f environment.yml
 ```
 
 ## Security
