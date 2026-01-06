@@ -1,11 +1,42 @@
 # Pyve: Python Virtual Environment Manager
 
-Pyve is a focused command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux. It combines Python version management, virtual environments, and direnv in a single, easy-to-use script.
+Pyve is a focused command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management, virtual environments, Micromamba (conda-compatible) environments, and direnv in a single, easy-to-use script.
+
+## Why Pyve?
+
+Pyve provides a single, deterministic entry point for Python environments, without replacing existing tools.
 
 ## Key Features
 - **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.
 - **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories. 
 - **Purge**: Remove all the Pyve artifacts, except if you've modified the `.env` file, Pyve will leave it and let you know that.
+
+## Conceptual Model
+
+Pyve separates three concerns:
+
+1. **Python runtime selection**
+   - Provided by `asdf` or `pyenv`
+   - Determines *which Python version* is used
+
+2. **Environment backend**
+   - `venv` (pip-based) for application and development workflows
+   - `micromamba` (conda-compatible) for scientific / ML workflows
+
+3. **Activation and execution**
+   - `direnv` for interactive shell convenience
+   - Pyve commands for deterministic environment setup and execution
+
+## Execution Model (Preview)
+
+Pyve is designed around **explicit environment execution**.
+
+While interactive shells typically rely on `direnv` for automatic activation,
+Pyve commands may execute tools directly inside the project environment
+without requiring manual activation.
+
+This model avoids reliance on shell state and improves reproducibility
+for scripts, automation, and CI workflows.
 
 ## Requirements
 
@@ -14,6 +45,9 @@ Pyve is a focused command-line tool that simplifies setting up and managing Pyth
   - **asdf** (recommended, with Python plugin). Pyve auto-installs requested Python versions.
   - **pyenv**. Pyve auto-installs requested Python versions.
 - **direnv** (required for `--init`; not required for standalone `--python-version`)
+- **micromamba** (optional):
+  - Required only when initializing conda-compatible environments
+  - Used for ML / scientific stacks that benefit from binary dependencies
 
 The script checks for prerequisites and provides helpful error messages if anything is missing.
 
@@ -73,13 +107,34 @@ After installation, run `pyve` from any directory.
 
 ### Initialize a Python Virtual Environment
 
+By default, `pyve --init` creates a Python `venv`-based backend or auto-detects from project files.
+
+#### Backend Selection
+
 ```bash
-pyve --init                          # Default: Python 3.13.7, .venv directory
+pyve --init                          # Auto-detect or default to venv
+pyve --init --backend venv           # Explicit venv backend
+pyve --init --backend micromamba     # Explicit micromamba backend
+pyve --init --backend auto           # Auto-detect from files
+```
+
+#### Standard Options
+
+```bash
 pyve --init my_venv                  # Custom venv directory name
 pyve --init --python-version 3.12.0  # Specific Python version
 pyve --init --local-env              # Copy ~/.local/.env template to .env
 pyve -i                              # Short form
 ```
+
+#### Backend Auto-Detection Priority
+
+When `--backend` is not specified, Pyve uses this precedence:
+
+1. **`.pyve/config`** - Project configuration file
+2. **`environment.yml` / `conda-lock.yml`** - Selects micromamba backend
+3. **`pyproject.toml` / `requirements.txt`** - Selects venv backend
+4. **Default to venv** - When no environment files exist
 
 After setup, run `direnv allow` to activate the environment.
 
@@ -102,9 +157,11 @@ pyve -p                              # Short form
 ### All Commands
 
 ```bash
-pyve --init, -i       # Initialize Python virtual environment
+pyve --init, -i       # Initialize your Python coding environment
 pyve --purge, -p      # Remove environment artifacts
 pyve --python-version # Set Python version only
+pyve run <cmd>        # Execute command in project environment
+pyve doctor           # Check environment health and configuration
 pyve --install        # Install pyve to ~/.local/bin
 pyve --uninstall      # Remove pyve from ~/.local/bin
 pyve --help, -h       # Show help
@@ -113,6 +170,29 @@ pyve --config, -c     # Show configuration
 ```
 
 ## Configuration
+
+### Project Configuration File
+
+Create `.pyve/config` for explicit backend and environment settings:
+
+```yaml
+# .pyve/config
+backend: micromamba
+
+micromamba:
+  env_name: myproject
+  env_file: environment.yml
+  channels:
+    - conda-forge
+    - defaults
+  prefix: .pyve/envs/myproject
+
+python:
+  version: "3.11"
+
+venv:
+  directory: .venv
+```
 
 ### Environment Variables
 - **Project-specific**: `.env` file in your project root for secrets and environment variables
@@ -143,6 +223,43 @@ See `CONTRIBUTING.md` for contribution guidelines.
 The script checks for prerequisites (asdf/pyenv, direnv) before initialization and provides helpful error messages if anything is missing.
 
 **Direct execution**: You can run the script directly without installing: `./pyve.sh --init`
+
+### Diagnostic Command
+
+Check environment health and configuration:
+
+```bash
+pyve doctor                          # Check environment health
+pyve doctor --backend micromamba     # Check micromamba setup
+pyve doctor --verbose                # Detailed diagnostics
+```
+
+### Micromamba Bootstrap
+
+When micromamba backend is required but not found:
+
+```
+ERROR: Backend 'micromamba' required but not found.
+
+Detected: environment.yml
+Required: micromamba
+
+Installation options:
+  1. Install to project sandbox: .pyve/bin/micromamba
+  2. Install to user sandbox: ~/.pyve/bin/micromamba
+  3. Install via system package manager (brew/apt)
+  4. Abort and install manually
+
+Choice [1]: _
+```
+
+Non-interactive mode for CI/automation:
+
+```bash
+pyve --init --backend micromamba --auto-bootstrap
+pyve --init --backend micromamba --bootstrap-to project
+pyve --init --backend micromamba --bootstrap-to user
+```
 
 ## Security
 
