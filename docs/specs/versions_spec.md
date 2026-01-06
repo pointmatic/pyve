@@ -3,6 +3,116 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.9 Shell Prompt Integration [Implemented]
+- [x] Update `.envrc` generation for micromamba backend
+- [x] Implement prompt format: `(backend:env_name)`
+- [x] For venv backend: `export PS1="(venv:project_name) $PS1"`
+- [x] For micromamba backend: `export PS1="(micromamba:$ENV_NAME) $PS1"`
+- [x] Split `init_direnv()` into `init_direnv_venv()` and `init_direnv_micromamba()`
+- [x] Update venv `.envrc` to include backend name in prompt
+
+### Notes
+**Goal:** Update shell prompt to show backend and environment name.
+
+**Implementation Summary:**
+- Split `init_direnv()` into two backend-specific functions:
+  - `init_direnv_venv()` - Creates .envrc for venv backend with prompt
+  - `init_direnv_micromamba()` - Creates .envrc for micromamba backend with prompt
+
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.8 to 0.7.9
+  - Renamed `init_direnv()` to `init_direnv_venv()`
+  - Added `init_direnv_micromamba()` function
+  - Integrated micromamba .envrc creation into init flow
+
+**Prompt Format:**
+- **Venv backend:** `(venv:project_name) $PS1`
+  - Uses project directory basename for environment name
+  - Example: `(venv:myproject) $`
+
+- **Micromamba backend:** `(micromamba:env_name) $PS1`
+  - Uses resolved environment name
+  - Example: `(micromamba:myproject) $`
+
+**Venv .envrc Template:**
+```bash
+# pyve-managed direnv configuration
+# Activates Python virtual environment and loads .env
+
+VENV_DIR=".venv"
+
+if [[ -d "$VENV_DIR" ]]; then
+    source "$VENV_DIR/bin/activate"
+    # Update prompt to show backend and environment
+    export PS1="(venv:project_name) $PS1"
+fi
+
+if [[ -f ".env" ]]; then
+    dotenv
+fi
+```
+
+**Micromamba .envrc Template:**
+```bash
+# pyve-managed direnv configuration
+# Activates micromamba environment and loads .env
+
+ENV_NAME="myproject"
+ENV_PATH=".pyve/envs/myproject"
+
+# Activate micromamba environment
+if [[ -d "$ENV_PATH" ]]; then
+    # Add environment bin to PATH
+    export PATH="$ENV_PATH/bin:$PATH"
+    # Update prompt to show backend and environment
+    export PS1="(micromamba:$ENV_NAME) $PS1"
+fi
+
+if [[ -f ".env" ]]; then
+    dotenv
+fi
+```
+
+**Key Differences:**
+- Venv uses `source activate` (traditional activation)
+- Micromamba uses PATH manipulation (no activation script needed)
+- Both show backend name in prompt for clarity
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.9
+- ✓ `pyve --config` works correctly
+- ✓ All functions load without errors
+- ✓ Venv .envrc includes prompt with backend name
+- ✓ Micromamba .envrc includes prompt with backend name
+- ✓ Backward compatible (existing .envrc files not overwritten)
+
+**Deferred Features:**
+- Configurable prompt format via `.pyve/config` (deferred to future version)
+- `prompt.show` and `prompt.format` config options (not needed yet)
+- These can be added when user demand arises
+
+**Usage Example:**
+```bash
+# Venv backend
+pyve --init
+# Creates .envrc with: export PS1="(venv:myproject) $PS1"
+
+# Micromamba backend
+pyve --init --backend micromamba
+# Creates .envrc with: export PS1="(micromamba:myproject) $PS1"
+
+# After direnv allow, prompt shows:
+# (venv:myproject) $ python --version
+# (micromamba:myproject) $ python --version
+```
+
+**Next Steps:**
+- v0.7.10: `pyve run` command for executing commands in environment
+- v0.7.11: `--no-direnv` flag for CI/CD environments
+- v0.7.12: `pyve doctor` command for diagnostics
+
+---
+
 ## v0.7.8 Micromamba Environment Creation [Implemented]
 - [x] Implement `create_micromamba_env()` function
 - [x] Implement `check_micromamba_env_exists()` function

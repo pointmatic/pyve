@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.8"
+VERSION="0.7.9"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -352,11 +352,14 @@ init() {
             log_warning "Environment created but verification failed"
         fi
         
+        # Configure direnv for micromamba
+        local env_path=".pyve/envs/$env_name"
+        init_direnv_micromamba "$env_name" "$env_path"
+        
         # Create .env file
         init_dotenv "$use_local_env"
         
         # Update .gitignore
-        local env_path=".pyve/envs/$env_name"
         append_pattern_to_gitignore ".pyve/envs"
         append_pattern_to_gitignore "$ENV_FILE_NAME"
         append_pattern_to_gitignore ".envrc"
@@ -368,7 +371,7 @@ init() {
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
         printf "\nNext steps:\n"
-        printf "  1. Activate: micromamba activate %s\n" "$env_path"
+        printf "  1. Run 'direnv allow' to activate the environment\n"
         printf "  2. Or use: pyve run <command> (coming in v0.7.10)\n"
         
         return 0
@@ -414,7 +417,7 @@ init() {
     init_venv "$venv_dir"
     
     # Configure direnv
-    init_direnv "$venv_dir"
+    init_direnv_venv "$venv_dir"
     
     # Create .env file
     init_dotenv "$use_local_env"
@@ -451,14 +454,18 @@ init_venv() {
     fi
 }
 
-init_direnv() {
+init_direnv_venv() {
     local venv_dir="$1"
     local envrc_file=".envrc"
     
     if [[ -f "$envrc_file" ]]; then
         log_info ".envrc already exists, skipping"
     else
-        # Create .envrc with dynamic path resolution
+        # Get project name for prompt
+        local project_name
+        project_name="$(basename "$(pwd)")"
+        
+        # Create .envrc with dynamic path resolution and prompt
         cat > "$envrc_file" << EOF
 # pyve-managed direnv configuration
 # Activates Python virtual environment and loads .env
@@ -467,6 +474,40 @@ VENV_DIR="$venv_dir"
 
 if [[ -d "\$VENV_DIR" ]]; then
     source "\$VENV_DIR/bin/activate"
+    # Update prompt to show backend and environment
+    export PS1="(venv:$project_name) \$PS1"
+fi
+
+if [[ -f ".env" ]]; then
+    dotenv
+fi
+EOF
+        log_success "Created .envrc"
+    fi
+}
+
+init_direnv_micromamba() {
+    local env_name="$1"
+    local env_path="$2"
+    local envrc_file=".envrc"
+    
+    if [[ -f "$envrc_file" ]]; then
+        log_info ".envrc already exists, skipping"
+    else
+        # Create .envrc for micromamba with prompt
+        cat > "$envrc_file" << EOF
+# pyve-managed direnv configuration
+# Activates micromamba environment and loads .env
+
+ENV_NAME="$env_name"
+ENV_PATH="$env_path"
+
+# Activate micromamba environment
+if [[ -d "\$ENV_PATH" ]]; then
+    # Add environment bin to PATH
+    export PATH="\$ENV_PATH/bin:\$PATH"
+    # Update prompt to show backend and environment
+    export PS1="(micromamba:\$ENV_NAME) \$PS1"
 fi
 
 if [[ -f ".env" ]]; then
