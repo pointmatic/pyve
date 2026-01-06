@@ -728,3 +728,149 @@ validate_lock_file_status() {
     # Case 4: Neither file exists (error handled elsewhere)
     return 0
 }
+
+#============================================================
+# Environment Naming Functions
+#============================================================
+
+# Sanitize environment name for conda/micromamba
+# Arguments:
+#   $1 - Raw environment name
+# Returns: sanitized name
+sanitize_environment_name() {
+    local raw_name="$1"
+    
+    if [[ -z "$raw_name" ]]; then
+        echo ""
+        return 1
+    fi
+    
+    # Convert to lowercase
+    local sanitized="${raw_name,,}"
+    
+    # Replace spaces and special characters with hyphens
+    # Keep only alphanumeric, hyphens, and underscores
+    sanitized="$(echo "$sanitized" | tr -cs '[:alnum:]_-' '-')"
+    
+    # Remove leading/trailing hyphens
+    sanitized="${sanitized#-}"
+    sanitized="${sanitized%-}"
+    
+    # Ensure it starts with letter or underscore
+    if [[ ! "$sanitized" =~ ^[a-z_] ]]; then
+        sanitized="env-${sanitized}"
+    fi
+    
+    # Truncate to max 255 characters
+    if [[ ${#sanitized} -gt 255 ]]; then
+        sanitized="${sanitized:0:255}"
+    fi
+    
+    echo "$sanitized"
+    return 0
+}
+
+# Check if environment name is reserved
+# Arguments:
+#   $1 - Environment name
+# Returns: 0 if reserved, 1 if not reserved
+is_reserved_environment_name() {
+    local name="$1"
+    
+    local reserved_names=("base" "root" "default" "conda" "mamba" "micromamba")
+    
+    for reserved in "${reserved_names[@]}"; do
+        if [[ "$name" == "$reserved" ]]; then
+            return 0  # Reserved
+        fi
+    done
+    
+    return 1  # Not reserved
+}
+
+# Validate environment name
+# Arguments:
+#   $1 - Environment name
+# Returns: 0 if valid, 1 if invalid
+validate_environment_name() {
+    local name="$1"
+    
+    if [[ -z "$name" ]]; then
+        log_error "Environment name cannot be empty"
+        return 1
+    fi
+    
+    # Check if reserved
+    if is_reserved_environment_name "$name"; then
+        log_error "Environment name '$name' is reserved"
+        log_error "Reserved names: base, root, default, conda, mamba, micromamba"
+        return 1
+    fi
+    
+    # Check length
+    if [[ ${#name} -gt 255 ]]; then
+        log_error "Environment name too long (max 255 characters): $name"
+        return 1
+    fi
+    
+    # Check valid characters (alphanumeric, hyphens, underscores)
+    if [[ ! "$name" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        log_error "Invalid environment name: $name"
+        log_error "Use only alphanumeric characters, hyphens, and underscores"
+        return 1
+    fi
+    
+    # Check starts with letter or underscore
+    if [[ ! "$name" =~ ^[a-zA-Z_] ]]; then
+        log_error "Environment name must start with letter or underscore: $name"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Resolve environment name with priority order
+# Arguments:
+#   $1 - CLI flag value (optional)
+# Returns: resolved environment name
+resolve_environment_name() {
+    local cli_name="${1:-}"
+    local resolved_name=""
+    
+    # Priority 1: CLI flag --env-name
+    if [[ -n "$cli_name" ]]; then
+        resolved_name="$cli_name"
+        echo "$resolved_name"
+        return 0
+    fi
+    
+    # Priority 2: .pyve/config → micromamba.env_name
+    if config_file_exists; then
+        local config_name
+        config_name="$(read_config_value "micromamba.env_name")"
+        if [[ -n "$config_name" ]]; then
+            resolved_name="$config_name"
+            echo "$resolved_name"
+            return 0
+        fi
+    fi
+    
+    # Priority 3: environment.yml → name: field
+    if [[ -f "environment.yml" ]]; then
+        local env_file_name
+        env_file_name="$(parse_environment_name "environment.yml")"
+        if [[ -n "$env_file_name" ]]; then
+            resolved_name="$env_file_name"
+            echo "$resolved_name"
+            return 0
+        fi
+    fi
+    
+    # Priority 4: Project directory basename (sanitized)
+    local project_dir
+    project_dir="$(basename "$(pwd)")"
+    resolved_name="$(sanitize_environment_name "$project_dir")"
+    
+    echo "$resolved_name"
+    return 0
+}

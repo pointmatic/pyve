@@ -3,6 +3,88 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.6 Environment Naming [Implemented]
+- [x] Implement environment name resolution order (4 priorities)
+- [x] Add `sanitize_environment_name()` function
+- [x] Add `is_reserved_environment_name()` function
+- [x] Add `validate_environment_name()` function
+- [x] Add `resolve_environment_name()` function
+- [x] Add `--env-name` CLI flag
+- [x] Integrate name resolution into micromamba backend flow
+- [x] Update help text with --env-name flag
+
+### Notes
+**Goal:** Implement environment naming resolution.
+
+**Implementation Summary:**
+- Added environment naming functions to `lib/micromamba.sh`:
+  - `sanitize_environment_name()` - Sanitizes raw names (lowercase, replace special chars, ensure valid start)
+  - `is_reserved_environment_name()` - Checks against reserved names (base, root, default, conda, mamba, micromamba)
+  - `validate_environment_name()` - Validates name meets all requirements
+  - `resolve_environment_name()` - Resolves name using priority order
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.5 to 0.7.6
+  - Added `--env-name` flag to `pyve --init`
+  - Integrated name resolution and validation into micromamba backend initialization
+  - Updated help text with --env-name flag
+
+**Name Resolution Priority:**
+1. CLI flag: `--env-name` (highest priority)
+2. `.pyve/config` → `micromamba.env_name`
+3. `environment.yml` → `name:` field
+4. Project directory basename (sanitized) (lowest priority)
+
+**Sanitization Rules:**
+- Convert to lowercase
+- Replace spaces and special characters with hyphens
+- Keep only alphanumeric, hyphens, and underscores
+- Remove leading/trailing hyphens
+- Ensure starts with letter or underscore (prefix with "env-" if not)
+- Truncate to max 255 characters
+
+**Validation Rules:**
+- Cannot be empty
+- Cannot be reserved (base, root, default, conda, mamba, micromamba)
+- Max 255 characters
+- Only alphanumeric, hyphens, and underscores
+- Must start with letter or underscore
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.6
+- ✓ Sanitization works correctly (lowercase, special char replacement)
+- ✓ Reserved name validation implemented
+- ✓ Name resolution follows priority order
+- ✓ `--env-name` flag added and parsed correctly
+- ✓ Integration into micromamba backend flow complete
+
+**Usage Examples:**
+```bash
+# Explicit name via CLI flag (highest priority)
+pyve --init --backend micromamba --env-name my-project
+
+# Name from .pyve/config
+# config file: micromamba.env_name: myproject
+pyve --init --backend micromamba
+
+# Name from environment.yml
+# environment.yml: name: MyProject
+pyve --init --backend micromamba
+
+# Name from directory (sanitized)
+# Directory: "My Cool Project!" → sanitized to: "my-cool-project"
+pyve --init --backend micromamba
+```
+
+**Sanitization Examples:**
+- `"My Project"` → `"my-project"`
+- `"123test"` → `"env-123test"` (must start with letter/underscore)
+- `"Project_Name"` → `"project_name"`
+- `"my@special#project!"` → `"my-special-project"`
+
+**Note:** `pyve doctor` command will be implemented in v0.7.11 to show resolved environment name.
+
+---
+
 ## v0.7.5 Lock File Validation [Implemented]
 - [x] Implement lock file staleness detection
 - [x] Compare modification times: `mtime(environment.yml) > mtime(conda-lock.yml)`

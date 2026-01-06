@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.5"
+VERSION="0.7.6"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -79,6 +79,7 @@ pyve - Python Virtual Environment Manager
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
+                [--env-name <name>]
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -93,6 +94,7 @@ COMMANDS:
                         Optional: --auto-bootstrap to install micromamba without prompting
                         Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --strict to error on stale/missing lock files
+                        Optional: --env-name <name> to specify environment name (micromamba)
                         Optional: --local-env to copy ~/.local/.env template
 
     --purge, -p         Remove all Python environment artifacts
@@ -199,6 +201,7 @@ init() {
     local auto_bootstrap=false
     local bootstrap_to="user"
     local strict_mode=false
+    local env_name_flag=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -243,6 +246,14 @@ init() {
             --strict)
                 strict_mode=true
                 shift
+                ;;
+            --env-name)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--env-name requires an environment name"
+                    exit 1
+                fi
+                env_name_flag="$2"
+                shift 2
                 ;;
             -*)
                 log_error "Unknown option: $1"
@@ -296,7 +307,15 @@ init() {
             exit 1
         fi
         
-        log_info "Micromamba backend selected but full implementation coming in v0.7.6-v0.7.12"
+        # Resolve and validate environment name
+        local env_name
+        env_name="$(resolve_environment_name "$env_name_flag")"
+        if ! validate_environment_name "$env_name"; then
+            exit 1
+        fi
+        log_info "Environment name: $env_name"
+        
+        log_info "Micromamba backend selected but full implementation coming in v0.7.7-v0.7.12"
         log_error "For now, only 'venv' backend is fully functional"
         exit 1
     fi
