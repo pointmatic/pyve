@@ -3,6 +3,56 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.2 Micromamba Binary Detection [Implemented]
+- [x] Create `lib/micromamba.sh` library
+- [x] Implement micromamba detection order (project → user → system)
+- [x] Add `get_micromamba_path()` function
+- [x] Add `check_micromamba_available()` function
+- [x] Add version detection: `micromamba --version`
+- [x] Add `get_micromamba_location()` function (returns location type)
+- [x] Add `error_micromamba_not_found()` function with helpful error messages
+- [x] Update `pyve --config` to show micromamba status
+
+### Notes
+**Goal:** Detect and resolve micromamba binary location.
+
+**Implementation Summary:**
+- Created `lib/micromamba.sh` with five core functions:
+  - `get_micromamba_path()` - Returns path to micromamba binary (detection order: project → user → system)
+  - `check_micromamba_available()` - Returns 0 if available, 1 if not
+  - `get_micromamba_version()` - Extracts version from `micromamba --version`
+  - `get_micromamba_location()` - Returns "project", "user", "system", or "not_found"
+  - `error_micromamba_not_found()` - Displays helpful error with installation instructions
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.1 to 0.7.2
+  - Sourced `lib/micromamba.sh`
+  - Enhanced `show_config()` to display micromamba status with location and version
+
+**Detection Order:**
+1. `.pyve/bin/micromamba` (project sandbox) - highest priority
+2. `~/.pyve/bin/micromamba` (user sandbox)
+3. `which micromamba` (system PATH) - lowest priority
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.2
+- ✓ `pyve --config` displays micromamba status
+- ✓ Detects micromamba in project sandbox (.pyve/bin/micromamba)
+- ✓ Detects micromamba in user sandbox (~/.pyve/bin/micromamba)
+- ✓ Project sandbox takes priority over user sandbox
+- ✓ Version extraction works correctly (tested with v1.5.3 and v1.4.0)
+- ✓ Shows "not found" when micromamba is not available
+- ✓ Location type reported correctly (project, user, system, not_found)
+
+**Error Handling:**
+- `error_micromamba_not_found()` provides clear installation instructions:
+  - Package manager installation (brew on macOS, apt on Linux)
+  - Bootstrap installation (future feature in v0.7.3)
+  - Lists all detection locations for troubleshooting
+
+**Note:** `pyve doctor` command will be implemented in v0.7.11 to provide comprehensive health checks including micromamba status.
+
+---
+
 ## v0.7.1 Configuration File Support [Implemented]
 - [x] Create YAML parser (portable bash/awk approach)
 - [x] Implement `.pyve/config` file reading

@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.1"
+VERSION="0.7.2"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -58,6 +58,13 @@ if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/backend_detect.sh"
 else
     printf "ERROR: Cannot find lib/backend_detect.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/micromamba.sh" ]]; then
+    source "$SCRIPT_DIR/lib/micromamba.sh"
+else
+    printf "ERROR: Cannot find lib/micromamba.sh\n" >&2
     exit 1
 fi
 
@@ -131,6 +138,19 @@ show_config() {
         config_backend="$(read_config_value "backend")"
     fi
     
+    # Check micromamba status
+    local micromamba_status="not found"
+    local micromamba_location=""
+    local micromamba_version=""
+    if check_micromamba_available; then
+        micromamba_location="$(get_micromamba_location)"
+        micromamba_version="$(get_micromamba_version)"
+        micromamba_status="available ($micromamba_location)"
+        if [[ -n "$micromamba_version" ]]; then
+            micromamba_status="$micromamba_status v$micromamba_version"
+        fi
+    fi
+    
     printf "pyve configuration:\n"
     printf "  Version:                %s\n" "$VERSION"
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
@@ -141,6 +161,7 @@ show_config() {
         printf "  Config backend:         %s\n" "$config_backend"
     fi
     printf "  Detected backend:       %s\n" "$detected_backend"
+    printf "  Micromamba:             %s\n" "$micromamba_status"
     printf "  Environment file:       %s\n" "$ENV_FILE_NAME"
     printf "  Install directory:      %s\n" "$TARGET_BIN_DIR"
 }
