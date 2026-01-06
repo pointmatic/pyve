@@ -3,6 +3,153 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.12 `pyve doctor` Command [Implemented]
+- [x] Add `pyve doctor` command
+- [x] Check and report backend type (venv or micromamba)
+- [x] Check and report environment location
+- [x] Check and report Python version
+- [x] Check and report environment file (environment.yml, conda-lock.yml)
+- [x] Check and report lock file status (up to date, stale, missing)
+- [x] Check and report micromamba version (if applicable)
+- [x] Check and report package count
+- [x] Color-coded status indicators (✓ ✗ ⚠)
+
+### Notes
+**Goal:** Implement environment health check and diagnostics.
+
+**Implementation Summary:**
+- Added `doctor_command()` function to `pyve.sh`
+- Comprehensive diagnostics for both venv and micromamba backends
+- Automatic backend detection
+- Color-coded status indicators for quick visual feedback
+- Detailed reporting of environment health
+
+**Changes to `pyve.sh`:**
+- Version bumped from 0.7.11 to 0.7.12
+- Added `doctor_command()` function (170+ lines)
+- Added `doctor` command to main CLI parser
+- Updated help text with doctor command documentation
+- Added doctor example to EXAMPLES section
+
+**Checks Performed:**
+
+**Common Checks (both backends):**
+- ✓ Backend type detection
+- ✓ Environment location
+- ✓ Python version
+- ✓ Direnv configuration (.envrc)
+- ✓ Environment file (.env)
+- ✓ Package count
+
+**Venv-Specific Checks:**
+- ✓ Venv directory exists
+- ✓ Python executable in venv
+- ✓ Version file (.tool-versions or .python-version)
+- ✓ Package count from site-packages
+
+**Micromamba-Specific Checks:**
+- ✓ Micromamba binary (path, location, version)
+- ✓ Environment directory
+- ✓ Environment name
+- ✓ Python in environment
+- ✓ Environment file (environment.yml or conda-lock.yml)
+- ✓ Lock file status (up to date, stale, missing)
+- ✓ Package count from conda-meta
+
+**Status Indicators:**
+- `✓` - Success/OK
+- `✗` - Error/Not found
+- `⚠` - Warning/Issue detected
+
+**Example Output (Venv):**
+```
+Pyve Environment Diagnostics
+=============================
+
+✓ Backend: venv
+✓ Environment: .venv
+✓ Python: 3.13.7
+✓ Version file: .tool-versions (asdf)
+  Python: 3.13.7
+  Packages: 42 installed
+✓ Direnv: .envrc configured
+✓ Environment file: .env (configured)
+```
+
+**Example Output (Micromamba):**
+```
+Pyve Environment Diagnostics
+=============================
+
+✓ Backend: micromamba
+✓ Micromamba: /Users/user/.pyve/bin/micromamba (user) v1.5.3
+✓ Environment: .pyve/envs/myproject
+  Name: myproject
+✓ Python: 3.11.7
+✓ Environment file: environment.yml
+⚠ Lock file: conda-lock.yml (stale)
+  environment.yml: 2026-01-06 02:15:30
+  conda-lock.yml:  2026-01-05 18:42:15
+  Packages: 87 installed
+✓ Direnv: .envrc configured
+✓ Environment file: .env (configured)
+```
+
+**Example Output (No Environment):**
+```
+Pyve Environment Diagnostics
+=============================
+
+✗ No environment found
+  Run 'pyve --init' to create an environment
+```
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.12
+- ✓ `pyve doctor` works correctly
+- ✓ Reports correct status for venv backend
+- ✓ Backend detection works
+- ✓ Status indicators display correctly
+- ✓ Package counting works
+- ✓ Help text includes doctor command
+
+**Use Cases:**
+
+**Quick Health Check:**
+```bash
+pyve doctor
+# Shows environment status at a glance
+```
+
+**Debugging Issues:**
+```bash
+pyve doctor
+# Identifies missing files, stale lock files, etc.
+```
+
+**CI/CD Verification:**
+```bash
+pyve doctor
+# Verify environment is set up correctly in CI
+```
+
+**Benefits:**
+- **Quick diagnostics** - See environment status at a glance
+- **Issue detection** - Identifies common problems automatically
+- **Visual feedback** - Color-coded indicators for quick scanning
+- **Comprehensive** - Checks all critical components
+- **Backend-aware** - Tailored checks for venv vs micromamba
+
+**Deferred Features:**
+- `--verbose` flag for detailed output (not needed yet)
+- `--backend` flag to check specific backend (not needed yet)
+- These can be added when user demand arises
+
+**Next Steps:**
+- v0.7.13: Documentation and polish
+
+---
+
 ## v0.7.11 `--no-direnv` Flag [Implemented]
 - [x] Add `--no-direnv` CLI flag to `pyve --init`
 - [x] Skip `.envrc` creation when flag is set

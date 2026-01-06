@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.11"
+VERSION="0.7.12"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -95,6 +95,7 @@ USAGE:
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
                 [--env-name <name>] [--no-direnv]
     pyve run <command> [args...]
+    pyve doctor
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -117,6 +118,10 @@ COMMANDS:
                         Automatically detects backend (venv or micromamba)
                         Passes all arguments to the command
                         Preserves exit codes
+
+    doctor              Check environment health and show diagnostics
+                        Reports backend, Python version, packages, and status
+                        Detects issues with lock files and configuration
 
     --purge, -p         Remove all Python environment artifacts
                         Optional: specify custom venv directory name (default: .venv)
@@ -145,6 +150,7 @@ EXAMPLES:
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
     pyve run python script.py            # Run script in environment
+    pyve doctor                          # Check environment health
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
 
@@ -985,6 +991,182 @@ run_command() {
 }
 
 #============================================================
+# Doctor Command
+#============================================================
+
+doctor_command() {
+    printf "\nPyve Environment Diagnostics\n"
+    printf "=============================\n\n"
+    
+    # Detect active backend
+    local backend=""
+    local venv_dir="$DEFAULT_VENV_DIR"
+    local env_path=""
+    local env_name=""
+    
+    # Check for micromamba environment first
+    if [[ -d ".pyve/envs" ]]; then
+        local env_dirs=(.pyve/envs/*)
+        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
+            backend="micromamba"
+            env_path="${env_dirs[0]}"
+            env_name="$(basename "$env_path")"
+        fi
+    fi
+    
+    # Check for venv if micromamba not found
+    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
+        backend="venv"
+        env_path="$venv_dir"
+    fi
+    
+    # Check if no environment found
+    if [[ -z "$backend" ]]; then
+        printf "✗ No environment found\n"
+        printf "  Run 'pyve --init' to create an environment\n"
+        exit 1
+    fi
+    
+    # Report backend
+    printf "✓ Backend: %s\n" "$backend"
+    
+    # Backend-specific checks
+    if [[ "$backend" == "micromamba" ]]; then
+        # Check micromamba binary
+        if check_micromamba_available; then
+            local mm_path
+            mm_path="$(get_micromamba_path)"
+            local mm_version
+            mm_version="$(get_micromamba_version)"
+            local mm_location
+            mm_location="$(get_micromamba_location)"
+            printf "✓ Micromamba: %s (%s) v%s\n" "$mm_path" "$mm_location" "$mm_version"
+        else
+            printf "✗ Micromamba: not found\n"
+        fi
+        
+        # Check environment
+        if [[ -d "$env_path" ]]; then
+            printf "✓ Environment: %s\n" "$env_path"
+            printf "  Name: %s\n" "$env_name"
+        else
+            printf "✗ Environment: not found\n"
+        fi
+        
+        # Check Python in environment
+        if [[ -f "$env_path/bin/python" ]]; then
+            local py_version
+            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
+            printf "✓ Python: %s\n" "$py_version"
+        else
+            printf "⚠ Python: not found in environment\n"
+        fi
+        
+        # Check environment file
+        local env_file
+        env_file="$(detect_environment_file 2>/dev/null)" || true
+        if [[ -n "$env_file" ]]; then
+            printf "✓ Environment file: %s\n" "$env_file"
+            
+            # Check lock file status if environment.yml exists
+            if [[ "$env_file" == "environment.yml" ]] || [[ -f "environment.yml" ]]; then
+                if [[ -f "conda-lock.yml" ]]; then
+                    if is_lock_file_stale; then
+                        printf "⚠ Lock file: conda-lock.yml (stale)\n"
+                        local env_mtime
+                        local lock_mtime
+                        env_mtime="$(get_file_mtime_formatted "environment.yml")"
+                        lock_mtime="$(get_file_mtime_formatted "conda-lock.yml")"
+                        printf "  environment.yml: %s\n" "$env_mtime"
+                        printf "  conda-lock.yml:  %s\n" "$lock_mtime"
+                    else
+                        printf "✓ Lock file: conda-lock.yml (up to date)\n"
+                    fi
+                else
+                    printf "⚠ Lock file: missing\n"
+                    printf "  Generate with: conda-lock -f environment.yml\n"
+                fi
+            fi
+        else
+            printf "⚠ Environment file: not found\n"
+        fi
+        
+        # Count packages
+        if [[ -d "$env_path/conda-meta" ]]; then
+            local pkg_count
+            pkg_count=$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
+            printf "  Packages: %s installed\n" "$pkg_count"
+        fi
+        
+    elif [[ "$backend" == "venv" ]]; then
+        # Check venv directory
+        if [[ -d "$env_path" ]]; then
+            printf "✓ Environment: %s\n" "$env_path"
+        else
+            printf "✗ Environment: not found\n"
+        fi
+        
+        # Check Python in venv
+        if [[ -f "$env_path/bin/python" ]]; then
+            local py_version
+            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
+            printf "✓ Python: %s\n" "$py_version"
+        else
+            printf "✗ Python: not found in venv\n"
+        fi
+        
+        # Check Python version file
+        if [[ -f ".tool-versions" ]]; then
+            local version_manager="asdf"
+            local py_ver
+            py_ver="$(grep "^python " .tool-versions | awk '{print $2}')"
+            printf "✓ Version file: .tool-versions (asdf)\n"
+            printf "  Python: %s\n" "$py_ver"
+        elif [[ -f ".python-version" ]]; then
+            local version_manager="pyenv"
+            local py_ver
+            py_ver="$(cat .python-version)"
+            printf "✓ Version file: .python-version (pyenv)\n"
+            printf "  Python: %s\n" "$py_ver"
+        else
+            printf "⚠ Version file: not found\n"
+        fi
+        
+        # Count packages in venv
+        if [[ -d "$env_path/lib" ]]; then
+            local site_packages
+            site_packages=$(find "$env_path/lib" -type d -name "site-packages" 2>/dev/null | head -1)
+            if [[ -n "$site_packages" ]]; then
+                local pkg_count
+                pkg_count=$(find "$site_packages" -maxdepth 1 -name "*.dist-info" 2>/dev/null | wc -l | tr -d ' ')
+                printf "  Packages: %s installed\n" "$pkg_count"
+            fi
+        fi
+    fi
+    
+    # Check direnv
+    if [[ -f ".envrc" ]]; then
+        printf "✓ Direnv: .envrc configured\n"
+    else
+        printf "⚠ Direnv: .envrc not found\n"
+        printf "  Use 'pyve run' to execute commands\n"
+    fi
+    
+    # Check .env file
+    if [[ -f ".env" ]]; then
+        if is_file_empty ".env"; then
+            printf "✓ Environment file: .env (empty)\n"
+        else
+            printf "✓ Environment file: .env (configured)\n"
+        fi
+    else
+        printf "⚠ Environment file: .env not found\n"
+    fi
+    
+    printf "\n"
+}
+
+#============================================================
 # Main Entry Point
 #============================================================
 
@@ -1028,6 +1210,9 @@ main() {
         run)
             shift
             run_command "$@"
+            ;;
+        doctor)
+            doctor_command
             ;;
         *)
             log_error "Unknown command: $1"
