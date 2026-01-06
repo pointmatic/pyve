@@ -1,0 +1,6 @@
+backend: micromamba
+micromamba:
+  env_name: myproject
+  env_file: environment.yml
+python:
+  version: "3.11"

@@ -61,6 +61,7 @@ See `docs/guide_versions_spec.md`
 - [ ] Add coverage badges to README
 - [ ] Test CI/CD workflow on both platforms
 - [ ] Document CI/CD testing setup
+- [ ] Bump version in pyve.sh from 0.8.5 to 0.8.6
 
 ### Notes
 **Goal:** Integrate testing into CI/CD pipeline with coverage reporting.
@@ -75,6 +76,7 @@ See `docs/guide_versions_spec.md`
 - [ ] Add parametrized tests for both backends
 - [ ] Test error handling and edge cases
 - [ ] Verify all integration tests pass
+- [ ] Bump version in pyve.sh from 0.8.4 to 0.8.5
 
 ### Notes
 **Goal:** Complete integration test coverage for all commands.
@@ -89,6 +91,7 @@ See `docs/guide_versions_spec.md`
 - [ ] Create `tests/integration/test_auto_detection.py` (backend detection scenarios)
 - [ ] Add test fixtures for sample projects
 - [ ] Verify all workflow tests pass
+- [ ] Bump version in pyve.sh from 0.8.3 to 0.8.4
 
 ### Notes
 **Goal:** Implement core integration tests for both backends.
@@ -102,6 +105,7 @@ See `docs/guide_versions_spec.md`
 - [ ] Add edge case tests for all modules
 - [ ] Test error handling in unit tests
 - [ ] Verify all unit tests pass
+- [ ] Bump version in pyve.sh from 0.8.2 to 0.8.3
 
 ### Notes
 **Goal:** Complete unit test coverage for micromamba and utility modules.
@@ -115,23 +119,72 @@ See `docs/guide_versions_spec.md`
 - [ ] Implement Bats setup/teardown functions
 - [ ] Add test helper functions (`tests/helpers/test_helper.bash`)
 - [ ] Verify all unit tests pass
+- [ ] Bump version in pyve.sh from 0.8.1 to 0.8.2
 
 ### Notes
 **Goal:** Implement core unit tests for backend detection and configuration.
 
 ---
 
-## v0.8.1: pytest Setup and Configuration [Planned]
-- [ ] Install pytest, pytest-cov, pytest-xdist
-- [ ] Create `pytest.ini` configuration file
-- [ ] Configure test paths, markers, and options
-- [ ] Create `tests/integration/` directory structure
-- [ ] Create `tests/fixtures/` directory with sample data
-- [ ] Create `tests/helpers/pyve_test_helpers.py`
-- [ ] Verify pytest runs successfully (even with no tests)
+## v0.8.1: pytest Setup and Configuration [Implemented]
+- [x] Install pytest, pytest-cov, pytest-xdist
+- [x] Create `pytest.ini` configuration file
+- [x] Configure test paths, markers, and options
+- [x] Create `tests/integration/` directory structure
+- [x] Create `tests/fixtures/` directory with sample data
+- [x] Create `tests/helpers/pyve_test_helpers.py`
+- [x] Verify pytest runs successfully (even with no tests)
+- [x] Bump version in pyve.sh from 0.7.12 to 0.8.1
 
 ### Notes
 **Goal:** Set up pytest framework and configuration.
+
+**Implementation Summary:**
+- Installed pytest 9.0.2, pytest-cov 7.0.0, pytest-xdist 3.8.0 successfully
+- Created comprehensive pytest.ini configuration with:
+  - Test discovery paths (tests/integration)
+  - 8 custom markers (slow, requires_micromamba, requires_asdf, requires_direnv, macos, linux, venv, micromamba)
+  - Output and reporting options (verbose, short traceback, strict markers, color, maxfail)
+  - Coverage configuration (source, omit patterns, reporting options)
+- Created tests/helpers/pyve_test_helpers.py (330+ lines) with:
+  - `PyveRunner` class - Helper for running pyve commands with methods for init, doctor, run, purge, config, version
+  - `ProjectBuilder` class - Helper for building test project structures (requirements.txt, environment.yml, .pyve/config, Python scripts)
+  - Utility assertion functions (assert_file_exists, assert_dir_exists, assert_command_success, assert_in_output)
+- Created tests/integration/conftest.py with pytest fixtures:
+  - `pyve_script` - Path to pyve.sh
+  - `test_project` - Temporary test project directory
+  - `pyve` - PyveRunner instance
+  - `project_builder` - ProjectBuilder instance
+  - `clean_env` - Clean environment variables
+- Created sample test fixtures:
+  - `tests/fixtures/environment.yml` - Sample conda environment file
+  - `tests/fixtures/requirements.txt` - Sample pip requirements
+  - `tests/fixtures/sample_configs/basic_venv.yml` - Sample venv config
+  - `tests/fixtures/sample_configs/basic_micromamba.yml` - Sample micromamba config
+
+**Testing Results:**
+- ✓ pytest installed successfully (version 9.0.2)
+- ✓ pytest-cov installed successfully (version 7.0.0)
+- ✓ pytest-xdist installed successfully (version 3.8.0)
+- ✓ pytest runs successfully: `pytest --version` works
+- ✓ pytest collects tests: `pytest --collect-only` works (0 tests expected)
+- ✓ pytest configuration loaded: rootdir and configfile detected
+- ✓ pytest plugins loaded: xdist and cov plugins active
+
+**Files Created:**
+- `pytest.ini` - pytest configuration (45 lines)
+- `tests/helpers/pyve_test_helpers.py` - Test helper classes and utilities (330+ lines)
+- `tests/integration/conftest.py` - pytest fixtures (40+ lines)
+- `tests/fixtures/environment.yml` - Sample conda environment
+- `tests/fixtures/requirements.txt` - Sample pip requirements
+- `tests/fixtures/sample_configs/basic_venv.yml` - Sample venv config
+- `tests/fixtures/sample_configs/basic_micromamba.yml` - Sample micromamba config
+
+**Files Modified:**
+- `pyve.sh` - Bumped VERSION from 0.7.12 to 0.8.1 (line 23)
+
+**Next Steps:**
+- v0.8.2: Implement Bats unit tests (Part 1) for backend detection, config parsing, and environment naming
 
 ---
 

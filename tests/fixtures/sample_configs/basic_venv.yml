@@ -1,0 +1,5 @@
+backend: venv
+venv:
+  directory: .venv
+python:
+  version: "3.11"
