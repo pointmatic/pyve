@@ -3,6 +3,110 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.10 `pyve run` Command Foundation [Implemented]
+- [x] Add `pyve run` command to CLI
+- [x] Implement `run_command()` function
+- [x] Detect active backend (venv or micromamba) from filesystem
+- [x] For venv backend: execute `.venv/bin/<cmd>` directly
+- [x] For micromamba backend: use `micromamba run -p .pyve/envs/<name> <cmd>`
+- [x] Pass through all arguments to command
+- [x] Preserve exit codes using `exec`
+- [x] Handle command not found errors (exit code 127)
+- [x] Handle no environment found errors
+- [x] Update help text with run command and examples
+
+### Notes
+**Goal:** Implement basic `pyve run <cmd>` execution.
+
+**Implementation Summary:**
+- Added `run_command()` function to `pyve.sh`:
+  - Detects active backend by checking filesystem
+  - Venv: checks for `.venv` directory
+  - Micromamba: checks for `.pyve/envs` directory
+  - Executes commands appropriately for each backend
+
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.9 to 0.7.10
+  - Added `run` command to main CLI parser
+  - Updated help text with run command documentation
+  - Added usage examples for run command
+
+**Backend Detection Logic:**
+1. Check for `.pyve/envs` directory (micromamba)
+2. If found, use micromamba backend
+3. Otherwise, check for `.venv` directory (venv)
+4. If found, use venv backend
+5. If neither found, error with helpful message
+
+**Execution Methods:**
+
+**Venv Backend:**
+```bash
+# Direct execution from venv bin
+.venv/bin/<command> [args...]
+```
+- Checks if command exists in venv bin
+- Returns exit code 127 if command not found
+- Uses `exec` to preserve exit codes
+
+**Micromamba Backend:**
+```bash
+# Use micromamba run with prefix
+micromamba run -p .pyve/envs/<name> <command> [args...]
+```
+- Finds first environment in `.pyve/envs`
+- Uses `micromamba run -p` for execution
+- Uses `exec` to preserve exit codes
+
+**Error Handling:**
+- No environment found: Clear error message with suggestion to run `pyve --init`
+- Command not found in venv: Exit code 127 with error message
+- Micromamba not found: Error message
+- No command provided: Usage help
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.10
+- ✓ `pyve run` with no args shows usage error
+- ✓ Error handling for no environment works
+- ✓ Help text includes run command
+- ✓ Examples added to help text
+
+**Usage Examples:**
+```bash
+# Run Python
+pyve run python --version
+
+# Run tests
+pyve run pytest
+
+# Run script
+pyve run python script.py
+
+# Run any command with arguments
+pyve run pip install requests
+pyve run black .
+pyve run mypy src/
+```
+
+**Key Features:**
+- **Automatic backend detection** - No need to specify backend
+- **Exit code preservation** - Uses `exec` to preserve command exit codes
+- **Argument pass-through** - All arguments passed to command unchanged
+- **Error handling** - Clear error messages for common issues
+- **No activation needed** - Run commands without manual activation
+
+**Limitations:**
+- Only supports single environment per project
+- Micromamba backend uses first environment found in `.pyve/envs`
+- No support for running in specific named environments (future feature)
+
+**Next Steps:**
+- v0.7.11: `--no-direnv` flag for CI/CD environments
+- v0.7.12: `pyve doctor` command for diagnostics
+- v0.7.13: Documentation and polish
+
+---
+
 ## v0.7.9 Shell Prompt Integration [Implemented]
 - [x] Update `.envrc` generation for micromamba backend
 - [x] Implement prompt format: `(backend:env_name)`

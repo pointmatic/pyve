@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.9"
+VERSION="0.7.10"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -94,6 +94,7 @@ USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
                 [--env-name <name>]
+    pyve run <command> [args...]
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -110,6 +111,11 @@ COMMANDS:
                         Optional: --strict to error on stale/missing lock files
                         Optional: --env-name <name> to specify environment name (micromamba)
                         Optional: --local-env to copy ~/.local/.env template
+
+    run                 Run a command in the active environment
+                        Automatically detects backend (venv or micromamba)
+                        Passes all arguments to the command
+                        Preserves exit codes
 
     --purge, -p         Remove all Python environment artifacts
                         Optional: specify custom venv directory name (default: .venv)
@@ -134,6 +140,9 @@ EXAMPLES:
     pyve --init --backend venv           # Explicitly use venv backend
     pyve --init --backend micromamba     # Explicitly use micromamba backend
     pyve --init --local-env              # Copy ~/.local/.env template
+    pyve run python --version            # Run command in environment
+    pyve run pytest                      # Run tests in environment
+    pyve run python script.py            # Run script in environment
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
 
@@ -876,6 +885,83 @@ uninstall_clean_path() {
 }
 
 #============================================================
+# Run Command
+#============================================================
+
+run_command() {
+    if [[ $# -lt 1 ]]; then
+        log_error "No command provided to run"
+        log_error "Usage: pyve run <command> [args...]"
+        log_error "Example: pyve run python --version"
+        exit 1
+    fi
+    
+    # Detect active backend by checking what exists
+    local backend=""
+    local venv_dir="$DEFAULT_VENV_DIR"
+    
+    # Check for micromamba environment first
+    if [[ -d ".pyve/envs" ]]; then
+        # Find the first environment directory
+        local env_dirs=(.pyve/envs/*)
+        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
+            backend="micromamba"
+        fi
+    fi
+    
+    # Check for venv if micromamba not found
+    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
+        backend="venv"
+    fi
+    
+    # Error if no environment found
+    if [[ -z "$backend" ]]; then
+        log_error "No Python environment found"
+        log_error "Run 'pyve --init' to create an environment first"
+        exit 1
+    fi
+    
+    # Execute command based on backend
+    if [[ "$backend" == "venv" ]]; then
+        # Venv backend: execute directly from venv bin
+        local cmd_path="$venv_dir/bin/$1"
+        
+        if [[ ! -x "$cmd_path" ]]; then
+            log_error "Command not found in venv: $1"
+            log_error "Environment: $venv_dir"
+            exit 127
+        fi
+        
+        # Execute command with remaining arguments
+        shift
+        exec "$cmd_path" "$@"
+        
+    elif [[ "$backend" == "micromamba" ]]; then
+        # Micromamba backend: use micromamba run
+        
+        # Get micromamba path
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_error "Micromamba not found"
+            exit 1
+        fi
+        
+        # Find environment directory
+        local env_dirs=(.pyve/envs/*)
+        local env_path="${env_dirs[0]}"
+        
+        if [[ ! -d "$env_path" ]]; then
+            log_error "Micromamba environment not found"
+            exit 1
+        fi
+        
+        # Execute command using micromamba run
+        exec "$micromamba_path" run -p "$env_path" "$@"
+    fi
+}
+
+#============================================================
 # Main Entry Point
 #============================================================
 
@@ -915,6 +1001,10 @@ main() {
             ;;
         --uninstall)
             uninstall_self
+            ;;
+        run)
+            shift
+            run_command "$@"
             ;;
         *)
             log_error "Unknown command: $1"
