@@ -1,3 +1,14 @@
+# ⚠️ DEPRECATED - See design_decisions.md
+
+**This file has been superseded by `design_decisions.md`**
+- **Archived:** 2026-01-06
+- **Reason:** Redundant with design_decisions.md
+- **Current Reference:** See `docs/specs/design_decisions.md` for all design decisions
+
+This file is kept for historical reference only.
+
+---
+
 # Micromamba environment manager
 This doc provides a clean decision model for adding support for micromamba environment manager to Pyve.
 

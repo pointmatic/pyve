@@ -510,6 +510,100 @@ jobs:
 
 ---
 
+## 7. Policy Rules and Guardrails
+
+**Decision Date:** 2026-01-05
+
+### Core Policies
+
+Pyve enforces these policies to prevent common mistakes:
+
+**1. Never activate base automatically**
+- Micromamba's base environment is never activated
+- All environments are project-local in `.pyve/envs/<name>`
+
+**2. Never mix pip into conda environments (unless explicit)**
+- Warn if pip is detected in a micromamba environment
+- `pyve doctor` flags this as a warning
+- Future: Add `--allow-pip-in-conda` flag if needed
+
+**3. Deterministic backend selection**
+- Backend selection is always deterministic via config/spec detection
+- Never accidentally use micromamba just because it's installed
+- Explicit is better than implicit
+
+**4. Never fall back to pip when conda spec exists**
+- If `environment.yml` exists, micromamba backend is required
+- Error with clear instructions if micromamba is missing
+- No silent fallback to venv
+
+**5. No implicit runtime mixing**
+- Each project has one active backend at a time
+- `pyve run` always uses the configured backend
+- Override requires explicit `--backend` flag
+
+### Rationale
+
+These policies prevent the most common environment management mistakes:
+- Accidentally polluting conda environments with pip packages
+- Using wrong Python interpreter
+- Mixing package managers
+- Global environment pollution
+
+---
+
+## 8. Definition of Done
+
+**Decision Date:** 2026-01-05
+
+### Micromamba Support Completion Criteria
+
+Micromamba support is complete when:
+
+**1. Backend Selection**
+- ✅ Pyve can deterministically select backend = micromamba
+- ✅ Backend selection respects priority: CLI flag → config → files → default
+
+**2. Tool Resolution**
+- ✅ Pyve resolves micromamba via: sandbox → user → PATH
+- ✅ Bootstrap installation works (interactive and auto)
+
+**3. Environment Management**
+- ✅ Create conda env from `environment.yml`
+- ✅ Create conda env from `conda-lock.yml`
+- ✅ Reuse existing environment if it exists
+- ✅ Run commands inside environment without shell activation
+- ✅ Environment naming resolution (4-level priority)
+
+**4. Validation**
+- ✅ Lock file staleness detection
+- ✅ `pyve doctor` command for health checks
+- ✅ Backend-specific validation
+
+**5. Guardrails**
+- ✅ Never activates base environment
+- ✅ Never falls back to pip when conda spec exists
+- ✅ Never mixes runtimes implicitly
+- ✅ Errors are explicit and actionable when micromamba is missing
+
+**6. Documentation**
+- ✅ README.md updated with backend selection
+- ✅ CLI help text updated
+- ✅ CI/CD examples provided
+- ✅ Troubleshooting section updated
+
+**7. Testing**
+- ✅ All commands work with venv backend
+- ✅ All commands work with micromamba backend
+- ✅ Auto-detection works correctly
+- ✅ Bootstrap works (interactive and auto)
+
+### Phase 1 (v0.7.x) Complete
+
+All criteria above have been met as of v0.7.13.
+
+---
+
 ## Summary
 
 All critical design questions resolved:
@@ -520,5 +614,7 @@ All critical design questions resolved:
 4. ✅ **Channels:** Respect environment.yml, error if missing
 5. ✅ **Cross-Platform:** macOS, Linux, WSL only
 6. ✅ **CI/CD:** Minimal approach via `pyve run` and `--no-direnv`
+7. ✅ **Policy Rules:** Enforce best practices, prevent common mistakes
+8. ✅ **Definition of Done:** All Phase 1 criteria met
 
-Ready for implementation.
+Phase 1 (v0.7.x) implementation complete.

@@ -3,6 +3,49 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## High-Level Feature Checklist
+
+### Phase 1: Core Micromamba Support (v0.7.0 - v0.7.13)
+
+**Backend Infrastructure:**
+- [x] Backend detection and selection logic
+- [x] File-based backend detection (environment.yml, conda-lock.yml, pyproject.toml, requirements.txt)
+- [x] CLI flag: `--backend` (venv, micromamba, auto)
+- [x] `.pyve/config` YAML configuration file support
+- [x] Backend priority resolution (CLI flag → config → files → default)
+
+**Micromamba Integration:**
+- [x] Micromamba binary detection (sandbox → user → PATH)
+- [x] Micromamba bootstrap installation (interactive prompts)
+- [x] Environment creation from environment.yml
+- [x] Environment creation from conda-lock.yml
+- [x] Lock file staleness detection and warnings
+- [x] Channel configuration (respect environment.yml)
+- [x] Environment naming (project-local, respect name field)
+
+**Execution Model:**
+- [x] `pyve run <cmd>` command implementation
+- [x] Backend-aware command execution (venv vs micromamba)
+- [x] Environment resolution for `pyve run`
+
+**Shell Integration:**
+- [x] Updated `.envrc` generation for micromamba backend
+- [x] Shell prompt format: `(backend:env_name)`
+- [x] `--no-direnv` flag for CI/CD
+
+**Validation & Diagnostics:**
+- [x] `pyve doctor` command for environment health checks
+- [x] Backend-specific validation
+- [x] Lock file validation warnings
+
+**Documentation:**
+- [x] Update README.md with backend selection
+- [x] Update CLI help text
+- [x] Add CI/CD examples
+- [x] Update troubleshooting section
+
+---
+
 ## v0.7.13a: Update README.md - Core Features [Implemented]
 - [x] Add "Backend Selection" section to README.md
 - [x] Document auto-detection priority (environment.yml → config → venv)
