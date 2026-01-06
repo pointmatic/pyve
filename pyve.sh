@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.6.6"
+VERSION="0.7.0"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -54,6 +54,13 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
+    source "$SCRIPT_DIR/lib/backend_detect.sh"
+else
+    printf "ERROR: Cannot find lib/backend_detect.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Help and Information Commands
 #============================================================
@@ -63,7 +70,7 @@ show_help() {
 pyve - Python Virtual Environment Manager
 
 USAGE:
-    pyve --init [<dir>] [--python-version <ver>] [--local-env]
+    pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -74,6 +81,7 @@ COMMANDS:
     --init, -i          Initialize Python virtual environment in current directory
                         Optional: specify custom venv directory name (default: .venv)
                         Optional: --python-version <ver> to set Python version
+                        Optional: --backend <type> to specify backend (venv, micromamba, auto)
                         Optional: --local-env to copy ~/.local/.env template
 
     --purge, -p         Remove all Python environment artifacts
@@ -93,9 +101,11 @@ COMMANDS:
     --config, -c        Show current configuration
 
 EXAMPLES:
-    pyve --init                          # Initialize with defaults
+    pyve --init                          # Initialize with defaults (auto-detect backend)
     pyve --init myenv                    # Use custom venv directory
     pyve --init --python-version 3.12.0  # Specify Python version
+    pyve --init --backend venv           # Explicitly use venv backend
+    pyve --init --backend micromamba     # Explicitly use micromamba backend
     pyve --init --local-env              # Copy ~/.local/.env template
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
@@ -111,10 +121,15 @@ show_version() {
 }
 
 show_config() {
+    local detected_backend
+    detected_backend="$(detect_backend_from_files)"
+    
     printf "pyve configuration:\n"
     printf "  Version:                %s\n" "$VERSION"
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
     printf "  Default venv directory: %s\n" "$DEFAULT_VENV_DIR"
+    printf "  Default backend:        venv\n"
+    printf "  Detected backend:       %s\n" "$detected_backend"
     printf "  Environment file:       %s\n" "$ENV_FILE_NAME"
     printf "  Install directory:      %s\n" "$TARGET_BIN_DIR"
 }
@@ -127,6 +142,7 @@ init() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
     local use_local_env=false
+    local backend_flag=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -137,6 +153,14 @@ init() {
                     exit 1
                 fi
                 python_version="$2"
+                shift 2
+                ;;
+            --backend)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--backend requires a backend type (venv, micromamba, auto)"
+                    exit 1
+                fi
+                backend_flag="$2"
                 shift 2
                 ;;
             --local-env)
@@ -154,6 +178,25 @@ init() {
         esac
     done
     
+    # Validate backend if specified
+    if [[ -n "$backend_flag" ]]; then
+        if ! validate_backend "$backend_flag"; then
+            exit 1
+        fi
+    fi
+    
+    # Determine backend to use
+    local backend
+    backend="$(get_backend_priority "$backend_flag")"
+    
+    # For now, only venv backend is fully implemented
+    if [[ "$backend" != "venv" ]]; then
+        log_error "Backend '$backend' is not yet fully implemented"
+        log_error "Currently only 'venv' backend is supported"
+        log_error "Micromamba support coming in v0.7.1-v0.7.12"
+        exit 1
+    fi
+    
     # Validate inputs
     if ! validate_venv_dir_name "$venv_dir"; then
         exit 1
@@ -164,6 +207,7 @@ init() {
     fi
     
     printf "\nInitializing Python environment...\n"
+    printf "  Backend:        %s\n" "$backend"
     printf "  Python version: %s\n" "$python_version"
     printf "  Venv directory: %s\n" "$venv_dir"
     
