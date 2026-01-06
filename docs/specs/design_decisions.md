@@ -604,6 +604,134 @@ All criteria above have been met as of v0.7.13.
 
 ---
 
+## 9. Testing Framework Strategy
+
+**Decision Date:** 2026-01-06
+
+### Strategy: Hybrid Bats + pytest
+
+**Phase 2 (v0.8.x):** Implement comprehensive testing framework using hybrid approach.
+
+**Framework Choice:**
+- **Bats** for white-box unit testing of shell functions
+- **pytest** for black-box integration and end-to-end testing
+
+### Rationale
+
+**Why hybrid approach:**
+- Pyve is a Python virtual environment orchestrator, so Python dependency is reasonable
+- Need both white-box (internal function testing) and black-box (user workflow testing)
+- Each framework excels at different testing levels
+- Comprehensive coverage requires multiple testing perspectives
+
+**Why Bats for unit tests:**
+- Native Bash testing environment
+- Direct access to shell functions (white-box testing)
+- Fast, focused tests
+- Easy to test internal logic and edge cases
+- No external dependencies beyond Bats itself
+
+**Why pytest for integration tests:**
+- Excellent fixtures and parametrization
+- Rich assertion library and error messages
+- Coverage reporting built-in
+- Parallel execution support
+- Cross-platform testing capabilities
+- Mature ecosystem with plugins
+- Realistic user workflow testing
+
+### Division of Responsibilities
+
+**Bats Tests (Unit/White-box):**
+- Shell function unit tests
+- Internal logic verification
+- Module-level testing (`lib/*.sh`)
+- Config parsing
+- Backend detection logic
+- Environment naming resolution
+- Lock file validation
+- Fast, focused tests with direct function access
+
+**pytest Tests (Integration/Black-box):**
+- End-to-end workflows
+- CLI integration tests
+- Complete user scenarios
+- Cross-platform testing
+- Backend comparison tests
+- CI/CD workflow validation
+- Realistic environment creation/management
+
+### Test Structure
+
+```
+tests/
+├── unit/                    # Bats tests (white-box)
+├── integration/             # pytest tests (black-box)
+├── helpers/                 # Shared test utilities
+├── fixtures/                # Test data
+├── pytest.ini
+├── Makefile
+└── README.md
+```
+
+### Implementation Plan
+
+**Phase 1 (v0.8.0-v0.8.6):**
+1. Test infrastructure setup
+2. Bats unit tests for core modules
+3. pytest integration tests for workflows
+4. CI/CD integration
+5. Coverage reporting
+6. Documentation
+
+**Coverage Goals:**
+- Unit tests: Backend detection, config parsing, environment naming, lock validation
+- Integration tests: Venv workflow, micromamba workflow, auto-detection, error handling
+- Target: >80% code coverage
+
+### Benefits
+
+- **Comprehensive coverage:** White-box + black-box testing
+- **Fast feedback:** Bats unit tests run quickly
+- **Thorough validation:** pytest integration tests catch real issues
+- **Multiple levels:** Unit, integration, E2E testing
+- **Best tool for each job:** Leverage strengths of both frameworks
+- **CI/CD ready:** Both frameworks integrate well with CI systems
+- **Cross-platform:** Test on macOS and Linux
+- **Maintainable:** Clear separation of concerns
+
+### Alternatives Considered
+
+**Bats only:**
+- ❌ Limited to shell-level testing
+- ❌ No rich assertion library
+- ❌ No built-in coverage reporting
+- ❌ Harder to test complex workflows
+
+**pytest only:**
+- ❌ Black-box testing only
+- ❌ Cannot test internal shell functions directly
+- ❌ Slower than native Bash tests
+- ❌ Requires Python for all tests
+
+**Manual scripts only:**
+- ❌ No test discovery
+- ❌ No reporting
+- ❌ No CI/CD integration
+- ❌ Hard to maintain
+
+**ShellSpec:**
+- ✅ Good BDD-style framework
+- ❌ Less popular than Bats
+- ❌ Steeper learning curve
+- ❌ Hybrid approach with pytest still better
+
+### Decision
+
+**Adopt hybrid Bats + pytest testing strategy** for comprehensive coverage at multiple testing levels. This provides the best balance of speed, thoroughness, and maintainability.
+
+---
+
 ## Summary
 
 All critical design questions resolved:
@@ -616,5 +744,7 @@ All critical design questions resolved:
 6. ✅ **CI/CD:** Minimal approach via `pyve run` and `--no-direnv`
 7. ✅ **Policy Rules:** Enforce best practices, prevent common mistakes
 8. ✅ **Definition of Done:** All Phase 1 criteria met
+9. ✅ **Testing Framework:** Hybrid Bats + pytest approach
 
 Phase 1 (v0.7.x) implementation complete.
+Phase 2 (v0.8.x) testing framework planned.
