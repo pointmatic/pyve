@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.2"
+VERSION="0.7.3"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -78,6 +78,7 @@ pyve - Python Virtual Environment Manager
 
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
+                [--auto-bootstrap] [--bootstrap-to <location>]
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -89,6 +90,8 @@ COMMANDS:
                         Optional: specify custom venv directory name (default: .venv)
                         Optional: --python-version <ver> to set Python version
                         Optional: --backend <type> to specify backend (venv, micromamba, auto)
+                        Optional: --auto-bootstrap to install micromamba without prompting
+                        Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --local-env to copy ~/.local/.env template
 
     --purge, -p         Remove all Python environment artifacts
@@ -175,6 +178,8 @@ init() {
     local python_version="$DEFAULT_PYTHON_VERSION"
     local use_local_env=false
     local backend_flag=""
+    local auto_bootstrap=false
+    local bootstrap_to="user"
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -199,6 +204,23 @@ init() {
                 use_local_env=true
                 shift
                 ;;
+            --auto-bootstrap)
+                auto_bootstrap=true
+                shift
+                ;;
+            --bootstrap-to)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--bootstrap-to requires a location (project, user)"
+                    exit 1
+                fi
+                bootstrap_to="$2"
+                if [[ "$bootstrap_to" != "project" ]] && [[ "$bootstrap_to" != "user" ]]; then
+                    log_error "Invalid --bootstrap-to value: $bootstrap_to"
+                    log_error "Must be 'project' or 'user'"
+                    exit 1
+                fi
+                shift 2
+                ;;
             -*)
                 log_error "Unknown option: $1"
                 exit 1
@@ -221,11 +243,33 @@ init() {
     local backend
     backend="$(get_backend_priority "$backend_flag")"
     
-    # For now, only venv backend is fully implemented
-    if [[ "$backend" != "venv" ]]; then
-        log_error "Backend '$backend' is not yet fully implemented"
-        log_error "Currently only 'venv' backend is supported"
-        log_error "Micromamba support coming in v0.7.1-v0.7.12"
+    # Check if micromamba backend is selected and handle bootstrap
+    if [[ "$backend" == "micromamba" ]]; then
+        # Check if micromamba is available
+        if ! check_micromamba_available; then
+            # Micromamba not found - offer bootstrap
+            if [[ "$auto_bootstrap" == true ]]; then
+                # Auto-bootstrap mode (non-interactive)
+                if ! bootstrap_micromamba_auto "$bootstrap_to"; then
+                    exit 1
+                fi
+            else
+                # Interactive bootstrap prompt
+                local context="Detected: environment.yml\nRequired: micromamba"
+                if ! bootstrap_micromamba_interactive "$context"; then
+                    exit 1
+                fi
+            fi
+        fi
+        
+        # At this point, micromamba should be available
+        if ! check_micromamba_available; then
+            log_error "Micromamba still not available after bootstrap attempt"
+            exit 1
+        fi
+        
+        log_info "Micromamba backend selected but full implementation coming in v0.7.4-v0.7.12"
+        log_error "For now, only 'venv' backend is fully functional"
         exit 1
     fi
     

@@ -3,6 +3,78 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.3 Micromamba Bootstrap (Interactive) [Implemented]
+- [x] Implement interactive bootstrap prompt with 4 options
+- [x] Implement bootstrap download and installation
+- [x] Add `--auto-bootstrap` flag for non-interactive mode
+- [x] Add `--bootstrap-to` flag (project, user)
+- [x] Download from official micromamba releases
+- [x] Extract tarball and install binary
+- [x] Set executable permissions
+- [x] Verify installation works
+
+### Notes
+**Goal:** Allow users to install micromamba when missing.
+
+**Implementation Summary:**
+- Added bootstrap functions to `lib/micromamba.sh`:
+  - `get_micromamba_download_url()` - Determines correct download URL for platform (macOS arm64/x86_64, Linux x86_64/aarch64/ppc64le)
+  - `bootstrap_install_micromamba()` - Downloads tarball, extracts binary, installs to specified location
+  - `bootstrap_micromamba_interactive()` - Interactive menu with 4 options
+  - `bootstrap_micromamba_auto()` - Non-interactive installation for CI/CD
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.2 to 0.7.3
+  - Added `--auto-bootstrap` flag to `pyve --init`
+  - Added `--bootstrap-to` flag (project, user) to `pyve --init`
+  - Integrated bootstrap into `init()` when micromamba backend selected
+  - Updated help text with new flags
+
+**Interactive Bootstrap Menu:**
+```
+ERROR: Backend 'micromamba' required but not found.
+
+Detected: environment.yml
+Required: micromamba
+
+Installation options:
+  1. Install to project sandbox: .pyve/bin/micromamba
+  2. Install to user sandbox: ~/.pyve/bin/micromamba
+  3. Install via system package manager (brew/apt)
+  4. Abort and install manually
+
+Choice [1]: _
+```
+
+**Download and Installation:**
+- Downloads from official micromamba API: `https://micro.mamba.pm/api/micromamba/{platform}/latest`
+- Supports platforms: osx-arm64, osx-64, linux-64, linux-aarch64, linux-ppc64le
+- Extracts tarball (micromamba is distributed as tar.gz with bin/micromamba inside)
+- Verifies binary is executable
+- Tests that binary runs (`micromamba --version`)
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.3
+- ✓ `--auto-bootstrap` flag downloads and installs micromamba successfully
+- ✓ `--bootstrap-to project` installs to `.pyve/bin/micromamba`
+- ✓ `--bootstrap-to user` installs to `~/.pyve/bin/micromamba`
+- ✓ Downloaded micromamba v2.4.0 works correctly
+- ✓ Tarball extraction works (fixed from initial raw binary assumption)
+- ✓ Installation verified with `micromamba --version`
+- ✓ `pyve --config` shows micromamba as available after bootstrap
+
+**CI/CD Usage:**
+```bash
+# Auto-bootstrap to user sandbox (default)
+pyve --init --backend micromamba --auto-bootstrap
+
+# Auto-bootstrap to project sandbox
+pyve --init --backend micromamba --auto-bootstrap --bootstrap-to project
+```
+
+**Note:** Full micromamba environment creation will be implemented in v0.7.4-v0.7.12. This version only handles micromamba binary installation.
+
+---
+
 ## v0.7.2 Micromamba Binary Detection [Implemented]
 - [x] Create `lib/micromamba.sh` library
 - [x] Implement micromamba detection order (project → user → system)
