@@ -230,7 +230,131 @@ Guarantees:
 
 ---
 
-## 11. Error Handling Examples
+## 11. Backend-Specific Examples
+
+### Venv Backend Examples
+
+**Running with pip packages:**
+```bash
+# Install and use packages
+pyve run pip install requests flask
+pyve run python -c "import requests; print(requests.__version__)"
+pyve run flask run
+```
+
+**Development workflow:**
+```bash
+# Install dev dependencies
+pyve run pip install -e ".[dev]"
+
+# Run formatters and linters
+pyve run black src/
+pyve run isort src/
+pyve run flake8 src/
+
+# Run tests with coverage
+pyve run pytest tests/ --cov=src --cov-report=html
+```
+
+**Package management:**
+```bash
+# List installed packages
+pyve run pip list
+
+# Show package info
+pyve run pip show numpy
+
+# Freeze dependencies
+pyve run pip freeze > requirements.txt
+
+# Install from requirements
+pyve run pip install -r requirements.txt
+```
+
+### Micromamba Backend Examples
+
+**Running with conda packages:**
+```bash
+# Import scientific libraries
+pyve run python -c "import numpy; print(numpy.__version__)"
+pyve run python -c "import pandas; print(pandas.__version__)"
+pyve run python -c "import torch; print(torch.__version__)"
+```
+
+**Data science workflow:**
+```bash
+# Run Jupyter notebook
+pyve run jupyter notebook
+
+# Run Jupyter lab
+pyve run jupyter lab
+
+# Execute notebook from command line
+pyve run jupyter nbconvert --execute analysis.ipynb
+```
+
+**ML/AI examples:**
+```bash
+# Check GPU availability
+pyve run python -c "import torch; print(torch.cuda.is_available())"
+
+# Run training script
+pyve run python train.py --epochs 100 --batch-size 32
+
+# Run inference
+pyve run python predict.py --model-path models/best.pth
+```
+
+**Environment inspection:**
+```bash
+# List conda packages
+pyve run conda list
+
+# Show environment info
+pyve run conda info
+
+# Export environment
+pyve run conda env export > environment-export.yml
+```
+
+### Cross-Backend Examples
+
+**Testing both backends:**
+```bash
+# Test with venv
+cd project-venv
+pyve --init --backend venv
+pyve run pytest tests/
+
+# Test with micromamba
+cd project-micromamba
+pyve --init --backend micromamba
+pyve run pytest tests/
+```
+
+**Backend comparison:**
+```bash
+# Venv: Direct execution
+pyve run python script.py
+# Internally: .venv/bin/python script.py
+
+# Micromamba: Via micromamba run
+pyve run python script.py
+# Internally: micromamba run -p .pyve/envs/<name> python script.py
+```
+
+**Performance testing:**
+```bash
+# Time command execution (venv)
+time pyve run python benchmark.py
+
+# Time command execution (micromamba)
+time pyve run python benchmark.py
+```
+
+---
+
+## 12. Error Handling Examples
 
 ### Backend not found
 

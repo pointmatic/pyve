@@ -309,19 +309,90 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-### v0.7.13e: Update Contributing and Examples
+## v0.7.13e: Update Contributing and Examples [Implemented]
+- [x] Update `CONTRIBUTING.md` with backend architecture
+- [x] Add testing guidelines for both backends
+- [x] Document module structure (lib/micromamba_*.sh)
+- [x] Add examples to `docs/specs/pyve-run-examples.md`
+- [x] Add backend-specific examples
+- [x] Add error handling examples
+
+### Notes
 **Goal:** Update developer documentation.
 
-- [ ] Update `CONTRIBUTING.md` with backend architecture
-- [ ] Add testing guidelines for both backends
-- [ ] Document module structure (lib/micromamba_*.sh)
-- [ ] Add examples to `docs/specs/pyve-run-examples.md`
-- [ ] Add backend-specific examples
-- [ ] Add error handling examples
+**Implementation Summary:**
+- Enhanced `CONTRIBUTING.md` with comprehensive architecture section
+- Added detailed module structure documentation
+- Documented backend detection and naming flows
+- Added extensive testing guidelines for both backends
+- Enhanced `pyve-run-examples.md` with backend-specific examples
+- Added cross-backend comparison examples
 
-**Testing:**
-- Architecture documentation accurate
-- Examples comprehensive and working
+**Changes to CONTRIBUTING.md:**
+- Added "Architecture" section with:
+  - Backend System overview (venv vs micromamba)
+  - Module Structure (7 modules documented)
+  - Module Responsibilities (detailed for each module)
+  - Backend Detection Flow (5-step process)
+  - Environment Naming Flow (4-step process)
+
+- Enhanced "Testing" section with:
+  - Manual Testing guidelines
+  - Testing Both Backends (venv and micromamba)
+  - Testing Auto-Detection
+  - Testing `pyve run`
+  - Testing `pyve doctor`
+  - Testing Lock File Validation
+  - Testing CI/CD Mode
+  - Testing Edge Cases
+  - Regression Testing checklist (10 items)
+
+**Module Structure Documented:**
+1. `pyve.sh` - Main entry point and orchestration
+2. `lib/utils.sh` - Logging, validation, file operations
+3. `lib/config.sh` - Configuration file parsing
+4. `lib/backend.sh` - Backend detection and priority
+5. `lib/venv.sh` - Venv-specific functions
+6. `lib/micromamba_core.sh` - Micromamba detection
+7. `lib/micromamba_bootstrap.sh` - Micromamba installation
+8. `lib/micromamba_env.sh` - Environment creation
+
+**Testing Guidelines Include:**
+- 10 different testing scenarios
+- Code examples for each scenario
+- Expected outcomes
+- Edge case testing
+- Regression testing checklist
+
+**Changes to pyve-run-examples.md:**
+- Added "Backend-Specific Examples" section (section 11)
+- Venv Backend Examples (3 subsections)
+- Micromamba Backend Examples (4 subsections)
+- Cross-Backend Examples (3 subsections)
+- Renumbered Error Handling to section 12
+
+**Venv Backend Examples:**
+- Running with pip packages
+- Development workflow (formatters, linters, tests)
+- Package management (list, show, freeze, install)
+
+**Micromamba Backend Examples:**
+- Running with conda packages
+- Data science workflow (Jupyter)
+- ML/AI examples (GPU, training, inference)
+- Environment inspection (conda list, info, export)
+
+**Cross-Backend Examples:**
+- Testing both backends
+- Backend comparison (internal execution)
+- Performance testing
+
+**Testing Results:**
+- ✓ Architecture documentation accurate
+- ✓ Module structure clearly documented
+- ✓ Testing guidelines comprehensive
+- ✓ Examples working and practical
+- ✓ Backend-specific examples cover common use cases
 
 ---
 
