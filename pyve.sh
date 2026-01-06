@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.7"
+VERSION="0.7.8"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -329,9 +329,49 @@ init() {
         fi
         log_info "Environment name: $env_name"
         
-        log_info "Micromamba backend selected but full implementation coming in v0.7.7-v0.7.12"
-        log_error "For now, only 'venv' backend is fully functional"
-        exit 1
+        # Validate environment file
+        if ! validate_environment_file; then
+            exit 1
+        fi
+        
+        # Create micromamba environment
+        printf "\nInitializing micromamba environment...\n"
+        printf "  Backend:         micromamba\n"
+        printf "  Environment:     %s\n" "$env_name"
+        
+        local env_file
+        env_file="$(detect_environment_file)"
+        printf "  Using file:      %s\n" "$env_file"
+        
+        if ! create_micromamba_env "$env_name" "$env_file"; then
+            exit 1
+        fi
+        
+        # Verify environment
+        if ! verify_micromamba_env "$env_name"; then
+            log_warning "Environment created but verification failed"
+        fi
+        
+        # Create .env file
+        init_dotenv "$use_local_env"
+        
+        # Update .gitignore
+        local env_path=".pyve/envs/$env_name"
+        append_pattern_to_gitignore ".pyve/envs"
+        append_pattern_to_gitignore "$ENV_FILE_NAME"
+        append_pattern_to_gitignore ".envrc"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            append_pattern_to_gitignore ".DS_Store"
+        fi
+        log_success "Updated .gitignore"
+        
+        printf "\n✓ Micromamba environment initialized successfully!\n"
+        printf "\nEnvironment location: %s\n" "$env_path"
+        printf "\nNext steps:\n"
+        printf "  1. Activate: micromamba activate %s\n" "$env_path"
+        printf "  2. Or use: pyve run <command> (coming in v0.7.10)\n"
+        
+        return 0
     fi
     
     # Validate inputs

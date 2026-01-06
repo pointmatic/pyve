@@ -3,6 +3,93 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.8 Micromamba Environment Creation [Implemented]
+- [x] Implement `create_micromamba_env()` function
+- [x] Implement `check_micromamba_env_exists()` function
+- [x] Implement `verify_micromamba_env()` function
+- [x] Use detected environment file (conda-lock.yml or environment.yml)
+- [x] Create environment at `.pyve/envs/<env_name>`
+- [x] Execute: `micromamba create -p .pyve/envs/<name> -f <file> -y`
+- [x] Handle creation errors gracefully
+- [x] Verify environment created successfully
+- [x] Update `pyve --init` to support micromamba backend
+- [x] Skip if environment already exists
+
+### Notes
+**Goal:** Create micromamba environments from environment files.
+
+**Implementation Summary:**
+- Added environment creation functions to `lib/micromamba_env.sh`:
+  - `check_micromamba_env_exists()` - Check if environment directory exists
+  - `create_micromamba_env()` - Create environment from file with error handling
+  - `verify_micromamba_env()` - Verify environment is functional (conda-meta, python)
+
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.7 to 0.7.8
+  - Replaced placeholder micromamba code with actual environment creation
+  - Integrated environment validation, creation, and verification
+  - Added .gitignore patterns for `.pyve/envs`
+  - Removed exit after micromamba backend selection
+
+**Environment Creation Flow:**
+1. Resolve and validate environment name
+2. Validate lock file status (if applicable)
+3. Validate environment file exists and is readable
+4. Check if environment already exists (skip if yes)
+5. Create environment: `micromamba create -p .pyve/envs/<name> -f <file> -y`
+6. Verify environment (check conda-meta, python executable)
+7. Create .env file
+8. Update .gitignore
+
+**Environment Location:**
+- All micromamba environments created at: `.pyve/envs/<env_name>`
+- Uses prefix-based environments (not named environments)
+- Isolated per-project environments
+
+**Error Handling:**
+- Graceful failure if micromamba not found
+- Clear error messages for missing/invalid environment files
+- Validation of environment file before creation
+- Verification after creation with helpful warnings
+- Skip creation if environment already exists
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.8
+- ✓ `pyve --config` works correctly
+- ✓ All functions load without errors
+- ✓ Environment creation logic integrated
+- ✓ Skip logic for existing environments works
+- ✓ Error handling for missing files works
+
+**File Size:**
+- `lib/micromamba_env.sh`: 475 → 593 lines (+118 lines, +3 functions)
+
+**Usage Example:**
+```bash
+# Create environment.yml
+cat > environment.yml << EOF
+name: myproject
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+EOF
+
+# Initialize with micromamba backend
+pyve --init --backend micromamba
+
+# Environment created at: .pyve/envs/myproject
+```
+
+**Next Steps:**
+- v0.7.9: Shell prompt integration and .envrc generation for micromamba
+- v0.7.10: `pyve run` command for executing commands in environment
+- v0.7.11: `--no-direnv` flag for CI/CD environments
+
+---
+
 ## v0.7.7 Code Refactoring - Modularize Micromamba [Implemented]
 - [x] Split `lib/micromamba.sh` (876 lines, 24 functions) into 3 focused modules
 - [x] Create `lib/micromamba_core.sh` with 5 detection functions

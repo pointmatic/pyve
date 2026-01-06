@@ -473,3 +473,121 @@ resolve_environment_name() {
     echo "$resolved_name"
     return 0
 }
+
+#============================================================
+# Environment Creation Functions
+#============================================================
+
+# Check if micromamba environment exists
+# Arguments:
+#   $1 - Environment name
+# Returns: 0 if exists, 1 if not exists
+check_micromamba_env_exists() {
+    local env_name="$1"
+    local env_path=".pyve/envs/$env_name"
+    
+    if [[ -d "$env_path" ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Create micromamba environment from environment file
+# Arguments:
+#   $1 - Environment name
+#   $2 - Environment file path (optional, auto-detected if not provided)
+# Returns: 0 on success, 1 on failure
+create_micromamba_env() {
+    local env_name="$1"
+    local env_file="${2:-}"
+    
+    # Validate environment name
+    if [[ -z "$env_name" ]]; then
+        log_error "Environment name is required"
+        return 1
+    fi
+    
+    # Auto-detect environment file if not provided
+    if [[ -z "$env_file" ]]; then
+        env_file="$(detect_environment_file)"
+        if [[ -z "$env_file" ]]; then
+            log_error "No environment file found"
+            return 1
+        fi
+    fi
+    
+    # Verify environment file exists
+    if [[ ! -f "$env_file" ]]; then
+        log_error "Environment file not found: $env_file"
+        return 1
+    fi
+    
+    # Check if environment already exists
+    if check_micromamba_env_exists "$env_name"; then
+        log_info "Micromamba environment '$env_name' already exists, skipping creation"
+        return 0
+    fi
+    
+    # Get micromamba path
+    local micromamba_path
+    micromamba_path="$(get_micromamba_path)"
+    if [[ -z "$micromamba_path" ]]; then
+        log_error "Micromamba not found"
+        return 1
+    fi
+    
+    # Create environment directory
+    local env_path=".pyve/envs/$env_name"
+    mkdir -p ".pyve/envs" || {
+        log_error "Failed to create .pyve/envs directory"
+        return 1
+    }
+    
+    log_info "Creating micromamba environment '$env_name' from $env_file..."
+    
+    # Execute micromamba create command
+    # Use -p for prefix (path-based environment)
+    # Use -f for file (environment.yml or conda-lock.yml)
+    # Use -y for yes (non-interactive)
+    if "$micromamba_path" create -p "$env_path" -f "$env_file" -y; then
+        log_success "Micromamba environment '$env_name' created successfully"
+        return 0
+    else
+        log_error "Failed to create micromamba environment"
+        log_error "Check that:"
+        log_error "  - All channels are accessible"
+        log_error "  - All packages are available"
+        log_error "  - Environment file is valid"
+        return 1
+    fi
+}
+
+# Verify micromamba environment is functional
+# Arguments:
+#   $1 - Environment name
+# Returns: 0 if functional, 1 if not
+verify_micromamba_env() {
+    local env_name="$1"
+    local env_path=".pyve/envs/$env_name"
+    
+    # Check if environment directory exists
+    if [[ ! -d "$env_path" ]]; then
+        log_error "Environment directory not found: $env_path"
+        return 1
+    fi
+    
+    # Check if conda-meta directory exists (indicates valid conda environment)
+    if [[ ! -d "$env_path/conda-meta" ]]; then
+        log_error "Environment appears invalid (missing conda-meta)"
+        return 1
+    fi
+    
+    # Check if Python executable exists
+    if [[ ! -f "$env_path/bin/python" ]]; then
+        log_warning "Python executable not found in environment"
+        log_warning "This may be expected if Python is not in dependencies"
+    fi
+    
+    return 0
+}
