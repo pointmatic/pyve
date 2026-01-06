@@ -61,8 +61,15 @@ get_backend_priority() {
         return 0
     fi
     
-    # Priority 2: .pyve/config file (future - v0.7.1)
-    # TODO: Implement config file reading in v0.7.1
+    # Priority 2: .pyve/config file
+    if config_file_exists; then
+        local config_backend
+        config_backend="$(read_config_value "backend")"
+        if [[ -n "$config_backend" ]]; then
+            echo "$config_backend"
+            return 0
+        fi
+    fi
     
     # Priority 3: File-based detection
     local detected_backend
@@ -70,7 +77,7 @@ get_backend_priority() {
     
     if [[ "$detected_backend" == "ambiguous" ]]; then
         log_warning "Both conda and Python package files detected"
-        log_warning "Please specify backend explicitly with --backend flag"
+        log_warning "Please specify backend explicitly with --backend flag or .pyve/config"
         log_warning "  --backend venv        Use Python venv"
         log_warning "  --backend micromamba  Use micromamba"
         echo "venv"  # Default to venv for now
@@ -102,4 +109,51 @@ validate_backend() {
             return 1
             ;;
     esac
+}
+
+# Validate .pyve/config file
+# Returns: 0 if valid or doesn't exist, 1 if invalid
+validate_config_file() {
+    if ! config_file_exists; then
+        return 0  # No config file is valid
+    fi
+    
+    local config_file=".pyve/config"
+    local has_errors=false
+    
+    # Check if backend value is valid (if present)
+    local backend
+    backend="$(read_config_value "backend")"
+    if [[ -n "$backend" ]]; then
+        if ! validate_backend "$backend"; then
+            log_error "Invalid backend in $config_file: $backend"
+            has_errors=true
+        fi
+    fi
+    
+    # Check if venv.directory is valid (if present)
+    local venv_dir
+    venv_dir="$(read_config_value "venv.directory")"
+    if [[ -n "$venv_dir" ]]; then
+        if ! validate_venv_dir_name "$venv_dir"; then
+            log_error "Invalid venv.directory in $config_file: $venv_dir"
+            has_errors=true
+        fi
+    fi
+    
+    # Check if python.version is valid (if present)
+    local python_version
+    python_version="$(read_config_value "python.version")"
+    if [[ -n "$python_version" ]]; then
+        if ! validate_python_version "$python_version"; then
+            log_error "Invalid python.version in $config_file: $python_version"
+            has_errors=true
+        fi
+    fi
+    
+    if [[ "$has_errors" == true ]]; then
+        return 1
+    fi
+    
+    return 0
 }

@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.0"
+VERSION="0.7.1"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -124,11 +124,22 @@ show_config() {
     local detected_backend
     detected_backend="$(detect_backend_from_files)"
     
+    local config_backend=""
+    local config_exists="no"
+    if config_file_exists; then
+        config_exists="yes"
+        config_backend="$(read_config_value "backend")"
+    fi
+    
     printf "pyve configuration:\n"
     printf "  Version:                %s\n" "$VERSION"
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
     printf "  Default venv directory: %s\n" "$DEFAULT_VENV_DIR"
     printf "  Default backend:        venv\n"
+    printf "  Config file (.pyve/config): %s\n" "$config_exists"
+    if [[ "$config_exists" == "yes" ]] && [[ -n "$config_backend" ]]; then
+        printf "  Config backend:         %s\n" "$config_backend"
+    fi
     printf "  Detected backend:       %s\n" "$detected_backend"
     printf "  Environment file:       %s\n" "$ENV_FILE_NAME"
     printf "  Install directory:      %s\n" "$TARGET_BIN_DIR"

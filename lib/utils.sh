@@ -107,6 +107,60 @@ remove_pattern_from_gitignore() {
 }
 
 #============================================================
+# YAML Configuration Parser
+#============================================================
+
+# Read a simple YAML value from .pyve/config
+# Usage: read_config_value "backend" or read_config_value "micromamba.env_name"
+# Returns the value or empty string if not found
+read_config_value() {
+    local key="$1"
+    local config_file=".pyve/config"
+    
+    # Return empty if config file doesn't exist
+    if [[ ! -f "$config_file" ]]; then
+        echo ""
+        return 0
+    fi
+    
+    # Handle nested keys (e.g., "micromamba.env_name")
+    if [[ "$key" == *.* ]]; then
+        local section="${key%%.*}"
+        local subkey="${key#*.}"
+        
+        # Extract value from nested section using awk
+        # This handles simple YAML: section:\n  subkey: value
+        awk -v section="$section" -v subkey="$subkey" '
+            /^[a-z_]+:/ { current_section = $1; gsub(/:/, "", current_section) }
+            current_section == section && $1 == subkey ":" {
+                # Remove leading/trailing whitespace and quotes
+                value = $2
+                gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", value)
+                print value
+                exit
+            }
+        ' "$config_file"
+    else
+        # Handle top-level keys
+        awk -v key="$key" '
+            /^[a-z_]+:/ && $1 == key ":" {
+                # Remove leading/trailing whitespace and quotes
+                value = $2
+                gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", value)
+                print value
+                exit
+            }
+        ' "$config_file"
+    fi
+}
+
+# Check if .pyve/config file exists
+# Returns 0 if exists, 1 if not
+config_file_exists() {
+    [[ -f ".pyve/config" ]]
+}
+
+#============================================================
 # Validation Functions
 #============================================================
 

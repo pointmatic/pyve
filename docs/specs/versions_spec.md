@@ -3,6 +3,69 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.1 Configuration File Support [Implemented]
+- [x] Create YAML parser (portable bash/awk approach)
+- [x] Implement `.pyve/config` file reading
+- [x] Support configuration schema (backend, micromamba, python, venv, prompt sections)
+- [x] Add config validation function
+- [x] Update backend priority: CLI flag → config → files → default
+- [x] Add `pyve --config` output for config file location
+
+### Notes
+**Goal:** Add `.pyve/config` YAML configuration file support.
+
+**Implementation Summary:**
+- Added YAML parser functions to `lib/utils.sh`:
+  - `read_config_value()` - Reads simple YAML values (supports nested keys like "micromamba.env_name")
+  - `config_file_exists()` - Checks if .pyve/config exists
+- Updated `lib/backend_detect.sh`:
+  - Modified `get_backend_priority()` to check config file (Priority 2)
+  - Added `validate_config_file()` - Validates backend, venv.directory, and python.version values
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.0 to 0.7.1
+  - Enhanced `show_config()` to display config file status and backend value
+- Uses portable bash/awk approach (no external YAML libraries needed)
+
+**Configuration Schema:**
+```yaml
+backend: micromamba
+micromamba:
+  env_name: myproject
+  env_file: environment.yml
+python:
+  version: "3.11"
+venv:
+  directory: .venv
+prompt:
+  show: true
+  format: "({backend}:{env_name})"
+```
+
+**Backend Priority Resolution (Updated):**
+1. CLI flag: `--backend` (highest priority)
+2. `.pyve/config` → `backend:` field
+3. File-based detection (environment.yml → micromamba, pyproject.toml → venv)
+4. Default to venv (lowest priority)
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.1
+- ✓ `pyve --config` displays config file status
+- ✓ Config file with `backend: micromamba` is read correctly
+- ✓ Config file with `backend: venv` is read correctly
+- ✓ Config backend overrides file-based detection
+- ✓ CLI flag would override config (tested in v0.7.0)
+- ✓ Missing config file doesn't break anything
+- ✓ Invalid backend values are displayed (validation will be enforced in init command)
+
+**YAML Parser Implementation:**
+- Uses awk for parsing (portable, no dependencies)
+- Handles top-level keys: `backend: value`
+- Handles nested keys: `micromamba:\n  env_name: value`
+- Strips quotes and whitespace
+- Returns empty string if key not found or file doesn't exist
+
+---
+
 ## v0.7.0 Backend Detection Foundation [Implemented]
 - [x] Create `lib/backend_detect.sh` library
 - [x] Implement file-based backend detection logic (environment.yml, conda-lock.yml, pyproject.toml, requirements.txt)
