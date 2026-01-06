@@ -129,12 +129,80 @@ pyve -i                              # Short form
 
 #### Backend Auto-Detection Priority
 
-When `--backend` is not specified, Pyve uses this precedence:
+When `--backend` is not specified, Pyve automatically detects the appropriate backend using this precedence:
 
-1. **`.pyve/config`** - Project configuration file
-2. **`environment.yml` / `conda-lock.yml`** - Selects micromamba backend
-3. **`pyproject.toml` / `requirements.txt`** - Selects venv backend
+1. **`.pyve/config`** - Explicit project configuration (highest priority)
+   ```yaml
+   # .pyve/config
+   backend: micromamba
+   ```
+
+2. **`environment.yml` / `conda-lock.yml`** - Conda environment files → micromamba backend
+   ```yaml
+   # environment.yml present → uses micromamba
+   name: myproject
+   dependencies:
+     - python=3.11
+     - numpy
+   ```
+
+3. **`pyproject.toml` / `requirements.txt`** - Python package files → venv backend
+   ```toml
+   # pyproject.toml present → uses venv
+   [project]
+   name = "myproject"
+   dependencies = ["requests", "flask"]
+   ```
+
 4. **Default to venv** - When no environment files exist
+
+**Examples:**
+```bash
+# Project with environment.yml → automatically uses micromamba
+cd my-ml-project
+pyve --init  # Detects environment.yml, uses micromamba
+
+# Project with requirements.txt → automatically uses venv
+cd my-web-app
+pyve --init  # Detects requirements.txt, uses venv
+
+# Empty project → defaults to venv
+cd new-project
+pyve --init  # No files detected, uses venv
+
+# Override auto-detection
+pyve --init --backend micromamba  # Force micromamba
+pyve --init --backend venv         # Force venv
+```
+
+#### Backend Comparison
+
+| Feature | venv | micromamba |
+|---------|------|------------|
+| **Package Manager** | pip | conda/mamba |
+| **Best For** | Pure Python, web apps, APIs | Data science, ML, scientific computing |
+| **Binary Dependencies** | Limited (via wheels) | Excellent (conda packages) |
+| **Environment File** | `requirements.txt`, `pyproject.toml` | `environment.yml`, `conda-lock.yml` |
+| **Lock Files** | `requirements.txt` (pip-tools) | `conda-lock.yml` |
+| **Activation** | `source .venv/bin/activate` | `micromamba activate` or `pyve run` |
+| **Speed** | Fast (pip) | Fast (micromamba is faster than conda) |
+| **Disk Space** | Smaller | Larger (includes compiled binaries) |
+| **Cross-Platform** | Python-only packages | Full cross-platform support |
+| **Channel Support** | PyPI only | conda-forge, defaults, custom channels |
+| **Python Version** | Managed by asdf/pyenv | Can be in environment.yml |
+
+**When to use venv:**
+- Pure Python projects
+- Web applications and APIs
+- Projects with only PyPI dependencies
+- Smaller disk footprint needed
+
+**When to use micromamba:**
+- Data science and ML projects
+- Projects requiring NumPy, Pandas, TensorFlow, PyTorch
+- Projects with C/C++ dependencies
+- Cross-platform reproducibility needed
+- Projects already using conda/mamba
 
 After setup, run `direnv allow` to activate the environment.
 
