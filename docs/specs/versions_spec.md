@@ -3,6 +3,90 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.4 Environment File Detection [Implemented]
+- [x] Implement `detect_environment_file()` function
+- [x] Detection order: conda-lock.yml → environment.yml → error
+- [x] Add YAML validation for environment.yml
+- [x] Parse environment.yml for name, channels, dependencies
+- [x] Add `parse_environment_name()` function
+- [x] Add `parse_environment_channels()` function
+- [x] Add `validate_environment_file()` function
+- [x] Add `error_no_environment_file()` function
+- [x] Update `pyve --config` to show detected files
+
+### Notes
+**Goal:** Detect and validate environment.yml and conda-lock.yml files.
+
+**Implementation Summary:**
+- Added environment file detection functions to `lib/micromamba.sh`:
+  - `detect_environment_file()` - Detects conda-lock.yml or environment.yml (priority order)
+  - `parse_environment_name()` - Extracts `name:` field from environment.yml
+  - `parse_environment_channels()` - Extracts `channels:` list from environment.yml
+  - `validate_environment_file()` - Validates file exists and has required fields
+  - `error_no_environment_file()` - Displays helpful error with example
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.3 to 0.7.4
+  - Enhanced `show_config()` to display detected environment file and name
+
+**Detection Order:**
+1. `conda-lock.yml` (highest priority - for reproducible builds)
+2. `environment.yml` (fallback - for flexible dependencies)
+3. Error if neither exists
+
+**YAML Parsing:**
+- Uses awk for portable parsing (no external dependencies)
+- Extracts `name:` field for environment naming
+- Extracts `channels:` list (space-separated)
+- Validates `dependencies:` field exists (required)
+
+**Validation:**
+- Checks file exists and is readable
+- For environment.yml:
+  - Warns if `name:` missing (will derive from project directory)
+  - Warns if `channels:` missing (will use defaults)
+  - Errors if `dependencies:` missing (required field)
+- For conda-lock.yml:
+  - No validation (assumes valid lock file)
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.4
+- ✓ Detects environment.yml and extracts name field
+- ✓ Detects conda-lock.yml preferentially over environment.yml
+- ✓ Shows "none" when no environment files present
+- ✓ `pyve --config` displays: `Conda env file: environment.yml (name: testproject)`
+- ✓ `pyve --config` displays: `Conda env file: conda-lock.yml` (when lock file present)
+- ✓ Parsing works correctly for environment name extraction
+
+**Example Output:**
+```bash
+$ pyve --config
+pyve configuration:
+  ...
+  Conda env file:         environment.yml (name: testproject)
+  ...
+```
+
+**Error Message (when no files found):**
+```
+ERROR: No environment file found for micromamba backend
+
+Micromamba requires either:
+  - conda-lock.yml (for reproducible builds)
+  - environment.yml (for flexible dependencies)
+
+Create environment.yml with:
+  name: myproject
+  channels:
+    - conda-forge
+  dependencies:
+    - python=3.11
+    - numpy
+```
+
+**Note:** `pyve doctor` command will be implemented in v0.7.11 to provide comprehensive diagnostics including environment file validation.
+
+---
+
 ## v0.7.3 Micromamba Bootstrap (Interactive) [Implemented]
 - [x] Implement interactive bootstrap prompt with 4 options
 - [x] Implement bootstrap download and installation

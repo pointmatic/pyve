@@ -415,3 +415,140 @@ bootstrap_micromamba_auto() {
         return 1
     fi
 }
+
+#============================================================
+# Environment File Detection Functions
+#============================================================
+
+# Detect environment file (conda-lock.yml or environment.yml)
+# Detection order:
+#   1. conda-lock.yml (highest priority)
+#   2. environment.yml (fallback)
+# Returns: path to detected file or empty string if neither exists
+detect_environment_file() {
+    # Priority 1: conda-lock.yml
+    if [[ -f "conda-lock.yml" ]]; then
+        echo "conda-lock.yml"
+        return 0
+    fi
+    
+    # Priority 2: environment.yml
+    if [[ -f "environment.yml" ]]; then
+        echo "environment.yml"
+        return 0
+    fi
+    
+    # Not found
+    echo ""
+    return 1
+}
+
+# Parse environment.yml for environment name
+# Returns: environment name or empty string if not found
+parse_environment_name() {
+    local env_file="${1:-environment.yml}"
+    
+    if [[ ! -f "$env_file" ]]; then
+        echo ""
+        return 1
+    fi
+    
+    # Extract name field from YAML
+    local name
+    name="$(awk '/^name:/ {print $2; exit}' "$env_file" | tr -d '"' | tr -d "'")"
+    
+    echo "$name"
+    return 0
+}
+
+# Parse environment.yml for channels
+# Returns: space-separated list of channels or empty string
+parse_environment_channels() {
+    local env_file="${1:-environment.yml}"
+    
+    if [[ ! -f "$env_file" ]]; then
+        echo ""
+        return 1
+    fi
+    
+    # Extract channels from YAML (simple parsing)
+    # This handles: channels:\n  - channel1\n  - channel2
+    local channels
+    channels="$(awk '/^channels:$/,/^[a-z]/ {if ($1 == "-") print $2}' "$env_file" | tr '\n' ' ')"
+    
+    echo "$channels"
+    return 0
+}
+
+# Validate environment.yml exists and is readable
+# Returns: 0 if valid, 1 if invalid
+validate_environment_file() {
+    local env_file
+    env_file="$(detect_environment_file)"
+    
+    if [[ -z "$env_file" ]]; then
+        log_error "No environment file found"
+        log_error "Micromamba backend requires either:"
+        log_error "  - conda-lock.yml (for reproducible builds)"
+        log_error "  - environment.yml (for flexible dependencies)"
+        log_error ""
+        log_error "Create environment.yml with:"
+        log_error "  name: myproject"
+        log_error "  channels:"
+        log_error "    - conda-forge"
+        log_error "  dependencies:"
+        log_error "    - python=3.11"
+        return 1
+    fi
+    
+    # Check if file is readable
+    if [[ ! -r "$env_file" ]]; then
+        log_error "Environment file '$env_file' is not readable"
+        return 1
+    fi
+    
+    # Basic YAML validation for environment.yml (not for conda-lock.yml)
+    if [[ "$env_file" == "environment.yml" ]]; then
+        # Check for required fields
+        if ! grep -q "^name:" "$env_file"; then
+            log_warning "environment.yml missing 'name:' field"
+            log_warning "Environment name will be derived from project directory"
+        fi
+        
+        if ! grep -q "^channels:" "$env_file"; then
+            log_warning "environment.yml missing 'channels:' field"
+            log_warning "Using default channels"
+        fi
+        
+        if ! grep -q "^dependencies:" "$env_file"; then
+            log_error "environment.yml missing required 'dependencies:' field"
+            return 1
+        fi
+    fi
+    
+    return 0
+}
+
+# Error if no environment file found
+# Returns: 1 (always errors)
+error_no_environment_file() {
+    log_error "No environment file found for micromamba backend"
+    log_error ""
+    log_error "Micromamba requires either:"
+    log_error "  - conda-lock.yml (for reproducible builds)"
+    log_error "  - environment.yml (for flexible dependencies)"
+    log_error ""
+    log_error "Create environment.yml with:"
+    log_error ""
+    printf "  name: myproject\n"
+    printf "  channels:\n"
+    printf "    - conda-forge\n"
+    printf "  dependencies:\n"
+    printf "    - python=3.11\n"
+    printf "    - numpy\n"
+    log_error ""
+    log_error "Or generate a lock file:"
+    log_error "  conda-lock -f environment.yml -p $(uname -m)"
+    
+    return 1
+}

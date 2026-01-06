@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.3"
+VERSION="0.7.4"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -154,6 +154,22 @@ show_config() {
         fi
     fi
     
+    # Check environment file
+    local env_file_status="none"
+    local env_file
+    env_file="$(detect_environment_file 2>/dev/null)" || true
+    if [[ -n "$env_file" ]]; then
+        env_file_status="$env_file"
+        # Add environment name if available
+        if [[ "$env_file" == "environment.yml" ]]; then
+            local env_name
+            env_name="$(parse_environment_name "$env_file" 2>/dev/null)" || true
+            if [[ -n "$env_name" ]]; then
+                env_file_status="$env_file (name: $env_name)"
+            fi
+        fi
+    fi
+    
     printf "pyve configuration:\n"
     printf "  Version:                %s\n" "$VERSION"
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
@@ -165,6 +181,7 @@ show_config() {
     fi
     printf "  Detected backend:       %s\n" "$detected_backend"
     printf "  Micromamba:             %s\n" "$micromamba_status"
+    printf "  Conda env file:         %s\n" "$env_file_status"
     printf "  Environment file:       %s\n" "$ENV_FILE_NAME"
     printf "  Install directory:      %s\n" "$TARGET_BIN_DIR"
 }
