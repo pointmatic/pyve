@@ -6,7 +6,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ## High-Level Feature Checklist
 
-### Phase 1: Core Micromamba Support (v0.7.0 - v0.7.12)
+### Phase 1: Core Micromamba Support (v0.7.0 - v0.7.13)
 
 **Backend Infrastructure:**
 - [ ] Backend detection and selection logic
@@ -232,7 +232,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.7: Micromamba Environment Creation
+### v0.7.8: Micromamba Environment Creation
 **Goal:** Create micromamba environments from environment files.
 
 - [ ] Implement `create_micromamba_env()` function
@@ -252,7 +252,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.8: Shell Prompt Integration
+### v0.7.9: Shell Prompt Integration
 **Goal:** Update shell prompt to show backend and environment name.
 
 - [ ] Update `.envrc` generation for micromamba backend
@@ -277,7 +277,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.9: `pyve run` Command Foundation
+### v0.7.10: `pyve run` Command Foundation
 **Goal:** Implement basic `pyve run <cmd>` execution.
 
 - [ ] Add `pyve run` command to CLI
@@ -303,7 +303,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.10: `--no-direnv` Flag
+### v0.7.11: `--no-direnv` Flag
 **Goal:** Add flag to skip direnv configuration for CI/CD.
 
 - [ ] Add `--no-direnv` CLI flag to `pyve --init`
@@ -319,7 +319,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.11: `pyve doctor` Command
+### v0.7.12: `pyve doctor` Command
 **Goal:** Implement environment health check and diagnostics.
 
 - [ ] Add `pyve doctor` command
@@ -352,7 +352,7 @@ This document outlines the complete implementation plan for adding micromamba ba
 
 ---
 
-### v0.7.12: Documentation and Polish
+### v0.7.13: Documentation and Polish
 **Goal:** Complete documentation and final polish.
 
 - [ ] Update README.md:
