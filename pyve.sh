@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.7.4"
+VERSION="0.7.5"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -78,7 +78,7 @@ pyve - Python Virtual Environment Manager
 
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
-                [--auto-bootstrap] [--bootstrap-to <location>]
+                [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -92,6 +92,7 @@ COMMANDS:
                         Optional: --backend <type> to specify backend (venv, micromamba, auto)
                         Optional: --auto-bootstrap to install micromamba without prompting
                         Optional: --bootstrap-to <location> where to install (project, user)
+                        Optional: --strict to error on stale/missing lock files
                         Optional: --local-env to copy ~/.local/.env template
 
     --purge, -p         Remove all Python environment artifacts
@@ -197,6 +198,7 @@ init() {
     local backend_flag=""
     local auto_bootstrap=false
     local bootstrap_to="user"
+    local strict_mode=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -237,6 +239,10 @@ init() {
                     exit 1
                 fi
                 shift 2
+                ;;
+            --strict)
+                strict_mode=true
+                shift
                 ;;
             -*)
                 log_error "Unknown option: $1"
@@ -285,7 +291,12 @@ init() {
             exit 1
         fi
         
-        log_info "Micromamba backend selected but full implementation coming in v0.7.4-v0.7.12"
+        # Validate lock file status if micromamba backend
+        if ! validate_lock_file_status "$strict_mode"; then
+            exit 1
+        fi
+        
+        log_info "Micromamba backend selected but full implementation coming in v0.7.6-v0.7.12"
         log_error "For now, only 'venv' backend is fully functional"
         exit 1
     fi

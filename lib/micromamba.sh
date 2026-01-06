@@ -552,3 +552,179 @@ error_no_environment_file() {
     
     return 1
 }
+
+#============================================================
+# Lock File Validation Functions
+#============================================================
+
+# Check if lock file is stale (environment.yml newer than conda-lock.yml)
+# Returns: 0 if stale, 1 if not stale or files don't exist
+is_lock_file_stale() {
+    # Both files must exist
+    if [[ ! -f "environment.yml" ]] || [[ ! -f "conda-lock.yml" ]]; then
+        return 1
+    fi
+    
+    # Get modification times (seconds since epoch)
+    local env_mtime
+    local lock_mtime
+    
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # macOS
+        env_mtime=$(stat -f %m "environment.yml" 2>/dev/null)
+        lock_mtime=$(stat -f %m "conda-lock.yml" 2>/dev/null)
+    else
+        # Linux
+        env_mtime=$(stat -c %Y "environment.yml" 2>/dev/null)
+        lock_mtime=$(stat -c %Y "conda-lock.yml" 2>/dev/null)
+    fi
+    
+    # Check if environment.yml is newer
+    if [[ -n "$env_mtime" ]] && [[ -n "$lock_mtime" ]] && [[ "$env_mtime" -gt "$lock_mtime" ]]; then
+        return 0  # Stale
+    else
+        return 1  # Not stale
+    fi
+}
+
+# Get human-readable modification time
+# Arguments:
+#   $1 - File path
+# Returns: formatted date string
+get_file_mtime_formatted() {
+    local file="$1"
+    
+    if [[ ! -f "$file" ]]; then
+        echo "unknown"
+        return 1
+    fi
+    
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # macOS
+        stat -f "%Sm" -t "%Y-%m-%d %H:%M:%S" "$file" 2>/dev/null
+    else
+        # Linux
+        stat -c "%y" "$file" 2>/dev/null | cut -d'.' -f1
+    fi
+}
+
+# Check if running in interactive mode
+# Returns: 0 if interactive, 1 if non-interactive (CI/batch)
+is_interactive() {
+    # Check if stdin is a terminal
+    if [[ -t 0 ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Warn about stale lock file (interactive mode only)
+# Returns: 0 if user continues, 1 if user aborts
+warn_stale_lock_file() {
+    local env_mtime
+    local lock_mtime
+    
+    env_mtime="$(get_file_mtime_formatted "environment.yml")"
+    lock_mtime="$(get_file_mtime_formatted "conda-lock.yml")"
+    
+    printf "\n"
+    log_warning "Lock file may be stale"
+    printf "  environment.yml:  modified %s\n" "$env_mtime"
+    printf "  conda-lock.yml:   modified %s\n" "$lock_mtime"
+    printf "\n"
+    printf "Using conda-lock.yml for reproducibility.\n"
+    printf "To update lock file:\n"
+    printf "  conda-lock -f environment.yml -p %s\n" "$(uname -m)"
+    printf "\n"
+    
+    # Prompt user
+    if prompt_yes_no "Continue anyway?"; then
+        return 0
+    else
+        log_info "Aborted. Please update lock file and try again."
+        return 1
+    fi
+}
+
+# Info message about missing lock file (interactive mode only)
+# Returns: 0 if user continues, 1 if user aborts
+info_missing_lock_file() {
+    printf "\n"
+    log_info "Using environment.yml without lock file."
+    printf "\n"
+    printf "For reproducible builds, consider generating a lock file:\n"
+    printf "  conda-lock -f environment.yml -p %s\n" "$(uname -m)"
+    printf "\n"
+    printf "This is especially important for CI/CD and production.\n"
+    printf "\n"
+    
+    # Prompt user
+    if prompt_yes_no "Continue anyway?"; then
+        return 0
+    else
+        log_info "Aborted. Generate lock file and try again."
+        return 1
+    fi
+}
+
+# Validate lock file status (with interactive warnings)
+# Arguments:
+#   $1 - strict mode (true/false)
+# Returns: 0 if valid or user continues, 1 if invalid or user aborts
+validate_lock_file_status() {
+    local strict_mode="${1:-false}"
+    
+    # Check if both files exist
+    local has_env_yml=false
+    local has_lock_yml=false
+    
+    [[ -f "environment.yml" ]] && has_env_yml=true
+    [[ -f "conda-lock.yml" ]] && has_lock_yml=true
+    
+    # Case 1: Both files exist - check staleness
+    if [[ "$has_env_yml" == true ]] && [[ "$has_lock_yml" == true ]]; then
+        if is_lock_file_stale; then
+            # Stale lock file detected
+            if [[ "$strict_mode" == true ]]; then
+                log_error "Lock file is stale (strict mode)"
+                log_error "environment.yml was modified after conda-lock.yml"
+                log_error "Regenerate lock file:"
+                log_error "  conda-lock -f environment.yml -p $(uname -m)"
+                return 1
+            elif is_interactive; then
+                # Interactive mode - warn and prompt
+                if ! warn_stale_lock_file; then
+                    return 1
+                fi
+            fi
+            # Non-interactive mode - silent, continue
+        fi
+        return 0
+    fi
+    
+    # Case 2: Only environment.yml exists (no lock file)
+    if [[ "$has_env_yml" == true ]] && [[ "$has_lock_yml" == false ]]; then
+        if [[ "$strict_mode" == true ]]; then
+            log_error "Lock file missing (strict mode)"
+            log_error "Generate lock file for reproducible builds:"
+            log_error "  conda-lock -f environment.yml -p $(uname -m)"
+            return 1
+        elif is_interactive; then
+            # Interactive mode - info and prompt
+            if ! info_missing_lock_file; then
+                return 1
+            fi
+        fi
+        # Non-interactive mode - silent, continue
+        return 0
+    fi
+    
+    # Case 3: Only conda-lock.yml exists (unusual but valid)
+    if [[ "$has_env_yml" == false ]] && [[ "$has_lock_yml" == true ]]; then
+        return 0
+    fi
+    
+    # Case 4: Neither file exists (error handled elsewhere)
+    return 0
+}

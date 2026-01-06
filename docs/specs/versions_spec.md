@@ -3,6 +3,102 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.7.5 Lock File Validation [Implemented]
+- [x] Implement lock file staleness detection
+- [x] Compare modification times: `mtime(environment.yml) > mtime(conda-lock.yml)`
+- [x] Add interactive warning for stale lock files with "Continue anyway?" prompt
+- [x] Add info message for missing lock file
+- [x] Only show warnings in interactive mode (not CI)
+- [x] Add `--strict` flag to error on stale/missing lock files
+- [x] Add `is_interactive()` function to detect terminal
+- [x] Add `is_lock_file_stale()` function
+- [x] Add `get_file_mtime_formatted()` function
+- [x] Add `warn_stale_lock_file()` function
+- [x] Add `info_missing_lock_file()` function
+- [x] Add `validate_lock_file_status()` function
+
+### Notes
+**Goal:** Warn users about stale or missing lock files.
+
+**Implementation Summary:**
+- Added lock file validation functions to `lib/micromamba.sh`:
+  - `is_lock_file_stale()` - Compares modification times (macOS and Linux compatible)
+  - `get_file_mtime_formatted()` - Returns human-readable timestamps
+  - `is_interactive()` - Detects if stdin is a terminal
+  - `warn_stale_lock_file()` - Interactive warning with "Continue anyway?" prompt
+  - `info_missing_lock_file()` - Info message about missing lock file
+  - `validate_lock_file_status()` - Main validation function with strict mode support
+- Updated `pyve.sh`:
+  - Version bumped from 0.7.4 to 0.7.5
+  - Added `--strict` flag to `pyve --init`
+  - Integrated `validate_lock_file_status()` into micromamba backend initialization
+  - Updated help text with --strict flag
+
+**Interactive Warning (Stale Lock File):**
+```
+WARNING: Lock file may be stale
+  environment.yml:  modified 2026-01-05 10:30:00
+  conda-lock.yml:   modified 2025-12-15 14:20:00
+
+Using conda-lock.yml for reproducibility.
+To update lock file:
+  conda-lock -f environment.yml -p arm64
+
+Continue anyway? [y/n]: _
+```
+
+**Info Message (Missing Lock File):**
+```
+INFO: Using environment.yml without lock file.
+
+For reproducible builds, consider generating a lock file:
+  conda-lock -f environment.yml -p arm64
+
+This is especially important for CI/CD and production.
+
+Continue anyway? [y/n]: _
+```
+
+**Behavior Modes:**
+1. **Interactive mode** (terminal detected):
+   - Stale lock file → warn and prompt
+   - Missing lock file → info and prompt
+   - User can continue or abort
+
+2. **Non-interactive mode** (CI/batch):
+   - Silent, no prompts
+   - Continues with detected files
+   - Suitable for automated workflows
+
+3. **Strict mode** (`--strict` flag):
+   - Stale lock file → error and exit
+   - Missing lock file → error and exit
+   - Enforces reproducible builds
+
+**Testing Results:**
+- ✓ `pyve --version` shows 0.7.5
+- ✓ Staleness detection works (compares file mtimes)
+- ✓ Interactive mode detection works (`is_interactive()`)
+- ✓ `--strict` flag added and parsed correctly
+- ✓ Validation integrated into micromamba backend flow
+- ✓ Platform-specific mtime handling (macOS `stat -f`, Linux `stat -c`)
+
+**Usage Examples:**
+```bash
+# Interactive mode (default) - prompts user
+pyve --init --backend micromamba
+
+# Strict mode - errors on stale/missing lock files
+pyve --init --backend micromamba --strict
+
+# CI mode (non-interactive) - silent, no prompts
+echo | pyve --init --backend micromamba --auto-bootstrap
+```
+
+**Note:** `pyve doctor` command will be implemented in v0.7.11 to provide comprehensive diagnostics including lock file status checks.
+
+---
+
 ## v0.7.4 Environment File Detection [Implemented]
 - [x] Implement `detect_environment_file()` function
 - [x] Detection order: conda-lock.yml → environment.yml → error
