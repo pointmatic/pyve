@@ -460,6 +460,409 @@ ERROR: Lock file is stale (--strict mode)
 Regenerate with: conda-lock -f environment.yml
 ```
 
+## Commands
+
+### `pyve run` - Execute Commands in Environment
+
+Run commands in your project environment without manual activation:
+
+```bash
+pyve run <command> [args...]
+```
+
+**How it works:**
+- Automatically detects backend (venv or micromamba)
+- Executes command in the active environment
+- Preserves exit codes
+- No activation needed
+
+**Examples:**
+```bash
+# Run Python
+pyve run python --version
+pyve run python script.py
+
+# Run tests
+pyve run pytest
+pyve run pytest tests/ -v
+
+# Run formatters and linters
+pyve run black .
+pyve run mypy src/
+pyve run ruff check
+
+# Install packages
+pyve run pip install requests
+pyve run pip install -r requirements.txt
+
+# Run any installed tool
+pyve run jupyter notebook
+pyve run flask run
+pyve run uvicorn main:app --reload
+```
+
+**Backend-Specific Behavior:**
+
+**Venv backend:**
+```bash
+# Executes directly from .venv/bin/
+pyve run python script.py
+# Equivalent to: .venv/bin/python script.py
+```
+
+**Micromamba backend:**
+```bash
+# Uses micromamba run with prefix
+pyve run python script.py
+# Equivalent to: micromamba run -p .pyve/envs/<name> python script.py
+```
+
+**Error Handling:**
+```bash
+# Command not found
+pyve run nonexistent
+# ERROR: Command not found in venv: nonexistent
+# Exit code: 127
+
+# No environment
+pyve run python
+# ERROR: No Python environment found
+# ERROR: Run 'pyve --init' to create an environment first
+```
+
+**Use Cases:**
+- **CI/CD pipelines** - Run tests without activation
+- **Scripts** - Execute Python scripts deterministically
+- **One-off commands** - Run tools without entering environment
+- **Automation** - Consistent execution across systems
+
+### `pyve doctor` - Environment Diagnostics
+
+Check environment health and configuration:
+
+```bash
+pyve doctor
+```
+
+**What it checks:**
+- Backend type (venv or micromamba)
+- Environment location and status
+- Python version
+- Micromamba binary (if applicable)
+- Environment files (environment.yml, conda-lock.yml)
+- Lock file status (up to date, stale, missing)
+- Package count
+- Direnv configuration
+- .env file status
+
+**Example Output (Venv):**
+```
+Pyve Environment Diagnostics
+=============================
+
+✓ Backend: venv
+✓ Environment: .venv
+✓ Python: 3.13.7
+✓ Version file: .tool-versions (asdf)
+  Python: 3.13.7
+  Packages: 42 installed
+✓ Direnv: .envrc configured
+✓ Environment file: .env (configured)
+```
+
+**Example Output (Micromamba):**
+```
+Pyve Environment Diagnostics
+=============================
+
+✓ Backend: micromamba
+✓ Micromamba: /Users/user/.pyve/bin/micromamba (user) v1.5.3
+✓ Environment: .pyve/envs/myproject
+  Name: myproject
+✓ Python: 3.11.7
+✓ Environment file: environment.yml
+⚠ Lock file: conda-lock.yml (stale)
+  environment.yml: 2026-01-06 02:15:30
+  conda-lock.yml:  2026-01-05 18:42:15
+  Packages: 87 installed
+✓ Direnv: .envrc configured
+✓ Environment file: .env (configured)
+```
+
+**Status Indicators:**
+- ✓ - Success/OK
+- ✗ - Error/Not found
+- ⚠ - Warning/Issue detected
+
+**Use Cases:**
+- **Debugging** - Identify environment issues
+- **Verification** - Confirm setup is correct
+- **CI/CD** - Validate environment in pipelines
+- **Troubleshooting** - Quick health check
+
+### `--no-direnv` Flag - Skip Direnv Configuration
+
+Skip `.envrc` creation for environments where direnv isn't available:
+
+```bash
+pyve --init --no-direnv
+```
+
+**When to use:**
+- **CI/CD environments** - Where direnv isn't installed
+- **Docker containers** - Where direnv isn't needed
+- **Automation scripts** - Where manual activation isn't desired
+- **Minimal setups** - Where you prefer `pyve run` only
+
+**Behavior:**
+- Skips `.envrc` file creation
+- Environment still fully functional
+- Use `pyve run` to execute commands
+- No direnv dependency required
+
+**Examples:**
+```bash
+# Venv without direnv
+pyve --init --no-direnv
+pyve run python --version
+
+# Micromamba without direnv
+pyve --init --backend micromamba --no-direnv
+pyve run pytest
+
+# CI/CD setup
+pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+pyve run pytest tests/
+```
+
+## CI/CD Integration
+
+Pyve is designed for deterministic, reproducible environments in CI/CD pipelines.
+
+### GitHub Actions
+
+**Venv Backend:**
+```yaml
+name: Test with Venv
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install asdf
+        uses: asdf-vm/actions/setup@v3
+      
+      - name: Install Python
+        run: |
+          asdf plugin add python
+          asdf install python 3.11.7
+      
+      - name: Install Pyve
+        run: |
+          git clone https://github.com/pointmatic/pyve.git /tmp/pyve
+          /tmp/pyve/pyve.sh --install
+      
+      - name: Initialize environment
+        run: pyve --init --no-direnv
+      
+      - name: Run tests
+        run: pyve run pytest tests/
+      
+      - name: Check environment
+        run: pyve doctor
+```
+
+**Micromamba Backend:**
+```yaml
+name: Test with Micromamba
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Pyve
+        run: |
+          git clone https://github.com/pointmatic/pyve.git /tmp/pyve
+          /tmp/pyve/pyve.sh --install
+      
+      - name: Initialize environment
+        run: |
+          pyve --init --backend micromamba \
+               --auto-bootstrap \
+               --no-direnv \
+               --strict
+      
+      - name: Run tests
+        run: pyve run pytest tests/
+      
+      - name: Check environment
+        run: pyve doctor
+```
+
+**With Caching:**
+```yaml
+- name: Cache micromamba
+  uses: actions/cache@v3
+  with:
+    path: ~/.pyve/bin/micromamba
+    key: micromamba-${{ runner.os }}
+
+- name: Cache environment
+  uses: actions/cache@v3
+  with:
+    path: .pyve/envs
+    key: env-${{ runner.os }}-${{ hashFiles('conda-lock.yml') }}
+```
+
+### GitLab CI
+
+**Venv Backend:**
+```yaml
+test:
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y git curl
+    - git clone https://github.com/pointmatic/pyve.git /tmp/pyve
+    - /tmp/pyve/pyve.sh --install
+    - export PATH="$HOME/.local/bin:$PATH"
+  script:
+    - pyve --init --no-direnv
+    - pyve run pytest tests/
+    - pyve doctor
+```
+
+**Micromamba Backend:**
+```yaml
+test:
+  image: ubuntu:latest
+  before_script:
+    - apt-get update && apt-get install -y git curl
+    - git clone https://github.com/pointmatic/pyve.git /tmp/pyve
+    - /tmp/pyve/pyve.sh --install
+    - export PATH="$HOME/.local/bin:$PATH"
+  script:
+    - pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+    - pyve run pytest tests/
+    - pyve doctor
+  cache:
+    paths:
+      - .pyve/envs/
+      - ~/.pyve/bin/
+```
+
+### Docker
+
+**Dockerfile with Venv:**
+```dockerfile
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install Pyve
+RUN git clone https://github.com/pointmatic/pyve.git /tmp/pyve && \
+    /tmp/pyve/pyve.sh --install
+
+# Copy project files
+COPY . .
+
+# Initialize environment
+RUN pyve --init --no-direnv
+
+# Run application
+CMD ["pyve", "run", "python", "app.py"]
+```
+
+**Dockerfile with Micromamba:**
+```dockerfile
+FROM ubuntu:22.04
+
+WORKDIR /app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y git curl
+
+# Install Pyve
+RUN git clone https://github.com/pointmatic/pyve.git /tmp/pyve && \
+    /tmp/pyve/pyve.sh --install
+
+# Copy project files
+COPY environment.yml conda-lock.yml ./
+
+# Initialize environment
+RUN pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+
+# Copy application
+COPY . .
+
+# Run application
+CMD ["pyve", "run", "python", "app.py"]
+```
+
+### Best Practices
+
+**For CI/CD:**
+1. Always use `--no-direnv` (direnv not needed in CI)
+2. Use `--auto-bootstrap` for micromamba (no interactive prompts)
+3. Use `--strict` to enforce lock file validation
+4. Cache environments and binaries for faster builds
+5. Run `pyve doctor` to verify setup
+6. Use `pyve run` for all command execution
+
+**Caching Strategy:**
+- Cache micromamba binary (`~/.pyve/bin/micromamba`)
+- Cache environments (`.pyve/envs/` or `.venv/`)
+- Use lock file hash as cache key
+- Invalidate cache when dependencies change
+
+**Example Complete Workflow:**
+```yaml
+name: CI
+on: [push, pull_request]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Cache Pyve
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.pyve/bin
+            .pyve/envs
+          key: pyve-${{ runner.os }}-${{ hashFiles('conda-lock.yml') }}
+      
+      - name: Install Pyve
+        run: |
+          git clone https://github.com/pointmatic/pyve.git /tmp/pyve
+          /tmp/pyve/pyve.sh --install
+      
+      - name: Setup environment
+        run: |
+          pyve --init --backend micromamba \
+               --auto-bootstrap \
+               --no-direnv \
+               --strict
+      
+      - name: Verify setup
+        run: pyve doctor
+      
+      - name: Run tests
+        run: pyve run pytest tests/ --cov
+      
+      - name: Run linters
+        run: |
+          pyve run black --check .
+          pyve run mypy src/
+```
+
 ## Security
 
 - **Never commit secrets**: Pyve automatically adds `.env` to `.gitignore`

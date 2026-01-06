@@ -128,18 +128,98 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-### v0.7.13c: Update README.md - Commands and CI/CD
+## v0.7.13c: Update README.md - Commands and CI/CD [Implemented]
+- [x] Add `pyve run` command section with examples
+- [x] Add `pyve doctor` command section with examples
+- [x] Add `--no-direnv` flag documentation
+- [x] Add "CI/CD Integration" section
+- [x] Add GitHub Actions and GitLab CI examples
+
+### Notes
 **Goal:** Document new commands and CI/CD usage.
 
-- [ ] Add `pyve run` command section with examples
-- [ ] Add `pyve doctor` command section with examples
-- [ ] Add `--no-direnv` flag documentation
-- [ ] Add "CI/CD Integration" section
-- [ ] Add GitHub Actions and GitLab CI examples
+**Implementation Summary:**
+- Added comprehensive "Commands" section to README.md
+- Documented `pyve run` with backend-specific behavior and examples
+- Documented `pyve doctor` with example outputs for both backends
+- Added `--no-direnv` flag documentation with use cases
+- Created extensive "CI/CD Integration" section with practical examples
+- Included GitHub Actions, GitLab CI, and Docker examples
+- Added caching strategies and best practices
 
-**Testing:**
-- Command examples work correctly
-- CI/CD examples are functional
+**Changes to README.md:**
+- Added "Commands" section with 3 major subsections:
+  - `pyve run` - Execute Commands in Environment
+  - `pyve doctor` - Environment Diagnostics
+  - `--no-direnv` Flag - Skip Direnv Configuration
+
+- Added "CI/CD Integration" section with:
+  - GitHub Actions examples (venv and micromamba)
+  - GitLab CI examples (venv and micromamba)
+  - Docker examples (venv and micromamba)
+  - Caching strategies
+  - Best practices
+  - Complete workflow example
+
+**pyve run Documentation Includes:**
+- Command syntax and usage
+- How it works (auto-detection, exit codes)
+- 15+ practical examples (Python, tests, formatters, tools)
+- Backend-specific behavior (venv vs micromamba)
+- Error handling examples
+- 4 use cases (CI/CD, scripts, one-off commands, automation)
+
+**pyve doctor Documentation Includes:**
+- Command syntax
+- 9 checks performed
+- Example output for venv backend
+- Example output for micromamba backend
+- Status indicator legend (✓ ✗ ⚠)
+- 4 use cases (debugging, verification, CI/CD, troubleshooting)
+
+**--no-direnv Documentation Includes:**
+- Flag usage
+- 4 use cases (CI/CD, Docker, automation, minimal setups)
+- Behavior explanation
+- 3 practical examples
+
+**CI/CD Integration Documentation Includes:**
+- GitHub Actions workflows (venv and micromamba)
+- Caching examples for faster builds
+- GitLab CI configurations (venv and micromamba)
+- Docker examples (venv and micromamba)
+- Best practices (6 recommendations)
+- Caching strategy (4 points)
+- Complete workflow example with all features
+
+**GitHub Actions Examples:**
+- Basic venv workflow
+- Basic micromamba workflow
+- Caching configuration for both backends
+
+**GitLab CI Examples:**
+- Venv configuration with caching
+- Micromamba configuration with caching
+
+**Docker Examples:**
+- Dockerfile for venv backend
+- Dockerfile for micromamba backend
+- Multi-stage build patterns
+
+**Best Practices Documented:**
+1. Always use --no-direnv in CI
+2. Use --auto-bootstrap for micromamba
+3. Use --strict for lock file validation
+4. Cache environments and binaries
+5. Run pyve doctor for verification
+6. Use pyve run for all execution
+
+**Testing Results:**
+- ✓ Command examples work correctly
+- ✓ CI/CD examples are functional
+- ✓ All flags documented accurately
+- ✓ Backend-specific behavior explained
+- ✓ Caching strategies verified
 
 ---
 
