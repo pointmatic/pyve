@@ -4,6 +4,7 @@ Integration tests for cross-platform functionality.
 Tests platform-specific behavior on macOS and Linux.
 """
 
+import os
 import pytest
 import platform
 import sys
