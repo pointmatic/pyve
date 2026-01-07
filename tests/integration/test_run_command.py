@@ -278,6 +278,7 @@ class TestRunEdgeCases:
         """Test running script that imports multiple packages."""
         project_builder.create_requirements(['requests==2.31.0'])
         pyve.init(backend='venv')
+        pyve.run_cmd('pip', 'install', '-r', 'requirements.txt')
         
         script = project_builder.create_python_script(
             'multi_import.py',
