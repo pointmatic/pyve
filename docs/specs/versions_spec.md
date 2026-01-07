@@ -56,6 +56,39 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.9a: Test Fixes [Implemented]
+**Depends on:** v0.8.9 (smart re-initialization)
+
+- [x] Fix missing `import os` in test_reinit.py
+- [x] Fix PYVE_ROOT setup in test_reinit.bats
+- [x] Add init_venv() method to ProjectBuilder
+- [x] Add init_micromamba() method to ProjectBuilder
+
+### Notes
+**Goal:** Fix test collection and execution errors in CI/CD without changing user-facing functionality.
+
+**Implementation Summary:**
+
+**Test Fixes (No pyve.sh changes):**
+- Fixed missing `import os` statement in `tests/integration/test_reinit.py` (line 8)
+- Fixed PYVE_ROOT initialization in `tests/unit/test_reinit.bats` setup function
+- Added `init_venv()` and `init_micromamba()` helper methods to ProjectBuilder class
+- All fixes were test infrastructure only - no changes to application code
+
+**CI/CD Impact:**
+- Unit tests: Exit code 2 → Exit code 0 (collection errors fixed)
+- Integration tests: Exit code 1 → Exit code 0 (missing methods added)
+- All GitHub Actions workflows now passing
+
+**Commits:**
+- `3de0f18` - Fix missing os import in test_reinit.py
+- `226f1e2` - Fix PYVE_ROOT setup in test_reinit.bats unit tests
+- `97ba646` - Add init_venv and init_micromamba methods to ProjectBuilder
+
+**Version Note:** Application version remains at 0.8.9 - no user-facing changes.
+
+---
+
 ## v0.8.9: Smart Re-initialization [Implemented]
 **Depends on:** v0.8.7 (version tracking library), v0.8.8 (validate command)
 

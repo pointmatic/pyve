@@ -80,7 +80,7 @@ The version spec file is a markdown file with a specific structure.
 - **Major Version Number**: Major paradigm change, next-level feature set, breaking changes, 0 to 99.
 - **Minor Version Number**: New features, important bug fixes, non-breaking changes, 0 to 99.
 - **Patch Version Number**: Incremental features/improvements, small bug fixes (all non-breaking), 0 to 99.
-- **Mini Version Letter**: Use `a`, `b`, `c`, … when the human requests a bugfix/error follow-up that is not already captured in `docs/specs/versions_spec.md`. Example: `v0.0.2a`.
+- **Mini Version Letter**: Use `a`, `b`, `c`, … when there is a bugfix/error follow-up that has no impact on the user (test cases, CI/CD, etc.). Example: `v0.0.2a`.
 
 ### <Version_Number> Pattern
 - **v0.0.0 to v0.9.99z**: `v0.<major>.<minor><tiny>`. Examples: `v0.0.2`, `v0.0.2a`, `v0.1.14`, `v0.15.4`, etc.
