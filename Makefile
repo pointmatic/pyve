@@ -1,17 +1,18 @@
 # Pyve Test Makefile
 # Provides convenient targets for running tests
 
-.PHONY: test test-unit test-integration test-all coverage clean help
+.PHONY: test test-unit test-integration test-integration-ci test-all coverage clean help
 
 # Default target
 help:
 	@echo "Pyve Test Targets:"
-	@echo "  make test              - Run all tests (unit + integration)"
-	@echo "  make test-unit         - Run only Bats unit tests"
-	@echo "  make test-integration  - Run only pytest integration tests"
-	@echo "  make test-all          - Run all tests with verbose output"
-	@echo "  make coverage          - Run tests with coverage reporting"
-	@echo "  make clean             - Clean test artifacts"
+	@echo "  make test                 - Run all tests (unit + integration)"
+	@echo "  make test-unit            - Run only Bats unit tests"
+	@echo "  make test-integration     - Run only pytest integration tests"
+	@echo "  make test-integration-ci  - Run integration tests with CI=true (simulates CI)"
+	@echo "  make test-all             - Run all tests with verbose output"
+	@echo "  make coverage             - Run tests with coverage reporting"
+	@echo "  make clean                - Clean test artifacts"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Bats: brew install bats-core (macOS) or sudo apt-get install bats (Linux)"
@@ -42,6 +43,21 @@ test-integration:
 	@if command -v pytest >/dev/null 2>&1; then \
 		if [ -d "tests/integration" ] && [ -n "$$(find tests/integration -name 'test_*.py' 2>/dev/null)" ]; then \
 			pytest tests/integration/ -v; \
+		else \
+			echo "No pytest tests found in tests/integration/"; \
+		fi \
+	else \
+		echo "Error: pytest not installed. Install with:"; \
+		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		exit 1; \
+	fi
+
+# Run integration tests with CI environment (simulates CI locally)
+test-integration-ci:
+	@echo "Running pytest integration tests in CI mode..."
+	@if command -v pytest >/dev/null 2>&1; then \
+		if [ -d "tests/integration" ] && [ -n "$$(find tests/integration -name 'test_*.py' 2>/dev/null)" ]; then \
+			CI=true pytest tests/integration/ -v -m "venv and not requires_micromamba" --tb=short; \
 		else \
 			echo "No pytest tests found in tests/integration/"; \
 		fi \

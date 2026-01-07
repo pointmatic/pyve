@@ -5,7 +5,20 @@ See `docs/guide_versions_spec.md`
 
 ## High-Level Feature Checklist
 
-### Phase 2.5: Version Tracking and Validation (v0.8.7 - v0.8.9)
+### Phase 2.6: Local CI and Testing Improvements (v0.8.12+)
+
+**Goal:** Achieve green CI state with comprehensive test coverage and reliable test suite.
+
+**Milestones:**
+- [x] v0.8.12: Local CI simulation with pytest (CI=true environment)
+- [x] v0.8.13: Fix venv integration test failures (34 passed, 0 failed)
+- [ ] v0.8.14: Test and fix micromamba integration tests
+- [ ] v0.8.15: Fix codecov integration (currently shows "unknown")
+- [ ] v0.8.16: Review and fix/document skipped tests (24 skipped)
+- [ ] Achieve >80% code coverage on core functionality
+- [ ] Add coverage badges to README
+
+### Phase 2.5: Version Tracking and Validation (v0.8.7 - v0.8.11)
 
 
 ### Phase 2: Testing Framework (v0.8.0 - v0.8.6)
@@ -53,6 +66,82 @@ See `docs/guide_versions_spec.md`
 - [x] Testing best practices documentation
 - [x] CI/CD testing examples
 - [x] Coverage reporting documentation
+
+---
+
+## v0.8.13: Fix Remaining Venv Integration Test Failures [Implemented]
+**Depends on:** v0.8.12 (local CI testing with act)
+
+- [x] Fix `test_purge_with_custom_venv_dir` to use `check=False`
+- [x] Add `test-integration-ci` Makefile target for local CI simulation
+- [x] Verify all venv integration tests pass with CI=true
+
+### Notes
+**Goal:** Achieve green state for all venv integration tests.
+
+**Status:**
+- **34 passed, 24 skipped, 0 failed** in CI mode
+- All venv workflow tests passing
+- All run command tests passing
+- All doctor tests passing (non-skipped)
+
+**Remaining Work:**
+- Micromamba integration tests (not yet tested)
+- 24 skipped tests (cross-platform and complex pyenv setup tests)
+- Coverage reporting (codecov shows "unknown")
+
+**Files Modified:**
+- `tests/integration/test_venv_workflow.py` - Fixed `test_purge_with_custom_venv_dir` (line 112)
+- `Makefile` - Added `test-integration-ci` target (lines 62-75)
+
+**Version Note:** Application version remains at 0.8.11 - test fixes only, no user-facing changes.
+
+---
+
+## v0.8.12: Local CI Simulation with pytest [Implemented]
+**Depends on:** v0.8.11e (fix init() method check parameter)
+
+- [x] Add `test-integration-ci` Makefile target
+- [x] Run pytest with `CI=true` environment variable
+- [x] Simulate CI environment without containers
+
+### Notes
+**Goal:** Enable developers to test with CI environment settings locally before pushing.
+
+**Problem:**
+- Tests pass locally but fail in CI due to environment differences
+- Local environment has pyenv configured, Python versions installed, cached dependencies
+- CI starts fresh each time with minimal setup
+- No way to test CI workflows without pushing to GitHub
+
+**Solution:**
+- Run pytest locally with `CI=true` environment variable
+- This triggers the same code paths as GitHub Actions (skips prompts, uses CI-specific behavior)
+- Much simpler than container-based solutions (act, Docker, Podman)
+- No admin permissions or complex setup required
+
+**Implementation:**
+- Added `test-integration-ci` Makefile target
+- Sets `CI=true` and runs pytest with venv tests
+- Uses `--tb=short` for concise error output
+
+**Benefits:**
+- Catch CI-specific failures before pushing
+- No container runtime required
+- No admin permissions needed
+- Fast and simple to use
+
+**Limitations:**
+- Doesn't test full CI environment (OS, Python versions, etc.)
+- Only simulates CI environment variables
+- Still uses local pyenv/Python setup
+
+**Files Modified:**
+- `Makefile` - Added `test-integration-ci` target (lines 62-75)
+
+**Version Note:** Application version remains at 0.8.11 - developer tooling improvement, no user-facing changes.
+
+**Note:** Initial plan to use `act` with Podman was abandoned due to permission requirements and complexity. The simpler pytest approach proved more practical.
 
 ---
 
