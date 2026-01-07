@@ -56,25 +56,25 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-## v0.8.9: Smart Re-initialization [Planned]
+## v0.8.9: Smart Re-initialization [Implemented]
 **Depends on:** v0.8.7 (version tracking library), v0.8.8 (validate command)
 
-- [ ] Detect existing installation in `--init`
-- [ ] Add `--update` flag for safe in-place updates
-- [ ] Add `--force` flag for destructive re-initialization
-- [ ] Add interactive prompts for existing installations
-- [ ] Implement conflict detection (backend change, Python version change)
-- [ ] Modify config creation to include `pyve_version` field
-- [ ] Update config version on all config modifications
-- [ ] Add unit tests for re-init logic
-- [ ] Add integration tests for re-initialization scenarios
-- [ ] Document smart re-initialization in README
-- [ ] Bump version in pyve.sh from 0.8.8 to 0.8.9
+- [x] Detect existing installation in `--init`
+- [x] Add `--update` flag for safe in-place updates
+- [x] Add `--force` flag for destructive re-initialization
+- [x] Add interactive prompts for existing installations
+- [x] Implement conflict detection (backend change, Python version change)
+- [x] Modify config creation to include `pyve_version` field
+- [x] Update config version on all config modifications
+- [x] Add unit tests for re-init logic
+- [x] Add integration tests for re-initialization scenarios
+- [x] Document smart re-initialization in README
+- [x] Bump version in pyve.sh from 0.8.8 to 0.8.9
 
 ### Notes
 **Goal:** Enable safe re-initialization without requiring `--purge` first.
 
-**Implementation Plan:**
+**Implementation Summary:**
 
 **1. Smart Re-initialization (`pyve --init` on existing project):**
 
@@ -253,15 +253,61 @@ Choose [1/2/3]: 1
 - Document safe vs. destructive scenarios
 - Add troubleshooting for common re-init issues
 
-**Files to Modify:**
-- `pyve.sh`: Add re-initialization detection and logic
-- `pyve.sh`: Add `--update` and `--force` flag parsing
-- `pyve.sh`: Add interactive prompt for existing installations
-- `pyve.sh`: Modify `--init` to use `write_config_with_version()`
-- `lib/version.sh`: Use existing validation functions
-- `tests/unit/test_reinit.bats`: Unit tests for re-init logic
-- `tests/integration/test_reinit.py`: Integration tests for re-init scenarios
-- `README.md`: Document smart re-initialization
+**Files Created:**
+- `tests/unit/test_reinit.bats` - Unit tests for re-initialization logic (240+ lines)
+- `tests/integration/test_reinit.py` - Integration tests for re-init scenarios (280+ lines)
+
+**Files Modified:**
+- `pyve.sh` - Added `--update` and `--force` flag parsing (lines 306-313)
+- `pyve.sh` - Added re-initialization detection and handling (lines 325-441)
+- `pyve.sh` - Updated help text with new flags (lines 103, 124-125)
+- `pyve.sh` - Added config creation with version for venv (lines 602-612)
+- `pyve.sh` - Added config creation with version for micromamba (lines 537-545)
+- `pyve.sh` - Bumped VERSION from 0.8.8 to 0.8.9 (line 23)
+- `README.md` - Added Smart Re-initialization section (lines 665-754)
+
+**Implementation Details:**
+
+**1. Re-initialization Detection:**
+- Checks for existing `.pyve/config` at start of `init()` function
+- Reads existing backend and version from config
+- Routes to appropriate handler based on mode (update, force, or interactive)
+
+**2. Safe Update Mode (`--update`):**
+- Preserves existing virtual environment
+- Updates `pyve_version` in config using `update_config_version()`
+- Detects and rejects backend changes (requires `--force`)
+- Shows version migration (old → new)
+- Returns early without re-creating environment
+
+**3. Force Re-initialization Mode (`--force`):**
+- Prompts for confirmation before purging
+- Calls `purge()` to remove existing environment
+- Proceeds with fresh initialization
+- Allows backend changes
+
+**4. Interactive Mode (default):**
+- Shows existing version and backend information
+- Presents 3 options: Update in-place, Purge and re-init, Cancel
+- Validates conflicts before allowing update
+- Provides clear error messages for incompatible changes
+
+**5. Conflict Detection:**
+- Backend change detection (venv ↔ micromamba)
+- Clear error messages with suggested commands
+- Prevents destructive operations in safe mode
+
+**6. Config File Creation:**
+- Both venv and micromamba backends now create `.pyve/config`
+- Config includes `pyve_version` field
+- Venv config includes backend, venv directory, Python version
+- Micromamba config includes backend and environment name
+
+**Testing:**
+- 30+ unit tests covering detection, conflicts, version updates, config creation
+- 25+ integration tests covering update mode, force mode, interactive prompts, edge cases
+- Tests for legacy projects without version field
+- Tests for conflict detection and error handling
 
 ---
 

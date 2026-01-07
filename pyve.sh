@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.8"
+VERSION="0.8.9"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -100,7 +100,7 @@ pyve - Python Virtual Environment Manager
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
-                [--env-name <name>] [--no-direnv]
+                [--env-name <name>] [--no-direnv] [--update | --force]
     pyve run <command> [args...]
     pyve doctor
     pyve --validate
@@ -121,11 +121,19 @@ COMMANDS:
                         Optional: --env-name <name> to specify environment name (micromamba)
                         Optional: --no-direnv to skip .envrc creation (for CI/CD)
                         Optional: --local-env to copy ~/.local/.env template
+                        Optional: --update to safely update existing installation
+                        Optional: --force to purge and re-initialize (destructive)
 
-    run                 Run a command in the active environment
+    run <command> [args...]
+                        Execute commands in environment (for CI/CD and automation)
+                        <command>: The executable to run (python, pytest, pip, etc.)
+                        [args...]: Optional arguments passed to the command
+                        
+                        NOTE: With direnv (default), just use 'cd' + normal commands
+                        This is primarily for: CI/CD, Docker, --no-direnv setups
+                        
                         Automatically detects backend (venv or micromamba)
-                        Passes all arguments to the command
-                        Preserves exit codes
+                        Preserves exit codes and output
 
     doctor              Check environment health and show diagnostics
                         Reports backend, Python version, packages, and status
@@ -303,6 +311,14 @@ init() {
                 no_direnv=true
                 shift
                 ;;
+            --update)
+                PYVE_REINIT_MODE="update"
+                shift
+                ;;
+            --force)
+                PYVE_REINIT_MODE="force"
+                shift
+                ;;
             -*)
                 log_error "Unknown option: $1"
                 exit 1
@@ -313,6 +329,124 @@ init() {
                 ;;
         esac
     done
+    
+    # Check for existing installation (re-initialization detection)
+    if config_file_exists; then
+        local existing_backend
+        existing_backend="$(read_config_value "backend")"
+        local existing_version
+        existing_version="$(read_config_value "pyve_version")"
+        
+        # Handle re-initialization based on mode
+        if [[ "${PYVE_REINIT_MODE:-}" == "update" ]]; then
+            # Safe update mode
+            log_info "Updating existing Pyve installation..."
+            
+            # Check for conflicts
+            if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
+                log_error "Cannot update in-place: Backend change detected"
+                log_error "  Current: $existing_backend"
+                log_error "  Requested: $backend_flag"
+                echo ""
+                log_error "Backend changes require a clean re-initialization."
+                log_error "Run: pyve --init --force"
+                exit 1
+            fi
+            
+            # Perform safe update
+            update_config_version
+            log_info "✓ Configuration updated"
+            if [[ -n "$existing_version" ]]; then
+                log_info "  Version: $existing_version → $VERSION"
+            else
+                log_info "  Version: (not recorded) → $VERSION"
+            fi
+            log_info "  Backend: $existing_backend (unchanged)"
+            echo ""
+            log_info "Project updated to Pyve v$VERSION"
+            return 0
+            
+        elif [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
+            # Force re-initialization mode
+            log_warning "Force re-initialization: This will purge the existing environment"
+            log_warning "  Current backend: $existing_backend"
+            
+            # Prompt for confirmation
+            printf "\nContinue? [y/N]: "
+            read -r response
+            if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                log_info "Re-initialization cancelled"
+                exit 0
+            fi
+            
+            # Purge existing installation
+            log_info "Purging existing environment..."
+            purge
+            log_info "✓ Environment purged"
+            echo ""
+            log_info "Proceeding with fresh initialization..."
+            
+        else
+            # Interactive mode (no flag specified)
+            log_warning "Project already initialized with Pyve"
+            if [[ -n "$existing_version" ]]; then
+                log_warning "  Recorded version: $existing_version"
+            fi
+            log_warning "  Current version: $VERSION"
+            log_warning "  Backend: $existing_backend"
+            echo ""
+            printf "What would you like to do?\n"
+            printf "  1. Update in-place (preserves environment, updates config)\n"
+            printf "  2. Purge and re-initialize (clean slate)\n"
+            printf "  3. Cancel\n"
+            echo ""
+            printf "Choose [1/2/3]: "
+            read -r choice
+            
+            case "$choice" in
+                1)
+                    # Check for conflicts before updating
+                    if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
+                        log_error "Cannot update in-place: Backend change detected"
+                        log_error "  Current: $existing_backend"
+                        log_error "  Requested: $backend_flag"
+                        echo ""
+                        log_error "Use option 2 to purge and re-initialize with new backend"
+                        exit 1
+                    fi
+                    
+                    # Perform safe update
+                    update_config_version
+                    log_info "✓ Configuration updated"
+                    if [[ -n "$existing_version" ]]; then
+                        log_info "  Version: $existing_version → $VERSION"
+                    else
+                        log_info "  Version: (not recorded) → $VERSION"
+                    fi
+                    log_info "  Backend: $existing_backend (unchanged)"
+                    echo ""
+                    log_info "Project updated to Pyve v$VERSION"
+                    return 0
+                    ;;
+                2)
+                    # Purge and continue
+                    log_info "Purging existing environment..."
+                    purge
+                    log_info "✓ Environment purged"
+                    echo ""
+                    log_info "Proceeding with fresh initialization..."
+                    ;;
+                3)
+                    log_info "Initialization cancelled"
+                    exit 0
+                    ;;
+                *)
+                    log_error "Invalid choice: $choice"
+                    exit 1
+                    ;;
+            esac
+        fi
+    fi
     
     # Validate backend if specified
     if [[ -n "$backend_flag" ]]; then
@@ -406,6 +540,16 @@ init() {
         fi
         log_success "Updated .gitignore"
         
+        # Create .pyve/config with version tracking
+        mkdir -p .pyve
+        cat > .pyve/config << EOF
+pyve_version: "$VERSION"
+backend: micromamba
+micromamba:
+  env_name: $env_name
+EOF
+        log_success "Created .pyve/config"
+        
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
         printf "\nNext steps:\n"
@@ -470,6 +614,18 @@ init() {
     
     # Update .gitignore
     init_gitignore "$venv_dir"
+    
+    # Create .pyve/config with version tracking
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "$VERSION"
+backend: venv
+venv:
+  directory: $venv_dir
+python:
+  version: $python_version
+EOF
+    log_success "Created .pyve/config"
     
     printf "\n✓ Python environment initialized successfully!\n"
     if [[ "$no_direnv" == false ]]; then

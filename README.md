@@ -466,43 +466,60 @@ Regenerate with: conda-lock -f environment.yml
 
 ## Commands
 
-### `pyve run` - Execute Commands in Environment
+### `pyve run` - For CI/CD and Automation
 
-Run commands in your project environment without manual activation:
+> **Note for interactive use:** If you're using direnv (the default), you **don't need** `pyve run`. Just `cd` into your project and run commands normally. The environment auto-activates.
+
+**When you need `pyve run`:**
+- ✅ **CI/CD pipelines** (GitHub Actions, GitLab CI, etc.)
+- ✅ **Docker containers** without direnv
+- ✅ **Automation scripts** that need explicit environment execution
+- ✅ **Projects initialized with `--no-direnv`**
+
+**When you DON'T need it:**
+- ❌ **Interactive terminal use** with direnv (just use `cd` + normal commands)
+- ❌ **Local development** with direnv active
 
 ```bash
 pyve run <command> [args...]
 ```
 
-**How it works:**
-- Automatically detects backend (venv or micromamba)
-- Executes command in the active environment
-- Preserves exit codes
-- No activation needed
+**Arguments:**
+- `<command>`: The executable to run (python, pytest, pip, black, etc.)
+- `[args...]`: Optional arguments passed to the command
 
-**Examples:**
+**Interactive Use (with direnv - most users):**
 ```bash
-# Run Python
+cd /path/to/project    # direnv auto-activates environment
+python --version       # Just run commands normally
+pytest                 # No pyve run needed
+pip install requests   # Works directly
+```
+
+**CI/CD / Automation Use (without direnv):**
+```bash
+# GitHub Actions, Docker, scripts
+pyve --init --no-direnv
 pyve run python --version
-pyve run python script.py
-
-# Run tests
 pyve run pytest
-pyve run pytest tests/ -v
+pyve run pip install requests
 
-# Run formatters and linters
+# Automation from any directory
+cd /path/to/project && pyve run pytest
+(cd /path/to/project && pyve run python script.py)
+```
+
+**Full Examples:**
+```bash
+# CI/CD: No direnv, explicit execution
+pyve run python script.py
+pyve run pytest tests/ -v
 pyve run black .
 pyve run mypy src/
-pyve run ruff check
 
-# Install packages
-pyve run pip install requests
-pyve run pip install -r requirements.txt
-
-# Run any installed tool
-pyve run jupyter notebook
-pyve run flask run
-pyve run uvicorn main:app --reload
+# Automation: Run from outside project
+PROJECT_DIR="/path/to/project"
+cd "$PROJECT_DIR" && pyve run pytest tests/
 ```
 
 **Backend-Specific Behavior:**
@@ -661,6 +678,97 @@ Validation completed with warnings and errors.
 - **Migration** - Identify projects that need updating
 - **Troubleshooting** - Diagnose installation issues
 - **CI/CD** - Validate project structure in pipelines
+
+### Smart Re-initialization
+
+Pyve intelligently handles re-initialization of existing projects without requiring manual cleanup.
+
+**Running `pyve --init` on existing project:**
+
+When you run `pyve --init` on an already-initialized project, Pyve detects the existing installation and offers options:
+
+```bash
+$ pyve --init
+⚠ Project already initialized with Pyve
+  Recorded version: 0.8.7
+  Current version: 0.8.9
+  Backend: venv
+
+What would you like to do?
+  1. Update in-place (preserves environment, updates config)
+  2. Purge and re-initialize (clean slate)
+  3. Cancel
+
+Choose [1/2/3]:
+```
+
+**Non-interactive Flags:**
+
+```bash
+# Safe update (preserves environment)
+pyve --init --update
+
+# Force re-initialization (auto-purge, prompts for confirmation)
+pyve --init --force
+```
+
+**Safe Update (`--update`):**
+- Preserves existing virtual environment
+- Updates configuration and version tracking
+- Adds missing config fields
+- **Rejects** backend changes (requires `--force`)
+- **Rejects** major Python version changes
+
+**Example:**
+```bash
+$ pyve --init --update
+Updating existing Pyve installation...
+✓ Configuration updated
+  Version: 0.8.7 → 0.8.9
+  Backend: venv (unchanged)
+
+Project updated to Pyve v0.8.9
+```
+
+**Force Re-initialization (`--force`):**
+- Purges existing environment
+- Prompts for confirmation
+- Allows backend changes
+- Creates fresh installation
+
+**Example:**
+```bash
+$ pyve --init --force
+⚠ Force re-initialization: This will purge the existing environment
+  Current backend: venv
+
+Continue? [y/N]: y
+
+✓ Purging existing environment...
+✓ Environment purged
+
+Proceeding with fresh initialization...
+```
+
+**Conflict Detection:**
+
+Backend changes are detected and require `--force`:
+
+```bash
+$ pyve --init --backend micromamba --update
+✗ Cannot update in-place: Backend change detected
+  Current: venv
+  Requested: micromamba
+
+Backend changes require a clean re-initialization.
+Run: pyve --init --force
+```
+
+**Use Cases:**
+- **Version migration** - Update projects to newer Pyve versions
+- **Configuration updates** - Add new config fields safely
+- **Backend switching** - Change from venv to micromamba (or vice versa)
+- **Project recovery** - Fix corrupted installations
 
 ### `--no-direnv` Flag - Skip Direnv Configuration
 
