@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.6"
+VERSION="0.8.7"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -79,6 +79,13 @@ if [[ -f "$SCRIPT_DIR/lib/micromamba_env.sh" ]]; then
     source "$SCRIPT_DIR/lib/micromamba_env.sh"
 else
     printf "ERROR: Cannot find lib/micromamba_env.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/version.sh" ]]; then
+    source "$SCRIPT_DIR/lib/version.sh"
+else
+    printf "ERROR: Cannot find lib/version.sh\n" >&2
     exit 1
 fi
 

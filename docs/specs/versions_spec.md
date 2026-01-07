@@ -5,6 +5,9 @@ See `docs/guide_versions_spec.md`
 
 ## High-Level Feature Checklist
 
+### Phase 2.5: Version Tracking and Validation (v0.8.7 - v0.8.9)
+
+
 ### Phase 2: Testing Framework (v0.8.0 - v0.8.6)
 
 **Test Infrastructure:**
@@ -50,6 +53,363 @@ See `docs/guide_versions_spec.md`
 - [x] Testing best practices documentation
 - [x] CI/CD testing examples
 - [x] Coverage reporting documentation
+
+---
+
+## v0.8.9: Smart Re-initialization [Planned]
+**Depends on:** v0.8.7 (version tracking library), v0.8.8 (validate command)
+
+- [ ] Detect existing installation in `--init`
+- [ ] Add `--update` flag for safe in-place updates
+- [ ] Add `--force` flag for destructive re-initialization
+- [ ] Add interactive prompts for existing installations
+- [ ] Implement conflict detection (backend change, Python version change)
+- [ ] Modify config creation to include `pyve_version` field
+- [ ] Update config version on all config modifications
+- [ ] Add unit tests for re-init logic
+- [ ] Add integration tests for re-initialization scenarios
+- [ ] Document smart re-initialization in README
+- [ ] Bump version in pyve.sh from 0.8.8 to 0.8.9
+
+### Notes
+**Goal:** Enable safe re-initialization without requiring `--purge` first.
+
+**Implementation Plan:**
+
+**1. Smart Re-initialization (`pyve --init` on existing project):**
+
+**Detection:**
+- Check if `.pyve/config` exists
+- If exists: Project already initialized, enter re-init mode
+- If not exists: Normal initialization
+
+**Interactive Mode (default):**
+```bash
+$ pyve --init
+⚠ Project already initialized with Pyve v0.6.6
+  Current Pyve version: 0.8.7
+
+What would you like to do?
+  1. Update in-place (preserves environment, updates config)
+  2. Purge and re-initialize (clean slate)
+  3. Cancel
+
+Choose [1/2/3]: _
+```
+
+**Option 1: Update in-place** (Safe, non-destructive)
+- Update `pyve_version` in `.pyve/config`
+- Validate existing structure
+- Add missing config fields (backward compatible)
+- Update `.env` if needed
+- Preserve existing virtual environment
+- Check for conflicts:
+  - Backend change: Warn and require explicit purge
+  - Major Python version change: Warn and suggest purge
+  - Minor updates: Apply automatically
+
+**Option 2: Purge and re-initialize** (Destructive)
+- Run `pyve --purge` automatically
+- Then run normal `pyve --init`
+- Prompt for confirmation before purging
+
+**Non-interactive Flags:**
+```bash
+# Safe update (preserves environment)
+pyve --init --update
+
+# Force re-initialization (auto-purge, no prompt)
+pyve --init --force
+
+# Normal init (fails if already initialized)
+pyve --init  # with no flags, prompts if exists
+```
+
+**Safe Update Scenarios (no purge needed):**
+- Version update only (0.6.6 → 0.8.7)
+- Adding new config fields
+- Updating `.env` file
+- Minor Python version change (3.11.1 → 3.11.5)
+- Same backend, same major Python version
+
+**Requires Purge (destructive):**
+- Backend change (venv → micromamba or vice versa)
+- Major Python version change (3.10 → 3.11)
+- Venv directory change
+- Corrupted installation structure
+- User explicitly requests clean slate
+
+**Conflict Detection:**
+```bash
+$ pyve --init --backend micromamba --update
+✗ Cannot update in-place: Backend change detected
+  Current: venv
+  Requested: micromamba
+
+Backend changes require a clean re-initialization.
+Run: pyve --init --backend micromamba --force
+```
+
+**2. Integration with Existing Commands:**
+- `pyve --init`: Smart re-initialization with prompts
+- `pyve --init --update`: Safe in-place update
+- `pyve --init --force`: Destructive re-initialization
+- `pyve --doctor`: Include version validation in health check
+- `pyve --config`: Update version when modifying config
+- `pyve --run`: Validate before execution (optional, with flag to skip)
+- All commands: Check version compatibility on startup (lightweight check)
+
+**3. Migration Warnings:**
+- Detect version mismatches
+- Provide clear migration guidance:
+  - "Project initialized with v0.6.6, current Pyve is v0.8.9"
+  - "Run 'pyve --init --update' to update safely"
+  - "Run 'pyve --init --force' for clean re-initialization"
+- Log warnings to stderr (non-blocking)
+- Option to suppress warnings: `PYVE_SKIP_VERSION_CHECK=1`
+
+**4. Backward Compatibility:**
+- Projects without `pyve_version` field: Assume legacy, continue working
+- First command on legacy project: Add version field automatically
+- No breaking changes to existing functionality
+- Migration is opt-in (via `--init --update` or `--init --force`)
+
+**5. Re-initialization Examples:**
+```bash
+# Scenario 1: Safe version update
+$ pyve --init --update
+✓ Updating Pyve configuration...
+✓ Version: 0.6.6 → 0.8.7
+✓ Backend: venv (unchanged)
+✓ Python: 3.11 (unchanged)
+✓ Virtual environment: .venv (preserved)
+✓ Configuration updated successfully
+
+Project updated to Pyve v0.8.7.
+```
+
+```bash
+# Scenario 2: Backend change requires purge
+$ pyve --init --backend micromamba --update
+✗ Cannot update in-place: Backend change detected
+  Current: venv
+  Requested: micromamba
+
+Use --force to purge and re-initialize:
+  pyve --init --backend micromamba --force
+```
+
+```bash
+# Scenario 3: Force re-initialization
+$ pyve --init --force
+⚠ This will purge the existing environment and re-initialize.
+  Current backend: venv
+  Virtual environment: .venv
+
+Continue? [y/N]: y
+
+✓ Purging existing environment...
+✓ Removed .venv
+✓ Initializing new environment...
+✓ Created .venv with Python 3.11
+✓ Configuration saved
+
+Project re-initialized with Pyve v0.8.7.
+```
+
+```bash
+# Scenario 4: Interactive prompt
+$ pyve --init
+⚠ Project already initialized with Pyve v0.6.6
+  Current Pyve version: 0.8.7
+
+What would you like to do?
+  1. Update in-place (preserves environment, updates config)
+  2. Purge and re-initialize (clean slate)
+  3. Cancel
+
+Choose [1/2/3]: 1
+
+✓ Updating configuration...
+✓ Version: 0.6.6 → 0.8.7
+✓ Project updated successfully
+```
+
+**Testing:**
+- Unit tests for re-init detection logic
+- Unit tests for safe vs. destructive scenario detection
+- Unit tests for conflict detection
+- Integration tests for `--init --update`
+- Integration tests for `--init --force`
+- Integration tests for interactive prompts
+- Test migration scenarios (old → new version)
+- Test backend change detection
+- Test Python version change detection
+
+**Documentation:**
+- Update README with smart re-initialization
+- Document `--update` and `--force` flags
+- Add migration guide with examples
+- Document safe vs. destructive scenarios
+- Add troubleshooting for common re-init issues
+
+**Files to Modify:**
+- `pyve.sh`: Add re-initialization detection and logic
+- `pyve.sh`: Add `--update` and `--force` flag parsing
+- `pyve.sh`: Add interactive prompt for existing installations
+- `pyve.sh`: Modify `--init` to use `write_config_with_version()`
+- `lib/version.sh`: Use existing validation functions
+- `tests/unit/test_reinit.bats`: Unit tests for re-init logic
+- `tests/integration/test_reinit.py`: Integration tests for re-init scenarios
+- `README.md`: Document smart re-initialization
+
+---
+
+## v0.8.8: Validate Command Integration [Planned]
+**Depends on:** v0.8.7 (version tracking library)
+
+- [ ] Add `--validate` command to main script
+- [ ] Add `--validate` to help text
+- [ ] Integrate `run_full_validation()` into command handler
+- [ ] Add version validation to `--doctor` command
+- [ ] Add unit tests for validation command
+- [ ] Add integration tests for validation scenarios
+- [ ] Document `--validate` command in README
+- [ ] Bump version in pyve.sh from 0.8.7 to 0.8.8
+
+### Notes
+**Goal:** Expose validation functionality through `pyve --validate` command.
+
+**Implementation Plan:**
+
+**1. New Command: `pyve --validate`:**
+- Run full validation suite:
+  - Version compatibility check
+  - Installation structure validation
+  - Backend-specific validation
+  - Configuration schema validation
+- Output detailed report:
+  - ✓ Version compatible
+  - ✓ Structure valid
+  - ✗ Missing files
+  - ⚠ Migration recommended
+- Exit codes:
+  - 0: All validations pass
+  - 1: Validation errors (missing files, invalid config)
+  - 2: Warnings only (version mismatch, migration suggested)
+
+**2. Integration with `--doctor`:**
+- Add version validation check to doctor output
+- Show version compatibility status
+- Recommend `--validate` for detailed report
+
+**3. Help Text:**
+- Add `--validate` to usage examples
+- Document exit codes (0, 1, 2)
+- Explain validation checks performed
+
+**4. Validation Output Examples:**
+```bash
+$ pyve --validate
+✓ Pyve version: 0.8.8 (current)
+✓ Backend: venv
+✓ Virtual environment: .venv (exists)
+✓ Configuration: valid
+✓ Python version: 3.11 (available)
+✓ direnv integration: .env (exists)
+
+All validations passed.
+```
+
+```bash
+$ pyve --validate
+⚠ Pyve version: 0.6.6 (current: 0.8.8)
+  Migration recommended. Run 'pyve --init --update' to update.
+✓ Backend: venv
+✗ Virtual environment: .venv (missing)
+  Run 'pyve --init' to create.
+✓ Configuration: valid
+✓ Python version: 3.11 (available)
+
+Validation completed with warnings and errors.
+```
+
+**5. Config Format Example:**
+```yaml
+pyve_version: "0.8.8"
+backend: venv
+venv:
+  directory: .venv
+python:
+  version: "3.11"
+```
+
+**Testing:**
+- Unit tests for command parsing
+- Integration tests for validation output
+- Test all exit code scenarios
+- Test version mismatch warnings
+
+**Files to Modify:**
+- `pyve.sh`: Add `--validate` command handler
+- `pyve.sh`: Update `show_help()` with `--validate`
+- `pyve.sh`: Update `--doctor` to call `validate_pyve_version()`
+- `tests/unit/test_version.bats`: Unit tests for version functions
+- `tests/integration/test_validate.py`: Integration tests for validate command
+- `README.md`: Document `--validate` command
+
+---
+
+## v0.8.7: Version Tracking Library - Foundation [Implemented]
+- [x] Create `lib/version.sh` for version tracking functions
+- [x] Implement `compare_versions()` function
+- [x] Implement `validate_pyve_version()` function
+- [x] Implement `validate_installation_structure()` function
+- [x] Implement `validate_venv_structure()` function
+- [x] Implement `validate_micromamba_structure()` function
+- [x] Implement `run_full_validation()` function
+- [x] Implement `write_config_with_version()` function
+- [x] Implement `update_config_version()` function
+- [x] Source `lib/version.sh` in `pyve.sh`
+- [x] Bump version in pyve.sh from 0.8.6 to 0.8.7
+
+### Notes
+**Goal:** Create foundational library for version tracking and validation.
+
+**Implementation Summary:**
+
+Created `lib/version.sh` (320+ lines) with comprehensive version tracking and validation functions:
+
+**1. Version Comparison:**
+- `compare_versions()`: Semantic version comparison (returns "equal", "greater", or "less")
+- Handles multi-part version numbers (e.g., 0.8.7 vs 0.8.6)
+
+**2. Version Validation:**
+- `validate_pyve_version()`: Reads `pyve_version` from config and compares with current VERSION
+- Warns if version mismatch detected (unless `PYVE_SKIP_VERSION_CHECK=1`)
+- Handles missing version field (legacy projects)
+
+**3. Structure Validation:**
+- `validate_installation_structure()`: Validates .pyve directory and config file
+- `validate_venv_structure()`: Checks venv directory and Python executable
+- `validate_micromamba_structure()`: Checks environment.yml and environment name
+- Backend-specific validation for both venv and micromamba
+
+**4. Full Validation Report:**
+- `run_full_validation()`: Comprehensive validation with formatted output
+- Exit codes: 0 (pass), 1 (errors), 2 (warnings)
+- Checks version, backend, environment, config, Python version, direnv integration
+
+**5. Config Management:**
+- `write_config_with_version()`: Write new config with version field
+- `update_config_version()`: Update version in existing config
+
+**Files Created:**
+- `lib/version.sh` - Version tracking and validation library (320+ lines)
+
+**Files Modified:**
+- `pyve.sh` - Added sourcing of `lib/version.sh` (lines 85-90)
+- `pyve.sh` - Bumped VERSION from 0.8.6 to 0.8.7 (line 23)
 
 ---
 
