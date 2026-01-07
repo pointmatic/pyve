@@ -206,6 +206,8 @@ class ProjectBuilder:
     def create_pyve_config(
         self,
         backend: Optional[str] = None,
+        include_version: bool = True,
+        venv_dir: Optional[str] = None,
         **kwargs
     ) -> Path:
         """
@@ -213,6 +215,8 @@ class ProjectBuilder:
         
         Args:
             backend: Backend to configure
+            include_version: Whether to include pyve_version field
+            venv_dir: Custom venv directory
             **kwargs: Additional config options
             
         Returns:
@@ -222,8 +226,18 @@ class ProjectBuilder:
         config_dir.mkdir(exist_ok=True)
         
         content = ""
+        
+        # Add version if requested (default for v0.8.8+)
+        if include_version:
+            content += 'pyve_version: "0.8.8"\n'
+        
         if backend:
             content += f"backend: {backend}\n"
+        
+        # Add venv directory if specified
+        if venv_dir:
+            content += "venv:\n"
+            content += f"  directory: {venv_dir}\n"
         
         for key, value in kwargs.items():
             if isinstance(value, dict):

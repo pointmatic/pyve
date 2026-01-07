@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.7"
+VERSION="0.8.8"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -103,6 +103,7 @@ USAGE:
                 [--env-name <name>] [--no-direnv]
     pyve run <command> [args...]
     pyve doctor
+    pyve --validate
     pyve --purge [<dir>]
     pyve --python-version <ver>
     pyve --install
@@ -129,6 +130,10 @@ COMMANDS:
     doctor              Check environment health and show diagnostics
                         Reports backend, Python version, packages, and status
                         Detects issues with lock files and configuration
+
+    --validate          Validate Pyve installation and configuration
+                        Checks version compatibility, structure, and backend setup
+                        Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
     --purge, -p         Remove all Python environment artifacts
                         Optional: specify custom venv directory name (default: .venv)
@@ -1002,15 +1007,20 @@ run_command() {
 #============================================================
 
 doctor_command() {
-    printf "\nPyve Environment Diagnostics\n"
+    printf "Pyve Environment Diagnostics\n"
     printf "=============================\n\n"
     
-    # Detect active backend
+    # Check version compatibility
+    if config_file_exists; then
+        validate_pyve_version
+    fi
+    
     local backend=""
     local venv_dir="$DEFAULT_VENV_DIR"
     local env_path=""
     local env_name=""
     
+    # Detect active backend
     # Check for micromamba environment first
     if [[ -d ".pyve/envs" ]]; then
         local env_dirs=(.pyve/envs/*)
@@ -1220,6 +1230,10 @@ main() {
             ;;
         doctor)
             doctor_command
+            ;;
+        --validate)
+            run_full_validation
+            exit $?
             ;;
         *)
             log_error "Unknown command: $1"

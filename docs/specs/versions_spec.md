@@ -265,22 +265,22 @@ Choose [1/2/3]: 1
 
 ---
 
-## v0.8.8: Validate Command Integration [Planned]
+## v0.8.8: Validate Command Integration [Implemented]
 **Depends on:** v0.8.7 (version tracking library)
 
-- [ ] Add `--validate` command to main script
-- [ ] Add `--validate` to help text
-- [ ] Integrate `run_full_validation()` into command handler
-- [ ] Add version validation to `--doctor` command
-- [ ] Add unit tests for validation command
-- [ ] Add integration tests for validation scenarios
-- [ ] Document `--validate` command in README
-- [ ] Bump version in pyve.sh from 0.8.7 to 0.8.8
+- [x] Add `--validate` command to main script
+- [x] Add `--validate` to help text
+- [x] Integrate `run_full_validation()` into command handler
+- [x] Add version validation to `--doctor` command
+- [x] Add unit tests for validation command
+- [x] Add integration tests for validation scenarios
+- [x] Document `--validate` command in README
+- [x] Bump version in pyve.sh from 0.8.7 to 0.8.8
 
 ### Notes
 **Goal:** Expose validation functionality through `pyve --validate` command.
 
-**Implementation Plan:**
+**Implementation Summary:**
 
 **1. New Command: `pyve --validate`:**
 - Run full validation suite:
@@ -350,13 +350,39 @@ python:
 - Test all exit code scenarios
 - Test version mismatch warnings
 
-**Files to Modify:**
-- `pyve.sh`: Add `--validate` command handler
-- `pyve.sh`: Update `show_help()` with `--validate`
-- `pyve.sh`: Update `--doctor` to call `validate_pyve_version()`
-- `tests/unit/test_version.bats`: Unit tests for version functions
-- `tests/integration/test_validate.py`: Integration tests for validate command
-- `README.md`: Document `--validate` command
+**Files Created:**
+- `tests/unit/test_version.bats` - Unit tests for version functions (280+ lines)
+- `tests/integration/test_validate.py` - Integration tests for validation scenarios (320+ lines)
+
+**Files Modified:**
+- `pyve.sh` - Added `--validate` command handler (lines 1229-1232)
+- `pyve.sh` - Updated `show_help()` with `--validate` documentation (lines 106, 134-136)
+- `pyve.sh` - Added version validation to `doctor_command()` (lines 1013-1016)
+- `pyve.sh` - Bumped VERSION from 0.8.7 to 0.8.8 (line 23)
+- `tests/helpers/pyve_test_helpers.py` - Added `include_version` and `venv_dir` parameters to `create_pyve_config()` (lines 209-210, 231-240)
+- `README.md` - Added `pyve --validate` documentation section (lines 607-663)
+
+**Implementation Details:**
+
+**1. Command Integration:**
+- Added `--validate` to main command handler, calls `run_full_validation()` and exits with proper code
+- Updated help text with usage, description, and exit code documentation
+- Integrated `validate_pyve_version()` into `doctor` command for automatic version checking
+
+**2. Testing:**
+- 25+ unit tests covering version comparison, validation, structure checks, and config writing
+- 30+ integration tests covering validation scenarios, exit codes, edge cases, and platform-specific behavior
+- Test helpers updated to support legacy projects (without version field) and custom venv directories
+
+**3. Documentation:**
+- Comprehensive README section with examples, exit codes, and use cases
+- Success and warning output examples
+- Clear explanation of what gets validated
+
+**Exit Code Behavior:**
+- `0`: All validations pass
+- `1`: Validation errors (missing files, invalid config)
+- `2`: Warnings only (version mismatch, migration suggested)
 
 ---
 

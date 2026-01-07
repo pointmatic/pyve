@@ -604,6 +604,64 @@ Pyve Environment Diagnostics
 - **CI/CD** - Validate environment in pipelines
 - **Troubleshooting** - Quick health check
 
+### `pyve --validate` - Validate Installation
+
+Validate Pyve installation structure and version compatibility:
+
+```bash
+pyve --validate
+```
+
+**What it checks:**
+- Pyve version compatibility
+- Installation structure (.pyve directory, config file)
+- Backend configuration
+- Environment existence (venv directory or micromamba environment)
+- Python version availability
+- Direnv integration (.env file)
+
+**Example Output (Success):**
+```
+Pyve Installation Validation
+==============================
+
+✓ Pyve version: 0.8.8 (current)
+✓ Backend: venv
+✓ Virtual environment: .venv (exists)
+✓ Configuration: valid
+✓ Python version: 3.11 (available)
+✓ direnv integration: .env (exists)
+
+All validations passed.
+```
+
+**Example Output (Warnings):**
+```
+Pyve Installation Validation
+==============================
+
+⚠ Pyve version: 0.6.6 (current: 0.8.8)
+  Migration recommended. Run 'pyve --init --update' to update.
+✓ Backend: venv
+✗ Virtual environment: .venv (missing)
+  Run 'pyve --init' to create.
+✓ Configuration: valid
+✓ Python version: 3.11 (available)
+
+Validation completed with warnings and errors.
+```
+
+**Exit Codes:**
+- `0` - All validations passed
+- `1` - Validation errors (missing files, invalid config)
+- `2` - Warnings only (version mismatch, migration suggested)
+
+**Use Cases:**
+- **Version tracking** - Check if project uses current Pyve version
+- **Migration** - Identify projects that need updating
+- **Troubleshooting** - Diagnose installation issues
+- **CI/CD** - Validate project structure in pipelines
+
 ### `--no-direnv` Flag - Skip Direnv Configuration
 
 Skip `.envrc` creation for environments where direnv isn't available:
@@ -887,8 +945,8 @@ Mozilla Public License Version 2.0 - see LICENSE file.
 
 ## Copyright
 
-Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 
 ## Acknowledgments
 
-Thanks to the asdf, pyenv, and direnv communities for their excellent tools.
+Thanks to the asdf, pyenv, micromamba,and direnv communities for their excellent tools.
