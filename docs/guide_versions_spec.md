@@ -101,9 +101,10 @@ The first version in a project is the "Hello World" and is numbered v0.0.0. The 
 - Prefer `git mv` instead of `mv` for files tracked in the Git repository.
 
 ## Implementation Flow (Typical)
-1. Human or LLM adds/updates `docs/specs/versions_spec.md` with requirements and requests implementation.
-2. LLM implements code and tests per the targeted version.
-3. LLM updates the version checklist, appends `[Implemented]` if complete, and adds `### Notes`.
-4. LLM logs major decisions in `docs/specs/decisions_spec.md`; reference the entry in the version's `### Notes`.
-5. If follow-up fixes are requested, add a microversion and implement.
-6. If a larger plan is ready, add a new `[Planned]` version for review before implementation.
+1. Human or LLM adds/updates `docs/specs/versions_spec.md` with a version definition: number, title, requirements, and notes. 
+2. Human requests implementation "Please implement v#.#.# in the @versions_spec.md file".
+3. LLM implements code and tests per the targeted version.
+4. LLM updates the version checklist, appends `[Implemented]` if complete, and adds `### Notes`.
+5. LLM logs major decisions in `docs/specs/decisions_spec.md`, newest at the top; reference the entry in the version's `### Notes`.
+6. If follow-up fixes are requested, add a microversion and implement.
+7. If a larger plan is ready, add a new `[Planned]` version for review before implementation.
