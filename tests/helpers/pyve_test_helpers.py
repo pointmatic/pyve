@@ -87,9 +87,18 @@ class PyveRunner:
         
         return self.run(*args)
     
-    def doctor(self) -> subprocess.CompletedProcess:
-        """Run pyve doctor."""
-        return self.run('doctor')
+    def doctor(self, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+        """
+        Run pyve doctor.
+        
+        Args:
+            check: If True, raise CalledProcessError on non-zero exit (default: True)
+            **kwargs: Additional arguments passed to run()
+        
+        Returns:
+            CompletedProcess instance
+        """
+        return self.run('doctor', check=check, **kwargs)
     
     def run_cmd(self, *cmd_args: str) -> subprocess.CompletedProcess:
         """
