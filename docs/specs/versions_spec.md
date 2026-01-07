@@ -56,6 +56,46 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.11: Fix CI/CD Test Failures - Conditional Direnv Check [Implemented]
+**Depends on:** v0.8.10 (unit test bugfixes)
+
+- [x] Fix `check_direnv_installed()` being called unconditionally in venv backend init
+- [x] Make direnv check conditional on `--no-direnv` flag
+- [x] Verify GitHub Actions integration tests pass
+
+### Notes
+**Goal:** Fix GitHub Actions test failures caused by unconditional direnv check when `--no-direnv` is specified.
+
+**Bug:**
+- `check_direnv_installed()` was called unconditionally at line 590 in `pyve.sh`
+- Tests using `pyve --init --no-direnv` failed in CI environments without direnv
+- All 5 failing integration tests called `pyve.init(backend='venv')` which uses `--no-direnv`
+
+**Root Cause:**
+- The direnv installation check ran even when `--no-direnv` was specified
+- CI environments (GitHub Actions) don't have direnv installed
+- Tests correctly use `--no-direnv` but the check still ran and failed
+
+**Fix:**
+- Wrapped `check_direnv_installed()` call in conditional: only run when `no_direnv == false`
+- When `--no-direnv` is specified, skip the direnv installation check entirely
+- Direnv is only checked when it will actually be used
+
+**Files Modified:**
+- `pyve.sh` - Made direnv check conditional (lines 589-594)
+
+**Test Impact:**
+- Fixes 5 failing integration tests in GitHub Actions:
+  - `test_doctor.py::TestDoctorEdgeCases::test_doctor_output_format`
+  - `test_run_command.py::TestRunVenv::test_run_python_version`
+  - `test_run_command.py::TestRunVenv::test_run_python_script`
+  - `test_run_command.py::TestRunVenv::test_run_imports_installed_package`
+  - `test_run_command.py::TestRunVenv::test_run_pip_list`
+
+**Version Note:** Application version remains at 0.8.9 - no user-facing changes.
+
+---
+
 ## v0.8.10: Unit Test Bugfixes [Implemented]
 **Depends on:** v0.8.9d (CI/CD workflow improvements)
 

@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.9"
+VERSION="0.8.11"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -586,9 +586,11 @@ EOF
     fi
     log_info "Using $VERSION_MANAGER for Python version management"
     
-    # Check direnv
-    if ! check_direnv_installed; then
-        exit 1
+    # Check direnv (only if not using --no-direnv)
+    if [[ "$no_direnv" == false ]]; then
+        if ! check_direnv_installed; then
+            exit 1
+        fi
     fi
     
     # Ensure Python version is installed
