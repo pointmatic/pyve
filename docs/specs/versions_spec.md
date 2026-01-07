@@ -56,6 +56,34 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.10: Unit Test Bugfixes [Planned]
+**Depends on:** v0.8.9d (CI/CD workflow improvements)
+
+- [ ] Fix `validate_lock_file_status` exit code issues (4 tests)
+- [ ] Fix `validate_venv_structure` validation logic (2 tests)
+- [ ] Fix `validate_micromamba_structure` validation logic (1 test)
+- [ ] Verify all 215 unit tests pass
+
+### Notes
+**Goal:** Fix 7 pre-existing unit test failures to achieve 100% unit test pass rate.
+
+**Failing Tests:**
+1. `validate_lock_file_status: returns 1 when only conda-lock.yml exists` (test 93)
+2. `validate_lock_file_status: returns 1 when neither file exists` (test 94)
+3. `validate_lock_file_status: strict mode returns 1 when environment.yml missing` (test 98)
+4. `validate_lock_file_status: strict mode returns 1 when both files missing` (test 99)
+5. `validate_venv_structure: valid venv directory` (test 206)
+6. `validate_venv_structure: venv without python` (test 207)
+7. `validate_micromamba_structure: valid environment.yml` (test 210)
+
+**Investigation Needed:**
+- Review `validate_lock_file_status` function logic
+- Review `validate_venv_structure` function logic
+- Review `validate_micromamba_structure` function logic
+- Determine if tests are wrong or implementation is wrong
+
+---
+
 ## v0.8.9d: CI/CD Workflow Improvements [Implemented]
 **Depends on:** v0.8.9c (CI/CD compatibility fixes)
 
