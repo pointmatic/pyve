@@ -136,7 +136,7 @@ validate_installation_structure() {
 validate_venv_structure() {
     local venv_dir
     venv_dir="$(read_config_value "venv.directory")"
-    venv_dir="${venv_dir:-$DEFAULT_VENV_DIR}"
+    venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
     
     if [[ ! -d "$venv_dir" ]]; then
         log_error "Virtual environment not found: $venv_dir"
@@ -157,11 +157,9 @@ validate_micromamba_structure() {
         return 1
     fi
     
-    local env_name
-    env_name="$(resolve_environment_name "")"
-    
-    if [[ -z "$env_name" ]]; then
-        log_error "Could not determine environment name"
+    # Basic validation - file exists and is readable
+    if [[ ! -r "environment.yml" ]]; then
+        log_error "environment.yml is not readable"
         return 1
     fi
     
@@ -221,7 +219,7 @@ run_full_validation() {
         venv)
             local venv_dir
             venv_dir="$(read_config_value "venv.directory")"
-            venv_dir="${venv_dir:-$DEFAULT_VENV_DIR}"
+            venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
             
             if [[ -d "$venv_dir" ]]; then
                 echo "✓ Virtual environment: $venv_dir (exists)"

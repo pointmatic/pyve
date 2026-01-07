@@ -319,13 +319,20 @@ validate_lock_file_status() {
         return 0
     fi
     
-    # Case 3: Only conda-lock.yml exists (unusual but valid)
+    # Case 3: Only conda-lock.yml exists (error - missing source file)
     if [[ "$has_env_yml" == false ]] && [[ "$has_lock_yml" == true ]]; then
-        return 0
+        if [[ "$strict_mode" == true ]]; then
+            log_error "environment.yml missing but conda-lock.yml exists (strict mode)"
+            log_error "Lock file without source environment file is invalid"
+        fi
+        return 1
     fi
     
-    # Case 4: Neither file exists (error handled elsewhere)
-    return 0
+    # Case 4: Neither file exists (error)
+    if [[ "$strict_mode" == true ]]; then
+        log_error "Both environment.yml and conda-lock.yml missing (strict mode)"
+    fi
+    return 1
 }
 
 #============================================================
