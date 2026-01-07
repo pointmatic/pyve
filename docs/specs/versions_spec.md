@@ -56,6 +56,43 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.11a: Fix CI/CD Test Hanging - Skip Interactive Prompts [Implemented]
+**Depends on:** v0.8.11 (conditional direnv check)
+
+- [x] Skip confirmation prompt in CI environments for `--force` flag
+- [x] Add `--force` flag to test helper's `init()` method
+- [x] Verify GitHub Actions integration tests complete without hanging
+
+### Notes
+**Goal:** Fix GitHub Actions tests hanging on interactive prompts.
+
+**Bug:**
+- After fixing v0.8.11, tests hung indefinitely waiting for user input
+- Re-initialization prompts in `--force` mode caused tests to block
+- Tests couldn't complete because they waited for confirmation that never came
+
+**Root Cause:**
+- When `pyve --init` runs on a directory with existing `.pyve/config`, it enters re-init mode
+- `--force` flag prompts for confirmation: "Continue? [y/N]:"
+- In CI environments, there's no user to provide input, causing infinite hang
+
+**Fix:**
+- Skip confirmation prompt when `CI` environment variable is set (GitHub Actions sets this)
+- Also skip when `PYVE_FORCE_YES` environment variable is set (for other CI systems)
+- Add `--force` flag to test helper's `init()` method to handle re-initialization scenarios
+
+**Files Modified:**
+- `pyve.sh` - Skip confirmation prompt in CI environments (lines 374-382)
+- `tests/helpers/pyve_test_helpers.py` - Added `--force` flag to init() (line 81)
+
+**Test Impact:**
+- Fixes 6 hanging integration tests in GitHub Actions
+- Tests now complete successfully without hanging on prompts
+
+**Version Note:** Application version remains at 0.8.11 - no user-facing changes.
+
+---
+
 ## v0.8.11: Fix CI/CD Test Failures - Conditional Direnv Check [Implemented]
 **Depends on:** v0.8.10 (unit test bugfixes)
 
@@ -83,6 +120,7 @@ See `docs/guide_versions_spec.md`
 
 **Files Modified:**
 - `pyve.sh` - Made direnv check conditional (lines 589-594)
+- `pyve.sh` - Bumped VERSION to 0.8.11 (line 23)
 
 **Test Impact:**
 - Fixes 5 failing integration tests in GitHub Actions:
@@ -92,7 +130,7 @@ See `docs/guide_versions_spec.md`
   - `test_run_command.py::TestRunVenv::test_run_imports_installed_package`
   - `test_run_command.py::TestRunVenv::test_run_pip_list`
 
-**Version Note:** Application version remains at 0.8.9 - no user-facing changes.
+**Version Note:** Application version updated to 0.8.11.
 
 ---
 

@@ -78,7 +78,7 @@ class PyveRunner:
         Returns:
             CompletedProcess instance
         """
-        args = ['--init', '--no-direnv']
+        args = ['--init', '--no-direnv', '--force']
         
         if backend:
             args.extend(['--backend', backend])

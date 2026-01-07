@@ -371,12 +371,14 @@ init() {
             log_warning "Force re-initialization: This will purge the existing environment"
             log_warning "  Current backend: $existing_backend"
             
-            # Prompt for confirmation
-            printf "\nContinue? [y/N]: "
-            read -r response
-            if [[ ! "$response" =~ ^[Yy]$ ]]; then
-                log_info "Re-initialization cancelled"
-                exit 0
+            # Prompt for confirmation (skip in CI or if PYVE_FORCE_YES is set)
+            if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+                printf "\nContinue? [y/N]: "
+                read -r response
+                if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                    log_info "Re-initialization cancelled"
+                    exit 0
+                fi
             fi
             
             # Purge existing installation
