@@ -5,6 +5,7 @@ Tests re-initialization scenarios including --update flag, --force flag,
 interactive prompts, and conflict detection.
 """
 
+import os
 import pytest
 from pathlib import Path
 
