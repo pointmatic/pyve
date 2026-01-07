@@ -77,7 +77,7 @@ jobs:
           git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
           echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bash_profile
       
-      - name: Install asdf Python plugin
+      - name: Setup asdf Python shim
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
             source $(brew --prefix asdf)/libexec/asdf.sh
@@ -85,8 +85,12 @@ jobs:
             source "$HOME/.asdf/asdf.sh"
           fi
           asdf plugin add python || true
-          asdf install python ${{ matrix.python-version }}
-          asdf global python ${{ matrix.python-version }}
+          # Use the Python already installed by actions/setup-python
+          PYTHON_PATH=$(which python)
+          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+          mkdir -p "$HOME/.asdf/installs/python/$PYTHON_VERSION/bin"
+          ln -sf "$PYTHON_PATH" "$HOME/.asdf/installs/python/$PYTHON_VERSION/bin/python"
+          asdf global python $PYTHON_VERSION
       
       - name: Run integration tests (venv only)
         run: |
