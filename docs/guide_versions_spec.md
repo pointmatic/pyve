@@ -100,11 +100,51 @@ The first version in a project is the "Hello World" and is numbered v0.0.0. The 
   - destructive commands like `rm`, `mv` (except in the /tmp directory). Ask the human first for file deletes/renames 
 - Prefer `git mv` instead of `mv` for files tracked in the Git repository.
 
+## Testing Requirements
+**CRITICAL: All tests must pass locally before committing.**
+
+### Before Every Commit
+Run the full test suite locally to catch errors before CI/CD:
+```bash
+# Run all tests (unit + integration)
+make test
+
+# Or run specific test suites
+make test-unit          # Bats unit tests only
+make test-integration   # pytest integration tests only
+```
+
+### What Tests Should Catch Locally
+- ✅ Missing imports (`import os`, etc.)
+- ✅ Syntax errors
+- ✅ Undefined variables/functions
+- ✅ Calling non-existent methods
+- ✅ Basic logic errors
+- ✅ Test collection errors
+
+### What CI/CD Should Catch
+- Platform-specific issues (macOS vs Linux)
+- Python version compatibility (3.10, 3.11, 3.12)
+- Integration issues across environments
+- Edge cases on different platforms
+
+### Mini Versions (a, b, c, ...)
+Use mini version letters for test/CI/CD fixes that have **no user-facing impact**:
+- Test infrastructure fixes (missing imports, setup issues)
+- CI/CD configuration fixes
+- Test helper method additions
+- Documentation-only changes in test files
+
+**Example:** If v0.8.9 is implemented but tests fail in CI/CD due to missing imports, create v0.8.9a for the test fixes. The application version stays at 0.8.9.
+
 ## Implementation Flow (Typical)
 1. Human or LLM adds/updates `docs/specs/versions_spec.md` with a version definition: number, title, requirements, and notes. 
 2. Human requests implementation "Please implement v#.#.# in the @versions_spec.md file".
 3. LLM implements code and tests per the targeted version.
-4. LLM updates the version checklist, appends `[Implemented]` if complete, and adds `### Notes`.
-5. LLM logs major decisions in `docs/specs/decisions_spec.md`, newest at the top; reference the entry in the version's `### Notes`.
-6. If follow-up fixes are requested, add a microversion and implement.
-7. If a larger plan is ready, add a new `[Planned]` version for review before implementation.
+4. **LLM runs tests locally** (`make test`) to verify implementation before committing.
+5. LLM updates the version checklist, appends `[Implemented]` if complete, and adds `### Notes`.
+6. LLM logs major decisions in `docs/specs/decisions_spec.md`, newest at the top; reference the entry in the version's `### Notes`.
+7. **LLM commits and pushes only after local tests pass.**
+8. If CI/CD reveals test failures, add a mini version (a, b, c) for fixes.
+9. If follow-up feature fixes are requested, add a new patch version.
+10. If a larger plan is ready, add a new `[Planned]` version for review before implementation.

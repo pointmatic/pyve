@@ -56,6 +56,42 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.9b: Test Logic Fixes [Implemented]
+**Depends on:** v0.8.9a (test infrastructure fixes)
+
+- [x] Remove non-existent init_venv() and init_micromamba() from ProjectBuilder
+- [x] Update all test methods to use pyve.init() fixture instead
+- [x] Add project_dir property to ProjectBuilder for compatibility
+- [x] Add create_venv() helper method for test setup
+- [x] Update guide_versions_spec.md with testing requirements
+
+### Notes
+**Goal:** Fix test logic errors where tests called non-existent ProjectBuilder methods.
+
+**Implementation Summary:**
+
+**Test Logic Fixes:**
+- Removed broken `init_venv()` and `init_micromamba()` methods from ProjectBuilder that tried to find pyve.sh using incorrect path logic
+- Updated all 15+ test methods in `test_reinit.py` to use `pyve.init()` fixture instead of `project_builder.init_venv()`
+- Added `project_dir` property to ProjectBuilder as alias for `base_path` (compatibility)
+- Added `create_venv()` helper method for creating venv directory structure in tests without running pyve
+
+**Process Improvements:**
+- Updated `docs/guide_versions_spec.md` with new "Testing Requirements" section
+- Added explicit requirement: "All tests must pass locally before committing"
+- Clarified what tests should catch locally vs. what CI/CD should catch
+- Added mini version usage guidelines and examples
+- Updated implementation flow to include running `make test` before commits
+
+**Commits:**
+- `3d6c627` - Fix test_reinit.py to use pyve.init() instead of non-existent ProjectBuilder methods
+
+**Version Note:** Application version remains at 0.8.9 - no user-facing changes.
+
+**Lesson Learned:** Tests must be run locally before pushing. This mini version (and v0.8.9a) could have been avoided by running `make test` before the initial v0.8.9 commit.
+
+---
+
 ## v0.8.9a: Test Fixes [Implemented]
 **Depends on:** v0.8.9 (smart re-initialization)
 
