@@ -65,40 +65,36 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov pytest-xdist
       
-      - name: Install asdf (for Python version management)
-        if: runner.os == 'macOS'
-        run: |
-          brew install asdf
-          echo '. $(brew --prefix asdf)/libexec/asdf.sh' >> ~/.bash_profile
-      
-      - name: Install asdf (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
-          echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bash_profile
-      
-      - name: Setup asdf Python shim
+      - name: Install pyenv
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
-            source $(brew --prefix asdf)/libexec/asdf.sh
+            brew install pyenv
           else
-            source "$HOME/.asdf/asdf.sh"
+            curl https://pyenv.run | bash
           fi
-          asdf plugin add python || true
-          # Use the Python already installed by actions/setup-python
-          PYTHON_PATH=$(which python)
+      
+      - name: Setup pyenv with Python
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          
+          # Get the full Python version from actions/setup-python
           PYTHON_VERSION=$(python --version | cut -d' ' -f2)
-          mkdir -p "$HOME/.asdf/installs/python/$PYTHON_VERSION/bin"
-          ln -sf "$PYTHON_PATH" "$HOME/.asdf/installs/python/$PYTHON_VERSION/bin/python"
-          asdf global python $PYTHON_VERSION
+          echo "Python version: $PYTHON_VERSION"
+          
+          # Install this specific Python version via pyenv
+          pyenv install $PYTHON_VERSION || echo "Python $PYTHON_VERSION already available"
+          pyenv global $PYTHON_VERSION
+          
+          # Verify pyenv setup
+          pyenv version
       
       - name: Run integration tests (venv only)
         run: |
-          if [ "$RUNNER_OS" == "macOS" ]; then
-            source $(brew --prefix asdf)/libexec/asdf.sh
-          else
-            source "$HOME/.asdf/asdf.sh"
-          fi
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
           pytest tests/integration/ -v -m "venv and not requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
