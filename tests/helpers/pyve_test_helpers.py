@@ -103,21 +103,23 @@ class PyveRunner:
         """
         return self.run('run', *cmd_args)
     
-    def purge(self, force: bool = False) -> subprocess.CompletedProcess:
+    def purge(self, force: bool = False, auto_yes: bool = False, **kwargs) -> subprocess.CompletedProcess:
         """
         Run pyve --purge.
         
         Args:
-            force: Skip confirmation prompt
+            force: Skip confirmation prompt (deprecated, use auto_yes)
+            auto_yes: Skip confirmation prompt
+            **kwargs: Additional arguments passed to run()
             
         Returns:
             CompletedProcess instance
         """
         args = ['--purge']
-        if force:
+        if force or auto_yes:
             # Send 'y' to confirmation prompt
-            return self.run(*args, input='y\n', check=False)
-        return self.run(*args)
+            return self.run(*args, input='y\n', **kwargs)
+        return self.run(*args, **kwargs)
     
     def config(self) -> subprocess.CompletedProcess:
         """Run pyve --config."""
@@ -140,6 +142,10 @@ class ProjectBuilder:
         """
         self.base_path = base_path
         self.base_path.mkdir(parents=True, exist_ok=True)
+    
+    def create_requirements(self, packages: List[str]) -> Path:
+        """Alias for create_requirements_txt."""
+        return self.create_requirements_txt(packages)
     
     def create_requirements_txt(self, packages: List[str]) -> Path:
         """
@@ -189,6 +195,14 @@ class ProjectBuilder:
         file_path.write_text(content)
         return file_path
     
+    def create_config(
+        self,
+        backend: Optional[str] = None,
+        **kwargs
+    ) -> Path:
+        """Alias for create_pyve_config."""
+        return self.create_pyve_config(backend=backend, **kwargs)
+    
     def create_pyve_config(
         self,
         backend: Optional[str] = None,
@@ -220,6 +234,41 @@ class ProjectBuilder:
                 content += f"{key}: {value}\n"
         
         file_path = config_dir / 'config'
+        file_path.write_text(content)
+        return file_path
+    
+    def create_pyproject_toml(
+        self,
+        name: str,
+        version: str = "0.1.0",
+        dependencies: Optional[List[str]] = None,
+    ) -> Path:
+        """
+        Create pyproject.toml file.
+        
+        Args:
+            name: Project name
+            version: Project version
+            dependencies: List of dependencies
+            
+        Returns:
+            Path to created file
+        """
+        if dependencies is None:
+            dependencies = []
+        
+        content = f"""[project]
+name = "{name}"
+version = "{version}"
+"""
+        
+        if dependencies:
+            content += "dependencies = [\n"
+            for dep in dependencies:
+                content += f'    "{dep}",\n'
+            content += "]\n"
+        
+        file_path = self.base_path / 'pyproject.toml'
         file_path.write_text(content)
         return file_path
     
