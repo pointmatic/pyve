@@ -188,11 +188,15 @@ ensure_python_version_installed() {
         return 1
     fi
     
-    # Prompt user before installing
+    # Prompt user before installing (auto-accept in CI)
     log_info "Python $version is not installed but is available via $VERSION_MANAGER."
-    if ! prompt_yes_no "Install Python $version now?"; then
-        log_info "Installation cancelled."
-        return 1
+    if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        if ! prompt_yes_no "Install Python $version now?"; then
+            log_info "Installation cancelled."
+            return 1
+        fi
+    else
+        log_info "Auto-installing in CI environment..."
     fi
     
     # Install it

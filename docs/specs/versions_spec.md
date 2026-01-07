@@ -56,15 +56,58 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-## v0.8.11a: Fix CI/CD Test Hanging - Skip Interactive Prompts [Implemented]
+## v0.8.11b: Fix CI/CD Test Hanging - Auto-Accept Installation Prompts [Implemented]
+**Depends on:** v0.8.11a (skip re-init confirmation)
+
+- [x] Auto-accept Python installation prompt in CI environments
+- [x] Auto-accept micromamba stale lock file prompt in CI environments
+- [x] Auto-accept micromamba missing lock file prompt in CI environments
+- [x] Verify GitHub Actions integration tests complete without hanging
+
+### Notes
+**Goal:** Fix remaining interactive prompts that cause tests to hang in CI.
+
+**Bug:**
+- After fixing v0.8.11a, tests still hung on Python installation and lock file prompts
+- Tests blocked waiting for user confirmation on installation/continuation
+- CI environments have no user to provide input
+
+**Root Cause:**
+- Three additional interactive prompts blocked in CI:
+  1. `ensure_python_version_installed()` prompts: "Install Python X.Y.Z now?"
+  2. `info_stale_lock_file()` prompts: "Continue anyway?" (outdated lock file)
+  3. `info_missing_lock_file()` prompts: "Continue anyway?" (no lock file)
+- These prompts didn't check for CI environment, causing infinite hang
+
+**Fix:**
+- All three prompts now check for `CI` or `PYVE_FORCE_YES` environment variables
+- When either is set, prompts are auto-accepted with informative log messages
+- Python installation: "Auto-installing in CI environment..."
+- Lock file prompts: "Auto-continuing in CI environment..."
+
+**Files Modified:**
+- `lib/env_detect.sh` - Auto-accept Python installation in CI (lines 191-200)
+- `lib/micromamba_env.sh` - Auto-accept stale lock file prompt in CI (lines 240-251)
+- `lib/micromamba_env.sh` - Auto-accept missing lock file prompt in CI (lines 266-277)
+
+**Test Impact:**
+- Fixes all remaining hanging integration tests in GitHub Actions
+- Tests now complete successfully without blocking on installation prompts
+- CI environments can install Python versions automatically
+
+**Version Note:** Application version remains at 0.8.11 - no user-facing changes.
+
+---
+
+## v0.8.11a: Fix CI/CD Test Hanging - Skip Re-init Confirmation [Implemented]
 **Depends on:** v0.8.11 (conditional direnv check)
 
 - [x] Skip confirmation prompt in CI environments for `--force` flag
 - [x] Add `--force` flag to test helper's `init()` method
-- [x] Verify GitHub Actions integration tests complete without hanging
+- [x] Verify tests don't hang on re-initialization prompts
 
 ### Notes
-**Goal:** Fix GitHub Actions tests hanging on interactive prompts.
+**Goal:** Fix GitHub Actions tests hanging on re-initialization confirmation prompt.
 
 **Bug:**
 - After fixing v0.8.11, tests hung indefinitely waiting for user input
@@ -77,17 +120,17 @@ See `docs/guide_versions_spec.md`
 - In CI environments, there's no user to provide input, causing infinite hang
 
 **Fix:**
-- Skip confirmation prompt when `CI` environment variable is set (GitHub Actions sets this)
-- Also skip when `PYVE_FORCE_YES` environment variable is set (for other CI systems)
+- Skip confirmation prompt when `CI` or `PYVE_FORCE_YES` environment variable is set
+- GitHub Actions automatically sets `CI=true`, so prompt is skipped
 - Add `--force` flag to test helper's `init()` method to handle re-initialization scenarios
 
 **Files Modified:**
-- `pyve.sh` - Skip confirmation prompt in CI environments (lines 374-382)
+- `pyve.sh` - Skip confirmation prompt in CI (lines 374-382)
 - `tests/helpers/pyve_test_helpers.py` - Added `--force` flag to init() (line 81)
 
 **Test Impact:**
-- Fixes 6 hanging integration tests in GitHub Actions
-- Tests now complete successfully without hanging on prompts
+- Fixes re-initialization hanging in GitHub Actions
+- Tests can now run `pyve --init` multiple times without blocking
 
 **Version Note:** Application version remains at 0.8.11 - no user-facing changes.
 

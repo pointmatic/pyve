@@ -237,12 +237,17 @@ warn_stale_lock_file() {
     printf "  conda-lock -f environment.yml -p %s\n" "$(uname -m)"
     printf "\n"
     
-    # Prompt user
-    if prompt_yes_no "Continue anyway?"; then
-        return 0
+    # Prompt user (auto-accept in CI)
+    if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        if prompt_yes_no "Continue anyway?"; then
+            return 0
+        else
+            log_info "Aborted. Please update lock file and try again."
+            return 1
+        fi
     else
-        log_info "Aborted. Please update lock file and try again."
-        return 1
+        log_info "Auto-continuing in CI environment..."
+        return 0
     fi
 }
 
@@ -258,12 +263,17 @@ info_missing_lock_file() {
     printf "This is especially important for CI/CD and production.\n"
     printf "\n"
     
-    # Prompt user
-    if prompt_yes_no "Continue anyway?"; then
-        return 0
+    # Prompt user (auto-accept in CI)
+    if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        if prompt_yes_no "Continue anyway?"; then
+            return 0
+        else
+            log_info "Aborted. Generate lock file and try again."
+            return 1
+        fi
     else
-        log_info "Aborted. Generate lock file and try again."
-        return 1
+        log_info "Auto-continuing in CI environment..."
+        return 0
     fi
 }
 
