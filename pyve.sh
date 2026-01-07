@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.11"
+VERSION="0.8.14"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -801,6 +801,9 @@ purge() {
     # Remove virtual environment
     purge_venv "$venv_dir"
     
+    # Remove .pyve directory (config and micromamba envs)
+    purge_pyve_dir
+    
     # Remove .envrc
     purge_envrc
     
@@ -833,6 +836,13 @@ purge_venv() {
         log_success "Removed $venv_dir"
     else
         log_info "No virtual environment found at '$venv_dir'"
+    fi
+}
+
+purge_pyve_dir() {
+    if [[ -d ".pyve" ]]; then
+        rm -rf ".pyve"
+        log_success "Removed .pyve directory (config and micromamba environments)"
     fi
 }
 

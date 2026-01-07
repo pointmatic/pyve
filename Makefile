@@ -6,13 +6,14 @@
 # Default target
 help:
 	@echo "Pyve Test Targets:"
-	@echo "  make test                 - Run all tests (unit + integration)"
-	@echo "  make test-unit            - Run only Bats unit tests"
-	@echo "  make test-integration     - Run only pytest integration tests"
-	@echo "  make test-integration-ci  - Run integration tests with CI=true (simulates CI)"
-	@echo "  make test-all             - Run all tests with verbose output"
-	@echo "  make coverage             - Run tests with coverage reporting"
-	@echo "  make clean                - Clean test artifacts"
+	@echo "  make test                          - Run all tests (unit + integration)"
+	@echo "  make test-unit                     - Run only Bats unit tests"
+	@echo "  make test-integration              - Run only pytest integration tests"
+	@echo "  make test-integration-ci           - Run venv tests with CI=true (simulates CI)"
+	@echo "  make test-integration-micromamba-ci - Run micromamba tests with CI=true"
+	@echo "  make test-all                      - Run all tests with verbose output"
+	@echo "  make coverage                      - Run tests with coverage reporting"
+	@echo "  make clean                         - Clean test artifacts"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Bats: brew install bats-core (macOS) or sudo apt-get install bats (Linux)"
@@ -58,6 +59,21 @@ test-integration-ci:
 	@if command -v pytest >/dev/null 2>&1; then \
 		if [ -d "tests/integration" ] && [ -n "$$(find tests/integration -name 'test_*.py' 2>/dev/null)" ]; then \
 			CI=true pytest tests/integration/ -v -m "venv and not requires_micromamba" --tb=short; \
+		else \
+			echo "No pytest tests found in tests/integration/"; \
+		fi \
+	else \
+		echo "Error: pytest not installed. Install with:"; \
+		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		exit 1; \
+	fi
+
+# Run micromamba integration tests with CI environment
+test-integration-micromamba-ci:
+	@echo "Running micromamba integration tests in CI mode..."
+	@if command -v pytest >/dev/null 2>&1; then \
+		if [ -d "tests/integration" ] && [ -n "$$(find tests/integration -name 'test_*.py' 2>/dev/null)" ]; then \
+			CI=true pytest tests/integration/ -v -m "micromamba or requires_micromamba" --tb=short; \
 		else \
 			echo "No pytest tests found in tests/integration/"; \
 		fi \

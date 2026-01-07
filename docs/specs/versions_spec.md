@@ -12,9 +12,9 @@ See `docs/guide_versions_spec.md`
 **Milestones:**
 - [x] v0.8.12: Local CI simulation with pytest (CI=true environment)
 - [x] v0.8.13: Fix venv integration test failures (34 passed, 0 failed)
-- [ ] v0.8.14: Test and fix micromamba integration tests
+- [x] v0.8.14: Fix micromamba integration test failures (37 passed, 0 failed)
 - [ ] v0.8.15: Fix codecov integration (currently shows "unknown")
-- [ ] v0.8.16: Review and fix/document skipped tests (24 skipped)
+- [ ] v0.8.16: Review and fix/document skipped tests (38 total skipped)
 - [ ] Achieve >80% code coverage on core functionality
 - [ ] Add coverage badges to README
 
@@ -66,6 +66,45 @@ See `docs/guide_versions_spec.md`
 - [x] Testing best practices documentation
 - [x] CI/CD testing examples
 - [x] Coverage reporting documentation
+
+---
+
+## v0.8.14: Fix Micromamba Integration Test Failures [Implemented]
+**Depends on:** v0.8.13 (venv tests passing)
+
+- [x] Fix `purge` command to remove `.pyve/` directory
+- [x] Fix `test_run_conda_list` to accept command not found (127)
+- [x] Add `test-integration-micromamba-ci` Makefile target
+- [x] Verify all micromamba integration tests pass with CI=true
+
+### Notes
+**Goal:** Achieve green state for all micromamba integration tests.
+
+**Status:**
+- **37 passed, 14 skipped, 0 failed** in CI mode
+- All micromamba workflow tests passing
+- All micromamba doctor tests passing
+- All micromamba run command tests passing
+
+**Issues Fixed:**
+
+1. **Purge not cleaning up micromamba environments**
+   - Problem: `purge` only removed `.venv` directory, not `.pyve/` directory
+   - `.pyve/` contains config file and micromamba environments (`.pyve/envs/`)
+   - After purge, `pyve doctor` still showed environment as existing
+   - Fix: Added `purge_pyve_dir()` function to remove `.pyve/` directory
+
+2. **Test expecting conda command to work**
+   - Problem: `test_run_conda_list` expected `conda list` to return 0 or 1
+   - Micromamba doesn't provide `conda` command alias, returns 127 (not found)
+   - Fix: Updated test to accept 127 as valid return code
+
+**Files Modified:**
+- `pyve.sh` - Bumped VERSION to 0.8.14 (line 23)
+- `pyve.sh` - Added `purge_pyve_dir()` function (lines 842-847)
+- `pyve.sh` - Call `purge_pyve_dir()` in `purge()` function (line 805)
+- `tests/integration/test_run_command.py` - Accept 127 in `test_run_conda_list` (line 178)
+- `Makefile` - Added `test-integration-micromamba-ci` target (lines 71-83)
 
 ---
 
