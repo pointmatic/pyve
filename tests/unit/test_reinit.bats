@@ -8,6 +8,9 @@
 #============================================================
 
 setup() {
+    # Set PYVE_ROOT first
+    export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
+    
     # Load test helpers
     load '../helpers/test_helper'
     
