@@ -91,10 +91,18 @@ jobs:
           pyenv version
       
       - name: Run integration tests (venv only)
+        env:
+          PYENV_ROOT: ${{ github.workspace }}/../.pyenv
         run: |
           export PYENV_ROOT="$HOME/.pyenv"
-          export PATH="$PYENV_ROOT/bin:$PATH"
+          export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
+          eval "$(pyenv init --path)"
           eval "$(pyenv init -)"
+          
+          # Verify pyenv is working
+          which pyenv
+          pyenv version
+          
           pytest tests/integration/ -v -m "venv and not requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
