@@ -112,17 +112,76 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-## v0.8.2: Bats Unit Tests - Part 1 [Planned]
-- [ ] Create `tests/unit/test_backend_detect.bats` (file detection, priority resolution)
-- [ ] Create `tests/unit/test_config_parse.bats` (YAML parsing, nested keys)
-- [ ] Create `tests/unit/test_env_naming.bats` (sanitization, validation, resolution)
-- [ ] Implement Bats setup/teardown functions
-- [ ] Add test helper functions (`tests/helpers/test_helper.bash`)
-- [ ] Verify all unit tests pass
-- [ ] Bump version in pyve.sh from 0.8.1 to 0.8.2
+## v0.8.2: Bats Unit Tests - Part 1 [Implemented]
+- [x] Create `tests/unit/test_backend_detect.bats` (file detection, priority resolution)
+- [x] Create `tests/unit/test_config_parse.bats` (YAML parsing, nested keys)
+- [x] Create `tests/unit/test_env_naming.bats` (sanitization, validation, resolution)
+- [x] Implement Bats setup/teardown functions
+- [x] Add test helper functions (`tests/helpers/test_helper.bash`)
+- [x] Verify all unit tests pass
+- [x] Bump version in pyve.sh from 0.8.1 to 0.8.2
 
 ### Notes
 **Goal:** Implement core unit tests for backend detection and configuration.
+
+**Implementation Summary:**
+- Created tests/helpers/test_helper.bash (160+ lines) with:
+  - `setup_pyve_env()` - Source all pyve lib modules
+  - `create_test_dir()` / `cleanup_test_dir()` - Temporary directory management
+  - `create_requirements_txt()`, `create_environment_yml()`, `create_pyve_config()`, `create_pyproject_toml()` - Test file generators
+  - Assertion helpers: `assert_file_exists()`, `assert_dir_exists()`, `assert_file_contains()`, `assert_output_contains()`, `assert_output_equals()`, `assert_status_equals()`
+  - Mock utilities: `mock_command()`, `unmock_command()`
+  - Environment helpers: `set_test_env()`, `unset_test_env()`
+
+- Created tests/unit/test_backend_detect.bats (200 lines, 23 tests):
+  - `detect_backend_from_files()` tests (7 tests): environment.yml, conda-lock.yml, requirements.txt, pyproject.toml, ambiguous, none, priority
+  - `get_backend_priority()` tests (7 tests): CLI priority, config priority, file detection, defaults, auto flag, ambiguous handling
+  - `validate_backend()` tests (5 tests): valid backends (venv, micromamba, auto), invalid backends
+  - `validate_config_file()` tests (4 tests): no config, valid config, invalid config, empty config
+
+- Created tests/unit/test_config_parse.bats (230 lines, 19 tests):
+  - Top-level key tests (5 tests): backend key, micromamba backend, non-existent keys, missing file, empty file
+  - Nested key tests (5 tests): venv.directory, micromamba.env_name, python.version, non-existent nested keys, non-existent sections
+  - Value format tests (4 tests): quoted values, single quotes, extra whitespace, numeric values
+  - Complex config tests (2 tests): multi-section configs, configs with comments
+  - `config_file_exists()` tests (3 tests): exists, doesn't exist, empty file
+
+- Created tests/unit/test_env_naming.bats (246 lines, 36 tests):
+  - `sanitize_environment_name()` tests (11 tests): lowercase conversion, space replacement, special character removal, hyphen handling, number prefix, underscore handling, truncation, empty string, complex names
+  - `is_reserved_environment_name()` tests (7 tests): base, root, default, conda, mamba, micromamba, non-reserved
+  - `validate_environment_name()` tests (13 tests): valid names, hyphens, underscores, numbers, reserved names, invalid characters, length limits
+  - `resolve_environment_name()` tests (5 tests): CLI priority, config priority, environment.yml priority, directory fallback, empty CLI flag
+
+**Testing Results:**
+- ✓ All 78 unit tests pass (23 + 19 + 36 = 78 tests)
+- ✓ 0 failures
+- ✓ Tests cover:
+  - Backend detection from files (environment.yml, requirements.txt, pyproject.toml, conda-lock.yml)
+  - Backend priority resolution (CLI > config > file detection > default)
+  - YAML config parsing (top-level and nested keys)
+  - Environment name sanitization and validation
+  - Environment name resolution with priority order
+- ✓ Test execution time: ~4-5 seconds for full suite
+- ✓ All setup/teardown functions working correctly
+- ✓ Temporary directory cleanup verified
+
+**Files Created:**
+- `tests/helpers/test_helper.bash` - Bats test helper functions (160+ lines)
+- `tests/unit/test_backend_detect.bats` - Backend detection tests (200 lines, 23 tests)
+- `tests/unit/test_config_parse.bats` - Config parsing tests (230 lines, 19 tests)
+- `tests/unit/test_env_naming.bats` - Environment naming tests (246 lines, 36 tests)
+
+**Files Modified:**
+- `pyve.sh` - Bumped VERSION from 0.8.1 to 0.8.2 (line 23)
+
+**Test Coverage:**
+- Backend detection: 100% of functions tested
+- Config parsing: 100% of read_config_value() scenarios tested
+- Environment naming: 100% of sanitize/validate/resolve functions tested
+- Edge cases: Empty inputs, invalid inputs, ambiguous scenarios, reserved names
+
+**Next Steps:**
+- v0.8.3: Implement Bats unit tests (Part 2) for micromamba core, lock validation, and utility functions
 
 ---
 

@@ -72,7 +72,7 @@ The version spec file is a markdown file with a specific structure.
   - Implement only the listed requirements for the targeted version.
   - Tick completed items `[x]`. If all are complete, append `[Implemented]` to the version title.
   - Use `### Notes` in the current version only to explain details, clarifications, partial work, or known issues. If correcting past guidance, reference the affected version (do not edit old versions).
-  - Record major architectural/process/tooling decisions in `docs/specs/decisions_spec.md` (include date, context, decision, consequences). Link the entry in the current version's `### Notes` when applicable.
+  - Record major architectural/process/tooling decisions in `docs/specs/decisions_spec.md` (include date, context, decision, consequences) in reverse chronological order, newest at the top of the file. Link the entry in the current version's `### Notes` when applicable.
     - Example “Decision reference” for Notes:
       - Decision: [2025-10-12: Switch to Service Account Auth](docs/specs/decisions_spec.md#2025-10-12-switch-to-service-account-auth) — requires sharing Sheet/Doc with the service account; update CI secrets.
 
