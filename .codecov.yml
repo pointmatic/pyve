@@ -1,0 +1,71 @@
+codecov:
+  require_ci_to_pass: yes
+  notify:
+    wait_for_ci: yes
+
+coverage:
+  precision: 2
+  round: down
+  range: "70...100"
+  
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%
+        base: auto
+    patch:
+      default:
+        target: auto
+        threshold: 1%
+    
+    changes:
+      default:
+        target: auto
+        threshold: 1%
+
+comment:
+  layout: "reach,diff,flags,tree,footer"
+  behavior: default
+  require_changes: no
+  require_base: no
+  require_head: yes
+
+flags:
+  integration-ubuntu-latest-py3.10:
+    carryforward: true
+  integration-ubuntu-latest-py3.11:
+    carryforward: true
+  integration-ubuntu-latest-py3.12:
+    carryforward: true
+  integration-macos-latest-py3.10:
+    carryforward: true
+  integration-macos-latest-py3.11:
+    carryforward: true
+  integration-macos-latest-py3.12:
+    carryforward: true
+  micromamba-ubuntu-latest-py3.11:
+    carryforward: true
+  micromamba-macos-latest-py3.11:
+    carryforward: true
+
+ignore:
+  - "tests/**/*"
+  - "docs/**/*"
+  - "*.md"
+  - ".github/**/*"
+
+component_management:
+  default_rules:
+    statuses:
+      - type: project
+        target: auto
+  individual_components:
+    - component_id: lib
+      name: Library Code
+      paths:
+        - lib/**/*.sh
+    - component_id: core
+      name: Core Script
+      paths:
+        - pyve.sh

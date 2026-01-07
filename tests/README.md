@@ -40,6 +40,106 @@ tests/
 └── README.md               # This file
 ```
 
+## CI/CD Integration
+
+Pyve uses GitHub Actions for continuous integration and testing across multiple platforms and Python versions.
+
+### Workflow Overview
+
+The CI/CD pipeline (`.github/workflows/test.yml`) runs automatically on:
+- Push to `main` or `develop` branches
+- Pull requests to `main` or `develop`
+- Manual workflow dispatch
+
+### Test Jobs
+
+**1. Unit Tests** (`unit-tests`)
+- Runs on: Ubuntu and macOS
+- Tests: Bats unit tests for shell functions
+- Coverage: All unit test files in `tests/unit/`
+
+**2. Integration Tests** (`integration-tests`)
+- Matrix: Ubuntu/macOS × Python 3.10/3.11/3.12
+- Tests: pytest integration tests (venv backend only)
+- Coverage: Uploaded to Codecov with flags per OS/Python version
+
+**3. Micromamba Tests** (`integration-tests-micromamba`)
+- Matrix: Ubuntu/macOS × Python 3.11
+- Tests: pytest integration tests requiring micromamba
+- Coverage: Uploaded to Codecov separately
+
+**4. Coverage Report** (`coverage-report`)
+- Combines coverage from all test jobs
+- Generates HTML coverage report
+- Uploads combined coverage artifact
+
+**5. Lint** (`lint`)
+- Runs shellcheck on shell scripts
+- Runs black and flake8 on Python code
+
+**6. Test Summary** (`test-summary`)
+- Aggregates results from all jobs
+- Fails if any required tests fail
+
+### Coverage Reporting
+
+Coverage is tracked using:
+- **pytest-cov**: Generates coverage during test runs
+- **Codecov**: Aggregates and visualizes coverage across jobs
+- **Badges**: Displayed in README.md
+
+Configuration:
+- `.codecov.yml`: Codecov settings and component management
+- `pytest.ini`: pytest coverage configuration
+
+### Running Tests Locally
+
+To run the same tests as CI/CD:
+
+```bash
+# Unit tests (Bats)
+make test-unit
+
+# Integration tests (pytest)
+pytest tests/integration/ -v
+
+# Integration tests with coverage
+pytest tests/integration/ -v --cov=. --cov-report=xml --cov-report=term
+
+# Specific markers
+pytest tests/integration/ -v -m "venv"
+pytest tests/integration/ -v -m "micromamba"
+pytest tests/integration/ -v -m "macos"
+pytest tests/integration/ -v -m "linux"
+```
+
+### Test Markers
+
+pytest markers for selective test execution:
+- `venv`: Tests for venv backend
+- `micromamba`: Tests for micromamba backend
+- `requires_micromamba`: Tests that require micromamba installed
+- `macos`: macOS-specific tests
+- `linux`: Linux-specific tests
+- `slow`: Long-running tests
+
+### Platform-Specific Testing
+
+The CI/CD pipeline tests on:
+- **Ubuntu Latest**: Linux compatibility
+- **macOS Latest**: macOS compatibility (both Intel and Apple Silicon)
+
+Python versions tested:
+- Python 3.10
+- Python 3.11
+- Python 3.12
+
+### Viewing Results
+
+- **GitHub Actions**: Check the Actions tab in the repository
+- **Codecov**: Visit https://codecov.io/gh/pointmatic/pyve
+- **Badges**: Status shown in README.md
+
 ## Installation
 
 ### Bats (for unit tests)

@@ -5,3 +5,5 @@
 .envrc
 .pyve
 __pycache__
+.coverage
+htmlcov
