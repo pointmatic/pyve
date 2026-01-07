@@ -56,6 +56,11 @@ class PyveRunner:
             kwargs['input'] = input
             kwargs['text'] = True
         
+        # Pass current environment to subprocess (includes PYENV_ROOT, PATH, etc.)
+        if 'env' not in kwargs:
+            import os
+            kwargs['env'] = os.environ.copy()
+        
         return subprocess.run(cmd, **kwargs)
     
     def init(
