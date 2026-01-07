@@ -305,61 +305,22 @@ version = "{version}"
         file_path.write_text(content)
         return file_path
     
-    def init_venv(self, python_version: str = "3.11", venv_dir: str = ".venv"):
+    @property
+    def project_dir(self):
+        """Alias for base_path for compatibility."""
+        return self.base_path
+    
+    def create_venv(self, venv_dir: str = ".venv"):
         """
-        Initialize a venv project by running pyve --init.
+        Create a venv directory structure (for testing without running pyve --init).
         
         Args:
-            python_version: Python version to use
             venv_dir: Virtual environment directory name
         """
-        import subprocess
-        import os
-        
-        # Change to project directory
-        original_dir = os.getcwd()
-        os.chdir(self.base_path)
-        
-        try:
-            # Run pyve --init
-            pyve_script = self.base_path.parent.parent / "pyve.sh"
-            subprocess.run(
-                [str(pyve_script), "--init", "--python-version", python_version],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-        finally:
-            os.chdir(original_dir)
-    
-    def init_micromamba(self, env_name: str = "test-env"):
-        """
-        Initialize a micromamba project by running pyve --init --backend micromamba.
-        
-        Args:
-            env_name: Environment name
-        """
-        import subprocess
-        import os
-        
-        # Create environment.yml first
-        self.create_environment_yml(env_name, ["python=3.11"])
-        
-        # Change to project directory
-        original_dir = os.getcwd()
-        os.chdir(self.base_path)
-        
-        try:
-            # Run pyve --init with micromamba backend
-            pyve_script = self.base_path.parent.parent / "pyve.sh"
-            subprocess.run(
-                [str(pyve_script), "--init", "--backend", "micromamba", "--auto-bootstrap"],
-                check=True,
-                capture_output=True,
-                text=True
-            )
-        finally:
-            os.chdir(original_dir)
+        venv_path = self.base_path / venv_dir
+        venv_path.mkdir(parents=True, exist_ok=True)
+        (venv_path / "bin").mkdir(exist_ok=True)
+        return venv_path
 
 
 def assert_file_exists(path: Union[Path, str], message: Optional[str] = None):

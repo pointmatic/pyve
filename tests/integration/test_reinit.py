@@ -15,7 +15,8 @@ class TestReinitUpdate:
     
     def test_update_preserves_venv(self, pyve, project_builder):
         """Test that --update preserves existing venv."""
-        project_builder.init_venv()
+        # Initialize first
+        pyve.init()
         
         venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
         venv_marker.write_text("test marker")
@@ -29,7 +30,8 @@ class TestReinitUpdate:
     
     def test_update_updates_version(self, pyve, project_builder):
         """Test that --update updates version in config."""
-        project_builder.init_venv()
+        # Initialize first
+        pyve.init()
         
         config_path = project_builder.project_dir / ".pyve" / "config"
         config_content = config_path.read_text()
@@ -44,7 +46,8 @@ class TestReinitUpdate:
     
     def test_update_rejects_backend_change(self, pyve, project_builder):
         """Test that --update rejects backend changes."""
-        project_builder.init_venv()
+        # Initialize with venv first
+        pyve.init()
         
         result = pyve.run("--init", "--backend", "micromamba", "--update")
         
@@ -53,7 +56,8 @@ class TestReinitUpdate:
     
     def test_update_allows_same_backend(self, pyve, project_builder):
         """Test that --update allows same backend."""
-        project_builder.init_venv()
+        # Initialize with venv first
+        pyve.init()
         
         result = pyve.run("--init", "--backend", "venv", "--update")
         
@@ -66,7 +70,7 @@ class TestReinitForce:
     
     def test_force_purges_existing_venv(self, pyve, project_builder):
         """Test that --force purges existing venv."""
-        project_builder.init_venv()
+        pyve.init()
         
         venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
         venv_marker.write_text("test marker")
@@ -78,7 +82,7 @@ class TestReinitForce:
     
     def test_force_prompts_for_confirmation(self, pyve, project_builder):
         """Test that --force prompts for confirmation."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", "--force", input="n\n")
         
@@ -88,7 +92,7 @@ class TestReinitForce:
     
     def test_force_allows_backend_change(self, pyve, project_builder):
         """Test that --force allows backend changes."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", "--backend", "venv", "--force", input="y\n")
         
@@ -101,7 +105,7 @@ class TestReinitInteractive:
     
     def test_interactive_option_1_updates(self, pyve, project_builder):
         """Test interactive mode option 1 (update)."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", input="1\n")
         
@@ -111,7 +115,7 @@ class TestReinitInteractive:
     
     def test_interactive_option_2_purges(self, pyve, project_builder):
         """Test interactive mode option 2 (purge and re-init)."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", input="2\n")
         
@@ -121,7 +125,7 @@ class TestReinitInteractive:
     
     def test_interactive_option_3_cancels(self, pyve, project_builder):
         """Test interactive mode option 3 (cancel)."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", input="3\n")
         
@@ -131,7 +135,7 @@ class TestReinitInteractive:
     
     def test_interactive_invalid_choice(self, pyve, project_builder):
         """Test interactive mode with invalid choice."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", input="5\n")
         
@@ -140,7 +144,7 @@ class TestReinitInteractive:
     
     def test_interactive_shows_version_info(self, pyve, project_builder):
         """Test that interactive prompt shows version info."""
-        project_builder.init_venv()
+        pyve.init()
         
         config_path = project_builder.project_dir / ".pyve" / "config"
         config_content = config_path.read_text()
@@ -158,7 +162,7 @@ class TestConflictDetection:
     
     def test_backend_conflict_in_interactive_mode(self, pyve, project_builder):
         """Test backend conflict detection in interactive mode."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", "--backend", "micromamba", input="1\n")
         
@@ -167,7 +171,7 @@ class TestConflictDetection:
     
     def test_no_conflict_without_backend_flag(self, pyve, project_builder):
         """Test no conflict when backend not specified."""
-        project_builder.init_venv()
+        pyve.init()
         
         result = pyve.run("--init", input="1\n")
         
