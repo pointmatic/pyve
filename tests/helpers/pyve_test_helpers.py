@@ -105,17 +105,18 @@ class PyveRunner:
         """
         return self.run('doctor', check=check, **kwargs)
     
-    def run_cmd(self, *cmd_args: str) -> subprocess.CompletedProcess:
+    def run_cmd(self, *cmd_args: str, **kwargs) -> subprocess.CompletedProcess:
         """
         Run pyve run <cmd>.
         
         Args:
             *cmd_args: Command and arguments to run
+            **kwargs: Additional arguments passed to run()
             
         Returns:
             CompletedProcess instance
         """
-        return self.run('run', *cmd_args)
+        return self.run('run', *cmd_args, **kwargs)
     
     def purge(self, force: bool = False, auto_yes: bool = False, **kwargs) -> subprocess.CompletedProcess:
         """

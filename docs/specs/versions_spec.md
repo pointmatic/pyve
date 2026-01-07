@@ -56,6 +56,60 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.11c: Fix Test Helper and Missing Package Installation [Implemented]
+**Depends on:** v0.8.11b (auto-accept installation prompts)
+
+- [x] Add `**kwargs` parameter to `PyveRunner.run_cmd()` method
+- [x] Fix TypeError when tests pass `check=False` to `run_cmd()`
+- [x] Add missing `pip install` steps in tests that expect packages
+
+### Notes
+**Goal:** Fix test failures caused by missing `check` parameter and missing package installation steps.
+
+**Bug #1: Missing `check` Parameter**
+- Tests calling `pyve.run_cmd('command', check=False)` failed with TypeError
+- Error: "PyveRunner.run_cmd() got an unexpected keyword argument 'check'"
+- Multiple tests affected across test_run_command.py, test_venv_workflow.py, test_micromamba_workflow.py
+
+**Root Cause #1:**
+- `run_cmd()` method signature didn't accept `**kwargs`
+- Tests need to pass `check=False` to allow commands to fail without raising exceptions
+- Method only accepted positional arguments for command args
+
+**Fix #1:**
+- Changed signature from `def run_cmd(self, *cmd_args: str)` to `def run_cmd(self, *cmd_args: str, **kwargs)`
+- Pass `**kwargs` through to underlying `run()` method
+- Allows tests to pass `check=False` and other subprocess parameters
+
+**Bug #2: Missing Package Installation**
+- Tests expected packages from `requirements.txt` to be available after `pyve init`
+- Tests failed: "import requests" failed, pip list didn't show requests
+- `pyve --init` only creates venv, doesn't install packages automatically
+
+**Root Cause #2:**
+- Tests created `requirements.txt` and called `pyve.init()` but didn't install packages
+- `pyve --init` creates the virtual environment but doesn't run `pip install -r requirements.txt`
+- Tests need explicit step to install dependencies
+
+**Fix #2:**
+- Added `pyve.run_cmd('pip', 'install', '-r', 'requirements.txt')` after init in failing tests
+- Tests now explicitly install packages before trying to import them
+- Matches expected workflow: init creates venv, then user installs packages
+
+**Files Modified:**
+- `tests/helpers/pyve_test_helpers.py` - Added `**kwargs` to run_cmd() (lines 108-119)
+- `tests/integration/test_run_command.py` - Added pip install steps (lines 47, 59)
+
+**Test Impact:**
+- Fixes TypeError in 5+ integration tests
+- Fixes package import failures in test_run_imports_installed_package
+- Fixes pip list assertion in test_run_pip_list
+- Tests can now properly test error conditions with `check=False`
+
+**Version Note:** Application version remains at 0.8.11 - no user-facing changes.
+
+---
+
 ## v0.8.11b: Fix CI/CD Test Hanging - Auto-Accept Installation Prompts [Implemented]
 **Depends on:** v0.8.11a (skip re-init confirmation)
 

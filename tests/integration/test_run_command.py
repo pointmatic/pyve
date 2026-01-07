@@ -44,6 +44,7 @@ class TestRunVenv:
         """Test that run can import installed packages."""
         project_builder.create_requirements(['requests==2.31.0'])
         pyve.init(backend='venv')
+        pyve.run_cmd('pip', 'install', '-r', 'requirements.txt')
         
         result = pyve.run_cmd('python', '-c', 'import requests; print(requests.__version__)')
         
@@ -55,6 +56,7 @@ class TestRunVenv:
         """Test running pip list in venv."""
         project_builder.create_requirements(['requests==2.31.0'])
         pyve.init(backend='venv')
+        pyve.run_cmd('pip', 'install', '-r', 'requirements.txt')
         
         result = pyve.run_cmd('pip', 'list')
         
