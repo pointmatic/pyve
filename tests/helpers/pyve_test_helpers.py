@@ -73,7 +73,7 @@ class PyveRunner:
         
         Args:
             backend: Backend to use (venv, micromamba, auto)
-            **kwargs: Additional flags (converted to --flag-name)
+            **kwargs: Additional flags (converted to --flag-name) and subprocess options
             
         Returns:
             CompletedProcess instance
@@ -83,6 +83,11 @@ class PyveRunner:
         if backend:
             args.extend(['--backend', backend])
         
+        # Separate subprocess options from pyve flags
+        subprocess_opts = {}
+        if 'check' in kwargs:
+            subprocess_opts['check'] = kwargs.pop('check')
+        
         for key, value in kwargs.items():
             flag = f"--{key.replace('_', '-')}"
             if value is True:
@@ -90,7 +95,7 @@ class PyveRunner:
             elif value is not False and value is not None:
                 args.extend([flag, str(value)])
         
-        return self.run(*args)
+        return self.run(*args, **subprocess_opts)
     
     def doctor(self, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
         """

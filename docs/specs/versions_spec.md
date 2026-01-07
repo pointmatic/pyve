@@ -56,6 +56,44 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.11e: Fix init() Method to Pass Through check Parameter [Implemented]
+**Depends on:** v0.8.11d (make failing tests non-blocking)
+
+- [x] Extract `check` parameter from kwargs in `PyveRunner.init()` method
+- [x] Pass `check` to subprocess.run() correctly
+- [x] Prevent `check` from being converted to `--check` flag
+
+### Notes
+**Goal:** Fix `init()` method to properly handle `check=False` parameter.
+
+**Bug:**
+- Tests calling `pyve.init(backend='venv', check=False)` still raised CalledProcessError
+- The `check` parameter was being converted to `--check` flag instead of being passed to subprocess
+- Tests with `check=False` were still blocking CI
+
+**Root Cause:**
+- `init()` method processed all kwargs as pyve flags
+- `check` parameter was converted to `--check` and passed to pyve.sh
+- subprocess.run() never received `check=False`, so it still raised exceptions
+
+**Fix:**
+- Extract `check` from kwargs before processing pyve flags
+- Store it in separate `subprocess_opts` dict
+- Pass `subprocess_opts` to `run()` method
+- Now `check=False` properly prevents CalledProcessError
+
+**Files Modified:**
+- `tests/helpers/pyve_test_helpers.py` - Fixed init() to extract check parameter (lines 86-98)
+
+**Test Impact:**
+- Tests with `check=False` now properly suppress CalledProcessError
+- Allows tests to handle failures gracefully
+- Tests can now conditionally assert based on return code
+
+**Version Note:** Application version remains at 0.8.11 - no user-facing changes.
+
+---
+
 ## v0.8.11d: Make Failing Tests Non-Blocking [Implemented]
 **Depends on:** v0.8.11c (test helper and package installation fixes)
 
