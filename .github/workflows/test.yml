@@ -69,16 +69,32 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install asdf
-          echo '. $(brew --prefix asdf)/libexec/asdf.sh' >> ~/.zshrc
+          echo '. $(brew --prefix asdf)/libexec/asdf.sh' >> ~/.bash_profile
       
       - name: Install asdf (Linux)
         if: runner.os == 'Linux'
         run: |
           git clone https://github.com/asdf-vm/asdf.git ~/.asdf --branch v0.14.0
-          echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bashrc
+          echo '. "$HOME/.asdf/asdf.sh"' >> ~/.bash_profile
+      
+      - name: Install asdf Python plugin
+        run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            source $(brew --prefix asdf)/libexec/asdf.sh
+          else
+            source "$HOME/.asdf/asdf.sh"
+          fi
+          asdf plugin add python || true
+          asdf install python ${{ matrix.python-version }}
+          asdf global python ${{ matrix.python-version }}
       
       - name: Run integration tests (venv only)
         run: |
+          if [ "$RUNNER_OS" == "macOS" ]; then
+            source $(brew --prefix asdf)/libexec/asdf.sh
+          else
+            source "$HOME/.asdf/asdf.sh"
+          fi
           pytest tests/integration/ -v -m "venv and not requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
