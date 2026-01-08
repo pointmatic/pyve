@@ -69,6 +69,68 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.8.15a: Fix Test Version Hardcoding and CI-Mode Test Adjustments [Implemented]
+**Depends on:** v0.8.15 (codecov integration)
+
+- [x] Add `get_pyve_version()` helper to dynamically extract version from `pyve.sh`
+- [x] Fix tests hardcoding version expectations (0.8.9 → dynamic)
+- [x] Mark interactive prompt tests to skip in CI mode
+- [x] Fix tests expecting errors to use `check=False`
+- [x] Adjust test expectations for CI vs non-CI behavior
+
+### Notes
+**Goal:** Fix test regressions from version bump to 0.8.14 and ensure tests work correctly in CI mode.
+
+**Status:**
+- **89 passed, 5 failed, 48 skipped** in CI mode (up from 71 passed, 10 failed)
+- Fixed 5 test failures related to version hardcoding
+- Identified 8 tests that require interactive prompts (skipped in CI)
+
+**Issues Fixed:**
+
+1. **Version hardcoding in tests**
+   - Problem: Tests hardcoded version expectations (0.8.9, 0.8.7) that broke after version bump to 0.8.14
+   - Tests affected: `test_update_updates_version`, `test_interactive_shows_version_info`
+   - Fix: Created `get_pyve_version()` helper in `pyve_test_helpers.py` to extract VERSION from `pyve.sh` dynamically
+   - Now tests will work regardless of version bumps
+
+2. **Interactive prompt tests failing in CI mode**
+   - Problem: 8 tests expected interactive prompts, but `CI=true` skips all prompts
+   - Tests affected: All tests in `TestReinitInteractive` and `TestConflictDetection` classes
+   - Fix: Added `@pytest.mark.skipif(os.environ.get('CI') == 'true', ...)` to skip in CI
+   - Tests still run locally for manual verification
+
+3. **Tests expecting failures not using check=False**
+   - Problem: `test_update_rejects_backend_change` expected non-zero exit but crashed
+   - Fix: Added `check=False` parameter to allow non-zero exit codes
+
+4. **Config-based tests conflicting with --force flag**
+   - Problem: Tests creating config files before init, but `PyveRunner.init()` adds `--force` which purges config
+   - Tests affected: `test_config_with_venv_directory`, `test_invalid_backend_in_config`, `test_update_with_corrupted_config`
+   - Fix: Use `pyve.run('--init', ...)` instead of `pyve.init()` to avoid automatic `--force` flag
+   - Made assertions conditional on CI mode where behavior differs
+
+**Files Modified:**
+- `tests/helpers/pyve_test_helpers.py` - Added `get_pyve_version()` helper (lines 13-27)
+- `tests/integration/test_reinit.py` - Fixed version hardcoding, added CI skip markers (lines 11, 35-51, 88-90, 92, 116, 127, 138, 149, 159, 183, 193, 276-281)
+- `tests/integration/test_auto_detection.py` - Added os import, fixed config tests (lines 8, 131-137, 248-256)
+
+**Test Results:**
+- Reinit tests: 19 passed, 0 failed, 9 skipped (8 CI-skipped + 1 micromamba unavailable)
+- Auto-detection tests: 10 passed, 0 failed, 0 skipped
+- Overall: 89 passed, 5 failed, 48 skipped
+
+**Remaining Failures (to fix in v0.8.15b+):**
+1. `test_run_installed_package[venv-<lambda>]` - Package installation issue
+2. `test_validate_no_project` - Validate command issue
+3. `test_validate_venv_project_success` - Missing `init_venv` method
+4. `test_validate_missing_venv` - Validate command issue
+5. `test_validate_missing_environment_yml` - Validate command issue
+
+**Version Note:** Application version remains at 0.8.14 - test infrastructure improvements only, no code changes.
+
+---
+
 ## v0.8.15: Fix Codecov Integration [Implemented]
 **Depends on:** v0.8.14 (micromamba tests passing)
 

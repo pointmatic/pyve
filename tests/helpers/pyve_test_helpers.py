@@ -4,9 +4,27 @@ Pyve Test Helpers
 Helper classes and utilities for pytest integration tests.
 """
 
+import re
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
+
+
+def get_pyve_version(script_path: Path) -> str:
+    """
+    Extract the VERSION from pyve.sh.
+    
+    Args:
+        script_path: Path to pyve.sh script
+        
+    Returns:
+        Version string (e.g., "0.8.14")
+    """
+    content = script_path.read_text()
+    match = re.search(r'^VERSION="([^"]+)"', content, re.MULTILINE)
+    if not match:
+        raise ValueError(f"Could not find VERSION in {script_path}")
+    return match.group(1)
 
 
 class PyveRunner:
