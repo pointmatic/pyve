@@ -218,6 +218,11 @@ class TestRunParametrized:
         file_creator(project_builder)
         pyve.init(backend=backend)
         
+        # Install dependencies (pyve init doesn't auto-install)
+        if backend == 'venv':
+            pyve.run_cmd('pip', 'install', '-r', 'requirements.txt')
+        # For micromamba, dependencies are installed during init from environment.yml
+        
         result = pyve.run_cmd('python', '-c', 'import requests; print("OK")')
         
         assert result.returncode == 0
