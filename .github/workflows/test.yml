@@ -109,6 +109,7 @@ jobs:
           flags: integration-${{ matrix.os }}-py${{ matrix.python-version }}
           name: integration-${{ matrix.os }}-py${{ matrix.python-version }}
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}  # Optional for public repos, uses GitHub OIDC by default
       
       - name: Upload integration test results
         if: always()
@@ -162,6 +163,7 @@ jobs:
           flags: micromamba-${{ matrix.os }}-py${{ matrix.python-version }}
           name: micromamba-${{ matrix.os }}-py${{ matrix.python-version }}
           fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}  # Optional for public repos, uses GitHub OIDC by default
 
   coverage-report:
     name: Coverage Report

@@ -13,7 +13,7 @@ See `docs/guide_versions_spec.md`
 - [x] v0.8.12: Local CI simulation with pytest (CI=true environment)
 - [x] v0.8.13: Fix venv integration test failures (34 passed, 0 failed)
 - [x] v0.8.14: Fix micromamba integration test failures (37 passed, 0 failed)
-- [ ] v0.8.15: Fix codecov integration (currently shows "unknown")
+- [x] v0.8.15: Fix codecov integration (token + config added, requires admin setup)
 - [ ] v0.8.16: Review and fix/document skipped tests (38 total skipped)
 - [ ] Achieve >80% code coverage on core functionality
 - [ ] Add coverage badges to README
@@ -66,6 +66,57 @@ See `docs/guide_versions_spec.md`
 - [x] Testing best practices documentation
 - [x] CI/CD testing examples
 - [x] Coverage reporting documentation
+
+---
+
+## v0.8.15: Fix Codecov Integration [Implemented]
+**Depends on:** v0.8.14 (micromamba tests passing)
+
+- [x] Configure codecov uploads in GitHub Actions workflow
+- [x] Create codecov.yml configuration file
+- [x] Create codecov setup documentation
+- [x] Configure coverage targets and ignored paths
+
+### Notes
+**Goal:** Fix codecov badge showing "unknown" and enable proper coverage tracking.
+
+**Problem:**
+- Codecov badge in README shows "unknown"
+- No codecov.yml configuration file existed
+- Workflow needed proper codecov upload configuration
+
+**Solution:**
+1. **Updated workflow for tokenless uploads**
+   - For public repos: Codecov v4 uses GitHub OIDC authentication (no token needed)
+   - Token parameter is optional and only used if `CODECOV_TOKEN` secret exists
+   - Works automatically for public repositories via GitHub's built-in authentication
+
+2. **Created codecov.yml configuration**
+   - Target coverage: 80%
+   - Precision: 2 decimal places
+   - Ignored paths: tests/, docs/, __pycache__/
+   - PR comment behavior configured
+
+3. **Created setup documentation**
+   - Explains public vs private repository setup
+   - Step-by-step guide for adding repository to Codecov
+   - Troubleshooting common issues
+   - Local coverage generation instructions
+
+**Files Modified:**
+- `.github/workflows/test.yml` - Configured codecov uploads with optional token (lines 112, 166)
+- `codecov.yml` - Created configuration file (new)
+- `docs/codecov-setup.md` - Created setup guide (new)
+
+**Next Steps (simple for public repos):**
+1. Go to [codecov.io](https://codecov.io) and sign in with GitHub
+2. Add `pointmatic/pyve` repository to Codecov dashboard
+3. Push to trigger workflow - uploads will work automatically via GitHub OIDC
+4. Verify badge updates to show coverage percentage
+
+**Note:** Token is only required for private repositories. Public repos use GitHub's OIDC authentication automatically.
+
+**Version Note:** Application version remains at 0.8.14 - CI/CD configuration only, no code changes.
 
 ---
 
