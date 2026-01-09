@@ -210,12 +210,17 @@ get_file_mtime_formatted() {
 # Check if running in interactive mode
 # Returns: 0 if interactive, 1 if non-interactive (CI/batch)
 is_interactive() {
-    # Check if stdin is a terminal
-    if [[ -t 0 ]]; then
-        return 0
-    else
+    # Force non-interactive behavior in CI and test runners
+    if [[ -n "${CI:-}" ]] || [[ -n "${BATS_TEST_FILENAME:-}" ]] || [[ -n "${BATS_RUN_TMPDIR:-}" ]]; then
         return 1
     fi
+
+    # Interactive only when both stdin and stdout are terminals
+    if [[ -t 0 ]] && [[ -t 1 ]]; then
+        return 0
+    fi
+
+    return 1
 }
 
 # Warn about stale lock file (interactive mode only)

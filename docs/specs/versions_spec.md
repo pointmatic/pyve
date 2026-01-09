@@ -69,7 +69,20 @@ See `docs/guide_versions_spec.md`
 - [x] CI/CD testing examples
 - [x] Coverage reporting documentation
 
----
+
+## v0.8.16: Micromamba Messaging Fixes [Implemented]
+- [x] Fix micromamba bootstrap prompt context rendering so newlines print correctly (no literal `\n`)
+- [x] Add explicit guidance in micromamba init output to ignore micromamba’s “activate this environment” instructions (Pyve uses direnv / `pyve run`)
+- [x] Fix `make test` Bats hang by forcing non-interactive behavior under Bats/CI in `is_interactive()`
+- [x] Add `requirements-dev.txt` + `make test-deps` to declare/install pytest tooling for integration tests
+- [x] Bump Pyve version in `pyve.sh` to `0.8.16`
+
+### Notes
+* Fixed bootstrap context formatting by switching to ANSI-C quoting (`$'...'`) so `\n` renders as a real newline.
+* Added a Pyve-side note in micromamba “Next steps” instructing users to ignore micromamba’s activation instructions and use `direnv allow` / `pyve run`.
+* Updated `is_interactive()` to treat Bats/CI as non-interactive to prevent lock-file prompts during unit tests.
+* `make test` previously failed after Bats due to missing `pytest`; added `requirements-dev.txt` and a `test-deps` Makefile target.
+* Version bumped in `pyve.sh`: `VERSION="0.8.16"`.
 
 ## v0.8.15c: Document and Categorize Skipped Tests [Implemented]
 **Depends on:** v0.8.15b (all implemented features passing)

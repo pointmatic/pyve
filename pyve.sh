@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.14"
+VERSION="0.8.16"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -473,7 +473,7 @@ init() {
                 fi
             else
                 # Interactive bootstrap prompt
-                local context="Detected: environment.yml\nRequired: micromamba"
+                local context=$'Detected: environment.yml\nRequired: micromamba'
                 if ! bootstrap_micromamba_interactive "$context"; then
                     exit 1
                 fi
@@ -556,6 +556,7 @@ EOF
         printf "\nEnvironment location: %s\n" "$env_path"
         printf "\nNext steps:\n"
         if [[ "$no_direnv" == false ]]; then
+            printf "  Note: Ignore micromamba's 'activate' instructions above — Pyve uses direnv activation (or 'pyve run').\n"
             printf "  1. Run 'direnv allow' to activate the environment\n"
             printf "  2. Or use: pyve run <command>\n"
         else

@@ -3,6 +3,8 @@
 
 .PHONY: test test-unit test-integration test-integration-ci test-all coverage clean help
 
+PYTHON ?= python3
+
 # Default target
 help:
 	@echo "Pyve Test Targets:"
@@ -17,10 +19,16 @@ help:
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Bats: brew install bats-core (macOS) or sudo apt-get install bats (Linux)"
-	@echo "  - pytest: pip install pytest pytest-cov pytest-xdist"
+	@echo "  - pytest: $(PYTHON) -m pip install -r requirements-dev.txt"
+	@echo "  make test-deps                     - Install Python dev/test dependencies"
 
 # Run all tests (unit + integration)
 test: test-unit test-integration
+
+# Install Python dev/test dependencies
+test-deps:
+	@echo "Installing Python dev/test dependencies..."
+	@$(PYTHON) -m pip install -r requirements-dev.txt
 
 # Run only Bats unit tests
 test-unit:
@@ -49,7 +57,7 @@ test-integration:
 		fi \
 	else \
 		echo "Error: pytest not installed. Install with:"; \
-		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		echo "  $(PYTHON) -m pip install -r requirements-dev.txt"; \
 		exit 1; \
 	fi
 
@@ -64,7 +72,7 @@ test-integration-ci:
 		fi \
 	else \
 		echo "Error: pytest not installed. Install with:"; \
-		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		echo "  $(PYTHON) -m pip install -r requirements-dev.txt"; \
 		exit 1; \
 	fi
 
@@ -79,7 +87,7 @@ test-integration-micromamba-ci:
 		fi \
 	else \
 		echo "Error: pytest not installed. Install with:"; \
-		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		echo "  $(PYTHON) -m pip install -r requirements-dev.txt"; \
 		exit 1; \
 	fi
 
@@ -102,7 +110,7 @@ coverage:
 		fi \
 	else \
 		echo "Error: pytest not installed. Install with:"; \
-		echo "  pip install pytest pytest-cov pytest-xdist"; \
+		echo "  $(PYTHON) -m pip install -r requirements-dev.txt"; \
 		exit 1; \
 	fi
 
