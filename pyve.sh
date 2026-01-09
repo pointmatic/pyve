@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.20"
+VERSION="0.8.21"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -993,7 +993,7 @@ install_self() {
     # Create local .env template
     install_local_env_template
     
-    printf "\n✓ pyve installed successfully!\n"
+    printf "\n✓ pyve v%s installed successfully!\n" "$VERSION"
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
     printf "  source ~/.zshrc     # or ~/.bashrc\n"
@@ -1082,12 +1082,31 @@ EOF
 
     local source_line="source \"$PROMPT_HOOK_FILE\"  # Added by pyve installer"
 
-    if [[ -f "$rc_file" ]] && grep -qF "# Added by pyve installer" "$rc_file" && grep -qF "$PROMPT_HOOK_FILE" "$rc_file"; then
-        log_info "Prompt hook already configured in $rc_file"
-        return
+    # Ensure rc file exists
+    if [[ ! -f "$rc_file" ]]; then
+        touch "$rc_file"
     fi
 
-    printf "\n%s\n" "$source_line" >> "$rc_file"
+    # Remove any existing pyve prompt hook line (allows relocating it safely)
+    local tmp_rc
+    tmp_rc="$(mktemp)"
+    grep -vF "$PROMPT_HOOK_FILE" "$rc_file" > "$tmp_rc"
+
+    # Respect SDKMAN guidance about being at end of file
+    local sdkman_marker="#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!"
+    if grep -qF "$sdkman_marker" "$tmp_rc"; then
+        local tmp_out
+        tmp_out="$(mktemp)"
+        awk -v marker="$sdkman_marker" -v line="$source_line" '
+            $0 == marker { print line }
+            { print }
+        ' "$tmp_rc" > "$tmp_out"
+        mv -f "$tmp_out" "$tmp_rc"
+    else
+        printf "\n%s\n" "$source_line" >> "$tmp_rc"
+    fi
+
+    mv -f "$tmp_rc" "$rc_file"
     log_success "Added prompt hook to $rc_file"
 }
 

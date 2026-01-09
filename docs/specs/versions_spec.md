@@ -70,6 +70,13 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.21: Respect SDKMAN zshrc Ordering [Implemented]
+- [x] When installing the prompt hook into `~/.zshrc`, insert/relocate the `source ~/.local/.pyve_prompt.sh` line above SDKMAN’s "must be at end" marker
+- [x] Show version in install success message
+
+### Notes
+* Prevents breaking SDKMAN setups that require their initialization block to remain at the end of `~/.zshrc`.
+
 ## v0.8.20: Install Prompt Hook Automatically [Implemented]
 - [x] Install an interactive-shell prompt hook via `pyve --install` to display `PYVE_PROMPT_PREFIX` automatically (zsh/bash)
 - [x] Ensure uninstall removes the hook and sourcing line
