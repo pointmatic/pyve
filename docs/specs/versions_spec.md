@@ -70,6 +70,14 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.18: Fix Self-Reinstall When Running Installed Pyve [Implemented]
+- [x] Prevent `pyve --install` from overwriting the currently-running installed script by delegating reinstall to the repo copy via `exec`
+- [x] Document resolution of post-install transient errors (e.g. `line N: n: command not found`)
+
+### Notes
+* Running `pyve --install` from `~/.local/bin/pyve.sh` previously risked transient parse/runtime errors because the installer overwrote the script while it was executing.
+* Reinstall now delegates to the recorded source checkout (`~/.local/.pyve_source`) so the installer runs from a different file.
+
 ## v0.8.17: Harden Self-Install Atomicity [Implemented]
 - [x] Make `pyve --install` write `pyve.sh` atomically (copy to temp + chmod + atomic rename)
 - [x] Add brief note explaining the transient syntax error scenario and mitigation

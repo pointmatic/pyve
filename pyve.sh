@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.17"
+VERSION="0.8.18"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -933,6 +933,10 @@ install_self() {
                 log_error "Please run --install from the original pyve source directory."
                 exit 1
             fi
+
+            # Avoid rewriting the currently-running script. Delegate the reinstall to the
+            # repo copy so the installer runs from a different file.
+            exec "$source_dir/pyve.sh" --install
         else
             log_error "Cannot reinstall: source directory not recorded."
             log_error "Please run --install from the original pyve source directory."
