@@ -70,6 +70,13 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.19: Improve Direnv Prompt for Micromamba/Venv [Implemented]
+- [x] Update generated `.envrc` to export `PROMPT` (in addition to `PS1`) for better zsh prompt behavior
+- [x] Export `PYVE_BACKEND` and `PYVE_ENV_NAME`/`PYVE_ENV_PATH` variables from `.envrc` for user prompt customization
+
+### Notes
+* zsh prompt themes can ignore env-exported `PS1`; exporting `PROMPT` improves consistency when using direnv.
+
 ## v0.8.18: Fix Self-Reinstall When Running Installed Pyve [Implemented]
 - [x] Prevent `pyve --install` from overwriting the currently-running installed script by delegating reinstall to the repo copy via `exec`
 - [x] Document resolution of post-install transient errors (e.g. `line N: n: command not found`)

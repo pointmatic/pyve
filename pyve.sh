@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.18"
+VERSION="0.8.19"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -685,8 +685,11 @@ VENV_DIR="$venv_dir"
 
 if [[ -d "\$VENV_DIR" ]]; then
     source "\$VENV_DIR/bin/activate"
+    export PYVE_BACKEND="venv"
+    export PYVE_ENV_NAME="$project_name"
     # Update prompt to show backend and environment
     export PS1="(venv:$project_name) \$PS1"
+    export PROMPT="\$PS1"
 fi
 
 if [[ -f ".env" ]]; then
@@ -717,8 +720,12 @@ ENV_PATH="$env_path"
 if [[ -d "\$ENV_PATH" ]]; then
     # Add environment bin to PATH
     export PATH="\$ENV_PATH/bin:\$PATH"
+    export PYVE_BACKEND="micromamba"
+    export PYVE_ENV_NAME="\$ENV_NAME"
+    export PYVE_ENV_PATH="\$ENV_PATH"
     # Update prompt to show backend and environment
     export PS1="(micromamba:\$ENV_NAME) \$PS1"
+    export PROMPT="\$PS1"
 fi
 
 if [[ -f ".env" ]]; then
