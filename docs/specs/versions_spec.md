@@ -70,6 +70,13 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.17: Harden Self-Install Atomicity [Implemented]
+- [x] Make `pyve --install` write `pyve.sh` atomically (copy to temp + chmod + atomic rename)
+- [x] Add brief note explaining the transient syntax error scenario and mitigation
+
+### Notes
+* Hardens `install_self` to avoid executing a partially-written `pyve.sh` during self-install/reinstall.
+
 ## v0.8.16a: Add Deterministic Micromamba Bootstrap Unit Test [Implemented]
 - [x] Add deterministic Bats unit test for user-sandbox micromamba bootstrap install (mocked `curl`, sandboxed `HOME`)
 

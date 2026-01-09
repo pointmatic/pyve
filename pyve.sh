@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.16"
+VERSION="0.8.17"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -949,9 +949,12 @@ install_self() {
         log_success "Created $TARGET_BIN_DIR"
     fi
     
-    # Copy script
-    cp "$source_dir/pyve.sh" "$TARGET_SCRIPT_PATH"
-    chmod +x "$TARGET_SCRIPT_PATH"
+    # Copy script (atomic write to avoid partially-written script execution)
+    local tmp_script
+    tmp_script="$(mktemp "$TARGET_BIN_DIR/pyve.sh.XXXXXX")"
+    cp "$source_dir/pyve.sh" "$tmp_script"
+    chmod +x "$tmp_script"
+    mv -f "$tmp_script" "$TARGET_SCRIPT_PATH"
     log_success "Installed pyve.sh"
     
     # Copy lib directory
