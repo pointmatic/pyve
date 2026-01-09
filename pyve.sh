@@ -1231,6 +1231,17 @@ doctor_command() {
             printf "✓ Micromamba: %s (%s) v%s\n" "$mm_path" "$mm_location" "$mm_version"
         else
             printf "✗ Micromamba: not found\n"
+            if [[ -f ".pyve/bin/micromamba" ]] && [[ ! -x ".pyve/bin/micromamba" ]]; then
+                printf "  Found at: %s (not executable)\n" "$(pwd)/.pyve/bin/micromamba"
+                printf "  Fix with: chmod +x .pyve/bin/micromamba\n"
+            elif [[ -f "$HOME/.pyve/bin/micromamba" ]] && [[ ! -x "$HOME/.pyve/bin/micromamba" ]]; then
+                printf "  Found at: %s (not executable)\n" "$HOME/.pyve/bin/micromamba"
+                printf "  Fix with: chmod +x $HOME/.pyve/bin/micromamba\n"
+            else
+                printf "  Checked: .pyve/bin/micromamba\n"
+                printf "  Checked: $HOME/.pyve/bin/micromamba\n"
+                printf "  Checked: micromamba on PATH\n"
+            fi
         fi
         
         # Check environment

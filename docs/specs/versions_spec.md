@@ -70,6 +70,12 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.16a: Add Deterministic Micromamba Bootstrap Unit Test [Implemented]
+- [x] Add deterministic Bats unit test for user-sandbox micromamba bootstrap install (mocked `curl`, sandboxed `HOME`)
+
+### Notes
+* Added `tests/unit/test_micromamba_bootstrap.bats` to validate bootstrap installs an executable micromamba into `$HOME/.pyve/bin`.
+
 ## v0.8.16: Micromamba Messaging Fixes [Implemented]
 - [x] Fix micromamba bootstrap prompt context rendering so newlines print correctly (no literal `\n`)
 - [x] Add explicit guidance in micromamba init output to ignore micromamba’s “activate this environment” instructions (Pyve uses direnv / `pyve run`)
