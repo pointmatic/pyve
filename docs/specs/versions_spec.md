@@ -70,6 +70,16 @@ See `docs/guide_versions_spec.md`
 - [x] Coverage reporting documentation
 
 
+## v0.8.20: Install Prompt Hook Automatically [Implemented]
+- [x] Install an interactive-shell prompt hook via `pyve --install` to display `PYVE_PROMPT_PREFIX` automatically (zsh/bash)
+- [x] Ensure uninstall removes the hook and sourcing line
+- [x] Gentler prompt behavior: stop mutating `PS1`/`PROMPT` in generated `.envrc`; export `PYVE_PROMPT_PREFIX` instead
+
+### Notes
+* Generated `.envrc` now exports `PYVE_PROMPT_PREFIX` (and related `PYVE_*` variables) instead of mutating `PS1`/`PROMPT`.
+* The prompt hook prepends the prefix without clobbering the existing prompt.
+* The hook is sourced from `~/.zshrc` (zsh) or `~/.bashrc` (bash).
+
 ## v0.8.19: Improve Direnv Prompt for Micromamba/Venv [Implemented]
 - [x] Update generated `.envrc` to export `PROMPT` (in addition to `PS1`) for better zsh prompt behavior
 - [x] Export `PYVE_BACKEND` and `PYVE_ENV_NAME`/`PYVE_ENV_PATH` variables from `.envrc` for user prompt customization

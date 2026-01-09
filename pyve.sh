@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.19"
+VERSION="0.8.20"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -31,6 +31,7 @@ TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
 TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
 LOCAL_ENV_FILE="$HOME/.local/.env"
 SOURCE_DIR_FILE="$HOME/.local/.pyve_source"
+PROMPT_HOOK_FILE="$HOME/.local/.pyve_prompt.sh"
 
 #============================================================
 # Resolve Script Directory and Source Libraries
@@ -687,9 +688,7 @@ if [[ -d "\$VENV_DIR" ]]; then
     source "\$VENV_DIR/bin/activate"
     export PYVE_BACKEND="venv"
     export PYVE_ENV_NAME="$project_name"
-    # Update prompt to show backend and environment
-    export PS1="(venv:$project_name) \$PS1"
-    export PROMPT="\$PS1"
+    export PYVE_PROMPT_PREFIX="(venv:$project_name) "
 fi
 
 if [[ -f ".env" ]]; then
@@ -723,9 +722,7 @@ if [[ -d "\$ENV_PATH" ]]; then
     export PYVE_BACKEND="micromamba"
     export PYVE_ENV_NAME="\$ENV_NAME"
     export PYVE_ENV_PATH="\$ENV_PATH"
-    # Update prompt to show backend and environment
-    export PS1="(micromamba:\$ENV_NAME) \$PS1"
-    export PROMPT="\$PS1"
+    export PYVE_PROMPT_PREFIX="(micromamba:\$ENV_NAME) "
 fi
 
 if [[ -f ".env" ]]; then
@@ -989,6 +986,9 @@ install_self() {
     
     # Add to PATH if needed
     install_update_path
+
+    # Install prompt hook for interactive shells
+    install_prompt_hook
     
     # Create local .env template
     install_local_env_template
@@ -996,6 +996,7 @@ install_self() {
     printf "\n✓ pyve installed successfully!\n"
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
+    printf "  source ~/.zshrc     # or ~/.bashrc\n"
 }
 
 install_update_path() {
@@ -1024,6 +1025,70 @@ install_update_path() {
     # Add to profile
     printf "\n%s\n" "$path_line" >> "$profile_file"
     log_success "Added $TARGET_BIN_DIR to PATH in $profile_file"
+}
+
+install_prompt_hook() {
+    local rc_file=""
+
+    if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
+        rc_file="$HOME/.zshrc"
+    else
+        rc_file="$HOME/.bashrc"
+    fi
+
+    mkdir -p "$(dirname "$PROMPT_HOOK_FILE")"
+    cat > "$PROMPT_HOOK_FILE" << 'EOF'
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+  if [[ -z "${_PYVE_ORIG_PROMPT+set}" ]]; then
+    _PYVE_ORIG_PROMPT="$PROMPT"
+  fi
+
+  _pyve_prompt_update() {
+    if [[ -n "${PYVE_PROMPT_PREFIX:-}" ]]; then
+      PROMPT="${PYVE_PROMPT_PREFIX}${_PYVE_ORIG_PROMPT}"
+    else
+      PROMPT="${_PYVE_ORIG_PROMPT}"
+    fi
+  }
+
+  if (( ${precmd_functions[(Ie)_pyve_prompt_update]} == 0 )); then
+    precmd_functions+=(_pyve_prompt_update)
+  fi
+  _pyve_prompt_update
+elif [[ -n "${BASH_VERSION:-}" ]]; then
+  if [[ -z "${_PYVE_ORIG_PS1+set}" ]]; then
+    _PYVE_ORIG_PS1="$PS1"
+  fi
+
+  _pyve_prompt_update() {
+    if [[ -n "${PYVE_PROMPT_PREFIX:-}" ]]; then
+      PS1="${PYVE_PROMPT_PREFIX}${_PYVE_ORIG_PS1}"
+    else
+      PS1="${_PYVE_ORIG_PS1}"
+    fi
+  }
+
+  if [[ -z "${_PYVE_ORIG_PROMPT_COMMAND+set}" ]]; then
+    _PYVE_ORIG_PROMPT_COMMAND="${PROMPT_COMMAND:-}"
+  fi
+
+  PROMPT_COMMAND='_pyve_prompt_update;'
+  if [[ -n "${_PYVE_ORIG_PROMPT_COMMAND}" ]]; then
+    PROMPT_COMMAND+="${_PYVE_ORIG_PROMPT_COMMAND}"
+  fi
+  _pyve_prompt_update
+fi
+EOF
+
+    local source_line="source \"$PROMPT_HOOK_FILE\"  # Added by pyve installer"
+
+    if [[ -f "$rc_file" ]] && grep -qF "# Added by pyve installer" "$rc_file" && grep -qF "$PROMPT_HOOK_FILE" "$rc_file"; then
+        log_info "Prompt hook already configured in $rc_file"
+        return
+    fi
+
+    printf "\n%s\n" "$source_line" >> "$rc_file"
+    log_success "Added prompt hook to $rc_file"
 }
 
 install_local_env_template() {
@@ -1081,6 +1146,9 @@ uninstall_self() {
         rm -f "$SOURCE_DIR_FILE"
         log_success "Removed $SOURCE_DIR_FILE"
     fi
+
+    # Remove prompt hook
+    uninstall_prompt_hook
     
     # Remove PATH from profile (v0.6.1 feature)
     uninstall_clean_path
@@ -1108,6 +1176,32 @@ uninstall_clean_path() {
             fi
         fi
     done
+}
+
+uninstall_prompt_hook() {
+    local rc_files=(
+        "$HOME/.zshrc"
+        "$HOME/.bashrc"
+    )
+
+    local rc_file
+    for rc_file in "${rc_files[@]}"; do
+        if [[ -f "$rc_file" ]]; then
+            if grep -qF "$PROMPT_HOOK_FILE" "$rc_file" && grep -qF "# Added by pyve installer" "$rc_file"; then
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    sed -i '' "\\|$PROMPT_HOOK_FILE|d" "$rc_file"
+                else
+                    sed -i "\\|$PROMPT_HOOK_FILE|d" "$rc_file"
+                fi
+                log_success "Removed prompt hook from $rc_file"
+            fi
+        fi
+    done
+
+    if [[ -f "$PROMPT_HOOK_FILE" ]]; then
+        rm -f "$PROMPT_HOOK_FILE"
+        log_success "Removed $PROMPT_HOOK_FILE"
+    fi
 }
 
 #============================================================
