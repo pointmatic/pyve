@@ -69,7 +69,7 @@ Go to the root of your project directory and run `pyve --init` to initialize you
 
 In a single command, Pyve will:
 
-- **Set Python version**: Uses asdf or pyenv to set the Python version (default: 3.13.7)
+- **Set Python version**: Uses asdf or pyenv to set the Python version (default: 3.14.2)
 - **Create virtual environment**: Creates `.venv` directory with Python venv
 - **Configure direnv**: Sets up `.envrc` for automatic activation when entering the directory
 - **Create .env file**: Sets up a secure environment variables file (`chmod 600`)
@@ -207,6 +207,8 @@ pyve --init --backend venv         # Force venv
 - Projects with C/C++ dependencies
 - Cross-platform reproducibility needed
 - Projects already using conda/mamba
+
+Note: On Python 3.12+, Pyve installs a lightweight distutils compatibility shim (via `sitecustomize.py`) to avoid TensorFlow/Keras import failures in environments that still import `distutils`. Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
 
 After setup, run `direnv allow` to activate the environment.
 

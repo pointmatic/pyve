@@ -56,12 +56,13 @@ Pyve supports two environment backends:
 pyve.sh                      # Main entry point and orchestration
 lib/
   ├── utils.sh              # Logging, validation, file operations
-  ├── config.sh             # Configuration file parsing (YAML)
-  ├── backend.sh            # Backend detection and priority
-  ├── venv.sh               # Venv-specific functions
+  ├── env_detect.sh         # Environment file detection helpers
+  ├── backend_detect.sh     # Backend detection and priority
   ├── micromamba_core.sh    # Micromamba detection and version
   ├── micromamba_bootstrap.sh  # Micromamba installation
-  └── micromamba_env.sh     # Environment creation and naming
+  ├── micromamba_env.sh     # Environment creation and naming
+  ├── distutils_shim.sh     # Python 3.12+ distutils compatibility shim helpers
+  └── version.sh            # Version tracking and validation
 ```
 
 **Module Responsibilities:**
@@ -148,6 +149,12 @@ mkdir /tmp/pyve-test && cd /tmp/pyve-test
 /path/to/pyve.sh --init
 /path/to/pyve.sh --purge
 ```
+
+### Test Isolation (IMPORTANT)
+
+Do not let tests mutate developer state.
+
+If a Bats unit test references `"$HOME/.pyve"` (or any user-global path), sandbox `HOME` to a temporary directory inside `setup()` and restore it in `teardown()`.
 
 ### Testing Both Backends
 

@@ -108,10 +108,16 @@ pytest tests/integration/ -v --cov=. --cov-report=xml --cov-report=term
 
 # Specific markers
 pytest tests/integration/ -v -m "venv"
-pytest tests/integration/ -v -m "micromamba"
 pytest tests/integration/ -v -m "macos"
 pytest tests/integration/ -v -m "linux"
+pytest tests/integration/ -v -m "slow"
 ```
+
+### Test Isolation (IMPORTANT)
+
+Bats unit tests must not mutate developer state (especially `~/.pyve`).
+
+If a Bats test needs to reference `"$HOME/.pyve"` (or any user-global path), sandbox `HOME` inside `setup()` and restore it in `teardown()`.
 
 ### Test Markers
 
