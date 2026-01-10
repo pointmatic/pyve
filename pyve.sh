@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.8.21"
+VERSION="0.9.0"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -80,6 +80,13 @@ if [[ -f "$SCRIPT_DIR/lib/micromamba_env.sh" ]]; then
     source "$SCRIPT_DIR/lib/micromamba_env.sh"
 else
     printf "ERROR: Cannot find lib/micromamba_env.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/distutils_shim.sh" ]]; then
+    source "$SCRIPT_DIR/lib/distutils_shim.sh"
+else
+    printf "ERROR: Cannot find lib/distutils_shim.sh\n" >&2
     exit 1
 fi
 
@@ -522,7 +529,16 @@ init() {
         if ! verify_micromamba_env "$env_name"; then
             log_warning "Environment created but verification failed"
         fi
-        
+
+        # Apply Python 3.12+ distutils shim if needed
+        local env_prefix
+        env_prefix=".pyve/envs/$env_name"
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path)"
+        if [[ -n "$micromamba_path" ]]; then
+            pyve_install_distutils_shim_for_micromamba_prefix "$micromamba_path" "$env_prefix"
+        fi
+
         # Configure direnv for micromamba (unless --no-direnv)
         local env_path=".pyve/envs/$env_name"
         if [[ "$no_direnv" == false ]]; then
@@ -607,7 +623,12 @@ EOF
     
     # Create virtual environment
     init_venv "$venv_dir"
-    
+
+    # Apply Python 3.12+ distutils shim if needed
+    if [[ -x "$venv_dir/bin/python" ]]; then
+        pyve_install_distutils_shim_for_python "$venv_dir/bin/python"
+    fi
+
     # Configure direnv (unless --no-direnv)
     if [[ "$no_direnv" == false ]]; then
         init_direnv_venv "$venv_dir"

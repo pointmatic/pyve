@@ -16,6 +16,7 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/micromamba_core.sh"
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
     source "$PYVE_ROOT/lib/micromamba_env.sh"
+    source "$PYVE_ROOT/lib/distutils_shim.sh"
 }
 
 # Create a temporary test directory
