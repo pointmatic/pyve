@@ -7,14 +7,17 @@ See `docs/guide_versions_spec.md`
 
 ### Phase 3: Machine Learning Improvements
 - [x] Python 3.12 distutils compatibility shim for TensorFlow/Keras
+- [x] Pyve-managed local dev/test runner environment
+- [ ] Implement Bootstrap in integration tests
 
 ---
 
-## v0.9.2: Pyve-managed local dev/test runner environment [Planned]
-- [ ] Add first-class support for a dedicated dev/test runner environment that is separate from the Pyve-managed project environment
-- [ ] Provide a command to provision/install test tooling without mutating or depending on the project environment
-- [ ] Provide a command to run tests using the dedicated test runner environment
-- [ ] Ensure `pyve --init --force` never deletes or corrupts the dev/test runner environment
+## v0.9.2: Pyve-managed local dev/test runner environment [Implemented]
+- [x] Add first-class support for a dedicated dev/test runner environment that is separate from the Pyve-managed project environment
+- [x] Provide a command to provision/install test tooling without mutating or depending on the project environment
+- [x] Provide a command to run tests using the dedicated test runner environment
+- [x] Ensure `pyve --init --force` never deletes or corrupts the dev/test runner environment
+- [x] Bump pyve version to 0.9.2
 
 #### Problem
 Pyve intentionally creates/purges the project environment (commonly `.venv`) during initialization and re-initialization. If developers also install test tooling (e.g. `pytest`) into that same environment, running `pyve --init --force` can remove those dev/test dependencies, making local test execution brittle.
@@ -23,9 +26,9 @@ Pyve intentionally creates/purges the project environment (commonly `.venv`) dur
 Allow developers to use Pyve on every Python project while still having a stable, reproducible way to install and run `pytest` (and other dev/test tools) that does not get clobbered by Pyve’s management of the project environment.
 
 #### Proposed UX
-- [ ] `pyve testenv --init` (or similar): Create/manage a dedicated dev/test runner environment (default directory: `.pyve/testenv/`)
-- [ ] `pyve testenv --install -r requirements-dev.txt` (or similar): Install dev/test dependencies into the test runner environment
-- [ ] `pyve test ...`: Run `pytest` (or other tools) via the test runner environment, independent of the project environment
+- [x] `pyve testenv --init`: Create/manage a dedicated dev/test runner environment (default directory: `.pyve/testenv/`)
+- [x] `pyve testenv --install -r requirements-dev.txt` (or similar): Install dev/test dependencies into the test runner environment
+- [x] `pyve test ...`: Run `pytest` (or other tools) via the test runner environment, independent of the project environment
 
 #### Functional Requirements
 1. Separation: The dev/test runner environment must be stored outside the managed project environment directory (e.g. not inside `.venv/`).
@@ -35,7 +38,7 @@ Allow developers to use Pyve on every Python project while still having a stable
 5. Tooling access: `pytest` (and other tools) must be executed from the test runner environment, while running against the project directory under test.
 
 #### Test Plan
-- [ ] Integration test: initialize a project environment, install `pytest` into the dev/test runner environment, run `pyve test`, then run `pyve --init --force` and verify `pyve test` still works
+- [x] Integration test: initialize a project environment, install `pytest` into the dev/test runner environment, run `pyve test`, then run `pyve --init --force` and verify `pyve test` still works
 - [ ] Integration test: verify `pyve run` continues to execute within the project environment and does not depend on the dev/test runner environment
 
 ---

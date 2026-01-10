@@ -20,10 +20,11 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.1"
+VERSION="0.9.2"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
+TESTENV_DIR_NAME="testenv"
 
 # Installation paths
 TARGET_BIN_DIR="$HOME/.local/bin"
@@ -110,6 +111,8 @@ USAGE:
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
                 [--env-name <name>] [--no-direnv] [--update | --force]
     pyve run <command> [args...]
+    pyve testenv --init | --install [-r <requirements.txt>] | --purge
+    pyve test [pytest args...]
     pyve doctor
     pyve --validate
     pyve --purge [<dir>]
@@ -142,6 +145,12 @@ COMMANDS:
                         
                         Automatically detects backend (venv or micromamba)
                         Preserves exit codes and output
+
+    testenv              Manage a dedicated dev/test runner environment
+                        Uses: .pyve/testenv/venv
+                        Preserved across: pyve --init --force, pyve --purge
+
+    test [pytest args...] Run pytest via the dev/test runner environment
 
     doctor              Check environment health and show diagnostics
                         Reports backend, Python version, packages, and status
@@ -178,6 +187,9 @@ EXAMPLES:
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
     pyve run python script.py            # Run script in environment
+    pyve testenv --init                  # Create dev/test runner environment
+    pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
+    pyve test -q                         # Run pytest via dev/test runner
     pyve doctor                          # Check environment health
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
@@ -867,9 +879,130 @@ purge_venv() {
 
 purge_pyve_dir() {
     if [[ -d ".pyve" ]]; then
-        rm -rf ".pyve"
-        log_success "Removed .pyve directory (config and micromamba environments)"
+        if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
+            rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
+            find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
+            log_success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
+        else
+            rm -rf ".pyve"
+            log_success "Removed .pyve directory (config and micromamba environments)"
+        fi
     fi
+}
+
+purge_testenv_dir() {
+    if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
+        rm -rf ".pyve/$TESTENV_DIR_NAME"
+        log_success "Removed .pyve/$TESTENV_DIR_NAME"
+    else
+        log_info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+    fi
+}
+
+#============================================================
+# Test Environment Commands
+#============================================================
+
+testenv_command() {
+    local action=""
+    local requirements_file=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --init)
+                action="init"
+                shift
+                ;;
+            --install)
+                action="install"
+                shift
+                ;;
+            --purge)
+                action="purge"
+                shift
+                ;;
+            -r|--requirements)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "$1 requires a file path"
+                    exit 1
+                fi
+                requirements_file="$2"
+                shift 2
+                ;;
+            --help|-h)
+                cat << 'EOF'
+pyve testenv - Manage a dedicated dev/test runner environment
+
+Usage:
+  pyve testenv --init
+  pyve testenv --install [-r requirements-dev.txt]
+  pyve testenv --purge
+
+Notes:
+  - Uses: .pyve/testenv/venv
+  - This environment is preserved across `pyve --init --force` and `pyve --purge`.
+EOF
+                exit 0
+                ;;
+            *)
+                log_error "Unknown testenv option: $1"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "$action" ]]; then
+        log_error "No testenv action provided"
+        log_error "Use: pyve testenv --init | --install | --purge"
+        exit 1
+    fi
+
+    local testenv_root=".pyve/$TESTENV_DIR_NAME"
+    local testenv_venv="$testenv_root/venv"
+
+    case "$action" in
+        init)
+            mkdir -p "$testenv_root"
+            if [[ ! -d "$testenv_venv" ]]; then
+                log_info "Creating dev/test runner environment in '$testenv_venv'..."
+                python3 -m venv "$testenv_venv"
+                log_success "Created dev/test runner environment"
+            else
+                log_info "Dev/test runner environment already exists: $testenv_venv"
+            fi
+            ;;
+        install)
+            if [[ ! -x "$testenv_venv/bin/python" ]]; then
+                log_error "Dev/test runner environment not initialized"
+                log_error "Run: pyve testenv --init"
+                exit 1
+            fi
+            log_info "Installing dev/test dependencies into '$testenv_venv'..."
+            if [[ -n "$requirements_file" ]]; then
+                if [[ ! -f "$requirements_file" ]]; then
+                    log_error "Requirements file not found: $requirements_file"
+                    exit 1
+                fi
+                "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+            else
+                "$testenv_venv/bin/python" -m pip install pytest
+            fi
+            log_success "Dev/test dependencies installed"
+            ;;
+        purge)
+            purge_testenv_dir
+            ;;
+    esac
+}
+
+test_command() {
+    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
+    if [[ ! -x "$testenv_venv/bin/python" ]]; then
+        log_error "Dev/test runner environment not initialized"
+        log_error "Run: pyve testenv --init"
+        exit 1
+    fi
+    exec "$testenv_venv/bin/python" -m pytest "$@"
 }
 
 purge_envrc() {
@@ -1559,6 +1692,14 @@ main() {
         run)
             shift
             run_command "$@"
+            ;;
+        testenv)
+            shift
+            testenv_command "$@"
+            ;;
+        test)
+            shift
+            test_command "$@"
             ;;
         doctor)
             doctor_command
