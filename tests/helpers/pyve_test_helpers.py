@@ -5,9 +5,45 @@ Helper classes and utilities for pytest integration tests.
 """
 
 import re
+import os
 import subprocess
 from pathlib import Path
 from typing import List, Optional, Union
+
+
+def _detect_version_manager_python_version(env: dict) -> Optional[str]:
+    try:
+        result = subprocess.run(
+            ["pyenv", "version-name"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            if version and version not in {"system", ""}:
+                return version
+    except FileNotFoundError:
+        pass
+
+    try:
+        result = subprocess.run(
+            ["asdf", "current", "python"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0:
+            line = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+            match = re.search(r"\b(\d+\.\d+\.\d+)\b", line)
+            if match:
+                return match.group(1)
+    except FileNotFoundError:
+        pass
+
+    return None
 
 
 def get_pyve_version(script_path: Path) -> str:
@@ -97,6 +133,16 @@ class PyveRunner:
             CompletedProcess instance
         """
         args = ['--init', '--no-direnv', '--force']
+
+        if (
+            "python_version" not in kwargs
+            and os.environ.get("CI") == "true"
+            and backend in (None, "venv", "auto")
+        ):
+            env = os.environ.copy()
+            detected = _detect_version_manager_python_version(env)
+            if detected:
+                kwargs["python_version"] = detected
         
         if backend:
             args.extend(['--backend', backend])

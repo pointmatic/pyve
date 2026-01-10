@@ -16,10 +16,6 @@ class TestMacOSSpecific:
     """Tests specific to macOS platform."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_venv_on_macos(self, pyve, project_builder):
         """Test venv creation on macOS."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -46,10 +42,6 @@ class TestMacOSSpecific:
         assert result.returncode == 0
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_homebrew_python_detection(self, pyve, project_builder):
         """Test detection of Homebrew Python on macOS."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -60,10 +52,6 @@ class TestMacOSSpecific:
         # Should work with Homebrew Python
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_asdf_integration_macos(self, pyve, project_builder):
         """Test asdf integration on macOS."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -80,10 +68,6 @@ class TestLinuxSpecific:
     """Tests specific to Linux platform."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_venv_on_linux(self, pyve, project_builder):
         """Test venv creation on Linux."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -109,10 +93,6 @@ class TestLinuxSpecific:
         assert result.returncode == 0
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_system_python_linux(self, pyve, project_builder):
         """Test with system Python on Linux."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -126,10 +106,6 @@ class TestCrossPlatform:
     """Tests that should work on all platforms."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_python_version_detection(self, pyve, project_builder):
         """Test Python version detection works on all platforms."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -144,10 +120,6 @@ class TestCrossPlatform:
         assert 'python' in version_result.stdout.lower()
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_path_separators(self, pyve, project_builder):
         """Test that path separators work correctly on all platforms."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -166,10 +138,6 @@ class TestCrossPlatform:
         assert 'Path test' in result.stdout
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_environment_variables(self, pyve, project_builder):
         """Test environment variable handling on all platforms."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -227,10 +195,6 @@ class TestPlatformDetection:
         assert result.stdout.strip() in ['Darwin', 'Linux', 'Windows']
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_architecture_detection(self, pyve, project_builder):
         """Test architecture detection (x86_64, arm64, etc.)."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -247,10 +211,6 @@ class TestShellIntegration:
     """Test shell integration across platforms."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_bash_compatibility(self, pyve, project_builder):
         """Test bash compatibility."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -261,10 +221,6 @@ class TestShellIntegration:
         # pyve.sh should work with bash
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_zsh_compatibility(self, pyve, project_builder):
         """Test zsh compatibility (macOS default)."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -275,10 +231,6 @@ class TestShellIntegration:
         # Should work with zsh
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_shell_script_execution(self, pyve, project_builder):
         """Test that shell scripts can be executed."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -299,10 +251,6 @@ class TestFileSystemBehavior:
     """Test filesystem behavior across platforms."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_case_sensitivity(self, pyve, project_builder):
         """Test case sensitivity handling."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -318,10 +266,6 @@ class TestFileSystemBehavior:
         assert result.returncode == 0
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_symlink_handling(self, pyve, project_builder):
         """Test symlink handling."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -335,10 +279,6 @@ class TestFileSystemBehavior:
             assert python_link.exists()
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_long_paths(self, pyve, project_builder):
         """Test handling of long file paths."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -360,10 +300,6 @@ class TestEdgeCases:
     """Cross-platform edge case tests."""
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_unicode_in_paths(self, pyve, project_builder):
         """Test Unicode characters in file paths."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -385,10 +321,6 @@ class TestEdgeCases:
             pytest.skip("Filesystem doesn't support Unicode paths")
     
     @pytest.mark.venv
-    @pytest.mark.skipif(
-        os.environ.get('CI') == 'true',
-        reason="Requires complex pyenv setup in CI/CD - tested locally"
-    )
     def test_spaces_in_paths(self, pyve, project_builder):
         """Test spaces in file paths."""
         project_builder.create_requirements(['requests==2.31.0'])

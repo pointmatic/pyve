@@ -10,6 +10,15 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.1b: CI stability improvements for venv integration tests [Implemented]
+- [x] Pin venv/auto `pyve --init` integration tests to the runner-installed Python version in CI (avoids flaky attempts to install the default Pyve Python version)
+- [x] Re-enable venv integration tests previously skipped in CI due to "complex pyenv setup" (CI now provisions pyenv)
+
+#### Notes
+Test-only change. No changes to runtime behavior and no `pyve.sh` version bump.
+
+---
+
 ## v0.9.1a: Documentation clarifications [Implemented]
 - [x] Update README default Python version to match current default
 - [x] Document Python 3.12+ distutils shim behavior and escape hatch (PYVE_DISABLE_DISTUTILS_SHIM=1)
