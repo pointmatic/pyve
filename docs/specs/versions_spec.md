@@ -10,6 +10,50 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.2: Pyve-managed local dev/test runner environment [Planned]
+- [ ] Add first-class support for a dedicated dev/test runner environment that is separate from the Pyve-managed project environment
+- [ ] Provide a command to provision/install test tooling without mutating or depending on the project environment
+- [ ] Provide a command to run tests using the dedicated test runner environment
+- [ ] Ensure `pyve --init --force` never deletes or corrupts the dev/test runner environment
+
+#### Problem
+Pyve intentionally creates/purges the project environment (commonly `.venv`) during initialization and re-initialization. If developers also install test tooling (e.g. `pytest`) into that same environment, running `pyve --init --force` can remove those dev/test dependencies, making local test execution brittle.
+
+#### Goal
+Allow developers to use Pyve on every Python project while still having a stable, reproducible way to install and run `pytest` (and other dev/test tools) that does not get clobbered by Pyve’s management of the project environment.
+
+#### Proposed UX
+- [ ] `pyve testenv --init` (or similar): Create/manage a dedicated dev/test runner environment (default directory: `.pyve/testenv/`)
+- [ ] `pyve testenv --install -r requirements-dev.txt` (or similar): Install dev/test dependencies into the test runner environment
+- [ ] `pyve test ...`: Run `pytest` (or other tools) via the test runner environment, independent of the project environment
+
+#### Functional Requirements
+1. Separation: The dev/test runner environment must be stored outside the managed project environment directory (e.g. not inside `.venv/`).
+2. Idempotency: Re-running `pyve testenv --init` must be safe and not reinstall unless requested.
+3. Non-clobbering: `pyve --init`, `pyve --init --force`, and `pyve --purge` must not delete the dev/test runner environment unless an explicit dev/test runner purge command is invoked.
+4. Predictable interpreter: The dev/test runner environment must use an explicit Python version selection policy (documented) and must not unexpectedly change when the project environment changes.
+5. Tooling access: `pytest` (and other tools) must be executed from the test runner environment, while running against the project directory under test.
+
+#### Test Plan
+- [ ] Integration test: initialize a project environment, install `pytest` into the dev/test runner environment, run `pyve test`, then run `pyve --init --force` and verify `pyve test` still works
+- [ ] Integration test: verify `pyve run` continues to execute within the project environment and does not depend on the dev/test runner environment
+
+---
+
+## v0.9.1c: Local integration test reliability + `pyve run` venv behavior [Implemented]
+- [x] Make pytest integration tests non-interactive for `pyve --init --force` by setting `PYVE_FORCE_YES=1` in the test runner environment
+- [x] Allow local test runs to pin `pyve --init` to the runner-installed Python version (test harness sets `PYVE_TEST_PIN_PYTHON=1` when running under pytest)
+- [x] Fix `pyve run` for venv backend to allow executing commands not located in `.venv/bin/` (e.g. `bash`), while still preferring venv-provided executables
+- [x] Fix `test_force_purges_existing_venv` to assert the force warning message from stderr (warnings are emitted on stderr)
+
+#### Problem
+Local integration tests can fail when `pyve --init --force` prompts for confirmation (stdin is EOF under subprocess capture), and when `pyve run` is asked to run non-venv executables such as `bash`.
+
+#### Notes
+Mix of test-harness changes and runtime behavior change.
+
+---
+
 ## v0.9.1b: CI stability improvements for venv integration tests [Implemented]
 - [x] Pin venv/auto `pyve --init` integration tests to the runner-installed Python version in CI (avoids flaky attempts to install the default Pyve Python version)
 - [x] Re-enable venv integration tests previously skipped in CI due to "complex pyenv setup" (CI now provisions pyenv)

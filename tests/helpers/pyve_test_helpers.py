@@ -112,8 +112,11 @@ class PyveRunner:
         
         # Pass current environment to subprocess (includes PYENV_ROOT, PATH, etc.)
         if 'env' not in kwargs:
-            import os
-            kwargs['env'] = os.environ.copy()
+            env = os.environ.copy()
+            if "PYTEST_CURRENT_TEST" in env:
+                env.setdefault("PYVE_FORCE_YES", "1")
+                env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
+            kwargs['env'] = env
         
         return subprocess.run(cmd, **kwargs)
     
@@ -134,15 +137,12 @@ class PyveRunner:
         """
         args = ['--init', '--no-direnv', '--force']
 
-        if (
-            "python_version" not in kwargs
-            and os.environ.get("CI") == "true"
-            and backend in (None, "venv", "auto")
-        ):
+        if "python_version" not in kwargs and backend in (None, "venv", "auto"):
             env = os.environ.copy()
-            detected = _detect_version_manager_python_version(env)
-            if detected:
-                kwargs["python_version"] = detected
+            if os.environ.get("CI") == "true" or os.environ.get("PYVE_TEST_PIN_PYTHON") == "1":
+                detected = _detect_version_manager_python_version(env)
+                if detected:
+                    kwargs["python_version"] = detected
         
         if backend:
             args.extend(['--backend', backend])

@@ -86,7 +86,7 @@ class TestReinitForce:
         assert result.returncode == 0
         # In CI mode, prompts are skipped - just verify purge happened
         if not os.environ.get('CI'):
-            assert "Force re-initialization" in result.stdout
+            assert "Force re-initialization" in result.stderr
         assert not venv_marker.exists()
     
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")

@@ -1283,18 +1283,20 @@ run_command() {
     
     # Execute command based on backend
     if [[ "$backend" == "venv" ]]; then
-        # Venv backend: execute directly from venv bin
-        local cmd_path="$venv_dir/bin/$1"
-        
-        if [[ ! -x "$cmd_path" ]]; then
-            log_error "Command not found in venv: $1"
-            log_error "Environment: $venv_dir"
-            exit 127
-        fi
-        
-        # Execute command with remaining arguments
+        # Venv backend: prefer venv bin, but allow system commands too
+        local cmd="$1"
         shift
-        exec "$cmd_path" "$@"
+
+        local venv_bin="$venv_dir/bin"
+        local cmd_path="$venv_bin/$cmd"
+
+        if [[ -x "$cmd_path" ]]; then
+            exec "$cmd_path" "$@"
+        fi
+
+        export VIRTUAL_ENV="$PWD/$venv_dir"
+        export PATH="$venv_bin:$PATH"
+        exec "$cmd" "$@"
         
     elif [[ "$backend" == "micromamba" ]]; then
         # Micromamba backend: use micromamba run
