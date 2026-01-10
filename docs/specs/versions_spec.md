@@ -10,7 +10,22 @@ See `docs/guide_versions_spec.md`
 
 ---
 
-## v0.9.0: Support Tensorflow/Keras for Python 3.12+
+## v0.9.1: Prevent unit tests from deleting user micromamba [Implemented]
+- [x] Sandbox HOME in unit tests that create/remove user-sandbox micromamba (prevents accidental deletion of ~/.pyve/bin/micromamba)
+- [x] Bump pyve version to 0.9.1
+
+#### Problem
+Some unit tests in `tests/unit/test_micromamba_core.bats` create and remove `"$HOME/.pyve/bin/micromamba"` as part of their setup/cleanup. When those tests run with the developer’s real `HOME`, they can delete the real micromamba binary in `~/.pyve/bin/`.
+
+#### Fix
+Sandbox `HOME` to a temporary test directory in `tests/unit/test_micromamba_core.bats` (and restore it in `teardown`) so tests cannot mutate the developer’s real `~/.pyve` directory.
+
+#### Notes
+If `~/.pyve/bin/micromamba` was deleted previously, reinstall micromamba to the user sandbox (e.g. via `pyve --init --backend micromamba --auto-bootstrap --bootstrap-to user`).
+
+---
+
+## v0.9.0: Support Tensorflow/Keras for Python 3.12+ [Implemented]
 - [x] Add Python 3.12+ distutils compatibility shim via sitecustomize.py in env site-packages (idempotent)
 - [x] Ensure packaging prerequisites are installed in the environment (setuptools, wheel)
 - [x] Add escape hatch (PYVE_DISABLE_DISTUTILS_SHIM=1) and light probe + tests/smoke coverage (terminal + Jupyter)

@@ -10,9 +10,14 @@ load ../helpers/test_helper
 setup() {
     setup_pyve_env
     create_test_dir
+
+    export ORIGINAL_HOME="$HOME"
+    export HOME="$TEST_DIR/home"
+    mkdir -p "$HOME"
 }
 
 teardown() {
+    export HOME="$ORIGINAL_HOME"
     cleanup_test_dir
 }
 
