@@ -12,10 +12,23 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.6: Config-aware purge/doctor for custom venv directories [Implemented]
+- [x] Update `pyve doctor` to honor `.pyve/config` (`venv.directory`) when detecting venv environments
+- [x] Update `pyve --purge` to honor `.pyve/config` (`venv.directory`) when removing venv environments
+- [x] Bump pyve version to 0.9.6
+
+#### Problem
+Projects can initialize with a custom venv directory (e.g. `pyve --init my_venv`). Historically, `pyve doctor` and `pyve --purge` assumed the venv lives at `.venv`, which can cause incorrect diagnostics or leave the custom venv behind.
+
+#### Goal
+Make diagnostics and purge behavior follow the project configuration by default while preserving backward compatibility.
+
+---
+
 ## v0.9.5: CI hotfix for custom venv dirs + doctor config awareness [Implemented]
 - [x] Fix integration harness to pass custom venv directory as a positional argument to `pyve --init` (no unsupported `--venv-dir` flag)
 - [x] Update `pyve doctor` to honor `.pyve/config` (`venv.directory`) when detecting venv environments
-- [x] Bump pyve version to 0.9.4a
+- [x] Bump pyve version to 0.9.5
 
 #### Problem
 CI integration tests that initialize with a custom venv directory (`venv_dir=...`) can fail if the test harness passes an unsupported flag or if `pyve doctor` assumes the venv is always at `.venv`.

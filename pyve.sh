@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.5"
+VERSION="0.9.6"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -868,6 +868,7 @@ init_gitignore() {
 purge() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local keep_testenv=false
+    local venv_dir_explicit=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -882,6 +883,7 @@ purge() {
                 ;;
             *)
                 venv_dir="$1"
+                venv_dir_explicit=true
                 shift
                 ;;
         esac
@@ -895,6 +897,16 @@ purge() {
     
     # Remove version file
     purge_version_file
+
+    # If a project config exists, prefer its venv directory when the user did not
+    # explicitly pass a venv dir to purge.
+    if [[ "$venv_dir_explicit" == false ]] && config_file_exists; then
+        local configured_venv_dir
+        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
+        if [[ -n "$configured_venv_dir" ]]; then
+            venv_dir="$configured_venv_dir"
+        fi
+    fi
     
     # Remove virtual environment
     purge_venv "$venv_dir"
