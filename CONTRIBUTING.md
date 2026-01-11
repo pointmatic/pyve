@@ -140,6 +140,8 @@ lib/
 
 ## Testing
 
+Pyve provides `make` targets for running tests (see the `Makefile` in the project root).
+
 ### Manual Testing
 
 Test commands manually before submitting:
@@ -155,6 +157,41 @@ mkdir /tmp/pyve-test && cd /tmp/pyve-test
 Do not let tests mutate developer state.
 
 If a Bats unit test references `"$HOME/.pyve"` (or any user-global path), sandbox `HOME` to a temporary directory inside `setup()` and restore it in `teardown()`.
+
+### Running pytest integration tests (v0.9.3)
+
+Pyve integration tests can exercise destructive flows (e.g. `pyve --init --force`). To avoid clobbering your local dev tooling, follow the pattern Pyve already uses of running pytest from Pyve's dedicated dev/test runner environment. The environment will be automatically created if needed when running `pyve test`. 
+
+You can also initialize the dev/test runner environment manually:
+
+```bash
+./pyve.sh testenv --init
+./pyve.sh testenv --install -r requirements-dev.txt
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v
+```
+
+Before Pyve is installed on your system (allowing you to run `pyve` from any directory), you can run tests from the repo script:
+
+```bash
+./pyve.sh test -q
+./pyve.sh test tests/integration/test_testenv.py
+```
+
+If `pytest` is missing from the dev/test runner environment, Pyve will prompt in interactive shells:
+
+```text
+pytest is not installed in the dev/test runner environment. Install now? [y/N]
+```
+
+### Purge behavior
+
+`pyve --purge` removes Pyve-managed artifacts, including `.pyve/testenv`, by default.
+
+To preserve the dev/test runner environment:
+
+```bash
+pyve --purge --keep-testenv
+```
 
 ### Testing Both Backends
 

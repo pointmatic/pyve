@@ -8,7 +8,13 @@ Pyve is a focused command-line tool that simplifies setting up and managing Pyth
 
 ## Why Pyve?
 
-Pyve provides a single, deterministic entry point for Python environments, without replacing existing tools.
+Pyve provides a single, deterministic entry point for Python environments, without replacing existing tools. 
+
+### Philosophy
+Make things easy and natural, but avoid being invasive.
+- Pyve manages the environments it creates.
+- Pyve asks before installing non-critical, networked dependencies like `micromamba` or `pytest`. 
+- More advanced tools like asdf (seamless support) or conda-lock (no direct support) are yours to install.
 
 ## Key Features
 - **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.
@@ -225,7 +231,46 @@ Sets the Python version in the current directory (via asdf or pyenv) without cre
 ```bash
 pyve --purge                         # Remove all artifacts
 pyve --purge my_venv                 # Remove custom-named venv
+pyve --purge --keep-testenv          # Preserve the dev/test runner environment
 pyve -p                              # Short form
+```
+
+## Testing (v0.9.3)
+
+The Pyve codebase is tested using `pytest`. The test suite is located in the `tests` directory. There are both unit tests and integration tests.
+
+As a tool, Pyve supports the developer with an isolated test environment. 
+
+### The dev/test runner environment
+
+Pyve supports integration testing via a dedicated dev/test runner environment separate from the project runtime virtual environment. When you run `pyve test`, Pyve will initialize the dev/test runner environment. If `pytest` is missing, Pyve prompts to install `pytest` (interactive shell). 
+
+- Project environment: `.venv/` (created by `pyve --init`)
+- Dev/test runner environment: `.pyve/testenv/venv/` (used by `pyve test`)
+
+This separation prevents destructive actions like `pyve --init --force` from wiping your test tooling.
+
+### Running tests
+
+Run pytest via Pyve:
+
+```bash
+pyve test
+pyve test -q
+pyve test tests/integration/test_testenv.py
+```
+
+If `pytest` is not installed in the dev/test runner environment:
+
+- In an interactive terminal, Pyve will prompt:
+  - `pytest is not installed in the dev/test runner environment. Install now? [y/N]`
+- In non-interactive contexts, Pyve will exit with instructions.
+
+You can also install dev/test dependencies explicitly:
+
+```bash
+pyve testenv --init
+pyve testenv --install -r requirements-dev.txt
 ```
 
 ### All Commands

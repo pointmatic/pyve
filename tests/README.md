@@ -101,17 +101,29 @@ To run the same tests as CI/CD:
 make test-unit
 
 # Integration tests (pytest)
-pytest tests/integration/ -v
+# Recommended: run pytest from Pyve's dedicated dev/test runner environment.
+./pyve.sh testenv --init
+./pyve.sh testenv --install -r requirements-dev.txt
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v
 
 # Integration tests with coverage
-pytest tests/integration/ -v --cov=. --cov-report=xml --cov-report=term
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v --cov=. --cov-report=xml --cov-report=term
 
 # Specific markers
-pytest tests/integration/ -v -m "venv"
-pytest tests/integration/ -v -m "macos"
-pytest tests/integration/ -v -m "linux"
-pytest tests/integration/ -v -m "slow"
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v -m "venv"
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v -m "macos"
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v -m "linux"
+./.pyve/testenv/venv/bin/python -m pytest tests/integration/ -v -m "slow"
 ```
+
+#### Why use the dev/test runner environment?
+
+Pyve's integration tests exercise destructive flows (e.g. `pyve --init --force`) to validate correctness. If your pytest runner lives inside the same `.venv` that Pyve manages for the project under test, those tests can wipe your local pytest install.
+
+To keep the workflow easy and natural without being invasive, Pyve uses a dedicated dev/test runner environment:
+
+- Project runtime environment: `.venv/`
+- Dev/test runner environment: `.pyve/testenv/venv/`
 
 ### Test Isolation (IMPORTANT)
 

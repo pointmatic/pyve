@@ -20,11 +20,15 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.2"
+VERSION="0.9.3"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
 TESTENV_DIR_NAME="testenv"
+
+# When set to 1, pyve may auto-install pytest into the dev/test runner environment
+# without prompting (intended for CI and automated test harnesses).
+PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT="${PYVE_TEST_AUTO_INSTALL_PYTEST:-}"
 
 # Installation paths
 TARGET_BIN_DIR="$HOME/.local/bin"
@@ -162,6 +166,7 @@ COMMANDS:
 
     --purge, -p         Remove all Python environment artifacts
                         Optional: specify custom venv directory name (default: .venv)
+                        Optional: --keep-testenv to preserve .pyve/testenv
 
     --python-version    Set Python version without creating virtual environment
                         Format: #.#.# (e.g., 3.13.7)
@@ -198,6 +203,53 @@ REQUIREMENTS:
     - asdf (recommended) or pyenv for Python version management
     - direnv for automatic environment activation
 EOF
+}
+
+testenv_paths() {
+    local testenv_root=".pyve/$TESTENV_DIR_NAME"
+    local testenv_venv="$testenv_root/venv"
+    printf "%s\n" "$testenv_root" "$testenv_venv"
+}
+
+ensure_testenv_exists() {
+    local paths
+    local testenv_root
+    local testenv_venv
+    paths="$(testenv_paths)"
+    testenv_root="$(printf "%s" "$paths" | sed -n '1p')"
+    testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
+
+    mkdir -p "$testenv_root"
+    if [[ ! -d "$testenv_venv" ]]; then
+        log_info "Creating dev/test runner environment in '$testenv_venv'..."
+        python3 -m venv "$testenv_venv"
+        log_success "Created dev/test runner environment"
+    fi
+}
+
+testenv_has_pytest() {
+    local testenv_venv="$1"
+    if [[ ! -x "$testenv_venv/bin/python" ]]; then
+        return 1
+    fi
+    "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1
+}
+
+install_pytest_into_testenv() {
+    local testenv_venv="$1"
+    local requirements_file=""
+
+    if [[ -f "requirements-dev.txt" ]]; then
+        requirements_file="requirements-dev.txt"
+    fi
+
+    log_info "Installing pytest into dev/test runner environment..."
+    if [[ -n "$requirements_file" ]]; then
+        "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+    else
+        "$testenv_venv/bin/python" -m pip install pytest
+    fi
+    log_success "pytest installed"
 }
 
 show_version() {
@@ -403,7 +455,7 @@ init() {
             
             # Purge existing installation
             log_info "Purging existing environment..."
-            purge
+            purge --keep-testenv
             log_info "✓ Environment purged"
             echo ""
             log_info "Proceeding with fresh initialization..."
@@ -453,7 +505,7 @@ init() {
                 2)
                     # Purge and continue
                     log_info "Purging existing environment..."
-                    purge
+                    purge --keep-testenv
                     log_info "✓ Environment purged"
                     echo ""
                     log_info "Proceeding with fresh initialization..."
@@ -665,6 +717,9 @@ python:
   version: $python_version
 EOF
     log_success "Created .pyve/config"
+
+    # Ensure dev/test runner environment exists (upgrade-friendly)
+    ensure_testenv_exists
     
     printf "\n✓ Python environment initialized successfully!\n"
     if [[ "$no_direnv" == false ]]; then
@@ -812,11 +867,16 @@ init_gitignore() {
 
 purge() {
     local venv_dir="$DEFAULT_VENV_DIR"
+    local keep_testenv=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -*)
+            --keep-testenv)
+                keep_testenv=true
+                shift
+                ;;
+            -* )
                 log_error "Unknown option: $1"
                 exit 1
                 ;;
@@ -840,7 +900,21 @@ purge() {
     purge_venv "$venv_dir"
     
     # Remove .pyve directory (config and micromamba envs)
-    purge_pyve_dir
+    if [[ "$keep_testenv" == true ]]; then
+        if [[ -d ".pyve" ]]; then
+            if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
+                rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
+                find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
+                log_success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
+            else
+                rm -rf ".pyve"
+                log_success "Removed .pyve directory (config and micromamba environments)"
+            fi
+        fi
+    else
+        purge_pyve_dir
+        purge_testenv_dir
+    fi
     
     # Remove .envrc
     purge_envrc
@@ -879,14 +953,8 @@ purge_venv() {
 
 purge_pyve_dir() {
     if [[ -d ".pyve" ]]; then
-        if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
-            rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
-            find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
-            log_success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
-        else
-            rm -rf ".pyve"
-            log_success "Removed .pyve directory (config and micromamba environments)"
-        fi
+        rm -rf ".pyve"
+        log_success "Removed .pyve directory (config and micromamba environments)"
     fi
 }
 
@@ -962,14 +1030,7 @@ EOF
 
     case "$action" in
         init)
-            mkdir -p "$testenv_root"
-            if [[ ! -d "$testenv_venv" ]]; then
-                log_info "Creating dev/test runner environment in '$testenv_venv'..."
-                python3 -m venv "$testenv_venv"
-                log_success "Created dev/test runner environment"
-            else
-                log_info "Dev/test runner environment already exists: $testenv_venv"
-            fi
+            ensure_testenv_exists
             ;;
         install)
             if [[ ! -x "$testenv_venv/bin/python" ]]; then
@@ -997,11 +1058,34 @@ EOF
 
 test_command() {
     local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
-    if [[ ! -x "$testenv_venv/bin/python" ]]; then
-        log_error "Dev/test runner environment not initialized"
-        log_error "Run: pyve testenv --init"
-        exit 1
+    ensure_testenv_exists
+
+    if ! testenv_has_pytest "$testenv_venv"; then
+        local auto_install=false
+        if [[ -n "${CI:-}" ]] || [[ "$PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT" == "1" ]]; then
+            auto_install=true
+        fi
+
+        if [[ "$auto_install" == true ]]; then
+            install_pytest_into_testenv "$testenv_venv"
+        else
+            if [[ -t 0 ]]; then
+                printf "pytest is not installed in the dev/test runner environment. Install now? [y/N]: "
+                read -r response
+                if [[ "$response" =~ ^[Yy]$ ]]; then
+                    install_pytest_into_testenv "$testenv_venv"
+                else
+                    log_info "Install skipped. You can install with: pyve testenv --install -r requirements-dev.txt"
+                    exit 1
+                fi
+            else
+                log_error "pytest is not installed in the dev/test runner environment."
+                log_error "Run: pyve testenv --install -r requirements-dev.txt"
+                exit 1
+            fi
+        fi
     fi
+
     exec "$testenv_venv/bin/python" -m pytest "$@"
 }
 

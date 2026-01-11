@@ -12,6 +12,47 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.3: Gentle test tooling guidance + Pyve philosophy alignment [Implemented]
+- [x] Ensure `pyve test` and test tooling flows feel “easy and natural” while staying non-invasive by default
+- [x] Auto-create/upgrade the dev/test runner environment when needed (upgrade-friendly)
+- [x] Add gentle interactive prompt to install `pytest` when missing (opt-in)
+- [x] Clarify and align purge semantics with the “Pyve manages what it creates” principle
+- [x] Update documentation to reflect the philosophy and workflows (README, tests/README.md, CONTRIBUTING.md)
+- [x] Bump pyve version to 0.9.3
+
+#### Problem
+v0.9.2 introduces a separate dev/test runner environment, but the workflow can still feel “manual” (users may need to explicitly initialize a test environment before running `pyve test`). Additionally, Pyve must avoid becoming “bossy” by silently installing tools like `pytest` without consent.
+
+#### Goal
+Make test workflows feel first-class:
+1) The first time a developer runs tests, Pyve should guide them smoothly.
+2) Pyve should remain respectful: it should not install networked dependencies without explicit user intent.
+
+#### Proposed UX
+1. `pyve test [pytest args...]`
+   - If `.pyve/testenv/venv` is missing, create it automatically.
+   - If `pytest` is missing in the test runner env, prompt:
+     - "pytest is not installed in the dev/test runner environment. Install now? [y/N]"
+     - If yes: install either from a discovered requirements file (e.g. `requirements-dev.txt`) or fall back to `pip install pytest`.
+     - If no: exit with a clear message explaining how to install.
+
+2. `pyve --init` / `pyve --init --force`
+   - Ensure the project environment is created/recreated as usual.
+   - Ensure the dev/test runner environment can be upgraded/created without clobbering the project environment.
+
+3. `pyve --purge`
+   - Default behavior should remove Pyve-managed artifacts, including `.pyve/testenv`, unless an explicit keep flag is provided.
+
+#### Documentation updates (Pyve vibe/philosophy)
+- README.md: add a short “Testing” section that frames Pyve’s philosophy (easy + reproducible + non-invasive), and document `pyve test` and the interactive prompt behavior.
+- tests/README.md: explain how Pyve’s own integration tests avoid clobbering developer environments and how to use `pyve test` / testenv.
+- CONTRIBUTING.md: document contributor workflow for running tests, including the separation between Pyve-managed project env and the dev/test runner env.
+
+#### Notes
+This version is explicitly about UX and philosophy alignment: Pyve should manage what it creates, guide gently, and avoid unprompted network installs.
+
+---
+
 ## v0.9.2: Pyve-managed local dev/test runner environment [Implemented]
 - [x] Add first-class support for a dedicated dev/test runner environment that is separate from the Pyve-managed project environment
 - [x] Provide a command to provision/install test tooling without mutating or depending on the project environment

@@ -116,6 +116,7 @@ class PyveRunner:
             if "PYTEST_CURRENT_TEST" in env:
                 env.setdefault("PYVE_FORCE_YES", "1")
                 env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
+                env.setdefault("PYVE_TEST_AUTO_INSTALL_PYTEST", "1")
             kwargs['env'] = env
         
         return subprocess.run(cmd, **kwargs)
