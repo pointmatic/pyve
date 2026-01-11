@@ -12,6 +12,16 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.7a: Local integration test reliability (no user-facing changes) [Implemented]
+- [x] Ensure pytest integration harness sets `PYVE_TEST_AUTO_INSTALL_PYTEST=1` under pytest so `pyve test` can bootstrap pytest in the dev/test runner env
+- [x] Allow `PyveRunner.init()` to forward stdin `input` for commands that prompt (e.g. `--init --force` confirmation)
+- [x] Update integration tests that call `--init --force` to send confirmation input locally (avoid relying on `PYVE_FORCE_YES`)
+
+#### Notes
+This is a test-only miniversion. It does not change Pyve runtime behavior for end users and does not require a `pyve.sh` version bump.
+
+---
+
 ## v0.9.7: Re-init UX reliability + corrupted config hardening [Implemented]
 - [x] Ensure interactive `pyve --init` re-init prompt shows recorded/current version info in stdout
 - [x] Make `pyve --init --update` fail with non-zero exit when `.pyve/config` is corrupted/unparseable

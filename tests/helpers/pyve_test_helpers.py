@@ -114,11 +114,13 @@ class PyveRunner:
         if 'env' not in kwargs:
             env = os.environ.copy()
             if "PYTEST_CURRENT_TEST" in env:
+                # When running under pytest, allow `pyve test` to auto-install pytest into
+                # the dev/test runner env without prompting.
+                env.setdefault("PYVE_TEST_AUTO_INSTALL_PYTEST", "1")
                 # In CI, tests must be non-interactive.
                 if env.get("CI") == "true":
                     env.setdefault("PYVE_FORCE_YES", "1")
                     env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
-                    env.setdefault("PYVE_TEST_AUTO_INSTALL_PYTEST", "1")
             kwargs['env'] = env
         
         return subprocess.run(cmd, **kwargs)
@@ -165,6 +167,8 @@ class PyveRunner:
         subprocess_opts = {}
         if 'check' in kwargs:
             subprocess_opts['check'] = kwargs.pop('check')
+        if 'input' in kwargs:
+            subprocess_opts['input'] = kwargs.pop('input')
         
         for key, value in kwargs.items():
             flag = f"--{key.replace('_', '-')}"

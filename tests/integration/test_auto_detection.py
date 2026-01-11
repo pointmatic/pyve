@@ -112,7 +112,7 @@ class TestConfigFileOverride:
         project_builder.create_config(backend='micromamba')
         
         # But use venv via CLI flag
-        result = pyve.init(backend='venv')
+        result = pyve.init(backend='venv', input='y\n')
         
         assert result.returncode == 0
         assert (pyve.cwd / '.venv').exists()
@@ -151,7 +151,7 @@ python:
         config_path.parent.mkdir(exist_ok=True)
         config_path.write_text(config_content)
         
-        result = pyve.init()
+        result = pyve.init(input='y\n')
         
         assert result.returncode == 0
 
