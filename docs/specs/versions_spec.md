@@ -12,6 +12,31 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.4: `pyve doctor` reports dev/test runner environment status
+- [x] Report the presence and basic health of the dev/test runner environment (`.pyve/testenv/venv`)
+- [x] Show test runner Python version (when present)
+- [x] Detect whether `pytest` is installed in the dev/test runner environment
+- [x] Decide UX: always show test runner status vs only with an explicit flag (e.g. `pyve doctor --testenv`) (Decision: always show)
+- [x] Keep the behavior non-invasive (no installs, no network access, no creation)
+- [x] Add integration tests for doctor output covering test runner present/missing
+- [x] Bump pyve version to 0.9.4
+
+#### Problem
+`pyve doctor` currently only reports on the project runtime environment (venv or micromamba). Pyve now has a dedicated dev/test runner environment, but there is no built-in diagnostic for whether it exists or whether `pytest` is available there.
+
+#### Goal
+Make it easy to understand test tooling readiness without changing state:
+1) `pyve doctor` should help explain test failures caused by a missing or broken dev/test runner environment.
+2) Diagnostics should remain non-invasive and should never create or mutate environments.
+
+#### Proposed UX
+`pyve doctor` (or `pyve doctor --testenv`, depending on the UX decision):
+- `✓ Test runner: .pyve/testenv/venv` (or `⚠ Test runner: not found`)
+- `✓ Test runner Python: X.Y.Z` (when available)
+- `✓ pytest: installed` / `⚠ pytest: missing` (with a suggestion: `pyve testenv --install -r requirements-dev.txt` or `pyve test`)
+
+---
+
 ## v0.9.3: Gentle test tooling guidance + Pyve philosophy alignment [Implemented]
 - [x] Ensure `pyve test` and test tooling flows feel “easy and natural” while staying non-invasive by default
 - [x] Auto-create/upgrade the dev/test runner environment when needed (upgrade-friendly)

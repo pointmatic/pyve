@@ -124,6 +124,7 @@ class PyveRunner:
     def init(
         self,
         backend: Optional[str] = None,
+        venv_dir: Optional[str] = None,
         **kwargs
     ) -> subprocess.CompletedProcess:
         """
@@ -131,12 +132,21 @@ class PyveRunner:
         
         Args:
             backend: Backend to use (venv, micromamba, auto)
+            venv_dir: Custom venv directory
             **kwargs: Additional flags (converted to --flag-name) and subprocess options
             
         Returns:
             CompletedProcess instance
         """
-        args = ['--init', '--no-direnv', '--force']
+        args = ['--init']
+
+        # pyve.sh uses a positional argument for custom venv directory name.
+        # The test helper accepts venv_dir=... for convenience.
+        venv_dir = kwargs.pop('venv_dir', None)
+        if venv_dir:
+            args.append(str(venv_dir))
+
+        args.extend(['--no-direnv', '--force'])
 
         if "python_version" not in kwargs and backend in (None, "venv", "auto"):
             env = os.environ.copy()

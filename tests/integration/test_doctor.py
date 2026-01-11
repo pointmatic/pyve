@@ -30,6 +30,8 @@ class TestDoctorVenv:
         
         assert result.returncode == 0
         assert 'venv' in result.stdout.lower()
+        assert 'test runner' in result.stdout.lower()
+        assert 'pytest:' in result.stdout.lower()
     
     @pytest.mark.venv
     def test_doctor_shows_python_version(self, pyve, project_builder):
@@ -170,6 +172,7 @@ class TestDoctorParametrized:
         
         assert result.returncode == 0
         assert backend in result.stdout.lower()
+        assert 'test runner' in result.stdout.lower()
     
     @pytest.mark.parametrize("backend,file_creator", [
         ("venv", lambda pb: pb.create_requirements(['requests==2.31.0'])),

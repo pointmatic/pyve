@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.3"
+VERSION="0.9.4"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1727,6 +1727,29 @@ doctor_command() {
         fi
     else
         printf "⚠ Environment file: .env not found\n"
+    fi
+
+    # Dev/test runner environment (non-invasive diagnostics)
+    local testenv_root=".pyve/$TESTENV_DIR_NAME"
+    local testenv_venv="$testenv_root/venv"
+    if [[ -d "$testenv_venv" ]]; then
+        printf "✓ Test runner: %s\n" "$testenv_venv"
+        if [[ -x "$testenv_venv/bin/python" ]]; then
+            local test_py_version
+            test_py_version="$("$testenv_venv/bin/python" --version 2>&1 | awk '{print $2}')"
+            printf "  Test runner Python: %s\n" "$test_py_version"
+            if "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1; then
+                printf "  ✓ pytest: installed\n"
+            else
+                printf "  ⚠ pytest: missing\n"
+                printf "    Install with: pyve test (interactive) or pyve testenv --install -r requirements-dev.txt\n"
+            fi
+        else
+            printf "  ⚠ Test runner Python: not found\n"
+        fi
+    else
+        printf "⚠ Test runner: not found\n"
+        printf "  Create with: pyve testenv --init (or run: pyve test)\n"
     fi
     
     printf "\n"
