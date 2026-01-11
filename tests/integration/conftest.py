@@ -39,7 +39,7 @@ def project_builder(test_project):
     return ProjectBuilder(test_project)
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def clean_env(monkeypatch):
     """Clean environment variables."""
     # Remove any pyve-related env vars

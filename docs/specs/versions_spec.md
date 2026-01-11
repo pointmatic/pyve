@@ -12,6 +12,21 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.7: Re-init UX reliability + corrupted config hardening [Implemented]
+- [x] Ensure interactive `pyve --init` re-init prompt shows recorded/current version info in stdout
+- [x] Make `pyve --init --update` fail with non-zero exit when `.pyve/config` is corrupted/unparseable
+- [x] Prevent prompt-bypass leakage across integration tests (autouse cleanup of `PYVE_*` env vars)
+- [x] Make integration harness non-interactive only in CI (avoid forcing `PYVE_FORCE_YES` locally)
+- [x] Bump pyve version to 0.9.7
+
+#### Problem
+Interactive re-init flows and update mode could behave unexpectedly under test harness conditions (prompts skipped due to leaked env vars) and in real projects with corrupted `.pyve/config` (update reporting success when config cannot be safely updated).
+
+#### Goal
+Improve reliability of re-initialization UX and ensure update mode fails fast when project configuration is corrupted.
+
+---
+
 ## v0.9.6: Config-aware purge/doctor for custom venv directories [Implemented]
 - [x] Update `pyve doctor` to honor `.pyve/config` (`venv.directory`) when detecting venv environments
 - [x] Update `pyve --purge` to honor `.pyve/config` (`venv.directory`) when removing venv environments

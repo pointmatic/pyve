@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.6"
+VERSION="0.9.7"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -426,7 +426,10 @@ init() {
             fi
             
             # Perform safe update
-            update_config_version
+            if ! update_config_version; then
+                log_error "Failed to update configuration (config may be corrupted)"
+                exit 1
+            fi
             log_info "✓ Configuration updated"
             if [[ -n "$existing_version" ]]; then
                 log_info "  Version: $existing_version → $VERSION"
@@ -469,6 +472,12 @@ init() {
             log_warning "  Current version: $VERSION"
             log_warning "  Backend: $existing_backend"
             echo ""
+            # Also print version info to stdout so it appears alongside the interactive prompt.
+            # (Warnings are emitted to stderr, but the prompt UX should be visible in stdout.)
+            if [[ -n "$existing_version" ]]; then
+                printf "Recorded version: %s\n" "$existing_version"
+            fi
+            printf "Current version: %s\n" "$VERSION"
             printf "What would you like to do?\n"
             printf "  1. Update in-place (preserves environment, updates config)\n"
             printf "  2. Purge and re-initialize (clean slate)\n"
@@ -490,7 +499,10 @@ init() {
                     fi
                     
                     # Perform safe update
-                    update_config_version
+                    if ! update_config_version; then
+                        log_error "Failed to update configuration (config may be corrupted)"
+                        exit 1
+                    fi
                     log_info "✓ Configuration updated"
                     if [[ -n "$existing_version" ]]; then
                         log_info "  Version: $existing_version → $VERSION"

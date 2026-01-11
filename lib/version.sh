@@ -311,6 +311,14 @@ update_config_version() {
     if [[ ! -f "$config_file" ]]; then
         return 1
     fi
+
+    # Basic sanity check: a readable config must have a backend.
+    # If it's missing, treat the config as corrupted/unparseable and fail.
+    local backend
+    backend="$(read_config_value "backend")"
+    if [[ -z "$backend" ]]; then
+        return 1
+    fi
     
     local current_version
     current_version="$(read_config_value "pyve_version")"
