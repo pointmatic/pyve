@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.4"
+VERSION="0.9.5"
 DEFAULT_PYTHON_VERSION="3.14.2"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1557,6 +1557,15 @@ doctor_command() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local env_path=""
     local env_name=""
+
+    # If a project config exists, prefer its venv directory for venv detection.
+    if config_file_exists; then
+        local configured_venv_dir
+        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
+        if [[ -n "$configured_venv_dir" ]]; then
+            venv_dir="$configured_venv_dir"
+        fi
+    fi
     
     # Detect active backend
     # Check for micromamba environment first

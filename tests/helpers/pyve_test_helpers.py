@@ -142,9 +142,10 @@ class PyveRunner:
 
         # pyve.sh uses a positional argument for custom venv directory name.
         # The test helper accepts venv_dir=... for convenience.
-        venv_dir = kwargs.pop('venv_dir', None)
-        if venv_dir:
-            args.append(str(venv_dir))
+        legacy_venv_dir = kwargs.pop('venv_dir', None)
+        effective_venv_dir = venv_dir or legacy_venv_dir
+        if effective_venv_dir:
+            args.append(str(effective_venv_dir))
 
         args.extend(['--no-direnv', '--force'])
 

@@ -12,6 +12,19 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.5: CI hotfix for custom venv dirs + doctor config awareness [Implemented]
+- [x] Fix integration harness to pass custom venv directory as a positional argument to `pyve --init` (no unsupported `--venv-dir` flag)
+- [x] Update `pyve doctor` to honor `.pyve/config` (`venv.directory`) when detecting venv environments
+- [x] Bump pyve version to 0.9.4a
+
+#### Problem
+CI integration tests that initialize with a custom venv directory (`venv_dir=...`) can fail if the test harness passes an unsupported flag or if `pyve doctor` assumes the venv is always at `.venv`.
+
+#### Goal
+Keep integration tests and diagnostics reliable across environments while preserving backward compatibility.
+
+---
+
 ## v0.9.4: `pyve doctor` reports dev/test runner environment status
 - [x] Report the presence and basic health of the dev/test runner environment (`.pyve/testenv/venv`)
 - [x] Show test runner Python version (when present)
