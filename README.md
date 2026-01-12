@@ -18,8 +18,9 @@ Make things easy and natural, but avoid being invasive.
 
 ## Key Features
 - **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.
-- **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories. 
-- **Purge**: Remove all the Pyve artifacts, except if you've modified the `.env` file, Pyve will leave it and let you know that.
+- **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories.
+  - **Re-Init**: Refresh your Pyve initialization using `pyve --init --force`. This will first purge, then initialize Pyve in one commmand. 
+- **Purge**: Remove all the Pyve setup and artifacts, except if you've added any secrets to the `.env` file, Pyve will leave it and let you know that.
 
 ## Conceptual Model
 
