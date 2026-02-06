@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.8"
+VERSION="0.9.9"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -630,6 +630,8 @@ init() {
         append_pattern_to_gitignore ".pyve/envs"
         append_pattern_to_gitignore "$ENV_FILE_NAME"
         append_pattern_to_gitignore ".envrc"
+        append_pattern_to_gitignore "__pycache__"
+        append_pattern_to_gitignore ".pyve/testenv"
         if [[ "$(uname)" == "Darwin" ]]; then
             append_pattern_to_gitignore ".DS_Store"
         fi
@@ -864,6 +866,8 @@ init_gitignore() {
     append_pattern_to_gitignore "$venv_dir"
     append_pattern_to_gitignore "$ENV_FILE_NAME"
     append_pattern_to_gitignore ".envrc"
+    append_pattern_to_gitignore "__pycache__"
+    append_pattern_to_gitignore ".pyve/testenv"
     
     # Add .DS_Store on macOS
     if [[ "$(uname)" == "Darwin" ]]; then

@@ -12,6 +12,17 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.9: Gitignore hygiene on init [Implemented]
+- [x] Add `__pycache__` and `.pyve/testenv` to `.gitignore` on `pyve --init` (venv backend)
+- [x] Add `__pycache__` and `.pyve/testenv` to `.gitignore` on `pyve --init` (micromamba backend)
+- [x] Intentionally leave these entries on `pyve --purge` (permanent hygiene, not tied to env lifecycle)
+- [x] Bump pyve version to 0.9.9
+
+### Notes
+* `__pycache__` is a Python build artifact that should never be committed
+* `.pyve/testenv` contains the dev/test runner virtual environment
+* Both are "permanent hygiene" entries — `purge_gitignore()` does not remove them since they remain useful even without an active Pyve environment
+
 ## v0.9.8a: Local integration test reliability (no user-facing changes) [Implemented]
 - [x] Auto-pin Python version under pytest locally (not just CI) to prevent tests from triggering a slow Python build when the default version isn't installed
 - [x] Add `python3 --version` fallback to `_detect_version_manager_python_version` for tmp directories with no `.tool-versions`/`.python-version`

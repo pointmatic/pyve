@@ -1,9 +1,9 @@
 .DS_Store
-.env
 .tool-versions
-.venv
-.envrc
 .pyve
 __pycache__
 .coverage
 htmlcov
+.venv
+.env
+.envrc
