@@ -12,6 +12,29 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v0.9.8a: Local integration test reliability (no user-facing changes) [Implemented]
+- [x] Auto-pin Python version under pytest locally (not just CI) to prevent tests from triggering a slow Python build when the default version isn't installed
+- [x] Add `python3 --version` fallback to `_detect_version_manager_python_version` for tmp directories with no `.tool-versions`/`.python-version`
+- [x] Add default timeout (120s) to `PyveRunner.run()` so tests fail with a clear `TimeoutError` instead of hanging indefinitely
+
+### Notes
+This is a test-only miniversion. It does not change Pyve runtime behavior for end users and does not require a `pyve.sh` version bump.
+* Root cause: `asdf current python` returns exit 126 in tmp test directories (no `.tool-versions`), so version pinning silently failed and tests tried to build the new default Python from source.
+
+---
+
+## v0.9.8: Python 3.14.3 default update [Implemented]
+- [x] Update default Python version to 3.14.3
+- [x] Update documentation to reflect the new default version
+- [x] Bump pyve version to 0.9.8
+
+### Notes
+* Updated `DEFAULT_PYTHON_VERSION` from `3.14.2` to `3.14.3` in `pyve.sh`
+* Updated `VERSION` from `0.9.7` to `0.9.8` in `pyve.sh`
+* Updated default Python version reference in `README.md`
+
+---
+
 ## v0.9.7a: Local integration test reliability (no user-facing changes) [Implemented]
 - [x] Ensure pytest integration harness sets `PYVE_TEST_AUTO_INSTALL_PYTEST=1` under pytest so `pyve test` can bootstrap pytest in the dev/test runner env
 - [x] Allow `PyveRunner.init()` to forward stdin `input` for commands that prompt (e.g. `--init --force` confirmation)

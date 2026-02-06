@@ -43,6 +43,24 @@ def _detect_version_manager_python_version(env: dict) -> Optional[str]:
     except FileNotFoundError:
         pass
 
+    # Fallback: use whatever python3 is on PATH.  This covers the case
+    # where tests run in a tmp directory with no .tool-versions / .python-version
+    # so asdf/pyenv cannot resolve a project-local version.
+    try:
+        result = subprocess.run(
+            ["python3", "--version"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0:
+            match = re.search(r"(\d+\.\d+\.\d+)", result.stdout)
+            if match:
+                return match.group(1)
+    except FileNotFoundError:
+        pass
+
     return None
 
 
@@ -77,12 +95,17 @@ class PyveRunner:
         self.script_path = script_path
         self.cwd = cwd
     
+    # Default timeout (seconds) for subprocess calls.  Prevents tests from
+    # hanging indefinitely when, e.g., a Python version build is triggered.
+    DEFAULT_TIMEOUT = 120
+
     def run(
         self,
         *args: str,
         check: bool = False,
         capture: bool = True,
         input: Optional[str] = None,
+        timeout: Optional[int] = None,
     ) -> subprocess.CompletedProcess:
         """
         Run pyve command.
@@ -92,6 +115,7 @@ class PyveRunner:
             check: Raise exception on non-zero exit code
             capture: Capture stdout/stderr
             input: Input to send to stdin
+            timeout: Seconds before the subprocess is killed (default: DEFAULT_TIMEOUT)
             
         Returns:
             CompletedProcess instance
@@ -100,6 +124,7 @@ class PyveRunner:
         kwargs = {
             'cwd': self.cwd,
             'check': check,
+            'timeout': timeout if timeout is not None else self.DEFAULT_TIMEOUT,
         }
         
         if capture:
@@ -117,10 +142,13 @@ class PyveRunner:
                 # When running under pytest, allow `pyve test` to auto-install pytest into
                 # the dev/test runner env without prompting.
                 env.setdefault("PYVE_TEST_AUTO_INSTALL_PYTEST", "1")
+                # Always pin to the installed Python version under pytest to
+                # avoid triggering a slow Python build when the default
+                # version is not yet installed.
+                env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
                 # In CI, tests must be non-interactive.
                 if env.get("CI") == "true":
                     env.setdefault("PYVE_FORCE_YES", "1")
-                    env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
             kwargs['env'] = env
         
         return subprocess.run(cmd, **kwargs)
@@ -155,7 +183,13 @@ class PyveRunner:
 
         if "python_version" not in kwargs and backend in (None, "venv", "auto"):
             env = os.environ.copy()
-            if os.environ.get("CI") == "true" or os.environ.get("PYVE_TEST_PIN_PYTHON") == "1":
+            # Always pin to the installed Python version under pytest to
+            # avoid triggering a slow Python build (the env var is now set
+            # automatically by run(); check it here as well for callers
+            # that set it manually).
+            if (os.environ.get("CI") == "true"
+                    or os.environ.get("PYVE_TEST_PIN_PYTHON") == "1"
+                    or os.environ.get("PYTEST_CURRENT_TEST")):
                 detected = _detect_version_manager_python_version(env)
                 if detected:
                     kwargs["python_version"] = detected
