@@ -75,7 +75,7 @@ This document catalogs all features in Pyve v0.5.10 and identifies which were re
 
 #### 7. Version (`--version`, `-v`)
 - **Description**: Display current script version
-- **Current Version**: `1.1.2`
+- **Current Version**: `1.1.3`
 
 #### 8. Configuration (`--config`, `-c`)
 - **Description**: Display current configuration settings

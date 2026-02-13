@@ -12,6 +12,18 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v1.1.3: Replace sed append with portable shell loop in insert_pattern_in_gitignore_section [Implemented]
+- [x] Fix: `insert_pattern_in_gitignore_section()` `sed -i a\` concatenated entries without newlines on both macOS and Linux CI
+- [x] Replace `sed a\` with portable shell `while read` loop (read line-by-line, insert after section match, write via temp file)
+- [x] Bump pyve version to 1.1.3
+
+### Notes
+* Root cause: `sed`'s `a\` (append) command produced concatenated entries without newline separation when the section comment was the last line of the file. Affected both BSD `sed` (macOS) and GNU `sed` (Linux) on CI. The v1.1.2 fix (literal newline in Linux branch) was insufficient — the bug existed on both platforms.
+* Fix: replaced `sed -i` entirely with a portable shell `while read` loop that writes each line to a temp file and inserts the pattern immediately after the section comment match. No platform-specific branches needed.
+* Caught by `test_gitignore_updated_for_micromamba` and 4 venv `.gitignore` tests on GitHub Actions.
+
+---
+
 ## v1.1.2: Fix Linux sed append in insert_pattern_in_gitignore_section [Implemented]
 - [x] Fix: `insert_pattern_in_gitignore_section()` Linux `sed -i` append syntax missing literal newline — entries were concatenated without line breaks on Linux/CI
 - [x] Bump pyve version to 1.1.2

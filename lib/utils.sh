@@ -125,15 +125,15 @@ insert_pattern_in_gitignore_section() {
     # Try to insert after the section comment
     if grep -qxF "$section" "$gitignore" 2>/dev/null; then
         # Insert pattern on the line after the section comment
-        local escaped_section
-        escaped_section="$(printf '%s' "$section" | sed 's/[.[\*^$()+?{|]/\\&/g')"
-        if [[ "$(uname)" == "Darwin" ]]; then
-            sed -i '' "/^${escaped_section}$/a\\
-${pattern}" "$gitignore"
-        else
-            sed -i "/^${escaped_section}$/a\\
-${pattern}" "$gitignore"
-        fi
+        local tmpfile
+        tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            printf '%s\n' "$line" >> "$tmpfile"
+            if [[ "$line" == "$section" ]]; then
+                printf '%s\n' "$pattern" >> "$tmpfile"
+            fi
+        done < "$gitignore"
+        mv "$tmpfile" "$gitignore"
     else
         # Section not found — fall back to append
         printf "%s\n" "$pattern" >> "$gitignore"
