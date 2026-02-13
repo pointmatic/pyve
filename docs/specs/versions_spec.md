@@ -12,6 +12,26 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v1.0.0: Improvements to .gitignore management [Implemented]
+- [x] Add Python build artifacts to `.gitignore` template (`__pycache__`, `*.egg-info`)
+- [x] Add pytest artifacts to `.gitignore` template (`.pytest_cache/`)
+- [x] Add coverage artifacts to `.gitignore` template (`.coverage`, `coverage.xml`, `htmlcov/`)
+- [x] Add Pyve internal dev/test runner environment to `.gitignore` (`.pyve/testenv`)
+- [x] Self-healing `.gitignore` via `write_gitignore_template`: Pyve-managed entries at top, user entries preserved below
+- [x] Target virtual environment additions (`.venv`, `.env`, `.envrc`) to the `# Pyve virtual environment` section via `insert_pattern_in_gitignore_section`
+- [x] Fix: remove inline comments from `.gitignore` — git only recognizes `#` as a comment at the start of a line
+- [x] `pyve --purge` still removes `.venv`, `.env`, `.envrc`; permanent hygiene entries are preserved
+- [x] Bump pyve version to 1.0.0
+
+### Notes
+* `.gitignore` does not support inline comments — a line like `.env  # comment` is treated as a literal pattern, not `.env` with a comment. All comments are now on their own line (section headers only).
+* `write_gitignore_template()` rebuilds `.gitignore` on every `pyve --init` via a temp file: writes the Pyve-managed template at the top, then passes through all non-template lines from the existing file verbatim. This makes the file self-healing and idempotent — repeated runs converge to a stable layout without unnecessary git diffs.
+* New `insert_pattern_in_gitignore_section()` inserts entries after a section comment (e.g. `# Pyve virtual environment`), falling back to append if the section is not found
+* `gitignore_has_pattern()` and `remove_pattern_from_gitignore()` use exact line matching (no inline comment handling needed)
+* Both venv and micromamba init paths use the same template + section-aware insertion approach
+
+---
+
 ## v0.9.9: Gitignore hygiene on init [Implemented]
 - [x] Add `__pycache__` and `.pyve/testenv` to `.gitignore` on `pyve --init` (venv backend)
 - [x] Add `__pycache__` and `.pyve/testenv` to `.gitignore` on `pyve --init` (micromamba backend)

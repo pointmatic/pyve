@@ -67,6 +67,15 @@ prompt_yes_no() {
 # Gitignore Management
 #============================================================
 
+# Check if a pattern is already present in .gitignore (exact line match)
+# Usage: gitignore_has_pattern "pattern"
+# Returns 0 if found, 1 if not
+gitignore_has_pattern() {
+    local pattern="$1"
+    local gitignore=".gitignore"
+    grep -qxF "$pattern" "$gitignore" 2>/dev/null
+}
+
 # Add a pattern to .gitignore if not already present
 # Usage: append_pattern_to_gitignore "pattern"
 append_pattern_to_gitignore() {
@@ -78,8 +87,7 @@ append_pattern_to_gitignore() {
         touch "$gitignore"
     fi
     
-    # Check if pattern already exists (exact line match)
-    if grep -qxF "$pattern" "$gitignore" 2>/dev/null; then
+    if gitignore_has_pattern "$pattern"; then
         return 0  # Already present
     fi
     
@@ -87,7 +95,42 @@ append_pattern_to_gitignore() {
     printf "%s\n" "$pattern" >> "$gitignore"
 }
 
-# Remove a pattern from .gitignore
+# Insert a pattern after a section comment in .gitignore if not already present
+# Falls back to append if the section comment is not found.
+# Usage: insert_pattern_in_gitignore_section "pattern" "section_comment"
+#   pattern:         the gitignore entry (e.g. ".venv")
+#   section_comment: the full comment line to insert after (e.g. "# Pyve virtual environment")
+insert_pattern_in_gitignore_section() {
+    local pattern="$1"
+    local section="$2"
+    local gitignore=".gitignore"
+    
+    if [[ ! -f "$gitignore" ]]; then
+        touch "$gitignore"
+    fi
+    
+    if gitignore_has_pattern "$pattern"; then
+        return 0  # Already present
+    fi
+    
+    # Try to insert after the section comment
+    if grep -qxF "$section" "$gitignore" 2>/dev/null; then
+        # Insert pattern on the line after the section comment
+        local escaped_section
+        escaped_section="$(printf '%s' "$section" | sed 's/[.[\*^$()+?{|]/\\&/g')"
+        if [[ "$(uname)" == "Darwin" ]]; then
+            sed -i '' "/^${escaped_section}$/a\\
+${pattern}" "$gitignore"
+        else
+            sed -i "/^${escaped_section}$/a\\${pattern}" "$gitignore"
+        fi
+    else
+        # Section not found — fall back to append
+        printf "%s\n" "$pattern" >> "$gitignore"
+    fi
+}
+
+# Remove a pattern from .gitignore (exact line match)
 # Usage: remove_pattern_from_gitignore "pattern"
 remove_pattern_from_gitignore() {
     local pattern="$1"
@@ -99,11 +142,84 @@ remove_pattern_from_gitignore() {
     
     # Use sed to remove exact line match
     # macOS sed requires '' after -i, Linux doesn't
+    local escaped
+    escaped="$(printf '%s' "$pattern" | sed 's/[.[\*^$()+?{|]/\\&/g')"
     if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' "/^$(printf '%s' "$pattern" | sed 's/[.[\*^$()+?{|]/\\&/g')$/d" "$gitignore"
+        sed -i '' "/^${escaped}$/d" "$gitignore"
     else
-        sed -i "/^$(printf '%s' "$pattern" | sed 's/[.[\*^$()+?{|]/\\&/g')$/d" "$gitignore"
+        sed -i "/^${escaped}$/d" "$gitignore"
     fi
+}
+
+# Write (or rebuild) the .gitignore from the Pyve template.
+#
+# The Pyve-managed section is written to a temporary file first.  If an
+# existing .gitignore is present, every line that is NOT already in the
+# template is appended verbatim, preserving the user's formatting, blank
+# lines, section headers, and comments.
+#
+# The result is: Pyve-managed entries at the top, user entries below.
+# Running `pyve --init` (or --force) is therefore idempotent — the file
+# converges to a stable layout without unnecessary git diffs.
+#
+# Note: .gitignore does not support inline comments.  A `#` is only a
+# comment when it is the first non-whitespace character on the line.
+#
+# Usage: write_gitignore_template
+write_gitignore_template() {
+    local gitignore=".gitignore"
+    local tmpfile
+    tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
+
+    # --- 1. Write the Pyve-managed section ---
+    cat > "$tmpfile" << 'GITIGNORE_EOF'
+# macOS only
+.DS_Store
+
+# Python build and test artifacts
+__pycache__
+*.egg-info
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+
+# Pyve virtual environment
+GITIGNORE_EOF
+
+    # --- 2. Append non-template lines from the existing file ---
+    if [[ -f "$gitignore" ]]; then
+        # Build set of template lines for deduplication
+        local -a template_lines=()
+        while IFS= read -r tline; do
+            [[ -n "$tline" ]] && template_lines+=("$tline")
+        done < "$tmpfile"
+
+        # Pass through every line from the existing file
+        while IFS= read -r line || [[ -n "$line" ]]; do
+            # Blank lines and comment-only lines: pass through
+            if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
+                printf '%s\n' "$line" >> "$tmpfile"
+                continue
+            fi
+
+            # Skip if this exact line is already in the template
+            local found=false
+            for tl in "${template_lines[@]}"; do
+                if [[ "$line" == "$tl" ]]; then
+                    found=true
+                    break
+                fi
+            done
+
+            if [[ "$found" == false ]]; then
+                printf '%s\n' "$line" >> "$tmpfile"
+            fi
+        done < "$gitignore"
+    fi
+
+    # --- 3. Replace atomically ---
+    mv -f "$tmpfile" "$gitignore"
 }
 
 #============================================================

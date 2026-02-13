@@ -1,9 +1,17 @@
+# macOS only
 .DS_Store
-.tool-versions
-.pyve
+
+# Python build and test artifacts
 __pycache__
+*.egg-info
 .coverage
-htmlcov
+htmlcov/
+.pytest_cache/
+
+# Pyve virtual environment
 .venv
 .env
 .envrc
+.pyve/testenv
+
+# Project

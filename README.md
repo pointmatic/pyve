@@ -14,7 +14,8 @@ Pyve provides a single, deterministic entry point for Python environments, witho
 Make things easy and natural, but avoid being invasive.
 - Pyve manages the environments it creates.
 - Pyve asks before installing non-critical, networked dependencies like `micromamba` or `pytest`. 
-- More advanced tools like asdf (seamless support) or conda-lock (no direct support) are yours to install.
+- If you prefer `asdf` instead of `venv`, Pyve will automatically detect and use it to manage the virtual environment for you. 
+- Pyve does not install or manage `conda-lock`, but you can install it yourself and Pyve won't interfere.
 
 ## Key Features
 - **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.

@@ -20,7 +20,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="0.9.9"
+VERSION="1.0.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -627,14 +627,12 @@ init() {
         init_dotenv "$use_local_env"
         
         # Update .gitignore
-        append_pattern_to_gitignore ".pyve/envs"
-        append_pattern_to_gitignore "$ENV_FILE_NAME"
-        append_pattern_to_gitignore ".envrc"
-        append_pattern_to_gitignore "__pycache__"
-        append_pattern_to_gitignore ".pyve/testenv"
-        if [[ "$(uname)" == "Darwin" ]]; then
-            append_pattern_to_gitignore ".DS_Store"
-        fi
+        local section="# Pyve virtual environment"
+        write_gitignore_template
+        insert_pattern_in_gitignore_section ".pyve/envs" "$section"
+        insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
+        insert_pattern_in_gitignore_section ".envrc" "$section"
+        insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
         log_success "Updated .gitignore"
         
         # Create .pyve/config with version tracking
@@ -861,18 +859,16 @@ init_dotenv() {
 
 init_gitignore() {
     local venv_dir="$1"
+    local section="# Pyve virtual environment"
     
-    # Add patterns to .gitignore
-    append_pattern_to_gitignore "$venv_dir"
-    append_pattern_to_gitignore "$ENV_FILE_NAME"
-    append_pattern_to_gitignore ".envrc"
-    append_pattern_to_gitignore "__pycache__"
-    append_pattern_to_gitignore ".pyve/testenv"
+    # Rebuild .gitignore: Pyve-managed template at top, user entries below
+    write_gitignore_template
     
-    # Add .DS_Store on macOS
-    if [[ "$(uname)" == "Darwin" ]]; then
-        append_pattern_to_gitignore ".DS_Store"
-    fi
+    # Insert venv-specific entries into the Pyve section
+    insert_pattern_in_gitignore_section "$venv_dir" "$section"
+    insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
     
     log_success "Updated .gitignore"
 }
