@@ -1,4 +1,4 @@
-# features.md — Pyve (Bash)
+# features.md — Pyve: A single, easy entry point for Python virtual environments
 
 This document defines **what** Pyve does — requirements, inputs, outputs, and behavior — without specifying how it is implemented. It is the source of truth for scope. For architecture and module design, see `tech_spec.md`. For the implementation plan, see `stories.md`.
 

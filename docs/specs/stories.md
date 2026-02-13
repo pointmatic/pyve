@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.0.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.1.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -31,7 +31,17 @@ Remove stale skip decorators from `test_validate.py` and reconcile test expectat
 - [x] Verify: `pytest tests/integration/test_validate.py::TestValidateCommand -v` — 14 passed, 1 skipped (micromamba)
 - [x] Bump VERSION to 1.2.0
 
-### Story A.c: v1.2.1 Activate Validate Edge Case & Platform Tests [Planned]
+### Story A.c: v1.2.1 Descriptions, Marketing Page & README Sync [Done]
+
+Create `docs/specs/descriptions.md` as the canonical source of truth for all project descriptions. Build a marketing landing page and distribute descriptions to all consumer files.
+
+- [x] Fill in `descriptions.md` — One-liner, Friendly Brief, Two-clause Technical, Benefits, Technical Description, Keywords, Feature Cards
+- [x] Create `docs/index.html` marketing page using banner image and descriptions from `descriptions.md`
+- [x] Distribute descriptions to `README.md` (lines 7, 11, 13–19) and `docs/specs/features.md` (line 1)
+- [x] Update Usage Notes table in `descriptions.md` with actual line numbers
+- [x] Bump VERSION to 1.2.1
+
+### Story A.d: v1.2.2 Activate Validate Edge Case & Platform Tests [Planned]
 
 Activate the remaining validate test classes.
 
@@ -41,7 +51,7 @@ Activate the remaining validate test classes.
 - [ ] Run tests, fix assertion mismatches
 - [ ] Verify: `pytest tests/integration/test_validate.py -v` — all non-micromamba tests pass
 
-### Story A.d: v1.2.2 Increase Unit Test Coverage for version.sh [Planned]
+### Story A.e: v1.2.3 Increase Unit Test Coverage for version.sh [Planned]
 
 Add Bats unit tests for `lib/version.sh` functions not currently covered.
 
@@ -51,7 +61,7 @@ Add Bats unit tests for `lib/version.sh` functions not currently covered.
 - [ ] Add tests for `write_config_with_version()` and `update_config_version()`
 - [ ] Verify: `bats tests/unit/test_version.bats` passes
 
-### Story A.e: v1.2.3 Coverage Audit and Gap Fill [Planned]
+### Story A.f: v1.2.4 Coverage Audit and Gap Fill [Planned]
 
 Run coverage report, identify remaining low-coverage modules, and add targeted tests.
 
@@ -61,7 +71,7 @@ Run coverage report, identify remaining low-coverage modules, and add targeted t
 - [ ] Add unit tests for any uncovered `lib/utils.sh` branches (e.g., `remove_pattern_from_gitignore`, `is_file_empty` edge cases)
 - [ ] Verify: overall coverage ≥ 65%
 
-### Story A.f: v1.2.4 Coverage Target 80% [Planned]
+### Story A.g: v1.2.5 Coverage Target 80% [Planned]
 
 Push coverage from ~65% to the 80% target.
 

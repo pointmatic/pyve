@@ -4,11 +4,19 @@
 [![codecov](https://codecov.io/gh/pointmatic/pyve/branch/main/graph/badge.svg)](https://codecov.io/gh/pointmatic/pyve)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-Pyve is a focused command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management, virtual environments, Micromamba (conda-compatible) environments, and direnv in a single, easy-to-use script.
+A command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux, orchestrating Python version managers, venv and micromamba backends, and direnv in a single script.
 
 ## Why Pyve?
 
-Pyve provides a single, deterministic entry point for Python environments, without replacing existing tools. 
+Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management (asdf or pyenv), virtual environments (venv or micromamba), and direnv integration in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
+
+- One-command environment setup (`pyve --init`)
+- Dual backend support — venv (pip) and micromamba (conda-compatible)
+- Automatic Python version management via asdf or pyenv
+- direnv integration for seamless shell activation
+- CI/CD-ready with `--no-direnv`, `--auto-bootstrap`, and `--strict` flags
+- Clean teardown with `pyve --purge` — preserves your secrets
+- Zero runtime dependencies — pure Bash, no daemons
 
 ### Philosophy
 Make things easy and natural, but avoid being invasive.
