@@ -1,6 +1,6 @@
 # Features
 
-This document catalogs all features in Pyve v0.5.10 and identifies which will be retained for v0.7.0.
+This document catalogs all features in Pyve v0.5.10 and identifies which were retained for v0.7.0+.
 
 ## Core Features (Retained for v0.7.0)
 
@@ -13,7 +13,7 @@ This document catalogs all features in Pyve v0.5.10 and identifies which will be
   - Create virtual environment using Python venv
   - Auto-activate/deactivate via direnv when changing directories
   - Configure `.env` file for environment variables (dotenv-ready)
-  - Auto-configure `.gitignore` to exclude virtual environment artifacts
+  - Self-healing `.gitignore` management via template (Pyve-managed entries at top, user entries preserved below)
   - Optional custom venv directory name (default: `.venv`)
   - Optional Python version selection via `--python-version <ver>`
   - Optional local env template copy via `--local-env` flag
@@ -23,8 +23,7 @@ This document catalogs all features in Pyve v0.5.10 and identifies which will be
   - `.tool-versions` (asdf) or `.python-version` (pyenv)
   - `.envrc` (direnv configuration)
   - `.env` (environment variables, chmod 600)
-  - `.gitignore` (patterns added)
-  - `.DS_Store` pattern (macOS only)
+  - `.gitignore` (rebuilt from template with Python build/test artifacts, Pyve virtual environment entries, and user entries preserved)
 
 #### 2. Python Version Management (`--python-version`)
 - **Description**: Set local Python version without creating virtual environment
@@ -33,8 +32,8 @@ This document catalogs all features in Pyve v0.5.10 and identifies which will be
   - Auto-install Python version if not present
   - Refresh shims after version change
   - No venv/direnv changes (version-only operation)
-- **Version Format**: `#.#.#` (e.g., `3.13.7`)
-- **Default Version**: `3.13.7`
+- **Version Format**: `#.#.#` (e.g., `3.14.3`)
+- **Default Version**: `3.14.3`
 
 #### 3. Environment Purge (`--purge`)
 - **Description**: Delete all Python virtual environment artifacts
@@ -43,7 +42,7 @@ This document catalogs all features in Pyve v0.5.10 and identifies which will be
   - Remove version manager files (`.tool-versions` or `.python-version`)
   - Remove direnv configuration (`.envrc`)
   - Remove environment file (`.env`) - **only if empty** (v0.7.0 change)
-  - Clean up `.gitignore` patterns
+  - Clean up `.gitignore` patterns (removes `.venv`, `.env`, `.envrc`; preserves permanent hygiene entries)
   - Optional custom venv directory name parameter
   - Message displayed when any purge action is skipped
 - **Safety**: Preserves user code, Git repository, and non-empty `.env` files
@@ -76,13 +75,13 @@ This document catalogs all features in Pyve v0.5.10 and identifies which will be
 
 #### 7. Version (`--version`, `-v`)
 - **Description**: Display current script version
-- **Current Version**: `0.5.10`
+- **Current Version**: `1.1.0`
 
 #### 8. Configuration (`--config`, `-c`)
 - **Description**: Display current configuration settings
 - **Shows**:
   - Environment vars filename (`.env`)
-  - Default Python version (`3.13.7`)
+  - Default Python version (`3.14.3`)
   - Default venv directory (`.venv`)
 
 ### Version Manager Support

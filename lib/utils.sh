@@ -189,19 +189,24 @@ GITIGNORE_EOF
 
     # --- 2. Append non-template lines from the existing file ---
     if [[ -f "$gitignore" ]]; then
-        # Build set of template lines for deduplication
+        # Build set of ALL template lines (including comments) for deduplication
         local -a template_lines=()
         while IFS= read -r tline; do
             [[ -n "$tline" ]] && template_lines+=("$tline")
         done < "$tmpfile"
 
         # Pass through every line from the existing file
+        local prev_was_blank=false
         while IFS= read -r line || [[ -n "$line" ]]; do
-            # Blank lines and comment-only lines: pass through
-            if [[ -z "$line" ]] || [[ "$line" =~ ^[[:space:]]*# ]]; then
-                printf '%s\n' "$line" >> "$tmpfile"
+            # Blank lines: pass through but collapse consecutive blanks
+            if [[ -z "$line" ]]; then
+                if [[ "$prev_was_blank" == false ]]; then
+                    printf '\n' >> "$tmpfile"
+                fi
+                prev_was_blank=true
                 continue
             fi
+            prev_was_blank=false
 
             # Skip if this exact line is already in the template
             local found=false

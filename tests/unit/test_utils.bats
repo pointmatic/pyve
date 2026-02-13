@@ -135,6 +135,205 @@ EOF
 }
 
 #============================================================
+# gitignore_has_pattern() tests
+#============================================================
+
+@test "gitignore_has_pattern: returns 0 when pattern exists" {
+    echo ".venv" > .gitignore
+    
+    run gitignore_has_pattern ".venv"
+    [ "$status" -eq 0 ]
+}
+
+@test "gitignore_has_pattern: returns 1 when pattern not found" {
+    echo ".pyve" > .gitignore
+    
+    run gitignore_has_pattern ".venv"
+    [ "$status" -eq 1 ]
+}
+
+@test "gitignore_has_pattern: returns non-zero when .gitignore missing" {
+    run gitignore_has_pattern ".venv"
+    [ "$status" -ne 0 ]
+}
+
+@test "gitignore_has_pattern: handles special characters in pattern" {
+    echo "*.egg-info" > .gitignore
+    
+    run gitignore_has_pattern "*.egg-info"
+    [ "$status" -eq 0 ]
+}
+
+@test "gitignore_has_pattern: does not match partial lines" {
+    echo ".venv-test" > .gitignore
+    
+    run gitignore_has_pattern ".venv"
+    [ "$status" -eq 1 ]
+}
+
+#============================================================
+# insert_pattern_in_gitignore_section() tests
+#============================================================
+
+@test "insert_pattern_in_gitignore_section: inserts after section comment" {
+    cat > .gitignore << 'EOF'
+# Python
+__pycache__
+
+# Pyve virtual environment
+
+# Project
+EOF
+    
+    run insert_pattern_in_gitignore_section ".venv" "# Pyve virtual environment"
+    [ "$status" -eq 0 ]
+    
+    # .venv should appear right after the section comment
+    local line_section=$(grep -n "^# Pyve virtual environment$" .gitignore | head -1 | cut -d: -f1)
+    local line_venv=$(grep -n "^\.venv$" .gitignore | head -1 | cut -d: -f1)
+    [ "$line_venv" -eq $((line_section + 1)) ]
+}
+
+@test "insert_pattern_in_gitignore_section: skips if pattern already present" {
+    cat > .gitignore << 'EOF'
+# Pyve virtual environment
+.venv
+EOF
+    
+    run insert_pattern_in_gitignore_section ".venv" "# Pyve virtual environment"
+    [ "$status" -eq 0 ]
+    
+    local count=$(grep -c "^\.venv$" .gitignore)
+    [ "$count" -eq 1 ]
+}
+
+@test "insert_pattern_in_gitignore_section: falls back to append when section missing" {
+    echo "__pycache__" > .gitignore
+    
+    run insert_pattern_in_gitignore_section ".venv" "# Pyve virtual environment"
+    [ "$status" -eq 0 ]
+    
+    # .venv should be at the end
+    local last_line=$(tail -1 .gitignore)
+    [ "$last_line" = ".venv" ]
+}
+
+@test "insert_pattern_in_gitignore_section: creates .gitignore if missing" {
+    run insert_pattern_in_gitignore_section ".venv" "# Pyve virtual environment"
+    [ "$status" -eq 0 ]
+    
+    assert_file_exists ".gitignore"
+    assert_file_contains ".gitignore" ".venv"
+}
+
+#============================================================
+# write_gitignore_template() tests
+#============================================================
+
+@test "write_gitignore_template: creates template when no .gitignore exists" {
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    assert_file_exists ".gitignore"
+    assert_file_contains ".gitignore" "# macOS only"
+    assert_file_contains ".gitignore" ".DS_Store"
+    assert_file_contains ".gitignore" "# Python build and test artifacts"
+    assert_file_contains ".gitignore" "__pycache__"
+    assert_file_contains ".gitignore" "*.egg-info"
+    assert_file_contains ".gitignore" ".coverage"
+    assert_file_contains ".gitignore" "coverage.xml"
+    assert_file_contains ".gitignore" "htmlcov/"
+    assert_file_contains ".gitignore" ".pytest_cache/"
+    assert_file_contains ".gitignore" "# Pyve virtual environment"
+}
+
+@test "write_gitignore_template: preserves user entries below template" {
+    cat > .gitignore << 'EOF'
+.DS_Store
+__pycache__
+my-custom-dir/
+my-secret-file
+EOF
+    
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    # Template entries should be present
+    assert_file_contains ".gitignore" "# Python build and test artifacts"
+    assert_file_contains ".gitignore" "# Pyve virtual environment"
+    
+    # User entries should be preserved
+    assert_file_contains ".gitignore" "my-custom-dir/"
+    assert_file_contains ".gitignore" "my-secret-file"
+    
+    # Template entries should NOT be duplicated
+    local count=$(grep -c "^__pycache__$" .gitignore)
+    [ "$count" -eq 1 ]
+    
+    local count_ds=$(grep -c "^\.DS_Store$" .gitignore)
+    [ "$count_ds" -eq 1 ]
+}
+
+@test "write_gitignore_template: idempotent — running twice produces identical output" {
+    # First run (fresh)
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    local first_run=$(cat .gitignore)
+    
+    # Second run (existing file)
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    local second_run=$(cat .gitignore)
+    
+    [ "$first_run" = "$second_run" ]
+}
+
+@test "write_gitignore_template: self-healing removes duplicate template entries from user section" {
+    # Simulate a .gitignore where user manually added template entries
+    cat > .gitignore << 'EOF'
+my-project-dir/
+__pycache__
+.DS_Store
+*.egg-info
+another-user-entry
+EOF
+    
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    # Each template entry should appear exactly once
+    local count_pycache=$(grep -c "^__pycache__$" .gitignore)
+    [ "$count_pycache" -eq 1 ]
+    
+    local count_ds=$(grep -c "^\.DS_Store$" .gitignore)
+    [ "$count_ds" -eq 1 ]
+    
+    local count_egg=$(grep -c "^\*\.egg-info$" .gitignore)
+    [ "$count_egg" -eq 1 ]
+    
+    # User entries should be preserved
+    assert_file_contains ".gitignore" "my-project-dir/"
+    assert_file_contains ".gitignore" "another-user-entry"
+}
+
+@test "write_gitignore_template: preserves user section comments" {
+    cat > .gitignore << 'EOF'
+.DS_Store
+
+# My custom section
+custom-pattern
+EOF
+    
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+    
+    assert_file_contains ".gitignore" "# My custom section"
+    assert_file_contains ".gitignore" "custom-pattern"
+}
+
+#============================================================
 # config_file_exists() tests (already tested in test_config_parse.bats)
 #============================================================
 

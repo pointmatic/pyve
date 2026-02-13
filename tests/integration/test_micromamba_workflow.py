@@ -140,8 +140,8 @@ dependencies:
         # Should derive name from directory or succeed
         assert result.returncode in [0, 1]
     
-    def test_gitignore_not_updated_for_micromamba(self, pyve, project_builder):
-        """Test that .gitignore is not updated for micromamba (global env)."""
+    def test_gitignore_updated_for_micromamba(self, pyve, project_builder):
+        """Test that .gitignore has template entries and .pyve/envs but not env name."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11']
@@ -150,11 +150,25 @@ dependencies:
         pyve.init(backend='micromamba')
         
         gitignore_path = pyve.cwd / '.gitignore'
-        # Gitignore might exist but shouldn't have micromamba-specific entries
-        if gitignore_path.exists():
-            gitignore_content = gitignore_path.read_text()
-            # Should not add environment name to gitignore
-            assert 'test-env' not in gitignore_content
+        assert gitignore_path.exists()
+        
+        gitignore_content = gitignore_path.read_text()
+        lines = gitignore_content.splitlines()
+        
+        # Template section headers and entries should be present
+        assert '# Python build and test artifacts' in lines
+        assert '# Pyve virtual environment' in lines
+        assert '__pycache__' in lines
+        assert '*.egg-info' in lines
+        
+        # Micromamba-specific entries in Pyve section
+        assert '.pyve/envs' in lines
+        assert '.env' in lines
+        assert '.envrc' in lines
+        assert '.pyve/testenv' in lines
+        
+        # Environment name should NOT be in gitignore
+        assert 'test-env' not in gitignore_content
 
 
 @pytest.mark.micromamba

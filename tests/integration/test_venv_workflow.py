@@ -145,7 +145,7 @@ class TestVenvWorkflow:
         assert (pyve.cwd / '.venv').exists()
     
     def test_gitignore_updated(self, pyve, project_builder):
-        """Test that .gitignore is updated with venv directory."""
+        """Test that .gitignore is updated with template and venv entries."""
         project_builder.create_requirements(['requests==2.31.0'])
         
         pyve.init(backend='venv')
@@ -154,7 +154,100 @@ class TestVenvWorkflow:
         assert gitignore_path.exists()
         
         gitignore_content = gitignore_path.read_text()
-        assert '.venv' in gitignore_content
+        lines = gitignore_content.splitlines()
+        
+        # Template section headers
+        assert '# Python build and test artifacts' in lines
+        assert '# Pyve virtual environment' in lines
+        
+        # Template entries
+        assert '__pycache__' in lines
+        assert '*.egg-info' in lines
+        assert '.coverage' in lines
+        assert 'coverage.xml' in lines
+        assert 'htmlcov/' in lines
+        assert '.pytest_cache/' in lines
+        assert '.DS_Store' in lines
+        
+        # Venv-specific entries in Pyve section
+        assert '.venv' in lines
+        assert '.env' in lines
+        assert '.envrc' in lines
+        assert '.pyve/testenv' in lines
+
+
+@pytest.mark.venv
+class TestGitignoreManagement:
+    """Test .gitignore template, idempotency, self-healing, and purge behavior."""
+    
+    def test_gitignore_idempotent(self, pyve, project_builder):
+        """Test that running init twice produces identical .gitignore."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        
+        pyve.init(backend='venv')
+        first_content = (pyve.cwd / '.gitignore').read_text()
+        
+        pyve.init(backend='venv')
+        second_content = (pyve.cwd / '.gitignore').read_text()
+        
+        assert first_content == second_content
+    
+    def test_gitignore_self_healing(self, pyve, project_builder):
+        """Test that user entries are preserved and template entries restored."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        
+        # Write a custom .gitignore before init
+        gitignore_path = pyve.cwd / '.gitignore'
+        gitignore_path.write_text("my-custom-dir/\nmy-secret\n")
+        
+        pyve.init(backend='venv')
+        
+        content = gitignore_path.read_text()
+        lines = content.splitlines()
+        
+        # Template entries restored at top
+        assert '# Python build and test artifacts' in lines
+        assert '__pycache__' in lines
+        assert '*.egg-info' in lines
+        
+        # User entries preserved
+        assert 'my-custom-dir/' in lines
+        assert 'my-secret' in lines
+        
+        # Template entries not duplicated
+        assert lines.count('__pycache__') == 1
+    
+    def test_gitignore_purge_preserves_permanent_entries(self, pyve, project_builder):
+        """Test that purge removes only .venv/.env/.envrc, not permanent entries."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        
+        pyve.init(backend='venv')
+        
+        # Verify entries exist before purge
+        gitignore_path = pyve.cwd / '.gitignore'
+        content_before = gitignore_path.read_text()
+        assert '.venv' in content_before
+        assert '__pycache__' in content_before
+        assert '.pyve/testenv' in content_before
+        
+        pyve.purge(auto_yes=True)
+        
+        # .gitignore should still exist
+        assert gitignore_path.exists()
+        content_after = gitignore_path.read_text()
+        lines = content_after.splitlines()
+        
+        # Purged entries should be gone
+        assert '.venv' not in lines
+        assert '.env' not in lines
+        assert '.envrc' not in lines
+        
+        # Permanent entries should remain
+        assert '__pycache__' in lines
+        assert '*.egg-info' in lines
+        assert '.pyve/testenv' in lines
+        assert '.coverage' in lines
+        assert '.pytest_cache/' in lines
 
 
 @pytest.mark.venv

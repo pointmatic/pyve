@@ -12,6 +12,35 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v1.1.0: Testing and spec updates for v1.0.0 .gitignore changes [Implemented]
+
+### Bats unit tests (`tests/unit/test_utils.bats`)
+- [x] `gitignore_has_pattern`: exact match found, not found, special characters, partial line
+- [x] `insert_pattern_in_gitignore_section`: inserts after section comment, skips if already present, falls back to append when section missing, creates file if missing
+- [x] `write_gitignore_template`: fresh file (no existing `.gitignore`), produces correct template
+- [x] `write_gitignore_template`: existing `.gitignore` with user entries — template at top, user entries preserved below
+- [x] `write_gitignore_template`: idempotent — running twice produces identical output
+- [x] `write_gitignore_template`: self-healing — removes duplicate template entries from user section
+- [x] `write_gitignore_template`: preserves user section comments
+- [x] `remove_pattern_from_gitignore`: existing tests still pass with exact-match behavior
+
+### Integration tests (`tests/integration/`)
+- [x] Strengthen `test_gitignore_updated` (venv) — verify template sections, all expected entries
+- [x] Strengthen `test_gitignore_updated_for_micromamba` — verify template entries, `.pyve/envs` present, env name NOT present
+- [x] New: `test_gitignore_idempotent` — `pyve --init` twice produces identical `.gitignore`
+- [x] New: `test_gitignore_self_healing` — user entries preserved, template entries restored at top
+- [x] New: `test_gitignore_purge_preserves_permanent_entries` — purge removes only `.venv`/`.env`/`.envrc`
+
+### Spec updates
+- [x] Update `features.md` — stale version references (`3.13.7` → `3.14.3`, `0.5.10` → `1.1.0`), `.gitignore` feature description updated
+- [x] Bump pyve version to 1.1.0
+
+### Notes
+* Idempotency test caught a real bug in `write_gitignore_template()`: comment lines and blank lines from the existing file were not being deduplicated against the template, causing accumulation on repeated runs. Fixed by including comment lines in the template dedup set and collapsing consecutive blank lines.
+* All 233 Bats unit tests pass (56 in `test_utils.bats`)
+
+---
+
 ## v1.0.0: Improvements to .gitignore management [Implemented]
 - [x] Add Python build artifacts to `.gitignore` template (`__pycache__`, `*.egg-info`)
 - [x] Add pytest artifacts to `.gitignore` template (`.pytest_cache/`)
