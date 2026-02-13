@@ -131,7 +131,8 @@ insert_pattern_in_gitignore_section() {
             sed -i '' "/^${escaped_section}$/a\\
 ${pattern}" "$gitignore"
         else
-            sed -i "/^${escaped_section}$/a\\${pattern}" "$gitignore"
+            sed -i "/^${escaped_section}$/a\\
+${pattern}" "$gitignore"
         fi
     else
         # Section not found — fall back to append

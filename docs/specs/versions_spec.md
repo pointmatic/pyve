@@ -12,6 +12,16 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v1.1.2: Fix Linux sed append in insert_pattern_in_gitignore_section [Implemented]
+- [x] Fix: `insert_pattern_in_gitignore_section()` Linux `sed -i` append syntax missing literal newline — entries were concatenated without line breaks on Linux/CI
+- [x] Bump pyve version to 1.1.2
+
+### Notes
+* Root cause: the Linux branch of `sed -i` used `a\\${pattern}` on a single line, which concatenated entries without newlines. The macOS branch already used a literal newline after `a\\`. Fixed by matching the macOS syntax on Linux.
+* Caught by `test_gitignore_updated_for_micromamba` on GitHub Actions (macOS `sed` worked locally, GNU `sed` on Linux did not).
+
+---
+
 ## v1.1.1: License migration from MPL-2.0 to Apache-2.0 [Implemented]
 - [x] Replace `LICENSE` file with Apache License 2.0 full text
 - [x] Update license header in all shell source files (`pyve.sh`, `lib/*.sh`)
