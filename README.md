@@ -2,7 +2,7 @@
 
 [![Tests](https://github.com/pointmatic/pyve/actions/workflows/test.yml/badge.svg)](https://github.com/pointmatic/pyve/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/pointmatic/pyve/branch/main/graph/badge.svg)](https://codecov.io/gh/pointmatic/pyve)
-[![License: MPL 2.0](https://img.shields.io/badge/License-MPL_2.0-brightgreen.svg)](https://opensource.org/licenses/MPL-2.0)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 Pyve is a focused command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management, virtual environments, Micromamba (conda-compatible) environments, and direnv in a single, easy-to-use script.
 
@@ -1098,7 +1098,7 @@ jobs:
 
 ## License
 
-Mozilla Public License Version 2.0 - see LICENSE file.
+Apache License 2.0 - see LICENSE file.
 
 ## Copyright
 

@@ -12,6 +12,14 @@ See `docs/guide_versions_spec.md`
 
 ---
 
+## v1.1.1: License migration from MPL-2.0 to Apache-2.0 [Implemented]
+- [x] Replace `LICENSE` file with Apache License 2.0 full text
+- [x] Update license header in all shell source files (`pyve.sh`, `lib/*.sh`)
+- [x] Update `README.md` license badge and license section
+- [x] Bump pyve version to 1.1.1
+
+---
+
 ## v1.1.0: Testing and spec updates for v1.0.0 .gitignore changes [Implemented]
 
 ### Bats unit tests (`tests/unit/test_utils.bats`)
