@@ -205,6 +205,14 @@ GITIGNORE_EOF
             [[ -n "$tline" ]] && template_lines+=("$tline")
         done < "$tmpfile"
 
+        # Also include dynamically inserted Pyve-managed patterns so they
+        # are stripped from the user-entries pass on subsequent inits.
+        local -a dynamic_patterns=(
+            ".envrc" ".env" ".pyve/testenv" ".pyve/envs"
+            "${DEFAULT_VENV_DIR:-.venv}"
+        )
+        template_lines+=("${dynamic_patterns[@]}")
+
         # Pass through every line from the existing file
         local prev_was_blank=false
         while IFS= read -r line || [[ -n "$line" ]]; do
@@ -233,7 +241,13 @@ GITIGNORE_EOF
         done < "$gitignore"
     fi
 
-    # --- 3. Replace atomically ---
+    # --- 3. Strip trailing blank lines and replace atomically ---
+    # When dynamic entries are deduped, their surrounding blank lines may
+    # leak through as trailing whitespace.
+    local content
+    content="$(cat "$tmpfile")"
+    printf '%s\n' "$content" > "$tmpfile"
+
     mv -f "$tmpfile" "$gitignore"
 }
 

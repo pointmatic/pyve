@@ -276,18 +276,16 @@ EOF
 
 @test "write_gitignore_template: idempotent — running twice produces identical output" {
     # First run (fresh)
-    run write_gitignore_template
-    [ "$status" -eq 0 ]
+    write_gitignore_template
     
-    local first_run=$(cat .gitignore)
+    local first_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
     
     # Second run (existing file)
-    run write_gitignore_template
-    [ "$status" -eq 0 ]
+    write_gitignore_template
     
-    local second_run=$(cat .gitignore)
+    local second_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
     
-    [ "$first_run" = "$second_run" ]
+    [ "$first_md5" = "$second_md5" ]
 }
 
 @test "write_gitignore_template: self-healing removes duplicate template entries from user section" {
@@ -316,6 +314,39 @@ EOF
     # User entries should be preserved
     assert_file_contains ".gitignore" "my-project-dir/"
     assert_file_contains ".gitignore" "another-user-entry"
+}
+
+@test "write_gitignore_template: idempotent after purge-then-reinit cycle (byte-level)" {
+    # Regression test for v1.1.4 CI failure: after purge removed some dynamic
+    # entries but left .pyve/testenv, a second init produced trailing blank
+    # lines. Uses md5 checksum to catch trailing newline differences that
+    # $(cat) would mask.
+    local section="# Pyve virtual environment"
+
+    # Simulate first init: template + dynamic entries
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".env" "$section"
+    insert_pattern_in_gitignore_section ".venv" "$section"
+
+    local first_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    # Simulate purge: removes .venv, .env, .envrc but NOT .pyve/testenv
+    remove_pattern_from_gitignore ".venv"
+    remove_pattern_from_gitignore ".env"
+    remove_pattern_from_gitignore ".envrc"
+
+    # Simulate second init: template + dynamic entries again
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".env" "$section"
+    insert_pattern_in_gitignore_section ".venv" "$section"
+
+    local second_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    [ "$first_md5" = "$second_md5" ]
 }
 
 @test "write_gitignore_template: preserves user section comments" {
