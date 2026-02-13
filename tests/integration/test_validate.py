@@ -5,12 +5,13 @@ Tests validation functionality including version compatibility checks,
 structure validation, and exit codes.
 """
 
+import re
+
 import pytest
 import os
 from pathlib import Path
 
 
-@pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")
 class TestValidateCommand:
     """Test pyve --validate command functionality."""
     
@@ -19,17 +20,16 @@ class TestValidateCommand:
         result = pyve.run("--validate", check=False)
         
         assert result.returncode == 1
-        assert "Missing .pyve directory" in result.stderr or "not found" in result.stdout
+        assert "not configured" in result.stdout or "missing" in result.stdout.lower()
     
     def test_validate_venv_project_success(self, pyve, project_builder):
         """Test validate command on healthy venv project."""
-        # Initialize venv project
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
         result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
-        assert "✓" in result.stdout or "All validations passed" in result.stdout
+        assert "All validations passed" in result.stdout
     
     def test_validate_missing_venv(self, pyve, project_builder):
         """Test validate command when venv directory is missing."""
@@ -39,7 +39,7 @@ class TestValidateCommand:
         result = pyve.run("--validate", check=False)
         
         assert result.returncode == 1
-        assert "missing" in result.stdout.lower() or "not found" in result.stdout.lower()
+        assert "missing" in result.stdout.lower()
     
     @pytest.mark.skipif(
         not os.environ.get("MICROMAMBA_AVAILABLE"),
@@ -60,62 +60,62 @@ class TestValidateCommand:
         # Create config for micromamba but no environment.yml
         project_builder.create_pyve_config(backend="micromamba")
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 1
         assert "environment.yml" in result.stdout.lower()
     
     def test_validate_version_mismatch_older(self, pyve, project_builder):
         """Test validate command with older version in config."""
-        # Initialize project
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
         # Manually set older version in config
-        config_path = project_builder.project_dir / ".pyve" / "config"
+        config_path = pyve.cwd / ".pyve" / "config"
         config_content = config_path.read_text()
-        config_content = f'pyve_version: "0.6.6"\n{config_content}'
+        config_content = re.sub(r'pyve_version: "[^"]+"', 'pyve_version: "0.6.6"', config_content)
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         # Should warn but not fail
-        assert result.returncode in [0, 2]  # 0 or warning code
+        assert result.returncode == 2
         assert "0.6.6" in result.stdout
     
     def test_validate_version_mismatch_newer(self, pyve, project_builder):
         """Test validate command with newer version in config."""
-        # Initialize project
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
         # Manually set newer version in config
-        config_path = project_builder.project_dir / ".pyve" / "config"
+        config_path = pyve.cwd / ".pyve" / "config"
         config_content = config_path.read_text()
-        config_content = f'pyve_version: "99.0.0"\n{config_content}'
+        config_content = re.sub(r'pyve_version: "[^"]+"', 'pyve_version: "99.0.0"', config_content)
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         # Should warn but not fail
-        assert result.returncode in [0, 2]  # 0 or warning code
+        assert result.returncode == 2
         assert "99.0.0" in result.stdout
     
     def test_validate_legacy_project_no_version(self, pyve, project_builder):
         """Test validate command on legacy project without version field."""
-        # Create old-style config without version
-        project_builder.create_pyve_config(backend="venv", include_version=False)
-        project_builder.create_venv()
+        # Initialize then strip the version from config to simulate legacy
+        pyve.init(backend='venv')
+        config_path = pyve.cwd / ".pyve" / "config"
+        config_content = re.sub(r'pyve_version: "[^"]+"\n', '', config_path.read_text())
+        config_path.write_text(config_content)
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         # Should suggest adding version
-        assert result.returncode in [0, 2]
+        assert result.returncode == 2
         assert "not recorded" in result.stdout or "legacy" in result.stdout.lower()
     
     def test_validate_exit_code_success(self, pyve, project_builder):
         """Test validate command returns 0 on success."""
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
     
@@ -125,63 +125,62 @@ class TestValidateCommand:
         project_builder.create_pyve_config(backend="venv")
         # Don't create venv
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 1
     
     def test_validate_exit_code_warnings(self, pyve, project_builder):
         """Test validate command returns 2 on warnings only."""
-        # Initialize project
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
         # Set older version to trigger warning
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        config_content = f'pyve_version: "0.6.6"\n{config_content}'
+        config_path = pyve.cwd / ".pyve" / "config"
+        config_content = re.sub(
+            r'pyve_version: "[^"]+"', 'pyve_version: "0.6.6"',
+            config_path.read_text(),
+        )
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
-        # Should return warning code (2) or success (0)
-        assert result.returncode in [0, 2]
+        assert result.returncode == 2
     
     def test_validate_output_format(self, pyve, project_builder):
         """Test validate command output format."""
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
-        # Check for expected output sections
-        assert "Pyve" in result.stdout or "version" in result.stdout.lower()
-        assert "Backend" in result.stdout or "backend" in result.stdout.lower()
+        assert "Pyve Installation Validation" in result.stdout
+        assert "Backend" in result.stdout
     
     def test_validate_checks_backend(self, pyve, project_builder):
         """Test validate command checks backend configuration."""
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
-        assert "venv" in result.stdout.lower()
+        assert "Backend: venv" in result.stdout
     
     def test_validate_checks_python_version(self, pyve, project_builder):
         """Test validate command checks Python version."""
-        project_builder.init_venv(python_version="3.11")
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
-        assert "python" in result.stdout.lower() or "3.11" in result.stdout
+        assert "Python version:" in result.stdout
     
     def test_validate_checks_direnv(self, pyve, project_builder):
         """Test validate command checks direnv integration."""
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
-        assert "direnv" in result.stdout.lower() or ".env" in result.stdout
+        assert "direnv integration:" in result.stdout
 
 
 @pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")

@@ -171,7 +171,10 @@ validate_micromamba_structure() {
 #------------------------------------------------------------
 
 run_full_validation() {
+    # Severity: 0 = pass, 2 = warnings, 1 = errors.
+    # Only escalate: warnings never overwrite errors.
     local exit_code=0
+    _escalate() { (( $1 == 1 || ( $1 == 2 && exit_code != 1 ) )) && exit_code=$1; return 0; }
     
     echo "Pyve Installation Validation"
     echo "=============================="
@@ -183,7 +186,7 @@ run_full_validation() {
     if [[ -z "$recorded_version" ]]; then
         echo "⚠ Pyve version: not recorded (legacy project)"
         echo "  Run 'pyve --init --update' to add version tracking"
-        exit_code=2
+        _escalate 2
     else
         local comparison
         comparison="$(compare_versions "$recorded_version" "$VERSION")"
@@ -195,12 +198,12 @@ run_full_validation() {
             less)
                 echo "⚠ Pyve version: $recorded_version (current: $VERSION)"
                 echo "  Migration recommended. Run 'pyve --init --update' to update."
-                exit_code=2
+                _escalate 2
                 ;;
             greater)
                 echo "⚠ Pyve version: $recorded_version (current: $VERSION)"
                 echo "  Project uses newer Pyve version. Consider upgrading."
-                exit_code=2
+                _escalate 2
                 ;;
         esac
     fi
@@ -212,7 +215,7 @@ run_full_validation() {
         echo "✓ Backend: $backend"
     else
         echo "✗ Backend: not configured"
-        exit_code=1
+        _escalate 1
     fi
     
     case "$backend" in
@@ -226,7 +229,7 @@ run_full_validation() {
             else
                 echo "✗ Virtual environment: $venv_dir (missing)"
                 echo "  Run 'pyve --init' to create."
-                exit_code=1
+                _escalate 1
             fi
             ;;
         micromamba)
@@ -234,7 +237,7 @@ run_full_validation() {
                 echo "✓ Environment file: environment.yml (exists)"
             else
                 echo "✗ Environment file: environment.yml (missing)"
-                exit_code=1
+                _escalate 1
             fi
             
             local env_name
@@ -243,7 +246,7 @@ run_full_validation() {
                 echo "✓ Environment name: $env_name"
             else
                 echo "✗ Environment name: could not determine"
-                exit_code=1
+                _escalate 1
             fi
             ;;
     esac
@@ -252,7 +255,7 @@ run_full_validation() {
         echo "✓ Configuration: valid"
     else
         echo "✗ Configuration: missing"
-        exit_code=1
+        _escalate 1
     fi
     
     local python_version
@@ -265,7 +268,7 @@ run_full_validation() {
         echo "✓ direnv integration: .env (exists)"
     else
         echo "⚠ direnv integration: .env (missing)"
-        exit_code=2
+        _escalate 2
     fi
     
     echo ""

@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.1.4.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.0.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -19,15 +19,17 @@ Fix `test_gitignore_idempotent` failure on GitHub Actions. Dynamically inserted 
 - [x] Verify: `pytest tests/integration/test_venv_workflow.py::TestGitignoreManagement::test_gitignore_idempotent -v` passes
 - [x] Bump VERSION to 1.1.4
 
-### Story A.b: v1.2.0 Activate Validate Integration Tests [Planned]
+### Story A.b: v1.2.0 Activate Validate Integration Tests [Done]
 
 Remove stale skip decorators from `test_validate.py` and reconcile test expectations with actual `--validate` output.
 
-- [ ] Read `lib/version.sh` `run_full_validation()` output format and exit codes
-- [ ] Add missing `init_venv()` helper method to `ProjectBuilder` in `tests/helpers/pyve_test_helpers.py` (calls `pyve --init --backend venv --no-direnv` via subprocess)
-- [ ] Remove `@pytest.mark.skip` from `TestValidateCommand` class
-- [ ] Run tests, fix assertion mismatches (output strings, exit codes) against actual `--validate` output
-- [ ] Verify: `pytest tests/integration/test_validate.py::TestValidateCommand -v` passes
+- [x] Read `lib/version.sh` `run_full_validation()` output format and exit codes
+- [x] Fix exit code severity bug in `run_full_validation()` — warnings (exit 2) were overwriting errors (exit 1); added `_escalate()` helper
+- [x] Add `init_venv()` and `init_micromamba()` helper methods to `ProjectBuilder` in `tests/helpers/pyve_test_helpers.py`
+- [x] Remove `@pytest.mark.skip` from `TestValidateCommand` class
+- [x] Fix all test assertions to match actual `--validate` output (exit codes, output strings, config manipulation via `re.sub`)
+- [x] Verify: `pytest tests/integration/test_validate.py::TestValidateCommand -v` — 14 passed, 1 skipped (micromamba)
+- [x] Bump VERSION to 1.2.0
 
 ### Story A.c: v1.2.1 Activate Validate Edge Case & Platform Tests [Planned]
 
@@ -83,3 +85,22 @@ Reconcile `testing_spec.md` with the actual test suite after Phase A.
 - [ ] Remove or update Phase 1/Phase 2 references (they're done)
 - [ ] Update pytest.ini example to match actual markers (add `requires_direnv`, `venv`, `micromamba`)
 - [ ] Update CI/CD section to match actual `test.yml` (separate jobs for unit, integration, micromamba, lint)
+
+---
+
+## Phase C: Homebrew Packaging
+
+### Story C.a: Publish Pyve via Homebrew Tap [Planned]
+
+Package Pyve for installation via `brew install pointmatic/pyve/pyve`.
+
+- [ ] Create `pointmatic/homebrew-pyve` GitHub repo via `brew tap-new pointmatic/homebrew-pyve`
+- [ ] Create a tagged release in `pointmatic/pyve` (e.g., `v1.2.0` or current stable)
+- [ ] Compute SHA256 of the release tarball
+- [ ] Write `Formula/pyve.rb` — install `pyve.sh` + `lib/` under `libexec/`, write exec wrapper under `bin/pyve`
+- [ ] Verify `SCRIPT_DIR` resolution works when executed via Homebrew's `bin/pyve` → `libexec/pyve.sh` wrapper
+- [ ] Add `test` block to formula: `assert_match "pyve version", shell_output("#{bin}/pyve --version")`
+- [ ] Run `brew install --build-from-source pointmatic/pyve/pyve` and verify `pyve --init`, `pyve doctor`, `pyve run` work
+- [ ] Detect Homebrew-managed installs in `pyve --install` / `pyve --uninstall` and warn/skip
+- [ ] Push formula to `pointmatic/homebrew-pyve` and verify `brew install pointmatic/pyve/pyve` works from scratch
+- [ ] Document Homebrew installation in `README.md`

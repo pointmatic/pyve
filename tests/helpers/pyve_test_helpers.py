@@ -458,6 +458,53 @@ version = "{version}"
         (venv_path / "bin").mkdir(exist_ok=True)
         return venv_path
 
+    def init_venv(
+        self,
+        pyve_script: Optional[Path] = None,
+        python_version: Optional[str] = None,
+        venv_dir: Optional[str] = None,
+    ) -> subprocess.CompletedProcess:
+        """
+        Initialize a venv project by running pyve --init --backend venv.
+
+        Args:
+            pyve_script: Path to pyve.sh (auto-detected if None)
+            python_version: Python version to use (auto-detected if None)
+            venv_dir: Custom venv directory name
+
+        Returns:
+            CompletedProcess instance
+        """
+        if pyve_script is None:
+            pyve_script = Path(__file__).parent.parent.parent / "pyve.sh"
+
+        runner = PyveRunner(pyve_script, self.base_path)
+        return runner.init(backend="venv", python_version=python_version, venv_dir=venv_dir)
+
+    def init_micromamba(
+        self,
+        pyve_script: Optional[Path] = None,
+        env_name: Optional[str] = None,
+    ) -> subprocess.CompletedProcess:
+        """
+        Initialize a micromamba project by running pyve --init --backend micromamba.
+
+        Args:
+            pyve_script: Path to pyve.sh (auto-detected if None)
+            env_name: Environment name
+
+        Returns:
+            CompletedProcess instance
+        """
+        if pyve_script is None:
+            pyve_script = Path(__file__).parent.parent.parent / "pyve.sh"
+
+        runner = PyveRunner(pyve_script, self.base_path)
+        kwargs = {}
+        if env_name:
+            kwargs["env_name"] = env_name
+        return runner.init(backend="micromamba", **kwargs)
+
 
 def assert_file_exists(path: Union[Path, str], message: Optional[str] = None):
     """
