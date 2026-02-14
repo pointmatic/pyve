@@ -76,6 +76,21 @@ teardown() {
     [ "$result" = "equal" ]
 }
 
+@test "compare_versions: zero components" {
+    result="$(compare_versions "0.0.0" "0.0.1")"
+    [ "$result" = "less" ]
+}
+
+@test "compare_versions: single-component versions" {
+    result="$(compare_versions "1" "2")"
+    [ "$result" = "less" ]
+}
+
+@test "compare_versions: single vs triple component equal" {
+    result="$(compare_versions "1" "1.0.0")"
+    [ "$result" = "equal" ]
+}
+
 #------------------------------------------------------------
 # Version Validation Tests
 #------------------------------------------------------------
@@ -182,6 +197,36 @@ EOF
     run validate_installation_structure
     [ "$status" -eq 1 ]
     [[ "$output" =~ "Unknown backend" ]]
+}
+
+@test "validate_installation_structure: valid venv project" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.8.8"
+backend: venv
+EOF
+    mkdir -p .venv/bin
+    touch .venv/bin/python
+    chmod +x .venv/bin/python
+    touch .env
+    
+    run validate_installation_structure
+    [ "$status" -eq 0 ]
+}
+
+@test "validate_installation_structure: valid venv missing .env warns but passes" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.8.8"
+backend: venv
+EOF
+    mkdir -p .venv/bin
+    touch .venv/bin/python
+    chmod +x .venv/bin/python
+    
+    run validate_installation_structure
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "Missing .env" ]]
 }
 
 #------------------------------------------------------------
@@ -311,4 +356,36 @@ EOF
 @test "update_config_version: fails if no config file" {
     run update_config_version
     [ "$status" -eq 1 ]
+}
+
+@test "update_config_version: fails if config has no backend" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.6.6"
+EOF
+    
+    run update_config_version
+    [ "$status" -eq 1 ]
+}
+
+@test "write_config_with_version: replaces existing version" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.6.6"
+backend: venv
+EOF
+    
+    write_config_with_version
+    
+    # Version should be updated
+    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
+    [ "$version" = "0.8.8" ]
+    
+    # Old version should not appear
+    run grep "0.6.6" .pyve/config
+    [ "$status" -eq 1 ]
+    
+    # Backend should be preserved
+    backend=$(grep "^backend:" .pyve/config | awk '{print $2}')
+    [ "$backend" = "venv" ]
 }

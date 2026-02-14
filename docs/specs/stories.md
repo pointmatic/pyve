@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.2.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.3.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -52,15 +52,16 @@ Activate the remaining validate test classes.
 - [x] Verify: `pytest tests/integration/test_validate.py -v` — 21 passed, 2 skipped (micromamba, pyenv on macOS)
 - [x] Bump VERSION to 1.2.2
 
-### Story A.e: v1.2.3 Increase Unit Test Coverage for version.sh [Planned]
+### Story A.e: v1.2.3 Increase Unit Test Coverage for version.sh [Done]
 
 Add Bats unit tests for `lib/version.sh` functions not currently covered.
 
-- [ ] Add tests for `compare_versions()` — equal, greater, less, edge cases (missing patch, zero components)
-- [ ] Add tests for `validate_pyve_version()` — matching, older, newer, missing config
-- [ ] Add tests for `validate_installation_structure()` — valid structure, missing `.pyve/`, missing config
-- [ ] Add tests for `write_config_with_version()` and `update_config_version()`
-- [ ] Verify: `bats tests/unit/test_version.bats` passes
+- [x] Add tests for `compare_versions()` — zero components, single-component versions, single vs triple component equal
+- [x] Add tests for `validate_installation_structure()` — valid venv project (happy path), valid venv missing `.env` (warning path)
+- [x] Add tests for `update_config_version()` — fails if config has no backend (corrupted config)
+- [x] Add tests for `write_config_with_version()` — replaces existing version line, preserves backend
+- [x] Verify: `bats tests/unit/test_version.bats` — 36 tests, 0 failures (up from 29)
+- [x] Bump VERSION to 1.2.3
 
 ### Story A.f: v1.2.4 Coverage Audit and Gap Fill [Planned]
 
