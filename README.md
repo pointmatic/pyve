@@ -6,6 +6,8 @@
 
 A command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux, orchestrating Python version managers, venv and micromamba backends, and direnv in a single script.
 
+See https://pointmatic.github.io/pyve/ for more information.
+
 ## Why Pyve?
 
 Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management (asdf or pyenv), virtual environments (venv or micromamba), and direnv integration in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.

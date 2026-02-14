@@ -368,6 +368,84 @@ EOF
     [ "$status" -eq 1 ]
 }
 
+#------------------------------------------------------------
+# Full Validation Report Tests
+#------------------------------------------------------------
+
+@test "run_full_validation: all pass for valid venv project" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.8.8"
+backend: venv
+EOF
+    mkdir -p .venv/bin
+    touch .venv/bin/python
+    chmod +x .venv/bin/python
+    touch .env
+    
+    run run_full_validation
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ "All validations passed" ]]
+    [[ "$output" =~ "✓ Backend: venv" ]]
+    [[ "$output" =~ "✓ Configuration: valid" ]]
+}
+
+@test "run_full_validation: returns 1 for missing venv" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.8.8"
+backend: venv
+EOF
+    touch .env
+    
+    run run_full_validation
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "✗ Virtual environment" ]]
+    [[ "$output" =~ "Validation completed with errors" ]]
+}
+
+@test "run_full_validation: returns 2 for warnings only (version mismatch)" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.6.6"
+backend: venv
+EOF
+    mkdir -p .venv/bin
+    touch .venv/bin/python
+    chmod +x .venv/bin/python
+    touch .env
+    
+    run run_full_validation
+    [ "$status" -eq 2 ]
+    [[ "$output" =~ "⚠ Pyve version: 0.6.6" ]]
+    [[ "$output" =~ "Validation completed with warnings" ]]
+}
+
+@test "run_full_validation: error not downgraded by subsequent warning" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.6.6"
+backend: venv
+EOF
+    # Missing venv → error; version mismatch → warning; missing .env → warning
+    # Exit code should be 1 (error), not 2 (warning)
+    
+    run run_full_validation
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "Validation completed with errors" ]]
+}
+
+@test "run_full_validation: returns 1 for missing backend" {
+    mkdir -p .pyve
+    cat > .pyve/config << EOF
+pyve_version: "0.8.8"
+EOF
+    
+    run run_full_validation
+    [ "$status" -eq 1 ]
+    [[ "$output" =~ "✗ Backend: not configured" ]]
+}
+
 @test "write_config_with_version: replaces existing version" {
     mkdir -p .pyve
     cat > .pyve/config << EOF

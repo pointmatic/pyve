@@ -381,6 +381,59 @@ EOF
 }
 
 #============================================================
+# read_config_value() edge case tests
+#============================================================
+
+@test "read_config_value: returns empty for missing config file" {
+    result="$(read_config_value "backend")"
+    [ -z "$result" ]
+}
+
+@test "read_config_value: reads top-level key" {
+    create_pyve_config "backend: venv"
+    
+    result="$(read_config_value "backend")"
+    [ "$result" = "venv" ]
+}
+
+@test "read_config_value: returns empty for missing top-level key" {
+    create_pyve_config "backend: venv"
+    
+    result="$(read_config_value "nonexistent")"
+    [ -z "$result" ]
+}
+
+@test "read_config_value: reads nested key" {
+    mkdir -p .pyve
+    cat > .pyve/config << 'EOF'
+backend: venv
+venv:
+  directory: custom_venv
+EOF
+    
+    result="$(read_config_value "venv.directory")"
+    [ "$result" = "custom_venv" ]
+}
+
+@test "read_config_value: returns empty for nested key in missing section" {
+    create_pyve_config "backend: venv"
+    
+    result="$(read_config_value "micromamba.env_name")"
+    [ -z "$result" ]
+}
+
+@test "read_config_value: reads quoted value" {
+    mkdir -p .pyve
+    cat > .pyve/config << 'EOF'
+pyve_version: "1.2.3"
+backend: venv
+EOF
+    
+    result="$(read_config_value "pyve_version")"
+    [ "$result" = "1.2.3" ]
+}
+
+#============================================================
 # validate_venv_dir_name() tests
 #============================================================
 

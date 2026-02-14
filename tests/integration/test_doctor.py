@@ -236,3 +236,46 @@ class TestDoctorEdgeCases:
         assert len(result.stdout) > 0
         # Should not have error messages
         assert 'error' not in result.stdout.lower() or 'no error' in result.stdout.lower()
+    
+    @pytest.mark.venv
+    def test_doctor_with_missing_pyve_dir(self, pyve, project_builder):
+        """Test doctor when .pyve directory is deleted after init."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        pyve.init(backend='venv')
+        
+        import shutil
+        pyve_dir = pyve.cwd / '.pyve'
+        if pyve_dir.exists():
+            shutil.rmtree(pyve_dir)
+        
+        result = pyve.doctor(check=False)
+        
+        # Doctor still runs diagnostics even without .pyve dir
+        # (it can detect the venv directly); should not crash
+        assert result.returncode in [0, 1]
+        assert 'Diagnostics' in result.stdout
+    
+    @pytest.mark.venv
+    def test_doctor_with_empty_config(self, pyve, project_builder):
+        """Test doctor with empty .pyve/config file."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        pyve.init(backend='venv')
+        
+        config_path = pyve.cwd / '.pyve' / 'config'
+        config_path.write_text('')
+        
+        result = pyve.doctor(check=False)
+        
+        # Should handle gracefully
+        assert result.returncode in [0, 1]
+    
+    @pytest.mark.venv
+    def test_doctor_output_contains_header(self, pyve, project_builder):
+        """Test that doctor output contains the diagnostics header."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        pyve.init(backend='venv')
+        
+        result = pyve.doctor()
+        
+        assert result.returncode == 0
+        assert 'Pyve Environment Diagnostics' in result.stdout

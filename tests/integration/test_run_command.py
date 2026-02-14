@@ -337,3 +337,14 @@ print(f"Requests: {requests.__version__}")
         assert result2.returncode == 0
         assert result3.returncode == 0
         assert 'test' in result3.stdout
+    
+    @pytest.mark.venv
+    def test_run_no_command_shows_usage(self, pyve, project_builder):
+        """Test that pyve run with no command shows usage or error."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        pyve.init(backend='venv')
+        
+        result = pyve.run("run", check=False)
+        
+        # Should fail or show usage info
+        assert result.returncode != 0 or 'usage' in result.stdout.lower() or 'run' in result.stdout.lower()
