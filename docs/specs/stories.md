@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.1.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.2.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -41,15 +41,16 @@ Create `docs/specs/descriptions.md` as the canonical source of truth for all pro
 - [x] Update Usage Notes table in `descriptions.md` with actual line numbers
 - [x] Bump VERSION to 1.2.1
 
-### Story A.d: v1.2.2 Activate Validate Edge Case & Platform Tests [Planned]
+### Story A.d: v1.2.2 Activate Validate Edge Case & Platform Tests [Done]
 
 Activate the remaining validate test classes.
 
-- [ ] Remove `@pytest.mark.skip` from `TestValidateEdgeCases`
-- [ ] Remove `@pytest.mark.skip` from `TestValidateWithDoctor`
-- [ ] Remove `@pytest.mark.skip` from `TestValidateMacOS` and `TestValidateLinux`
-- [ ] Run tests, fix assertion mismatches
-- [ ] Verify: `pytest tests/integration/test_validate.py -v` — all non-micromamba tests pass
+- [x] Remove `@pytest.mark.skip` from `TestValidateEdgeCases` — fix assertions for corrupted/empty config (`not configured`), custom venv dir (exit 2 due to version warning), multiple issues (✗/⚠ count)
+- [x] Remove `@pytest.mark.skip` from `TestValidateWithDoctor` — fix version manipulation to use `re.sub`, check `result.stderr` for version warning
+- [x] Remove `@pytest.mark.skip` from `TestValidateMacOS` and `TestValidateLinux` — use `pyve.init()` instead of `project_builder.init_venv()`, add `check=False`
+- [x] Run tests, fix assertion mismatches
+- [x] Verify: `pytest tests/integration/test_validate.py -v` — 21 passed, 2 skipped (micromamba, pyenv on macOS)
+- [x] Bump VERSION to 1.2.2
 
 ### Story A.e: v1.2.3 Increase Unit Test Coverage for version.sh [Planned]
 

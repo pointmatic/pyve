@@ -183,40 +183,36 @@ class TestValidateCommand:
         assert "direnv integration:" in result.stdout
 
 
-@pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")
 class TestValidateWithDoctor:
     """Test validate integration with doctor command."""
     
     def test_doctor_includes_version_check(self, pyve, project_builder):
         """Test doctor command includes version validation."""
         # Initialize project with old version
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        config_path = project_builder.project_dir / ".pyve" / "config"
+        config_path = pyve.cwd / ".pyve" / "config"
         config_content = config_path.read_text()
-        config_content = f'pyve_version: "0.6.6"\n{config_content}'
+        config_content = re.sub(r'pyve_version: "[^"]+"', 'pyve_version: "0.6.6"', config_content)
         config_path.write_text(config_content)
         
-        result = pyve.run("doctor")
+        result = pyve.run("doctor", check=False)
         
-        # Doctor should show version warning
+        # Doctor should show version warning (printed to stderr)
         assert result.returncode == 0
-        # Output should mention version or show warning
-        assert "0.6.6" in result.stdout or "version" in result.stdout.lower()
+        assert "0.6.6" in result.stderr
     
     def test_doctor_with_matching_version(self, pyve, project_builder):
         """Test doctor command with matching version."""
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("doctor")
+        result = pyve.run("doctor", check=False)
         
         assert result.returncode == 0
-        # Should not show version warnings
-        output_lower = result.stdout.lower()
-        assert "backend" in output_lower or "environment" in output_lower
+        # Should show backend info without version warnings
+        assert "Backend" in result.stdout or "backend" in result.stdout.lower()
 
 
-@pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")
 class TestValidateEdgeCases:
     """Test validate command edge cases."""
     
@@ -225,20 +221,21 @@ class TestValidateEdgeCases:
         project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
         project_builder.project_dir.joinpath(".pyve/config").write_text("invalid: yaml: content:")
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
-        # Should handle gracefully
+        # Should handle gracefully — backend not configured
         assert result.returncode == 1
+        assert "not configured" in result.stdout
     
     def test_validate_empty_config(self, pyve, project_builder):
         """Test validate with empty config file."""
         project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
         project_builder.project_dir.joinpath(".pyve/config").write_text("")
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 1
-        assert "backend" in result.stdout.lower() or "missing" in result.stdout.lower()
+        assert "not configured" in result.stdout
     
     def test_validate_with_custom_venv_dir(self, pyve, project_builder):
         """Test validate with custom venv directory."""
@@ -249,26 +246,27 @@ class TestValidateEdgeCases:
         )
         project_builder.create_venv(venv_dir="custom_venv")
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
-        assert result.returncode == 0
-        assert "custom_venv" in result.stdout or "✓" in result.stdout
+        # Exit 2 because config version (0.8.8) triggers a version warning
+        assert result.returncode == 2
+        assert "custom_venv" in result.stdout
+        assert "✓" in result.stdout
     
     def test_validate_multiple_issues(self, pyve, project_builder):
         """Test validate with multiple validation issues."""
         # Create config but missing everything else
         project_builder.create_pyve_config(backend="venv", include_version=False)
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         # Should report multiple issues
         assert result.returncode == 1
-        # Check for multiple error indicators
-        error_count = result.stdout.count("✗") + result.stdout.count("missing")
-        assert error_count > 0
+        # Check for error/warning indicators
+        issue_count = result.stdout.count("✗") + result.stdout.count("⚠")
+        assert issue_count > 0
 
 
-@pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")
 @pytest.mark.macos
 class TestValidateMacOS:
     """macOS-specific validation tests."""
@@ -278,14 +276,13 @@ class TestValidateMacOS:
         if not Path.home().joinpath(".asdf").exists():
             pytest.skip("asdf not installed")
         
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
 
 
-@pytest.mark.skip(reason="--validate command not yet implemented (run_full_validation function missing)")
 @pytest.mark.linux
 class TestValidateLinux:
     """Linux-specific validation tests."""
@@ -295,8 +292,8 @@ class TestValidateLinux:
         if not Path.home().joinpath(".pyenv").exists():
             pytest.skip("pyenv not installed")
         
-        project_builder.init_venv()
+        pyve.init(backend='venv')
         
-        result = pyve.run("--validate")
+        result = pyve.run("--validate", check=False)
         
         assert result.returncode == 0
