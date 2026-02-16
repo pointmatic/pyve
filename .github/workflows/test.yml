@@ -192,11 +192,8 @@ jobs:
         run: |
           sudo apt-get install -y cmake g++ pkg-config \
             libdw-dev libcurl4-openssl-dev libelf-dev
-          GIT_TERMINAL_PROMPT=0 git clone --depth 1 --no-checkout https://github.com/SimonKagworthy/kcov.git /tmp/kcov-src
-          cd /tmp/kcov-src
-          git config --global --add safe.directory /tmp/kcov-src
-          git checkout HEAD
-          mkdir build && cd build
+          git clone --depth 1 https://github.com/SimonKagstrom/kcov.git /tmp/kcov-src
+          mkdir /tmp/kcov-src/build && cd /tmp/kcov-src/build
           cmake .. && make -j$(nproc)
           sudo make install
       
