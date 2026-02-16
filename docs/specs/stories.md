@@ -160,7 +160,15 @@ Fix Homebrew detection guard to use `SCRIPT_DIR` instead of `command -v`, update
 - [x] Bump VERSION to 1.4.1
 - [x] Update `Formula/pyve.rb` SHA256 for new tarball
 
-### Story C.d: v1.5.0 Show Install Source in `pyve doctor` [Planned]
+### Story C.d: Automate Homebrew Formula Updates on Tag Push [Done]
+
+Add a GitHub Actions workflow to `pointmatic/pyve` that automatically updates the formula in `pointmatic/homebrew-tap` when a new version tag is pushed.
+
+- [x] Create `HOMEBREW_TAP_TOKEN` — GitHub Personal Access Token with repo access to `pointmatic/homebrew-tap`, stored as a secret in `pointmatic/pyve`
+- [x] Add `.github/workflows/update-homebrew.yml` — triggers on `v*` tag push, uses `dawidd6/action-homebrew-bump-formula` to update `Formula/pyve.rb`
+- [ ] Test by pushing a tag and verifying the formula is auto-updated in `pointmatic/homebrew-tap`
+
+### Story C.e: v1.5.0 Show Install Source in `pyve doctor` [Planned]
 
 Add installation source diagnostic to `pyve doctor` output.
 
