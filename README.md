@@ -1,4 +1,4 @@
-![Pyve](docs/images/pyve_header_readme.png)
+![Pyve](docs/site/images/pyve_header_readme.png)
 
 # Pyve: Python Virtual Environment Manager
 
@@ -77,7 +77,14 @@ The script checks for prerequisites and provides helpful error messages if anyth
 
 ## Quick Start
 
-Copy and paste this into your macOS terminal:
+Install via Homebrew (recommended):
+
+```bash
+brew install pointmatic/tap/pyve
+pyve --help
+```
+
+Or install from source:
 
 ```bash
 git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh --install; pyve --help
@@ -106,6 +113,20 @@ Run `pyve --purge` to cleanly remove all Pyve-created artifacts:
 - Cleans up `.gitignore` patterns (keeps the file itself)
 
 ## Installation
+
+### Homebrew (recommended)
+
+```bash
+brew install pointmatic/tap/pyve
+```
+
+To update:
+
+```bash
+brew upgrade pointmatic/tap/pyve
+```
+
+### From Source
 
 1. Clone this repository:
    ```bash
@@ -335,6 +356,14 @@ venv:
 Run `pyve --help` for all available commands and options.
 
 ## Uninstallation
+
+### Homebrew
+
+```bash
+brew uninstall pyve
+```
+
+### From Source
 
 ```bash
 pyve --uninstall
@@ -1101,7 +1130,6 @@ jobs:
 - **Smart purge**: Non-empty `.env` files are preserved during purge to prevent data loss
 
 ## Future Feature Ideas
-- Create a Python or Homebrew package for installation
 - Version management tool installation:
    - Automated installation of asdf
    - Automated installation of pyenv
