@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.3.1.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.4.0.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -130,18 +130,24 @@ Reconcile `testing_spec.md` with the actual test suite after Phase A and the kco
 
 ## Phase C: Homebrew Packaging
 
-### Story C.a: Publish Pyve via Homebrew Tap [Planned]
+### Story C.a: v1.4.0 Homebrew Guards & Release Prep [Done]
+
+Prepare pyve for Homebrew distribution: detect Homebrew-managed installs and create the tap repo.
+
+- [x] Detect Homebrew-managed installs in `pyve --install` / `pyve --uninstall` and warn/skip
+- [x] Verify `SCRIPT_DIR` resolution works when executed via Homebrew's `bin/pyve` → `libexec/pyve.sh` wrapper
+- [x] Create `pointmatic/homebrew-tap` GitHub repo manually
+- [x] Bump VERSION to 1.4.0
+- [x] Tag `v1.4.0` and push
+
+### Story C.b: Publish Pyve via Homebrew Tap [Planned]
 
 Package Pyve for installation via `brew install pointmatic/tap/pyve`.
 
-- [ ] Create `pointmatic/homebrew-tap` GitHub repo via `brew tap-new pointmatic/homebrew-tap`
-- [ ] Create a tagged release in `pointmatic/pyve` (e.g., `v1.3.1` or current stable)
-- [ ] Compute SHA256 of the release tarball
+- [ ] Compute SHA256 of the `v1.4.0` release tarball
 - [ ] Write `Formula/pyve.rb` — install `pyve.sh` + `lib/` under `libexec/`, write exec wrapper under `bin/pyve`
-- [ ] Verify `SCRIPT_DIR` resolution works when executed via Homebrew's `bin/pyve` → `libexec/pyve.sh` wrapper
 - [ ] Add `test` block to formula: `assert_match "pyve version", shell_output("#{bin}/pyve --version")`
 - [ ] Run `brew install --build-from-source pointmatic/tap/pyve` and verify `pyve --init`, `pyve doctor`, `pyve run` work
-- [ ] Detect Homebrew-managed installs in `pyve --install` / `pyve --uninstall` and warn/skip
 - [ ] Push formula to `pointmatic/homebrew-tap` and verify `brew install pointmatic/tap/pyve` works from scratch
 - [ ] Document Homebrew installation in `README.md`
 
