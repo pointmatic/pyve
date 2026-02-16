@@ -166,7 +166,7 @@ Add a GitHub Actions workflow to `pointmatic/pyve` that automatically updates th
 
 - [x] Create `HOMEBREW_TAP_TOKEN` — GitHub Personal Access Token with repo access to `pointmatic/homebrew-tap`, stored as a secret in `pointmatic/pyve`
 - [x] Add `.github/workflows/update-homebrew.yml` — triggers on `v*` tag push, uses `dawidd6/action-homebrew-bump-formula` to update `Formula/pyve.rb`
-- [ ] Test by pushing a tag and verifying the formula is auto-updated in `pointmatic/homebrew-tap`
+- [x] Test by pushing a tag and verifying the formula is auto-updated in `pointmatic/homebrew-tap` — workflow creates a PR that must be manually merged
 
 ### Story C.e: v1.5.0 Show Install Source in `pyve doctor` [Done]
 
