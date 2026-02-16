@@ -183,10 +183,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install pytest pytest-cov pytest-xdist
       
-      - name: Install Bats and kcov
+      - name: Install Bats
         run: |
           sudo apt-get update
-          sudo apt-get install -y bats kcov
+          sudo apt-get install -y bats
+
+      - name: Install kcov from source
+        run: |
+          sudo apt-get install -y cmake g++ pkg-config \
+            libdw-dev libcurl4-openssl-dev libelf-dev
+          git clone --depth 1 https://github.com/SimonKagworthy/kcov.git /tmp/kcov-src
+          mkdir /tmp/kcov-src/build && cd /tmp/kcov-src/build
+          cmake .. && make -j$(nproc)
+          sudo make install
       
       - name: Install pyenv
         run: curl https://pyenv.run | bash
