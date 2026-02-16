@@ -1,7 +1,7 @@
 # Pyve Test Makefile
 # Provides convenient targets for running tests
 
-.PHONY: test test-unit test-integration test-integration-ci test-all coverage clean help
+.PHONY: test test-unit test-integration test-integration-ci test-all coverage coverage-kcov clean help
 
 PYTHON ?= python3
 
@@ -15,6 +15,7 @@ help:
 	@echo "  make test-integration-micromamba-ci - Run micromamba tests with CI=true"
 	@echo "  make test-all                      - Run all tests with verbose output"
 	@echo "  make coverage                      - Run tests with coverage reporting"
+	@echo "  make coverage-kcov                 - Run Bash coverage via kcov (requires kcov)"
 	@echo "  make clean                         - Clean test artifacts"
 	@echo ""
 	@echo "Requirements:"
@@ -114,9 +115,27 @@ coverage:
 		exit 1; \
 	fi
 
+# Run Bash coverage via kcov (unit + integration)
+coverage-kcov:
+	@echo "Running Bash coverage via kcov..."
+	@if ! command -v kcov >/dev/null 2>&1; then \
+		echo "Error: kcov not installed. Install with:"; \
+		echo "  macOS: brew install kcov"; \
+		echo "  Linux: sudo apt-get install kcov"; \
+		exit 1; \
+	fi
+	@rm -rf coverage-kcov
+	@echo "  Running Bats unit tests under kcov..."
+	@kcov --include-path="$$(pwd)/lib/,$$(pwd)/pyve.sh" --bash-dont-parse-binary-dir \
+		coverage-kcov bats tests/unit/*.bats
+	@echo "  Running integration tests under kcov..."
+	@PYVE_KCOV_OUTDIR="$$(pwd)/coverage-kcov" pytest tests/integration/ -v -m "venv and not requires_micromamba"
+	@echo ""
+	@echo "Bash coverage report: coverage-kcov/kcov-merged/index.html"
+
 # Clean test artifacts
 clean:
 	@echo "Cleaning test artifacts..."
-	@rm -rf .pytest_cache htmlcov .coverage
+	@rm -rf .pytest_cache htmlcov .coverage coverage-kcov
 	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
 	@echo "Test artifacts cleaned."

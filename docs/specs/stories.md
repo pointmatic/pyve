@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.2.5.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.3.0.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -92,28 +92,29 @@ Push coverage toward the 80% target with targeted unit and integration tests.
 
 ## Phase B: Documentation & Cleanup
 
-### Story B.a: Update testing_spec.md [Planned]
+### Story B.a: v1.3.0 Integrate Bash Coverage via kcov [Done]
 
-Reconcile `testing_spec.md` with the actual test suite after Phase A.
+Replace the misleading Python-only Codecov badge with real Bash line coverage using `kcov`.
+
+- [x] Install `kcov` in CI (`sudo apt-get install kcov` on Ubuntu in `bash-coverage` job)
+- [x] Run Bats unit tests under kcov: `kcov --include-path=lib/,pyve.sh --bash-dont-parse-binary-dir coverage-kcov bats tests/unit/*.bats`
+- [x] Run integration tests under kcov: `tests/helpers/kcov-wrapper.sh` wraps `pyve.sh`; `PyveRunner` uses wrapper when `PYVE_KCOV_OUTDIR` is set
+- [x] Merge kcov output into single Codecov upload (kcov auto-merges into `kcov-merged/cobertura.xml`)
+- [x] Configure `codecov.yml` flags: `bash` flag with `paths: [lib/, pyve.sh]` and `carryforward: true`
+- [x] Remove or update `[coverage:run] source = .` in `pytest.ini` — changed to `source = tests/integration`, omit helpers/unit/fixtures
+- [x] Document the coverage setup in `testing_spec.md` (new "Bash Coverage (kcov)" section)
+- [x] Add `coverage-kcov` Makefile target for local usage
+- [x] Bump VERSION to 1.3.0
+
+### Story B.b: v1.3.1 Update testing_spec.md [Planned]
+
+Reconcile `testing_spec.md` with the actual test suite after Phase A and the kcov integration.
 
 - [ ] Update test structure tree to match actual files (10 unit test files, 11 integration test files)
 - [ ] Update coverage goals section to reflect achieved coverage
 - [ ] Remove or update Phase 1/Phase 2 references (they're done)
 - [ ] Update pytest.ini example to match actual markers (add `requires_direnv`, `venv`, `micromamba`)
 - [ ] Update CI/CD section to match actual `test.yml` (separate jobs for unit, integration, micromamba, lint)
-
-### Story B.b: Integrate Bash Coverage via kcov [Planned]
-
-Replace the misleading Python-only Codecov badge with real Bash line coverage using `kcov`.
-
-- [ ] Install `kcov` in CI (`brew install kcov` on macOS, build from source on Ubuntu)
-- [ ] Run Bats unit tests under kcov: `kcov --include-path=lib/,pyve.sh coverage-out bats tests/unit/`
-- [ ] Run integration tests under kcov: wrap `pyve.sh` invocations so kcov instruments the Bash source
-- [ ] Merge kcov output with pytest-cov XML into a single Codecov upload (kcov produces Cobertura XML natively)
-- [ ] Configure `codecov.yml` flags: `unit-bash`, `integration-bash`, `integration-python`
-- [ ] Verify Codecov badge reflects combined Bash + Python coverage
-- [ ] Remove or update `[coverage:run] source = .` in `pytest.ini` — omit Python helpers from the report since they inflate/deflate the number
-- [ ] Document the coverage setup in `testing_spec.md`
 
 ---
 

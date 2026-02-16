@@ -92,7 +92,13 @@ class PyveRunner:
             script_path: Path to pyve.sh script
             cwd: Working directory for commands
         """
-        self.script_path = script_path
+        # When PYVE_KCOV_OUTDIR is set, use the kcov wrapper to collect
+        # Bash line coverage during integration tests.
+        if os.environ.get("PYVE_KCOV_OUTDIR"):
+            wrapper = Path(__file__).parent / "kcov-wrapper.sh"
+            self.script_path = wrapper if wrapper.exists() else script_path
+        else:
+            self.script_path = script_path
         self.cwd = cwd
     
     # Default timeout (seconds) for subprocess calls.  Prevents tests from

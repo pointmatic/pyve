@@ -18,6 +18,13 @@ coverage:
         target: 80%
         threshold: 1%
 
+flags:
+  bash:
+    paths:
+      - lib/
+      - pyve.sh
+    carryforward: true
+
 comment:
   layout: "reach,diff,flags,tree"
   behavior: default

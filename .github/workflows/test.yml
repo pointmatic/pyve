@@ -165,42 +165,75 @@ jobs:
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}  # Optional for public repos, uses GitHub OIDC by default
 
-  coverage-report:
-    name: Coverage Report
+  bash-coverage:
+    name: Bash Coverage (kcov)
     runs-on: ubuntu-latest
-    needs: [integration-tests, integration-tests-micromamba]
-    if: always()
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
       
-      - name: Set up Python
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       
-      - name: Install coverage tools
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install coverage pytest-cov
+          pip install pytest pytest-cov pytest-xdist
       
-      - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: coverage-artifacts
-      
-      - name: Combine coverage reports
+      - name: Install Bats and kcov
         run: |
-          coverage combine coverage-artifacts/**/.coverage || true
-          coverage report || true
-          coverage html || true
+          sudo apt-get update
+          sudo apt-get install -y bats kcov
       
-      - name: Upload combined coverage
+      - name: Install pyenv
+        run: curl https://pyenv.run | bash
+      
+      - name: Setup pyenv with Python
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PATH"
+          eval "$(pyenv init -)"
+          
+          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+          echo "Python version: $PYTHON_VERSION"
+          pyenv install $PYTHON_VERSION || echo "Python $PYTHON_VERSION already available"
+          pyenv global $PYTHON_VERSION
+          pyenv version
+      
+      - name: Run Bats unit tests under kcov
+        run: |
+          kcov \
+            --include-path="$(pwd)/lib/,$(pwd)/pyve.sh" \
+            --bash-dont-parse-binary-dir \
+            coverage-kcov \
+            bats tests/unit/*.bats
+      
+      - name: Run integration tests under kcov
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
+          export PYVE_KCOV_OUTDIR="$(pwd)/coverage-kcov"
+          
+          pytest tests/integration/ -v -m "venv and not requires_micromamba"
+      
+      - name: Upload Bash coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage-kcov/bats/cobertura.xml,./coverage-kcov/kcov-merged/cobertura.xml
+          flags: bash
+          name: bash-coverage
+          fail_ci_if_error: false
+          token: ${{ secrets.CODECOV_TOKEN }}
+      
+      - name: Upload kcov HTML report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: htmlcov/
+          name: bash-coverage-report
+          path: coverage-kcov/
           if-no-files-found: ignore
 
   lint:
@@ -227,7 +260,7 @@ jobs:
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, integration-tests, integration-tests-micromamba, lint]
+    needs: [unit-tests, integration-tests, integration-tests-micromamba, bash-coverage, lint]
     if: always()
     
     steps:
@@ -236,6 +269,7 @@ jobs:
           echo "Unit Tests: ${{ needs.unit-tests.result }}"
           echo "Integration Tests: ${{ needs.integration-tests.result }}"
           echo "Micromamba Tests: ${{ needs.integration-tests-micromamba.result }}"
+          echo "Bash Coverage: ${{ needs.bash-coverage.result }}"
           echo "Lint: ${{ needs.lint.result }}"
           
           if [ "${{ needs.unit-tests.result }}" != "success" ] || \

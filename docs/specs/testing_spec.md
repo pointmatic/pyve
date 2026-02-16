@@ -483,6 +483,47 @@ jobs:
 
 ---
 
+## Bash Coverage (kcov)
+
+Pyve is a Bash project, so Python-only coverage tools (`pytest-cov`) cannot measure the code under test. We use [kcov](https://github.com/SimonKagstrom/kcov) to collect Bash line coverage from both Bats unit tests and pytest integration tests.
+
+### How It Works
+
+1. **Bats unit tests** — kcov instruments all `source`d scripts automatically:
+   ```bash
+   kcov --include-path=lib/,pyve.sh --bash-dont-parse-binary-dir coverage-kcov bats tests/unit/*.bats
+   ```
+
+2. **pytest integration tests** — a wrapper script (`tests/helpers/kcov-wrapper.sh`) intercepts `pyve.sh` invocations. When `PYVE_KCOV_OUTDIR` is set, `PyveRunner` uses the wrapper instead of `pyve.sh` directly:
+   ```bash
+   PYVE_KCOV_OUTDIR=$(pwd)/coverage-kcov pytest tests/integration/ -v
+   ```
+
+3. **Merging** — kcov auto-merges results when multiple runs write to the same output directory. The merged report appears under `coverage-kcov/kcov-merged/`.
+
+4. **Codecov upload** — the merged Cobertura XML (`coverage-kcov/kcov-merged/cobertura.xml`) is uploaded to Codecov with the `bash` flag.
+
+### Key Flags
+
+| Flag | Purpose |
+|------|---------|
+| `--include-path=lib/,pyve.sh` | Scope coverage to Pyve source files only |
+| `--bash-dont-parse-binary-dir` | Prevent kcov from scanning unrelated scripts in the bats binary directory |
+
+### CI Configuration
+
+The `bash-coverage` job in `.github/workflows/test.yml` runs on `ubuntu-latest` only (kcov bash coverage is most reliable on Linux). It runs both Bats and pytest under kcov, then uploads the merged Cobertura XML to Codecov.
+
+### Local Usage
+
+```bash
+# Requires: brew install kcov (macOS) or sudo apt-get install kcov (Linux)
+make coverage-kcov
+# Report: coverage-kcov/kcov-merged/index.html
+```
+
+---
+
 ## Dependencies
 
 ### Required
@@ -495,7 +536,10 @@ jobs:
 
 ### Optional
 - **pytest-xdist:** Parallel test execution
-- **pytest-cov:** Coverage reporting
+- **pytest-cov:** Coverage reporting (Python test helpers only)
+- **kcov:** Bash line coverage
+  - macOS: `brew install kcov`
+  - Linux: `sudo apt-get install kcov`
 - **codecov:** Coverage reporting service
 
 ---
