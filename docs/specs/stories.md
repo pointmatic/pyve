@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.3.0.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.3.1.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -106,15 +106,25 @@ Replace the misleading Python-only Codecov badge with real Bash line coverage us
 - [x] Add `coverage-kcov` Makefile target for local usage
 - [x] Bump VERSION to 1.3.0
 
-### Story B.b: v1.3.1 Update testing_spec.md [Planned]
+### Story B.b: v1.3.1 Update testing_spec.md, site structure, and other docs [Done]
 
 Reconcile `testing_spec.md` with the actual test suite after Phase A and the kcov integration.
 
-- [ ] Update test structure tree to match actual files (10 unit test files, 11 integration test files)
-- [ ] Update coverage goals section to reflect achieved coverage
-- [ ] Remove or update Phase 1/Phase 2 references (they're done)
-- [ ] Update pytest.ini example to match actual markers (add `requires_direnv`, `venv`, `micromamba`)
-- [ ] Update CI/CD section to match actual `test.yml` (separate jobs for unit, integration, micromamba, lint)
+- [x] Update test structure tree to match actual files (10 unit test files, 11 integration test files, kcov-wrapper.sh, sample_configs detail)
+- [x] Update coverage goals section — replaced Phase 1/Phase 2 with "Test Coverage Status" showing 451 tests (265 Bats + 186 pytest) with per-file tables
+- [x] Remove or update Phase 1/Phase 2 references — replaced with current achieved status
+- [x] Update pytest.ini example to match actual markers (added `requires_direnv`, `venv`, `micromamba`, `--maxfail=5`)
+- [x] Update CI/CD section — replaced single-job example with 6-job table matching actual `test.yml`
+- [x] Update Bats examples to use actual `test_helper` load pattern (`setup_pyve_env`, `create_test_dir`)
+- [x] Update pytest examples to match actual `conftest.py` (imports from `pyve_test_helpers.py`) and class-based test style
+- [x] Update Makefile section to match actual targets (including `coverage-kcov`)
+- [x] Update `docs/guides/codecov-setup-guide.md` — add kcov references to configuration, troubleshooting, coverage reports, local coverage, and references sections
+- [x] Restructure `docs/` to separate user-facing site from developer docs:
+  - `docs/codecov-setup.md` → `docs/guides/codecov-setup-guide.md`
+  - `docs/ci-cd-examples.md` → `docs/site/ci-cd.md`
+  - `docs/images/` → `docs/site/images/`
+  - `docs/index.html` → `docs/site/index.html`
+- [x] Bump VERSION to 1.3.1
 
 ---
 
@@ -122,15 +132,45 @@ Reconcile `testing_spec.md` with the actual test suite after Phase A and the kco
 
 ### Story C.a: Publish Pyve via Homebrew Tap [Planned]
 
-Package Pyve for installation via `brew install pointmatic/pyve/pyve`.
+Package Pyve for installation via `brew install pointmatic/tap/pyve`.
 
-- [ ] Create `pointmatic/homebrew-pyve` GitHub repo via `brew tap-new pointmatic/homebrew-pyve`
-- [ ] Create a tagged release in `pointmatic/pyve` (e.g., `v1.2.0` or current stable)
+- [ ] Create `pointmatic/homebrew-tap` GitHub repo via `brew tap-new pointmatic/homebrew-tap`
+- [ ] Create a tagged release in `pointmatic/pyve` (e.g., `v1.3.1` or current stable)
 - [ ] Compute SHA256 of the release tarball
 - [ ] Write `Formula/pyve.rb` — install `pyve.sh` + `lib/` under `libexec/`, write exec wrapper under `bin/pyve`
 - [ ] Verify `SCRIPT_DIR` resolution works when executed via Homebrew's `bin/pyve` → `libexec/pyve.sh` wrapper
 - [ ] Add `test` block to formula: `assert_match "pyve version", shell_output("#{bin}/pyve --version")`
-- [ ] Run `brew install --build-from-source pointmatic/pyve/pyve` and verify `pyve --init`, `pyve doctor`, `pyve run` work
+- [ ] Run `brew install --build-from-source pointmatic/tap/pyve` and verify `pyve --init`, `pyve doctor`, `pyve run` work
 - [ ] Detect Homebrew-managed installs in `pyve --install` / `pyve --uninstall` and warn/skip
-- [ ] Push formula to `pointmatic/homebrew-pyve` and verify `brew install pointmatic/pyve/pyve` works from scratch
+- [ ] Push formula to `pointmatic/homebrew-tap` and verify `brew install pointmatic/tap/pyve` works from scratch
 - [ ] Document Homebrew installation in `README.md`
+
+---
+
+## Phase D: Documentation Site
+
+Publish user-facing documentation at `https://pointmatic.github.io/pyve` via Jekyll on GitHub Pages, served from `docs/site/`.
+
+### Story D.a: Bootstrap Jekyll for docs/site [Planned]
+
+Set up Jekyll so GitHub Pages auto-builds `docs/site/` with zero CI config.
+
+- [ ] Add `docs/site/_config.yml` — set `title`, `description`, `baseurl: /pyve`, `theme: minima` (or `just-the-docs`)
+- [ ] Verify existing `index.html` renders unchanged (Jekyll serves static HTML as-is)
+- [ ] Add front matter to `ci-cd.md` so Jekyll renders it as a page
+- [ ] Configure GitHub Pages source: Settings → Pages → `docs/site/` on `main` branch
+- [ ] Verify site builds and serves at `https://pointmatic.github.io/pyve`
+- [ ] Add `Gemfile` with `github-pages` gem for local preview (`bundle exec jekyll serve`)
+- [ ] Add `docs/site/.gitignore` for `_site/`, `.jekyll-cache/`
+
+### Story D.b: User-Facing Documentation Pages [Planned]
+
+Create the core user documentation pages for the published site.
+
+- [ ] `getting-started.md` — installation (Homebrew + git clone), quick start, first project setup
+- [ ] `usage.md` — full command reference (`--init`, `--purge`, `doctor`, `run`, `--validate`, `--config`, `test`), flags, examples
+- [ ] `backends.md` — venv vs micromamba comparison, auto-detection rules, when to use which
+- [ ] `ci-cd.md` — update existing file with front matter; review content for user-facing tone (remove internal references)
+- [ ] Add navigation layout linking all pages (Jekyll `_data/navigation.yml` or theme nav config)
+- [ ] Link "Docs" from landing page hero and nav bar
+- [ ] Verify all pages render correctly on GitHub Pages

@@ -61,32 +61,39 @@ Pyve is a Python virtual environment orchestrator written in Bash, making a Pyth
 
 ```
 tests/
-├── unit/                           # Bats tests (white-box)
+├── unit/                           # Bats tests (white-box) — 10 files, 265 tests
 │   ├── test_backend_detect.bats
 │   ├── test_config_parse.bats
+│   ├── test_distutils_shim.bats
 │   ├── test_env_naming.bats
-│   ├── test_micromamba_core.bats
 │   ├── test_lock_validation.bats
-│   └── test_utils.bats
-├── integration/                    # pytest tests (black-box)
-│   ├── conftest.py                # pytest fixtures
-│   ├── test_venv_workflow.py
-│   ├── test_micromamba_workflow.py
+│   ├── test_micromamba_bootstrap.bats
+│   ├── test_micromamba_core.bats
+│   ├── test_reinit.bats
+│   ├── test_utils.bats
+│   └── test_version.bats
+├── integration/                    # pytest tests (black-box) — 11 files, 186 tests
+│   ├── conftest.py                # pytest fixtures (imports PyveRunner, ProjectBuilder)
 │   ├── test_auto_detection.py
-│   ├── test_doctor.py
-│   ├── test_run_command.py
 │   ├── test_bootstrap.py
-│   └── test_cross_platform.py
+│   ├── test_cross_platform.py
+│   ├── test_doctor.py
+│   ├── test_micromamba_workflow.py
+│   ├── test_reinit.py
+│   ├── test_run_command.py
+│   ├── test_testenv.py
+│   ├── test_validate.py
+│   └── test_venv_workflow.py
 ├── helpers/
-│   ├── test_helper.bash           # Bats helpers
-│   └── pyve_test_helpers.py       # pytest helpers
+│   ├── test_helper.bash           # Bats helpers (setup_pyve_env, create_test_dir, assertions)
+│   ├── pyve_test_helpers.py       # pytest helpers (PyveRunner, ProjectBuilder, assertions)
+│   └── kcov-wrapper.sh            # kcov wrapper for Bash coverage during integration tests
 ├── fixtures/                       # Test data
 │   ├── environment.yml
 │   ├── requirements.txt
 │   └── sample_configs/
-├── pytest.ini                      # pytest configuration
-├── Makefile                        # Test runner convenience
-└── README.md                       # Testing documentation
+│       ├── basic_micromamba.yml
+│       └── basic_venv.yml
 ```
 
 ---
@@ -99,43 +106,32 @@ tests/
 # tests/unit/test_backend_detect.bats
 #!/usr/bin/env bats
 
+# Load test helpers
+load ../helpers/test_helper
+
 setup() {
-  export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
-  source "$PYVE_ROOT/lib/backend_detect.sh"
-  source "$PYVE_ROOT/lib/utils.sh"
-  
-  export TEST_DIR="$(mktemp -d)"
-  cd "$TEST_DIR"
+    setup_pyve_env
+    create_test_dir
 }
 
 teardown() {
-  rm -rf "$TEST_DIR"
+    cleanup_test_dir
 }
 
-@test "detect_backend_from_files: detects micromamba from environment.yml" {
-  cat > environment.yml << EOF
-name: test
-dependencies:
-  - python=3.11
-EOF
-  
-  run detect_backend_from_files
-  [ "$status" -eq 0 ]
-  [ "$output" = "micromamba" ]
+@test "detect_backend_from_files: returns 'micromamba' for environment.yml" {
+    create_environment_yml "test-env" "python=3.11"
+
+    run detect_backend_from_files
+    [ "$status" -eq 0 ]
+    [ "$output" = "micromamba" ]
 }
 
-@test "detect_backend_from_files: detects venv from requirements.txt" {
-  echo "requests==2.31.0" > requirements.txt
-  
-  run detect_backend_from_files
-  [ "$status" -eq 0 ]
-  [ "$output" = "venv" ]
-}
+@test "detect_backend_from_files: returns 'venv' for requirements.txt" {
+    create_requirements_txt "requests==2.31.0"
 
-@test "sanitize_env_name: converts to lowercase and replaces spaces" {
-  run sanitize_env_name "My ML Project"
-  [ "$status" -eq 0 ]
-  [ "$output" = "my-ml-project" ]
+    run detect_backend_from_files
+    [ "$status" -eq 0 ]
+    [ "$output" = "venv" ]
 }
 ```
 
@@ -145,38 +141,32 @@ EOF
 # tests/unit/test_config_parse.bats
 #!/usr/bin/env bats
 
+# Load test helpers
+load ../helpers/test_helper
+
 setup() {
-  export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
-  source "$PYVE_ROOT/lib/config.sh"
-  
-  export TEST_DIR="$(mktemp -d)"
-  cd "$TEST_DIR"
-  mkdir -p .pyve
+    setup_pyve_env
+    create_test_dir
 }
 
 teardown() {
-  rm -rf "$TEST_DIR"
+    cleanup_test_dir
 }
 
 @test "read_config_value: reads backend from config" {
-  cat > .pyve/config << EOF
-backend: micromamba
-EOF
-  
-  run read_config_value "backend"
-  [ "$status" -eq 0 ]
-  [ "$output" = "micromamba" ]
+    create_pyve_config "backend: micromamba"
+
+    run read_config_value "backend"
+    [ "$status" -eq 0 ]
+    [ "$output" = "micromamba" ]
 }
 
 @test "read_config_value: reads nested micromamba.env_name" {
-  cat > .pyve/config << EOF
-micromamba:
-  env_name: myproject
-EOF
-  
-  run read_config_value "micromamba.env_name"
-  [ "$status" -eq 0 ]
-  [ "$output" = "myproject" ]
+    create_pyve_config "micromamba:" "  env_name: myproject"
+
+    run read_config_value "micromamba.env_name"
+    [ "$status" -eq 0 ]
+    [ "$output" = "myproject" ]
 }
 ```
 
@@ -186,115 +176,78 @@ EOF
 
 ### Shared Fixtures
 
+Fixtures are defined in `conftest.py` and import helpers from `tests/helpers/pyve_test_helpers.py`:
+
 ```python
 # tests/integration/conftest.py
 import pytest
-import subprocess
 from pathlib import Path
+import sys
+
+# Add helpers to path
+helpers_path = Path(__file__).parent.parent / 'helpers'
+sys.path.insert(0, str(helpers_path))
+
+from pyve_test_helpers import PyveRunner, ProjectBuilder
 
 @pytest.fixture
 def pyve_script():
-    """Path to pyve.sh script"""
+    """Path to pyve.sh script."""
     return Path(__file__).parent.parent.parent / "pyve.sh"
 
 @pytest.fixture
 def test_project(tmp_path):
-    """Create a temporary test project directory"""
+    """Create a temporary test project directory."""
     project_dir = tmp_path / "test_project"
     project_dir.mkdir()
     return project_dir
 
-class PyveRunner:
-    """Helper class to run pyve commands"""
-    
-    def __init__(self, script_path, cwd):
-        self.script_path = script_path
-        self.cwd = cwd
-    
-    def run(self, *args, check=True, capture=True):
-        """Run pyve command"""
-        cmd = [str(self.script_path)] + list(args)
-        kwargs = {'cwd': self.cwd, 'check': check}
-        if capture:
-            kwargs['capture_output'] = True
-            kwargs['text'] = True
-        return subprocess.run(cmd, **kwargs)
-    
-    def init(self, backend=None, **kwargs):
-        """Run pyve --init"""
-        args = ['--init', '--no-direnv']
-        if backend:
-            args.extend(['--backend', backend])
-        for key, value in kwargs.items():
-            flag = f"--{key.replace('_', '-')}"
-            if value is True:
-                args.append(flag)
-            elif value is not False:
-                args.extend([flag, str(value)])
-        return self.run(*args)
-    
-    def doctor(self):
-        """Run pyve doctor"""
-        return self.run('doctor')
-    
-    def run_cmd(self, *cmd_args):
-        """Run pyve run <cmd>"""
-        return self.run('run', *cmd_args)
-
 @pytest.fixture
 def pyve(pyve_script, test_project):
-    """Pyve runner fixture"""
+    """Pyve runner fixture."""
     return PyveRunner(pyve_script, test_project)
+
+@pytest.fixture
+def project_builder(test_project):
+    """Project builder fixture."""
+    return ProjectBuilder(test_project)
 ```
+
+`PyveRunner` provides `run()`, `init()`, `doctor()`, `run_cmd()`, `purge()`, `config()`, and `version()` methods. When `PYVE_KCOV_OUTDIR` is set, it automatically uses the kcov wrapper for Bash coverage collection.
+
+`ProjectBuilder` provides `create_requirements_txt()`, `create_environment_yml()`, `create_pyve_config()`, `create_pyproject_toml()`, `init_venv()`, and `init_micromamba()` methods.
 
 ### Integration Test: Venv Workflow
 
 ```python
 # tests/integration/test_venv_workflow.py
 import pytest
-from pathlib import Path
 
-def test_venv_init_creates_directory(pyve, test_project):
-    """Test that pyve --init creates .venv directory"""
-    result = pyve.init(backend='venv')
-    
-    assert result.returncode == 0
-    assert (test_project / '.venv').is_dir()
-    assert (test_project / '.venv' / 'bin' / 'python').exists()
+@pytest.mark.venv
+class TestVenvInit:
+    def test_venv_init_creates_directory(self, pyve, test_project):
+        """Test that pyve --init creates .venv directory"""
+        result = pyve.init(backend='venv')
 
-def test_venv_doctor_shows_backend(pyve, test_project):
-    """Test that pyve doctor shows venv backend"""
-    pyve.init(backend='venv')
-    result = pyve.doctor()
-    
-    assert result.returncode == 0
-    assert 'Backend: venv' in result.stdout
-    assert '✓' in result.stdout
+        assert result.returncode == 0
+        assert (test_project / '.venv').is_dir()
+        assert (test_project / '.venv' / 'bin' / 'python').exists()
 
-def test_venv_run_executes_python(pyve, test_project):
-    """Test that pyve run executes Python commands"""
-    pyve.init(backend='venv')
-    result = pyve.run_cmd('python', '--version')
-    
-    assert result.returncode == 0
-    assert 'Python' in result.stdout
+    def test_venv_doctor_shows_backend(self, pyve, test_project):
+        """Test that pyve doctor shows venv backend"""
+        pyve.init(backend='venv')
+        result = pyve.doctor()
 
-@pytest.mark.parametrize('backend', ['venv', 'micromamba'])
-def test_doctor_works_for_both_backends(pyve, test_project, backend):
-    """Test doctor works for both backends"""
-    if backend == 'micromamba':
-        (test_project / 'environment.yml').write_text("""
-name: test
-dependencies:
-  - python=3.11
-""")
-        pyve.init(backend=backend, auto_bootstrap=True)
-    else:
-        pyve.init(backend=backend)
-    
-    result = pyve.doctor()
-    assert result.returncode == 0
-    assert f'Backend: {backend}' in result.stdout
+        assert result.returncode == 0
+        assert 'Backend: venv' in result.stdout
+
+    def test_venv_run_executes_python(self, pyve, test_project):
+        """Test that pyve run executes Python commands"""
+        pyve.init(backend='venv')
+        result = pyve.run_cmd('python', '--version')
+
+        assert result.returncode == 0
+        assert 'Python' in result.stdout
 ```
 
 ---
@@ -313,8 +266,11 @@ markers =
     slow: marks tests as slow (deselect with '-m "not slow"')
     requires_micromamba: tests that require micromamba installed
     requires_asdf: tests that require asdf installed
+    requires_direnv: tests that require direnv installed
     macos: tests that only run on macOS
     linux: tests that only run on Linux
+    venv: tests specific to venv backend
+    micromamba: tests specific to micromamba backend
 
 addopts = 
     -v
@@ -322,6 +278,7 @@ addopts =
     --strict-markers
     --color=yes
     -ra
+    --maxfail=5
 ```
 
 ---
@@ -335,13 +292,16 @@ addopts =
 make test
 
 # Run only Bats unit tests
-bats tests/unit/*.bats
+make test-unit
 
 # Run only pytest integration tests
-pytest tests/integration/
+make test-integration
 
-# Run with coverage
-pytest tests/integration/ --cov=. --cov-report=html
+# Run venv tests in CI mode
+make test-integration-ci
+
+# Run Bash coverage via kcov
+make coverage-kcov
 
 # Run specific test file
 pytest tests/integration/test_venv_workflow.py -v
@@ -349,122 +309,93 @@ pytest tests/integration/test_venv_workflow.py -v
 # Run tests matching pattern
 pytest tests/integration/ -k "venv"
 
-# Run in parallel
-pytest tests/integration/ -n auto
+# Run tests by marker
+pytest tests/integration/ -m "venv and not requires_micromamba"
 ```
 
 ### Makefile
 
+Key targets (see `make help` for the full list):
+
 ```makefile
-.PHONY: test test-unit test-integration test-all coverage clean
+.PHONY: test test-unit test-integration test-integration-ci test-all coverage coverage-kcov clean
 
-test: test-unit test-integration
+test: test-unit test-integration          # Run all tests
 
-test-unit:
-	@echo "Running Bats unit tests..."
-	@bats tests/unit/*.bats
+test-unit:                                # Bats unit tests
+test-integration:                         # pytest integration tests
+test-integration-ci:                      # Venv tests with CI=true
+test-integration-micromamba-ci:           # Micromamba tests with CI=true
 
-test-integration:
-	@echo "Running pytest integration tests..."
-	@pytest tests/integration/ -v
+coverage:                                 # pytest with --cov (Python helpers only)
+coverage-kcov:                            # Bash line coverage via kcov (unit + integration)
 
-test-all:
-	@echo "Running all tests..."
-	@bats tests/unit/*.bats
-	@pytest tests/integration/ -v
-
-coverage:
-	@echo "Running tests with coverage..."
-	@pytest tests/integration/ --cov=. --cov-report=html --cov-report=term
-	@echo "Coverage report: htmlcov/index.html"
-
-clean:
-	@rm -rf .pytest_cache htmlcov .coverage
-	@find . -type d -name __pycache__ -exec rm -rf {} +
+clean:                                    # Remove .pytest_cache, htmlcov, .coverage, coverage-kcov
 ```
 
 ---
 
 ## CI/CD Integration
 
-```yaml
-# .github/workflows/test.yml
-name: Test
+The CI pipeline (`.github/workflows/test.yml`) runs six parallel jobs:
 
-on: [push, pull_request]
+| Job | Runner | Matrix | What it runs |
+|-----|--------|--------|-------------|
+| **Unit Tests** | ubuntu + macos | — | `make test-unit` (Bats) |
+| **Integration Tests** | ubuntu + macos | Python 3.10, 3.11, 3.12 | pytest venv tests via pyenv |
+| **Micromamba Tests** | ubuntu + macos | Python 3.11 | pytest micromamba tests |
+| **Bash Coverage** | ubuntu | Python 3.11 | Bats + pytest under kcov → Codecov upload |
+| **Lint** | ubuntu | — | ShellCheck, black, flake8 |
+| **Test Summary** | ubuntu | — | Gate: fail if unit or integration fail |
 
-jobs:
-  test:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-        python-version: ['3.10', '3.11', '3.12']
-    
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: ${{ matrix.python-version }}
-      
-      - name: Install Bats
-        run: |
-          if [ "$RUNNER_OS" == "Linux" ]; then
-            sudo apt-get update
-            sudo apt-get install -y bats
-          else
-            brew install bats-core
-          fi
-      
-      - name: Install pytest and dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install pytest pytest-cov pytest-xdist
-      
-      - name: Run Bats unit tests
-        run: bats tests/unit/*.bats
-      
-      - name: Run pytest integration tests
-        run: |
-          pytest tests/integration/ \
-            --cov=. \
-            --cov-report=xml \
-            --cov-report=term \
-            -n auto
-      
-      - name: Upload coverage
-        uses: codecov/codecov-action@v3
-        with:
-          file: ./coverage.xml
-          flags: ${{ matrix.os }}-py${{ matrix.python-version }}
-```
+Key details:
+
+- **Triggers**: push/PR to `main`/`develop`, plus `workflow_dispatch`
+- **Integration tests** install pyenv on the runner and pin to the `actions/setup-python` version to avoid slow builds
+- **Bash Coverage** runs on Linux only (kcov is most reliable there) and uploads merged Cobertura XML to Codecov with the `bash` flag
+- **Test Summary** is the required status check; it fails if unit or integration tests fail, but does not gate on micromamba, bash-coverage, or lint
 
 ---
 
-## Test Coverage Goals
+## Test Coverage Status
 
-### Phase 1 (v0.8.x): Foundation
-- **Unit Tests (Bats):**
-  - Backend detection (all functions)
-  - Config parsing (all functions)
-  - Environment naming (all functions)
-  - Lock file validation (all functions)
-  - Utility functions (critical paths)
+### Current (v1.3.x): 451 tests
 
-- **Integration Tests (pytest):**
-  - Venv workflow (init, run, doctor, purge)
-  - Micromamba workflow (init, run, doctor, purge)
-  - Auto-detection scenarios
-  - Error handling
+**Unit Tests (Bats) — 265 tests across 10 files:**
 
-### Phase 2 (Future): Comprehensive
-- Edge cases and error conditions
-- Cross-platform compatibility
-- Performance benchmarks
-- Regression test suite
-- CI/CD workflow validation
+| Test File | Module Under Test | Coverage |
+|-----------|-------------------|----------|
+| `test_utils.bats` | `lib/utils.sh` | Logging, gitignore, config parsing, validation |
+| `test_backend_detect.bats` | `lib/backend_detect.sh` | File detection, priority chain, validation |
+| `test_config_parse.bats` | `lib/utils.sh` (config) | read_config_value edge cases |
+| `test_distutils_shim.bats` | `lib/distutils_shim.sh` | Shim disabled check, version parsing, write paths |
+| `test_env_naming.bats` | `lib/micromamba_env.sh` | Sanitization, reserved names, resolution |
+| `test_lock_validation.bats` | `lib/micromamba_env.sh` | Stale/missing lock files, strict mode |
+| `test_micromamba_bootstrap.bats` | `lib/micromamba_bootstrap.sh` | Download URL, install locations |
+| `test_micromamba_core.bats` | `lib/micromamba_core.sh` | Binary detection, version, location |
+| `test_reinit.bats` | `lib/version.sh` | Re-initialization logic |
+| `test_version.bats` | `lib/version.sh` | Version comparison, validation, config writing |
+
+**Integration Tests (pytest) — 186 tests across 11 files:**
+
+| Test File | Workflow Tested |
+|-----------|-----------------|
+| `test_venv_workflow.py` | Full venv lifecycle (init, run, purge, .gitignore) |
+| `test_micromamba_workflow.py` | Full micromamba lifecycle |
+| `test_auto_detection.py` | Backend auto-detection from project files |
+| `test_bootstrap.py` | Micromamba bootstrap (placeholder) |
+| `test_cross_platform.py` | macOS/Linux-specific behavior |
+| `test_doctor.py` | Doctor diagnostics for both backends |
+| `test_reinit.py` | Re-initialization (update, force) |
+| `test_run_command.py` | `pyve run` for both backends |
+| `test_testenv.py` | Dev/test runner environment |
+| `test_validate.py` | Installation validation (21 tests) |
+
+### Coverage Target
+
+- **Goal:** >80% Bash line coverage (measured via kcov)
+- **Measurement:** kcov instruments `lib/*.sh` and `pyve.sh` during both Bats and pytest runs
+- **Reporting:** Codecov with `bash` flag; HTML report via `make coverage-kcov`
 
 ---
 
