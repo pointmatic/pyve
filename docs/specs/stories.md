@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.4.1.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.5.0.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -168,14 +168,15 @@ Add a GitHub Actions workflow to `pointmatic/pyve` that automatically updates th
 - [x] Add `.github/workflows/update-homebrew.yml` — triggers on `v*` tag push, uses `dawidd6/action-homebrew-bump-formula` to update `Formula/pyve.rb`
 - [ ] Test by pushing a tag and verifying the formula is auto-updated in `pointmatic/homebrew-tap`
 
-### Story C.e: v1.5.0 Show Install Source in `pyve doctor` [Planned]
+### Story C.e: v1.5.0 Show Install Source in `pyve doctor` [Done]
 
 Add installation source diagnostic to `pyve doctor` output.
 
-- [ ] Detect install source in `doctor_command()`: Homebrew (`SCRIPT_DIR` under `brew --prefix`), installed (`SCRIPT_DIR` == `~/.local/bin`), or source (git clone)
-- [ ] Display as first line of doctor output: `✓ Pyve: v1.x.x (Homebrew|installed|source: <path>)`
-- [ ] Add tests for the three install source detection paths
-- [ ] Bump VERSION to 1.5.0
+- [x] Detect install source in `doctor_command()`: Homebrew (`SCRIPT_DIR` under `brew --prefix`), installed (`SCRIPT_DIR` == `~/.local/bin`), or source (git clone)
+- [x] Display as first line of doctor output: `✓ Pyve: v1.x.x (homebrew|installed|source: <path>)`
+- [x] Add tests for the three install source detection paths — 5 Bats tests in `tests/unit/test_doctor.bats`
+- [x] Extracted `detect_install_source()` into `lib/utils.sh` for testability
+- [x] Bump VERSION to 1.5.0
 
 ---
 

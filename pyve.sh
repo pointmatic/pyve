@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.4.1"
+VERSION="1.5.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1198,18 +1198,12 @@ set_python_version_only() {
 
 install_self() {
     # Detect Homebrew-managed installs and warn/skip.
-    # Check SCRIPT_DIR (where the running script lives) rather than
-    # command -v, which may find a different copy on PATH.
-    if command -v brew >/dev/null 2>&1; then
-        local brew_prefix
-        brew_prefix="$(brew --prefix 2>/dev/null)"
-        if [[ "$SCRIPT_DIR" == "$brew_prefix"/* ]]; then
-            log_warning "Pyve is managed by Homebrew ($SCRIPT_DIR)."
-            printf "  To update:    brew upgrade pointmatic/tap/pyve\n"
-            printf "  To uninstall: brew uninstall pyve\n"
-            printf "\n  --install is for non-Homebrew (git clone) installations only.\n"
-            exit 0
-        fi
+    if [[ "$(detect_install_source)" == "homebrew" ]]; then
+        log_warning "Pyve is managed by Homebrew ($SCRIPT_DIR)."
+        printf "  To update:    brew upgrade pointmatic/tap/pyve\n"
+        printf "  To uninstall: brew uninstall pyve\n"
+        printf "\n  --install is for non-Homebrew (git clone) installations only.\n"
+        exit 0
     fi
 
     local source_dir="$SCRIPT_DIR"
@@ -1417,17 +1411,11 @@ install_local_env_template() {
 
 uninstall_self() {
     # Detect Homebrew-managed installs and warn/skip.
-    # Check SCRIPT_DIR (where the running script lives) rather than
-    # command -v, which may find a different copy on PATH.
-    if command -v brew >/dev/null 2>&1; then
-        local brew_prefix
-        brew_prefix="$(brew --prefix 2>/dev/null)"
-        if [[ "$SCRIPT_DIR" == "$brew_prefix"/* ]]; then
-            log_warning "Pyve is managed by Homebrew ($SCRIPT_DIR)."
-            printf "  To uninstall: brew uninstall pyve\n"
-            printf "\n  --uninstall is for non-Homebrew (git clone) installations only.\n"
-            exit 0
-        fi
+    if [[ "$(detect_install_source)" == "homebrew" ]]; then
+        log_warning "Pyve is managed by Homebrew ($SCRIPT_DIR)."
+        printf "  To uninstall: brew uninstall pyve\n"
+        printf "\n  --uninstall is for non-Homebrew (git clone) installations only.\n"
+        exit 0
     fi
 
     printf "\nUninstalling pyve...\n"
@@ -1609,6 +1597,11 @@ run_command() {
 doctor_command() {
     printf "Pyve Environment Diagnostics\n"
     printf "=============================\n\n"
+    
+    # Detect install source
+    local install_source
+    install_source="$(detect_install_source)"
+    printf "✓ Pyve: v%s (%s: %s)\n" "$VERSION" "$install_source" "$SCRIPT_DIR"
     
     # Check version compatibility
     if config_file_exists; then

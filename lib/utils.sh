@@ -362,11 +362,32 @@ validate_python_version() {
 }
 
 #============================================================
-# File Utility Functions
+# Install Source Detection
 #============================================================
 
-# Check if a file is empty
-# Returns 0 if empty or doesn't exist, 1 if has content
+# Detect how pyve was installed.
+# Prints one of: homebrew, installed, source
+# Requires SCRIPT_DIR and TARGET_BIN_DIR to be set.
+detect_install_source() {
+    if command -v brew >/dev/null 2>&1; then
+        local brew_prefix
+        brew_prefix="$(brew --prefix 2>/dev/null)"
+        if [[ "$SCRIPT_DIR" == "$brew_prefix"/* ]]; then
+            echo "homebrew"
+            return 0
+        fi
+    fi
+    if [[ "$SCRIPT_DIR" == "$TARGET_BIN_DIR" ]]; then
+        echo "installed"
+    else
+        echo "source"
+    fi
+}
+
+#============================================================
+# File Utilities
+#============================================================
+
 # Usage: is_file_empty "filename"
 is_file_empty() {
     local file="$1"
