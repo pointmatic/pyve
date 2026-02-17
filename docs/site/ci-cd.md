@@ -805,7 +805,7 @@ before_script:
 
 ## Additional Resources
 
-- [Pyve Documentation](../README.md)
+- [Pyve Repository](https://github.com/pointmatic/pyve)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [GitLab CI Documentation](https://docs.gitlab.com/ee/ci/)
 - [Docker Documentation](https://docs.docker.com/)

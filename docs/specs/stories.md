@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.5.0.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.5.1.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -178,23 +178,30 @@ Add installation source diagnostic to `pyve doctor` output.
 - [x] Extracted `detect_install_source()` into `lib/utils.sh` for testability
 - [x] Bump VERSION to 1.5.0
 
+### Story C.f: v1.5.1 Fix kcov Repository URL in CI [Done]
+
+Fix typo in kcov repository URL that caused bash-coverage CI job to fail.
+
+- [x] Correct kcov repository URL in `.github/workflows/test.yml` — `SimonKagstrom/kcov` not `SimonKagworthy/kcov`
+- [x] Bump VERSION to 1.5.1
+
 ---
 
 ## Phase D: Documentation Site
 
-Publish user-facing documentation at `https://pointmatic.github.io/pyve` via Jekyll on GitHub Pages, served from `docs/site/`.
+Publish user-facing documentation at `https://pointmatic.github.io/pyve` via MkDocs on GitHub Pages, served from `docs/site/`.
 
-### Story D.a: Bootstrap Jekyll for docs/site [Planned]
+### Story D.a: Bootstrap MkDocs for docs/site [Planned]
 
-Set up Jekyll so GitHub Pages auto-builds `docs/site/` with zero CI config.
+Set up MkDocs with Material theme and GitHub Actions deployment to GitHub Pages.
 
-- [ ] Add `docs/site/_config.yml` — set `title`, `description`, `baseurl: /pyve`, `theme: minima` (or `just-the-docs`)
-- [ ] Verify existing `index.html` renders unchanged (Jekyll serves static HTML as-is)
-- [ ] Add front matter to `ci-cd.md` so Jekyll renders it as a page
-- [ ] Configure GitHub Pages source: Settings → Pages → `docs/site/` on `main` branch
+- [x] Add `mkdocs.yml` — Material theme, navigation, markdown extensions, plugins
+- [x] Verify existing `index.html` and `ci-cd.md` work with MkDocs
+- [x] Add `.github/workflows/deploy-docs.yml` — builds and deploys MkDocs site on push to main
+- [x] Add `docs/site/.gitignore` for `/site/` build output
+- [ ] Configure GitHub Pages source: Settings → Pages → GitHub Actions
 - [ ] Verify site builds and serves at `https://pointmatic.github.io/pyve`
-- [ ] Add `Gemfile` with `github-pages` gem for local preview (`bundle exec jekyll serve`)
-- [ ] Add `docs/site/.gitignore` for `_site/`, `.jekyll-cache/`
+- [ ] Test local preview: `pip install mkdocs-material mkdocs-git-revision-date-localized-plugin && mkdocs serve`
 
 ### Story D.b: User-Facing Documentation Pages [Planned]
 
