@@ -40,6 +40,9 @@ site_dir: site
 
 nav:
   - Home: index.html
+  - Getting Started: getting-started.md
+  - Usage Guide: usage.md
+  - Backends: backends.md
   - CI/CD Integration: ci-cd.md
 
 # Extensions

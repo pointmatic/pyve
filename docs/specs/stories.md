@@ -191,7 +191,7 @@ Fix typo in kcov repository URL that caused bash-coverage CI job to fail.
 
 Publish user-facing documentation at `https://pointmatic.github.io/pyve` via MkDocs on GitHub Pages, served from `docs/site/`.
 
-### Story D.a: Bootstrap MkDocs for docs/site [Planned]
+### Story D.a: Bootstrap MkDocs for docs/site [Done]
 
 Set up MkDocs with Material theme and GitHub Actions deployment to GitHub Pages.
 
@@ -199,18 +199,21 @@ Set up MkDocs with Material theme and GitHub Actions deployment to GitHub Pages.
 - [x] Verify existing `index.html` and `ci-cd.md` work with MkDocs
 - [x] Add `.github/workflows/deploy-docs.yml` — builds and deploys MkDocs site on push to main
 - [x] Add `docs/site/.gitignore` for `/site/` build output
-- [ ] Configure GitHub Pages source: Settings → Pages → GitHub Actions
-- [ ] Verify site builds and serves at `https://pointmatic.github.io/pyve`
-- [ ] Test local preview: `pip install mkdocs-material mkdocs-git-revision-date-localized-plugin && mkdocs serve`
+- [x] Add docs links to `index.html` (nav + hero CTA)
+- [x] Fix broken link in `ci-cd.md` (changed `../README.md` to GitHub repo link)
+- [x] Test local preview: `pip install mkdocs-material mkdocs-git-revision-date-localized-plugin && mkdocs serve`
+- [x] Configure GitHub Pages source: Settings → Pages → GitHub Actions
+- [x] Verify site builds and serves at `https://pointmatic.github.io/pyve`
 
 ### Story D.b: User-Facing Documentation Pages [Planned]
 
 Create the core user documentation pages for the published site.
 
-- [ ] `getting-started.md` — installation (Homebrew + git clone), quick start, first project setup
-- [ ] `usage.md` — full command reference (`--init`, `--purge`, `doctor`, `run`, `--validate`, `--config`, `test`), flags, examples
-- [ ] `backends.md` — venv vs micromamba comparison, auto-detection rules, when to use which
-- [ ] `ci-cd.md` — update existing file with front matter; review content for user-facing tone (remove internal references)
-- [ ] Add navigation layout linking all pages (Jekyll `_data/navigation.yml` or theme nav config)
-- [ ] Link "Docs" from landing page hero and nav bar
-- [ ] Verify all pages render correctly on GitHub Pages
+- [x] Create `docs/site/getting-started.md` — installation (Homebrew + git clone), quick start, first project setup
+- [x] Create `docs/site/usage.md` — full command reference (`--init`, `--purge`, `doctor`, `run`, `--validate`, `--config`, `test`), flags, examples
+- [x] Create `docs/site/backends.md` — venv vs micromamba comparison, auto-detection rules, when to use which
+- [x] Review `docs/site/ci-cd.md` for user-facing tone (already exists, content is appropriate)
+- [x] Update `mkdocs.yml` nav section with all documentation pages
+- [x] Update `index.html` with links to new documentation pages (nav + hero CTA point to getting-started)
+- [ ] Test local preview: `mkdocs serve` and verify all pages render correctly
+- [ ] Push and verify all pages render correctly on GitHub Pages
