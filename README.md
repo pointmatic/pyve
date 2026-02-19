@@ -270,7 +270,7 @@ pyve --purge --keep-testenv          # Preserve the dev/test runner environment
 pyve -p                              # Short form
 ```
 
-## Testing (v0.9.3)
+## Testing (v1.5.2)
 
 The Pyve codebase is tested using `pytest`. The test suite is located in the `tests` directory. There are both unit tests and integration tests.
 
@@ -732,7 +732,7 @@ pyve --validate
 Pyve Installation Validation
 ==============================
 
-✓ Pyve version: 0.8.8 (current)
+✓ Pyve version: 1.5.2 (current)
 ✓ Backend: venv
 ✓ Virtual environment: .venv (exists)
 ✓ Configuration: valid
@@ -747,7 +747,7 @@ All validations passed.
 Pyve Installation Validation
 ==============================
 
-⚠ Pyve version: 0.6.6 (current: 0.8.8)
+⚠ Pyve version: 1.4.0 (current: 1.5.2)
   Migration recommended. Run 'pyve --init --update' to update.
 ✓ Backend: venv
 ✗ Virtual environment: .venv (missing)
@@ -780,8 +780,8 @@ When you run `pyve --init` on an already-initialized project, Pyve detects the e
 ```bash
 $ pyve --init
 ⚠ Project already initialized with Pyve
-  Recorded version: 0.8.7
-  Current version: 0.8.9
+  Recorded version: 1.5.1
+  Current version: 1.5.2
   Backend: venv
 
 What would you like to do?
@@ -814,10 +814,10 @@ pyve --init --force
 $ pyve --init --update
 Updating existing Pyve installation...
 ✓ Configuration updated
-  Version: 0.8.7 → 0.8.9
+  Version: 1.5.1 → 1.5.2
   Backend: venv (unchanged)
 
-Project updated to Pyve v0.8.9
+Project updated to Pyve v1.5.2
 ```
 
 **Force Re-initialization (`--force`):**

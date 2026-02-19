@@ -205,7 +205,7 @@ Set up MkDocs with Material theme and GitHub Actions deployment to GitHub Pages.
 - [x] Configure GitHub Pages source: Settings → Pages → GitHub Actions
 - [x] Verify site builds and serves at `https://pointmatic.github.io/pyve`
 
-### Story D.b: User-Facing Documentation Pages [Planned]
+### Story D.b: User-Facing Documentation Pages [Done]
 
 Create the core user documentation pages for the published site.
 
@@ -215,5 +215,30 @@ Create the core user documentation pages for the published site.
 - [x] Review `docs/site/ci-cd.md` for user-facing tone (already exists, content is appropriate)
 - [x] Update `mkdocs.yml` nav section with all documentation pages
 - [x] Update `index.html` with links to new documentation pages (nav + hero CTA point to getting-started)
-- [ ] Test local preview: `mkdocs serve` and verify all pages render correctly
-- [ ] Push and verify all pages render correctly on GitHub Pages
+- [x] Test local preview: `mkdocs serve` and verify all pages render correctly
+- [x] Push and verify all pages render correctly on GitHub Pages
+
+### Story D.c: v1.5.2 CHANGELOG.md and License Header Compliance [Done]
+
+Create CHANGELOG.md and add Apache-2.0 license headers to all Python test files to comply with project guide requirements.
+
+- [x] Create `CHANGELOG.md` in repository root following Keep a Changelog format
+  - [x] Document all versions from v1.1.4 through v1.5.1 based on `stories.md`
+  - [x] Include v1.0.0 initial release summary
+  - [x] Add version comparison links at bottom
+- [x] Add Apache-2.0 license headers to all 12 Python test files
+  - [x] `tests/helpers/pyve_test_helpers.py`
+  - [x] `tests/integration/conftest.py`
+  - [x] `tests/integration/test_auto_detection.py`
+  - [x] `tests/integration/test_bootstrap.py`
+  - [x] `tests/integration/test_cross_platform.py`
+  - [x] `tests/integration/test_doctor.py`
+  - [x] `tests/integration/test_micromamba_workflow.py`
+  - [x] `tests/integration/test_reinit.py`
+  - [x] `tests/integration/test_run_command.py`
+  - [x] `tests/integration/test_testenv.py`
+  - [x] `tests/integration/test_validate.py`
+  - [x] `tests/integration/test_venv_workflow.py`
+- [x] Verify all headers follow Apache-2.0 format with copyright notice
+- [x] Update README.md version references from v0.9.3, v0.8.8, v0.8.7, v0.8.9 to v1.5.2
+- [x] Bump VERSION to 1.5.2
