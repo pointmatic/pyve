@@ -18,7 +18,7 @@ The developer may optionally provide:
 - Constraints (no UI, no database, must run offline, etc.)
 - Target audience (CLI tool, library, web app, etc.)
 
-Additionally, the LLM should ask the developer the following question before writing the stories document:
+Additionally, the LLM should ask the developer the following question **after the tech spec is approved but before writing the stories document**:
 
 > **Will this project need CI/CD automation?** For example: GitHub Actions for linting/testing on every push, dynamic code coverage badges (Codecov/Coveralls), and/or automated publishing to a package registry (PyPI, npm, etc.) on tagged releases?
 
@@ -39,7 +39,7 @@ The LLM creates or improves the following documents **in order**, waiting for de
 | Step | Document | Purpose |
 |------|----------|---------|
 | 1 | `docs/specs/features.md` | What the project does (requirements, not implementation) |
-| 2 | `docs/specs/tech_spec.md` | How the project is built (architecture, modules, dependencies) |
+| 2 | `docs/specs/tech-spec.md` | How the project is built (architecture, modules, dependencies) |
 | 3 | `docs/specs/stories.md` | Step-by-step implementation plan (phases, stories, checklists) |
 
 After all three documents are approved, the LLM proceeds to scaffold the project and implement stories one by one.
@@ -112,6 +112,80 @@ When a `README.md` is created or updated, include all applicable badges at the t
 
 Use dynamic badges from the package registry (e.g. `shields.io/pypi/...`) when the package is published. Before publication, use static `shields.io` badges or omit registry-dependent badges. Always include the **License** badge. Add badges proactively — do not wait for the developer to ask.
 
+### CHANGELOG.md
+
+Every project must maintain a `CHANGELOG.md` file in the repository root following these conventions:
+
+**File Location and Naming:**
+- File name: `CHANGELOG.md` (all caps, hyphen separator)
+- Location: Repository root (same level as `README.md`, `LICENSE`)
+
+**Header Format:**
+```markdown
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+```
+
+**Version Entry Format:**
+```markdown
+## [X.Y.Z] - YYYY-MM-DD
+
+### Added
+- New features, capabilities, or files
+
+### Changed
+- Changes to existing functionality
+
+### Deprecated
+- Soon-to-be removed features
+
+### Removed
+- Removed features or files
+
+### Fixed
+- Bug fixes
+
+### Security
+- Security-related changes
+```
+
+**Guidelines:**
+- **Version headers**: Use `## [X.Y.Z] - YYYY-MM-DD` format (semver in brackets, ISO date)
+- **Categories**: Use standard Keep a Changelog categories (Added, Changed, Deprecated, Removed, Fixed, Security)
+- **Omit empty categories**: Only include categories that have entries for that version
+- **Bullet points**: Each change is a single bullet point with concise description
+- **Most recent first**: Newest versions at the top, oldest at the bottom
+- **Link references**: Optionally add version comparison links at the bottom
+- **Initial version**: Start with `## [0.1.0] - YYYY-MM-DD` for the first release
+
+**When to Update:**
+- Update `CHANGELOG.md` in the same commit as the version bump
+- Each story with a version number should have a corresponding changelog entry
+- Group related changes under appropriate categories
+
+**Note:** The `CHANGELOG.md` file can remain unimplemented until the project is released. For prototypes and early-stage projects, focus on getting the code working first. The changelog can be created retroactively before the first public release by reviewing git history and the `stories.md` file.
+
+**Example Entry:**
+```markdown
+## [1.5.0] - 2026-02-08
+
+### Added
+- Retry integration in `Throttle.wrap()` with automatic backoff
+- `retry` event emitted via `on_state_change` for each retry attempt
+- Retry integration tests in `test_throttle.py` (7 tests)
+
+### Changed
+- Circuit breaker now checked before each retry attempt
+- Intermediate failures no longer trigger throttle deceleration
+
+### Fixed
+- `CircuitOpenError` now propagates immediately during retry
+```
+
 ---
 
 ## Step 1: Features Document (`docs/specs/features.md`)
@@ -125,7 +199,7 @@ Define **what** the project does — requirements, inputs, outputs, behavior —
 Generate `docs/specs/features.md` with the following sections:
 
 1. **Header** — `# features.md — <Project Name> (<Language>)`
-2. **Overview** — one paragraph explaining the document's purpose and cross-references to `tech_spec.md` and `stories.md`
+2. **Overview** — one paragraph explaining the document's purpose and cross-references to `tech-spec.md` and `stories.md`
 3. **Project Goal** — what the project does, broken into:
    - **Core Requirements** — the essential functionality
    - **Operational Requirements** — error handling, logging, configuration, etc.
@@ -147,7 +221,7 @@ Present the complete `features.md` to the developer. Do not proceed until the de
 
 ---
 
-## Step 2: Technical Specification (`docs/specs/tech_spec.md`)
+## Step 2: Technical Specification (`docs/specs/tech-spec.md`)
 
 ### Purpose
 
@@ -155,29 +229,67 @@ Define **how** the project is built — architecture, module layout, dependencie
 
 ### Instructions for the LLM
 
-Generate `docs/specs/tech_spec.md` with the following sections:
+Generate `docs/specs/tech-spec.md` with the following sections.
 
-1. **Header** — `# tech_spec.md — <Project Name> (<Language>)`
+**Note:** The sections below are tailored for CLI tools and libraries. Adapt them to fit the project type:
+- **Web apps**: Add sections for routing, database schema, API endpoints, deployment
+- **Mobile apps**: Add sections for screen navigation, platform APIs, build targets
+- **Data pipelines**: Add sections for data models, transformations, scheduling
+- **Bash utilities**: May only need sections 1-6; skip data models and API design
+
+**Standard Sections:**
+
+1. **Header** — `# tech-spec.md — <Project Name> (<Language>)`
 2. **Overview** — one paragraph with cross-references to `features.md` and `stories.md`
 3. **Runtime & Tooling** — language version, package manager, linter, test runner, etc.
 4. **Dependencies** — tables for runtime, optional, system, and development dependencies with purpose for each
 5. **Package Structure** — full directory tree with one-line descriptions per file
-6. **Key Component Design** — for each major module:
+6. **Filename Conventions** — naming rules for different file types (see below)
+7. **Key Component Design** — for each major module:
    - Function/method signatures (with types)
    - Brief description of behavior
    - Edge cases handled
-7. **Data Models** — full model definitions with field types and defaults
-8. **Configuration** — settings model with all fields, types, defaults, and precedence rules
-9. **CLI Design** — subcommands table, shared flags, exit codes (if applicable)
-10. **Library API** — public API with usage examples (if applicable)
-11. **Cross-Cutting Concerns** — retry strategy, rate limiting, logging, caching, atomic writes, etc.
-12. **Testing Strategy** — unit tests, integration tests, and what each covers
+8. **Data Models** — full model definitions with field types and defaults
+9. **Configuration** — settings model with all fields, types, defaults, and precedence rules
+10. **CLI Design** — subcommands table, shared flags, exit codes (if applicable)
+11. **Library API** — public API with usage examples (if applicable)
+12. **Cross-Cutting Concerns** — retry strategy, rate limiting, logging, caching, atomic writes, etc.
+13. **Testing Strategy** — unit tests, integration tests, and what each covers
 
-The sections above are a starting point. Adapt them to fit the project type — for example, a web app may need sections on routing, database schema, and deployment; a mobile app may need sections on screen navigation, platform APIs, and build targets; a bash utility may only need a few of the above. Add, remove, or rename sections as appropriate.
+### Filename Conventions
+
+When generating the tech-spec.md, include a **Filename Conventions** section that establishes naming rules for the project. Use the following guidelines:
+
+**General Rule:**
+- Use **hyphens (`-`)** for word separation in most files
+- Use **underscores (`_`)** only for language-specific conventions or internal modules
+
+**Specific Rules by File Type:**
+
+| File Type | Convention | Examples |
+|-----------|------------|----------|
+| **Documentation** (Markdown) | Hyphens | `getting-started.md`, `api-reference.md`, `project-guide.md` |
+| **User-facing scripts** | Hyphens | `deploy-app.sh`, `run-tests.sh` |
+| **Workflow files** | Hyphens | `deploy-docs.yml`, `run-tests.yml` |
+| **Python modules** | Underscores (PEP 8) | `my_module.py`, `data_processor.py` |
+| **Python packages** | Underscores (PEP 8) | `my_package/`, `utils/` |
+| **Internal library scripts** | Underscores | `lib/backend_detect.sh`, `lib/utils.sh` |
+| **JavaScript/TypeScript** | Hyphens or camelCase | `api-client.ts`, `dataProcessor.ts` (follow project convention) |
+| **Configuration files** | Hyphens or dots | `mkdocs.yml`, `.gitignore`, `pyproject.toml` |
+
+**Rationale:**
+- **Hyphens** are URL-friendly, standard in Unix/Linux, and preferred by documentation tools (MkDocs, Jekyll, Hugo)
+- **Underscores** follow language conventions (Python PEP 8) and are used for internal modules not exposed as URLs
+- **Consistency** within each category is more important than uniformity across all files
+
+**Project-Specific Guidance:**
+- If the project generates web content (docs, static sites), prefer hyphens for all user-facing files
+- If the project is a library, follow the language's standard conventions
+- Document any exceptions or special cases in the tech spec
 
 ### Approval Gate
 
-Present the complete `tech_spec.md` to the developer. Do not proceed until approved.
+Present the complete `tech-spec.md` to the developer. Do not proceed until approved.
 
 ---
 
@@ -197,7 +309,7 @@ Generate `docs/specs/stories.md` following this exact format:
 # stories.md — <Project Name> (<Language>)
 
 <One paragraph describing the document. Mention that stories are organized by phase
-and reference modules defined in `tech_spec.md`.>
+and reference modules defined in `tech-spec.md`.>
 
 <One paragraph explaining the numbering scheme (e.g. A.a, A.b) and version bumping
 convention. Mention that stories with no code changes have no version number.
@@ -238,6 +350,18 @@ Each story follows this format:
   - [ ] <Subtask 1b>
 - [ ] <Task 2>
 - [ ] <Task 3>
+```
+
+**Example without version (documentation/polish story):**
+
+```markdown
+### Story F.b: Update Documentation [Planned]
+
+Polish README and add usage examples.
+
+- [ ] Update README with advanced examples
+- [ ] Add troubleshooting section
+- [ ] Review all docs for consistency
 ```
 
 Rules:
@@ -284,6 +408,6 @@ Every new source file created during implementation must include the copyright a
 |------|--------|------|
 | 0 | Set up LICENSE, determine header format | Developer confirms license |
 | 1 | Write `docs/specs/features.md` | Developer approves |
-| 2 | Write `docs/specs/tech_spec.md` | Developer approves |
+| 2 | Write `docs/specs/tech-spec.md` | Developer approves |
 | 3 | Write `docs/specs/stories.md` | Developer approves |
 | 4 | Implement stories one by one | Developer approves each story |
