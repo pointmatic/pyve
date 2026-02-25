@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.3] - 2026-02-25
+
+### Fixed
+- Fixed `pyve --purge` failing to remove micromamba environments with "Directory not empty" errors
+- `purge_pyve_dir()` now properly removes micromamba environments using `micromamba env remove` before attempting directory deletion
+- Handles both named environments and prefix-based removal for robustness
+
 ## [1.5.1] - 2026-02-18
 
 ### Fixed

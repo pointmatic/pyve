@@ -242,3 +242,27 @@ Create CHANGELOG.md and add Apache-2.0 license headers to all Python test files 
 - [x] Verify all headers follow Apache-2.0 format with copyright notice
 - [x] Update README.md version references from v0.9.3, v0.8.8, v0.8.7, v0.8.9 to v1.5.2
 - [x] Bump VERSION to 1.5.2
+
+Phase E: Bug Fixes
+
+### Story E.a: v1.5.3 Fix Pyve micromamba purge ordering [Done]
+
+Fix bug where `pyve --purge` fails to remove micromamba environments due to incorrect purge order. The current implementation uses `rm -rf .pyve` which fails when micromamba environments contain files with special permissions. The fix should properly remove micromamba environments before attempting directory deletion.
+
+- [x] Update `purge_pyve_dir()` function in `pyve.sh`
+  - [x] Detect if micromamba backend is in use (check for `.pyve/envs` directory)
+  - [x] Read environment name from `.pyve/config` if it exists
+  - [x] If micromamba environment exists, run `micromamba env remove -p .pyve/envs/<env_name> -y` first
+  - [x] Handle case where micromamba binary is not found (skip env remove, proceed with directory removal)
+  - [x] Then remove `.pyve` directory with `rm -rf`
+  - [x] Add error handling for failed micromamba env remove (log warning, continue with rm -rf)
+- [x] Add integration test for micromamba purge
+  - [x] Test `pyve --init --backend micromamba` followed by `pyve --purge`
+  - [x] Verify `.pyve` directory is completely removed
+  - [x] Verify no "Directory not empty" errors occur
+- [x] Test purge with `--keep-testenv` flag
+  - [x] Verify micromamba env is removed but testenv is preserved
+- [x] Update CHANGELOG.md with v1.5.3 entry
+  - [x] Add "Fixed" section describing micromamba purge bug fix
+- [x] Bump VERSION to 1.5.3
+- [ ] Verify: Run `pyve --init --backend micromamba --force` twice to confirm purge works correctly

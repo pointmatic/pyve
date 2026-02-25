@@ -123,6 +123,53 @@ class TestMicromambaWorkflow:
         result = pyve.purge(auto_yes=True)
         
         assert result.returncode == 0
+        # Verify .pyve directory is completely removed
+        assert not (pyve.cwd / '.pyve').exists()
+    
+    def test_purge_removes_environment_completely(self, pyve, project_builder):
+        """Test that --purge removes micromamba environment without 'Directory not empty' errors."""
+        project_builder.create_environment_yml(
+            name='test-env',
+            dependencies=['python=3.11', 'requests', 'pytest']
+        )
+        pyve.init(backend='micromamba')
+        
+        # Verify environment was created
+        assert (pyve.cwd / '.pyve' / 'envs').exists()
+        
+        # Purge with auto-yes
+        result = pyve.purge(auto_yes=True)
+        
+        assert result.returncode == 0
+        # Should not have "Directory not empty" errors
+        assert 'Directory not empty' not in result.stderr
+        assert 'Directory not empty' not in result.stdout
+        # Verify .pyve directory is completely removed
+        assert not (pyve.cwd / '.pyve').exists()
+    
+    def test_purge_with_keep_testenv(self, pyve, project_builder):
+        """Test that --purge with --keep-testenv removes micromamba env but preserves testenv."""
+        project_builder.create_environment_yml(
+            name='test-env',
+            dependencies=['python=3.11']
+        )
+        pyve.init(backend='micromamba')
+        
+        # Create testenv
+        pyve.run_raw('testenv', '--init')
+        
+        # Verify both exist
+        assert (pyve.cwd / '.pyve' / 'envs').exists()
+        assert (pyve.cwd / '.pyve' / 'testenv').exists()
+        
+        # Purge with keep-testenv
+        result = pyve.run_raw('--purge', '--keep-testenv', input='y\n')
+        
+        assert result.returncode == 0
+        # Micromamba env should be removed
+        assert not (pyve.cwd / '.pyve' / 'envs').exists()
+        # Testenv should be preserved
+        assert (pyve.cwd / '.pyve' / 'testenv').exists()
     
     def test_reinit_after_purge(self, pyve, project_builder):
         """Test that we can re-initialize after purge."""

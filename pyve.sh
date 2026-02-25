@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.5.2"
+VERSION="1.5.3"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -986,6 +986,46 @@ purge_venv() {
 
 purge_pyve_dir() {
     if [[ -d ".pyve" ]]; then
+        # Check if micromamba environments exist
+        if [[ -d ".pyve/envs" ]]; then
+            # Try to remove micromamba environment(s) properly first
+            local micromamba_path
+            micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
+            
+            if [[ -n "$micromamba_path" ]] && [[ -x "$micromamba_path" ]]; then
+                # Get environment name from config if it exists
+                local env_name
+                if config_file_exists; then
+                    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+                fi
+                
+                # If we have an env name, try to remove it
+                if [[ -n "$env_name" ]]; then
+                    log_info "Removing micromamba environment '$env_name'..."
+                    if "$micromamba_path" env remove -n "$env_name" -y 2>/dev/null; then
+                        log_success "Removed micromamba environment '$env_name'"
+                    else
+                        # If named removal fails, try prefix-based removal
+                        log_info "Named removal failed, trying prefix-based removal..."
+                        "$micromamba_path" env remove -p ".pyve/envs/$env_name" -y 2>/dev/null || true
+                    fi
+                else
+                    # No env name in config, try to find and remove any environments in .pyve/envs
+                    for env_dir in .pyve/envs/*; do
+                        if [[ -d "$env_dir" ]]; then
+                            local env_basename
+                            env_basename="$(basename "$env_dir")"
+                            log_info "Removing micromamba environment at '$env_dir'..."
+                            "$micromamba_path" env remove -p "$env_dir" -y 2>/dev/null || true
+                        fi
+                    done
+                fi
+            else
+                log_info "Micromamba not found, will force-remove .pyve directory"
+            fi
+        fi
+        
+        # Now remove the .pyve directory
         rm -rf ".pyve"
         log_success "Removed .pyve directory (config and micromamba environments)"
     fi
