@@ -265,4 +265,15 @@ Fix bug where `pyve --purge` fails to remove micromamba environments due to inco
 - [x] Update CHANGELOG.md with v1.5.3 entry
   - [x] Add "Fixed" section describing micromamba purge bug fix
 - [x] Bump VERSION to 1.5.3
+
+### Story E.b: v1.5.4 Fix test_purge_with_keep_testenv test failure [Done]
+
+Fix integration test failure in `test_purge_with_keep_testenv` which was calling non-existent `run_raw()` method on `PyveRunner` class.
+
+- [x] Fix `test_purge_with_keep_testenv` in `test_micromamba_workflow.py`
+  - [x] Replace `pyve.run_raw()` calls with `pyve.run()`
+  - [x] Verify test uses correct PyveRunner API
+- [x] Update CHANGELOG.md with v1.5.4 entry
+  - [x] Add "Fixed" section describing test fix
+- [x] Bump VERSION to 1.5.4
 - [ ] Verify: Run `pyve --init --backend micromamba --force` twice to confirm purge works correctly
