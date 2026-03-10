@@ -30,6 +30,32 @@ If the answer is yes, the stories document should include a dedicated phase (typ
 
 If the answer is no, skip this phase entirely.
 
+### Development Mode: Velocity vs. Production
+
+Projects naturally transition from **velocity mode** (rapid iteration) to **production mode** (stability and security). Recognize this shift and adjust practices accordingly:
+
+**Velocity Mode** (Phases A-F typically):
+- Direct commits to main branch
+- Minimal process overhead
+- Focus on feature completion
+- Version bumps per story (v0.1.0 → v0.2.0 → v0.3.0)
+
+**Production Mode** (typically starts with CI/CD phase):
+- Branch protection enabled (PRs required)
+- CI checks mandatory before merge
+- Security hardening (Dependabot, SECURITY.md, CONTRIBUTING.md)
+- Bundled releases with multiple stories (v0.8.0 includes Stories J.a-J.d)
+
+**When to switch:** After core functionality is complete and CI/CD is configured.
+
+**Production Mode Transition Checklist:**
+- Enable branch protection (require PR reviews, require status checks to pass)
+- Create `CONTRIBUTING.md` (development setup, code style, PR process, release process)
+- Create `SECURITY.md` (vulnerability reporting instructions)
+- Create `.github/dependabot.yml` (automated dependency updates for pip and github-actions)
+- Configure trusted publishers for package registries (PyPI, npm, etc.)
+- Switch to PR-based workflow (no more direct commits to main branch)
+
 ---
 
 ## Workflow Overview
@@ -114,7 +140,11 @@ Use dynamic badges from the package registry (e.g. `shields.io/pypi/...`) when t
 
 ### CHANGELOG.md
 
-Every project must maintain a `CHANGELOG.md` file in the repository root following these conventions:
+Changelog approach depends on the development mode:
+
+**For Velocity Mode Projects:**
+
+Maintain a manual `CHANGELOG.md` file in the repository root following Keep a Changelog format.
 
 **File Location and Naming:**
 - File name: `CHANGELOG.md` (all caps, hyphen separator)
@@ -140,51 +170,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Changes to existing functionality
 
-### Deprecated
-- Soon-to-be removed features
-
-### Removed
-- Removed features or files
-
 ### Fixed
 - Bug fixes
-
-### Security
-- Security-related changes
 ```
 
 **Guidelines:**
-- **Version headers**: Use `## [X.Y.Z] - YYYY-MM-DD` format (semver in brackets, ISO date)
-- **Categories**: Use standard Keep a Changelog categories (Added, Changed, Deprecated, Removed, Fixed, Security)
-- **Omit empty categories**: Only include categories that have entries for that version
-- **Bullet points**: Each change is a single bullet point with concise description
-- **Most recent first**: Newest versions at the top, oldest at the bottom
-- **Link references**: Optionally add version comparison links at the bottom
-- **Initial version**: Start with `## [0.1.0] - YYYY-MM-DD` for the first release
-
-**When to Update:**
 - Update `CHANGELOG.md` in the same commit as the version bump
 - Each story with a version number should have a corresponding changelog entry
-- Group related changes under appropriate categories
+- Use standard categories: Added, Changed, Deprecated, Removed, Fixed, Security
+- Omit empty categories
+- Most recent versions at the top
 
 **Note:** The `CHANGELOG.md` file can remain unimplemented until the project is released. For prototypes and early-stage projects, focus on getting the code working first. The changelog can be created retroactively before the first public release by reviewing git history and the `stories.md` file.
 
-**Example Entry:**
-```markdown
-## [1.5.0] - 2026-02-08
+**For Production Mode Projects:**
 
-### Added
-- Retry integration in `Throttle.wrap()` with automatic backoff
-- `retry` event emitted via `on_state_change` for each retry attempt
-- Retry integration tests in `test_throttle.py` (7 tests)
+Use **automated GitHub Releases** as the canonical changelog (configured in the CI/CD phase).
 
-### Changed
-- Circuit breaker now checked before each retry attempt
-- Intermediate failures no longer trigger throttle deceleration
+**Approach:**
+- GitHub Actions automatically creates releases from version tags
+- Release notes are auto-generated from merged PR titles
+- No manual `CHANGELOG.md` maintenance required
+- Users view changelog at `https://github.com/username/repo/releases`
 
-### Fixed
-- `CircuitOpenError` now propagates immediately during retry
-```
+**Optional:** Generate `CHANGELOG.md` from GitHub Releases API using tools like `github-changelog-generator` if a file-based changelog is desired for distribution.
+
+**Rationale:** Automated GitHub Releases eliminate duplication, ensure consistency, and reduce maintenance overhead in production projects.
 
 ---
 
@@ -333,8 +344,9 @@ Recommended phase progression:
 | E | Testing & Quality | Test suites, coverage, edge case tests |
 | F | Documentation & Release | README, changelog, final testing, polish |
 | G | CI/CD & Automation | GitHub Actions, coverage badges, release automation (if requested) |
+| H | GitHub Pages Documentation | Public-facing documentation site (for production projects) |
 
-Phases may be added, removed, or renamed to fit the project. Phase G (CI/CD) is only included if the developer answered "yes" to the CI/CD question in the prerequisites.
+Phases may be added, removed, or renamed to fit the project. Phase G (CI/CD) is only included if the developer answered "yes" to the CI/CD question in the prerequisites. Phase H (GitHub Pages) is optional and typically added for production projects that need public documentation - see `docs/guides/documentation-setup-guide.md` for the complete workflow.
 
 #### Story Format
 
@@ -411,3 +423,13 @@ Every new source file created during implementation must include the copyright a
 | 2 | Write `docs/specs/tech-spec.md` | Developer approves |
 | 3 | Write `docs/specs/stories.md` | Developer approves |
 | 4 | Implement stories one by one | Developer approves each story |
+
+---
+
+## Debugging and Maintenance
+
+Once the project is implemented and in use, bugs may be discovered. For a structured approach to debugging:
+
+- See `docs/guides/debug_guide.md` for test-driven debugging methodology
+- Always write a failing test before implementing a fix
+- Document fixes as new stories in `stories.md`

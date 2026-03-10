@@ -123,14 +123,17 @@ pyve_ensure_venv_packaging_prereqs() {
         "$python_path" -m ensurepip --upgrade >/dev/null 2>&1 || true
     }
 
-    "$python_path" -m pip install -U setuptools wheel >/dev/null
+    "$python_path" -m pip install -U pip setuptools wheel >/dev/null
 }
 
 pyve_ensure_micromamba_packaging_prereqs() {
     local micromamba_path="$1"
     local env_prefix="$2"
 
+    # Install/upgrade pip, setuptools, and wheel
     "$micromamba_path" install -p "$env_prefix" -y pip setuptools wheel >/dev/null
+    # Explicitly upgrade pip to latest version
+    "$micromamba_path" run -p "$env_prefix" pip install -U pip >/dev/null 2>&1 || true
 }
 
 pyve_install_distutils_shim_for_python() {

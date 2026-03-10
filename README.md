@@ -98,6 +98,7 @@ In a single command, Pyve will:
 
 - **Set Python version**: Uses asdf or pyenv to set the Python version (default: 3.14.3)
 - **Create virtual environment**: Creates `.venv` directory with Python venv
+- **Upgrade pip**: Automatically upgrades pip to the latest version for security and features
 - **Configure direnv**: Sets up `.envrc` for automatic activation when entering the directory
 - **Create .env file**: Sets up a secure environment variables file (`chmod 600`)
 - **Update .gitignore**: Adds appropriate patterns to keep secrets out of version control

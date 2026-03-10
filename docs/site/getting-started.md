@@ -118,6 +118,7 @@ This will:
 
 - Detect or prompt for Python version
 - Create a virtual environment (`.venv` by default)
+- Upgrade pip to the latest version
 - Generate `.envrc` for direnv (if installed)
 - Add entries to `.gitignore`
 

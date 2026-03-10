@@ -243,7 +243,7 @@ Create CHANGELOG.md and add Apache-2.0 license headers to all Python test files 
 - [x] Update README.md version references from v0.9.3, v0.8.8, v0.8.7, v0.8.9 to v1.5.2
 - [x] Bump VERSION to 1.5.2
 
-Phase E: Bug Fixes
+Phase E: Bug Fixes and Minor Improvements
 
 ### Story E.a: v1.5.3 Fix Pyve micromamba purge ordering [Done]
 
@@ -277,3 +277,52 @@ Fix integration test failure in `test_purge_with_keep_testenv` which was calling
   - [x] Add "Fixed" section describing test fix
 - [x] Bump VERSION to 1.5.4
 - [ ] Verify: Run `pyve --init --backend micromamba --force` twice to confirm purge works correctly
+
+### Story E.c: v1.6.0 Auto-upgrade pip during environment initialization [Done]
+
+Automatically upgrade pip to the latest version during `pyve --init` and `pyve --update` to ensure users have the latest security fixes, features, and dependency resolution improvements.
+
+- [x] Update `pyve_ensure_venv_packaging_prereqs()` in `lib/distutils_shim.sh`
+  - [x] Change `pip install -U setuptools wheel` to `pip install -U pip setuptools wheel`
+  - [x] Ensure pip is upgraded before setuptools and wheel
+- [x] Update `pyve_ensure_micromamba_packaging_prereqs()` in `lib/distutils_shim.sh`
+  - [x] Verify micromamba environments also get latest pip
+  - [x] Add pip to the install command if not already present
+- [x] Add integration tests for pip upgrade behavior
+  - [x] Test that `pyve --init` results in latest pip version
+  - [x] Test that `pyve --init --update` upgrades pip
+  - [x] Test both venv and micromamba backends
+- [x] Update documentation
+  - [x] Add note to README.md about automatic pip upgrades
+  - [x] Document in `docs/site/usage.md` or `docs/site/getting-started.md`
+- [x] Update CHANGELOG.md with v1.6.0 entry
+  - [x] Add "Changed" section describing automatic pip upgrade
+  - [x] Note this aligns with Python best practices
+- [x] Bump VERSION to 1.6.0
+
+### Story E.d: v1.6.1 Production Mode Migration [Planned]
+
+Migrate Pyve from velocity mode to production mode with branch protection, security policies, and PR-based workflow as prescribed in `docs/guides/best-practices-guide.md`.
+
+**Automated Tasks:**
+- [x] Create `SECURITY.md` with vulnerability reporting policy
+- [x] Create `.github/FUNDING.yml` for GitHub Sponsors (optional)
+- [x] Update CHANGELOG.md with v1.6.1 entry
+- [x] Bump VERSION to 1.6.1
+
+**Manual Tasks (GitHub Web UI):**
+- [ ] Enable branch protection on `main` branch
+  - [ ] Require pull request before merging
+  - [ ] Require 1 approval
+  - [ ] Require status checks: `unit-tests`, `integration-tests`
+  - [ ] Require branches to be up to date
+  - [ ] Do not allow bypassing settings
+- [ ] Enable Dependabot
+  - [ ] Dependabot alerts
+  - [ ] Dependabot security updates
+- [ ] Verify GitHub Actions permissions are correct
+
+**Workflow Transition:**
+- [ ] Commit Story E.d changes to main (final direct commit)
+- [ ] Enable branch protection immediately after
+- [ ] All future work uses PR workflow per `docs/guides/developer/production-mode.md`

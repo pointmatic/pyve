@@ -1,0 +1,28 @@
+# GitHub Sponsors & Funding
+#
+# This file enables the "Sponsor" button on the GitHub repository.
+# Uncomment and configure the platforms you want to use.
+#
+# Supported platforms:
+# - github: GitHub Sponsors
+# - patreon: Patreon
+# - ko_fi: Ko-fi
+# - custom: Custom URLs (PayPal, Buy Me a Coffee, etc.)
+
+# GitHub Sponsors
+# github: [pointmatic]
+
+# Patreon
+# patreon: your-patreon-username
+
+# Ko-fi
+# ko_fi: your-kofi-username
+
+# Buy Me a Coffee
+# custom: ["https://www.buymeacoffee.com/yourname"]
+
+# Open Collective
+# open_collective: your-collective-name
+
+# Multiple custom URLs
+# custom: ["https://paypal.me/yourname", "https://www.buymeacoffee.com/yourname"]

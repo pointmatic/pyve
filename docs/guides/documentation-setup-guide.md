@@ -21,7 +21,41 @@ This guide explains a documentation pattern for GitHub Pages. It features a cust
 - Python 3.11+ installed locally
 - Basic knowledge of HTML/CSS (optional, if you want to customize the landing page)
 
-## Step 1: Project Structure
+## Step 1: Create Project Descriptions
+
+Before creating the landing page and documentation, generate a `docs/specs/descriptions.md` file that serves as the canonical source of truth for all project descriptions, taglines, and marketing copy.
+
+**Purpose:**
+- Centralizes all descriptive language in one location
+- Ensures consistency across README, landing page, package metadata, and GitHub settings
+- Provides clear guidance on which description to use where
+
+**Process:**
+
+1. **Read the descriptions guide**: See `docs/guides/descriptions-guide.md` for complete instructions on generating this file
+2. **Generate descriptions.md**: Create `docs/specs/descriptions.md` with the following sections:
+   - Name (GitHub vs. package name if different)
+   - Tagline (3-5 words)
+   - Long Tagline (one sentence)
+   - One-liner (single sentence)
+   - Friendly Brief Description (2-3 sentences)
+   - Two-clause Technical Description
+   - Benefits (bulleted list of 5-10 features)
+   - Technical Description (3-5 sentences)
+   - Keywords (10-15 keywords)
+   - Feature Cards (6-8 cards for landing page)
+   - Usage Notes (mapping descriptions to consumer files)
+3. **Present for approval**: Show the complete `descriptions.md` to the developer for review
+4. **Wait for approval**: Do not proceed until the developer approves the descriptions
+
+**After approval**, you will use these descriptions when creating:
+- Landing page hero text and feature cards (Step 5)
+- README.md updates
+- Package metadata (pyproject.toml)
+
+**Note:** The developer must manually update GitHub repository settings (description and topics) using the descriptions from this file.
+
+## Step 2: Project Structure
 
 Create the following directory structure (depending on the project stack, or adapt as needed):
 
@@ -34,8 +68,9 @@ your-repo/
 │       ├── usage.md
 │       ├── backends.md
 │       ├── ci-cd.md
-│       ├── images/             # Assets for landing page
-│       │   └── banner.png
+│       ├── images/             # Assets for landing page (provided by developer)
+│       │   ├── <repo_name>-banner-landing.png
+│       │   └── <repo_name>-header-readme.png
 │       └── .gitignore
 ├── mkdocs.yml                  # MkDocs configuration
 └── .github/
@@ -43,7 +78,21 @@ your-repo/
         └── deploy-docs.yml     # GitHub Actions deployment
 ```
 
-## Step 2: Create MkDocs Configuration
+## Step 3: Confirm Required Images are Produced
+
+Before proceeding, you must have the following images prepared, which will include the tagline developed in `docs/specs/descriptions.md`:
+
+- **Landing page banner**: `docs/site/images/<repo_name>-banner-landing.png` (1024×650 pixels)
+- **README header**: `docs/site/images/<repo_name>-header-readme.png` (945×100 pixels)
+
+**If these images are missing**, the LLM should:
+1. Stop and notify the developer
+2. Request that the developer provide these images
+3. Wait for confirmation before proceeding with documentation setup
+
+These images are essential for the branded landing page and README presentation.
+
+## Step 4: Create MkDocs Configuration
 
 Create `mkdocs.yml` in the repository root:
 
@@ -122,7 +171,7 @@ plugins:
 - Update `site_name`, `site_description`, `site_url`, `repo_url`
 - Modify `nav` section to match your documentation structure
 
-## Step 3: Create Landing Page
+## Step 5: Create Landing Page
 
 Create `docs/site/index.html` with this template structure:
 
@@ -309,7 +358,7 @@ Create `docs/site/index.html` with this template structure:
 - Nav "Docs" link points to your main documentation entry point
 - CTA buttons link to GitHub and documentation
 
-## Step 4: Create Documentation Pages
+## Step 6: Create Documentation Pages
 
 Create markdown files in `docs/site/`:
 
@@ -384,19 +433,18 @@ your-tool command-name --option1 value
 - Use tables for structured data
 - Add tabbed content with `=== "Tab 1"` syntax
 
-## Step 5: Create .gitignore
+## Step 7: Update .gitignore
 
-Create `docs/site/.gitignore`:
+Add to your main `.gitignore` file at the repository root:
 
 ```
-# MkDocs build output
+# MkDocs build output (at repository root only)
 /site/
-
-# macOS
-.DS_Store
 ```
 
-## Step 6: Create GitHub Actions Workflow
+**Note:** Use `/site/` (with leading slash) to only ignore the build output directory at the repository root, not the source files in `docs/site/`.
+
+## Step 8: Create GitHub Actions Workflow
 
 Create `.github/workflows/deploy-docs.yml`:
 
@@ -459,14 +507,14 @@ jobs:
 - Can also be manually triggered via `workflow_dispatch`
 - Uses `mkdocs build --strict` to fail on warnings
 
-## Step 7: Configure GitHub Pages
+## Step 9: Configure GitHub Pages
 
 1. Go to your repository on GitHub
 2. Navigate to **Settings** → **Pages**
 3. Under **Source**, select **GitHub Actions**
 4. Save
 
-## Step 8: Local Development
+## Step 10: Local Development
 
 ### Install Dependencies
 
@@ -493,7 +541,7 @@ mkdocs build
 
 Output goes to `site/` directory.
 
-## Step 9: Deploy
+## Step 11: Deploy
 
 1. Commit all files:
    ```bash

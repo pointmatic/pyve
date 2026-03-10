@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-03-09
+
+### Added
+- `SECURITY.md` with vulnerability reporting policy and security best practices
+- `.github/FUNDING.yml` template for GitHub Sponsors (commented out by default)
+
+### Changed
+- **Production Mode Migration**: Pyve now uses branch protection and PR-based workflow
+- All future changes require pull requests and CI checks before merging to main
+- Adopted production-grade development practices per `docs/guides/best-practices-guide.md`
+
+## [1.6.0] - 2026-03-09
+
+### Changed
+- Pyve now automatically upgrades pip to the latest version during `pyve --init` and `pyve --init --update`
+- Applies to both venv and micromamba backends
+- Ensures users have the latest pip security fixes, features, and dependency resolution improvements
+- Aligns with Python best practices for virtual environment setup
+
 ## [1.5.4] - 2026-02-25
 
 ### Fixed
