@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.6.1"
+VERSION="1.6.2"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -463,6 +463,12 @@ init() {
                     log_info "Re-initialization cancelled"
                     exit 0
                 fi
+            fi
+            
+            # Preserve backend before purge (for ambiguous detection scenarios)
+            # This will be used if no explicit --backend flag is provided
+            if [[ -z "$backend_flag" ]]; then
+                backend_flag="$existing_backend"
             fi
             
             # Purge existing installation

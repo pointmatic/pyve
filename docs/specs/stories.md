@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.5.1.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.2.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -300,7 +300,7 @@ Automatically upgrade pip to the latest version during `pyve --init` and `pyve -
   - [x] Note this aligns with Python best practices
 - [x] Bump VERSION to 1.6.0
 
-### Story E.d: v1.6.1 Production Mode Migration [Planned]
+### Story E.d: v1.6.1 Production Mode Migration [Done]
 
 Migrate Pyve from velocity mode to production mode with branch protection, security policies, and PR-based workflow as prescribed in `docs/guides/best-practices-guide.md`.
 
@@ -326,3 +326,27 @@ Migrate Pyve from velocity mode to production mode with branch protection, secur
 - [ ] Commit Story E.d changes to main (final direct commit)
 - [ ] Enable branch protection immediately after
 - [ ] All future work uses PR workflow per `docs/guides/developer/production-mode.md`
+
+### Story E.e: v1.6.2 Fix --force Backend Preservation in Ambiguous Cases [Done]
+
+Fix bug where `pyve --init --force` on a project with both `environment.yml` and `pyproject.toml` (ambiguous backend detection) would default to venv instead of preserving the original backend choice.
+
+**Root Cause:**
+- When `--force` purges `.pyve/config`, backend detection falls back to file-based detection
+- If both conda and Python files exist, `detect_backend_from_files()` returns `"ambiguous"` and defaults to venv
+- The original backend choice from the purged config was lost
+
+**Implementation:**
+- [x] Update `init()` function in `pyve.sh` (line 468-472)
+  - [x] Preserve `existing_backend` before purge when `--force` is used
+  - [x] Set `backend_flag` to `existing_backend` if no explicit `--backend` flag provided
+  - [x] This ensures backend is preserved through the purge/reinit cycle
+- [x] Add regression tests in `tests/integration/test_force_backend_detection.py`
+  - [x] `test_force_reinit_preserves_backend_when_ambiguous` — micromamba preserved in ambiguous case
+  - [x] `test_force_reinit_preserves_venv_in_ambiguous_case` — venv preserved in ambiguous case
+  - [x] `test_force_reinit_detects_pyproject_toml` — single file detection still works
+  - [x] `test_force_with_explicit_backend_overrides_detection` — explicit flag overrides preservation
+- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 2 skipped (micromamba)
+- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
+- [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass (no regressions)
+- [x] Bump VERSION to 1.6.2
