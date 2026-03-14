@@ -129,15 +129,20 @@ teardown() {
     [ "$output" = "micromamba" ]
 }
 
-@test "get_backend_priority: defaults to 'venv' for ambiguous file detection" {
+@test "get_backend_priority: defaults to 'micromamba' for ambiguous file detection in CI mode" {
     create_environment_yml "test-env" "python=3.11"
     create_requirements_txt "requests==2.31.0"
     
+    # Set CI mode to trigger non-interactive behavior
+    export CI=1
+    
     run get_backend_priority ""
     [ "$status" -eq 0 ]
-    # Check last line of output (warnings go to stderr but may appear in output)
+    # Check last line of output
     local last_line=$(echo "$output" | tail -n 1)
-    [ "$last_line" = "venv" ]
+    [ "$last_line" = "micromamba" ]
+    
+    unset CI
 }
 
 #============================================================

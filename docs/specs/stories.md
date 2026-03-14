@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.5.1.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.2.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -300,7 +300,7 @@ Automatically upgrade pip to the latest version during `pyve --init` and `pyve -
   - [x] Note this aligns with Python best practices
 - [x] Bump VERSION to 1.6.0
 
-### Story E.d: v1.6.1 Production Mode Migration [Planned]
+### Story E.d: v1.6.1 Production Mode Migration [Done]
 
 Migrate Pyve from velocity mode to production mode with branch protection, security policies, and PR-based workflow as prescribed in `docs/guides/best-practices-guide.md`.
 
@@ -326,3 +326,100 @@ Migrate Pyve from velocity mode to production mode with branch protection, secur
 - [ ] Commit Story E.d changes to main (final direct commit)
 - [ ] Enable branch protection immediately after
 - [ ] All future work uses PR workflow per `docs/guides/developer/production-mode.md`
+
+### Story E.e: v1.6.2 Fix --force Backend Preservation in Ambiguous Cases [Done]
+
+Fix bug where `pyve --init --force` on a project with both `environment.yml` and `pyproject.toml` (ambiguous backend detection) would default to venv instead of preserving the original backend choice.
+
+**Root Cause:**
+- When `--force` purges `.pyve/config`, backend detection falls back to file-based detection
+- If both conda and Python files exist, `detect_backend_from_files()` returns `"ambiguous"` and defaults to venv
+- The original backend choice from the purged config was lost
+
+**Implementation:**
+- [x] Update `init()` function in `pyve.sh` (line 468-472)
+  - [x] Preserve `existing_backend` before purge when `--force` is used
+  - [x] Set `backend_flag` to `existing_backend` if no explicit `--backend` flag provided
+  - [x] This ensures backend is preserved through the purge/reinit cycle
+- [x] Add regression tests in `tests/integration/test_force_backend_detection.py`
+  - [x] `test_force_reinit_preserves_backend_when_ambiguous` — micromamba preserved in ambiguous case
+  - [x] `test_force_reinit_preserves_venv_in_ambiguous_case` — venv preserved in ambiguous case
+  - [x] `test_force_reinit_detects_pyproject_toml` — single file detection still works
+  - [x] `test_force_with_explicit_backend_overrides_detection` — explicit flag overrides preservation
+- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 2 skipped (micromamba)
+- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
+- [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass (no regressions)
+- [x] Bump VERSION to 1.6.2
+
+### Story E.f: v1.6.2 Interactive Prompts for Ambiguous Backend and Dependency Installation [Done]
+
+Enhance user experience when both `environment.yml` and `pyproject.toml` exist by prompting for backend choice (preferring micromamba) and optionally installing pip dependencies after environment creation.
+
+**Motivation:**
+- Current behavior silently defaults to venv when both files exist, which is unintuitive
+- `environment.yml` presence is a strong signal that user wants micromamba
+- After micromamba init, users often need to install pip dependencies from `pyproject.toml` or `requirements.txt`
+- Interactive prompts provide transparency and control while maintaining good defaults
+
+**Implementation:**
+
+**Part 1: Interactive Backend Selection**
+- [x] Update `get_backend_priority()` in `lib/backend_detect.sh`
+  - [x] When `detected_backend == "ambiguous"`, check if interactive mode
+  - [x] In interactive mode: prompt "Initialize with micromamba backend? [Y/n]:"
+  - [x] Default to micromamba (Y) if user presses Enter
+  - [x] Use venv if user types 'n' or 'N'
+  - [x] In CI/non-interactive mode: default to micromamba (no prompt)
+  - [x] Respect `PYVE_FORCE_YES` environment variable to skip prompt
+- [x] Update warning messages to be more informative about the choice
+
+**Part 2: Interactive Dependency Installation**
+- [x] Add `prompt_install_pip_dependencies()` function in `lib/utils.sh`
+  - [x] Detect if `pyproject.toml` or `requirements.txt` exists
+  - [x] Prompt: "Install pip dependencies from [file]? [Y/n]:"
+  - [x] If `pyproject.toml`: run `pip install -e .` (editable install)
+  - [x] If `requirements.txt`: run `pip install -r requirements.txt`
+  - [x] If both exist: prompt for each separately
+  - [x] Skip in CI/non-interactive mode unless `--auto-install-deps` flag set
+- [x] Call `prompt_install_pip_dependencies()` after successful environment creation in `init()`
+- [x] Add command-line flags:
+  - [x] `--auto-install-deps` - Auto-install dependencies without prompting
+  - [x] `--no-install-deps` - Skip dependency installation prompt
+
+**Part 3: Enhanced .gitignore Template**
+- [x] Update `write_gitignore_template()` in `lib/utils.sh` to include additional Python patterns
+  - [x] Add `*.pyc`, `*.pyo`, `*.pyd` - Compiled Python bytecode files
+  - [x] Add `dist/`, `build/`, `*.egg` - Python packaging artifacts
+  - [x] Add `.ipynb_checkpoints/`, `*.ipynb_checkpoints` - Jupyter notebook checkpoints
+- [x] Add micromamba-specific patterns when backend is micromamba
+  - [x] Add `conda-lock.yml` to .gitignore for micromamba projects
+  - [x] Conditionally insert after environment initialization based on backend
+
+**Testing:**
+- [x] Update unit tests in `tests/unit/test_backend_detect.bats`
+  - [x] Updated ambiguous detection test to expect micromamba in CI mode
+  - [x] Test CI mode defaults to micromamba
+  - [x] Test `PYVE_FORCE_YES` skips prompt (covered by CI mode)
+- [x] Update test helpers in `tests/helpers/pyve_test_helpers.py`
+  - [x] Set `PYVE_NO_INSTALL_DEPS=1` by default in test environment
+  - [x] Tests can override to test dependency installation feature
+- [x] Verify: All existing tests still pass with no regressions
+  - [x] `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 3 skipped
+  - [x] `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped
+  - [x] `bats tests/unit/test_backend_detect.bats` — 23 tests pass
+  - [x] `bats tests/unit/test_utils.bats` — 63 tests pass (including .gitignore template tests)
+
+**Documentation:**
+- [x] Update `docs/site/usage.md` with new interactive prompt behavior
+- [x] Update `docs/site/backends.md` to explain ambiguous case handling
+- [x] Add examples showing the interactive flow
+- [x] Document new flags: `--auto-install-deps`, `--no-install-deps`
+
+**Verification:**
+- [ ] Manual test: Create project with both `environment.yml` and `pyproject.toml`
+- [ ] Run `pyve --init` and verify prompts appear
+- [ ] Test all prompt responses (y, n, Enter)
+- [ ] Verify dependencies install correctly when accepted
+- [ ] Test in CI mode (no prompts, uses defaults)
+- [x] Verify: `pytest tests/integration/ -v` — all tests pass
+- [x] Verify: `bats tests/unit/ -v` — all tests pass

@@ -72,6 +72,77 @@ prompt_yes_no() {
     done
 }
 
+# Prompt to install pip dependencies after environment creation
+# Detects pyproject.toml or requirements.txt and prompts user to install
+# Respects --auto-install-deps and --no-install-deps flags
+# Usage: prompt_install_pip_dependencies
+prompt_install_pip_dependencies() {
+    # Check for --no-install-deps flag
+    if [[ "${PYVE_NO_INSTALL_DEPS:-}" == "1" ]]; then
+        return 0
+    fi
+    
+    local has_pyproject=false
+    local has_requirements=false
+    
+    if [[ -f "pyproject.toml" ]]; then
+        has_pyproject=true
+    fi
+    
+    if [[ -f "requirements.txt" ]]; then
+        has_requirements=true
+    fi
+    
+    # Nothing to install
+    if [[ "$has_pyproject" == false ]] && [[ "$has_requirements" == false ]]; then
+        return 0
+    fi
+    
+    echo ""
+    
+    # Auto-install mode (CI or --auto-install-deps flag)
+    if [[ -n "${CI:-}" ]] || [[ "${PYVE_AUTO_INSTALL_DEPS:-}" == "1" ]]; then
+        if [[ "$has_pyproject" == true ]]; then
+            log_info "Auto-installing dependencies from pyproject.toml..."
+            pip install -e . || log_warning "Failed to install from pyproject.toml"
+        fi
+        if [[ "$has_requirements" == true ]]; then
+            log_info "Auto-installing dependencies from requirements.txt..."
+            pip install -r requirements.txt || log_warning "Failed to install from requirements.txt"
+        fi
+        return 0
+    fi
+    
+    # Interactive mode: prompt for each file
+    if [[ "$has_pyproject" == true ]]; then
+        printf "Install pip dependencies from pyproject.toml? [Y/n]: "
+        read -r response
+        
+        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+            log_info "Installing dependencies from pyproject.toml..."
+            if pip install -e .; then
+                log_success "Installed dependencies from pyproject.toml"
+            else
+                log_warning "Failed to install from pyproject.toml"
+            fi
+        fi
+    fi
+    
+    if [[ "$has_requirements" == true ]]; then
+        printf "Install pip dependencies from requirements.txt? [Y/n]: "
+        read -r response
+        
+        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+            log_info "Installing dependencies from requirements.txt..."
+            if pip install -r requirements.txt; then
+                log_success "Installed dependencies from requirements.txt"
+            else
+                log_warning "Failed to install from requirements.txt"
+            fi
+        fi
+    fi
+}
+
 #============================================================
 # Gitignore Management
 #============================================================
@@ -188,11 +259,21 @@ write_gitignore_template() {
 
 # Python build and test artifacts
 __pycache__
+*.pyc
+*.pyo
+*.pyd
 *.egg-info
+*.egg
 .coverage
 coverage.xml
 htmlcov/
 .pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
 
 # Pyve virtual environment
 GITIGNORE_EOF

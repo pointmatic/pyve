@@ -166,6 +166,9 @@ class PyveRunner:
                 # avoid triggering a slow Python build when the default
                 # version is not yet installed.
                 env.setdefault("PYVE_TEST_PIN_PYTHON", "1")
+                # Skip dependency installation prompts by default in tests
+                # (tests can override by setting PYVE_NO_INSTALL_DEPS=0)
+                env.setdefault("PYVE_NO_INSTALL_DEPS", "1")
                 # In CI, tests must be non-interactive.
                 if env.get("CI") == "true":
                     env.setdefault("PYVE_FORCE_YES", "1")

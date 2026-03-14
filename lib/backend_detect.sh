@@ -85,11 +85,37 @@ get_backend_priority() {
     detected_backend="$(detect_backend_from_files)"
     
     if [[ "$detected_backend" == "ambiguous" ]]; then
-        log_warning "Both conda and Python package files detected"
-        log_warning "Please specify backend explicitly with --backend flag or .pyve/config"
-        log_warning "  --backend venv        Use Python venv"
-        log_warning "  --backend micromamba  Use micromamba"
-        echo "venv"  # Default to venv for now
+        # Both conda and Python files detected - prompt user or use smart default
+        log_info "Detected files:"
+        if [[ -f "environment.yml" ]]; then
+            log_info "  • environment.yml (conda/micromamba)"
+        elif [[ -f "conda-lock.yml" ]]; then
+            log_info "  • conda-lock.yml (conda/micromamba)"
+        fi
+        if [[ -f "pyproject.toml" ]]; then
+            log_info "  • pyproject.toml (Python project)"
+        elif [[ -f "requirements.txt" ]]; then
+            log_info "  • requirements.txt (Python dependencies)"
+        fi
+        echo ""
+        
+        # In CI or non-interactive mode, default to micromamba
+        if [[ -n "${CI:-}" ]] || [[ -n "${PYVE_FORCE_YES:-}" ]]; then
+            log_info "Non-interactive mode: defaulting to micromamba backend"
+            echo "micromamba"
+            return 0
+        fi
+        
+        # Interactive mode: prompt user with micromamba as default
+        printf "Initialize with micromamba backend? [Y/n]: "
+        read -r response
+        
+        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+            echo "micromamba"
+        else
+            log_info "Using venv backend"
+            echo "venv"
+        fi
         return 0
     elif [[ "$detected_backend" == "micromamba" ]]; then
         echo "micromamba"
