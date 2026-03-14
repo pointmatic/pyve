@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.2.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.3.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -327,31 +327,7 @@ Migrate Pyve from velocity mode to production mode with branch protection, secur
 - [ ] Enable branch protection immediately after
 - [ ] All future work uses PR workflow per `docs/guides/developer/production-mode.md`
 
-### Story E.e: v1.6.2 Fix --force Backend Preservation in Ambiguous Cases [Done]
-
-Fix bug where `pyve --init --force` on a project with both `environment.yml` and `pyproject.toml` (ambiguous backend detection) would default to venv instead of preserving the original backend choice.
-
-**Root Cause:**
-- When `--force` purges `.pyve/config`, backend detection falls back to file-based detection
-- If both conda and Python files exist, `detect_backend_from_files()` returns `"ambiguous"` and defaults to venv
-- The original backend choice from the purged config was lost
-
-**Implementation:**
-- [x] Update `init()` function in `pyve.sh` (line 468-472)
-  - [x] Preserve `existing_backend` before purge when `--force` is used
-  - [x] Set `backend_flag` to `existing_backend` if no explicit `--backend` flag provided
-  - [x] This ensures backend is preserved through the purge/reinit cycle
-- [x] Add regression tests in `tests/integration/test_force_backend_detection.py`
-  - [x] `test_force_reinit_preserves_backend_when_ambiguous` — micromamba preserved in ambiguous case
-  - [x] `test_force_reinit_preserves_venv_in_ambiguous_case` — venv preserved in ambiguous case
-  - [x] `test_force_reinit_detects_pyproject_toml` — single file detection still works
-  - [x] `test_force_with_explicit_backend_overrides_detection` — explicit flag overrides preservation
-- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 2 skipped (micromamba)
-- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
-- [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass (no regressions)
-- [x] Bump VERSION to 1.6.2
-
-### Story E.f: v1.6.2 Interactive Prompts for Ambiguous Backend and Dependency Installation [Done]
+### Story E.e: v1.6.2 Interactive Prompts for Ambiguous Backend and Dependency Installation [Done]
 
 Enhance user experience when both `environment.yml` and `pyproject.toml` exist by prompting for backend choice (preferring micromamba) and optionally installing pip dependencies after environment creation.
 
@@ -423,3 +399,23 @@ Enhance user experience when both `environment.yml` and `pyproject.toml` exist b
 - [ ] Test in CI mode (no prompts, uses defaults)
 - [x] Verify: `pytest tests/integration/ -v` — all tests pass
 - [x] Verify: `bats tests/unit/ -v` — all tests pass
+
+### Story E.f: v1.6.3 Fix --force Backend Preservation Logic (Deployed v1.6.2 Bug) [Done]
+
+Fix critical bug in v1.6.2 where `pyve --init --force` unconditionally preserved the existing backend instead of only preserving it in ambiguous cases. This caused `--force` to ignore `environment.yml` and stick with venv when it should have re-detected micromamba.
+
+**Root Cause:**
+- Story E.e implementation in v1.6.2 unconditionally preserved backend when `--force` was used
+- Should only preserve backend when detection would be ambiguous (both conda AND Python files exist)
+- When only `environment.yml` exists (unambiguous), should re-detect micromamba backend
+
+**Implementation:**
+- [x] Update `init()` function in `pyve.sh` (line 479-499)
+  - [x] Check if both conda files AND Python files exist (ambiguous case)
+  - [x] ONLY preserve `existing_backend` if detection would be ambiguous
+  - [x] Otherwise, let normal file-based detection happen
+  - [x] This ensures backend is preserved in ambiguous cases but re-detected when unambiguous
+- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 3 skipped (micromamba)
+- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
+- [x] Update Story E.e documentation to reflect original (incorrect) implementation
+- [x] Bump VERSION to 1.6.3

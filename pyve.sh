@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.6.2"
+VERSION="1.6.3"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -476,10 +476,26 @@ init() {
                 fi
             fi
             
-            # Preserve backend before purge (for ambiguous detection scenarios)
-            # This will be used if no explicit --backend flag is provided
+            # Preserve backend before purge ONLY if detection would be ambiguous
+            # This prevents switching backends when both conda and Python files exist
             if [[ -z "$backend_flag" ]]; then
-                backend_flag="$existing_backend"
+                # Check if we have both conda and Python files (ambiguous case)
+                local has_conda_files=false
+                local has_python_files=false
+                
+                if [[ -f "environment.yml" ]] || [[ -f "conda-lock.yml" ]]; then
+                    has_conda_files=true
+                fi
+                
+                if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
+                    has_python_files=true
+                fi
+                
+                # Only preserve backend if detection would be ambiguous
+                if [[ "$has_conda_files" == true ]] && [[ "$has_python_files" == true ]]; then
+                    backend_flag="$existing_backend"
+                fi
+                # Otherwise, let normal detection happen (don't set backend_flag)
             fi
             
             # Purge existing installation

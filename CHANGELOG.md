@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.3] - 2026-03-14
+
+### Fixed
+- Fixed critical bug in v1.6.2 where `pyve --init --force` unconditionally preserved the existing backend instead of only preserving it in ambiguous cases
+- `--force` now correctly re-detects backend from project files when unambiguous (e.g., only `environment.yml` present)
+- Backend preservation now only applies when both conda files AND Python files exist (ambiguous detection scenario)
+- This ensures `--force` respects `environment.yml` and switches to micromamba when appropriate
+
+## [1.6.2] - 2026-03-14
+
+### Added
+- Interactive prompt when both `environment.yml` and `pyproject.toml` exist, asking user to choose backend (defaults to micromamba)
+- Interactive prompt to install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
+- New flags: `--auto-install-deps` (auto-install dependencies without prompting) and `--no-install-deps` (skip dependency installation)
+- Enhanced `.gitignore` template with additional Python patterns: `*.pyc`, `*.pyo`, `*.pyd`, `dist/`, `build/`, `*.egg`
+- Added Jupyter notebook patterns to `.gitignore`: `.ipynb_checkpoints/`, `*.ipynb_checkpoints`
+- Micromamba-specific `.gitignore` pattern: `conda-lock.yml` (added only for micromamba projects)
+
+### Changed
+- Ambiguous backend detection now prompts interactively in non-CI mode instead of silently defaulting to venv
+- In CI mode or with `CI` environment variable set, ambiguous cases default to micromamba without prompting
+- Environment variables: Added `PYVE_AUTO_INSTALL_DEPS`, `PYVE_NO_INSTALL_DEPS`, `PYVE_FORCE_YES`
+
 ## [1.6.1] - 2026-03-09
 
 ### Added
