@@ -47,6 +47,11 @@ pyve --init [VERSION] [--backend BACKEND]
 
 - `--backend BACKEND`: Specify backend (`venv` or `micromamba`)
   - Default: auto-detect based on project files
+  - If both `environment.yml` and `pyproject.toml` exist, prompts interactively (defaults to micromamba)
+- `--auto-install-deps`: Automatically install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
+- `--no-install-deps`: Skip dependency installation prompt (useful for CI/CD)
+- `--update`: Safely update existing environment (preserves backend)
+- `--force`: Purge and re-initialize environment (destructive)
 
 **Examples:**
 
@@ -65,7 +70,36 @@ pyve --init --backend micromamba
 
 # Initialize with specific version and backend
 pyve --init 3.12 --backend venv
+
+# Auto-install dependencies after initialization
+pyve --init --auto-install-deps
+
+# Skip dependency installation prompt (for CI/CD)
+pyve --init --no-install-deps
+
+# Force re-initialization (preserves backend if ambiguous)
+pyve --init --force
 ```
+
+**Interactive Prompts:**
+
+When both `environment.yml` and `pyproject.toml` exist, Pyve will prompt:
+
+```
+Detected files:
+  • environment.yml (conda/micromamba)
+  • pyproject.toml (Python project)
+
+Initialize with micromamba backend? [Y/n]:
+```
+
+After successful initialization, if `pyproject.toml` or `requirements.txt` exists:
+
+```
+Install pip dependencies from pyproject.toml? [Y/n]:
+```
+
+These prompts are skipped in CI mode (when `CI` environment variable is set).
 
 **What it does:**
 
@@ -433,6 +467,10 @@ Pyve recognizes the following environment variables:
 | `PYVE_BACKEND` | Force backend (venv/micromamba) | Auto-detect |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Auto-install pytest in test command | `0` (prompt) |
 | `PYVE_PYTHON_VERSION` | Override Python version | From `.python-version` |
+| `PYVE_AUTO_INSTALL_DEPS` | Auto-install dependencies without prompting | `0` (prompt) |
+| `PYVE_NO_INSTALL_DEPS` | Skip dependency installation prompt | `0` (prompt) |
+| `PYVE_FORCE_YES` | Skip all interactive prompts (CI mode) | `0` (interactive) |
+| `CI` | Detected CI environment (auto-sets non-interactive mode) | Not set |
 
 **Examples:**
 
@@ -483,16 +521,41 @@ layout python
 Pyve adds the following patterns:
 
 ```
-# Pyve-managed patterns
+# macOS only
+.DS_Store
+
+# Python build and test artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# Pyve virtual environment
 .envrc
 .env
 .pyve/
 .venv/
+
+# Micromamba (for micromamba backend only)
+conda-lock.yml
 ```
 
 - Automatically managed by Pyve
 - Preserves user entries
 - Updated on `--init` and removed on `--purge`
+- Micromamba-specific patterns only added when using micromamba backend
 
 ## Workflow Examples
 
@@ -560,7 +623,11 @@ pyve doctor  # Shows: Backend: micromamba
 # In CI script
 export PYVE_TEST_AUTO_INSTALL_PYTEST=1
 
-# Initialize environment
+# Initialize environment (non-interactive mode)
+pyve --init --auto-install-deps
+
+# Or use environment variables
+export CI=1  # Automatically detected by Pyve
 pyve --init
 
 # Validate setup
@@ -569,6 +636,13 @@ pyve --validate
 # Run tests
 pyve test --cov=mypackage --cov-report=xml
 ```
+
+**CI Mode Behavior:**
+
+When `CI` environment variable is set or `--auto-install-deps` is used:
+- Backend selection defaults to micromamba for ambiguous cases (no prompt)
+- Dependencies are auto-installed without prompting
+- All interactive prompts are skipped
 
 ## Tips and Best Practices
 

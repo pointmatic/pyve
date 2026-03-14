@@ -141,21 +141,46 @@ Pyve automatically detects the appropriate backend based on project files:
 ```
 If environment.yml or conda-lock.yml exists:
     → Use micromamba backend
-Else if requirements.txt exists:
+Else if requirements.txt or pyproject.toml exists:
     → Use venv backend
 Else:
     → Use venv backend (default)
 ```
+
+### Ambiguous Case Handling
+
+**New in v1.6.2:** When both conda/micromamba files (`environment.yml`, `conda-lock.yml`) and Python/pip files (`pyproject.toml`, `requirements.txt`) exist, Pyve will prompt interactively:
+
+```
+Detected files:
+  • environment.yml (conda/micromamba)
+  • pyproject.toml (Python project)
+
+Initialize with micromamba backend? [Y/n]:
+```
+
+**Default behavior:**
+- **Interactive mode:** Prompts user, defaults to micromamba (Y)
+- **CI mode:** Automatically uses micromamba without prompting
+- **Rationale:** `environment.yml` presence is a strong signal that the project needs conda packages
+
+**Why this matters:**
+
+Many data science and ML projects have both:
+- `environment.yml` for conda packages (numpy, pandas, tensorflow)
+- `pyproject.toml` for project metadata and pip-only packages
+
+The interactive prompt ensures you get the right backend while maintaining good defaults.
 
 ### Override Auto-Detection
 
 Force a specific backend:
 
 ```bash
-# Force venv
+# Force venv (skip prompt)
 pyve --init --backend venv
 
-# Force micromamba
+# Force micromamba (skip prompt)
 pyve --init --backend micromamba
 
 # Or set environment variable
@@ -372,6 +397,40 @@ pip install custom-internal-package
 # Both work together in same environment
 ```
 
+### ML/Data Science Project with Both Files (v1.6.2+)
+
+```bash
+# Project structure:
+# - environment.yml (conda packages: numpy, pandas, tensorflow)
+# - pyproject.toml (project metadata and pip-only packages)
+
+# Initialize (will prompt for backend)
+pyve --init
+
+# Output:
+# Detected files:
+#   • environment.yml (conda/micromamba)
+#   • pyproject.toml (Python project)
+# 
+# Initialize with micromamba backend? [Y/n]: y
+
+# After environment creation:
+# Install pip dependencies from pyproject.toml? [Y/n]: y
+
+# Result: micromamba environment with both conda and pip packages installed
+```
+
+**CI/CD for mixed projects:**
+
+```bash
+# Non-interactive mode
+export CI=1
+pyve --init --auto-install-deps
+
+# Or explicit flags
+pyve --init --backend micromamba --auto-install-deps
+```
+
 ---
 
 ## Troubleshooting
@@ -410,6 +469,32 @@ pip install problematic-package
 
 ```bash
 pyve --init --backend venv
+```
+
+### Ambiguous Backend Prompt Appears
+
+**Problem:** Pyve prompts for backend choice when you have both `environment.yml` and `pyproject.toml`
+
+**Why it happens:** Your project has both conda and Python package files, making backend detection ambiguous
+
+**Solutions:**
+
+```bash
+# Option 1: Answer the prompt (recommended)
+# Press Enter to use micromamba (default)
+# Or type 'n' to use venv
+
+# Option 2: Force backend explicitly
+pyve --init --backend micromamba
+
+# Option 3: Set environment variable for CI/CD
+export CI=1  # Auto-defaults to micromamba
+pyve --init
+
+# Option 4: Remove unused file
+# If you don't need conda packages, remove environment.yml
+rm environment.yml
+pyve --init  # Will use venv
 ```
 
 ### Environment Size Too Large

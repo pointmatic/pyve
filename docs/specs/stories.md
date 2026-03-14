@@ -410,10 +410,10 @@ Enhance user experience when both `environment.yml` and `pyproject.toml` exist b
   - [x] `bats tests/unit/test_utils.bats` — 63 tests pass (including .gitignore template tests)
 
 **Documentation:**
-- [ ] Update `docs/site/usage.md` with new interactive prompt behavior
-- [ ] Update `docs/site/backends.md` to explain ambiguous case handling
-- [ ] Add examples showing the interactive flow
-- [ ] Document new flags: `--auto-install-deps`, `--no-install-deps`
+- [x] Update `docs/site/usage.md` with new interactive prompt behavior
+- [x] Update `docs/site/backends.md` to explain ambiguous case handling
+- [x] Add examples showing the interactive flow
+- [x] Document new flags: `--auto-install-deps`, `--no-install-deps`
 
 **Verification:**
 - [ ] Manual test: Create project with both `environment.yml` and `pyproject.toml`
