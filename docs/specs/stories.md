@@ -350,3 +350,76 @@ Fix bug where `pyve --init --force` on a project with both `environment.yml` and
 - [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
 - [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass (no regressions)
 - [x] Bump VERSION to 1.6.2
+
+### Story E.f: v1.6.2 Interactive Prompts for Ambiguous Backend and Dependency Installation [Done]
+
+Enhance user experience when both `environment.yml` and `pyproject.toml` exist by prompting for backend choice (preferring micromamba) and optionally installing pip dependencies after environment creation.
+
+**Motivation:**
+- Current behavior silently defaults to venv when both files exist, which is unintuitive
+- `environment.yml` presence is a strong signal that user wants micromamba
+- After micromamba init, users often need to install pip dependencies from `pyproject.toml` or `requirements.txt`
+- Interactive prompts provide transparency and control while maintaining good defaults
+
+**Implementation:**
+
+**Part 1: Interactive Backend Selection**
+- [x] Update `get_backend_priority()` in `lib/backend_detect.sh`
+  - [x] When `detected_backend == "ambiguous"`, check if interactive mode
+  - [x] In interactive mode: prompt "Initialize with micromamba backend? [Y/n]:"
+  - [x] Default to micromamba (Y) if user presses Enter
+  - [x] Use venv if user types 'n' or 'N'
+  - [x] In CI/non-interactive mode: default to micromamba (no prompt)
+  - [x] Respect `PYVE_FORCE_YES` environment variable to skip prompt
+- [x] Update warning messages to be more informative about the choice
+
+**Part 2: Interactive Dependency Installation**
+- [x] Add `prompt_install_pip_dependencies()` function in `lib/utils.sh`
+  - [x] Detect if `pyproject.toml` or `requirements.txt` exists
+  - [x] Prompt: "Install pip dependencies from [file]? [Y/n]:"
+  - [x] If `pyproject.toml`: run `pip install -e .` (editable install)
+  - [x] If `requirements.txt`: run `pip install -r requirements.txt`
+  - [x] If both exist: prompt for each separately
+  - [x] Skip in CI/non-interactive mode unless `--auto-install-deps` flag set
+- [x] Call `prompt_install_pip_dependencies()` after successful environment creation in `init()`
+- [x] Add command-line flags:
+  - [x] `--auto-install-deps` - Auto-install dependencies without prompting
+  - [x] `--no-install-deps` - Skip dependency installation prompt
+
+**Part 3: Enhanced .gitignore Template**
+- [x] Update `write_gitignore_template()` in `lib/utils.sh` to include additional Python patterns
+  - [x] Add `*.pyc`, `*.pyo`, `*.pyd` - Compiled Python bytecode files
+  - [x] Add `dist/`, `build/`, `*.egg` - Python packaging artifacts
+  - [x] Add `.ipynb_checkpoints/`, `*.ipynb_checkpoints` - Jupyter notebook checkpoints
+- [x] Add micromamba-specific patterns when backend is micromamba
+  - [x] Add `conda-lock.yml` to .gitignore for micromamba projects
+  - [x] Conditionally insert after environment initialization based on backend
+
+**Testing:**
+- [x] Update unit tests in `tests/unit/test_backend_detect.bats`
+  - [x] Updated ambiguous detection test to expect micromamba in CI mode
+  - [x] Test CI mode defaults to micromamba
+  - [x] Test `PYVE_FORCE_YES` skips prompt (covered by CI mode)
+- [x] Update test helpers in `tests/helpers/pyve_test_helpers.py`
+  - [x] Set `PYVE_NO_INSTALL_DEPS=1` by default in test environment
+  - [x] Tests can override to test dependency installation feature
+- [x] Verify: All existing tests still pass with no regressions
+  - [x] `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 3 skipped
+  - [x] `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped
+  - [x] `bats tests/unit/test_backend_detect.bats` — 23 tests pass
+  - [x] `bats tests/unit/test_utils.bats` — 63 tests pass (including .gitignore template tests)
+
+**Documentation:**
+- [ ] Update `docs/site/usage.md` with new interactive prompt behavior
+- [ ] Update `docs/site/backends.md` to explain ambiguous case handling
+- [ ] Add examples showing the interactive flow
+- [ ] Document new flags: `--auto-install-deps`, `--no-install-deps`
+
+**Verification:**
+- [ ] Manual test: Create project with both `environment.yml` and `pyproject.toml`
+- [ ] Run `pyve --init` and verify prompts appear
+- [ ] Test all prompt responses (y, n, Enter)
+- [ ] Verify dependencies install correctly when accepted
+- [ ] Test in CI mode (no prompts, uses defaults)
+- [x] Verify: `pytest tests/integration/ -v` — all tests pass
+- [x] Verify: `bats tests/unit/ -v` — all tests pass

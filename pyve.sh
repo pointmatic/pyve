@@ -122,7 +122,8 @@ pyve - Python Virtual Environment Manager
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
-                [--env-name <name>] [--no-direnv] [--update | --force]
+                [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
+                [--update | --force]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge
     pyve test [pytest args...]
@@ -143,7 +144,9 @@ COMMANDS:
                         Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --strict to error on stale/missing lock files
                         Optional: --env-name <name> to specify environment name (micromamba)
-                        Optional: --no-direnv to skip .envrc creation (for CI/CD)
+                        Optional: --no-direnv to skip .envrc creation
+                        Optional: --auto-install-deps to auto-install from pyproject.toml/requirements.txt
+                        Optional: --no-install-deps to skip dependency installation prompt (for CI/CD)
                         Optional: --local-env to copy ~/.local/.env template
                         Optional: --update to safely update existing installation
                         Optional: --force to purge and re-initialize (destructive)
@@ -390,6 +393,14 @@ init() {
                 ;;
             --no-direnv)
                 no_direnv=true
+                shift
+                ;;
+            --auto-install-deps)
+                export PYVE_AUTO_INSTALL_DEPS=1
+                shift
+                ;;
+            --no-install-deps)
+                export PYVE_NO_INSTALL_DEPS=1
                 shift
                 ;;
             --update)
@@ -648,6 +659,10 @@ init() {
         insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
         insert_pattern_in_gitignore_section ".envrc" "$section"
         insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+        
+        # Add micromamba-specific patterns
+        insert_pattern_in_gitignore_section "conda-lock.yml" "# Pyve virtual environment"
+        
         log_success "Updated .gitignore"
         
         # Create .pyve/config with version tracking
@@ -749,6 +764,10 @@ EOF
     ensure_testenv_exists
     
     printf "\n✓ Python environment initialized successfully!\n"
+    
+    # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
+    prompt_install_pip_dependencies
+    
     if [[ "$no_direnv" == false ]]; then
         printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
     else
