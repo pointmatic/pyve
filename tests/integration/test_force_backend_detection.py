@@ -147,10 +147,10 @@ class TestForceBackendDetection:
         venv_dir = project_builder.project_dir / ".venv"
         assert venv_dir.exists(), "Venv directory should exist"
     
-    def test_force_reinit_preserves_venv_in_ambiguous_case(self, pyve, project_builder):
+    def test_force_reinit_prompts_and_respects_venv_choice_in_ambiguous_case(self, pyve, project_builder):
         """
-        Test that pyve --init --force preserves venv backend when both
-        environment.yml and pyproject.toml exist (ambiguous case).
+        Test that pyve --init --force prompts for backend choice when both
+        environment.yml and pyproject.toml exist, and respects user choosing venv.
         """
         # Step 1: Create BOTH environment.yml and pyproject.toml (ambiguous)
         project_builder.create_environment_yml("test-env")
@@ -166,18 +166,18 @@ class TestForceBackendDetection:
         config_content = config_path.read_text()
         assert "backend: venv" in config_content
         
-        # Step 3: Run --init --force WITHOUT --backend flag
-        # This should preserve venv backend despite ambiguity
-        result = pyve.run("--init", "--force", input="y\n")
+        # Step 3: Run --init --force and answer 'n' to use venv (not micromamba)
+        # First 'y' is for force confirmation, 'n' is for backend choice
+        result = pyve.run("--init", "--force", input="y\nn\n")
         
-        # Step 4: Verify it preserved venv backend
+        # Step 4: Verify it used venv (user's choice)
         assert result.returncode == 0
         
-        # Check that config was recreated with venv backend (not micromamba)
+        # Check that config was recreated with venv backend
         assert config_path.exists()
         config_content = config_path.read_text()
         assert "backend: venv" in config_content, \
-            "Expected venv backend to be preserved after --force in ambiguous case"
+            "Expected venv backend after user chose 'n' in prompt"
         
         # Verify venv exists
         venv_dir = project_builder.project_dir / ".venv"

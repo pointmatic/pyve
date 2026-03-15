@@ -75,8 +75,13 @@ prompt_yes_no() {
 # Prompt to install pip dependencies after environment creation
 # Detects pyproject.toml or requirements.txt and prompts user to install
 # Respects --auto-install-deps and --no-install-deps flags
-# Usage: prompt_install_pip_dependencies
+# Usage: prompt_install_pip_dependencies [backend] [env_path]
+#   backend: "venv" or "micromamba" (optional, defaults to venv)
+#   env_path: path to micromamba environment (required if backend is micromamba)
 prompt_install_pip_dependencies() {
+    local backend="${1:-venv}"
+    local env_path="${2:-}"
+    
     # Check for --no-install-deps flag
     if [[ "${PYVE_NO_INSTALL_DEPS:-}" == "1" ]]; then
         return 0
@@ -100,15 +105,33 @@ prompt_install_pip_dependencies() {
     
     echo ""
     
+    # Determine pip command based on backend
+    local pip_cmd
+    if [[ "$backend" == "micromamba" ]]; then
+        if [[ -z "$env_path" ]]; then
+            log_warning "Cannot install pip dependencies: micromamba env_path not provided"
+            return 1
+        fi
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_warning "Cannot install pip dependencies: micromamba not found"
+            return 1
+        fi
+        pip_cmd="$micromamba_path run -p $env_path pip"
+    else
+        pip_cmd="pip"
+    fi
+    
     # Auto-install mode (CI or --auto-install-deps flag)
     if [[ -n "${CI:-}" ]] || [[ "${PYVE_AUTO_INSTALL_DEPS:-}" == "1" ]]; then
         if [[ "$has_pyproject" == true ]]; then
             log_info "Auto-installing dependencies from pyproject.toml..."
-            pip install -e . || log_warning "Failed to install from pyproject.toml"
+            $pip_cmd install -e . || log_warning "Failed to install from pyproject.toml"
         fi
         if [[ "$has_requirements" == true ]]; then
             log_info "Auto-installing dependencies from requirements.txt..."
-            pip install -r requirements.txt || log_warning "Failed to install from requirements.txt"
+            $pip_cmd install -r requirements.txt || log_warning "Failed to install from requirements.txt"
         fi
         return 0
     fi
@@ -120,7 +143,7 @@ prompt_install_pip_dependencies() {
         
         if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
             log_info "Installing dependencies from pyproject.toml..."
-            if pip install -e .; then
+            if $pip_cmd install -e .; then
                 log_success "Installed dependencies from pyproject.toml"
             else
                 log_warning "Failed to install from pyproject.toml"
@@ -134,7 +157,7 @@ prompt_install_pip_dependencies() {
         
         if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
             log_info "Installing dependencies from requirements.txt..."
-            if pip install -r requirements.txt; then
+            if $pip_cmd install -r requirements.txt; then
                 log_success "Installed dependencies from requirements.txt"
             else
                 log_warning "Failed to install from requirements.txt"
