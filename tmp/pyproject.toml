@@ -1,0 +1,76 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sentiment-poc"
+version = "1.0.0"
+description = "Proof-of-concept sentiment analysis system for Twitter/social media text using TweetEval and transformer models"
+authors = [
+    {name = "Michael Smith"}
+]
+license = "Apache-2.0"
+readme = "README.md"
+requires-python = ">=3.12.13"
+dependencies = [
+    "datasets>=2.18",
+    "transformers>=4.40",
+    "torch>=2.2",
+    "scikit-learn>=1.4",
+    "pandas>=2.2",
+    "pyarrow>=15.0",
+    "gentlify>=0.1",
+    "python-dotenv>=1.0",
+    "pyyaml>=6.0",
+    "click>=8.1",
+    "rich>=13.0",
+    "nest-asyncio>=1.5",
+]
+
+[project.optional-dependencies]
+notebook = [
+    "jupyterlab>=4.0",
+    "matplotlib>=3.8",
+    "seaborn>=0.13",
+    "plotly>=5.20",
+    "ipywidgets>=8.1",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "pytest-cov>=4.1",
+    "pytest-mock>=3.12",
+    "ruff>=0.3",
+    "mypy>=1.9",
+    "pre-commit>=3.6",
+    "conda-lock>=2.5",
+]
+
+[project.scripts]
+sentiment-poc = "sentiment_poc.cli:cli"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.mypy]
+strict = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "--cov=sentiment_poc --cov-report=term-missing --cov-fail-under=80"
+
+[tool.coverage.run]
+omit = ["sentiment_poc/cli.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+]

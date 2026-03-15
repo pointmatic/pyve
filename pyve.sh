@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.6.3"
+VERSION="1.6.4"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -476,27 +476,9 @@ init() {
                 fi
             fi
             
-            # Preserve backend before purge ONLY if detection would be ambiguous
-            # This prevents switching backends when both conda and Python files exist
-            if [[ -z "$backend_flag" ]]; then
-                # Check if we have both conda and Python files (ambiguous case)
-                local has_conda_files=false
-                local has_python_files=false
-                
-                if [[ -f "environment.yml" ]] || [[ -f "conda-lock.yml" ]]; then
-                    has_conda_files=true
-                fi
-                
-                if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
-                    has_python_files=true
-                fi
-                
-                # Only preserve backend if detection would be ambiguous
-                if [[ "$has_conda_files" == true ]] && [[ "$has_python_files" == true ]]; then
-                    backend_flag="$existing_backend"
-                fi
-                # Otherwise, let normal detection happen (don't set backend_flag)
-            fi
+            # Don't preserve backend on --force - let normal detection happen
+            # This allows the interactive prompt to appear in ambiguous cases
+            # (when both environment.yml and pyproject.toml exist)
             
             # Purge existing installation
             log_info "Purging existing environment..."
@@ -693,6 +675,10 @@ EOF
         
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
+        
+        # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
+        prompt_install_pip_dependencies "micromamba" "$env_path"
+        
         printf "\nNext steps:\n"
         if [[ "$no_direnv" == false ]]; then
             printf "  Note: Ignore micromamba's 'activate' instructions above — Pyve uses direnv activation (or 'pyve run').\n"

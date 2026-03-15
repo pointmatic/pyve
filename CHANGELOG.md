@@ -5,7 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.6.3] - 2026-03-14
+## [1.6.4] - 2026-03-14
+
+### Fixed
+- **Critical:** Fixed `pyve --init --force` to show interactive backend prompt in ambiguous cases
+- Removed backend preservation logic from `--force` that was preventing the interactive prompt
+- Fixed `log_info` output in `get_backend_priority()` to go to stderr instead of stdout
+- Fixed micromamba initialization missing pip dependency installation prompt
+- This ensures the interactive prompts added in v1.6.2 actually work during `--force` re-initialization
+
+### Technical Details
+- Removed backend preservation logic from `--force` in `pyve.sh` (lines 479-482)
+- Redirected all `log_info` and `printf` calls to stderr in `get_backend_priority()` (lib/backend_detect.sh)
+- Added missing `prompt_install_pip_dependencies()` call to micromamba initialization path
+- Updated `prompt_install_pip_dependencies()` to use `micromamba run -p <env_path> pip` for micromamba environments
+- Added regression test `test_force_ambiguous_prompt.py` to verify prompt behavior
+- Updated `test_force_backend_detection.py` to test new interactive behavior
+
+## [1.6.3] - 2026-03-14 [DEFECTIVE - Fixed in 1.6.4]
+
+### Attempted Fix (Defective)
+- Attempted to fix `pyve --init --force` backend detection in ambiguous cases
+- Implementation preserved backend in ambiguous cases, which prevented the interactive prompt from working
+- See v1.6.4 for the actual fix
 
 ### Fixed
 - Fixed critical bug in v1.6.2 where `pyve --init --force` unconditionally preserved the existing backend instead of only preserving it in ambiguous cases

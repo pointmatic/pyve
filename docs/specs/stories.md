@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.3.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.4.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -400,22 +400,53 @@ Enhance user experience when both `environment.yml` and `pyproject.toml` exist b
 - [x] Verify: `pytest tests/integration/ -v` — all tests pass
 - [x] Verify: `bats tests/unit/ -v` — all tests pass
 
-### Story E.f: v1.6.3 Fix --force Backend Preservation Logic (Deployed v1.6.2 Bug) [Done]
+### Story E.f: v1.6.3 Attempt to Fix --force Backend Preservation (Defective) [Deployed]
 
-Fix critical bug in v1.6.2 where `pyve --init --force` unconditionally preserved the existing backend instead of only preserving it in ambiguous cases. This caused `--force` to ignore `environment.yml` and stick with venv when it should have re-detected micromamba.
+**Note:** This implementation was defective and deployed in v1.6.3. See Story E.g for the actual fix in v1.6.4.
+
+Attempted to fix bug where `pyve --init --force` would default to venv in ambiguous cases. Implementation added conditional backend preservation logic, but this prevented the interactive prompt from appearing.
+
+**Defective Implementation:**
+- [x] Added logic to check if both conda and Python files exist
+- [x] Preserved `existing_backend` only in ambiguous cases
+- [x] This still prevented the interactive prompt from working (see Story E.g for why)
+
+### Story E.g: v1.6.4 Fix --force Interactive Prompt in Ambiguous Cases [Done]
+
+Fix critical bug in v1.6.3 where `pyve --init --force` with ambiguous files (both `environment.yml` and `pyproject.toml`) would use venv without prompting, instead of showing the interactive backend selection prompt added in Story E.e.
 
 **Root Cause:**
-- Story E.e implementation in v1.6.2 unconditionally preserved backend when `--force` was used
-- Should only preserve backend when detection would be ambiguous (both conda AND Python files exist)
-- When only `environment.yml` exists (unambiguous), should re-detect micromamba backend
+- Story E.f (v1.6.3) added backend preservation logic to `--force` that set `backend_flag="$existing_backend"` in ambiguous cases
+- This preserved backend was passed to `get_backend_priority()` as a CLI flag
+- CLI flags have Priority 1 and bypass all detection and prompting logic
+- Additionally, `log_info` calls in `get_backend_priority()` were outputting to stdout instead of stderr
+- Command substitution `backend="$(get_backend_priority ...)"` captured log messages in the `$backend` variable
+- Result: Interactive prompt never appeared, and wrong backend was used
 
 **Implementation:**
-- [x] Update `init()` function in `pyve.sh` (line 479-499)
-  - [x] Check if both conda files AND Python files exist (ambiguous case)
-  - [x] ONLY preserve `existing_backend` if detection would be ambiguous
-  - [x] Otherwise, let normal file-based detection happen
-  - [x] This ensures backend is preserved in ambiguous cases but re-detected when unambiguous
-- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 3 skipped (micromamba)
-- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped (no regressions)
-- [x] Update Story E.e documentation to reflect original (incorrect) implementation
-- [x] Bump VERSION to 1.6.3
+- [x] Remove backend preservation logic from `--force` in `pyve.sh` (line 479-482)
+  - [x] Let `--force` fall through to normal detection (empty `backend_flag`)
+  - [x] This allows the interactive prompt to appear in ambiguous cases
+- [x] Fix `get_backend_priority()` in `lib/backend_detect.sh` (lines 89-117)
+  - [x] Redirect all `log_info` calls to stderr with `>&2`
+  - [x] Redirect `printf` prompt to stderr with `>&2`
+  - [x] Ensures only the backend choice goes to stdout for command substitution
+- [x] Fix micromamba initialization in `pyve.sh` (line 677)
+  - [x] Add missing `prompt_install_pip_dependencies()` call
+  - [x] Micromamba path was missing the pip dependency installation prompt that venv had
+- [x] Fix `prompt_install_pip_dependencies()` in `lib/utils.sh` to support micromamba
+  - [x] Add backend and env_path parameters
+  - [x] Use `micromamba run -p <env_path> pip` for micromamba environments
+  - [x] Use regular `pip` for venv environments
+  - [x] Prevents using host system's pip instead of environment's pip
+- [x] Add regression test `test_force_ambiguous_prompt.py`
+  - [x] `test_force_prompts_for_backend_in_ambiguous_case` — verifies prompt appears and choice is respected
+  - [x] `test_force_respects_no_response_in_ambiguous_case` — verifies 'n' response uses venv
+- [x] Update existing test `test_force_backend_detection.py`
+  - [x] Renamed `test_force_reinit_preserves_venv_in_ambiguous_case` to match new behavior
+  - [x] Now tests that prompt appears and user can choose venv with 'n' response
+- [x] Verify: `pytest tests/integration/test_force_ambiguous_prompt.py -v` — 2 passed
+- [x] Verify: `pytest tests/integration/test_force_backend_detection.py -v` — 2 passed, 3 skipped
+- [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped
+- [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass
+- [x] Bump VERSION to 1.6.4
