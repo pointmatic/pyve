@@ -117,10 +117,15 @@ pyve --init
 This will:
 
 - Detect or prompt for Python version
-- Create a virtual environment (`.venv` by default)
+- Auto-detect backend (venv or micromamba) from project files
+- **Prompt for backend choice** if both `environment.yml` and `pyproject.toml` exist
+- Create a virtual environment (`.venv` by default for venv, `.pyve/envs/<name>` for micromamba)
 - Upgrade pip to the latest version
+- **Prompt to install pip dependencies** from `pyproject.toml` or `requirements.txt`
 - Generate `.envrc` for direnv (if installed)
 - Add entries to `.gitignore`
+
+**Note:** Pyve uses interactive prompts to help you choose the right backend and install dependencies. For automated workflows, use `--backend`, `--auto-install-deps`, or `--no-install-deps` flags. See the [Backends Guide](backends.md) for details.
 
 ### 2. Activate the Environment
 

@@ -141,6 +141,7 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `log_error` | `(message)` | Print `ERROR: <message>` to stderr |
 | `log_success` | `(message)` | Print `✓ <message>` to stdout |
 | `prompt_yes_no` | `(prompt)` → 0/1 | Prompt user for y/n confirmation |
+| `prompt_install_pip_dependencies` | `(backend?, env_path?)` → 0/1 | Prompt to install pip dependencies from `pyproject.toml` or `requirements.txt`; supports both venv and micromamba backends |
 | `gitignore_has_pattern` | `(pattern)` → 0/1 | Check if exact line exists in `.gitignore` |
 | `append_pattern_to_gitignore` | `(pattern)` | Append pattern if not already present |
 | `insert_pattern_in_gitignore_section` | `(pattern, section_comment)` | Insert pattern after section comment; falls back to append |
@@ -198,7 +199,7 @@ Determine which environment backend to use based on CLI flags, config, and proje
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `detect_backend_from_files` | `()` → string | Returns `"venv"`, `"micromamba"`, or `"none"` from project files |
-| `get_backend_priority` | `(cli_backend)` → string | Resolve backend using priority chain: CLI > config > files > default |
+| `get_backend_priority` | `(cli_backend)` → string | Resolve backend using priority chain: CLI > config > files > default; prompts interactively in ambiguous cases (both conda and Python files present) |
 | `validate_backend` | `(backend)` → 0/1 | Validate backend value is `venv`, `micromamba`, or `auto` |
 | `validate_config_file` | `()` → 0/1 | Validate `.pyve/config` structure |
 

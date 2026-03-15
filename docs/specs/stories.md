@@ -450,3 +450,62 @@ Fix critical bug in v1.6.3 where `pyve --init --force` with ambiguous files (bot
 - [x] Verify: `pytest tests/integration/test_reinit.py -v` — 20 passed, 1 skipped
 - [x] Verify: `bats tests/unit/test_backend_detect.bats` — 23 tests pass
 - [x] Bump VERSION to 1.6.4
+
+### Story E.h: v1.6.4 Documentation - Interactive Prompts [Done]
+
+Document the interactive prompt features added in v1.6.2 and fixed in v1.6.4 across all user-facing documentation. The MkDocs site (`docs/site/backends.md`) already has excellent coverage, but other docs need updates.
+
+**Scope:**
+Two interactive prompts need documentation:
+1. **Backend selection prompt** - When both `environment.yml` and `pyproject.toml` exist (ambiguous case)
+2. **Pip dependency installation prompt** - After environment creation, prompts to install from `pyproject.toml` or `requirements.txt`
+
+**Documentation Assessment:**
+- ✓ **Excellent:** `docs/site/backends.md` - Comprehensive coverage of both prompts with examples and troubleshooting
+- ✓ **Good:** `docs/site/usage.md` - Documents both prompts in command reference
+- ⚠ **Partial:** `README.md` - Covers `--force` but missing interactive prompt details
+- ❌ **Missing:** `docs/site/getting-started.md` - No mention of interactive prompts (entry point for new users)
+- ❌ **Missing:** `docs/specs/features.md` - FR-1 and FR-8 don't mention interactive prompts
+- ❌ **Missing:** `docs/specs/tech-spec.md` - Prompt functions not fully documented
+
+**Implementation:**
+- [x] Update `README.md` (lines 176-222: Backend Auto-Detection Priority section)
+  - [x] Add "Ambiguous Cases (Interactive Prompt)" subsection after line 204
+  - [x] Show backend selection prompt example
+  - [x] Explain default behavior (interactive vs CI mode)
+  - [x] Add "Pip Dependency Installation" section after line 255
+  - [x] Show pip dependency prompt example
+  - [x] Document `--auto-install-deps` and `--no-install-deps` flags
+- [x] Update `docs/site/getting-started.md` (lines 106-124: Quick Start section)
+  - [x] Add note about interactive prompts in step 1 "Initialize a New Project"
+  - [x] Mention backend selection prompt for ambiguous cases
+  - [x] Mention pip dependency installation prompt
+  - [x] Add link to `backends.md` for details
+- [x] Update `docs/specs/features.md`
+  - [x] FR-8 "Backend Auto-Detection" (line 199-203)
+    - [x] Add bullet: "Ambiguous cases: When both conda files and Python files exist, prompt user interactively"
+    - [x] Note non-interactive behavior with `PYVE_FORCE_YES=1`
+  - [x] FR-1 "Environment Initialization" (line 128-139)
+    - [x] Add bullet: "Prompt to install pip dependencies from `pyproject.toml` or `requirements.txt`"
+    - [x] Note flags: `--auto-install-deps`, `--no-install-deps`
+  - [x] Environment Variables section (line 256-260)
+    - [x] Add `PYVE_AUTO_INSTALL_DEPS` - Set to `1` to auto-install pip dependencies
+    - [x] Add `PYVE_NO_INSTALL_DEPS` - Set to `1` to skip pip dependency installation
+    - [x] Add `PYVE_FORCE_YES` - Set to `1` to default to micromamba in ambiguous cases
+- [x] Update `docs/specs/tech-spec.md`
+  - [x] `lib/utils.sh` function table (line 137-146)
+    - [x] Update `prompt_install_pip_dependencies` signature: `(backend?, env_path?)` → 0/1
+    - [x] Add description: "Prompt to install pip dependencies; supports both venv and micromamba backends"
+  - [x] `lib/backend_detect.sh` function table (line 198-203)
+    - [x] Update `get_backend_priority` description to mention interactive prompt in ambiguous cases
+
+**Rationale:**
+- `backends.md` already serves as the comprehensive reference - no changes needed
+- `getting-started.md` is the entry point for new users - needs at least a mention with link to details
+- `README.md` is often the first doc users read - should have clear examples
+- `features.md` and `tech-spec.md` are specification docs - need to be accurate and complete
+
+**Verification:**
+- [x] Review all updated docs for consistency
+- [x] Ensure examples match actual behavior
+- [x] Verify cross-references between docs work correctly

@@ -202,6 +202,22 @@ When `--backend` is not specified, Pyve automatically detects the appropriate ba
 
 4. **Default to venv** - When no environment files exist
 
+**Ambiguous Cases (Interactive Prompt):**
+
+When both conda and Python files exist (e.g., `environment.yml` + `pyproject.toml`), Pyve prompts you to choose:
+
+```
+Detected files:
+  • environment.yml (conda/micromamba)
+  • pyproject.toml (Python project)
+
+Initialize with micromamba backend? [Y/n]:
+```
+
+- **Interactive mode:** Prompts user, defaults to micromamba (press Enter or type `Y`)
+- **CI mode:** Automatically uses micromamba without prompting (when `CI` environment variable is set)
+- **Override:** Use `--backend` flag to skip the prompt
+
 **Examples:**
 ```bash
 # Project with environment.yml → automatically uses micromamba
@@ -216,9 +232,13 @@ pyve --init  # Detects requirements.txt, uses venv
 cd new-project
 pyve --init  # No files detected, uses venv
 
+# Ambiguous project → prompts for choice
+cd ml-project-with-both-files
+pyve --init  # Prompts: "Initialize with micromamba backend? [Y/n]:"
+
 # Override auto-detection
-pyve --init --backend micromamba  # Force micromamba
-pyve --init --backend venv         # Force venv
+pyve --init --backend micromamba  # Force micromamba (skip prompt)
+pyve --init --backend venv         # Force venv (skip prompt)
 ```
 
 #### Backend Comparison
@@ -251,6 +271,37 @@ pyve --init --backend venv         # Force venv
 - Projects already using conda/mamba
 
 Note: On Python 3.12+, Pyve installs a lightweight distutils compatibility shim (via `sitecustomize.py`) to avoid TensorFlow/Keras import failures in environments that still import `distutils`. Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
+
+#### Pip Dependency Installation
+
+After creating the environment, Pyve prompts to install pip dependencies if `pyproject.toml` or `requirements.txt` exists:
+
+```
+Install pip dependencies from pyproject.toml? [Y/n]:
+```
+
+This runs `pip install -e .` to install your project in editable mode, making your code importable as a package.
+
+**Behavior:**
+- **Interactive mode:** Prompts user (default: Yes, press Enter or type `Y`)
+- **Auto-install:** Use `--auto-install-deps` flag to install without prompting
+- **Skip prompt:** Use `--no-install-deps` flag to skip installation
+- **CI mode:** Skipped by default (set `PYVE_AUTO_INSTALL_DEPS=1` to enable in CI)
+
+**Examples:**
+```bash
+# Standard initialization (prompts for pip dependencies)
+pyve --init
+
+# Auto-install dependencies without prompting
+pyve --init --auto-install-deps
+
+# Skip dependency installation prompt (useful for CI)
+pyve --init --no-install-deps
+
+# CI/CD with auto-install
+PYVE_AUTO_INSTALL_DEPS=1 pyve --init --no-direnv
+```
 
 After setup, run `direnv allow` to activate the environment.
 

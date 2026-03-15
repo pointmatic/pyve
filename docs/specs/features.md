@@ -132,6 +132,7 @@ Initialize a complete Python development environment in the current directory.
 - Auto-detect backend from project files or use explicit `--backend` flag.
 - Set Python version via asdf or pyenv (auto-install if not present).
 - Create virtual environment (venv directory or micromamba environment).
+- **Prompt to install pip dependencies** from `pyproject.toml` or `requirements.txt` after environment creation (unless `--auto-install-deps` or `--no-install-deps`).
 - Configure direnv for auto-activation (unless `--no-direnv`).
 - Create `.env` file with secure permissions.
 - Rebuild `.gitignore` from template, preserving user entries.
@@ -201,6 +202,8 @@ Install or remove the Pyve script from the user's system.
 Determine the environment backend from project files when `--backend` is not specified.
 
 - Priority: `.pyve/config` > `environment.yml` / `conda-lock.yml` > `pyproject.toml` / `requirements.txt` > default (venv).
+- **Ambiguous cases:** When both conda files (`environment.yml`, `conda-lock.yml`) and Python files (`pyproject.toml`, `requirements.txt`) exist, prompt user interactively to choose backend (default: micromamba).
+- **Non-interactive mode:** Set `PYVE_FORCE_YES=1` or `CI=1` to auto-default to micromamba in ambiguous cases without prompting.
 
 ### FR-9: Micromamba Environment Naming
 
@@ -258,6 +261,10 @@ On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent Tensor
 |----------|---------|
 | `PYVE_DISABLE_DISTUTILS_SHIM` | Set to `1` to disable the Python 3.12+ distutils shim |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Set to `1` to auto-install pytest without prompting (CI) |
+| `PYVE_AUTO_INSTALL_DEPS` | Set to `1` to auto-install pip dependencies without prompting |
+| `PYVE_NO_INSTALL_DEPS` | Set to `1` to skip pip dependency installation prompt |
+| `PYVE_FORCE_YES` | Set to `1` to auto-default to micromamba in ambiguous backend cases |
+| `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)
 
