@@ -33,7 +33,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 
 1. **Self-healing .gitignore** — Maintain a Pyve-managed template section at the top of `.gitignore` with Python build/test artifacts and environment entries. Preserve user entries below the template. Rebuild the template on each init to restore accidentally deleted entries.
 2. **Idempotent .gitignore** — Running init multiple times produces identical `.gitignore` content (no duplicate entries, no accumulated blank lines).
-3. **Lock file validation** — For micromamba environments, detect stale or missing `conda-lock.yml` files and warn (or error in `--strict` mode).
+3. **Lock file validation** — For micromamba environments, a missing `conda-lock.yml` is a hard error (use `--no-lock` to bypass). A stale `conda-lock.yml` warns interactively (or errors in `--strict` mode).
 4. **Secure file permissions** — `.env` files are created with `chmod 600` (owner read/write only).
 
 ### Usability Requirements
@@ -109,8 +109,9 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `.pyve/envs/<name>/` | Micromamba environment |
 | `.envrc` | direnv configuration (unless `--no-direnv`) |
 | `.env` | Environment variables file (chmod 600) |
-| `.gitignore` | Updated with Pyve template entries |
+| `.gitignore` | Updated with Pyve template entries (`.vscode/settings.json` added) |
 | `.pyve/config` | Backend, version, and environment name tracking |
+| `.vscode/settings.json` | IDE interpreter path and environment isolation settings |
 
 ### Files Created by `--install`
 
@@ -137,6 +138,7 @@ Initialize a complete Python development environment in the current directory.
 - Create `.env` file with secure permissions.
 - Rebuild `.gitignore` from template, preserving user entries.
 - Create `.pyve/config` for version and backend tracking.
+- **Micromamba only**: Generate `.vscode/settings.json` pointing at `.pyve/envs/<name>/bin/python` with `python.terminal.activateEnvironment: false` and `python.condaPath: ""` to prevent IDE interference. Skips if file already exists (use `--force` to overwrite). Adds `.vscode/settings.json` to `.gitignore`.
 - **Edge cases**: Existing environment detected → offer update/force/cancel. Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
 
 ### FR-2: Environment Purge (`--purge`)
@@ -148,6 +150,16 @@ Remove all Pyve-created artifacts from the current directory.
 - Remove `.envrc`.
 - Remove `.env` only if empty; preserve with warning if non-empty.
 - Clean `.gitignore` patterns (remove `.venv`, `.env`, `.envrc`; preserve permanent entries).
+- **`.gitignore` policy for micromamba backend:**
+
+| File | Ignored by Pyve? |
+|------|-----------------|
+| `.pyve/envs/` | ✅ Yes — local environment, not portable |
+| `.envrc` | ✅ Yes — machine-specific activation |
+| `.env` | ✅ Yes — secrets |
+| `conda-lock.yml` | ❌ **No — must be committed** (like `package-lock.json` or `Cargo.lock`) |
+| `environment.yml` | ❌ No — committed by design |
+
 - **Edge cases**: No environment found → informational message, no error. `--keep-testenv` preserves the dev/test runner environment.
 
 ### FR-3: Python Version Management (`--python-version`)
@@ -237,6 +249,18 @@ Handle `pyve --init` on already-initialized projects.
 - Detect existing installation and offer: update in-place, purge and re-initialize, or cancel.
 - `--update`: preserve environment, update config, reject backend changes.
 - `--force`: purge and re-create, allow backend changes, prompt for confirmation.
+
+### FR-14: Cloud-Synced Directory Detection
+
+Refuse to initialize an environment inside a known cloud-synced directory.
+
+- On `pyve --init`, check whether `$PWD` is inside a known synced path before any environment work begins.
+- **Primary check (path heuristic):** hard fail if `$PWD` is a descendant of any of:
+  `~/Documents`, `~/Desktop`, `~/Library/Mobile Documents`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`
+- **Secondary check (xattr, macOS only):** hard fail if `xattr -l "$PWD"` output contains `com.apple.cloud`, `com.dropbox`, `com.google.drive`, or `com.microsoft.onedrive`.
+- Error message includes: current path, detected sync root and provider, recommended `mv` command, and `--allow-synced-dir` override.
+- **`--allow-synced-dir` flag** (or `PYVE_ALLOW_SYNCED_DIR=1`) bypasses the check for users who have disabled sync on that directory.
+- **Rationale:** Cloud sync daemons race against micromamba extraction, causing non-deterministic environment corruption. A warning is insufficient — the failure is silent, delayed, and not recoverable without a full rebuild.
 
 ### FR-13: Distutils Compatibility Shim
 

@@ -392,11 +392,11 @@ Enhance user experience when both `environment.yml` and `pyproject.toml` exist b
 - [x] Document new flags: `--auto-install-deps`, `--no-install-deps`
 
 **Verification:**
-- [ ] Manual test: Create project with both `environment.yml` and `pyproject.toml`
-- [ ] Run `pyve --init` and verify prompts appear
-- [ ] Test all prompt responses (y, n, Enter)
-- [ ] Verify dependencies install correctly when accepted
-- [ ] Test in CI mode (no prompts, uses defaults)
+- [x] Manual test: Create project with both `environment.yml` and `pyproject.toml`
+- [x] Run `pyve --init` and verify prompts appear
+- [x] Test all prompt responses (y, n, Enter)
+- [x] Verify dependencies install correctly when accepted
+- [x] Test in CI mode (no prompts, uses defaults)
 - [x] Verify: `pytest tests/integration/ -v` — all tests pass
 - [x] Verify: `bats tests/unit/ -v` — all tests pass
 
@@ -509,3 +509,160 @@ Two interactive prompts need documentation:
 - [x] Review all updated docs for consistency
 - [x] Ensure examples match actual behavior
 - [x] Verify cross-references between docs work correctly
+
+---
+
+## Phase F: Micromamba Backend Improvements
+
+Improvements derived from production use of Pyve v1.6.4 with a micromamba backend on Apple Silicon (M3). See `docs/specs/pyve-improvements.md` for full context and root cause analysis.
+
+### Story F.a: v1.7.0 Fix `conda-lock.yml` Incorrectly Added to `.gitignore` [Done]
+
+`conda-lock.yml` is an explicitly committed artifact — ignoring it defeats its purpose. Remove it from the Pyve-managed `.gitignore` template and any conditional insertion logic.
+
+- [x] Remove `conda-lock.yml` from `write_gitignore_template()` in `lib/utils.sh`
+  - [x] Audit the full template heredoc and any conditional micromamba-specific insertions
+  - [x] Confirm `environment.yml` is also not ignored (it should never have been)
+- [x] Remove any call-site logic in `pyve.sh` that appends `conda-lock.yml` after init
+- [x] Update unit tests in `tests/unit/test_utils.bats`
+  - [x] Add test: `conda-lock.yml` is NOT present in the generated `.gitignore` template
+  - [x] Add test: `.pyve/envs/` section header IS present (still correctly ignored)
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 65 tests, 0 failures
+- [x] Update `docs/specs/features.md` — correct the `.gitignore` policy table in FR-2 to explicitly note `conda-lock.yml` must NOT be ignored
+- [x] Update CHANGELOG.md with v1.7.0 entry
+- [x] Bump VERSION to 1.7.0
+
+### Story F.b: v1.7.1 Hard Fail When Project Is Inside a Cloud-Synced Directory [Done]
+
+Cloud sync daemons race against micromamba package extraction, causing non-deterministic environment corruption that can damage the Python standard library. `pyve --init` must refuse to proceed in synced directories.
+
+- [x] Add `check_cloud_sync_path()` function to `lib/utils.sh`
+  - [x] Primary check: hard fail if `$PWD` is a prefix match of any known synced path:
+    - `$HOME/Documents`, `$HOME/Desktop`, `$HOME/Library/Mobile Documents`
+    - `$HOME/Dropbox`, `$HOME/Google Drive`, `$HOME/OneDrive`
+  - [x] Secondary check: run `xattr -l "$PWD" | grep -i "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"` and fail if matched
+  - [x] Both checks apply on macOS; skip `xattr` check on Linux (command unavailable)
+  - [x] Print actionable error with detected sync root, explanation, `mv` command suggestion, and `--allow-synced-dir` override
+- [x] Add `--allow-synced-dir` flag to CLI in `pyve.sh`
+  - [x] Parse flag and export `PYVE_ALLOW_SYNCED_DIR=1`
+  - [x] Document flag in `--help` output
+- [x] Call `check_cloud_sync_path()` at the start of `init()` before any environment creation
+- [x] Add unit tests in `tests/unit/test_utils.bats`
+  - [x] Test: path inside `$HOME/Documents` fails
+  - [x] Test: path inside `$HOME/Dropbox` fails
+  - [x] Test: path inside `$HOME/Developer` passes
+  - [x] Test: `PYVE_ALLOW_SYNCED_DIR=1` bypasses the check
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 70 tests, 0 failures
+- [x] Update `docs/specs/features.md` — add FR-14: Cloud-Synced Directory Detection
+- [x] Update `docs/site/usage.md` — document `--allow-synced-dir` flag and explain the risk
+- [x] Update CHANGELOG.md with v1.7.1 entry
+- [x] Bump VERSION to 1.7.1
+
+### Story F.c: v1.7.2 Auto-Generate `.vscode/settings.json` for Micromamba Backend [Done]
+
+When Pyve initializes a micromamba environment, generate `.vscode/settings.json` so VS Code-compatible IDEs (Windsurf, Cursor) use the correct interpreter and don't interfere with Pyve's environment management.
+
+- [x] Add `write_vscode_settings()` function to `lib/utils.sh`
+  - [x] Receive `env_name` as parameter; construct interpreter path `.pyve/envs/<env_name>/bin/python`
+  - [x] Create `.vscode/` directory if it does not exist
+  - [x] Write `.vscode/settings.json` with `python.defaultInterpreterPath`, `python.terminal.activateEnvironment: false`, `python.condaPath: ""`
+  - [x] Do not overwrite if already exists (log info and skip); allow override when `PYVE_REINIT_MODE=force`
+- [x] Call `write_vscode_settings()` in micromamba init path in `pyve.sh`, after `.pyve/config` is created
+- [x] Add `.vscode/settings.json` as dynamic pattern in `write_gitignore_template()` for deduplication
+- [x] Add `insert_pattern_in_gitignore_section ".vscode/settings.json"` in micromamba init path
+- [x] Add unit tests in `tests/unit/test_utils.bats`
+  - [x] Test: `write_vscode_settings()` creates correct JSON with env name substituted
+  - [x] Test: existing `.vscode/settings.json` is not overwritten without `--force`
+  - [x] Test: `PYVE_REINIT_MODE=force` triggers overwrite
+  - [x] Test: `.vscode/settings.json` not duplicated in `.gitignore` on reinit
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 74 tests, 0 failures
+- [x] Update `docs/specs/features.md` — FR-1 and micromamba outputs table
+- [x] Update `docs/site/backends.md` — add "IDE Integration" section
+- [x] Update CHANGELOG.md with v1.7.2 entry
+- [x] Bump VERSION to 1.7.2
+
+### Story F.d: v1.7.3 `pyve doctor` Detects Duplicate dist-info and iCloud Collision Artifacts [Done]
+
+iCloud Drive and other sync daemons racing against micromamba extraction produce duplicate `dist-info` directories and files/directories with ` 2` suffix — symptoms that are hard to diagnose without tooling.
+
+- [x] Add `doctor_check_duplicate_dist_info()` function to `lib/utils.sh`
+  - [x] Locate `site-packages` via `find "$env_path/lib" -name "site-packages"`
+  - [x] Extract package names by stripping `-<version>.dist-info`; use `sort | uniq -d` to find duplicates
+  - [x] For each duplicate: print `✗ Duplicate dist-info detected: <package>` with both dirs and mtimes
+  - [x] Append: `Run 'pyve --init --force' to rebuild the environment cleanly.`
+  - [x] If no duplicates: print `✓ No duplicate dist-info directories`
+- [x] Add `doctor_check_collision_artifacts()` function to `lib/utils.sh`
+  - [x] Scan environment tree for files/directories whose names end with ` 2` (space-two)
+  - [x] Report count and up to 5 paths; show `... and N more` if truncated
+  - [x] If none: print `✓ No cloud sync collision artifacts`
+- [x] Integrate both checks into `doctor_command()` in `pyve.sh`
+  - [x] Called inside the micromamba section after the package count check
+- [x] Add unit tests in `tests/unit/test_doctor.bats`
+  - [x] Test: duplicate dist-info dirs detected with correct package name and versions
+  - [x] Test: clean environment passes (✓) for duplicate check
+  - [x] Test: missing site-packages passes (✓)
+  - [x] Test: ` 2`-suffixed dirs detected and reported
+  - [x] Test: nested collision artifacts counted correctly
+  - [x] Test: missing env path returns cleanly
+  - [x] Verify: `bats tests/unit/test_doctor.bats` — 12 tests, 0 failures
+- [x] Update CHANGELOG.md with v1.7.3 entry
+- [x] Bump VERSION to 1.7.3
+
+### Story F.e: v1.8.0 Enforce `conda-lock.yml` Presence Before `pyve --init` [Done]
+
+Promote the missing `conda-lock.yml` condition from a dismissible warning to a blocking error. A bypass flag (`--no-lock`) makes intentional overrides explicit.
+
+- [x] Update `validate_lock_file_status()` in `lib/micromamba_env.sh` — Case 2 (only `environment.yml`, no lock file)
+  - [x] Remove interactive prompt and CI auto-continue; replace with hard error unconditionally
+  - [x] Print structured error: `ERROR: No conda-lock.yml found.` + `conda-lock` command + `--no-lock` override
+  - [x] When `PYVE_NO_LOCK=1`: log warning and return 0 (bypass)
+  - [x] Stale lock file behavior (Case 1) is unchanged: warns, prompts, errors only in `--strict`
+- [x] Add `--no-lock` flag to `pyve.sh`
+  - [x] Parse flag and export `PYVE_NO_LOCK=1`
+  - [x] Document in `--help` output and USAGE line
+- [x] Update unit tests in `tests/unit/test_lock_validation.bats`
+  - [x] Updated 3 tests whose expected status changed from 0 → 1 (missing lock is now an error)
+  - [x] Added test: `PYVE_NO_LOCK=1` bypasses missing lock file error
+  - [x] Added test: `PYVE_NO_LOCK=1` does not bypass missing `environment.yml`
+  - [x] Added test: stale lock still warns and continues in non-strict non-interactive mode
+  - [x] Verify: `bats tests/unit/test_lock_validation.bats` — 27 tests, 0 failures
+- [x] Update `docs/specs/features.md` — Quality Requirements lock file entry updated
+- [x] Update CHANGELOG.md with v1.8.0 entry
+- [x] Bump VERSION to 1.8.0
+
+### Story F.f: v1.8.1 `pyve doctor` Detects conda/pip Native Library Conflicts [Done]
+
+Mixed conda-forge and pip installs can produce silent runtime failures when pip-bundled native libraries (torch, tensorflow) conflict with conda-linked ones (numpy, scipy). Surface these conflicts proactively.
+
+- [x] Add `doctor_check_native_lib_conflicts()` function
+  - [x] Detect pip-installed packages that bundle native libraries — check for known packages: `torch`, `tensorflow`, `tensorflow-macos`, `jax`, `jaxlib`
+    - [x] Parse dist-info directories directly (no network): glob `<env>/lib/python*/site-packages/<pkg>-*.dist-info`
+  - [x] Detect conda-installed packages that link against shared native libraries — check for known packages: `numpy`, `scipy`, `scikit-learn`, `pandas` via `conda-meta/<pkg>-*.json`
+  - [x] For each known conflict pair (e.g., torch + numpy), check whether the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is present in `<env>/lib/`
+  - [x] If library is absent: print `⚠ Potential native library conflict detected` with package names and fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
+  - [x] If no conflicts: print `✓ No conda/pip native library conflicts detected`
+- [x] Integrate into `doctor_command()` in `pyve.sh`
+  - [x] Only run when backend is `micromamba` and environment exists
+  - [x] macOS checks `libomp.dylib`, Linux checks `libgomp.so`
+- [x] Add unit tests in `tests/unit/test_doctor.bats`
+  - [x] Test: no conflict when no pip bundlers present
+  - [x] Test: no conflict when no conda linkers present
+  - [x] Test: conflict detected when pip+conda present and OpenMP lib absent
+  - [x] Test: no conflict when OpenMP lib is present
+  - [x] Test: missing env path returns cleanly
+  - [x] Verify: `bats tests/unit/test_doctor.bats` — 17 tests, 0 failures
+- [x] Update CHANGELOG.md with v1.8.1 entry
+- [x] Bump VERSION to 1.8.1
+
+### Story F.g: v1.8.2 Fix Integration Tests Broken by v1.8.0 Hard-Fail Lock Check [Done]
+
+Story F.e promoted a missing `conda-lock.yml` from a dismissible warning to a blocking error. Integration tests create ephemeral micromamba environments without a lock file (they test other features — doctor, auto-detection, cross-platform, run, pip upgrade), so all such tests began failing with `ERROR: No conda-lock.yml found.`
+
+Root cause: the test helper's `run()` method sets sensible defaults for the test environment (`PYVE_NO_INSTALL_DEPS=1`, etc.) but was not setting `PYVE_NO_LOCK=1`. The lock-file hard-fail is already covered by `tests/unit/test_lock_validation.bats`; integration tests should not re-test it implicitly.
+
+- [x] Add `env.setdefault("PYVE_NO_LOCK", "1")` to `PyveRunner.run()` in `tests/helpers/pyve_test_helpers.py`, inside the `PYTEST_CURRENT_TEST` guard, alongside `PYVE_NO_INSTALL_DEPS`
+  - [x] Applies automatically to all `pyve.init(backend='micromamba')` calls across all integration test files (40+ call sites) without modifying each test
+  - [x] `init_micromamba()` in `ProjectBuilder` is covered by the same path (creates its own `PyveRunner`, calls `runner.run()` which checks `PYTEST_CURRENT_TEST`)
+  - [x] Unit tests in `test_lock_validation.bats` are unaffected — they invoke `pyve.sh` directly without `PyveRunner`
+- [x] Update CHANGELOG.md with v1.8.2 entry
+- [x] Bump VERSION to 1.8.2

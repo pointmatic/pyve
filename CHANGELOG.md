@@ -5,6 +5,55 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-03-20
+
+### Fixed
+- Fixed integration tests broken by the v1.8.0 missing `conda-lock.yml` hard-fail: `PyveRunner.run()` now sets `PYVE_NO_LOCK=1` automatically when running under pytest (same pattern as `PYVE_NO_INSTALL_DEPS`), covering all 40+ `pyve.init(backend='micromamba')` call sites in the integration test suite without modifying individual tests
+
+## [1.8.1] - 2026-03-20
+
+### Added
+- `pyve doctor` now detects potential conda/pip native library conflicts: when pip packages that bundle their own OpenMP runtime (torch, tensorflow, jax) coexist with conda packages that link against the shared OpenMP in the environment's `lib/` directory (numpy, scipy, scikit-learn), and the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is absent, a `⚠` warning is printed with the conflicting packages and a fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
+
+## [1.8.0] - 2026-03-20
+
+### Changed
+- **Breaking:** `pyve --init` (micromamba backend) now hard fails when `conda-lock.yml` is missing, instead of prompting interactively or auto-continuing in CI. A missing lock file produces a non-reproducible environment — this should be an error, not a suggestion.
+- New `--no-lock` flag (and `PYVE_NO_LOCK=1` env var) explicitly bypasses the check for first-time setup before a lock file has been generated
+- Stale lock file behavior is unchanged: warns and prompts interactively, errors in `--strict` mode
+
+## [1.7.3] - 2026-03-20
+
+### Added
+- `pyve doctor` now scans `site-packages` for duplicate `.dist-info` directories and reports conflicting versions with their mtimes
+- `pyve doctor` now scans the environment tree for files/directories with ` 2` suffix — the iCloud Drive collision artifact naming used when two processes create the same path simultaneously
+- Both checks run automatically for micromamba backends; report `✓` when clean or `✗` with actionable remediation steps
+
+## [1.7.2] - 2026-03-20
+
+### Added
+- `pyve --init` with micromamba backend now generates `.vscode/settings.json` with the correct interpreter path and IDE isolation settings
+- `.vscode/settings.json` is automatically added to `.gitignore` (machine-specific); `.vscode/extensions.json` is not affected
+- File is skipped if it already exists (use `--force` to regenerate); re-generated on `pyve --init --force`
+
+## [1.7.1] - 2026-03-20
+
+### Added
+- `pyve --init` now hard fails when the project directory is inside a cloud-synced directory (`~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`)
+- Detection uses path heuristics (primary) and extended attributes via `xattr` (secondary, macOS only)
+- Error message includes the sync root, provider name, recommended `mv` command, and `--allow-synced-dir` override
+- New `--allow-synced-dir` flag (and `PYVE_ALLOW_SYNCED_DIR=1` env var) to bypass the check for users who have disabled sync on that path
+
+### Why a hard fail, not a warning
+Cloud sync daemons race against micromamba's package extraction, causing non-deterministic environment corruption that can damage the Python standard library itself. The failure is silent and delayed — a warning is insufficient because users will not connect the symptom (`ImportError`, `__pycache__ 2` directories) to the root cause without significant debugging effort.
+
+## [1.7.0] - 2026-03-19
+
+### Fixed
+- `conda-lock.yml` was incorrectly added to `.gitignore` by `pyve --init` for micromamba projects
+- `conda-lock.yml` is an explicitly committed artifact (like `package-lock.json` or `Cargo.lock`) and must never be ignored
+- Removed `insert_pattern_in_gitignore_section "conda-lock.yml"` call from micromamba init path in `pyve.sh`
+
 ## [1.6.4] - 2026-03-14
 
 ### Fixed

@@ -313,7 +313,7 @@ GITIGNORE_EOF
         # are stripped from the user-entries pass on subsequent inits.
         local -a dynamic_patterns=(
             ".envrc" ".env" ".pyve/testenv" ".pyve/envs"
-            "${DEFAULT_VENV_DIR:-.venv}"
+            "${DEFAULT_VENV_DIR:-.venv}" ".vscode/settings.json"
         )
         template_lines+=("${dynamic_patterns[@]}")
 
@@ -463,6 +463,300 @@ validate_python_version() {
     fi
     
     return 0
+}
+
+#============================================================
+# Doctor: Environment Integrity Checks
+#============================================================
+
+# Scan site-packages for packages that have more than one .dist-info directory.
+# This indicates cloud sync corruption or overlapping installs.
+# Usage: doctor_check_duplicate_dist_info <env_path>
+doctor_check_duplicate_dist_info() {
+    local env_path="$1"
+
+    local site_packages
+    site_packages=$(find "$env_path/lib" -maxdepth 2 -type d -name "site-packages" 2>/dev/null | head -1)
+
+    if [[ -z "$site_packages" ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Collect all .dist-info dir basenames
+    local -a all_dirs=()
+    while IFS= read -r d; do
+        all_dirs+=("$(basename "$d")")
+    done < <(find "$site_packages" -maxdepth 1 -type d -name "*.dist-info" 2>/dev/null | sort)
+
+    if [[ ${#all_dirs[@]} -eq 0 ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Extract normalized package names (strip -<version>.dist-info)
+    local -a pkg_names=()
+    for d in "${all_dirs[@]}"; do
+        local pkg_name
+        pkg_name=$(printf '%s' "${d%.dist-info}" | sed 's/-[0-9].*//')
+        pkg_names+=("$pkg_name")
+    done
+
+    # Find which package names appear more than once
+    local dup_pkgs
+    dup_pkgs=$(printf '%s\n' "${pkg_names[@]}" | sort | uniq -d)
+
+    if [[ -z "$dup_pkgs" ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Report each duplicated package with its conflicting dirs and mtimes
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" ]] && continue
+        printf "✗ Duplicate dist-info detected: %s\n" "$pkg"
+        for d in "${all_dirs[@]}"; do
+            local dpkg
+            dpkg=$(printf '%s' "${d%.dist-info}" | sed 's/-[0-9].*//')
+            if [[ "$dpkg" == "$pkg" ]]; then
+                local full_path="$site_packages/$d"
+                local mtime
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    mtime=$(stat -f "%Sm" -t "%b %d %H:%M" "$full_path" 2>/dev/null || echo "?")
+                else
+                    mtime=$(stat -c "%y" "$full_path" 2>/dev/null | cut -d'.' -f1 || echo "?")
+                fi
+                printf "    %s (%s)\n" "$d" "$mtime"
+            fi
+        done
+    done <<< "$dup_pkgs"
+    printf "  Run 'pyve --init --force' to rebuild the environment cleanly.\n"
+}
+
+# Scan the environment tree for files/directories with a " 2" suffix — the
+# collision naming used by iCloud Drive when two processes create the same
+# path simultaneously.
+# Usage: doctor_check_collision_artifacts <env_path>
+doctor_check_collision_artifacts() {
+    local env_path="$1"
+
+    if [[ ! -d "$env_path" ]]; then
+        return 0
+    fi
+
+    local -a artifacts=()
+    while IFS= read -r artifact; do
+        artifacts+=("$artifact")
+    done < <(find "$env_path" -name "* 2" 2>/dev/null | sort | head -20)
+
+    if [[ ${#artifacts[@]} -eq 0 ]]; then
+        printf "✓ No cloud sync collision artifacts\n"
+        return 0
+    fi
+
+    printf "✗ Cloud sync collision artifacts detected (%d found):\n" "${#artifacts[@]}"
+    local shown=0
+    for artifact in "${artifacts[@]}"; do
+        if [[ $shown -lt 5 ]]; then
+            printf "    %s\n" "$artifact"
+        fi
+        (( shown++ )) || true
+    done
+    if [[ ${#artifacts[@]} -gt 5 ]]; then
+        printf "    ... and %d more\n" "$(( ${#artifacts[@]} - 5 ))"
+    fi
+    printf "  Caused by cloud sync running concurrently with environment extraction.\n"
+    printf "  Rebuild outside a cloud-synced directory: pyve --init --force\n"
+}
+
+# Check for known conflicts between pip-bundled native libraries and
+# conda-linked ones. When pip packages (torch, tensorflow) bundle their own
+# OpenMP and conda packages (numpy, scipy) link against the system OpenMP in
+# the environment's lib/ directory, a missing libomp/libgomp produces
+# intermittent dlopen failures at import time.
+#
+# Only runs when both a pip bundler AND a conda linker are detected.
+# Usage: doctor_check_native_lib_conflicts <env_path>
+doctor_check_native_lib_conflicts() {
+    local env_path="$1"
+
+    if [[ ! -d "$env_path" ]]; then
+        return 0
+    fi
+
+    local site_packages
+    site_packages=$(find "$env_path/lib" -maxdepth 2 -type d -name "site-packages" 2>/dev/null | head -1)
+
+    # Known pip packages that bundle their own OpenMP runtime
+    local -a pip_bundlers=("torch" "tensorflow" "tensorflow_macos" "tensorflow-macos"
+                           "tensorflow_metal" "jax" "jaxlib")
+
+    # Known conda packages that link against the shared OpenMP in env/lib/
+    local -a conda_linkers=("numpy" "scipy" "scikit-learn" "pandas" "openblas" "blas" "mkl")
+
+    # Detect pip bundlers present in site-packages
+    local -a found_pip=()
+    if [[ -n "$site_packages" ]]; then
+        for pkg in "${pip_bundlers[@]}"; do
+            local matches=("$site_packages/${pkg}-"*.dist-info)
+            [[ -e "${matches[0]}" ]] && found_pip+=("$pkg")
+        done
+    fi
+
+    # Detect conda linkers present in conda-meta
+    local -a found_conda=()
+    if [[ -d "$env_path/conda-meta" ]]; then
+        for pkg in "${conda_linkers[@]}"; do
+            local matches=("$env_path/conda-meta/${pkg}-"*.json)
+            [[ -e "${matches[0]}" ]] && found_conda+=("$pkg")
+        done
+    fi
+
+    # Only check for a missing shared lib when both sides are present
+    if [[ ${#found_pip[@]} -eq 0 ]] || [[ ${#found_conda[@]} -eq 0 ]]; then
+        printf "✓ No conda/pip native library conflicts detected\n"
+        return 0
+    fi
+
+    # Platform-specific shared library name and conda fix package
+    local missing_lib="" fix_pkg=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        if [[ ! -f "$env_path/lib/libomp.dylib" ]]; then
+            missing_lib="libomp.dylib"
+            fix_pkg="llvm-openmp"
+        fi
+    else
+        local gomp_matches=("$env_path/lib/libgomp.so"*)
+        if [[ ! -e "${gomp_matches[0]}" ]]; then
+            missing_lib="libgomp.so"
+            fix_pkg="libgomp"
+        fi
+    fi
+
+    if [[ -z "$missing_lib" ]]; then
+        printf "✓ No conda/pip native library conflicts detected\n"
+        return 0
+    fi
+
+    local pip_list conda_list
+    pip_list=$(IFS=', '; echo "${found_pip[*]}")
+    conda_list=$(IFS=', '; echo "${found_conda[*]}")
+
+    printf "⚠ Potential native library conflict detected:\n"
+    printf "    pip-installed:   %s (bundles its own OpenMP)\n" "$pip_list"
+    printf "    conda-installed: %s (requires %s)\n" "$conda_list" "$missing_lib"
+    printf "    %s not found in %s/lib/\n\n" "$missing_lib" "$env_path"
+    printf "  Fix: add '%s' to environment.yml conda dependencies:\n" "$fix_pkg"
+    printf "    dependencies:\n"
+    printf "      - %s\n" "$fix_pkg"
+    printf "  Then regenerate: conda-lock -f environment.yml -p %s\n" "$(uname -m)"
+}
+
+#============================================================
+# VS Code Settings
+#============================================================
+
+# Generate .vscode/settings.json for micromamba environments.
+#
+# Points the IDE at the correct interpreter and prevents it from attempting
+# to manage the environment independently (which conflicts with direnv/Pyve).
+#
+# Skips if the file already exists, unless PYVE_REINIT_MODE=force.
+# Usage: write_vscode_settings <env_name>
+write_vscode_settings() {
+    local env_name="$1"
+    local vscode_dir=".vscode"
+    local settings_file="$vscode_dir/settings.json"
+    local interpreter_path=".pyve/envs/${env_name}/bin/python"
+
+    if [[ -f "$settings_file" ]] && [[ "${PYVE_REINIT_MODE:-}" != "force" ]]; then
+        log_info "Skipping .vscode/settings.json (already exists; use --force to overwrite)"
+        return 0
+    fi
+
+    mkdir -p "$vscode_dir"
+    cat > "$settings_file" << EOF
+{
+  "python.defaultInterpreterPath": "${interpreter_path}",
+  "python.terminal.activateEnvironment": false,
+  "python.condaPath": ""
+}
+EOF
+    log_success "Created .vscode/settings.json (interpreter: ${interpreter_path})"
+}
+
+#============================================================
+# Cloud Sync Detection
+#============================================================
+
+# Hard fail if the current directory is inside a known cloud-synced path.
+#
+# Cloud sync daemons (iCloud Drive, Dropbox, Google Drive, OneDrive) write
+# concurrently to synced directories, which corrupts micromamba environments
+# during extraction. This causes non-deterministic import failures and can
+# damage the Python standard library itself.
+#
+# Set PYVE_ALLOW_SYNCED_DIR=1 (or pass --allow-synced-dir) to bypass.
+# Usage: check_cloud_sync_path
+check_cloud_sync_path() {
+    if [[ "${PYVE_ALLOW_SYNCED_DIR:-}" == "1" ]]; then
+        return 0
+    fi
+
+    local current_dir="$PWD"
+    local sync_root=""
+    local sync_provider=""
+
+    # Primary check: known synced path prefixes
+    local -a known_synced=(
+        "$HOME/Documents"
+        "$HOME/Desktop"
+        "$HOME/Library/Mobile Documents"
+        "$HOME/Dropbox"
+        "$HOME/Google Drive"
+        "$HOME/OneDrive"
+    )
+
+    local path
+    for path in "${known_synced[@]}"; do
+        if [[ "$current_dir" == "$path" ]] || [[ "$current_dir" == "$path/"* ]]; then
+            sync_root="$path"
+            case "$path" in
+                */Documents)                  sync_provider="iCloud Drive" ;;
+                */Desktop)                    sync_provider="iCloud Drive (Desktop)" ;;
+                */"Library/Mobile Documents") sync_provider="iCloud Drive" ;;
+                */Dropbox)                    sync_provider="Dropbox" ;;
+                */"Google Drive")             sync_provider="Google Drive" ;;
+                */OneDrive)                   sync_provider="OneDrive" ;;
+            esac
+            break
+        fi
+    done
+
+    # Secondary check: extended attributes (macOS only)
+    if [[ -z "$sync_root" ]] && [[ "$(uname)" == "Darwin" ]] && command -v xattr >/dev/null 2>&1; then
+        if xattr -l "$current_dir" 2>/dev/null | grep -qi "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"; then
+            sync_root="$current_dir"
+            sync_provider="cloud sync (detected via extended attributes)"
+        fi
+    fi
+
+    if [[ -z "$sync_root" ]]; then
+        return 0
+    fi
+
+    printf "ERROR: Project is inside a cloud-synced directory.\n\n" >&2
+    printf "  Path:      %s\n" "$current_dir" >&2
+    printf "  Sync root: %s (%s)\n\n" "$sync_root" "$sync_provider" >&2
+    printf "  Cloud sync daemons write concurrently to synced directories, which\n" >&2
+    printf "  corrupts micromamba environments during extraction. This causes\n" >&2
+    printf "  non-deterministic import failures and can damage the Python standard\n" >&2
+    printf "  library itself.\n\n" >&2
+    printf "  Recommended fix: move your project outside the synced directory.\n" >&2
+    printf "    mv \"%s\" ~/Developer/%s\n\n" "$current_dir" "$(basename "$current_dir")" >&2
+    printf "  If you have disabled sync for this directory and understand the risk:\n" >&2
+    printf "    pyve --init --allow-synced-dir\n" >&2
+    exit 1
 }
 
 #============================================================

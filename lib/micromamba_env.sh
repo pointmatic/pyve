@@ -326,21 +326,21 @@ validate_lock_file_status() {
         return 0
     fi
     
-    # Case 2: Only environment.yml exists (no lock file)
+    # Case 2: Only environment.yml exists (no lock file) — hard error
     if [[ "$has_env_yml" == true ]] && [[ "$has_lock_yml" == false ]]; then
-        if [[ "$strict_mode" == true ]]; then
-            log_error "Lock file missing (strict mode)"
-            log_error "Generate lock file for reproducible builds:"
-            log_error "  conda-lock -f environment.yml -p $(uname -m)"
-            return 1
-        elif is_interactive; then
-            # Interactive mode - info and prompt
-            if ! info_missing_lock_file; then
-                return 1
-            fi
+        # Allow explicit bypass via --no-lock / PYVE_NO_LOCK=1
+        if [[ "${PYVE_NO_LOCK:-}" == "1" ]]; then
+            log_warning "Proceeding without conda-lock.yml (--no-lock)"
+            return 0
         fi
-        # Non-interactive mode - silent, continue
-        return 0
+
+        printf "\n" >&2
+        printf "ERROR: No conda-lock.yml found.\n\n" >&2
+        printf "For reproducible builds, generate one first:\n" >&2
+        printf "  conda-lock -f environment.yml -p %s\n\n" "$(uname -m)" >&2
+        printf "To proceed without a lock file (not recommended):\n" >&2
+        printf "  pyve --init --no-lock\n" >&2
+        return 1
     fi
     
     # Case 3: Only conda-lock.yml exists (error - missing source file)

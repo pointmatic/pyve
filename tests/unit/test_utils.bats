@@ -349,6 +349,22 @@ EOF
     [ "$first_md5" = "$second_md5" ]
 }
 
+@test "write_gitignore_template: conda-lock.yml is NOT in the generated template" {
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+
+    # conda-lock.yml must be committed — it must never appear in Pyve's template
+    run grep -x "conda-lock.yml" .gitignore
+    [ "$status" -ne 0 ]
+}
+
+@test "write_gitignore_template: .pyve/envs section header is present (still correctly ignored)" {
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+
+    assert_file_contains ".gitignore" "# Pyve virtual environment"
+}
+
 @test "write_gitignore_template: preserves user section comments" {
     cat > .gitignore << 'EOF'
 .DS_Store
@@ -557,6 +573,132 @@ EOF
 
 @test "is_file_empty: returns 0 for non-existent file" {
     run is_file_empty "nonexistent.txt"
+    [ "$status" -eq 0 ]
+}
+
+#============================================================
+# write_vscode_settings() tests
+#============================================================
+
+@test "write_vscode_settings: creates .vscode/settings.json with correct interpreter path" {
+    run write_vscode_settings "my-env"
+    [ "$status" -eq 0 ]
+
+    assert_file_exists ".vscode/settings.json"
+    assert_file_contains ".vscode/settings.json" ".pyve/envs/my-env/bin/python"
+    assert_file_contains ".vscode/settings.json" '"python.terminal.activateEnvironment": false'
+    assert_file_contains ".vscode/settings.json" '"python.condaPath": ""'
+}
+
+@test "write_vscode_settings: does not overwrite existing file without --force" {
+    mkdir -p .vscode
+    echo '{"existing": true}' > .vscode/settings.json
+
+    run write_vscode_settings "my-env"
+    [ "$status" -eq 0 ]
+
+    # Original content must be preserved
+    assert_file_contains ".vscode/settings.json" '"existing": true'
+    run grep -q "my-env" .vscode/settings.json
+    [ "$status" -ne 0 ]
+}
+
+@test "write_vscode_settings: overwrites existing file when PYVE_REINIT_MODE=force" {
+    mkdir -p .vscode
+    echo '{"existing": true}' > .vscode/settings.json
+
+    PYVE_REINIT_MODE=force run write_vscode_settings "my-env"
+    [ "$status" -eq 0 ]
+
+    assert_file_contains ".vscode/settings.json" ".pyve/envs/my-env/bin/python"
+}
+
+@test "write_gitignore_template: .vscode/settings.json not duplicated in user section on reinit" {
+    local section="# Pyve virtual environment"
+
+    # Simulate first micromamba init
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".vscode/settings.json" "$section"
+
+    local first_count
+    first_count=$(grep -c "^\.vscode/settings\.json$" .gitignore)
+
+    # Simulate second init (reinit)
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".vscode/settings.json" "$section"
+
+    local second_count
+    second_count=$(grep -c "^\.vscode/settings\.json$" .gitignore)
+
+    [ "$first_count" -eq 1 ]
+    [ "$second_count" -eq 1 ]
+}
+
+#============================================================
+# check_cloud_sync_path() tests
+#============================================================
+
+@test "check_cloud_sync_path: passes when outside synced directories" {
+    # The test temp dir is under /var/folders or /tmp — not under $HOME/Documents
+    run check_cloud_sync_path
+    [ "$status" -eq 0 ]
+}
+
+@test "check_cloud_sync_path: hard fails when inside Documents" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Documents/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Documents/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"cloud-synced"* ]]
+}
+
+@test "check_cloud_sync_path: hard fails when inside Dropbox" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Dropbox/work/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Dropbox/work/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"cloud-synced"* ]]
+}
+
+@test "check_cloud_sync_path: passes inside Developer directory" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Developer/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Developer/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 0 ]
+}
+
+@test "check_cloud_sync_path: PYVE_ALLOW_SYNCED_DIR=1 bypasses the check" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Documents/my-project"
+
+    run env HOME="$fake_home" PYVE_ALLOW_SYNCED_DIR=1 bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Documents/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
     [ "$status" -eq 0 ]
 }
 

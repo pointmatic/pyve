@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.6.4"
+VERSION="1.8.2"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -121,9 +121,9 @@ pyve - Python Virtual Environment Manager
 
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
-                [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
+                [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
                 [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
-                [--update | --force]
+                [--update | --force] [--allow-synced-dir]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge
     pyve test [pytest args...]
@@ -143,6 +143,7 @@ COMMANDS:
                         Optional: --auto-bootstrap to install micromamba without prompting
                         Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --strict to error on stale/missing lock files
+                        Optional: --no-lock to bypass missing conda-lock.yml error (not recommended)
                         Optional: --env-name <name> to specify environment name (micromamba)
                         Optional: --no-direnv to skip .envrc creation
                         Optional: --auto-install-deps to auto-install from pyproject.toml/requirements.txt
@@ -150,6 +151,7 @@ COMMANDS:
                         Optional: --local-env to copy ~/.local/.env template
                         Optional: --update to safely update existing installation
                         Optional: --force to purge and re-initialize (destructive)
+                        Optional: --allow-synced-dir to bypass cloud-sync directory check
 
     run <command> [args...]
                         Execute commands in environment (for CI/CD and automation)
@@ -383,6 +385,10 @@ init() {
                 strict_mode=true
                 shift
                 ;;
+            --no-lock)
+                export PYVE_NO_LOCK=1
+                shift
+                ;;
             --env-name)
                 if [[ -z "${2:-}" ]]; then
                     log_error "--env-name requires an environment name"
@@ -401,6 +407,10 @@ init() {
                 ;;
             --no-install-deps)
                 export PYVE_NO_INSTALL_DEPS=1
+                shift
+                ;;
+            --allow-synced-dir)
+                export PYVE_ALLOW_SYNCED_DIR=1
                 shift
                 ;;
             --update)
@@ -422,6 +432,9 @@ init() {
         esac
     done
     
+    # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
+    check_cloud_sync_path
+
     # Check for existing installation (re-initialization detection)
     if config_file_exists; then
         local existing_backend
@@ -657,12 +670,10 @@ init() {
         insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
         insert_pattern_in_gitignore_section ".envrc" "$section"
         insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
-        
-        # Add micromamba-specific patterns
-        insert_pattern_in_gitignore_section "conda-lock.yml" "# Pyve virtual environment"
-        
+        insert_pattern_in_gitignore_section ".vscode/settings.json" "$section"
+
         log_success "Updated .gitignore"
-        
+
         # Create .pyve/config with version tracking
         mkdir -p .pyve
         cat > .pyve/config << EOF
@@ -672,6 +683,9 @@ micromamba:
   env_name: $env_name
 EOF
         log_success "Created .pyve/config"
+
+        # Generate .vscode/settings.json so IDEs use the correct interpreter
+        write_vscode_settings "$env_name"
         
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
@@ -1794,7 +1808,12 @@ doctor_command() {
             pkg_count=$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
             printf "  Packages: %s installed\n" "$pkg_count"
         fi
-        
+
+        # Check for duplicate dist-info, cloud sync collision artifacts, and native lib conflicts
+        doctor_check_duplicate_dist_info "$env_path"
+        doctor_check_collision_artifacts "$env_path"
+        doctor_check_native_lib_conflicts "$env_path"
+
     elif [[ "$backend" == "venv" ]]; then
         # Check venv directory
         if [[ -d "$env_path" ]]; then

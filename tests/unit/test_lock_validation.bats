@@ -137,12 +137,12 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
-@test "validate_lock_file_status: returns 0 when only environment.yml exists (non-interactive)" {
+@test "validate_lock_file_status: returns 1 when only environment.yml exists (missing lock file is now a hard error)" {
     create_environment_yml "test-env" "python=3.11"
-    
-    # In non-interactive mode, should continue without lock file
+
     run validate_lock_file_status "false"
-    [ "$status" -eq 0 ]
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"No conda-lock.yml found"* ]]
 }
 
 @test "validate_lock_file_status: returns 1 when only conda-lock.yml exists" {
@@ -214,17 +214,40 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-@test "validate_lock_file_status: defaults to non-strict when no argument" {
+@test "validate_lock_file_status: defaults to non-strict when no argument (still fails on missing lock)" {
     create_environment_yml "test-env" "python=3.11"
-    
-    # No lock file, non-strict mode (default), non-interactive
+
+    # Missing lock file is now a hard error regardless of strict mode
     run validate_lock_file_status
+    [ "$status" -eq 1 ]
+}
+
+@test "validate_lock_file_status: handles empty string as non-strict (still fails on missing lock)" {
+    create_environment_yml "test-env" "python=3.11"
+
+    run validate_lock_file_status ""
+    [ "$status" -eq 1 ]
+}
+
+@test "validate_lock_file_status: PYVE_NO_LOCK=1 bypasses missing lock file error" {
+    create_environment_yml "test-env" "python=3.11"
+
+    PYVE_NO_LOCK=1 run validate_lock_file_status "false"
     [ "$status" -eq 0 ]
 }
 
-@test "validate_lock_file_status: handles empty string as non-strict" {
-    create_environment_yml "test-env" "python=3.11"
-    
-    run validate_lock_file_status ""
+@test "validate_lock_file_status: PYVE_NO_LOCK=1 does not bypass missing environment.yml" {
+    # Only conda-lock.yml present — still an error regardless of --no-lock
+    touch conda-lock.yml
+
+    PYVE_NO_LOCK=1 run validate_lock_file_status "false"
+    [ "$status" -eq 1 ]
+}
+
+@test "validate_lock_file_status: stale lock still warns and continues in non-strict non-interactive mode" {
+    touch -t 202401010000 conda-lock.yml
+    touch -t 202401010001 environment.yml
+
+    run validate_lock_file_status "false"
     [ "$status" -eq 0 ]
 }
