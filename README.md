@@ -30,7 +30,7 @@ Make things easy and natural, but avoid being invasive.
 - Pyve does not install or manage `conda-lock`, but you can install it yourself and Pyve won't interfere.
 
 ## Key Features
-- **Install**: The Pyve script will install itself into `~/.local/bin/` in your home directory, add a path to that, and create a symlink so you can run Pyve like a native command instead of the clunky `./pyve.sh` syntax.
+- **Install**: Install Pyve via Homebrew (`brew install pointmatic/tap/pyve`) or manually from source (`./pyve.sh --install`, which copies the script to `~/.local/bin/` and creates a symlink).
 - **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories.
   - **Re-Init**: Refresh your Pyve initialization using `pyve --init --force`. This will first purge, then initialize Pyve in one commmand. 
 - **Purge**: Remove all the Pyve setup and artifacts, except if you've added any secrets to the `.env` file, Pyve will leave it and let you know that.
