@@ -109,8 +109,9 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `.pyve/envs/<name>/` | Micromamba environment |
 | `.envrc` | direnv configuration (unless `--no-direnv`) |
 | `.env` | Environment variables file (chmod 600) |
-| `.gitignore` | Updated with Pyve template entries |
+| `.gitignore` | Updated with Pyve template entries (`.vscode/settings.json` added) |
 | `.pyve/config` | Backend, version, and environment name tracking |
+| `.vscode/settings.json` | IDE interpreter path and environment isolation settings |
 
 ### Files Created by `--install`
 
@@ -137,6 +138,7 @@ Initialize a complete Python development environment in the current directory.
 - Create `.env` file with secure permissions.
 - Rebuild `.gitignore` from template, preserving user entries.
 - Create `.pyve/config` for version and backend tracking.
+- **Micromamba only**: Generate `.vscode/settings.json` pointing at `.pyve/envs/<name>/bin/python` with `python.terminal.activateEnvironment: false` and `python.condaPath: ""` to prevent IDE interference. Skips if file already exists (use `--force` to overwrite). Adds `.vscode/settings.json` to `.gitignore`.
 - **Edge cases**: Existing environment detected → offer update/force/cancel. Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
 
 ### FR-2: Environment Purge (`--purge`)

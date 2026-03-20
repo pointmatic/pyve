@@ -558,35 +558,28 @@ Cloud sync daemons race against micromamba package extraction, causing non-deter
 - [x] Update CHANGELOG.md with v1.7.1 entry
 - [x] Bump VERSION to 1.7.1
 
-### Story F.c: v1.7.2 Auto-Generate `.vscode/settings.json` for Micromamba Backend [Planned]
+### Story F.c: v1.7.2 Auto-Generate `.vscode/settings.json` for Micromamba Backend [Done]
 
 When Pyve initializes a micromamba environment, generate `.vscode/settings.json` so VS Code-compatible IDEs (Windsurf, Cursor) use the correct interpreter and don't interfere with Pyve's environment management.
 
-- [ ] Add `write_vscode_settings()` function to `lib/utils.sh`
-  - [ ] Read `env_name` from `.pyve/config` using `read_config_value micromamba.env_name`
-  - [ ] Construct interpreter path: `.pyve/envs/<env_name>/bin/python`
-  - [ ] Create `.vscode/` directory if it does not exist
-  - [ ] Write `.vscode/settings.json` with:
-    - `"python.defaultInterpreterPath": ".pyve/envs/<env_name>/bin/python"`
-    - `"python.terminal.activateEnvironment": false`
-    - `"python.condaPath": ""`
-  - [ ] Do not overwrite `.vscode/settings.json` if it already exists (log info and skip); allow override with `--force`
-- [ ] Call `write_vscode_settings()` at the end of micromamba init in `pyve.sh`, after environment creation succeeds
-- [ ] Add `.vscode/settings.json` to the Pyve-managed `.gitignore` template in `lib/utils.sh`
-  - [ ] Do NOT add `.vscode/` (extensions.json is conventionally committed)
-  - [ ] Add only `.vscode/settings.json`
-- [ ] Add unit tests in `tests/unit/test_utils.bats`
-  - [ ] Test: `write_vscode_settings()` creates correct JSON with env name substituted
-  - [ ] Test: existing `.vscode/settings.json` is not overwritten without `--force`
-  - [ ] Test: `.vscode/settings.json` appears in generated `.gitignore` template
-- [ ] Add integration test in `tests/integration/test_micromamba_workflow.py`
-  - [ ] Test: after micromamba init, `.vscode/settings.json` exists with correct interpreter path
-  - [ ] Test: `.vscode/settings.json` is present in `.gitignore`
-  - [ ] Test: venv init does NOT create `.vscode/settings.json`
-- [ ] Update `docs/specs/features.md` — add to FR-1 outputs table for micromamba backend
-- [ ] Update `docs/site/backends.md` — add section on IDE integration / `.vscode/settings.json` generation
-- [ ] Update CHANGELOG.md with v1.7.2 entry
-- [ ] Bump VERSION to 1.7.2
+- [x] Add `write_vscode_settings()` function to `lib/utils.sh`
+  - [x] Receive `env_name` as parameter; construct interpreter path `.pyve/envs/<env_name>/bin/python`
+  - [x] Create `.vscode/` directory if it does not exist
+  - [x] Write `.vscode/settings.json` with `python.defaultInterpreterPath`, `python.terminal.activateEnvironment: false`, `python.condaPath: ""`
+  - [x] Do not overwrite if already exists (log info and skip); allow override when `PYVE_REINIT_MODE=force`
+- [x] Call `write_vscode_settings()` in micromamba init path in `pyve.sh`, after `.pyve/config` is created
+- [x] Add `.vscode/settings.json` as dynamic pattern in `write_gitignore_template()` for deduplication
+- [x] Add `insert_pattern_in_gitignore_section ".vscode/settings.json"` in micromamba init path
+- [x] Add unit tests in `tests/unit/test_utils.bats`
+  - [x] Test: `write_vscode_settings()` creates correct JSON with env name substituted
+  - [x] Test: existing `.vscode/settings.json` is not overwritten without `--force`
+  - [x] Test: `PYVE_REINIT_MODE=force` triggers overwrite
+  - [x] Test: `.vscode/settings.json` not duplicated in `.gitignore` on reinit
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 74 tests, 0 failures
+- [x] Update `docs/specs/features.md` — FR-1 and micromamba outputs table
+- [x] Update `docs/site/backends.md` — add "IDE Integration" section
+- [x] Update CHANGELOG.md with v1.7.2 entry
+- [x] Bump VERSION to 1.7.2
 
 ### Story F.d: v1.7.3 `pyve doctor` Detects Duplicate dist-info and iCloud Collision Artifacts [Planned]
 

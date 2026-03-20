@@ -433,6 +433,31 @@ pyve --init --backend micromamba --auto-install-deps
 
 ---
 
+## IDE Integration
+
+### VS Code / Windsurf / Cursor (micromamba)
+
+When Pyve initializes a micromamba environment, it automatically generates
+`.vscode/settings.json` to configure VS Code-compatible IDEs:
+
+```json
+{
+  "python.defaultInterpreterPath": ".pyve/envs/<env_name>/bin/python",
+  "python.terminal.activateEnvironment": false,
+  "python.condaPath": ""
+}
+```
+
+**Why each setting:**
+
+- **`python.defaultInterpreterPath`** — tells the IDE exactly where the interpreter is, eliminating startup probing and ensuring language server features use the correct environment immediately
+- **`python.terminal.activateEnvironment: false`** — Pyve activates the environment via direnv; IDE activation in new terminals would conflict with direnv's PATH ordering
+- **`python.condaPath: ""`** — prevents the IDE from invoking micromamba or conda directly, keeping all environment management through Pyve
+
+**`.gitignore` behavior:** `.vscode/settings.json` is automatically added to `.gitignore` (it is machine-specific). `.vscode/extensions.json` is not ignored — it is conventionally committed.
+
+**Re-initialization:** The file is not overwritten on `pyve --init --update`. It is regenerated on `pyve --init --force`.
+
 ## Troubleshooting
 
 ### venv: Package Won't Install

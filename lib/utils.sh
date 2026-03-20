@@ -313,7 +313,7 @@ GITIGNORE_EOF
         # are stripped from the user-entries pass on subsequent inits.
         local -a dynamic_patterns=(
             ".envrc" ".env" ".pyve/testenv" ".pyve/envs"
-            "${DEFAULT_VENV_DIR:-.venv}"
+            "${DEFAULT_VENV_DIR:-.venv}" ".vscode/settings.json"
         )
         template_lines+=("${dynamic_patterns[@]}")
 
@@ -463,6 +463,39 @@ validate_python_version() {
     fi
     
     return 0
+}
+
+#============================================================
+# VS Code Settings
+#============================================================
+
+# Generate .vscode/settings.json for micromamba environments.
+#
+# Points the IDE at the correct interpreter and prevents it from attempting
+# to manage the environment independently (which conflicts with direnv/Pyve).
+#
+# Skips if the file already exists, unless PYVE_REINIT_MODE=force.
+# Usage: write_vscode_settings <env_name>
+write_vscode_settings() {
+    local env_name="$1"
+    local vscode_dir=".vscode"
+    local settings_file="$vscode_dir/settings.json"
+    local interpreter_path=".pyve/envs/${env_name}/bin/python"
+
+    if [[ -f "$settings_file" ]] && [[ "${PYVE_REINIT_MODE:-}" != "force" ]]; then
+        log_info "Skipping .vscode/settings.json (already exists; use --force to overwrite)"
+        return 0
+    fi
+
+    mkdir -p "$vscode_dir"
+    cat > "$settings_file" << EOF
+{
+  "python.defaultInterpreterPath": "${interpreter_path}",
+  "python.terminal.activateEnvironment": false,
+  "python.condaPath": ""
+}
+EOF
+    log_success "Created .vscode/settings.json (interpreter: ${interpreter_path})"
 }
 
 #============================================================

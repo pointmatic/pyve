@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.7.1"
+VERSION="1.7.2"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -665,9 +665,10 @@ init() {
         insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
         insert_pattern_in_gitignore_section ".envrc" "$section"
         insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
-        
+        insert_pattern_in_gitignore_section ".vscode/settings.json" "$section"
+
         log_success "Updated .gitignore"
-        
+
         # Create .pyve/config with version tracking
         mkdir -p .pyve
         cat > .pyve/config << EOF
@@ -677,6 +678,9 @@ micromamba:
   env_name: $env_name
 EOF
         log_success "Created .pyve/config"
+
+        # Generate .vscode/settings.json so IDEs use the correct interpreter
+        write_vscode_settings "$env_name"
         
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-03-20
+
+### Added
+- `pyve --init` with micromamba backend now generates `.vscode/settings.json` with the correct interpreter path and IDE isolation settings
+- `.vscode/settings.json` is automatically added to `.gitignore` (machine-specific); `.vscode/extensions.json` is not affected
+- File is skipped if it already exists (use `--force` to regenerate); re-generated on `pyve --init --force`
+
 ## [1.7.1] - 2026-03-20
 
 ### Added
