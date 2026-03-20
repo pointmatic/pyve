@@ -466,6 +466,110 @@ validate_python_version() {
 }
 
 #============================================================
+# Doctor: Environment Integrity Checks
+#============================================================
+
+# Scan site-packages for packages that have more than one .dist-info directory.
+# This indicates cloud sync corruption or overlapping installs.
+# Usage: doctor_check_duplicate_dist_info <env_path>
+doctor_check_duplicate_dist_info() {
+    local env_path="$1"
+
+    local site_packages
+    site_packages=$(find "$env_path/lib" -maxdepth 2 -type d -name "site-packages" 2>/dev/null | head -1)
+
+    if [[ -z "$site_packages" ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Collect all .dist-info dir basenames
+    local -a all_dirs=()
+    while IFS= read -r d; do
+        all_dirs+=("$(basename "$d")")
+    done < <(find "$site_packages" -maxdepth 1 -type d -name "*.dist-info" 2>/dev/null | sort)
+
+    if [[ ${#all_dirs[@]} -eq 0 ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Extract normalized package names (strip -<version>.dist-info)
+    local -a pkg_names=()
+    for d in "${all_dirs[@]}"; do
+        local pkg_name
+        pkg_name=$(printf '%s' "${d%.dist-info}" | sed 's/-[0-9].*//')
+        pkg_names+=("$pkg_name")
+    done
+
+    # Find which package names appear more than once
+    local dup_pkgs
+    dup_pkgs=$(printf '%s\n' "${pkg_names[@]}" | sort | uniq -d)
+
+    if [[ -z "$dup_pkgs" ]]; then
+        printf "✓ No duplicate dist-info directories\n"
+        return 0
+    fi
+
+    # Report each duplicated package with its conflicting dirs and mtimes
+    while IFS= read -r pkg; do
+        [[ -z "$pkg" ]] && continue
+        printf "✗ Duplicate dist-info detected: %s\n" "$pkg"
+        for d in "${all_dirs[@]}"; do
+            local dpkg
+            dpkg=$(printf '%s' "${d%.dist-info}" | sed 's/-[0-9].*//')
+            if [[ "$dpkg" == "$pkg" ]]; then
+                local full_path="$site_packages/$d"
+                local mtime
+                if [[ "$(uname)" == "Darwin" ]]; then
+                    mtime=$(stat -f "%Sm" -t "%b %d %H:%M" "$full_path" 2>/dev/null || echo "?")
+                else
+                    mtime=$(stat -c "%y" "$full_path" 2>/dev/null | cut -d'.' -f1 || echo "?")
+                fi
+                printf "    %s (%s)\n" "$d" "$mtime"
+            fi
+        done
+    done <<< "$dup_pkgs"
+    printf "  Run 'pyve --init --force' to rebuild the environment cleanly.\n"
+}
+
+# Scan the environment tree for files/directories with a " 2" suffix — the
+# collision naming used by iCloud Drive when two processes create the same
+# path simultaneously.
+# Usage: doctor_check_collision_artifacts <env_path>
+doctor_check_collision_artifacts() {
+    local env_path="$1"
+
+    if [[ ! -d "$env_path" ]]; then
+        return 0
+    fi
+
+    local -a artifacts=()
+    while IFS= read -r artifact; do
+        artifacts+=("$artifact")
+    done < <(find "$env_path" -name "* 2" 2>/dev/null | sort | head -20)
+
+    if [[ ${#artifacts[@]} -eq 0 ]]; then
+        printf "✓ No cloud sync collision artifacts\n"
+        return 0
+    fi
+
+    printf "✗ Cloud sync collision artifacts detected (%d found):\n" "${#artifacts[@]}"
+    local shown=0
+    for artifact in "${artifacts[@]}"; do
+        if [[ $shown -lt 5 ]]; then
+            printf "    %s\n" "$artifact"
+        fi
+        (( shown++ )) || true
+    done
+    if [[ ${#artifacts[@]} -gt 5 ]]; then
+        printf "    ... and %d more\n" "$(( ${#artifacts[@]} - 5 ))"
+    fi
+    printf "  Caused by cloud sync running concurrently with environment extraction.\n"
+    printf "  Rebuild outside a cloud-synced directory: pyve --init --force\n"
+}
+
+#============================================================
 # VS Code Settings
 #============================================================
 

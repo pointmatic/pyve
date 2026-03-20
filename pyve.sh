@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.7.2"
+VERSION="1.7.3"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1803,7 +1803,11 @@ doctor_command() {
             pkg_count=$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
             printf "  Packages: %s installed\n" "$pkg_count"
         fi
-        
+
+        # Check for duplicate dist-info and cloud sync collision artifacts
+        doctor_check_duplicate_dist_info "$env_path"
+        doctor_check_collision_artifacts "$env_path"
+
     elif [[ "$backend" == "venv" ]]; then
         # Check venv directory
         if [[ -d "$env_path" ]]; then

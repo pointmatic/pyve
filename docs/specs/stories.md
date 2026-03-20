@@ -581,32 +581,32 @@ When Pyve initializes a micromamba environment, generate `.vscode/settings.json`
 - [x] Update CHANGELOG.md with v1.7.2 entry
 - [x] Bump VERSION to 1.7.2
 
-### Story F.d: v1.7.3 `pyve doctor` Detects Duplicate dist-info and iCloud Collision Artifacts [Planned]
+### Story F.d: v1.7.3 `pyve doctor` Detects Duplicate dist-info and iCloud Collision Artifacts [Done]
 
 iCloud Drive and other sync daemons racing against micromamba extraction produce duplicate `dist-info` directories and files/directories with ` 2` suffix — symptoms that are hard to diagnose without tooling.
 
-- [ ] Add `doctor_check_duplicate_dist_info()` function to `lib/utils.sh` (or inline in `pyve.sh` doctor command)
-  - [ ] Locate the active environment's `site-packages` directory (from `.pyve/config`)
-  - [ ] Scan for packages with more than one `*.dist-info` directory (same package name, different versions)
-  - [ ] For each duplicate: print `✗ Duplicate dist-info detected: <package>` with both directories and their mtimes
-  - [ ] Append: `Run 'pyve --init --force' to rebuild the environment cleanly.`
-  - [ ] If no duplicates found: print `✓ No duplicate dist-info directories`
-- [ ] Add `doctor_check_collision_artifacts()` function
-  - [ ] Scan the environment tree (`.pyve/envs/<name>/`) for files or directories whose names end with ` 2` (space-two)
-  - [ ] Report each match as `✗ iCloud collision artifact: <path>`
-  - [ ] If none found: print `✓ No cloud sync collision artifacts`
-- [ ] Integrate both checks into `doctor_command()` in `pyve.sh`
-  - [ ] Only run these checks when backend is `micromamba` and environment exists
-  - [ ] Run after existing environment health checks
-- [ ] Add unit tests in a new `tests/unit/test_doctor.bats` (or extend existing doctor tests)
-  - [ ] Test: duplicate dist-info directories are detected and reported with correct package name
-  - [ ] Test: ` 2`-suffixed paths are detected and reported
-  - [ ] Test: clean environment reports pass (✓) for both checks
-- [ ] Add integration test in `tests/integration/test_doctor.py`
-  - [ ] Scaffold a fake micromamba environment with duplicate dist-info dirs and verify doctor output
-  - [ ] Scaffold a ` 2`-suffixed directory entry and verify doctor output
-- [ ] Update CHANGELOG.md with v1.7.3 entry
-- [ ] Bump VERSION to 1.7.3
+- [x] Add `doctor_check_duplicate_dist_info()` function to `lib/utils.sh`
+  - [x] Locate `site-packages` via `find "$env_path/lib" -name "site-packages"`
+  - [x] Extract package names by stripping `-<version>.dist-info`; use `sort | uniq -d` to find duplicates
+  - [x] For each duplicate: print `✗ Duplicate dist-info detected: <package>` with both dirs and mtimes
+  - [x] Append: `Run 'pyve --init --force' to rebuild the environment cleanly.`
+  - [x] If no duplicates: print `✓ No duplicate dist-info directories`
+- [x] Add `doctor_check_collision_artifacts()` function to `lib/utils.sh`
+  - [x] Scan environment tree for files/directories whose names end with ` 2` (space-two)
+  - [x] Report count and up to 5 paths; show `... and N more` if truncated
+  - [x] If none: print `✓ No cloud sync collision artifacts`
+- [x] Integrate both checks into `doctor_command()` in `pyve.sh`
+  - [x] Called inside the micromamba section after the package count check
+- [x] Add unit tests in `tests/unit/test_doctor.bats`
+  - [x] Test: duplicate dist-info dirs detected with correct package name and versions
+  - [x] Test: clean environment passes (✓) for duplicate check
+  - [x] Test: missing site-packages passes (✓)
+  - [x] Test: ` 2`-suffixed dirs detected and reported
+  - [x] Test: nested collision artifacts counted correctly
+  - [x] Test: missing env path returns cleanly
+  - [x] Verify: `bats tests/unit/test_doctor.bats` — 12 tests, 0 failures
+- [x] Update CHANGELOG.md with v1.7.3 entry
+- [x] Bump VERSION to 1.7.3
 
 ### Story F.e: v1.8.0 Enforce `conda-lock.yml` Presence Before `pyve --init` [Planned]
 

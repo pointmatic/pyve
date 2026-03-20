@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] - 2026-03-20
+
+### Added
+- `pyve doctor` now scans `site-packages` for duplicate `.dist-info` directories and reports conflicting versions with their mtimes
+- `pyve doctor` now scans the environment tree for files/directories with ` 2` suffix — the iCloud Drive collision artifact naming used when two processes create the same path simultaneously
+- Both checks run automatically for micromamba backends; report `✓` when clean or `✗` with actionable remediation steps
+
 ## [1.7.2] - 2026-03-20
 
 ### Added
