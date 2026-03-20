@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.5] - 2026-03-20
+
+### Fixed
+- Fixed double "Initialize with micromamba backend?" prompt during `--init --force` in projects with both `environment.yml` and `pyproject.toml`: the pre-flight backend result is now stored and reused in the main flow, so `get_backend_priority` is only called once
+- Improved `--init --force` interactive UX: the final confirmation prompt now summarises what will be purged and rebuilt (including a `⚠ Backend change` warning when switching backends); cancelling prints "Cancelled — no changes made, existing environment preserved"
+- Stale lock file abort message now reads "Aborted — no changes made" (was "Aborted") to confirm no environment was modified
+- Ambiguous backend venv-choice message now reads "Using venv backend — initialization will continue with venv" for clarity
+
 ## [1.8.4] - 2026-03-20
 
 ### Fixed

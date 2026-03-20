@@ -759,3 +759,31 @@ Correct `--init --force` flow:
   - [x] Test: `get_conda_platform` returns `linux-aarch64` on Linux/aarch64
 - [x] Update CHANGELOG.md with v1.8.4 entry
 - [x] Bump VERSION to 1.8.4
+
+### Story F.k: v1.8.5 Fix Double Backend Prompt and Improve --force UX [Done]
+
+A follow-up to F.j. Discovered that `--init --force` could show the ambiguous backend prompt twice, and that all three interactive gates in the force path gave the user insufficient context to make an informed choice.
+
+**Bug — Double backend prompt in ambiguous projects**
+
+After the F.j pre-flight fix, `get_backend_priority` is called once in the pre-flight block and again in the main flow at line ~596. In projects with both `environment.yml` and `pyproject.toml` (and no config file), the "Initialize with micromamba backend? [Y/n]:" prompt appeared twice. The config file avoids this for existing projects (Priority 2 returns the recorded backend), but after purge the config is gone, so the second call fell through to file detection and re-prompted.
+
+**Fix:** Introduce `preflight_backend` as a function-level variable in `init()`. The force pre-flight stores its result there; the main backend-detection block reuses it when non-empty, skipping the second `get_backend_priority` call entirely.
+
+**UX improvements**
+
+All three interactive prompts in the force path now tell the user what will happen for each choice:
+
+| Prompt | Before | After |
+|--------|--------|-------|
+| Ambiguous backend `[Y/n]` — chose `n` | `"Using venv backend"` | `"Using venv backend — initialization will continue with venv"` |
+| Stale lock file `"Continue anyway?"` — chose `n` | `"Aborted. Please update lock file and try again."` | `"Aborted — no changes made. Update lock file and try again."` |
+| Final confirmation `[y/N]` | `"Continue? [y/N]:"` | Prints `Purge: existing <backend>` / `Rebuild: fresh <backend>` summary (+ `⚠ Backend change` line if switching); `"Cancelled — no changes made, existing environment preserved"` on `n` |
+
+- [x] Introduce `preflight_backend` as a function-level variable in `init()` and reuse it in the main backend-detection block to prevent the double prompt
+- [x] Replace bare `"Continue? [y/N]:"` with a Purge/Rebuild summary and backend-change warning
+- [x] Change cancel message to `"Cancelled — no changes made, existing environment preserved"`
+- [x] Update stale-lock abort message to `"Aborted — no changes made. Update lock file and try again."`
+- [x] Update ambiguous-backend venv-chosen message to `"Using venv backend — initialization will continue with venv"`
+- [x] Update CHANGELOG.md with v1.8.5 entry
+- [x] Bump VERSION to 1.8.5

@@ -113,7 +113,7 @@ get_backend_priority() {
         if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
             echo "micromamba"
         else
-            log_info "Using venv backend" >&2
+            log_info "Using venv backend — initialization will continue with venv" >&2
             echo "venv"
         fi
         return 0
