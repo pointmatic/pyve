@@ -277,10 +277,10 @@ warn_stale_lock_file() {
     
     # Prompt user (auto-accept in CI)
     if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
-        if prompt_yes_no "Continue anyway?"; then
+        if prompt_yes_no "Continue anyway? (existing environment preserved if you say no)"; then
             return 0
         else
-            log_info "Aborted. Please update lock file and try again."
+            log_info "Aborted — no changes made. Update lock file and try again."
             return 1
         fi
     else

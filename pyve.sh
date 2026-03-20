@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.8.4"
+VERSION="1.8.5"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -341,6 +341,7 @@ init() {
     local env_name_flag=""
     local no_direnv=false
     local lock_preflight_done=false
+    local preflight_backend=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -482,7 +483,8 @@ init() {
 
             # Run pre-flight checks BEFORE purging so the environment is still intact
             # if the user decides to abort or a check fails.
-            local preflight_backend
+            # We capture the backend here and reuse it in the main flow to avoid
+            # prompting the user twice in the ambiguous case (env.yml + pyproject.toml).
             preflight_backend="$(get_backend_priority "$backend_flag")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
                 if ! validate_lock_file_status "$strict_mode"; then
@@ -492,12 +494,20 @@ init() {
                 lock_preflight_done=true
             fi
 
-            # Prompt for confirmation (skip in CI or if PYVE_FORCE_YES is set)
+            # Prompt for confirmation (skip in CI or if PYVE_FORCE_YES is set).
+            # Show a summary of what will happen so the user can make an informed choice.
             if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
-                printf "\nContinue? [y/N]: "
+                echo ""
+                if [[ "$preflight_backend" != "$existing_backend" ]]; then
+                    printf "  ⚠ Backend change: %s → %s\n" "$existing_backend" "$preflight_backend"
+                fi
+                printf "  Purge:   existing %s environment\n" "$existing_backend"
+                printf "  Rebuild: fresh %s environment\n" "$preflight_backend"
+                echo ""
+                printf "Proceed? [y/N]: "
                 read -r response
                 if [[ ! "$response" =~ ^[Yy]$ ]]; then
-                    log_info "Re-initialization cancelled"
+                    log_info "Cancelled — no changes made, existing environment preserved"
                     exit 0
                 fi
             fi
@@ -592,8 +602,14 @@ init() {
     fi
     
     # Determine backend to use
+    # If the force pre-flight already resolved the backend (to avoid prompting twice
+    # in the ambiguous env.yml + pyproject.toml case), reuse that result.
     local backend
-    backend="$(get_backend_priority "$backend_flag")"
+    if [[ -n "$preflight_backend" ]]; then
+        backend="$preflight_backend"
+    else
+        backend="$(get_backend_priority "$backend_flag")"
+    fi
     
     # Check if micromamba backend is selected and handle bootstrap
     if [[ "$backend" == "micromamba" ]]; then
