@@ -787,3 +787,26 @@ All three interactive prompts in the force path now tell the user what will happ
 - [x] Update ambiguous-backend venv-chosen message to `"Using venv backend — initialization will continue with venv"`
 - [x] Update CHANGELOG.md with v1.8.5 entry
 - [x] Bump VERSION to 1.8.5
+
+### Story F.l: v1.8.6 Fix --force Pre-Flight Ignoring Project Files When Config Records Old Backend [Done]
+
+The `--force` pre-flight backend detection called `get_backend_priority` without skipping the config file. If the config recorded an old backend (e.g., `venv` after the user declined micromamba during a previous init), Priority 2 in `get_backend_priority` returned that old backend immediately — never reaching the file-based detection that would have found `environment.yml`. The result: `--init --force` on a project with `environment.yml` + `pyproject.toml` silently re-initialized as venv, ignoring the conda files.
+
+**Root cause:** `get_backend_priority` Priority 2 reads `.pyve/config`. This is correct for normal `--init` (preserve the recorded backend), but wrong for `--force` (clean slate — the config is about to be wiped).
+
+**Fix:** Add a `skip_config` parameter (default `false`) to `get_backend_priority`. The force pre-flight passes `skip_config=true`, which bypasses Priority 2 and falls through to file detection. All other callers are unaffected. With `skip_config=true` the priority chain becomes: CLI flag → project files → interactive prompt (if ambiguous) → default venv.
+
+**Side effect fixed:** With the old config skipped, the pre-flight now correctly detects the ambiguous case (both `environment.yml` + `pyproject.toml`), prompts once, and stores the answer in `preflight_backend` for reuse in the main flow. The confirmation summary also correctly shows `⚠ Backend change: venv → micromamba` when switching.
+
+- [x] Add `skip_config` parameter to `get_backend_priority` in `lib/backend_detect.sh`
+- [x] Pass `skip_config=true` from the `--force` pre-flight call in `pyve.sh`
+- [x] Update CHANGELOG.md with v1.8.6 entry
+- [x] Bump VERSION to 1.8.6
+- [x] Fix broken integration test `test_force_reinit_prompts_and_respects_venv_choice_in_ambiguous_case` in `tests/integration/test_force_backend_detection.py`
+  - Before F.k/F.l fixes the prompt order was: confirmation → backend; after fixes it is: backend → confirmation
+  - Change `input="y\nn\n"` to `input="n\ny\n"` (backend prompt first: `n` = choose venv; then confirmation: `y` = proceed)
+  - Add assertion that `"Initialize with micromamba backend?"` appeared in stdout/stderr
+  - Update comment block to reflect correct prompt order
+- [x] Add regression test `test_force_reinit_ignores_stale_config_backend` in `tests/integration/test_force_backend_detection.py`
+  - Scenario: project has both `environment.yml` + `pyproject.toml`; initial `--init --backend venv` writes `backend: venv` to config; `--init --force` (interactive, `input="y\ny\n"`) must skip the stale config and show the backend detection prompt
+  - Assert `"Initialize with micromamba backend?"` appears in output — if `skip_config` were not working, Priority 2 would return `venv` immediately and the prompt would never appear

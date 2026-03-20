@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.8.5"
+VERSION="1.8.6"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -485,7 +485,9 @@ init() {
             # if the user decides to abort or a check fails.
             # We capture the backend here and reuse it in the main flow to avoid
             # prompting the user twice in the ambiguous case (env.yml + pyproject.toml).
-            preflight_backend="$(get_backend_priority "$backend_flag")"
+            # skip_config=true: --force is a clean slate — the config records the OLD
+            # backend and must not prevent re-detection from project files.
+            preflight_backend="$(get_backend_priority "$backend_flag" "true")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
                 if ! validate_lock_file_status "$strict_mode"; then
                     log_error "Pre-flight check failed — no changes made"

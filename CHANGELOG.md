@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.6] - 2026-03-20
+
+### Fixed
+- Fixed `--init --force` ignoring `environment.yml` when `.pyve/config` recorded an old backend: the force pre-flight now passes `skip_config=true` to `get_backend_priority`, bypassing the stale config and re-detecting the backend purely from CLI flag and project files. Projects with both `environment.yml` and `pyproject.toml` now correctly show the ambiguous backend prompt on force re-init regardless of what the old config said.
+
+### Tests
+- Fixed `test_force_reinit_prompts_and_respects_venv_choice_in_ambiguous_case`: corrected prompt order from `input="y\nn\n"` to `input="n\ny\n"` (after F.k/F.l fixes the backend prompt precedes the confirmation prompt) and added assertion that `"Initialize with micromamba backend?"` appeared in output
+- Added `test_force_reinit_ignores_stale_config_backend`: regression test for F.l — verifies that `--force` pre-flight skips `.pyve/config` and re-runs file detection; asserts the ambiguous backend prompt appears, which proves `skip_config=true` is working (if it were not, Priority 2 would return `venv` silently and the prompt would never show)
+
 ## [1.8.5] - 2026-03-20
 
 ### Fixed
