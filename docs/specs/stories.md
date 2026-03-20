@@ -666,3 +666,52 @@ Root cause: the test helper's `run()` method sets sensible defaults for the test
   - [x] Unit tests in `test_lock_validation.bats` are unaffected — they invoke `pyve.sh` directly without `PyveRunner`
 - [x] Update CHANGELOG.md with v1.8.2 entry
 - [x] Bump VERSION to 1.8.2
+
+### Story F.h: v1.8.3 Update GitHub Actions to Node.js 24 Compatible Versions [Done]
+
+GitHub Actions deprecated Node.js 20 runners; actions still on Node 20 will be forced to Node 24 by default from June 2, 2026. Four actions in the CI workflows were affected.
+
+- [x] Update `.github/workflows/test.yml`
+  - [x] `actions/checkout@v4` → `@v6` (Node 24, 5 occurrences)
+  - [x] `actions/setup-python@v5` → `@v6` (Node 24, 3 occurrences)
+  - [x] `codecov/codecov-action@v4` → `@v5` (composite/shell action — no Node runtime, 3 occurrences)
+  - [x] `mamba-org/setup-micromamba@v1` → `@v2` (latest release; still Node 20 upstream — warning will persist until mamba-org ships a Node 24 version)
+- [x] Update `.github/workflows/deploy-docs.yml`
+  - [x] `actions/checkout@v4` → `@v6`
+  - [x] `actions/setup-python@v5` → `@v6`
+- [x] Update CHANGELOG.md with v1.8.3 entry
+- [x] Bump VERSION to 1.8.3
+
+### Story F.i: Documentation Audit — Sync Site Docs with Phase F Implementation [Done]
+
+Gap analysis of `docs/specs/features.md`, `docs/specs/tech-spec.md`, and `docs/site/` against the Phase F implementation (F.a–F.h). Several user-facing pages contained stale content, an outright error in `.gitignore` documentation, and missing Phase F features.
+
+**`docs/specs/features.md`** (F.a–F.f gaps):
+- [x] Optional inputs table: added `--no-lock` and `--allow-synced-dir` rows
+- [x] Environment Variables table: added `PYVE_NO_LOCK` and `PYVE_ALLOW_SYNCED_DIR` rows
+- [x] FR-5 (`pyve doctor`): added three new micromamba diagnostic checks (duplicate dist-info, cloud sync collision artifacts ` 2`, conda/pip native library conflicts)
+
+**`docs/specs/tech-spec.md`** (F.a–F.f gaps):
+- [x] `lib/utils.sh` function table: added 5 new functions (`check_cloud_sync_path`, `write_vscode_settings`, `doctor_check_duplicate_dist_info`, `doctor_check_collision_artifacts`, `doctor_check_native_lib_conflicts`)
+- [x] `.gitignore` template structure: added `.vscode/settings.json` to dynamic entries list
+- [x] CLI Modifier Flags table: added `--no-lock` and `--allow-synced-dir` rows
+- [x] Unit test table: added `test_doctor.bats`; removed stale hardcoded count from `test_utils.bats`
+- [x] Integration test table: added `test_force_ambiguous_prompt.py`, `test_force_backend_detection.py`, `test_pip_upgrade.py`
+- [x] CI Pipeline table: "Coverage Report" → "Bash Coverage (kcov)" with accurate description
+
+**`docs/site/usage.md`** (critical error + gaps):
+- [x] **Bug fix:** Removed `conda-lock.yml` from the `.gitignore` template listing — it was incorrectly shown as a Pyve-managed ignored pattern; it must be committed (per F.a)
+- [x] Added `--no-lock` to `--init` options section and examples
+- [x] Added `PYVE_NO_LOCK` and `PYVE_ALLOW_SYNCED_DIR` to Environment Variables table
+- [x] Updated `pyve doctor` output description with three new micromamba checks
+
+**`docs/site/backends.md`** (gaps):
+- [x] "Mixed Dependencies" workflow: added `environment.yml` + `conda-lock.yml` generation steps before `pyve --init` (the workflow would hard-fail without them per F.e)
+- [x] Best Practices "Lock Your Dependencies": added note that missing lock is a hard error and `--no-lock` is the escape hatch
+- [x] Added Troubleshooting entries: cloud-synced directory and missing `conda-lock.yml`
+
+**`docs/site/getting-started.md`** (gaps):
+- [x] Micromamba backend workflow: added `environment.yml` creation + `conda-lock.yml` generation before `pyve --init`
+- [x] Added cloud-synced directory Troubleshooting entry
+
+**`docs/site/index.html`**: No changes — omissions are acceptable at the marketing landing page level.

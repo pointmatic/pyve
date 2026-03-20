@@ -75,6 +75,8 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `--auto-bootstrap` | Auto-install micromamba without prompting | `--init --auto-bootstrap` |
 | `--bootstrap-to <loc>` | Bootstrap location (`project` or `user`) | `--bootstrap-to project` |
 | `--strict` | Enforce lock file validation | `--init --strict` |
+| `--no-lock` | Bypass missing `conda-lock.yml` hard error (not recommended) | `--init --no-lock` |
+| `--allow-synced-dir` | Bypass cloud-synced directory check | `--init --allow-synced-dir` |
 | `--keep-testenv` | Preserve dev/test runner environment during purge | `--purge --keep-testenv` |
 
 ### Project Files (Auto-Detection)
@@ -190,6 +192,9 @@ Display environment health and configuration status.
 - Report micromamba binary location and version (if applicable).
 - Report lock file status (up to date, stale, missing).
 - Report direnv and `.env` status.
+- **Micromamba only:** Scan `site-packages` for duplicate `.dist-info` directories and report conflicting versions with their mtimes.
+- **Micromamba only:** Scan environment tree for files/directories with ` 2` suffix (iCloud Drive collision artifacts).
+- **Micromamba only:** Detect potential conda/pip native library conflicts — when pip-bundled packages (torch, tensorflow, jax) coexist with conda-linked packages (numpy, scipy, scikit-learn) and the required shared OpenMP library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is absent.
 - Use status indicators: ✓ (success), ⚠ (warning), ✗ (error).
 
 ### FR-6: Installation Validation (`pyve --validate`)
@@ -288,6 +293,8 @@ On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent Tensor
 | `PYVE_AUTO_INSTALL_DEPS` | Set to `1` to auto-install pip dependencies without prompting |
 | `PYVE_NO_INSTALL_DEPS` | Set to `1` to skip pip dependency installation prompt |
 | `PYVE_FORCE_YES` | Set to `1` to auto-default to micromamba in ambiguous backend cases |
+| `PYVE_NO_LOCK` | Set to `1` to bypass missing `conda-lock.yml` hard error (same as `--no-lock`) |
+| `PYVE_ALLOW_SYNCED_DIR` | Set to `1` to bypass cloud-synced directory check (same as `--allow-synced-dir`) |
 | `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)

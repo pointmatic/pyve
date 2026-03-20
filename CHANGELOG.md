@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.3] - 2026-03-20
+
+### Changed
+- Updated GitHub Actions to Node.js 24 compatible versions: `actions/checkout@v4` → `@v6`, `actions/setup-python@v5` → `@v6`, `codecov/codecov-action@v4` → `@v5`, `mamba-org/setup-micromamba@v1` → `@v2` (latest; Node 24 migration pending upstream)
+
 ## [1.8.2] - 2026-03-20
 
 ### Fixed
