@@ -392,11 +392,11 @@ Enhance user experience when both `environment.yml` and `pyproject.toml` exist b
 - [x] Document new flags: `--auto-install-deps`, `--no-install-deps`
 
 **Verification:**
-- [ ] Manual test: Create project with both `environment.yml` and `pyproject.toml`
-- [ ] Run `pyve --init` and verify prompts appear
-- [ ] Test all prompt responses (y, n, Enter)
-- [ ] Verify dependencies install correctly when accepted
-- [ ] Test in CI mode (no prompts, uses defaults)
+- [x] Manual test: Create project with both `environment.yml` and `pyproject.toml`
+- [x] Run `pyve --init` and verify prompts appear
+- [x] Test all prompt responses (y, n, Enter)
+- [x] Verify dependencies install correctly when accepted
+- [x] Test in CI mode (no prompts, uses defaults)
 - [x] Verify: `pytest tests/integration/ -v` — all tests pass
 - [x] Verify: `bats tests/unit/ -v` — all tests pass
 
