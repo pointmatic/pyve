@@ -18,7 +18,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Install Bats
         run: |
@@ -53,10 +53,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       
@@ -103,7 +103,7 @@ jobs:
           pytest tests/integration/ -v -m "venv and not requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
           flags: integration-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -132,10 +132,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       
@@ -145,7 +145,7 @@ jobs:
           pip install pytest pytest-cov pytest-xdist
       
       - name: Install micromamba
-        uses: mamba-org/setup-micromamba@v1
+        uses: mamba-org/setup-micromamba@v2
         with:
           micromamba-version: 'latest'
           environment-name: test-env
@@ -157,7 +157,7 @@ jobs:
           pytest tests/integration/ -v -m "micromamba or requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.xml
           flags: micromamba-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -171,10 +171,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Set up Python 3.11
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       
@@ -229,7 +229,7 @@ jobs:
           pytest tests/integration/ -v -m "venv and not requires_micromamba"
       
       - name: Upload Bash coverage to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage-kcov/bats/cobertura.xml,./coverage-kcov/kcov-merged/cobertura.xml
           flags: bash
@@ -251,7 +251,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
       
       - name: Check shell scripts with shellcheck
         run: |

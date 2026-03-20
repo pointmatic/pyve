@@ -666,3 +666,18 @@ Root cause: the test helper's `run()` method sets sensible defaults for the test
   - [x] Unit tests in `test_lock_validation.bats` are unaffected — they invoke `pyve.sh` directly without `PyveRunner`
 - [x] Update CHANGELOG.md with v1.8.2 entry
 - [x] Bump VERSION to 1.8.2
+
+### Story F.h: v1.8.3 Update GitHub Actions to Node.js 24 Compatible Versions [Done]
+
+GitHub Actions deprecated Node.js 20 runners; actions still on Node 20 will be forced to Node 24 by default from June 2, 2026. Four actions in the CI workflows were affected.
+
+- [x] Update `.github/workflows/test.yml`
+  - [x] `actions/checkout@v4` → `@v6` (Node 24, 5 occurrences)
+  - [x] `actions/setup-python@v5` → `@v6` (Node 24, 3 occurrences)
+  - [x] `codecov/codecov-action@v4` → `@v5` (composite/shell action — no Node runtime, 3 occurrences)
+  - [x] `mamba-org/setup-micromamba@v1` → `@v2` (latest release; still Node 20 upstream — warning will persist until mamba-org ships a Node 24 version)
+- [x] Update `.github/workflows/deploy-docs.yml`
+  - [x] `actions/checkout@v4` → `@v6`
+  - [x] `actions/setup-python@v5` → `@v6`
+- [x] Update CHANGELOG.md with v1.8.3 entry
+- [x] Bump VERSION to 1.8.3
