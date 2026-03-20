@@ -60,18 +60,21 @@ detect_backend_from_files() {
 # Get backend priority based on CLI flag, config file, and file detection
 # Arguments:
 #   $1 - CLI backend flag value (venv, micromamba, auto, or empty)
+#   $2 - skip_config: pass "true" to skip Priority 2 (config file).
+#        Used by --force pre-flight so a stale config cannot override file detection.
 # Returns: "venv" or "micromamba"
 get_backend_priority() {
     local cli_backend="${1:-}"
-    
+    local skip_config="${2:-false}"
+
     # Priority 1: CLI flag (if not "auto")
     if [[ -n "$cli_backend" ]] && [[ "$cli_backend" != "auto" ]]; then
         echo "$cli_backend"
         return 0
     fi
-    
-    # Priority 2: .pyve/config file
-    if config_file_exists; then
+
+    # Priority 2: .pyve/config file (skipped when --force discards it)
+    if [[ "$skip_config" != "true" ]] && config_file_exists; then
         local config_backend
         config_backend="$(read_config_value "backend")"
         if [[ -n "$config_backend" ]]; then
