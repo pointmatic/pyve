@@ -33,7 +33,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 
 1. **Self-healing .gitignore** — Maintain a Pyve-managed template section at the top of `.gitignore` with Python build/test artifacts and environment entries. Preserve user entries below the template. Rebuild the template on each init to restore accidentally deleted entries.
 2. **Idempotent .gitignore** — Running init multiple times produces identical `.gitignore` content (no duplicate entries, no accumulated blank lines).
-3. **Lock file validation** — For micromamba environments, detect stale or missing `conda-lock.yml` files and warn (or error in `--strict` mode).
+3. **Lock file validation** — For micromamba environments, a missing `conda-lock.yml` is a hard error (use `--no-lock` to bypass). A stale `conda-lock.yml` warns interactively (or errors in `--strict` mode).
 4. **Secure file permissions** — `.env` files are created with `chmod 600` (owner read/write only).
 
 ### Usability Requirements

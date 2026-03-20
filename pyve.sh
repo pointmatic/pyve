@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.7.3"
+VERSION="1.8.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -121,7 +121,7 @@ pyve - Python Virtual Environment Manager
 
 USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
-                [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
+                [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
                 [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
                 [--update | --force] [--allow-synced-dir]
     pyve run <command> [args...]
@@ -143,6 +143,7 @@ COMMANDS:
                         Optional: --auto-bootstrap to install micromamba without prompting
                         Optional: --bootstrap-to <location> where to install (project, user)
                         Optional: --strict to error on stale/missing lock files
+                        Optional: --no-lock to bypass missing conda-lock.yml error (not recommended)
                         Optional: --env-name <name> to specify environment name (micromamba)
                         Optional: --no-direnv to skip .envrc creation
                         Optional: --auto-install-deps to auto-install from pyproject.toml/requirements.txt
@@ -382,6 +383,10 @@ init() {
                 ;;
             --strict)
                 strict_mode=true
+                shift
+                ;;
+            --no-lock)
+                export PYVE_NO_LOCK=1
                 shift
                 ;;
             --env-name)

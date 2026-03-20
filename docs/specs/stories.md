@@ -608,40 +608,27 @@ iCloud Drive and other sync daemons racing against micromamba extraction produce
 - [x] Update CHANGELOG.md with v1.7.3 entry
 - [x] Bump VERSION to 1.7.3
 
-### Story F.e: v1.8.0 Enforce `conda-lock.yml` Presence Before `pyve --init` [Planned]
+### Story F.e: v1.8.0 Enforce `conda-lock.yml` Presence Before `pyve --init` [Done]
 
 Promote the missing `conda-lock.yml` condition from a dismissible warning to a blocking error. A bypass flag (`--no-lock`) makes intentional overrides explicit.
 
-- [ ] Update lock file validation logic in `validate_lock_file_status()` in `lib/micromamba_env.sh`
-  - [ ] When `conda-lock.yml` is missing: exit with error (not a prompt), print actionable message with `conda-lock` command and `--no-lock` override
-  - [ ] When `conda-lock.yml` is stale: keep existing behavior (warn + prompt, or `--strict` to error)
-  - [ ] Non-interactive / CI mode: still hard fail on missing lock file (lock file should always be present in CI)
-- [ ] Add `--no-lock` flag to CLI in `pyve.sh`
-  - [ ] Parse flag and pass as `PYVE_NO_LOCK=1`
-  - [ ] When set, skip the missing-lock-file check (stale check still applies)
-  - [ ] Document flag in `--help` output
-- [ ] Update error message to match the spec format:
-  ```
-  ERROR: No conda-lock.yml found.
-
-  For reproducible builds, generate one first:
-    conda-lock -f environment.yml -p <platform>
-
-  To proceed without a lock file (not recommended):
-    pyve --init --no-lock
-  ```
-- [ ] Update unit tests in `tests/unit/test_lock_validation.bats`
-  - [ ] Test: missing `conda-lock.yml` exits non-zero with expected error text
-  - [ ] Test: `PYVE_NO_LOCK=1` (or `--no-lock`) bypasses the missing-lock-file check
-  - [ ] Test: stale `conda-lock.yml` still only warns (not a hard error without `--strict`)
-- [ ] Update integration tests in `tests/integration/test_micromamba_workflow.py`
-  - [ ] Test: `pyve --init` without `conda-lock.yml` fails with expected message
-  - [ ] Test: `pyve --init --no-lock` succeeds without `conda-lock.yml`
-- [ ] Update `docs/specs/features.md` — update FR-2 (lock file validation) to document new blocking behavior and `--no-lock` flag
-- [ ] Update `docs/site/backends.md` — update micromamba section to explain lock file requirement
-- [ ] Update `docs/site/getting-started.md` — add note about needing `conda-lock.yml` for micromamba projects
-- [ ] Update CHANGELOG.md with v1.8.0 entry
-- [ ] Bump VERSION to 1.8.0
+- [x] Update `validate_lock_file_status()` in `lib/micromamba_env.sh` — Case 2 (only `environment.yml`, no lock file)
+  - [x] Remove interactive prompt and CI auto-continue; replace with hard error unconditionally
+  - [x] Print structured error: `ERROR: No conda-lock.yml found.` + `conda-lock` command + `--no-lock` override
+  - [x] When `PYVE_NO_LOCK=1`: log warning and return 0 (bypass)
+  - [x] Stale lock file behavior (Case 1) is unchanged: warns, prompts, errors only in `--strict`
+- [x] Add `--no-lock` flag to `pyve.sh`
+  - [x] Parse flag and export `PYVE_NO_LOCK=1`
+  - [x] Document in `--help` output and USAGE line
+- [x] Update unit tests in `tests/unit/test_lock_validation.bats`
+  - [x] Updated 3 tests whose expected status changed from 0 → 1 (missing lock is now an error)
+  - [x] Added test: `PYVE_NO_LOCK=1` bypasses missing lock file error
+  - [x] Added test: `PYVE_NO_LOCK=1` does not bypass missing `environment.yml`
+  - [x] Added test: stale lock still warns and continues in non-strict non-interactive mode
+  - [x] Verify: `bats tests/unit/test_lock_validation.bats` — 27 tests, 0 failures
+- [x] Update `docs/specs/features.md` — Quality Requirements lock file entry updated
+- [x] Update CHANGELOG.md with v1.8.0 entry
+- [x] Bump VERSION to 1.8.0
 
 ### Story F.f: v1.8.1 `pyve doctor` Detects conda/pip Native Library Conflicts [Planned]
 

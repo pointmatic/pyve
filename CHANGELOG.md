@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-03-20
+
+### Changed
+- **Breaking:** `pyve --init` (micromamba backend) now hard fails when `conda-lock.yml` is missing, instead of prompting interactively or auto-continuing in CI. A missing lock file produces a non-reproducible environment — this should be an error, not a suggestion.
+- New `--no-lock` flag (and `PYVE_NO_LOCK=1` env var) explicitly bypasses the check for first-time setup before a lock file has been generated
+- Stale lock file behavior is unchanged: warns and prompts interactively, errors in `--strict` mode
+
 ## [1.7.3] - 2026-03-20
 
 ### Added
