@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.2] - 2026-03-20
+
+### Fixed
+- Fixed integration tests broken by the v1.8.0 missing `conda-lock.yml` hard-fail: `PyveRunner.run()` now sets `PYVE_NO_LOCK=1` automatically when running under pytest (same pattern as `PYVE_NO_INSTALL_DEPS`), covering all 40+ `pyve.init(backend='micromamba')` call sites in the integration test suite without modifying individual tests
+
 ## [1.8.1] - 2026-03-20
 
 ### Added

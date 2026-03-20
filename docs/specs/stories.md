@@ -653,3 +653,16 @@ Mixed conda-forge and pip installs can produce silent runtime failures when pip-
   - [x] Verify: `bats tests/unit/test_doctor.bats` — 17 tests, 0 failures
 - [x] Update CHANGELOG.md with v1.8.1 entry
 - [x] Bump VERSION to 1.8.1
+
+### Story F.g: v1.8.2 Fix Integration Tests Broken by v1.8.0 Hard-Fail Lock Check [Done]
+
+Story F.e promoted a missing `conda-lock.yml` from a dismissible warning to a blocking error. Integration tests create ephemeral micromamba environments without a lock file (they test other features — doctor, auto-detection, cross-platform, run, pip upgrade), so all such tests began failing with `ERROR: No conda-lock.yml found.`
+
+Root cause: the test helper's `run()` method sets sensible defaults for the test environment (`PYVE_NO_INSTALL_DEPS=1`, etc.) but was not setting `PYVE_NO_LOCK=1`. The lock-file hard-fail is already covered by `tests/unit/test_lock_validation.bats`; integration tests should not re-test it implicitly.
+
+- [x] Add `env.setdefault("PYVE_NO_LOCK", "1")` to `PyveRunner.run()` in `tests/helpers/pyve_test_helpers.py`, inside the `PYTEST_CURRENT_TEST` guard, alongside `PYVE_NO_INSTALL_DEPS`
+  - [x] Applies automatically to all `pyve.init(backend='micromamba')` calls across all integration test files (40+ call sites) without modifying each test
+  - [x] `init_micromamba()` in `ProjectBuilder` is covered by the same path (creates its own `PyveRunner`, calls `runner.run()` which checks `PYTEST_CURRENT_TEST`)
+  - [x] Unit tests in `test_lock_validation.bats` are unaffected — they invoke `pyve.sh` directly without `PyveRunner`
+- [x] Update CHANGELOG.md with v1.8.2 entry
+- [x] Bump VERSION to 1.8.2

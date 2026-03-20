@@ -169,6 +169,10 @@ class PyveRunner:
                 # Skip dependency installation prompts by default in tests
                 # (tests can override by setting PYVE_NO_INSTALL_DEPS=0)
                 env.setdefault("PYVE_NO_INSTALL_DEPS", "1")
+                # Integration tests don't generate conda-lock.yml; bypass the
+                # hard-fail introduced in v1.8.0. Lock file validation is
+                # covered by tests/unit/test_lock_validation.bats.
+                env.setdefault("PYVE_NO_LOCK", "1")
                 # In CI, tests must be non-interactive.
                 if env.get("CI") == "true":
                     env.setdefault("PYVE_FORCE_YES", "1")
