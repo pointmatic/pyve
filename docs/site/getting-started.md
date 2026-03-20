@@ -206,12 +206,29 @@ python --version
 For projects with conda dependencies:
 
 ```bash
-# Initialize with micromamba backend
+# 1. Create environment.yml
+cat > environment.yml << EOF
+name: myproject
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+EOF
+
+# 2. Generate conda-lock.yml (required before pyve --init)
+conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
+conda-lock -f environment.yml -p linux-64     # Linux
+
+# 3. Initialize (lock file ensures reproducibility)
 pyve --init --backend micromamba
 
-# Install conda packages
-micromamba install numpy pandas -c conda-forge
+# 4. Install additional conda packages
+micromamba install scipy -c conda-forge
 ```
+
+> **Important:** `pyve --init` requires `conda-lock.yml`. For the initial setup before the file exists, use `pyve --init --no-lock`.
 
 ### Cleaning Up
 
@@ -234,6 +251,16 @@ This removes:
 - [CI/CD Integration](ci-cd.md) - Using Pyve in automated pipelines
 
 ## Troubleshooting
+
+### Project Inside a Cloud-Synced Directory
+
+If `pyve --init` fails with `ERROR: Project is inside a cloud-synced directory`, move the project out of `~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, or `~/OneDrive`:
+
+```bash
+mv ~/Documents/myproject ~/Developer/myproject
+cd ~/Developer/myproject
+pyve --init
+```
 
 ### Environment Not Activating
 

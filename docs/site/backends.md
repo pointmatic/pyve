@@ -385,17 +385,31 @@ conda-lock --file environment.yml --platform linux-64 --platform osx-64
 ### Mixed Dependencies (micromamba)
 
 ```bash
-# Initialize
-pyve --init --backend micromamba
+# Create environment.yml first
+cat > environment.yml << EOF
+name: myproject
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - pip
+EOF
 
-# Install conda packages
-micromamba install numpy pandas -c conda-forge
+# Generate lock file (required before pyve --init)
+conda-lock -f environment.yml -p $(uname -m | sed 's/arm64/osx-arm64/;s/x86_64/linux-64/')
+
+# Initialize (reads conda-lock.yml for reproducibility)
+pyve --init --backend micromamba
 
 # Install PyPI-only packages
 pip install custom-internal-package
 
 # Both work together in same environment
 ```
+
+> **Note:** `pyve --init` requires `conda-lock.yml` to exist. During initial project setup before the file has been generated, use `pyve --init --no-lock`.
 
 ### ML/Data Science Project with Both Files (v1.6.2+)
 
@@ -459,6 +473,45 @@ When Pyve initializes a micromamba environment, it automatically generates
 **Re-initialization:** The file is not overwritten on `pyve --init --update`. It is regenerated on `pyve --init --force`.
 
 ## Troubleshooting
+
+### Project Inside a Cloud-Synced Directory
+
+**Problem:** `pyve --init` fails with `ERROR: Project is inside a cloud-synced directory`
+
+**Why it happens:** Pyve refuses to initialize inside `~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, or `~/OneDrive`. Cloud sync daemons race against micromamba's package extraction, causing non-deterministic environment corruption.
+
+**Solution:** Move the project outside the synced directory:
+
+```bash
+mv ~/Documents/myproject ~/Developer/myproject
+cd ~/Developer/myproject
+pyve --init
+```
+
+If you have disabled sync for that path and understand the risk:
+
+```bash
+pyve --init --allow-synced-dir
+# or: export PYVE_ALLOW_SYNCED_DIR=1
+```
+
+### Missing conda-lock.yml (micromamba)
+
+**Problem:** `pyve --init` fails with `ERROR: No conda-lock.yml found`
+
+**Solution:** Generate the lock file first:
+
+```bash
+conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
+conda-lock -f environment.yml -p linux-64     # Linux
+pyve --init
+```
+
+During initial project setup before the lock file exists:
+
+```bash
+pyve --init --no-lock   # not recommended for shared projects
+```
 
 ### venv: Package Won't Install
 
@@ -567,7 +620,8 @@ pip-compile --generate-hashes requirements.in
 **micromamba:**
 ```bash
 conda-lock --file environment.yml --platform linux-64
-# Commit conda-lock.yml to git
+# Commit conda-lock.yml to git — it must be committed, not ignored
+# (pyve --init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
 ```
 
 ### Document Your Choice

@@ -152,6 +152,11 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `validate_venv_dir_name` | `(dirname)` → 0/1 | Reject empty, reserved names, invalid characters |
 | `validate_python_version` | `(version)` → 0/1 | Validate `#.#.#` semver format |
 | `is_file_empty` | `(filename)` → 0/1 | Returns 0 if file is empty or missing |
+| `check_cloud_sync_path` | `()` | Hard fail if `$PWD` is inside a known cloud-synced directory; bypassed by `PYVE_ALLOW_SYNCED_DIR=1` |
+| `write_vscode_settings` | `(env_name)` | Write `.vscode/settings.json` with interpreter path and IDE isolation settings; skips if exists unless `PYVE_REINIT_MODE=force` |
+| `doctor_check_duplicate_dist_info` | `(env_path)` | Scan `site-packages` for duplicate `.dist-info` dirs; reports conflicting versions with mtimes |
+| `doctor_check_collision_artifacts` | `(env_path)` | Scan environment tree for files/dirs with ` 2` suffix (iCloud Drive collision artifacts) |
+| `doctor_check_native_lib_conflicts` | `(env_path)` | Detect conda/pip OpenMP conflicts: pip-bundled libs (torch/tf/jax) + conda-linked libs (numpy/scipy) + missing `libomp.dylib`/`libgomp.so` |
 
 **`.gitignore` template structure:**
 ```
@@ -167,7 +172,7 @@ htmlcov/
 .pytest_cache/
 
 # Pyve virtual environment
-<dynamically inserted entries: .venv, .env, .envrc, .pyve/testenv, .pyve/envs>
+<dynamically inserted entries: .venv, .env, .envrc, .pyve/testenv, .pyve/envs, .vscode/settings.json>
 ```
 
 The template is written via heredoc. User entries below the template are preserved. Deduplication prevents template lines from appearing in the user section.
@@ -357,6 +362,8 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 | `--auto-bootstrap` | `--init` | Auto-install micromamba |
 | `--bootstrap-to <loc>` | `--init` | Bootstrap location (project/user) |
 | `--strict` | `--init` | Enforce lock file validation |
+| `--no-lock` | `--init` | Bypass missing `conda-lock.yml` hard error |
+| `--allow-synced-dir` | `--init` | Bypass cloud-synced directory check |
 | `--keep-testenv` | `--purge` | Preserve dev/test environment |
 
 ### Exit Codes
@@ -413,18 +420,17 @@ White-box tests that source individual `lib/*.sh` modules and test functions dir
 
 | Test File | Module Under Test | Test Count |
 |-----------|-------------------|------------|
-| `test_utils.bats` | `lib/utils.sh` | 56 |
+| `test_utils.bats` | `lib/utils.sh` | — |
 | `test_backend_detect.bats` | `lib/backend_detect.sh` | — |
 | `test_config_parse.bats` | `lib/utils.sh` (config) | — |
 | `test_distutils_shim.bats` | `lib/distutils_shim.sh` | — |
+| `test_doctor.bats` | `lib/utils.sh` (doctor checks) | — |
 | `test_env_naming.bats` | `lib/micromamba_env.sh` | — |
 | `test_lock_validation.bats` | `lib/micromamba_env.sh` | — |
 | `test_micromamba_bootstrap.bats` | `lib/micromamba_bootstrap.sh` | — |
 | `test_micromamba_core.bats` | `lib/micromamba_core.sh` | — |
 | `test_reinit.bats` | `lib/version.sh` | — |
 | `test_version.bats` | `lib/version.sh` | — |
-
-**Total: 233 Bats tests**
 
 ### Integration Tests (pytest)
 
@@ -438,6 +444,9 @@ Black-box tests that invoke `pyve.sh` as a subprocess and verify outcomes.
 | `test_bootstrap.py` | Micromamba bootstrap (placeholder, not yet implemented) |
 | `test_cross_platform.py` | macOS/Linux-specific behavior |
 | `test_doctor.py` | Doctor diagnostics for both backends |
+| `test_force_ambiguous_prompt.py` | Interactive backend prompt in `--force` + ambiguous cases |
+| `test_force_backend_detection.py` | Backend detection during `--force` re-initialization |
+| `test_pip_upgrade.py` | pip upgrade during `--init` |
 | `test_reinit.py` | Re-initialization (update, force) |
 | `test_run_command.py` | `pyve run` for both backends |
 | `test_testenv.py` | Dev/test runner environment |
@@ -453,5 +462,5 @@ Black-box tests that invoke `pyve.sh` as a subprocess and verify outcomes.
 | Integration Tests | ubuntu + macos | Python 3.10, 3.11, 3.12 | pytest venv tests |
 | Micromamba Tests | ubuntu + macos | Python 3.11 | pytest micromamba tests |
 | Lint | ubuntu | — | ShellCheck, black, flake8 |
-| Coverage Report | ubuntu | — | Combine + upload to Codecov |
+| Bash Coverage (kcov) | ubuntu | — | Line coverage of `lib/*.sh` and `pyve.sh` via kcov; uploads to Codecov |
 | Test Summary | ubuntu | — | Gate: fail if unit or integration fail |

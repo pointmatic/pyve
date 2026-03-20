@@ -52,6 +52,7 @@ pyve --init [VERSION] [--backend BACKEND]
 - `--no-install-deps`: Skip dependency installation prompt (useful for CI/CD)
 - `--update`: Safely update existing environment (preserves backend)
 - `--force`: Purge and re-initialize environment (destructive)
+- `--no-lock`: Bypass missing `conda-lock.yml` hard error (micromamba only; use during initial setup before the lock file has been generated)
 - `--allow-synced-dir`: Bypass the cloud-synced directory safety check (see below)
 
 **Examples:**
@@ -80,6 +81,9 @@ pyve --init --no-install-deps
 
 # Force re-initialization (preserves backend if ambiguous)
 pyve --init --force
+
+# Bypass missing conda-lock.yml error (initial setup only, before lock file exists)
+pyve --init --no-lock
 
 # Bypass cloud-sync directory check (only if you have disabled sync)
 pyve --init --allow-synced-dir
@@ -193,6 +197,9 @@ pyve doctor
 - Virtual environment backend (venv/micromamba) and path
 - Direnv status and configuration
 - Environment variables
+- **Micromamba only:** Duplicate `.dist-info` directories in `site-packages` (indicates corrupted or conflicting installs)
+- **Micromamba only:** Files/directories with ` 2` suffix (iCloud Drive collision artifacts from concurrent sync)
+- **Micromamba only:** conda/pip native library conflicts — pip-bundled packages (torch, tensorflow, jax) coexisting with conda-linked packages (numpy, scipy) when the required shared OpenMP library is missing
 
 **Example output:**
 
@@ -497,6 +504,8 @@ Pyve recognizes the following environment variables:
 | `PYVE_AUTO_INSTALL_DEPS` | Auto-install dependencies without prompting | `0` (prompt) |
 | `PYVE_NO_INSTALL_DEPS` | Skip dependency installation prompt | `0` (prompt) |
 | `PYVE_FORCE_YES` | Skip all interactive prompts (CI mode) | `0` (interactive) |
+| `PYVE_NO_LOCK` | Bypass missing `conda-lock.yml` hard error (same as `--no-lock`) | `0` |
+| `PYVE_ALLOW_SYNCED_DIR` | Bypass cloud-synced directory check (same as `--allow-synced-dir`) | `0` |
 | `CI` | Detected CI environment (auto-sets non-interactive mode) | Not set |
 
 **Examples:**
@@ -575,14 +584,13 @@ build/
 .pyve/
 .venv/
 
-# Micromamba (for micromamba backend only)
-conda-lock.yml
 ```
 
 - Automatically managed by Pyve
 - Preserves user entries
 - Updated on `--init` and removed on `--purge`
-- Micromamba-specific patterns only added when using micromamba backend
+
+**Note:** `conda-lock.yml` is **not** added to `.gitignore` — it must be committed like `package-lock.json` or `Cargo.lock`. Missing it is a hard error on `pyve --init` (use `--no-lock` to bypass during initial setup before the file exists).
 
 ## Workflow Examples
 
