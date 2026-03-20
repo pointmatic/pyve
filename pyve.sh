@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.8.3"
+VERSION="1.8.4"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -340,6 +340,7 @@ init() {
     local strict_mode=false
     local env_name_flag=""
     local no_direnv=false
+    local lock_preflight_done=false
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -478,7 +479,19 @@ init() {
             # Force re-initialization mode
             log_warning "Force re-initialization: This will purge the existing environment"
             log_warning "  Current backend: $existing_backend"
-            
+
+            # Run pre-flight checks BEFORE purging so the environment is still intact
+            # if the user decides to abort or a check fails.
+            local preflight_backend
+            preflight_backend="$(get_backend_priority "$backend_flag")"
+            if [[ "$preflight_backend" == "micromamba" ]]; then
+                if ! validate_lock_file_status "$strict_mode"; then
+                    log_error "Pre-flight check failed — no changes made"
+                    exit 1
+                fi
+                lock_preflight_done=true
+            fi
+
             # Prompt for confirmation (skip in CI or if PYVE_FORCE_YES is set)
             if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
                 printf "\nContinue? [y/N]: "
@@ -488,11 +501,11 @@ init() {
                     exit 0
                 fi
             fi
-            
+
             # Don't preserve backend on --force - let normal detection happen
             # This allows the interactive prompt to appear in ambiguous cases
             # (when both environment.yml and pyproject.toml exist)
-            
+
             # Purge existing installation
             log_info "Purging existing environment..."
             purge --keep-testenv
@@ -608,8 +621,11 @@ init() {
         fi
         
         # Validate lock file status if micromamba backend
-        if ! validate_lock_file_status "$strict_mode"; then
-            exit 1
+        # (skipped when pre-flight already ran it in --force path)
+        if [[ "$lock_preflight_done" != "true" ]]; then
+            if ! validate_lock_file_status "$strict_mode"; then
+                exit 1
+            fi
         fi
         
         # Resolve and validate environment name
