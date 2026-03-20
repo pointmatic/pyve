@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.4] - 2026-03-20
+
+### Fixed
+- Fixed wrong conda platform string in lock file recommendations: `lib/micromamba_env.sh` now uses `get_conda_platform()` to map `uname -s`/`uname -m` to the correct conda platform (e.g. `osx-arm64` instead of `arm64` on Apple Silicon, `linux-aarch64` instead of `aarch64` on Linux ARM)
+- Fixed `--init --force` pre-flight check ordering: lock file validation (and cloud sync detection) now runs before the environment is purged, so a failed or aborted check leaves the existing environment intact
+
 ## [1.8.3] - 2026-03-20
 
 ### Changed

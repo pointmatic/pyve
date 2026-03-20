@@ -251,3 +251,63 @@ teardown() {
     run validate_lock_file_status "false"
     [ "$status" -eq 0 ]
 }
+
+#============================================================
+# get_conda_platform() tests
+#============================================================
+
+@test "get_conda_platform: returns osx-arm64 on Darwin/arm64" {
+    local mock_dir
+    mock_dir="$(mktemp -d)"
+    cat > "$mock_dir/uname" << 'EOF'
+#!/bin/bash
+if [[ "$1" == "-s" ]]; then echo "Darwin"; elif [[ "$1" == "-m" ]]; then echo "arm64"; fi
+EOF
+    chmod +x "$mock_dir/uname"
+    PATH="$mock_dir:$PATH" run get_conda_platform
+    rm -rf "$mock_dir"
+    [ "$status" -eq 0 ]
+    [ "$output" = "osx-arm64" ]
+}
+
+@test "get_conda_platform: returns osx-64 on Darwin/x86_64" {
+    local mock_dir
+    mock_dir="$(mktemp -d)"
+    cat > "$mock_dir/uname" << 'EOF'
+#!/bin/bash
+if [[ "$1" == "-s" ]]; then echo "Darwin"; elif [[ "$1" == "-m" ]]; then echo "x86_64"; fi
+EOF
+    chmod +x "$mock_dir/uname"
+    PATH="$mock_dir:$PATH" run get_conda_platform
+    rm -rf "$mock_dir"
+    [ "$status" -eq 0 ]
+    [ "$output" = "osx-64" ]
+}
+
+@test "get_conda_platform: returns linux-64 on Linux/x86_64" {
+    local mock_dir
+    mock_dir="$(mktemp -d)"
+    cat > "$mock_dir/uname" << 'EOF'
+#!/bin/bash
+if [[ "$1" == "-s" ]]; then echo "Linux"; elif [[ "$1" == "-m" ]]; then echo "x86_64"; fi
+EOF
+    chmod +x "$mock_dir/uname"
+    PATH="$mock_dir:$PATH" run get_conda_platform
+    rm -rf "$mock_dir"
+    [ "$status" -eq 0 ]
+    [ "$output" = "linux-64" ]
+}
+
+@test "get_conda_platform: returns linux-aarch64 on Linux/aarch64" {
+    local mock_dir
+    mock_dir="$(mktemp -d)"
+    cat > "$mock_dir/uname" << 'EOF'
+#!/bin/bash
+if [[ "$1" == "-s" ]]; then echo "Linux"; elif [[ "$1" == "-m" ]]; then echo "aarch64"; fi
+EOF
+    chmod +x "$mock_dir/uname"
+    PATH="$mock_dir:$PATH" run get_conda_platform
+    rm -rf "$mock_dir"
+    [ "$status" -eq 0 ]
+    [ "$output" = "linux-aarch64" ]
+}

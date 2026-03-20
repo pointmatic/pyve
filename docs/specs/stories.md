@@ -715,3 +715,47 @@ Gap analysis of `docs/specs/features.md`, `docs/specs/tech-spec.md`, and `docs/s
 - [x] Added cloud-synced directory Troubleshooting entry
 
 **`docs/site/index.html`**: No changes — omissions are acceptable at the marketing landing page level.
+
+### Story F.j: v1.8.4 Fix conda Platform String and --force Pre-Flight Check Ordering [Done]
+
+Two bugs observed in production use on macOS Apple Silicon:
+
+**Bug 1 — Wrong conda platform string in lock file recommendations**
+
+`lib/micromamba_env.sh` uses `$(uname -m)` to suggest the `-p` argument for `conda-lock`, which returns `arm64` on Apple Silicon. The correct conda platform string is `osx-arm64`. All five call sites produce the wrong string on macOS and the wrong string on Linux aarch64 (`aarch64` instead of `linux-aarch64`).
+
+Platform mapping:
+| `uname -s` | `uname -m` | conda platform |
+|---|---|---|
+| Darwin | arm64 | osx-arm64 |
+| Darwin | x86_64 | osx-64 |
+| Linux | aarch64 | linux-aarch64 |
+| Linux | x86_64 | linux-64 |
+
+**Bug 2 — Lock file staleness check runs after purge in `--init --force`**
+
+In `pyve.sh`, `--force` re-initialization purges the environment (~line 498) before the lock file validation is reached (~line 611). If the user answers `n` to the stale-lock prompt, the environment has already been destroyed with no recovery path. All blocking pre-flight checks must run before the purge begins.
+
+Correct `--init --force` flow:
+1. Detect backend
+2. Run all pre-flight checks (cloud sync location, lock file existence, lock file staleness)
+3. Present single consolidated warning/confirmation prompt
+4. Only then purge and rebuild
+
+**Implementation tasks:**
+
+- [x] Add `get_conda_platform()` helper to `lib/micromamba_env.sh`
+  - [x] Maps `uname -s` + `uname -m` → conda platform string per the table above
+  - [x] Falls back to `$(uname -m)` with a warning for unrecognized combinations
+- [x] Replace all five `$(uname -m)` occurrences in `lib/micromamba_env.sh` (lines ~159, 251, 275, 316, 340) with `$(get_conda_platform)`
+- [x] Fix `--init --force` pre-flight ordering in `pyve.sh`
+  - [x] Move `validate_lock_file_status` call (and `check_cloud_sync_path`) to execute before `purge --keep-testenv`
+  - [x] On pre-flight failure, abort with a clear error — no purge has occurred
+  - [x] Preserve the existing single user confirmation prompt (currently at ~line 484) as the gate for purge
+- [x] Add unit tests in `tests/unit/test_lock_validation.bats`
+  - [x] Test: `get_conda_platform` returns `osx-arm64` on Darwin/arm64
+  - [x] Test: `get_conda_platform` returns `osx-64` on Darwin/x86_64
+  - [x] Test: `get_conda_platform` returns `linux-64` on Linux/x86_64
+  - [x] Test: `get_conda_platform` returns `linux-aarch64` on Linux/aarch64
+- [x] Update CHANGELOG.md with v1.8.4 entry
+- [x] Bump VERSION to 1.8.4
