@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.8.0"
+VERSION="1.8.1"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1809,9 +1809,10 @@ doctor_command() {
             printf "  Packages: %s installed\n" "$pkg_count"
         fi
 
-        # Check for duplicate dist-info and cloud sync collision artifacts
+        # Check for duplicate dist-info, cloud sync collision artifacts, and native lib conflicts
         doctor_check_duplicate_dist_info "$env_path"
         doctor_check_collision_artifacts "$env_path"
+        doctor_check_native_lib_conflicts "$env_path"
 
     elif [[ "$backend" == "venv" ]]; then
         # Check venv directory

@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-03-20
+
+### Added
+- `pyve doctor` now detects potential conda/pip native library conflicts: when pip packages that bundle their own OpenMP runtime (torch, tensorflow, jax) coexist with conda packages that link against the shared OpenMP in the environment's `lib/` directory (numpy, scipy, scikit-learn), and the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is absent, a `⚠` warning is printed with the conflicting packages and a fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
+
 ## [1.8.0] - 2026-03-20
 
 ### Changed

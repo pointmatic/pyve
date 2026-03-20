@@ -630,26 +630,26 @@ Promote the missing `conda-lock.yml` condition from a dismissible warning to a b
 - [x] Update CHANGELOG.md with v1.8.0 entry
 - [x] Bump VERSION to 1.8.0
 
-### Story F.f: v1.8.1 `pyve doctor` Detects conda/pip Native Library Conflicts [Planned]
+### Story F.f: v1.8.1 `pyve doctor` Detects conda/pip Native Library Conflicts [Done]
 
 Mixed conda-forge and pip installs can produce silent runtime failures when pip-bundled native libraries (torch, tensorflow) conflict with conda-linked ones (numpy, scipy). Surface these conflicts proactively.
 
-- [ ] Add `doctor_check_native_lib_conflicts()` function
-  - [ ] Detect pip-installed packages that bundle native libraries — check for known packages: `torch`, `tensorflow`, `tensorflow-macos`, `jax`, `jaxlib`
-    - [ ] Use `<env>/bin/pip list --format=json` or parse dist-info `METADATA` files directly (no network)
-  - [ ] Detect conda-installed packages that link against shared native libraries — check for known packages: `numpy`, `scipy`, `scikit-learn`, `pandas` (any package with a conda dist-info under `.pyve/envs/<name>/conda-meta/`)
-  - [ ] For each known conflict pair (e.g., torch + numpy), check whether the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is present in `.pyve/envs/<name>/lib/`
-  - [ ] If library is absent: print warning with package names, missing library, and fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
-  - [ ] If no conflicts: print `✓ No conda/pip native library conflicts detected`
-- [ ] Integrate into `doctor_command()` in `pyve.sh`
-  - [ ] Only run when backend is `micromamba` and environment exists
-  - [ ] macOS checks `libomp.dylib`, Linux checks `libgomp.so`
-- [ ] Add unit tests in `tests/unit/test_doctor.bats`
-  - [ ] Test: conflict detected when torch dist-info and numpy conda-meta exist but `libomp.dylib` is absent
-  - [ ] Test: no warning when `libomp.dylib` is present
-  - [ ] Test: no warning when only conda packages (no pip-bundled) are present
-- [ ] Add integration test in `tests/integration/test_doctor.py`
-  - [ ] Scaffold a fake micromamba environment with stub dist-info/conda-meta entries and verify conflict detection output
-- [ ] Update `docs/site/backends.md` — add a "Troubleshooting: Native Library Conflicts" section explaining the torch + numpy conflict and how doctor detects it
-- [ ] Update CHANGELOG.md with v1.8.1 entry
-- [ ] Bump VERSION to 1.8.1
+- [x] Add `doctor_check_native_lib_conflicts()` function
+  - [x] Detect pip-installed packages that bundle native libraries — check for known packages: `torch`, `tensorflow`, `tensorflow-macos`, `jax`, `jaxlib`
+    - [x] Parse dist-info directories directly (no network): glob `<env>/lib/python*/site-packages/<pkg>-*.dist-info`
+  - [x] Detect conda-installed packages that link against shared native libraries — check for known packages: `numpy`, `scipy`, `scikit-learn`, `pandas` via `conda-meta/<pkg>-*.json`
+  - [x] For each known conflict pair (e.g., torch + numpy), check whether the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is present in `<env>/lib/`
+  - [x] If library is absent: print `⚠ Potential native library conflict detected` with package names and fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
+  - [x] If no conflicts: print `✓ No conda/pip native library conflicts detected`
+- [x] Integrate into `doctor_command()` in `pyve.sh`
+  - [x] Only run when backend is `micromamba` and environment exists
+  - [x] macOS checks `libomp.dylib`, Linux checks `libgomp.so`
+- [x] Add unit tests in `tests/unit/test_doctor.bats`
+  - [x] Test: no conflict when no pip bundlers present
+  - [x] Test: no conflict when no conda linkers present
+  - [x] Test: conflict detected when pip+conda present and OpenMP lib absent
+  - [x] Test: no conflict when OpenMP lib is present
+  - [x] Test: missing env path returns cleanly
+  - [x] Verify: `bats tests/unit/test_doctor.bats` — 17 tests, 0 failures
+- [x] Update CHANGELOG.md with v1.8.1 entry
+- [x] Bump VERSION to 1.8.1

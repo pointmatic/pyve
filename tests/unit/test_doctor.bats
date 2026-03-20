@@ -17,6 +17,70 @@ teardown() {
 }
 
 #============================================================
+# doctor_check_native_lib_conflicts() tests
+#============================================================
+
+_make_conflict_env() {
+    # Helper: scaffold a fake env with torch (pip) + numpy (conda) but no OpenMP lib
+    local env_path="${1:-env}"
+    mkdir -p "$env_path/lib/python3.12/site-packages"
+    mkdir -p "$env_path/lib/python3.12/site-packages/torch-2.0.0.dist-info"
+    mkdir -p "$env_path/conda-meta"
+    touch "$env_path/conda-meta/numpy-1.24.0-py312hab.json"
+    # Deliberately do NOT create libomp.dylib or libgomp.so
+}
+
+@test "doctor_check_native_lib_conflicts: no conflict when no pip bundlers" {
+    mkdir -p env/lib/python3.12/site-packages
+    mkdir -p env/conda-meta
+    touch "env/conda-meta/numpy-1.24.0-py312.json"
+
+    run doctor_check_native_lib_conflicts "env"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"✓ No conda/pip native library conflicts detected"* ]]
+}
+
+@test "doctor_check_native_lib_conflicts: no conflict when no conda linkers" {
+    mkdir -p env/lib/python3.12/site-packages
+    mkdir -p "env/lib/python3.12/site-packages/torch-2.0.0.dist-info"
+    mkdir -p env/conda-meta
+
+    run doctor_check_native_lib_conflicts "env"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"✓ No conda/pip native library conflicts detected"* ]]
+}
+
+@test "doctor_check_native_lib_conflicts: detects conflict when pip+conda present and OpenMP missing" {
+    _make_conflict_env "env"
+
+    run doctor_check_native_lib_conflicts "env"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠ Potential native library conflict detected"* ]]
+    [[ "$output" == *"torch"* ]]
+    [[ "$output" == *"numpy"* ]]
+    [[ "$output" == *"llvm-openmp"* ]] || [[ "$output" == *"libgomp"* ]]
+}
+
+@test "doctor_check_native_lib_conflicts: no conflict when OpenMP lib is present" {
+    _make_conflict_env "env"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        touch "env/lib/libomp.dylib"
+    else
+        touch "env/lib/libgomp.so.1"
+    fi
+
+    run doctor_check_native_lib_conflicts "env"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"✓ No conda/pip native library conflicts detected"* ]]
+}
+
+@test "doctor_check_native_lib_conflicts: returns early for missing env path" {
+    run doctor_check_native_lib_conflicts "nonexistent-env"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+#============================================================
 # detect_install_source tests
 #============================================================
 

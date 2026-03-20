@@ -569,6 +569,89 @@ doctor_check_collision_artifacts() {
     printf "  Rebuild outside a cloud-synced directory: pyve --init --force\n"
 }
 
+# Check for known conflicts between pip-bundled native libraries and
+# conda-linked ones. When pip packages (torch, tensorflow) bundle their own
+# OpenMP and conda packages (numpy, scipy) link against the system OpenMP in
+# the environment's lib/ directory, a missing libomp/libgomp produces
+# intermittent dlopen failures at import time.
+#
+# Only runs when both a pip bundler AND a conda linker are detected.
+# Usage: doctor_check_native_lib_conflicts <env_path>
+doctor_check_native_lib_conflicts() {
+    local env_path="$1"
+
+    if [[ ! -d "$env_path" ]]; then
+        return 0
+    fi
+
+    local site_packages
+    site_packages=$(find "$env_path/lib" -maxdepth 2 -type d -name "site-packages" 2>/dev/null | head -1)
+
+    # Known pip packages that bundle their own OpenMP runtime
+    local -a pip_bundlers=("torch" "tensorflow" "tensorflow_macos" "tensorflow-macos"
+                           "tensorflow_metal" "jax" "jaxlib")
+
+    # Known conda packages that link against the shared OpenMP in env/lib/
+    local -a conda_linkers=("numpy" "scipy" "scikit-learn" "pandas" "openblas" "blas" "mkl")
+
+    # Detect pip bundlers present in site-packages
+    local -a found_pip=()
+    if [[ -n "$site_packages" ]]; then
+        for pkg in "${pip_bundlers[@]}"; do
+            local matches=("$site_packages/${pkg}-"*.dist-info)
+            [[ -e "${matches[0]}" ]] && found_pip+=("$pkg")
+        done
+    fi
+
+    # Detect conda linkers present in conda-meta
+    local -a found_conda=()
+    if [[ -d "$env_path/conda-meta" ]]; then
+        for pkg in "${conda_linkers[@]}"; do
+            local matches=("$env_path/conda-meta/${pkg}-"*.json)
+            [[ -e "${matches[0]}" ]] && found_conda+=("$pkg")
+        done
+    fi
+
+    # Only check for a missing shared lib when both sides are present
+    if [[ ${#found_pip[@]} -eq 0 ]] || [[ ${#found_conda[@]} -eq 0 ]]; then
+        printf "✓ No conda/pip native library conflicts detected\n"
+        return 0
+    fi
+
+    # Platform-specific shared library name and conda fix package
+    local missing_lib="" fix_pkg=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        if [[ ! -f "$env_path/lib/libomp.dylib" ]]; then
+            missing_lib="libomp.dylib"
+            fix_pkg="llvm-openmp"
+        fi
+    else
+        local gomp_matches=("$env_path/lib/libgomp.so"*)
+        if [[ ! -e "${gomp_matches[0]}" ]]; then
+            missing_lib="libgomp.so"
+            fix_pkg="libgomp"
+        fi
+    fi
+
+    if [[ -z "$missing_lib" ]]; then
+        printf "✓ No conda/pip native library conflicts detected\n"
+        return 0
+    fi
+
+    local pip_list conda_list
+    pip_list=$(IFS=', '; echo "${found_pip[*]}")
+    conda_list=$(IFS=', '; echo "${found_conda[*]}")
+
+    printf "⚠ Potential native library conflict detected:\n"
+    printf "    pip-installed:   %s (bundles its own OpenMP)\n" "$pip_list"
+    printf "    conda-installed: %s (requires %s)\n" "$conda_list" "$missing_lib"
+    printf "    %s not found in %s/lib/\n\n" "$missing_lib" "$env_path"
+    printf "  Fix: add '%s' to environment.yml conda dependencies:\n" "$fix_pkg"
+    printf "    dependencies:\n"
+    printf "      - %s\n" "$fix_pkg"
+    printf "  Then regenerate: conda-lock -f environment.yml -p %s\n" "$(uname -m)"
+}
+
 #============================================================
 # VS Code Settings
 #============================================================
