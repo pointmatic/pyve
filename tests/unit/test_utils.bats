@@ -349,6 +349,22 @@ EOF
     [ "$first_md5" = "$second_md5" ]
 }
 
+@test "write_gitignore_template: conda-lock.yml is NOT in the generated template" {
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+
+    # conda-lock.yml must be committed — it must never appear in Pyve's template
+    run grep -x "conda-lock.yml" .gitignore
+    [ "$status" -ne 0 ]
+}
+
+@test "write_gitignore_template: .pyve/envs section header is present (still correctly ignored)" {
+    run write_gitignore_template
+    [ "$status" -eq 0 ]
+
+    assert_file_contains ".gitignore" "# Pyve virtual environment"
+}
+
 @test "write_gitignore_template: preserves user section comments" {
     cat > .gitignore << 'EOF'
 .DS_Store

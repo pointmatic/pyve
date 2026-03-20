@@ -148,6 +148,16 @@ Remove all Pyve-created artifacts from the current directory.
 - Remove `.envrc`.
 - Remove `.env` only if empty; preserve with warning if non-empty.
 - Clean `.gitignore` patterns (remove `.venv`, `.env`, `.envrc`; preserve permanent entries).
+- **`.gitignore` policy for micromamba backend:**
+
+| File | Ignored by Pyve? |
+|------|-----------------|
+| `.pyve/envs/` | ✅ Yes — local environment, not portable |
+| `.envrc` | ✅ Yes — machine-specific activation |
+| `.env` | ✅ Yes — secrets |
+| `conda-lock.yml` | ❌ **No — must be committed** (like `package-lock.json` or `Cargo.lock`) |
+| `environment.yml` | ❌ No — committed by design |
+
 - **Edge cases**: No environment found → informational message, no error. `--keep-testenv` preserves the dev/test runner environment.
 
 ### FR-3: Python Version Management (`--python-version`)

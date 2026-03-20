@@ -509,3 +509,169 @@ Two interactive prompts need documentation:
 - [x] Review all updated docs for consistency
 - [x] Ensure examples match actual behavior
 - [x] Verify cross-references between docs work correctly
+
+---
+
+## Phase F: Micromamba Backend Improvements
+
+Improvements derived from production use of Pyve v1.6.4 with a micromamba backend on Apple Silicon (M3). See `docs/specs/pyve-improvements.md` for full context and root cause analysis.
+
+### Story F.a: v1.7.0 Fix `conda-lock.yml` Incorrectly Added to `.gitignore` [Done]
+
+`conda-lock.yml` is an explicitly committed artifact — ignoring it defeats its purpose. Remove it from the Pyve-managed `.gitignore` template and any conditional insertion logic.
+
+- [x] Remove `conda-lock.yml` from `write_gitignore_template()` in `lib/utils.sh`
+  - [x] Audit the full template heredoc and any conditional micromamba-specific insertions
+  - [x] Confirm `environment.yml` is also not ignored (it should never have been)
+- [x] Remove any call-site logic in `pyve.sh` that appends `conda-lock.yml` after init
+- [x] Update unit tests in `tests/unit/test_utils.bats`
+  - [x] Add test: `conda-lock.yml` is NOT present in the generated `.gitignore` template
+  - [x] Add test: `.pyve/envs/` section header IS present (still correctly ignored)
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 65 tests, 0 failures
+- [x] Update `docs/specs/features.md` — correct the `.gitignore` policy table in FR-2 to explicitly note `conda-lock.yml` must NOT be ignored
+- [x] Update CHANGELOG.md with v1.7.0 entry
+- [x] Bump VERSION to 1.7.0
+
+### Story F.b: v1.7.1 Hard Fail When Project Is Inside a Cloud-Synced Directory [Planned]
+
+Cloud sync daemons race against micromamba package extraction, causing non-deterministic environment corruption that can damage the Python standard library. `pyve --init` must refuse to proceed in synced directories.
+
+- [ ] Add `check_cloud_sync_path()` function to `lib/utils.sh`
+  - [ ] Primary check: hard fail if `$PWD` is a prefix match of any known synced path:
+    - `$HOME/Documents`, `$HOME/Desktop`, `$HOME/Library/Mobile Documents`
+    - `$HOME/Dropbox`, `$HOME/Google Drive`, `$HOME/OneDrive`
+  - [ ] Secondary check: run `xattr -l "$PWD" | grep -i "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"` and fail if matched
+  - [ ] Both checks apply on macOS; skip `xattr` check on Linux (command unavailable)
+  - [ ] Print actionable error with detected sync root, explanation, `mv` command suggestion, and `--allow-synced-dir` override
+- [ ] Add `--allow-synced-dir` flag to CLI in `pyve.sh`
+  - [ ] Parse flag and set `ALLOW_SYNCED_DIR=1`
+  - [ ] Document flag in `--help` output
+- [ ] Call `check_cloud_sync_path()` at the start of `init_command()` before any environment creation; skip if `ALLOW_SYNCED_DIR=1`
+- [ ] Add unit tests in `tests/unit/test_utils.bats`
+  - [ ] Test: path inside `$HOME/Documents` fails
+  - [ ] Test: path inside `$HOME/Developer` passes
+  - [ ] Test: `ALLOW_SYNCED_DIR=1` bypasses the check
+  - [ ] Test: xattr detection stub (mock `xattr` output)
+- [ ] Add integration test in `tests/integration/test_venv_workflow.py`
+  - [ ] Test: `pyve --init` in a temp dir that matches a known synced path prefix exits non-zero with expected error message
+  - [ ] Test: `pyve --init --allow-synced-dir` succeeds in the same path
+- [ ] Update `docs/specs/features.md` — add FR-14: Cloud-Synced Directory Detection
+- [ ] Update `docs/site/usage.md` — document `--allow-synced-dir` flag and explain the risk
+- [ ] Update CHANGELOG.md with v1.7.1 entry
+- [ ] Bump VERSION to 1.7.1
+
+### Story F.c: v1.7.2 Auto-Generate `.vscode/settings.json` for Micromamba Backend [Planned]
+
+When Pyve initializes a micromamba environment, generate `.vscode/settings.json` so VS Code-compatible IDEs (Windsurf, Cursor) use the correct interpreter and don't interfere with Pyve's environment management.
+
+- [ ] Add `write_vscode_settings()` function to `lib/utils.sh`
+  - [ ] Read `env_name` from `.pyve/config` using `read_config_value micromamba.env_name`
+  - [ ] Construct interpreter path: `.pyve/envs/<env_name>/bin/python`
+  - [ ] Create `.vscode/` directory if it does not exist
+  - [ ] Write `.vscode/settings.json` with:
+    - `"python.defaultInterpreterPath": ".pyve/envs/<env_name>/bin/python"`
+    - `"python.terminal.activateEnvironment": false`
+    - `"python.condaPath": ""`
+  - [ ] Do not overwrite `.vscode/settings.json` if it already exists (log info and skip); allow override with `--force`
+- [ ] Call `write_vscode_settings()` at the end of micromamba init in `pyve.sh`, after environment creation succeeds
+- [ ] Add `.vscode/settings.json` to the Pyve-managed `.gitignore` template in `lib/utils.sh`
+  - [ ] Do NOT add `.vscode/` (extensions.json is conventionally committed)
+  - [ ] Add only `.vscode/settings.json`
+- [ ] Add unit tests in `tests/unit/test_utils.bats`
+  - [ ] Test: `write_vscode_settings()` creates correct JSON with env name substituted
+  - [ ] Test: existing `.vscode/settings.json` is not overwritten without `--force`
+  - [ ] Test: `.vscode/settings.json` appears in generated `.gitignore` template
+- [ ] Add integration test in `tests/integration/test_micromamba_workflow.py`
+  - [ ] Test: after micromamba init, `.vscode/settings.json` exists with correct interpreter path
+  - [ ] Test: `.vscode/settings.json` is present in `.gitignore`
+  - [ ] Test: venv init does NOT create `.vscode/settings.json`
+- [ ] Update `docs/specs/features.md` — add to FR-1 outputs table for micromamba backend
+- [ ] Update `docs/site/backends.md` — add section on IDE integration / `.vscode/settings.json` generation
+- [ ] Update CHANGELOG.md with v1.7.2 entry
+- [ ] Bump VERSION to 1.7.2
+
+### Story F.d: v1.7.3 `pyve doctor` Detects Duplicate dist-info and iCloud Collision Artifacts [Planned]
+
+iCloud Drive and other sync daemons racing against micromamba extraction produce duplicate `dist-info` directories and files/directories with ` 2` suffix — symptoms that are hard to diagnose without tooling.
+
+- [ ] Add `doctor_check_duplicate_dist_info()` function to `lib/utils.sh` (or inline in `pyve.sh` doctor command)
+  - [ ] Locate the active environment's `site-packages` directory (from `.pyve/config`)
+  - [ ] Scan for packages with more than one `*.dist-info` directory (same package name, different versions)
+  - [ ] For each duplicate: print `✗ Duplicate dist-info detected: <package>` with both directories and their mtimes
+  - [ ] Append: `Run 'pyve --init --force' to rebuild the environment cleanly.`
+  - [ ] If no duplicates found: print `✓ No duplicate dist-info directories`
+- [ ] Add `doctor_check_collision_artifacts()` function
+  - [ ] Scan the environment tree (`.pyve/envs/<name>/`) for files or directories whose names end with ` 2` (space-two)
+  - [ ] Report each match as `✗ iCloud collision artifact: <path>`
+  - [ ] If none found: print `✓ No cloud sync collision artifacts`
+- [ ] Integrate both checks into `doctor_command()` in `pyve.sh`
+  - [ ] Only run these checks when backend is `micromamba` and environment exists
+  - [ ] Run after existing environment health checks
+- [ ] Add unit tests in a new `tests/unit/test_doctor.bats` (or extend existing doctor tests)
+  - [ ] Test: duplicate dist-info directories are detected and reported with correct package name
+  - [ ] Test: ` 2`-suffixed paths are detected and reported
+  - [ ] Test: clean environment reports pass (✓) for both checks
+- [ ] Add integration test in `tests/integration/test_doctor.py`
+  - [ ] Scaffold a fake micromamba environment with duplicate dist-info dirs and verify doctor output
+  - [ ] Scaffold a ` 2`-suffixed directory entry and verify doctor output
+- [ ] Update CHANGELOG.md with v1.7.3 entry
+- [ ] Bump VERSION to 1.7.3
+
+### Story F.e: v1.8.0 Enforce `conda-lock.yml` Presence Before `pyve --init` [Planned]
+
+Promote the missing `conda-lock.yml` condition from a dismissible warning to a blocking error. A bypass flag (`--no-lock`) makes intentional overrides explicit.
+
+- [ ] Update lock file validation logic in `validate_lock_file_status()` in `lib/micromamba_env.sh`
+  - [ ] When `conda-lock.yml` is missing: exit with error (not a prompt), print actionable message with `conda-lock` command and `--no-lock` override
+  - [ ] When `conda-lock.yml` is stale: keep existing behavior (warn + prompt, or `--strict` to error)
+  - [ ] Non-interactive / CI mode: still hard fail on missing lock file (lock file should always be present in CI)
+- [ ] Add `--no-lock` flag to CLI in `pyve.sh`
+  - [ ] Parse flag and pass as `PYVE_NO_LOCK=1`
+  - [ ] When set, skip the missing-lock-file check (stale check still applies)
+  - [ ] Document flag in `--help` output
+- [ ] Update error message to match the spec format:
+  ```
+  ERROR: No conda-lock.yml found.
+
+  For reproducible builds, generate one first:
+    conda-lock -f environment.yml -p <platform>
+
+  To proceed without a lock file (not recommended):
+    pyve --init --no-lock
+  ```
+- [ ] Update unit tests in `tests/unit/test_lock_validation.bats`
+  - [ ] Test: missing `conda-lock.yml` exits non-zero with expected error text
+  - [ ] Test: `PYVE_NO_LOCK=1` (or `--no-lock`) bypasses the missing-lock-file check
+  - [ ] Test: stale `conda-lock.yml` still only warns (not a hard error without `--strict`)
+- [ ] Update integration tests in `tests/integration/test_micromamba_workflow.py`
+  - [ ] Test: `pyve --init` without `conda-lock.yml` fails with expected message
+  - [ ] Test: `pyve --init --no-lock` succeeds without `conda-lock.yml`
+- [ ] Update `docs/specs/features.md` — update FR-2 (lock file validation) to document new blocking behavior and `--no-lock` flag
+- [ ] Update `docs/site/backends.md` — update micromamba section to explain lock file requirement
+- [ ] Update `docs/site/getting-started.md` — add note about needing `conda-lock.yml` for micromamba projects
+- [ ] Update CHANGELOG.md with v1.8.0 entry
+- [ ] Bump VERSION to 1.8.0
+
+### Story F.f: v1.8.1 `pyve doctor` Detects conda/pip Native Library Conflicts [Planned]
+
+Mixed conda-forge and pip installs can produce silent runtime failures when pip-bundled native libraries (torch, tensorflow) conflict with conda-linked ones (numpy, scipy). Surface these conflicts proactively.
+
+- [ ] Add `doctor_check_native_lib_conflicts()` function
+  - [ ] Detect pip-installed packages that bundle native libraries — check for known packages: `torch`, `tensorflow`, `tensorflow-macos`, `jax`, `jaxlib`
+    - [ ] Use `<env>/bin/pip list --format=json` or parse dist-info `METADATA` files directly (no network)
+  - [ ] Detect conda-installed packages that link against shared native libraries — check for known packages: `numpy`, `scipy`, `scikit-learn`, `pandas` (any package with a conda dist-info under `.pyve/envs/<name>/conda-meta/`)
+  - [ ] For each known conflict pair (e.g., torch + numpy), check whether the required shared library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is present in `.pyve/envs/<name>/lib/`
+  - [ ] If library is absent: print warning with package names, missing library, and fix instruction (add `llvm-openmp` or `libgomp` to `environment.yml`)
+  - [ ] If no conflicts: print `✓ No conda/pip native library conflicts detected`
+- [ ] Integrate into `doctor_command()` in `pyve.sh`
+  - [ ] Only run when backend is `micromamba` and environment exists
+  - [ ] macOS checks `libomp.dylib`, Linux checks `libgomp.so`
+- [ ] Add unit tests in `tests/unit/test_doctor.bats`
+  - [ ] Test: conflict detected when torch dist-info and numpy conda-meta exist but `libomp.dylib` is absent
+  - [ ] Test: no warning when `libomp.dylib` is present
+  - [ ] Test: no warning when only conda packages (no pip-bundled) are present
+- [ ] Add integration test in `tests/integration/test_doctor.py`
+  - [ ] Scaffold a fake micromamba environment with stub dist-info/conda-meta entries and verify conflict detection output
+- [ ] Update `docs/site/backends.md` — add a "Troubleshooting: Native Library Conflicts" section explaining the torch + numpy conflict and how doctor detects it
+- [ ] Update CHANGELOG.md with v1.8.1 entry
+- [ ] Bump VERSION to 1.8.1

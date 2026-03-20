@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.6.4"
+VERSION="1.7.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -657,9 +657,6 @@ init() {
         insert_pattern_in_gitignore_section "$ENV_FILE_NAME" "$section"
         insert_pattern_in_gitignore_section ".envrc" "$section"
         insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
-        
-        # Add micromamba-specific patterns
-        insert_pattern_in_gitignore_section "conda-lock.yml" "# Pyve virtual environment"
         
         log_success "Updated .gitignore"
         

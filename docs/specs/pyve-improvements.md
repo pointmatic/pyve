@@ -96,70 +96,6 @@ them explicitly:
 - This class of corruption is not recoverable by partial repair. A full rebuild is
   required, and must be performed outside a cloud-synced directory.
 
-## Bug 3: `pyve --init --force` purges before asking about `conda-lock` on a stale environment
-
-### Description
-
-When `pyve --init --force` is run on a stale environment, it purges the environment
-before asking about `conda-lock`. This is problematic because the user may want to
-preserve the `conda-lock` file and only regenerate the environment or run conda-lock
-to update it. The user should be asked if they want to preserve the `conda-lock` file
-before the environment is purged. We should also review any other conditionals to see
-if we can front-load all the potential abort conditions before any destructive operations.
-
-### Expected behavior
-
-`pyve --init --force` should ask about `conda-lock` (and other optional operations) before
-purging the environment.
-
-### Notes (example CLI output)
-
-```
-% pyve --init --force
-WARNING: Force re-initialization: This will purge the existing environment
-WARNING:   Current backend: micromamba
-
-Continue? [y/N]: y
-INFO: Purging existing environment...
-
-Purging Python environment artifacts...
-INFO: No virtual environment found at '.venv'
-✓ Removed .pyve directory contents (preserved .pyve/testenv)
-✓ Removed .envrc
-WARNING: .env preserved (contains data). Delete manually if desired.
-✓ Cleaned .gitignore
-
-✓ Python environment artifacts removed.
-INFO: ✓ Environment purged
-
-INFO: Proceeding with fresh initialization...
-INFO: Detected files:
-INFO:   • environment.yml (conda/micromamba)
-INFO:   • pyproject.toml (Python project)
-
-Initialize with micromamba backend? [Y/n]: Y
-
-WARNING: Lock file may be stale
-  environment.yml:  modified 2026-03-19 23:16:44
-  conda-lock.yml:   modified 2026-03-17 12:22:55
-
-Using conda-lock.yml for reproducibility.
-To update lock file:
-  conda-lock -f environment.yml -p arm64
-
-Continue anyway? [y/n]: n
-INFO: Aborted. Please update lock file and try again.
-% conda-lock -f environment.yml -p arm64
-zsh: command not found: conda-lock
-% pyve doctor
-Pyve Environment Diagnostics
-=============================
-
-✓ Pyve: v1.6.4 (homebrew: /opt/homebrew/Cellar/pyve/1.6.4/libexec)
-✗ No environment found
-  Run 'pyve --init' to create an environment
-```
-
 ---
 
 ## Feature 1: Auto-generate `.vscode/settings.json` for micromamba backend
@@ -251,6 +187,55 @@ confirmation prompt that is easy to dismiss.
 - The `--no-lock` path is still valid for first-time environment setup before a lock file
   has been generated.
 - CI/CD pipelines should always have a lock file and should not need `--no-lock`.
+
+#### Current CLI output example
+
+
+```
+% pyve --init --force
+WARNING: Force re-initialization: This will purge the existing environment
+WARNING:   Current backend: micromamba
+
+Continue? [y/N]: y
+INFO: Purging existing environment...
+
+Purging Python environment artifacts...
+INFO: No virtual environment found at '.venv'
+✓ Removed .pyve directory contents (preserved .pyve/testenv)
+✓ Removed .envrc
+WARNING: .env preserved (contains data). Delete manually if desired.
+✓ Cleaned .gitignore
+
+✓ Python environment artifacts removed.
+INFO: ✓ Environment purged
+
+INFO: Proceeding with fresh initialization...
+INFO: Detected files:
+INFO:   • environment.yml (conda/micromamba)
+INFO:   • pyproject.toml (Python project)
+
+Initialize with micromamba backend? [Y/n]: Y
+
+WARNING: Lock file may be stale
+  environment.yml:  modified 2026-03-19 23:16:44
+  conda-lock.yml:   modified 2026-03-17 12:22:55
+
+Using conda-lock.yml for reproducibility.
+To update lock file:
+  conda-lock -f environment.yml -p arm64
+
+Continue anyway? [y/n]: n
+INFO: Aborted. Please update lock file and try again.
+% conda-lock -f environment.yml -p arm64
+zsh: command not found: conda-lock
+% pyve doctor
+Pyve Environment Diagnostics
+=============================
+
+✓ Pyve: v1.6.4 (homebrew: /opt/homebrew/Cellar/pyve/1.6.4/libexec)
+✗ No environment found
+  Run 'pyve --init' to create an environment
+```
 
 ---
 
