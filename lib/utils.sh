@@ -466,6 +466,80 @@ validate_python_version() {
 }
 
 #============================================================
+# Cloud Sync Detection
+#============================================================
+
+# Hard fail if the current directory is inside a known cloud-synced path.
+#
+# Cloud sync daemons (iCloud Drive, Dropbox, Google Drive, OneDrive) write
+# concurrently to synced directories, which corrupts micromamba environments
+# during extraction. This causes non-deterministic import failures and can
+# damage the Python standard library itself.
+#
+# Set PYVE_ALLOW_SYNCED_DIR=1 (or pass --allow-synced-dir) to bypass.
+# Usage: check_cloud_sync_path
+check_cloud_sync_path() {
+    if [[ "${PYVE_ALLOW_SYNCED_DIR:-}" == "1" ]]; then
+        return 0
+    fi
+
+    local current_dir="$PWD"
+    local sync_root=""
+    local sync_provider=""
+
+    # Primary check: known synced path prefixes
+    local -a known_synced=(
+        "$HOME/Documents"
+        "$HOME/Desktop"
+        "$HOME/Library/Mobile Documents"
+        "$HOME/Dropbox"
+        "$HOME/Google Drive"
+        "$HOME/OneDrive"
+    )
+
+    local path
+    for path in "${known_synced[@]}"; do
+        if [[ "$current_dir" == "$path" ]] || [[ "$current_dir" == "$path/"* ]]; then
+            sync_root="$path"
+            case "$path" in
+                */Documents)                  sync_provider="iCloud Drive" ;;
+                */Desktop)                    sync_provider="iCloud Drive (Desktop)" ;;
+                */"Library/Mobile Documents") sync_provider="iCloud Drive" ;;
+                */Dropbox)                    sync_provider="Dropbox" ;;
+                */"Google Drive")             sync_provider="Google Drive" ;;
+                */OneDrive)                   sync_provider="OneDrive" ;;
+            esac
+            break
+        fi
+    done
+
+    # Secondary check: extended attributes (macOS only)
+    if [[ -z "$sync_root" ]] && [[ "$(uname)" == "Darwin" ]] && command -v xattr >/dev/null 2>&1; then
+        if xattr -l "$current_dir" 2>/dev/null | grep -qi "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"; then
+            sync_root="$current_dir"
+            sync_provider="cloud sync (detected via extended attributes)"
+        fi
+    fi
+
+    if [[ -z "$sync_root" ]]; then
+        return 0
+    fi
+
+    printf "ERROR: Project is inside a cloud-synced directory.\n\n" >&2
+    printf "  Path:      %s\n" "$current_dir" >&2
+    printf "  Sync root: %s (%s)\n\n" "$sync_root" "$sync_provider" >&2
+    printf "  Cloud sync daemons write concurrently to synced directories, which\n" >&2
+    printf "  corrupts micromamba environments during extraction. This causes\n" >&2
+    printf "  non-deterministic import failures and can damage the Python standard\n" >&2
+    printf "  library itself.\n\n" >&2
+    printf "  Recommended fix: move your project outside the synced directory.\n" >&2
+    printf "    mv \"%s\" ~/Developer/%s\n\n" "$current_dir" "$(basename "$current_dir")" >&2
+    printf "  If you have disabled sync for this directory and understand the risk:\n" >&2
+    printf "    pyve --init --allow-synced-dir\n" >&2
+    exit 1
+}
+
+#============================================================
 # Install Source Detection
 #============================================================
 

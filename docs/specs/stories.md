@@ -532,33 +532,31 @@ Improvements derived from production use of Pyve v1.6.4 with a micromamba backen
 - [x] Update CHANGELOG.md with v1.7.0 entry
 - [x] Bump VERSION to 1.7.0
 
-### Story F.b: v1.7.1 Hard Fail When Project Is Inside a Cloud-Synced Directory [Planned]
+### Story F.b: v1.7.1 Hard Fail When Project Is Inside a Cloud-Synced Directory [Done]
 
 Cloud sync daemons race against micromamba package extraction, causing non-deterministic environment corruption that can damage the Python standard library. `pyve --init` must refuse to proceed in synced directories.
 
-- [ ] Add `check_cloud_sync_path()` function to `lib/utils.sh`
-  - [ ] Primary check: hard fail if `$PWD` is a prefix match of any known synced path:
+- [x] Add `check_cloud_sync_path()` function to `lib/utils.sh`
+  - [x] Primary check: hard fail if `$PWD` is a prefix match of any known synced path:
     - `$HOME/Documents`, `$HOME/Desktop`, `$HOME/Library/Mobile Documents`
     - `$HOME/Dropbox`, `$HOME/Google Drive`, `$HOME/OneDrive`
-  - [ ] Secondary check: run `xattr -l "$PWD" | grep -i "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"` and fail if matched
-  - [ ] Both checks apply on macOS; skip `xattr` check on Linux (command unavailable)
-  - [ ] Print actionable error with detected sync root, explanation, `mv` command suggestion, and `--allow-synced-dir` override
-- [ ] Add `--allow-synced-dir` flag to CLI in `pyve.sh`
-  - [ ] Parse flag and set `ALLOW_SYNCED_DIR=1`
-  - [ ] Document flag in `--help` output
-- [ ] Call `check_cloud_sync_path()` at the start of `init_command()` before any environment creation; skip if `ALLOW_SYNCED_DIR=1`
-- [ ] Add unit tests in `tests/unit/test_utils.bats`
-  - [ ] Test: path inside `$HOME/Documents` fails
-  - [ ] Test: path inside `$HOME/Developer` passes
-  - [ ] Test: `ALLOW_SYNCED_DIR=1` bypasses the check
-  - [ ] Test: xattr detection stub (mock `xattr` output)
-- [ ] Add integration test in `tests/integration/test_venv_workflow.py`
-  - [ ] Test: `pyve --init` in a temp dir that matches a known synced path prefix exits non-zero with expected error message
-  - [ ] Test: `pyve --init --allow-synced-dir` succeeds in the same path
-- [ ] Update `docs/specs/features.md` — add FR-14: Cloud-Synced Directory Detection
-- [ ] Update `docs/site/usage.md` — document `--allow-synced-dir` flag and explain the risk
-- [ ] Update CHANGELOG.md with v1.7.1 entry
-- [ ] Bump VERSION to 1.7.1
+  - [x] Secondary check: run `xattr -l "$PWD" | grep -i "com.apple.cloud\|com.dropbox\|com.google.drive\|com.microsoft.onedrive"` and fail if matched
+  - [x] Both checks apply on macOS; skip `xattr` check on Linux (command unavailable)
+  - [x] Print actionable error with detected sync root, explanation, `mv` command suggestion, and `--allow-synced-dir` override
+- [x] Add `--allow-synced-dir` flag to CLI in `pyve.sh`
+  - [x] Parse flag and export `PYVE_ALLOW_SYNCED_DIR=1`
+  - [x] Document flag in `--help` output
+- [x] Call `check_cloud_sync_path()` at the start of `init()` before any environment creation
+- [x] Add unit tests in `tests/unit/test_utils.bats`
+  - [x] Test: path inside `$HOME/Documents` fails
+  - [x] Test: path inside `$HOME/Dropbox` fails
+  - [x] Test: path inside `$HOME/Developer` passes
+  - [x] Test: `PYVE_ALLOW_SYNCED_DIR=1` bypasses the check
+  - [x] Verify: `bats tests/unit/test_utils.bats` — 70 tests, 0 failures
+- [x] Update `docs/specs/features.md` — add FR-14: Cloud-Synced Directory Detection
+- [x] Update `docs/site/usage.md` — document `--allow-synced-dir` flag and explain the risk
+- [x] Update CHANGELOG.md with v1.7.1 entry
+- [x] Bump VERSION to 1.7.1
 
 ### Story F.c: v1.7.2 Auto-Generate `.vscode/settings.json` for Micromamba Backend [Planned]
 

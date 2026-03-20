@@ -576,6 +576,74 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+#============================================================
+# check_cloud_sync_path() tests
+#============================================================
+
+@test "check_cloud_sync_path: passes when outside synced directories" {
+    # The test temp dir is under /var/folders or /tmp — not under $HOME/Documents
+    run check_cloud_sync_path
+    [ "$status" -eq 0 ]
+}
+
+@test "check_cloud_sync_path: hard fails when inside Documents" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Documents/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Documents/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"cloud-synced"* ]]
+}
+
+@test "check_cloud_sync_path: hard fails when inside Dropbox" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Dropbox/work/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Dropbox/work/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"cloud-synced"* ]]
+}
+
+@test "check_cloud_sync_path: passes inside Developer directory" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Developer/my-project"
+
+    run env HOME="$fake_home" bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Developer/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 0 ]
+}
+
+@test "check_cloud_sync_path: PYVE_ALLOW_SYNCED_DIR=1 bypasses the check" {
+    local fake_home
+    fake_home="$(mktemp -d)"
+    mkdir -p "$fake_home/Documents/my-project"
+
+    run env HOME="$fake_home" PYVE_ALLOW_SYNCED_DIR=1 bash -c "
+        source '$PYVE_ROOT/lib/utils.sh'
+        cd '$fake_home/Documents/my-project'
+        check_cloud_sync_path
+    "
+    rm -rf "$fake_home"
+    [ "$status" -eq 0 ]
+}
+
 @test "is_file_empty: returns 0 for empty file" {
     touch empty.txt
     

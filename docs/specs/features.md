@@ -248,6 +248,18 @@ Handle `pyve --init` on already-initialized projects.
 - `--update`: preserve environment, update config, reject backend changes.
 - `--force`: purge and re-create, allow backend changes, prompt for confirmation.
 
+### FR-14: Cloud-Synced Directory Detection
+
+Refuse to initialize an environment inside a known cloud-synced directory.
+
+- On `pyve --init`, check whether `$PWD` is inside a known synced path before any environment work begins.
+- **Primary check (path heuristic):** hard fail if `$PWD` is a descendant of any of:
+  `~/Documents`, `~/Desktop`, `~/Library/Mobile Documents`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`
+- **Secondary check (xattr, macOS only):** hard fail if `xattr -l "$PWD"` output contains `com.apple.cloud`, `com.dropbox`, `com.google.drive`, or `com.microsoft.onedrive`.
+- Error message includes: current path, detected sync root and provider, recommended `mv` command, and `--allow-synced-dir` override.
+- **`--allow-synced-dir` flag** (or `PYVE_ALLOW_SYNCED_DIR=1`) bypasses the check for users who have disabled sync on that directory.
+- **Rationale:** Cloud sync daemons race against micromamba extraction, causing non-deterministic environment corruption. A warning is insufficient — the failure is silent, delayed, and not recoverable without a full rebuild.
+
 ### FR-13: Distutils Compatibility Shim
 
 On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent TensorFlow/Keras import failures from missing `distutils`.

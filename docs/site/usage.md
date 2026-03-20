@@ -52,6 +52,7 @@ pyve --init [VERSION] [--backend BACKEND]
 - `--no-install-deps`: Skip dependency installation prompt (useful for CI/CD)
 - `--update`: Safely update existing environment (preserves backend)
 - `--force`: Purge and re-initialize environment (destructive)
+- `--allow-synced-dir`: Bypass the cloud-synced directory safety check (see below)
 
 **Examples:**
 
@@ -79,6 +80,32 @@ pyve --init --no-install-deps
 
 # Force re-initialization (preserves backend if ambiguous)
 pyve --init --force
+
+# Bypass cloud-sync directory check (only if you have disabled sync)
+pyve --init --allow-synced-dir
+```
+
+**Cloud-Synced Directory Safety Check:**
+
+Pyve refuses to initialize an environment inside a cloud-synced directory
+(`~/Documents`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`, etc.).
+
+Cloud sync daemons race against micromamba's package extraction, producing
+non-deterministic environment corruption that can damage the Python standard
+library. The failure is silent and delayed — often not detected until hours
+later during a `git commit` or test run.
+
+```
+ERROR: Project is inside a cloud-synced directory.
+
+  Path:      /Users/you/Documents/myproject
+  Sync root: /Users/you/Documents (iCloud Drive)
+
+  Recommended fix: move your project outside the synced directory.
+    mv "/Users/you/Documents/myproject" ~/Developer/myproject
+
+  If you have disabled sync for this directory and understand the risk:
+    pyve --init --allow-synced-dir
 ```
 
 **Interactive Prompts:**

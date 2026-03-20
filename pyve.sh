@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.7.0"
+VERSION="1.7.1"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -123,7 +123,7 @@ USAGE:
     pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict]
                 [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
-                [--update | --force]
+                [--update | --force] [--allow-synced-dir]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge
     pyve test [pytest args...]
@@ -150,6 +150,7 @@ COMMANDS:
                         Optional: --local-env to copy ~/.local/.env template
                         Optional: --update to safely update existing installation
                         Optional: --force to purge and re-initialize (destructive)
+                        Optional: --allow-synced-dir to bypass cloud-sync directory check
 
     run <command> [args...]
                         Execute commands in environment (for CI/CD and automation)
@@ -403,6 +404,10 @@ init() {
                 export PYVE_NO_INSTALL_DEPS=1
                 shift
                 ;;
+            --allow-synced-dir)
+                export PYVE_ALLOW_SYNCED_DIR=1
+                shift
+                ;;
             --update)
                 PYVE_REINIT_MODE="update"
                 shift
@@ -422,6 +427,9 @@ init() {
         esac
     done
     
+    # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
+    check_cloud_sync_path
+
     # Check for existing installation (re-initialization detection)
     if config_file_exists; then
         local existing_backend
