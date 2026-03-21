@@ -961,7 +961,7 @@ pyve lock
 - [x] Update CHANGELOG.md with v1.9.0 entry
 - [x] Bump VERSION to 1.9.0
 
-### Story F.n: v1.9.1 `pyve lock --check` — Lock Currency Verification [Planned]
+### Story F.n: v1.9.0 `pyve lock --check` — Lock Currency Verification [Planned]
 
 A follow-up to F.m. Adds a `--check` flag to `pyve lock` for CI/CD pipelines that want to verify `conda-lock.yml` is up to date with `environment.yml` **without** modifying it. Exits 0 if current, non-zero if stale or missing.
 
@@ -994,5 +994,4 @@ pyve lock --check
 - [ ] Unit test: `pyve lock --check` exits 0 when `conda-lock.yml` is newer than `environment.yml`
 - [ ] Unit test: `pyve lock --check` exits 1 with stale message when `environment.yml` is newer
 - [ ] Unit test: `pyve lock --check` exits 1 with missing message when `conda-lock.yml` absent
-- [ ] Update CHANGELOG.md with v1.9.1 entry
-- [ ] Bump VERSION to 1.9.1
+- [ ] Expand CHANGELOG.md v1.9.0 entry

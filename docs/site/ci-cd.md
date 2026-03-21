@@ -686,6 +686,17 @@ Use `--strict` to catch issues early:
 pyve --init --strict
 ```
 
+### 11. Gate on Lock File Currency
+
+Add a pre-build step that fails CI if `conda-lock.yml` is out of date with `environment.yml`. This catches `environment.yml` edits that weren't followed by `pyve lock`:
+
+```yaml
+- name: Verify lock file is up to date
+  run: pyve lock --check
+```
+
+`pyve lock --check` uses mtime comparison only — it does not invoke `conda-lock` and does not require it to be installed. Exit 0 means current; exit 1 means stale or missing.
+
 ## Troubleshooting
 
 ### Micromamba Not Found

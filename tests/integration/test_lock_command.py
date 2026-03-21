@@ -13,11 +13,12 @@
 # limitations under the License.
 
 """
-Integration tests for the `pyve lock` command (FR-15).
+Integration tests for the `pyve lock` command (FR-15, FR-16).
 
 Tests cover the guard conditions (backend check, conda-lock availability,
-environment.yml presence) and — when conda-lock is available — the
-end-to-end behavior including output filtering.
+environment.yml presence), the --check flag (mtime-only verification), and
+— when conda-lock is available — the end-to-end behavior including output
+filtering.
 """
 
 import os
@@ -177,3 +178,98 @@ class TestLockCommandEndToEnd:
         assert (
             "already up to date" in combined or mtime_after_second == mtime_after_first
         ), "Second pyve lock run should be a no-op"
+
+
+class TestLockCheckFlag:
+    """Tests for `pyve lock --check` — mtime-only verification (FR-16)."""
+
+    def test_check_exits_1_when_conda_lock_yml_missing(self, pyve, project_builder):
+        """
+        pyve lock --check must exit non-zero with a clear message when
+        conda-lock.yml does not exist. conda-lock need not be installed.
+        """
+        project_builder.create_environment_yml("test-env")
+
+        result = pyve.run("lock", "--check")
+        assert result.returncode != 0
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "conda-lock.yml not found" in combined
+        assert "pyve lock" in combined
+
+    def test_check_exits_1_when_lock_is_stale(self, pyve, project_builder):
+        """
+        pyve lock --check must exit non-zero when environment.yml is newer
+        than conda-lock.yml, with a message referencing 'pyve lock'.
+        """
+        import os
+        import time
+
+        project_dir = project_builder.project_dir
+        lock_path = project_dir / "conda-lock.yml"
+        env_path = project_dir / "environment.yml"
+
+        project_builder.create_environment_yml("test-env")
+
+        # Write lock file and back-date it so environment.yml appears newer
+        lock_path.write_text("# placeholder lock\n")
+        old_time = time.time() - 120  # 2 minutes ago
+        os.utime(lock_path, (old_time, old_time))
+        # Touch environment.yml to ensure it is newer
+        os.utime(env_path, None)
+
+        result = pyve.run("lock", "--check")
+        assert result.returncode != 0
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "stale" in combined
+        assert "pyve lock" in combined
+
+    def test_check_exits_0_when_lock_is_current(self, pyve, project_builder):
+        """
+        pyve lock --check must exit 0 with an up-to-date message when
+        conda-lock.yml is newer than environment.yml.
+        Does not require conda-lock to be on PATH.
+        """
+        import os
+        import time
+
+        project_dir = project_builder.project_dir
+        lock_path = project_dir / "conda-lock.yml"
+        env_path = project_dir / "environment.yml"
+
+        project_builder.create_environment_yml("test-env")
+
+        # Back-date environment.yml, then write a newer lock file
+        old_time = time.time() - 120
+        os.utime(env_path, (old_time, old_time))
+        lock_path.write_text("# placeholder lock\n")
+
+        result = pyve.run("lock", "--check")
+        assert result.returncode == 0
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "up to date" in combined
+
+    def test_check_does_not_invoke_conda_lock(self, pyve, project_builder, monkeypatch):
+        """
+        pyve lock --check must not attempt to run conda-lock — the mtime check
+        should succeed even when conda-lock is not on PATH.
+        """
+        import os
+        import time
+
+        project_dir = project_builder.project_dir
+        lock_path = project_dir / "conda-lock.yml"
+        env_path = project_dir / "environment.yml"
+
+        project_builder.create_environment_yml("test-env")
+
+        old_time = time.time() - 120
+        os.utime(env_path, (old_time, old_time))
+        lock_path.write_text("# placeholder lock\n")
+
+        # Strip conda-lock from PATH entirely
+        monkeypatch.setenv("PATH", "/usr/bin:/bin")
+
+        result = pyve.run("lock", "--check")
+        assert result.returncode == 0
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "up to date" in combined

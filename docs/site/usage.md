@@ -15,6 +15,7 @@ pyve [COMMAND] [OPTIONS]
 | `--init [VERSION]` | Initialize virtual environment |
 | `--purge` | Remove virtual environment and cleanup |
 | `lock` | Generate/update `conda-lock.yml` for current platform (micromamba only) |
+| `lock --check` | Verify `conda-lock.yml` is current (exit 0) or stale/missing (exit 1) |
 | `doctor` | Display environment diagnostics |
 | `run COMMAND` | Run command in virtual environment |
 | `test [ARGS]` | Run tests with pytest |
@@ -156,7 +157,8 @@ Generate or update `conda-lock.yml` for the current platform. Micromamba project
 **Usage:**
 
 ```bash
-pyve lock
+pyve lock           # generate / update conda-lock.yml
+pyve lock --check   # verify conda-lock.yml is current (exit 0) or stale/missing (exit 1)
 ```
 
 **Prerequisites:**
@@ -200,6 +202,21 @@ lock file, rebuilding is optional.
 INFO: Generating conda-lock.yml for osx-arm64...
 
 ✓ conda-lock.yml is already up to date for osx-arm64. No changes made.
+```
+
+**`--check` flag:**
+
+Compares `environment.yml` and `conda-lock.yml` modification times without invoking `conda-lock`. Useful as a CI gate to catch `environment.yml` changes that weren't accompanied by a `pyve lock` run. Does not require `conda-lock` to be installed.
+
+```
+# Up to date:
+✓ conda-lock.yml is up to date.
+
+# Stale (exit 1):
+✗ conda-lock.yml is stale — environment.yml has been modified since the lock was generated. Run: pyve lock
+
+# Missing (exit 1):
+✗ conda-lock.yml not found. Run: pyve lock
 ```
 
 **Workflow:**

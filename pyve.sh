@@ -124,7 +124,7 @@ USAGE:
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
                 [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
                 [--update | --force] [--allow-synced-dir]
-    pyve lock
+    pyve lock [--check]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge
     pyve test [pytest args...]
@@ -159,6 +159,9 @@ COMMANDS:
                         Detects platform automatically (osx-arm64, linux-64, etc.)
                         Suppresses misleading conda-lock post-run messages
                         Micromamba projects only
+      --check           Check if conda-lock.yml is up to date (mtime comparison only)
+                        Exits 0 if current, 1 if stale or missing
+                        Does not invoke conda-lock — safe for CI without conda-lock installed
 
     run <command> [args...]
                         Execute commands in environment (for CI/CD and automation)
@@ -217,6 +220,7 @@ EXAMPLES:
     pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
+    pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
     pyve doctor                          # Check environment health
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
@@ -1954,6 +1958,41 @@ doctor_command() {
 # Run conda-lock for the current platform, handling output filtering and
 # actionable next-step messaging.
 run_lock() {
+    local check_mode=false
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --check)
+                check_mode=true
+                shift
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                log_error "Usage: pyve lock [--check]"
+                exit 1
+                ;;
+        esac
+    done
+
+    # --check: mtime comparison only, no conda-lock invocation
+    if [[ "$check_mode" == "true" ]]; then
+        if [[ ! -f "environment.yml" ]]; then
+            log_error "environment.yml not found."
+            exit 1
+        fi
+        if [[ ! -f "conda-lock.yml" ]]; then
+            printf "✗ conda-lock.yml not found. Run: pyve lock\n" >&2
+            exit 1
+        fi
+        if is_lock_file_stale; then
+            printf "✗ conda-lock.yml is stale — environment.yml has been modified since the lock was generated. Run: pyve lock\n" >&2
+            exit 1
+        fi
+        printf "✓ conda-lock.yml is up to date.\n"
+        return 0
+    fi
+
     local platform
 
     # Guard 1: venv backend projects do not use conda-lock
@@ -1967,17 +2006,17 @@ run_lock() {
         fi
     fi
 
-    # Guard 2: conda-lock must be on PATH
-    if ! command -v conda-lock >/dev/null 2>&1; then
-        log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'."
-        exit 1
-    fi
-
-    # Guard 3: environment.yml must exist
+    # Guard 2: environment.yml must exist
     if [[ ! -f "environment.yml" ]]; then
         log_error "environment.yml not found. pyve lock requires a conda environment file."
         log_error "Initialize with: pyve --init --backend micromamba"
+        exit 1
+    fi
+
+    # Guard 3: conda-lock must be on PATH
+    if ! command -v conda-lock >/dev/null 2>&1; then
+        log_error "conda-lock is not available in the current environment."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'."
         exit 1
     fi
 
@@ -2078,7 +2117,8 @@ main() {
             test_command "$@"
             ;;
         lock)
-            run_lock
+            shift
+            run_lock "$@"
             ;;
         doctor)
             doctor_command
