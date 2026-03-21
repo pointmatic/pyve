@@ -995,3 +995,23 @@ pyve lock --check
 - [ ] Unit test: `pyve lock --check` exits 1 with stale message when `environment.yml` is newer
 - [ ] Unit test: `pyve lock --check` exits 1 with missing message when `conda-lock.yml` absent
 - [ ] Expand CHANGELOG.md v1.9.0 entry
+
+### Story F.o: v1.9.0 Fix "No environment found" After Update-in-Place on Cloned Projects [Planned]
+
+**Bug:** Cloning a GitHub repo that was initialized with an older version of pyve leaves `.pyve/config` in the repo but no `.venv` directory (gitignored). Running `pyve --init` → option 1 "Update in-place" (or `--update`) updates the config version but does **not** create the missing environment. `pyve doctor` then reports "No environment found".
+
+**Root cause:** Both update-in-place code paths (`PYVE_REINIT_MODE=update` and interactive option 1) `return 0` immediately after calling `update_config_version()` without checking whether the environment directory actually exists.
+
+**Fix:** After updating the config, check whether the environment directory exists. If missing, fall through to the normal environment creation flow rather than returning early.
+
+- [ ] Write failing test: `TestReinitUpdateMissingEnv::test_update_flag_creates_missing_venv` in `tests/integration/test_reinit.py`
+  - [ ] Set up a project with `.pyve/config` (backend: venv) but no `.venv` directory
+  - [ ] Run `pyve --init --update`; assert exit 0 and `.venv` exists
+- [ ] Write failing test: `TestReinitUpdateMissingEnv::test_interactive_option1_creates_missing_venv` in `tests/integration/test_reinit.py`
+  - [ ] Same setup; run `pyve --init` with input `"1\n"`; assert exit 0 and `.venv` exists
+- [ ] Run failing tests to confirm they fail before fix
+- [ ] Fix `pyve.sh` — `PYVE_REINIT_MODE=update` path (lines ~475–489): after `log_info "Project updated..."`, read `venv.directory` from config; if backend is `venv` and directory is absent, log info and fall through instead of `return 0`
+- [ ] Fix `pyve.sh` — interactive option 1 path (lines ~575–589): same env-existence check before `return 0`
+- [ ] Run new tests — confirm they pass
+- [ ] Run full reinit suite: `pytest tests/integration/test_reinit.py -v` — no regressions
+- [ ] Run full venv integration suite: `pytest tests/integration/ -v -m venv` — no regressions

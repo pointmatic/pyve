@@ -486,8 +486,31 @@ init() {
             log_info "  Backend: $existing_backend (unchanged)"
             echo ""
             log_info "Project updated to Pyve v$VERSION"
-            return 0
-            
+
+            # If the environment directory is missing (e.g. freshly cloned repo where
+            # .venv is gitignored), fall through to create it rather than returning.
+            local _update_env_missing=false
+            if [[ "$existing_backend" == "venv" ]]; then
+                local _update_venv_dir
+                _update_venv_dir="$(read_config_value "venv.directory")"
+                _update_venv_dir="${_update_venv_dir:-$DEFAULT_VENV_DIR}"
+                if [[ ! -d "$_update_venv_dir" ]]; then
+                    log_info "Environment directory '$_update_venv_dir' not found — creating it now..."
+                    _update_env_missing=true
+                fi
+            elif [[ "$existing_backend" == "micromamba" ]]; then
+                local _update_env_name
+                _update_env_name="$(read_config_value "micromamba.env_name")"
+                if [[ -n "$_update_env_name" ]] && [[ ! -d ".pyve/envs/$_update_env_name" ]]; then
+                    log_info "Environment '.pyve/envs/$_update_env_name' not found — creating it now..."
+                    _update_env_missing=true
+                fi
+            fi
+            if [[ "$_update_env_missing" == false ]]; then
+                return 0
+            fi
+            # Fall through to environment creation below.
+
         elif [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
             log_warning "Force re-initialization: This will purge the existing environment"
@@ -586,7 +609,30 @@ init() {
                     log_info "  Backend: $existing_backend (unchanged)"
                     echo ""
                     log_info "Project updated to Pyve v$VERSION"
-                    return 0
+
+                    # If the environment directory is missing (e.g. freshly cloned repo
+                    # where .venv is gitignored), fall through to create it.
+                    local _interactive_env_missing=false
+                    if [[ "$existing_backend" == "venv" ]]; then
+                        local _interactive_venv_dir
+                        _interactive_venv_dir="$(read_config_value "venv.directory")"
+                        _interactive_venv_dir="${_interactive_venv_dir:-$DEFAULT_VENV_DIR}"
+                        if [[ ! -d "$_interactive_venv_dir" ]]; then
+                            log_info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
+                            _interactive_env_missing=true
+                        fi
+                    elif [[ "$existing_backend" == "micromamba" ]]; then
+                        local _interactive_env_name
+                        _interactive_env_name="$(read_config_value "micromamba.env_name")"
+                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d ".pyve/envs/$_interactive_env_name" ]]; then
+                            log_info "Environment '.pyve/envs/$_interactive_env_name' not found — creating it now..."
+                            _interactive_env_missing=true
+                        fi
+                    fi
+                    if [[ "$_interactive_env_missing" == false ]]; then
+                        return 0
+                    fi
+                    # Fall through to environment creation below.
                     ;;
                 2)
                     # Purge and continue
