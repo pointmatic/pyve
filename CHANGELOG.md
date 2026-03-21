@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-03-20
+
+### Added
+- `pyve lock` command: generates or updates `conda-lock.yml` for the current platform (micromamba projects only). Automatically detects the conda platform string via `get_conda_platform()` (`osx-arm64`, `osx-64`, `linux-64`, `linux-aarch64`), runs `conda-lock -f environment.yml -p <platform>`, suppresses the misleading `conda-lock install` post-run message, and prints actionable `pyve --init --force` guidance instead. Exits with an "already up to date" message when the spec hash is unchanged. Fails early with clear messages when the project uses the venv backend, when `conda-lock` is not on PATH, or when `environment.yml` is missing.
+
+### Changed
+- All user-facing messages that previously referenced raw `conda-lock -f environment.yml -p <platform>` commands now reference `pyve lock` (stale lock warning, missing lock error, strict-mode error in `warn_stale_lock_file()`, `info_missing_lock_file()`, and `validate_lock_file_status()` in `lib/micromamba_env.sh`).
+- Policy update: Pyve no longer describes itself as "hands-off for conda-lock." Pyve does not install `conda-lock`, but wraps its invocation when it is available on PATH.
+
 ## [1.8.6] - 2026-03-20
 
 ### Fixed

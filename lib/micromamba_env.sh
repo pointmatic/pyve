@@ -180,7 +180,7 @@ error_no_environment_file() {
     printf "    - numpy\n"
     log_error ""
     log_error "Or generate a lock file:"
-    log_error "  conda-lock -f environment.yml -p $(get_conda_platform)"
+    log_error "  pyve lock"
 
     return 1
 }
@@ -272,7 +272,7 @@ warn_stale_lock_file() {
     printf "\n"
     printf "Using conda-lock.yml for reproducibility.\n"
     printf "To update lock file:\n"
-    printf "  conda-lock -f environment.yml -p %s\n" "$(get_conda_platform)"
+    printf "  pyve lock\n"
     printf "\n"
     
     # Prompt user (auto-accept in CI)
@@ -296,7 +296,7 @@ info_missing_lock_file() {
     log_info "Using environment.yml without lock file."
     printf "\n"
     printf "For reproducible builds, consider generating a lock file:\n"
-    printf "  conda-lock -f environment.yml -p %s\n" "$(get_conda_platform)"
+    printf "  pyve lock\n"
     printf "\n"
     printf "This is especially important for CI/CD and production.\n"
     printf "\n"
@@ -337,7 +337,7 @@ validate_lock_file_status() {
                 log_error "Lock file is stale (strict mode)"
                 log_error "environment.yml was modified after conda-lock.yml"
                 log_error "Regenerate lock file:"
-                log_error "  conda-lock -f environment.yml -p $(get_conda_platform)"
+                log_error "  pyve lock"
                 return 1
             elif is_interactive; then
                 # Interactive mode - warn and prompt
@@ -361,7 +361,7 @@ validate_lock_file_status() {
         printf "\n" >&2
         printf "ERROR: No conda-lock.yml found.\n\n" >&2
         printf "For reproducible builds, generate one first:\n" >&2
-        printf "  conda-lock -f environment.yml -p %s\n\n" "$(get_conda_platform)" >&2
+        printf "  pyve lock\n\n" >&2
         printf "To proceed without a lock file (not recommended):\n" >&2
         printf "  pyve --init --no-lock\n" >&2
         return 1

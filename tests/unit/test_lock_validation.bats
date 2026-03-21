@@ -311,3 +311,48 @@ EOF
     [ "$status" -eq 0 ]
     [ "$output" = "linux-aarch64" ]
 }
+
+#============================================================
+# pyve lock — message content tests
+# These verify that user-facing messages reference 'pyve lock'
+# rather than raw conda-lock commands (FR-15 policy change).
+#============================================================
+
+@test "warn_stale_lock_file: references 'pyve lock' not raw conda-lock command" {
+    touch -t 202401010000 conda-lock.yml
+    touch -t 202401010001 environment.yml
+
+    # Non-interactive, auto-continue
+    CI=1 run warn_stale_lock_file
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve lock"* ]]
+    [[ "$output" != *"conda-lock -f"* ]]
+}
+
+@test "info_missing_lock_file: references 'pyve lock' not raw conda-lock command" {
+    create_environment_yml "test-env" "python=3.11"
+
+    CI=1 run info_missing_lock_file
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve lock"* ]]
+    [[ "$output" != *"conda-lock -f"* ]]
+}
+
+@test "validate_lock_file_status: strict stale error references 'pyve lock'" {
+    touch -t 202401010000 conda-lock.yml
+    touch -t 202401010001 environment.yml
+
+    run validate_lock_file_status "true"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"pyve lock"* ]]
+    [[ "$output" != *"conda-lock -f"* ]]
+}
+
+@test "validate_lock_file_status: missing lock error references 'pyve lock'" {
+    create_environment_yml "test-env" "python=3.11"
+
+    run validate_lock_file_status "false"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"pyve lock"* ]]
+    [[ "$output" != *"conda-lock -f"* ]]
+}

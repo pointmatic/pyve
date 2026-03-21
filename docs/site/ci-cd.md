@@ -715,7 +715,8 @@ key: env-${{ runner.os }}-${{ hashFiles('conda-lock.yml') }}
 **Solution:** Regenerate lock file:
 
 ```bash
-conda-lock -f environment.yml -p linux-64 -p osx-64
+pyve lock   # detects platform automatically
+# commit the updated conda-lock.yml before the next CI run
 ```
 
 ### Permission Denied

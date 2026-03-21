@@ -27,7 +27,7 @@ Make things easy and natural, but avoid being invasive.
 - Pyve manages the environments it creates.
 - Pyve asks before installing non-critical, networked dependencies like `micromamba` or `pytest`. 
 - If you prefer `asdf` instead of `venv`, Pyve will automatically detect and use it to manage the virtual environment for you. 
-- Pyve does not install or manage `conda-lock`, but you can install it yourself and Pyve won't interfere.
+- Pyve does not install `conda-lock`, but wraps its invocation via `pyve lock` when it is available — handling platform detection and suppressing the misleading post-run message.
 
 ## Key Features
 - **Install**: Install Pyve via Homebrew (`brew install pointmatic/tap/pyve`) or manually from source (`./pyve.sh --install`, which copies the script to `~/.local/bin/` and creates a symlink).
@@ -366,6 +366,7 @@ pyve testenv --install -r requirements-dev.txt
 pyve --init, -i       # Initialize your Python coding environment
 pyve --purge, -p      # Remove environment artifacts
 pyve --python-version # Set Python version only
+pyve lock             # Generate/update conda-lock.yml (micromamba projects)
 pyve run <cmd>        # Execute command in project environment
 pyve doctor           # Check environment health and configuration
 pyve --install        # Install pyve to ~/.local/bin
@@ -586,14 +587,12 @@ pyve --init --backend micromamba --strict --auto-bootstrap --no-direnv
 
 **Generate Lock Files:**
 ```bash
-# Install conda-lock
-pip install conda-lock
+# Generate lock file for the current platform (recommended)
+pyve lock
 
-# Generate lock file
-conda-lock -f environment.yml -p linux-64 -p osx-64
-
-# Or use micromamba
-micromamba env export > conda-lock.yml
+# Or invoke conda-lock directly (must know your platform string)
+conda-lock -f environment.yml -p osx-arm64  # macOS Apple Silicon
+conda-lock -f environment.yml -p linux-64   # Linux x86_64
 ```
 
 **Example Output (Stale Lock File):**

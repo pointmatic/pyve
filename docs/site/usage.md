@@ -14,6 +14,7 @@ pyve [COMMAND] [OPTIONS]
 |---------|-------------|
 | `--init [VERSION]` | Initialize virtual environment |
 | `--purge` | Remove virtual environment and cleanup |
+| `lock` | Generate/update `conda-lock.yml` for current platform (micromamba only) |
 | `doctor` | Display environment diagnostics |
 | `run COMMAND` | Run command in virtual environment |
 | `test [ARGS]` | Run tests with pytest |
@@ -145,6 +146,71 @@ These prompts are skipped in CI mode (when `CI` environment variable is set).
 - Homebrew-managed installations cannot use `--init` (managed by Homebrew)
 - Re-running `--init` with a different version recreates the environment
 - Backend is auto-detected from `environment.yml` or `conda-lock.yml` (micromamba) vs `requirements.txt` (venv)
+
+---
+
+### `lock`
+
+Generate or update `conda-lock.yml` for the current platform. Micromamba projects only.
+
+**Usage:**
+
+```bash
+pyve lock
+```
+
+**Prerequisites:**
+
+- `conda-lock` must be available on PATH. Add it to `environment.yml` dependencies:
+  ```yaml
+  dependencies:
+    - conda-lock
+  ```
+  Then run `pyve --init --force` to install it, after which `pyve lock` is available.
+- `environment.yml` must exist in the current directory.
+- Project must use the micromamba backend.
+
+**What it does:**
+
+1. Checks that the project uses the micromamba backend (fails with a clear message for venv projects)
+2. Verifies `conda-lock` is on PATH
+3. Verifies `environment.yml` exists
+4. Detects the current platform automatically (`osx-arm64`, `osx-64`, `linux-64`, `linux-aarch64`)
+5. Runs `conda-lock -f environment.yml -p <platform>`
+6. If the spec hasn't changed, prints an up-to-date message and exits without modifying the file
+7. On success, suppresses the misleading `conda-lock install` post-run message and prints actionable next steps
+
+**Example output (file updated):**
+
+```
+INFO: Generating conda-lock.yml for osx-arm64...
+
+✓ conda-lock.yml updated for osx-arm64.
+
+To rebuild the environment from the new lock file:
+  pyve --init --force
+
+If the environment is already initialized and you only need to commit the updated
+lock file, rebuilding is optional.
+```
+
+**Example output (already up to date):**
+
+```
+INFO: Generating conda-lock.yml for osx-arm64...
+
+✓ conda-lock.yml is already up to date for osx-arm64. No changes made.
+```
+
+**Workflow:**
+
+```bash
+# After adding a new package to environment.yml
+pyve lock               # regenerate conda-lock.yml
+git add conda-lock.yml
+git commit -m "Add numpy to environment"
+pyve --init --force     # rebuild environment from new lock file
+```
 
 ---
 
