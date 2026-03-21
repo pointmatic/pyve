@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.8.6"
+VERSION="1.9.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -124,6 +124,7 @@ USAGE:
                 [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
                 [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
                 [--update | --force] [--allow-synced-dir]
+    pyve lock [--check]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge
     pyve test [pytest args...]
@@ -152,6 +153,15 @@ COMMANDS:
                         Optional: --update to safely update existing installation
                         Optional: --force to purge and re-initialize (destructive)
                         Optional: --allow-synced-dir to bypass cloud-sync directory check
+
+    lock                Generate (or verify) conda-lock.yml for the current platform
+                        Requires: conda-lock on PATH (add to environment.yml dependencies)
+                        Detects platform automatically (osx-arm64, linux-64, etc.)
+                        Suppresses misleading conda-lock post-run messages
+                        Micromamba projects only
+      --check           Check if conda-lock.yml is up to date (mtime comparison only)
+                        Exits 0 if current, 1 if stale or missing
+                        Does not invoke conda-lock — safe for CI without conda-lock installed
 
     run <command> [args...]
                         Execute commands in environment (for CI/CD and automation)
@@ -209,6 +219,8 @@ EXAMPLES:
     pyve testenv --init                  # Create dev/test runner environment
     pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
     pyve test -q                         # Run pytest via dev/test runner
+    pyve lock                            # Generate/update conda-lock.yml
+    pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
     pyve doctor                          # Check environment health
     pyve --purge                         # Remove environment
     pyve --python-version 3.13.7         # Set Python version only
@@ -474,8 +486,31 @@ init() {
             log_info "  Backend: $existing_backend (unchanged)"
             echo ""
             log_info "Project updated to Pyve v$VERSION"
-            return 0
-            
+
+            # If the environment directory is missing (e.g. freshly cloned repo where
+            # .venv is gitignored), fall through to create it rather than returning.
+            local _update_env_missing=false
+            if [[ "$existing_backend" == "venv" ]]; then
+                local _update_venv_dir
+                _update_venv_dir="$(read_config_value "venv.directory")"
+                _update_venv_dir="${_update_venv_dir:-$DEFAULT_VENV_DIR}"
+                if [[ ! -d "$_update_venv_dir" ]]; then
+                    log_info "Environment directory '$_update_venv_dir' not found — creating it now..."
+                    _update_env_missing=true
+                fi
+            elif [[ "$existing_backend" == "micromamba" ]]; then
+                local _update_env_name
+                _update_env_name="$(read_config_value "micromamba.env_name")"
+                if [[ -n "$_update_env_name" ]] && [[ ! -d ".pyve/envs/$_update_env_name" ]]; then
+                    log_info "Environment '.pyve/envs/$_update_env_name' not found — creating it now..."
+                    _update_env_missing=true
+                fi
+            fi
+            if [[ "$_update_env_missing" == false ]]; then
+                return 0
+            fi
+            # Fall through to environment creation below.
+
         elif [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
             log_warning "Force re-initialization: This will purge the existing environment"
@@ -574,7 +609,30 @@ init() {
                     log_info "  Backend: $existing_backend (unchanged)"
                     echo ""
                     log_info "Project updated to Pyve v$VERSION"
-                    return 0
+
+                    # If the environment directory is missing (e.g. freshly cloned repo
+                    # where .venv is gitignored), fall through to create it.
+                    local _interactive_env_missing=false
+                    if [[ "$existing_backend" == "venv" ]]; then
+                        local _interactive_venv_dir
+                        _interactive_venv_dir="$(read_config_value "venv.directory")"
+                        _interactive_venv_dir="${_interactive_venv_dir:-$DEFAULT_VENV_DIR}"
+                        if [[ ! -d "$_interactive_venv_dir" ]]; then
+                            log_info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
+                            _interactive_env_missing=true
+                        fi
+                    elif [[ "$existing_backend" == "micromamba" ]]; then
+                        local _interactive_env_name
+                        _interactive_env_name="$(read_config_value "micromamba.env_name")"
+                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d ".pyve/envs/$_interactive_env_name" ]]; then
+                            log_info "Environment '.pyve/envs/$_interactive_env_name' not found — creating it now..."
+                            _interactive_env_missing=true
+                        fi
+                    fi
+                    if [[ "$_interactive_env_missing" == false ]]; then
+                        return 0
+                    fi
+                    # Fall through to environment creation below.
                     ;;
                 2)
                     # Purge and continue
@@ -1940,6 +1998,118 @@ doctor_command() {
 }
 
 #============================================================
+# Lock Command
+#============================================================
+
+# Run conda-lock for the current platform, handling output filtering and
+# actionable next-step messaging.
+run_lock() {
+    local check_mode=false
+
+    # Parse flags
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --check)
+                check_mode=true
+                shift
+                ;;
+            *)
+                log_error "Unknown option: $1"
+                log_error "Usage: pyve lock [--check]"
+                exit 1
+                ;;
+        esac
+    done
+
+    # --check: mtime comparison only, no conda-lock invocation
+    if [[ "$check_mode" == "true" ]]; then
+        if [[ ! -f "environment.yml" ]]; then
+            log_error "environment.yml not found."
+            exit 1
+        fi
+        if [[ ! -f "conda-lock.yml" ]]; then
+            printf "✗ conda-lock.yml not found. Run: pyve lock\n" >&2
+            exit 1
+        fi
+        if is_lock_file_stale; then
+            printf "✗ conda-lock.yml is stale — environment.yml has been modified since the lock was generated. Run: pyve lock\n" >&2
+            exit 1
+        fi
+        printf "✓ conda-lock.yml is up to date.\n"
+        return 0
+    fi
+
+    local platform
+
+    # Guard 1: venv backend projects do not use conda-lock
+    if config_file_exists; then
+        local config_backend
+        config_backend="$(read_config_value "backend")"
+        if [[ "$config_backend" == "venv" ]]; then
+            log_error "pyve lock is for micromamba projects only."
+            log_error "This project uses the venv backend. conda-lock.yml is not used by venv."
+            exit 1
+        fi
+    fi
+
+    # Guard 2: environment.yml must exist
+    if [[ ! -f "environment.yml" ]]; then
+        log_error "environment.yml not found. pyve lock requires a conda environment file."
+        log_error "Initialize with: pyve --init --backend micromamba"
+        exit 1
+    fi
+
+    # Guard 3: conda-lock must be on PATH
+    if ! command -v conda-lock >/dev/null 2>&1; then
+        log_error "conda-lock is not available in the current environment."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'."
+        exit 1
+    fi
+
+    platform="$(get_conda_platform)"
+
+    log_info "Generating conda-lock.yml for ${platform}..."
+    printf "\n"
+
+    # Run conda-lock, capturing combined output
+    local output
+    local exit_code
+    output="$(conda-lock -f environment.yml -p "$platform" 2>&1)"
+    exit_code=$?
+
+    if [[ $exit_code -ne 0 ]]; then
+        # Pass through conda-lock's error output unmodified
+        printf "%s\n" "$output" >&2
+        exit $exit_code
+    fi
+
+    # Filter out the misleading "conda-lock install" post-run message that suggests
+    # a non-Pyve workflow. All other output (solver progress, packages) is kept.
+    local filtered_output
+    filtered_output="$(printf "%s\n" "$output" | grep -v "conda-lock install\|Install lock using")"
+    if [[ -n "$filtered_output" ]]; then
+        printf "%s\n" "$filtered_output"
+        printf "\n"
+    fi
+
+    # Detect "already up to date" case: conda-lock emits "spec hash already locked"
+    # when the environment spec hasn't changed since the last run.
+    # Checked after printing so any warnings in the output are still visible.
+    if printf "%s" "$output" | grep -qi "already locked\|spec hash already locked"; then
+        printf "✓ conda-lock.yml is already up to date for %s. No changes made.\n" "$platform"
+        exit 0
+    fi
+
+    printf "✓ conda-lock.yml updated for %s.\n" "$platform"
+    printf "\n"
+    printf "To rebuild the environment from the new lock file:\n"
+    printf "  pyve --init --force\n"
+    printf "\n"
+    printf "If the environment is already initialized and you only need to commit the\n"
+    printf "updated lock file, rebuilding is optional.\n"
+}
+
+#============================================================
 # Main Entry Point
 #============================================================
 
@@ -1991,6 +2161,10 @@ main() {
         test)
             shift
             test_command "$@"
+            ;;
+        lock)
+            shift
+            run_lock "$@"
             ;;
         doctor)
             doctor_command

@@ -107,8 +107,8 @@ micromamba install numpy pandas matplotlib -c conda-forge
 # Install PyPI packages (if needed)
 pip install custom-package
 
-# Lock dependencies
-conda-lock --file environment.yml --platform linux-64
+# Lock dependencies (pyve detects platform automatically)
+pyve lock
 
 # conda-lock.yml (generated)
 # Contains exact versions and hashes for reproducibility
@@ -295,16 +295,12 @@ dependencies:
 **With conda-lock (reproducible):**
 
 ```bash
-# Install conda-lock
-pip install conda-lock
+# Add conda-lock to environment.yml, then run pyve --init --force to install it
+# Afterwards, generate a lock file:
+pyve lock
 
-# Generate lock file
-conda-lock --file environment.yml --platform linux-64
-
-# Creates conda-lock.yml with exact versions and hashes
-
-# Install from lock file
-conda-lock install --name myproject conda-lock.yml
+# Creates conda-lock.yml with exact versions and hashes for the current platform
+# Commit conda-lock.yml — pyve --init reads it for reproducible builds
 ```
 
 ---
@@ -376,10 +372,11 @@ micromamba install numpy pandas matplotlib jupyter scikit-learn -c conda-forge
 # Create environment.yml
 micromamba env export > environment.yml
 
-# Lock for reproducibility
-conda-lock --file environment.yml --platform linux-64 --platform osx-64
+# Lock for reproducibility (platform detected automatically)
+pyve lock
 
 # Share conda-lock.yml with team
+git add conda-lock.yml && git commit -m "Lock conda environment"
 ```
 
 ### Mixed Dependencies (micromamba)
@@ -397,8 +394,8 @@ dependencies:
   - pip
 EOF
 
-# Generate lock file (required before pyve --init)
-conda-lock -f environment.yml -p $(uname -m | sed 's/arm64/osx-arm64/;s/x86_64/linux-64/')
+# Generate lock file (platform detected automatically)
+pyve lock
 
 # Initialize (reads conda-lock.yml for reproducibility)
 pyve --init --backend micromamba
@@ -502,9 +499,15 @@ pyve --init --allow-synced-dir
 **Solution:** Generate the lock file first:
 
 ```bash
+pyve lock       # detects platform automatically
+pyve --init
+```
+
+Or invoke conda-lock directly if needed:
+
+```bash
 conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
 conda-lock -f environment.yml -p linux-64     # Linux
-pyve --init
 ```
 
 During initial project setup before the lock file exists:
@@ -619,7 +622,7 @@ pip-compile --generate-hashes requirements.in
 
 **micromamba:**
 ```bash
-conda-lock --file environment.yml --platform linux-64
+pyve lock
 # Commit conda-lock.yml to git — it must be committed, not ignored
 # (pyve --init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
 ```

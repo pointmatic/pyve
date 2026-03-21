@@ -810,3 +810,208 @@ The `--force` pre-flight backend detection called `get_backend_priority` without
 - [x] Add regression test `test_force_reinit_ignores_stale_config_backend` in `tests/integration/test_force_backend_detection.py`
   - Scenario: project has both `environment.yml` + `pyproject.toml`; initial `--init --backend venv` writes `backend: venv` to config; `--init --force` (interactive, `input="y\ny\n"`) must skip the stale config and show the backend detection prompt
   - Assert `"Initialize with micromamba backend?"` appears in output — if `skip_config` were not working, Priority 2 would return `venv` immediately and the prompt would never appear
+
+---
+
+## `pyve lock` and conda-lock Workflow Ownership
+
+Pyve already wraps the full micromamba lifecycle. The one gap remaining in the workflow is `conda-lock.yml` regeneration: users must know the right platform string (`osx-arm64`, not `arm64`), remember the full `conda-lock` invocation, ignore a misleading post-run message, and then know to run `pyve --init --force` to apply the new file. Pyve already resolved the platform-string problem in F.j (`get_conda_platform()`). These stories complete the workflow by adding `pyve lock` as a thin, opinionated wrapper.
+
+### Story F.m: v1.9.0 `pyve lock` — conda-lock Wrapper Command [Done]
+
+**Background**
+
+Currently, every mention of conda-lock in Pyve output sends the user to run raw `conda-lock` commands themselves:
+
+```
+Regenerate with: conda-lock -f environment.yml -p osx-arm64
+```
+
+This forces users to:
+1. Know the correct conda platform string for their machine (`osx-arm64`, not the raw `uname -m` output `arm64`)
+2. Remember the full syntax (`conda-lock -f environment.yml -p <platform>`)
+3. Ignore the misleading post-run message: `Install lock using: conda-lock install --name YOURENV conda-lock.yml` — which is **not** the correct workflow in a Pyve-managed project (the correct workflow is `pyve --init --force`)
+4. Know to run `pyve --init --force` afterward if the environment needs to be rebuilt
+
+Pyve already knows all of this. A `pyve lock` command encapsulates the entire workflow.
+
+**Scope and policy change**
+
+This story changes Pyve's stated policy from "hands-off for conda-lock" to "provides a thin opinionated wrapper." Pyve still does **not** install `conda-lock`; users add it to `environment.yml` dependencies or install it manually. The change is that Pyve now wraps the invocation when `conda-lock` is available on PATH, handling platform detection, output filtering, and actionable next-step messaging.
+
+Non-goals for this story:
+- `pyve lock --check` (verify currency without regenerating) — deferred to F.n
+- Multi-platform lock generation — `pyve lock` generates for the current platform only
+- Installing `conda-lock` — Pyve does not bootstrap `conda-lock`
+
+**Command behavior**
+
+```
+pyve lock
+```
+
+1. **Check backend** — if `.pyve/config` exists and records `backend: venv`, fail immediately with:
+   ```
+   ERROR: pyve lock is for micromamba projects only.
+   This project uses the venv backend. conda-lock.yml is not used by venv.
+   ```
+   This prevents the confusing "environment.yml not found" message reaching venv users and avoids accidentally running conda-lock on a venv project that happens to have a stale `environment.yml` around.
+
+2. **Verify `conda-lock` is available** — if `conda-lock` is not on PATH, fail with:
+   ```
+   ERROR: conda-lock is not available in the current environment.
+   Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'.
+   ```
+
+3. **Verify `environment.yml` exists** — if not found, fail with:
+   ```
+   ERROR: environment.yml not found. pyve lock requires a conda environment file.
+   Initialize with: pyve --init --backend micromamba
+   ```
+
+4. **Detect platform** via `get_conda_platform()` (already in `lib/micromamba_env.sh`)
+
+5. **Run `conda-lock -f environment.yml -p <platform>`**, capturing stdout/stderr
+
+6. **Detect the "already up to date" case** — when conda-lock's output contains `"already locked"` or `"spec hash already locked"`, print:
+   ```
+   ✓ conda-lock.yml is already up to date for osx-arm64. No changes made.
+   ```
+
+7. **On successful regeneration**, suppress the misleading `conda-lock install` post-run message and replace it with:
+   ```
+   ✓ conda-lock.yml updated for osx-arm64.
+
+   To rebuild the environment from the new lock file:
+     pyve --init --force
+
+   If the environment is already initialized and you only need to commit the updated
+   lock file, rebuilding is optional.
+   ```
+
+8. **On any other non-zero exit**, propagate the error and pass through conda-lock's output unmodified.
+
+**Implementation checklist**
+
+- [x] Add `run_lock()` function to `pyve.sh` (or `lib/micromamba_env.sh`)
+  - [x] Check `.pyve/config` backend; if `backend: venv`, fail with "pyve lock is for micromamba projects only" message
+  - [x] Check `conda-lock` is on PATH; fail with helpful message if not
+  - [x] Check `environment.yml` exists; fail with message that includes `pyve --init --backend micromamba` hint
+  - [x] Call `get_conda_platform()` for the platform string
+  - [x] Run `conda-lock -f environment.yml -p "$platform"` capturing combined output
+  - [x] Detect "already locked" / "spec hash already locked" pattern in output; print up-to-date message and exit 0
+  - [x] On success, filter out lines matching `conda-lock install` and print the pyve-specific rebuild guidance
+  - [x] On non-zero exit, pass through output unmodified and propagate exit code
+- [x] Add `lock` to the CLI dispatch in `pyve.sh` (alongside `doctor`, `run`, `test`, `testenv`)
+- [x] Update stale lock warning in `warn_stale_lock_file()` (`lib/micromamba_env.sh`): change raw `conda-lock` command to `"pyve lock"`
+- [x] Update missing lock warning in `info_missing_lock_file()` (`lib/micromamba_env.sh`): change raw `conda-lock` command to `"pyve lock"`
+- [x] Update the strict-mode error messages in `validate_lock_file_status()` that reference raw `conda-lock` commands
+- [x] Update `pyve --help` output to include `lock` in the command list
+
+**Policy and spec updates**
+
+- [x] `docs/specs/features.md`:
+  - [x] Remove "Pyve does not manage conda-lock (users install and run it themselves)" from the Non-Goals section
+  - [x] Add replacement non-goal: "Pyve does not install `conda-lock` — users add it to `environment.yml` or install it manually; Pyve wraps the invocation via `pyve lock` when it is available"
+  - [x] Add `lock` to the required Command flag list
+  - [x] Add FR-15: `pyve lock` — conda-lock Wrapper
+- [x] `docs/specs/tech-spec.md`:
+  - [x] Add `lock` to the Commands and Flags table
+  - [x] Document `run_lock` in `lib/micromamba_env.sh` function table (lives in `pyve.sh`)
+  - [x] Add `test_lock_command.py` to the integration test table
+
+**README updates**
+
+- [x] Remove "Pyve does not install or manage `conda-lock`, but you can install it yourself and Pyve won't interfere." from the Philosophy section
+- [x] Add `pyve lock` to the All Commands table
+- [x] Update the Lock File Validation section's "Generate Lock Files" example to show `pyve lock` as the primary method with raw `conda-lock` as a fallback
+
+**MkDocs site updates**
+
+- [x] `docs/site/usage.md`:
+  - [x] Add `pyve lock` to the Command Overview table
+  - [x] Add a `### lock` command reference section documenting behavior, prerequisites, output, and examples
+- [x] `docs/site/backends.md`:
+  - [x] Update the `micromamba Example` code block: replace raw `conda-lock` command with `pyve lock`
+  - [x] Update the "With conda-lock (reproducible)" example in the Dependency Management section
+  - [x] Update the "Data Science Project (micromamba)" workflow example
+  - [x] Update the "Mixed Dependencies (micromamba)" workflow example
+  - [x] Update the Best Practices "Lock Your Dependencies" section
+  - [x] Update the Missing conda-lock.yml troubleshooting entry
+- [x] `docs/site/ci-cd.md`: Updated "Lock File Stale" troubleshooting entry to use `pyve lock`
+- [x] `docs/site/index.html`: No changes required — the marketing page operates at feature-card level
+
+**Tests**
+
+- [x] Unit tests appended to `tests/unit/test_lock_validation.bats`:
+  - [x] Test: `warn_stale_lock_file` output references `pyve lock` not raw `conda-lock -f` command
+  - [x] Test: `info_missing_lock_file` output references `pyve lock` not raw `conda-lock -f` command
+  - [x] Test: `validate_lock_file_status` strict stale error references `pyve lock`
+  - [x] Test: `validate_lock_file_status` missing lock error references `pyve lock`
+- [x] Integration tests in `tests/integration/test_lock_command.py`:
+  - [x] Test: `pyve lock` on a venv-backend project → non-zero exit + "micromamba projects only" message; must not mention `environment.yml not found`
+  - [x] Test: `pyve lock` with no `environment.yml` → non-zero exit + clear error with `--backend micromamba` hint
+  - [x] Test: `pyve lock` on venv project that happens to have `environment.yml` → same "micromamba projects only" error
+  - [x] Test: `pyve lock` with `environment.yml` but `conda-lock` not on PATH → non-zero exit + install instructions
+  - [x] Test (micromamba only): `pyve lock` end-to-end → produces `conda-lock.yml`
+  - [x] Test (micromamba only): success output references `pyve --init --force` not raw conda-lock commands
+  - [x] Test (micromamba only): success output does not contain `conda-lock install` or `Install lock using`
+  - [x] Test (micromamba only): second `pyve lock` run without spec change → up-to-date or mtime unchanged
+
+- [x] Update CHANGELOG.md with v1.9.0 entry
+- [x] Bump VERSION to 1.9.0
+
+### Story F.n: v1.9.0 `pyve lock --check` — Lock Currency Verification [Planned]
+
+A follow-up to F.m. Adds a `--check` flag to `pyve lock` for CI/CD pipelines that want to verify `conda-lock.yml` is up to date with `environment.yml` **without** modifying it. Exits 0 if current, non-zero if stale or missing.
+
+**Motivation:** Teams running CI against a committed `conda-lock.yml` need a fast gate that catches `environment.yml` changes that were not accompanied by a `pyve lock` run. Unlike `--strict` in `pyve --init`, this check is explicit and targeted.
+
+**Command behavior**
+
+```
+pyve lock --check
+```
+
+- Compares `environment.yml` mtime against `conda-lock.yml` mtime (same logic as `is_lock_file_stale()`)
+- Exit 0: `✓ conda-lock.yml is up to date.`
+- Exit 1 (stale): `✗ conda-lock.yml is stale — environment.yml has been modified since the lock was generated. Run: pyve lock`
+- Exit 1 (missing): `✗ conda-lock.yml not found. Run: pyve lock`
+- Does not invoke `conda-lock` — mtime comparison only, so `conda-lock` need not be installed
+
+**Relationship to `validate_lock_file_status()`:** `pyve lock --check` is a thin public-facing alias for the existing mtime-comparison logic, with pyve-aligned exit codes and messaging. The existing function continues to be used internally by `pyve --init` and `pyve --init --force`.
+
+**Implementation checklist**
+
+- [ ] Add `--check` flag parsing to `run_lock()` in `pyve.sh` (or `lib/micromamba_env.sh`)
+- [ ] When `--check` is set, call `is_lock_file_stale()` / check for missing `conda-lock.yml`; print status and exit without invoking `conda-lock`
+- [ ] Add `--check` to `pyve lock` docs in `docs/site/usage.md`
+- [ ] Add CI/CD usage example in `docs/site/ci-cd.md`:
+  ```yaml
+  - name: Verify lock file is up to date
+    run: pyve lock --check
+  ```
+- [ ] Unit test: `pyve lock --check` exits 0 when `conda-lock.yml` is newer than `environment.yml`
+- [ ] Unit test: `pyve lock --check` exits 1 with stale message when `environment.yml` is newer
+- [ ] Unit test: `pyve lock --check` exits 1 with missing message when `conda-lock.yml` absent
+- [ ] Expand CHANGELOG.md v1.9.0 entry
+
+### Story F.o: v1.9.0 Fix "No environment found" After Update-in-Place on Cloned Projects [Planned]
+
+**Bug:** Cloning a GitHub repo that was initialized with an older version of pyve leaves `.pyve/config` in the repo but no `.venv` directory (gitignored). Running `pyve --init` → option 1 "Update in-place" (or `--update`) updates the config version but does **not** create the missing environment. `pyve doctor` then reports "No environment found".
+
+**Root cause:** Both update-in-place code paths (`PYVE_REINIT_MODE=update` and interactive option 1) `return 0` immediately after calling `update_config_version()` without checking whether the environment directory actually exists.
+
+**Fix:** After updating the config, check whether the environment directory exists. If missing, fall through to the normal environment creation flow rather than returning early.
+
+- [ ] Write failing test: `TestReinitUpdateMissingEnv::test_update_flag_creates_missing_venv` in `tests/integration/test_reinit.py`
+  - [ ] Set up a project with `.pyve/config` (backend: venv) but no `.venv` directory
+  - [ ] Run `pyve --init --update`; assert exit 0 and `.venv` exists
+- [ ] Write failing test: `TestReinitUpdateMissingEnv::test_interactive_option1_creates_missing_venv` in `tests/integration/test_reinit.py`
+  - [ ] Same setup; run `pyve --init` with input `"1\n"`; assert exit 0 and `.venv` exists
+- [ ] Run failing tests to confirm they fail before fix
+- [ ] Fix `pyve.sh` — `PYVE_REINIT_MODE=update` path (lines ~475–489): after `log_info "Project updated..."`, read `venv.directory` from config; if backend is `venv` and directory is absent, log info and fall through instead of `return 0`
+- [ ] Fix `pyve.sh` — interactive option 1 path (lines ~575–589): same env-existence check before `return 0`
+- [ ] Run new tests — confirm they pass
+- [ ] Run full reinit suite: `pytest tests/integration/test_reinit.py -v` — no regressions
+- [ ] Run full venv integration suite: `pytest tests/integration/ -v -m venv` — no regressions

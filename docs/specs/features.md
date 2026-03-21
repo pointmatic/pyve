@@ -46,7 +46,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 ### Non-Goals
 
 - Pyve does not replace asdf, pyenv, direnv, or micromamba — it orchestrates them.
-- Pyve does not manage conda-lock (users install and run it themselves).
+- Pyve does not install `conda-lock` — users add it to `environment.yml` dependencies or install it manually; Pyve wraps the invocation via `pyve lock` when it is available on PATH.
 - Pyve does not install asdf or pyenv (they must be pre-installed).
 - Pyve does not provide a GUI or web interface.
 - Pyve does not manage Docker containers or cloud environments.
@@ -58,7 +58,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 
 ### Required
 
-- **Command flag** — One of `--init`, `--purge`, `--python-version`, `--install`, `--uninstall`, `--help`, `--version`, `--config`, `--validate`, `doctor`, `run`, `test`, `testenv`.
+- **Command flag** — One of `--init`, `--purge`, `--python-version`, `--install`, `--uninstall`, `--help`, `--version`, `--config`, `--validate`, `lock`, `doctor`, `run`, `test`, `testenv`.
 
 ### Optional
 
@@ -272,6 +272,20 @@ Refuse to initialize an environment inside a known cloud-synced directory.
 On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent TensorFlow/Keras import failures from missing `distutils`.
 
 - Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
+
+### FR-15: conda-lock Wrapper (`pyve lock`)
+
+Generate or update `conda-lock.yml` for the current platform.
+
+- **Backend guard**: if `.pyve/config` records `backend: venv`, fail immediately with a clear "micromamba projects only" message.
+- **Prerequisite check**: if `conda-lock` is not on PATH, fail with instructions to add it to `environment.yml` and run `pyve --init --force`.
+- **Environment file check**: if `environment.yml` does not exist, fail with a message that includes a `pyve --init --backend micromamba` hint.
+- **Platform detection**: call `get_conda_platform()` to resolve the correct conda platform string (`osx-arm64`, `osx-64`, `linux-64`, `linux-aarch64`).
+- **Invocation**: run `conda-lock -f environment.yml -p <platform>`, capturing combined stdout/stderr.
+- **"Already up to date" case**: if output contains `"already locked"` or `"spec hash already locked"`, print `✓ conda-lock.yml is already up to date for <platform>. No changes made.` and exit 0.
+- **Success case**: filter lines matching `conda-lock install` or `Install lock using` from conda-lock's post-run output (these suggest a non-Pyve workflow), then print rebuild guidance: `pyve --init --force`.
+- **Error case**: on non-zero exit from conda-lock, pass through output unmodified and propagate exit code.
+- **Scope**: generates for the current platform only. Multi-platform generation and `--check` mode are future enhancements (FR-16).
 
 ---
 

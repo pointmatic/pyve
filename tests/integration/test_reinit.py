@@ -111,7 +111,7 @@ class TestReinitForce:
         result = pyve.run("--init", "--force", input="n\n")
         
         assert result.returncode == 0
-        assert "Continue?" in result.stdout
+        assert "Proceed?" in result.stdout
         assert "cancelled" in result.stdout.lower()
     
     def test_force_allows_backend_change(self, pyve, project_builder):
@@ -314,6 +314,38 @@ class TestEdgeCases:
         config_path = project_builder.project_dir / ".pyve" / "config"
         config_content = config_path.read_text()
         assert "custom_venv" in config_content
+
+
+class TestReinitUpdateMissingEnv:
+    """Test that update-in-place creates the environment when it is missing (clone scenario).
+
+    When a project is cloned from GitHub, .pyve/config exists (committed) but .venv does
+    not (gitignored).  Both the --update flag path and interactive option 1 must detect the
+    missing environment directory and create it instead of silently returning success.
+    """
+
+    def test_update_flag_creates_missing_venv(self, pyve, project_builder):
+        """--update should create .venv when config exists but .venv does not."""
+        # Simulate a freshly cloned project: config present, venv absent.
+        project_builder.create_pyve_config(backend="venv")
+        project_builder.create_pyproject_toml("test-project")
+        # Deliberately do NOT call project_builder.create_venv()
+
+        result = pyve.run("--init", "--update")
+
+        assert result.returncode == 0
+        assert (project_builder.project_dir / ".venv").is_dir()
+
+    @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
+    def test_interactive_option1_creates_missing_venv(self, pyve, project_builder):
+        """Interactive option 1 should create .venv when config exists but .venv does not."""
+        project_builder.create_pyve_config(backend="venv")
+        project_builder.create_pyproject_toml("test-project")
+
+        result = pyve.run("--init", input="1\n")
+
+        assert result.returncode == 0
+        assert (project_builder.project_dir / ".venv").is_dir()
 
 
 import os

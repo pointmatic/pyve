@@ -204,7 +204,7 @@ Determine which environment backend to use based on CLI flags, config, and proje
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `detect_backend_from_files` | `()` → string | Returns `"venv"`, `"micromamba"`, or `"none"` from project files |
-| `get_backend_priority` | `(cli_backend)` → string | Resolve backend using priority chain: CLI > config > files > default; prompts interactively in ambiguous cases (both conda and Python files present) |
+| `get_backend_priority` | `(cli_backend, skip_config?)` → string | Resolve backend using priority chain: CLI > config (skipped when `skip_config=true`) > files > default; prompts interactively in ambiguous cases (both conda and Python files present) |
 | `validate_backend` | `(backend)` → 0/1 | Validate backend value is `venv`, `micromamba`, or `auto` |
 | `validate_config_file` | `()` → 0/1 | Validate `.pyve/config` structure |
 
@@ -244,6 +244,7 @@ Environment file parsing, naming resolution, environment creation, and lock file
 | `create_micromamba_env` | `(env_name, env_file?)` → 0/1 | Create environment from file |
 | `verify_micromamba_env` | `(env_name)` → 0/1 | Verify environment is functional |
 | `is_interactive` | `()` → 0/1 | Detect interactive vs CI/batch mode |
+| `run_lock` | `()` | Wrapper for `conda-lock`: backend guard, prerequisite check, platform detection, output filtering, rebuild guidance. Lives in `pyve.sh`. |
 
 ---
 
@@ -344,6 +345,7 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 | `--config` | `-c` | Show configuration |
+| `lock` | | Generate/update `conda-lock.yml` for current platform (micromamba only) |
 | `run <cmd> [args]` | | Execute command in environment |
 | `doctor` | | Environment diagnostics |
 | `test [args]` | | Run pytest in dev/test environment |
@@ -446,6 +448,7 @@ Black-box tests that invoke `pyve.sh` as a subprocess and verify outcomes.
 | `test_doctor.py` | Doctor diagnostics for both backends |
 | `test_force_ambiguous_prompt.py` | Interactive backend prompt in `--force` + ambiguous cases |
 | `test_force_backend_detection.py` | Backend detection during `--force` re-initialization |
+| `test_lock_command.py` | `pyve lock` command (backend guard, prerequisite, platform detection, output filtering) |
 | `test_pip_upgrade.py` | pip upgrade during `--init` |
 | `test_reinit.py` | Re-initialization (update, force) |
 | `test_run_command.py` | `pyve run` for both backends |
