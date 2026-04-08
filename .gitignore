@@ -3,18 +3,30 @@
 
 # Python build and test artifacts
 __pycache__
+*.pyc
+*.pyo
+*.pyd
 *.egg-info
+*.egg
 .coverage
 coverage.xml
 htmlcov/
-coverage-kcov/
 .pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
 
 # Pyve virtual environment
-.venv
-.env
-.envrc
 .pyve/testenv
+.envrc
+.env
+.venv
+
+coverage-kcov/
+
 
 # Project
 .archive/

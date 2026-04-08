@@ -652,6 +652,62 @@ doctor_check_native_lib_conflicts() {
     printf "  Then regenerate: conda-lock -f environment.yml -p %s\n" "$(uname -m)"
 }
 
+# Detect venv path mismatch (relocated project).
+#
+# When a project directory is moved after venv creation, pyvenv.cfg and the
+# activate script retain hardcoded paths to the original location. Direnv
+# will prepend the wrong bin/ to PATH, so `which python` resolves to a
+# system shim instead of the venv's Python.
+#
+# Extracts the venv path from pyvenv.cfg's `command` line (Python 3.11+)
+# or falls back to parsing VIRTUAL_ENV from bin/activate (all versions).
+# Prints a warning if the recorded path differs from the actual location.
+# Usage: doctor_check_venv_path <env_path>
+doctor_check_venv_path() {
+    local env_path="$1"
+
+    # Strategy 1: pyvenv.cfg command line (Python 3.11+)
+    local cfg_venv_path=""
+    local pyvenv_cfg="$env_path/pyvenv.cfg"
+    if [[ -f "$pyvenv_cfg" ]]; then
+        cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //' || true)"
+    fi
+
+    # Strategy 2: VIRTUAL_ENV from activate script (all Python versions)
+    # The export line is indented inside a case block, e.g.:
+    #     export VIRTUAL_ENV=/path/to/.venv
+    if [[ -z "$cfg_venv_path" ]]; then
+        local activate_script="$env_path/bin/activate"
+        if [[ -f "$activate_script" ]]; then
+            cfg_venv_path="$(grep 'export VIRTUAL_ENV=' "$activate_script" 2>/dev/null | grep -v 'cygpath' | head -1 | sed 's/.*export VIRTUAL_ENV=//' | tr -d '"'"'" || true)"
+        fi
+    fi
+
+    if [[ -z "$cfg_venv_path" ]]; then
+        return 0
+    fi
+
+    local expected_venv_path
+    expected_venv_path="$(cd "$env_path" && pwd -P)"
+    local canonical_cfg_path
+    # Resolve the config path if it exists, otherwise use as-is
+    if [[ -d "$cfg_venv_path" ]]; then
+        canonical_cfg_path="$(cd "$cfg_venv_path" && pwd -P)"
+    else
+        canonical_cfg_path="$cfg_venv_path"
+    fi
+
+    if [[ "$canonical_cfg_path" != "$expected_venv_path" ]]; then
+        printf "⚠ Environment: venv path mismatch (project may have been relocated)\n"
+        printf "  Created at: %s\n" "$cfg_venv_path"
+        printf "  Expected:   %s\n" "$expected_venv_path"
+        printf "  Run 'pyve --init --force' to recreate the environment.\n"
+        return 0
+    fi
+
+    return 0
+}
+
 #============================================================
 # VS Code Settings
 #============================================================

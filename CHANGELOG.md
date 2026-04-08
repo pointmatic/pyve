@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-04-08
+
+### Fixed
+- `pyve doctor` now detects relocated venv projects: when a project directory is moved after venv creation, `pyvenv.cfg` retains the original path, silently breaking environment activation (`which python` resolves to the system shim instead of `.venv/bin/python`). Doctor now compares the `pyvenv.cfg` creation path against the current project directory and warns with a `pyve --init --force` remediation when they differ.
+
+### Added
+- `doctor_check_venv_path()` function in `lib/utils.sh`: extracts the venv creation path from `pyvenv.cfg` and compares it against the actual venv location.
+
 ## [1.9.0] - 2026-03-20
 
 ### Added

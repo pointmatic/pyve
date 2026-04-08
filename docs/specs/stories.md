@@ -1,6 +1,6 @@
 # stories.md — Pyve (Bash)
 
-This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.6.4.
+This document contains the implementation plan for remaining Pyve work. Stories are organized by phase and reference modules defined in `tech_spec.md`. Current version is v1.9.1.
 
 Story IDs follow the pattern `<Phase>.<letter>` (e.g., A.a, A.b). Each story that produces code changes includes a version number, bumped per story. Stories with no code changes omit the version. Stories are marked `[Planned]` initially and `[Done]` when completed.
 
@@ -961,7 +961,61 @@ pyve lock
 - [x] Update CHANGELOG.md with v1.9.0 entry
 - [x] Bump VERSION to 1.9.0
 
-### Story F.n: v1.9.0 `pyve lock --check` — Lock Currency Verification [Planned]
+### Story F.n: v1.9.1 `pyve doctor` Detects Relocated venv [Done]
+
+When a project directory is moved (e.g., `~/Documents/Code/pyve` → `~/Developer/Pointmatic/pyve`), the venv appears healthy to `pyve doctor` — all checks pass with `✓` — but the environment is silently broken. `which python` resolves to the system shim (asdf/pyenv) instead of `.venv/bin/python` because the `activate` script and `pyvenv.cfg` contain hardcoded paths to the original location.
+
+**Symptoms observed:**
+- `pyve doctor` reports all green
+- Shell prompt shows `(venv:pyve)` (direnv sets `VIRTUAL_ENV` and `PYVE_PROMPT_PREFIX`)
+- `which python` returns `/Users/.../.asdf/shims/python`, not `.venv/bin/python`
+- `pyvenv.cfg` `command` field points to old path; `activate` script sets `VIRTUAL_ENV` to old path
+
+**Root cause analysis (per debug-guide.md):**
+
+1. **Requirements gap** — FR-5 lists what doctor reports but does not require validating that the venv's internal paths match the current project directory.
+2. **Test coverage gap** — `test_doctor_detects_broken_venv` tests a deleted venv, not a relocated one. No test verifies path consistency between `pyvenv.cfg` and `$(pwd)`.
+3. **Implementation gap** — `doctor_command()` checks `[[ -f "$env_path/bin/python" ]]` and runs `--version`, but never reads `pyvenv.cfg`. The binary works (it's a symlink to the asdf-installed Python), so the check passes even though PATH activation is broken.
+
+**Fix design — minimal change:**
+
+After the existing venv directory and Python binary checks (line ~1924 in `pyve.sh`), add a `pyvenv.cfg` path consistency check:
+
+1. Read `.venv/pyvenv.cfg`
+2. Extract the path from the `command = ... -m venv <path>` line
+3. Compare to `$(pwd)/$venv_dir` (canonicalized)
+4. If mismatch, emit: `⚠ Environment: venv was created at <old-path> (project appears to have been relocated)`
+5. Suggest: `Run 'pyve --init --force' to recreate the environment at the current location.`
+
+**Implementation checklist**
+
+- [x] Add `doctor_check_venv_path()` function to `lib/utils.sh`
+  - [x] Read `"$env_path/pyvenv.cfg"` and parse the `command` line to extract venv creation path
+  - [x] Canonicalize both paths (resolve symlinks via `cd && pwd -P`) before comparing
+  - [x] On mismatch: print `⚠ Environment: venv path mismatch (project may have been relocated)`
+  - [x] Print original path and current expected path
+  - [x] Suggest `pyve --init --force` to recreate
+- [x] Call `doctor_check_venv_path "$env_path"` from `doctor_command()` in `pyve.sh` after Python version check
+
+**Spec updates**
+
+- [x] `docs/specs/features.md`: Added venv path consistency check to FR-5 bullet list
+- [x] `docs/specs/tech-spec.md`: Added `doctor_check_venv_path` to `lib/utils.sh` function table
+
+**Tests**
+
+- [x] Integration test in `tests/integration/test_doctor.py`:
+  - [x] `test_doctor_detects_relocated_venv` — init venv, rewrite `pyvenv.cfg` command path and `activate` VIRTUAL_ENV to a stale path, assert doctor output contains relocation warning
+- [x] Unit tests in `tests/unit/test_doctor.bats`:
+  - [x] Test: `pyvenv.cfg` with matching path → no warning
+  - [x] Test: `pyvenv.cfg` with mismatched path → warning emitted
+  - [x] Test: missing `pyvenv.cfg` → no warning
+  - [x] Test: `pyvenv.cfg` without `command` line → no warning
+
+- [x] Update CHANGELOG.md with v1.9.1 entry
+- [x] Bump VERSION to 1.9.1
+
+### Story F.o: v1.9.2 `pyve lock --check` — Lock Currency Verification [Planned]
 
 A follow-up to F.m. Adds a `--check` flag to `pyve lock` for CI/CD pipelines that want to verify `conda-lock.yml` is up to date with `environment.yml` **without** modifying it. Exits 0 if current, non-zero if stale or missing.
 
@@ -996,7 +1050,7 @@ pyve lock --check
 - [ ] Unit test: `pyve lock --check` exits 1 with missing message when `conda-lock.yml` absent
 - [ ] Expand CHANGELOG.md v1.9.0 entry
 
-### Story F.o: v1.9.0 Fix "No environment found" After Update-in-Place on Cloned Projects [Planned]
+### Story F.p: v1.9.3 Fix "No environment found" After Update-in-Place on Cloned Projects [Planned]
 
 **Bug:** Cloning a GitHub repo that was initialized with an older version of pyve leaves `.pyve/config` in the repo but no `.venv` directory (gitignored). Running `pyve --init` → option 1 "Update in-place" (or `--update`) updates the config version but does **not** create the missing environment. `pyve doctor` then reports "No environment found".
 

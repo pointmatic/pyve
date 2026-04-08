@@ -195,6 +195,7 @@ Display environment health and configuration status.
 - **Micromamba only:** Scan `site-packages` for duplicate `.dist-info` directories and report conflicting versions with their mtimes.
 - **Micromamba only:** Scan environment tree for files/directories with ` 2` suffix (iCloud Drive collision artifacts).
 - **Micromamba only:** Detect potential conda/pip native library conflicts — when pip-bundled packages (torch, tensorflow, jax) coexist with conda-linked packages (numpy, scipy, scikit-learn) and the required shared OpenMP library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is absent.
+- **Venv only:** Detect relocated projects by comparing `pyvenv.cfg` creation path against the current project directory; warn with remediation if mismatched.
 - Use status indicators: ✓ (success), ⚠ (warning), ✗ (error).
 
 ### FR-6: Installation Validation (`pyve --validate`)
