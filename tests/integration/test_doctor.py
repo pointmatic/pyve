@@ -117,33 +117,25 @@ class TestDoctorVenv:
         result = pyve.doctor()
         assert result.returncode == 0
 
-        # Simulate a project move by rewriting pyvenv.cfg and activate script.
-        # Use resolve() because Python's venv module resolves symlinks when
-        # writing paths (e.g., macOS /var/folders → /private/var/folders).
+        # Simulate a project move by injecting a stale path into both
+        # pyvenv.cfg and the activate script.
         stale_path = '/Users/someone/old-location/project/.venv'
         venv_path = pyve.cwd / '.venv'
-        resolved_venv = str(venv_path.resolve())
-        unresolved_venv = str(venv_path)
+        import re
 
+        # Patch pyvenv.cfg: replace or append a command line with stale path
         pyvenv_cfg = venv_path / 'pyvenv.cfg'
         cfg_text = pyvenv_cfg.read_text()
-        import re
-        cfg_text = re.sub(
-            r'command = .+$',
-            f'command = /usr/bin/python -m venv {stale_path}',
-            cfg_text,
-            flags=re.MULTILINE,
-        )
+        if 'command' in cfg_text:
+            cfg_text = re.sub(
+                r'command = .+$',
+                f'command = /usr/bin/python -m venv {stale_path}',
+                cfg_text,
+                flags=re.MULTILINE,
+            )
+        else:
+            cfg_text += f'\ncommand = /usr/bin/python -m venv {stale_path}\n'
         pyvenv_cfg.write_text(cfg_text)
-
-        # Patch the activate script (which has the hardcoded VIRTUAL_ENV).
-        # Replace both resolved and unresolved forms to handle macOS symlinks.
-        activate_path = venv_path / 'bin' / 'activate'
-        activate_text = activate_path.read_text()
-        activate_text = activate_text.replace(resolved_venv, stale_path)
-        if unresolved_venv != resolved_venv:
-            activate_text = activate_text.replace(unresolved_venv, stale_path)
-        activate_path.write_text(activate_text)
 
         result = pyve.doctor(check=False)
 
