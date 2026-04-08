@@ -671,7 +671,7 @@ doctor_check_venv_path() {
     fi
 
     local cfg_venv_path
-    cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //')"
+    cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //' || true)"
     if [[ -z "$cfg_venv_path" ]]; then
         return 0
     fi
