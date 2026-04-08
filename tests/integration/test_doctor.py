@@ -86,17 +86,67 @@ class TestDoctorVenv:
         """Test doctor detects broken/missing venv."""
         project_builder.create_requirements(['requests==2.31.0'])
         pyve.init(backend='venv')
-        
+
         # Remove the venv
         import shutil
         venv_path = pyve.cwd / '.venv'
         if venv_path.exists():
             shutil.rmtree(venv_path)
-        
+
         result = pyve.doctor(check=False)
-        
+
         # Should detect missing venv
         assert result.returncode != 0 or 'not found' in result.stdout.lower() or 'missing' in result.stdout.lower()
+
+    @pytest.mark.venv
+    def test_doctor_detects_relocated_venv(self, pyve, project_builder):
+        """Test doctor detects venv created at a different path (project was moved).
+
+        When a project directory is moved, the venv's pyvenv.cfg and activate
+        script retain hardcoded paths to the old location. This means:
+        - VIRTUAL_ENV points to the old path
+        - The venv's bin/ is not prepended to PATH by direnv/activate
+        - 'which python' resolves to the system/asdf shim, not the venv
+
+        Doctor should warn about this stale-path condition.
+        """
+        project_builder.create_requirements([])
+        pyve.init(backend='venv')
+
+        # Verify doctor is happy before the move
+        result = pyve.doctor()
+        assert result.returncode == 0
+
+        # Simulate a project move by rewriting pyvenv.cfg with a stale path
+        pyvenv_cfg = pyve.cwd / '.venv' / 'pyvenv.cfg'
+        cfg_text = pyvenv_cfg.read_text()
+        # Replace the real project path with a fictitious old path
+        stale_path = '/Users/someone/old-location/project/.venv'
+        import re
+        cfg_text = re.sub(
+            r'command = .+$',
+            f'command = /usr/bin/python -m venv {stale_path}',
+            cfg_text,
+            flags=re.MULTILINE,
+        )
+        pyvenv_cfg.write_text(cfg_text)
+
+        # Also patch the activate script (which has the hardcoded VIRTUAL_ENV)
+        activate_path = pyve.cwd / '.venv' / 'bin' / 'activate'
+        activate_text = activate_path.read_text()
+        activate_text = activate_text.replace(
+            str(pyve.cwd / '.venv'),
+            stale_path,
+        )
+        activate_path.write_text(activate_text)
+
+        result = pyve.doctor(check=False)
+
+        # Doctor should detect the stale/relocated venv
+        output = result.stdout.lower()
+        assert 'relocated' in output or 'stale' in output or 'moved' in output or 'mismatch' in output, (
+            f"Expected doctor to warn about relocated venv, but got:\n{result.stdout}"
+        )
 
 
 @pytest.mark.micromamba

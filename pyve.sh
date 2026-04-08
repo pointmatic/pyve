@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.9.0"
+VERSION="1.9.1"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1922,7 +1922,10 @@ doctor_command() {
         else
             printf "✗ Python: not found in venv\n"
         fi
-        
+
+        # Check venv path consistency (detect relocated projects)
+        doctor_check_venv_path "$env_path"
+
         # Check Python version file
         if [[ -f ".tool-versions" ]]; then
             local version_manager="asdf"

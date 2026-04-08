@@ -2,13 +2,19 @@
 
 This guide provides step-by-step instructions for an LLM to help a developer create a new software project from scratch. The LLM generates each document one at a time, presenting it to the developer for approval before proceeding to the next.
 
+## How to Use This Guide
+
+**For Developers:** After installing project-guides (`pip install project-guides`) and running `project-guides init`, tell your LLM: "Read `docs/guides/project-guide.md` and start." The LLM will walk through planning documents, break work into stories, and implement each story step-by-step. You just say "proceed" after each step.
+
+**For LLMs:** This guide describes a "HITLoop" (human-in-the-loop) workflow where the developer directs and you execute. Work through each step methodically, presenting your work for approval at each gate. When the developer says "proceed" (or equivalent like "continue", "next", "go ahead"), move to the next step. If it's unclear which step comes next, ask the developer which step to tackle. Never auto-advance past approval gates—always wait for explicit confirmation.
+
 ---
 
 ## Prerequisites
 
-Before starting, the developer must provide:
+Before starting, the developer must provide (or the LLM must ask):
 
-1. **A project idea** — a short description of what the project should do (a few sentences to a few paragraphs).
+1. **A project idea** — a short description of what the project should do (a few sentences to a few paragraphs). This is often documented in a `docs/specs/concept.md` file.
 2. **Language / runtime** — e.g. Python 3.14, Node 22, Go 1.23, etc.
 3. **License preference** — e.g. Apache-2.0, MIT, MPL-2.0, GPL-3.0. If a `LICENSE` file already exists in the project root, that license prevails.
 
@@ -382,8 +388,18 @@ Rules:
 - **Version**: semver, bumped per story. Stories with no code changes omit the version.
 - **Status suffix**: `[Planned]` initially, changed to `[Done]` when completed.
 - **Checklist**: use `- [ ]` for planned tasks, `- [x]` for completed tasks. Subtasks are indented with two spaces.
-- **First story** should always be a minimal "Hello World" — the smallest possible runnable artifact.
-- **Homepage**: If a project homepage (e.g. `docs/index.html`) was created during the planning phase, include a task in the Hello World story to verify it is present and references the correct repository URL.
+- **First story** should always be a minimal "Hello World" (Story A.a) — the smallest
+  possible runnable artifact proving the environment and package structure are wired up.
+- **Second story** (A.b) should be an **end-to-end stack spike** — a throwaway script
+  (in `scripts/`, not the package) that wires the full critical path together before
+  any production modules are written. See `docs/guides/best-practices-guide.md` §
+  "Hello World First — Spike Early, Spike Often" for the full principle and rationale.
+- **Additional spikes** should be added as the first story of any phase that introduces
+  a major new integration boundary (new API, new hardware backend, new async framework).
+  Each spike gets its own story ID and version bump.
+- **Homepage**: If a project homepage (e.g. `docs/index.html`) was created during the
+  planning phase, include a task in the Hello World story to verify it is present and
+  references the correct repository URL.
 - **Each story** should be completable in a single session and independently verifiable.
 - **Verification tasks** (e.g. "Verify: command prints version") should be included where appropriate.
 
@@ -406,7 +422,8 @@ Once all three documents are approved, begin implementing stories in order:
    e. Mark checklist items as `[x]` and change the story suffix to `[Done]`.
    f. Bump the version in the package manifest and source (if the story has a version).
    g. Present the completed story to the developer for approval.
-3. **Pause after each story.** Do not proceed to the next story until the developer says "proceed" (or equivalent approval). This is a hard gate — never auto-advance.
+3. **Pause after each story.** Do not proceed to the next story until the developer says "proceed" (or equivalent like "continue", "next", "go ahead"). This is a hard gate — never auto-advance.
+4. **If unclear which story is next**, ask the developer: "Which story should I work on next?" or "Should I proceed with Story X.y?"
 
 ### File Header Reminder
 

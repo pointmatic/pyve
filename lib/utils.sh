@@ -652,6 +652,51 @@ doctor_check_native_lib_conflicts() {
     printf "  Then regenerate: conda-lock -f environment.yml -p %s\n" "$(uname -m)"
 }
 
+# Detect venv path mismatch (relocated project).
+#
+# When a project directory is moved after venv creation, pyvenv.cfg retains
+# the original creation path. The activate script and direnv will prepend the
+# wrong bin/ to PATH, so `which python` resolves to a system shim instead of
+# the venv's Python.
+#
+# Compares the path embedded in pyvenv.cfg's `command` line against the
+# actual venv location. Prints a warning if they differ.
+# Usage: doctor_check_venv_path <env_path>
+doctor_check_venv_path() {
+    local env_path="$1"
+
+    local pyvenv_cfg="$env_path/pyvenv.cfg"
+    if [[ ! -f "$pyvenv_cfg" ]]; then
+        return 0
+    fi
+
+    local cfg_venv_path
+    cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //')"
+    if [[ -z "$cfg_venv_path" ]]; then
+        return 0
+    fi
+
+    local expected_venv_path
+    expected_venv_path="$(cd "$env_path" && pwd -P)"
+    local canonical_cfg_path
+    # Resolve the config path if it exists, otherwise use as-is
+    if [[ -d "$cfg_venv_path" ]]; then
+        canonical_cfg_path="$(cd "$cfg_venv_path" && pwd -P)"
+    else
+        canonical_cfg_path="$cfg_venv_path"
+    fi
+
+    if [[ "$canonical_cfg_path" != "$expected_venv_path" ]]; then
+        printf "⚠ Environment: venv path mismatch (project may have been relocated)\n"
+        printf "  Created at: %s\n" "$cfg_venv_path"
+        printf "  Expected:   %s\n" "$expected_venv_path"
+        printf "  Run 'pyve --init --force' to recreate the environment.\n"
+        return 0
+    fi
+
+    return 0
+}
+
 #============================================================
 # VS Code Settings
 #============================================================

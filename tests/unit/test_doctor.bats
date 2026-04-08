@@ -211,6 +211,70 @@ _make_conflict_env() {
 # detect_install_source tests
 #============================================================
 
+#============================================================
+# doctor_check_venv_path() tests
+#============================================================
+
+_make_fake_venv() {
+    # Helper: scaffold a minimal venv with pyvenv.cfg
+    local env_path="$1"
+    local creation_path="$2"
+    mkdir -p "$env_path/bin"
+    touch "$env_path/bin/python"
+    cat > "$env_path/pyvenv.cfg" <<EOF
+home = /usr/bin
+include-system-site-packages = false
+version = 3.12.0
+executable = /usr/bin/python3.12
+command = /usr/bin/python -m venv $creation_path
+EOF
+}
+
+@test "doctor_check_venv_path: no warning when path matches" {
+    local venv_path="$TEST_DIR/.venv"
+    _make_fake_venv "$venv_path" "$venv_path"
+
+    run doctor_check_venv_path "$venv_path"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "doctor_check_venv_path: warns when path mismatches (relocated project)" {
+    local venv_path="$TEST_DIR/.venv"
+    _make_fake_venv "$venv_path" "/Users/someone/old-location/project/.venv"
+
+    run doctor_check_venv_path "$venv_path"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠ Environment: venv path mismatch"* ]]
+    [[ "$output" == *"relocated"* ]]
+    [[ "$output" == *"/Users/someone/old-location/project/.venv"* ]]
+    [[ "$output" == *"pyve --init --force"* ]]
+}
+
+@test "doctor_check_venv_path: no warning when pyvenv.cfg missing" {
+    mkdir -p "$TEST_DIR/.venv/bin"
+
+    run doctor_check_venv_path "$TEST_DIR/.venv"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "doctor_check_venv_path: no warning when command line missing from pyvenv.cfg" {
+    mkdir -p "$TEST_DIR/.venv/bin"
+    cat > "$TEST_DIR/.venv/pyvenv.cfg" <<EOF
+home = /usr/bin
+version = 3.12.0
+EOF
+
+    run doctor_check_venv_path "$TEST_DIR/.venv"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+#============================================================
+# detect_install_source: edge case tests
+#============================================================
+
 @test "detect_install_source: homebrew takes priority over installed" {
     # Edge case: SCRIPT_DIR matches both brew prefix and TARGET_BIN_DIR
     brew() {
