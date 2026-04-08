@@ -216,7 +216,7 @@ _make_conflict_env() {
 #============================================================
 
 _make_fake_venv() {
-    # Helper: scaffold a minimal venv with pyvenv.cfg
+    # Helper: scaffold a minimal venv with pyvenv.cfg (Python 3.11+ style with command line)
     local env_path="$1"
     local creation_path="$2"
     mkdir -p "$env_path/bin"
@@ -227,6 +227,26 @@ include-system-site-packages = false
 version = 3.12.0
 executable = /usr/bin/python3.12
 command = /usr/bin/python -m venv $creation_path
+EOF
+    # Also write an activate script with VIRTUAL_ENV
+    cat > "$env_path/bin/activate" <<EOF
+export VIRTUAL_ENV="$creation_path"
+EOF
+}
+
+_make_fake_venv_no_command() {
+    # Helper: scaffold a venv without command line (Python 3.10 style)
+    local env_path="$1"
+    local virtual_env_path="$2"
+    mkdir -p "$env_path/bin"
+    touch "$env_path/bin/python"
+    cat > "$env_path/pyvenv.cfg" <<EOF
+home = /usr/bin
+include-system-site-packages = false
+version = 3.10.11
+EOF
+    cat > "$env_path/bin/activate" <<EOF
+export VIRTUAL_ENV="$virtual_env_path"
 EOF
 }
 
@@ -259,14 +279,33 @@ EOF
     [ -z "$output" ]
 }
 
-@test "doctor_check_venv_path: no warning when command line missing from pyvenv.cfg" {
+@test "doctor_check_venv_path: no warning when no command line and no activate script" {
     mkdir -p "$TEST_DIR/.venv/bin"
     cat > "$TEST_DIR/.venv/pyvenv.cfg" <<EOF
 home = /usr/bin
-version = 3.12.0
+version = 3.10.11
 EOF
 
     run doctor_check_venv_path "$TEST_DIR/.venv"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "doctor_check_venv_path: falls back to activate script when no command line (Python 3.10)" {
+    local venv_path="$TEST_DIR/.venv"
+    _make_fake_venv_no_command "$venv_path" "/Users/someone/old-location/.venv"
+
+    run doctor_check_venv_path "$venv_path"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠ Environment: venv path mismatch"* ]]
+    [[ "$output" == *"/Users/someone/old-location/.venv"* ]]
+}
+
+@test "doctor_check_venv_path: no warning via activate script when path matches" {
+    local venv_path="$TEST_DIR/.venv"
+    _make_fake_venv_no_command "$venv_path" "$venv_path"
+
+    run doctor_check_venv_path "$venv_path"
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }

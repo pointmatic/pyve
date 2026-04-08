@@ -654,24 +654,33 @@ doctor_check_native_lib_conflicts() {
 
 # Detect venv path mismatch (relocated project).
 #
-# When a project directory is moved after venv creation, pyvenv.cfg retains
-# the original creation path. The activate script and direnv will prepend the
-# wrong bin/ to PATH, so `which python` resolves to a system shim instead of
-# the venv's Python.
+# When a project directory is moved after venv creation, pyvenv.cfg and the
+# activate script retain hardcoded paths to the original location. Direnv
+# will prepend the wrong bin/ to PATH, so `which python` resolves to a
+# system shim instead of the venv's Python.
 #
-# Compares the path embedded in pyvenv.cfg's `command` line against the
-# actual venv location. Prints a warning if they differ.
+# Extracts the venv path from pyvenv.cfg's `command` line (Python 3.11+)
+# or falls back to parsing VIRTUAL_ENV from bin/activate (all versions).
+# Prints a warning if the recorded path differs from the actual location.
 # Usage: doctor_check_venv_path <env_path>
 doctor_check_venv_path() {
     local env_path="$1"
 
+    # Strategy 1: pyvenv.cfg command line (Python 3.11+)
+    local cfg_venv_path=""
     local pyvenv_cfg="$env_path/pyvenv.cfg"
-    if [[ ! -f "$pyvenv_cfg" ]]; then
-        return 0
+    if [[ -f "$pyvenv_cfg" ]]; then
+        cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //' || true)"
     fi
 
-    local cfg_venv_path
-    cfg_venv_path="$(grep "^command" "$pyvenv_cfg" 2>/dev/null | sed 's/.*-m venv //' || true)"
+    # Strategy 2: VIRTUAL_ENV from activate script (all Python versions)
+    if [[ -z "$cfg_venv_path" ]]; then
+        local activate_script="$env_path/bin/activate"
+        if [[ -f "$activate_script" ]]; then
+            cfg_venv_path="$(grep '^export VIRTUAL_ENV=' "$activate_script" 2>/dev/null | head -1 | sed 's/^export VIRTUAL_ENV=//' | tr -d '"'"'" || true)"
+        fi
+    fi
+
     if [[ -z "$cfg_venv_path" ]]; then
         return 0
     fi
