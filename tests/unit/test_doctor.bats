@@ -236,6 +236,8 @@ EOF
 
 _make_fake_venv_no_command() {
     # Helper: scaffold a venv without command line (Python 3.10 style)
+    # The activate script mimics the real format where VIRTUAL_ENV is
+    # indented inside a case block.
     local env_path="$1"
     local virtual_env_path="$2"
     mkdir -p "$env_path/bin"
@@ -245,9 +247,19 @@ home = /usr/bin
 include-system-site-packages = false
 version = 3.10.11
 EOF
-    cat > "$env_path/bin/activate" <<EOF
-export VIRTUAL_ENV="$virtual_env_path"
-EOF
+    cat > "$env_path/bin/activate" <<'HEADER'
+case "$(uname)" in
+    CYGWIN*|MSYS*|MINGW*)
+        VIRTUAL_ENV=$(cygpath PLACEHOLDER)
+        export VIRTUAL_ENV
+        ;;
+    *)
+HEADER
+    printf '        export VIRTUAL_ENV=%s\n' "$virtual_env_path" >> "$env_path/bin/activate"
+    cat >> "$env_path/bin/activate" <<'FOOTER'
+        ;;
+esac
+FOOTER
 }
 
 @test "doctor_check_venv_path: no warning when path matches" {

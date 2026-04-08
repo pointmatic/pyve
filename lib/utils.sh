@@ -674,10 +674,12 @@ doctor_check_venv_path() {
     fi
 
     # Strategy 2: VIRTUAL_ENV from activate script (all Python versions)
+    # The export line is indented inside a case block, e.g.:
+    #     export VIRTUAL_ENV=/path/to/.venv
     if [[ -z "$cfg_venv_path" ]]; then
         local activate_script="$env_path/bin/activate"
         if [[ -f "$activate_script" ]]; then
-            cfg_venv_path="$(grep '^export VIRTUAL_ENV=' "$activate_script" 2>/dev/null | head -1 | sed 's/^export VIRTUAL_ENV=//' | tr -d '"'"'" || true)"
+            cfg_venv_path="$(grep 'export VIRTUAL_ENV=' "$activate_script" 2>/dev/null | grep -v 'cygpath' | head -1 | sed 's/.*export VIRTUAL_ENV=//' | tr -d '"'"'" || true)"
         fi
     fi
 
