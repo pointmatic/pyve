@@ -22,7 +22,7 @@ For efficiency, when you change modes, start a new LLM conversation.
 ### For LLMs
 
 **Modes**
-This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for plan_concept.
+This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for plan_phase.
 
 **Approval Gate**
 When you have completed the steps, pause for the developer to review, correct, redirect, or ask questions about your work.  
@@ -36,18 +36,20 @@ When you have completed the steps, pause for the developer to review, correct, r
 
 ---
 
-# plan_concept mode (sequence)
+# plan_phase mode (sequence)
 
-> Generate a high-level concept (problem and solution space)
+> Generate a feature phase prompt, which includes a mini-concept, features, and technical details
 
 
-Define the problem space (problem statement, why, pain points, target users, value criteria) and the solution space (solution statement, goals, scope, constraints), and pain point to solution mapping.
+Generate a combined concept/features/tech-spec document for a new phase in an existing project, then add the phase and stories to `docs/specs/stories.md`.
+
+Use this mode when the developer wants to add a significant new capability to a project that already has an established codebase and spec documents.
 
 **Next Action**
 Prompt the user to change modes. 
 
 ```bash
-project-guide mode plan_features
+project-guide mode code_velocity
 ```
 
 ---
@@ -55,48 +57,36 @@ project-guide mode plan_features
 
 ## Prerequisites
 
-Before starting, the developer must provide (or the LLM must ask for):
-
-1. **A project idea** -- a short description of what the project should do (a few sentences to a few paragraphs). This is often documented in a `docs/specs/idea.md` file.
+Before planning a new phase, the following should exist:
+- `docs/specs/concept.md`
+- `docs/specs/features.md`
+- `docs/specs/tech-spec.md`
+- `docs/specs/stories.md`
 
 ## Steps
 
-1. Define the problem space 
-   - problem_statement: A few sentences describing the problem, plus any other useful context, examples, or references
-   - problem_why: Root causes of the problem and why the problem persists
-   - pain_points: A list of points 
-   - target_users: A description of those impacted by the problem (positively/negatively, directly/indirectly)
-   - value_criteria: How to measure solution value
-2. Define the solution space 
-   - one_liner: A catchy, benefit-oriented phrase starting with a verb that completes the sentence "This project <one_liner>."
-   - solution_statement: A few sentences that describe the solution in action, benefitting the target users, with some hints at technical approach
-   - goals: How the solution addresses the value criteria
-   - scope: What the solution will and won't do
-   - constraints: Technical, regulatory, or business limitations
-3. Map pain points to solution
-   - pain_point_to_solution_mapping: A mapping of pain point labels to descriptions on how the solution addresses the pain in the pain_point_to_solution_mapping format below. 
-   
-## Formats
+1. Read the existing spec documents to understand the current project state.
 
-### pain_points
+2. Gather information from the developer about the new phase:
+   - phase_name: A short name for the phase (e.g., "Mode System", "API Integration")
+   - problem_gap: What capability is missing or what problem this phase solves
+   - new_features: What the phase will add (functional requirements)
+   - technical_approach: How it will be built (architecture changes, new modules, new dependencies)
+   - constraints: Any limitations or compatibility requirements with existing code
+   - scope: What this phase will and won't do
 
-```markdown
-- **<pain_point_label_1>**: <pain_point_description_1>
-- **<pain_point_label_2>**: <pain_point_description_2>
-- ...
-```
+3. Generate a phase plan document at `docs/specs/phase-<name>-plan.md` that combines:
+   - **Gap analysis**: What exists vs. what's needed
+   - **Feature requirements**: What the phase adds (mini features.md)
+   - **Technical changes**: New/modified modules, dependencies, config changes (mini tech-spec.md)
+   - **Out of scope**: What's deferred to future phases
 
-### pain_point_to_solution_mapping
+4. Present the phase plan to the developer for approval.
 
-```markdown
-**<pain_point_label_1>**: 
-  - <solution_description_1>
-  - <solution_description_2>
-  ...
-**<pain_point_label_2>**: 
-  - <solution_description_1>
-  - <solution_description_2>
-  ...
-...
-```
+5. After approval, add a new phase section and stories to `docs/specs/stories.md`:
+   - Determine the next phase letter
+   - Break the phase into stories following the standard story format
+   - Include a spike story if the phase introduces a new integration boundary
+
+6. Present the updated stories to the developer for approval.
 
