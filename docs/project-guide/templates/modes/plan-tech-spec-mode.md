@@ -1,5 +1,3 @@
-# tech-spec.md -- {{ project_name }}
-
 Define **how** the project is built -- architecture, module layout, dependencies, data models, API signatures, and cross-cutting concerns.
 
 The high-level concept (why) should be captured in `concept.md`. The requirements and behavior (what) should be captured in `features.md`. The breakdown of this implementation plan (step-by-step tasks) should be written in `stories.md`.

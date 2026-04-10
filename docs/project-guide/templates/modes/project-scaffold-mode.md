@@ -1,5 +1,3 @@
-# Project Scaffold Mode
-
 Scaffold the project foundation: license, copyright headers, package manifest, README with badges, CHANGELOG, and .gitignore. This is a one-time scaffolding step after planning is complete, using decisions made in the concept, features, tech-spec, and stories documents.
 
 {% include "modes/_header-sequence.md" %}

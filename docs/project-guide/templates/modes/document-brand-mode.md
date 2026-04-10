@@ -1,5 +1,3 @@
-# Brand Mode — {{ mode_info }}
-
 ### Description
 
 {{ mode_description }}

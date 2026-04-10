@@ -1,5 +1,3 @@
-# Velocity Coding Mode
-
 Implement stories rapidly with direct commits to main. Focus on feature completion and iteration speed over process overhead.
 
 {% include "modes/_header-cycle.md" %}

@@ -1,5 +1,3 @@
-# Phase Plan -- {{ project_name }}
-
 Generate a combined concept/features/tech-spec document for a new phase in an existing project, then add the phase and stories to `docs/specs/stories.md`.
 
 Use this mode when the developer wants to add a significant new capability to a project that already has an established codebase and spec documents.

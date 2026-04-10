@@ -33,3 +33,7 @@ When you have completed the steps, pause for the developer to review, correct, r
 - After compacting memory, re-read this guide to refresh your context.
 
 ---
+
+# {{ mode_name }} mode ({{ sequence_or_cycle }})
+
+> {{ mode_info }}

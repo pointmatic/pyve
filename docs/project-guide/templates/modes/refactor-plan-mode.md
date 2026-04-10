@@ -1,5 +1,3 @@
-# Refactor Planning Artifacts
-
 Rewrite or update existing planning documents because of new features, improvements, or to migrate legacy formats into the v2.x artifact template structure.
 
 {% include "modes/_header-cycle.md" %}

@@ -1,5 +1,3 @@
-# Default Mode -- Getting Started
-
 This is the default mode for new projects. It provides an overview of the full project lifecycle. For focused work, switch to a specific mode with `project-guide mode <name>`.
 
 ---

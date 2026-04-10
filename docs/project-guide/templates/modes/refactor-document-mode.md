@@ -1,5 +1,3 @@
-# Refactor Documentation Artifacts
-
 Update existing documentation files because of new features, improvements, or to migrate legacy formats into the v2.x structure. Covers README, brand descriptions, the landing page, and MkDocs configuration.
 
 {% include "modes/_header-cycle.md" %}

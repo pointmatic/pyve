@@ -7,7 +7,11 @@ Stories with code changes include a version number (e.g., v0.1.0). Stories with 
 ---
 
 ## Phase G: UX Improvements
-TBD
+- add `pyve testenv run <command>` subcommand
+- draft a `concept.md` file to capture the core ideas and value proposition
+- integrate `project-guide` as a default tool (see `ux-improvements.md`)
+- refactor pyve CLI to use subcommands instead of flags (see `ux-improvements.md`)
+- landing page (usage.md) updates (see `ux-improvements.md`)
 
 ### Story G.a: v1.10.0 `pyve testenv run <command>` — Run Dev Tools in the Test Environment [Done]
 

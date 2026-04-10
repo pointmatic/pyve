@@ -1,5 +1,3 @@
-# Documentation Setup Guide
-
 Implement the landing page (GitHub Pages) and extended documentation (MkDocs Material theme). You will create a custom landing page (`index.html`) as the home page combined with MkDocs Material theme built from markdown pages for additional documentation.
 
 {% include "modes/_header-sequence.md" %}

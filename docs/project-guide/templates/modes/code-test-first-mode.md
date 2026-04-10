@@ -1,5 +1,3 @@
-# Test-First Coding Mode
-
 Implement stories using test-driven development (TDD). Write a failing test before writing any implementation code.
 
 {% include "modes/_header-cycle.md" %}
