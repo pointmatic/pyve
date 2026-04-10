@@ -18,6 +18,10 @@ pyve [COMMAND] [OPTIONS]
 | `lock --check` | Verify `conda-lock.yml` is current (exit 0) or stale/missing (exit 1) |
 | `doctor` | Display environment diagnostics |
 | `run COMMAND` | Run command in virtual environment |
+| `testenv --init` | Create dev/test runner environment |
+| `testenv --install [-r FILE]` | Install dev/test dependencies |
+| `testenv --purge` | Remove dev/test runner environment |
+| `testenv run COMMAND` | Run command in dev/test runner environment |
 | `test [ARGS]` | Run tests with pytest |
 | `--validate` | Validate environment configuration |
 | `--config` | Show current configuration |
@@ -394,6 +398,50 @@ pyve test tests/test_module.py::test_function
 - Requires pytest to be installed in the virtual environment
 - Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` for CI environments
 - Exit code matches pytest exit code
+
+---
+
+### `testenv`
+
+Manage a dedicated dev/test runner environment for tools like ruff, mypy, black, and pytest. This environment lives at `.pyve/testenv/venv` and is preserved across `pyve --init --force` and `pyve --purge`.
+
+**Usage:**
+
+```bash
+pyve testenv --init                              # Create the environment
+pyve testenv --install [-r requirements-dev.txt]  # Install dependencies
+pyve testenv --purge                              # Remove the environment
+pyve testenv run <command> [args...]              # Run a command
+```
+
+**Examples:**
+
+```bash
+# Set up dev tools
+pyve testenv --init
+pyve testenv --install -r requirements-dev.txt
+
+# Run dev tools
+pyve testenv run ruff check .
+pyve testenv run mypy src/
+pyve testenv run black --check .
+
+# Run pytest directly (equivalent to pyve test)
+pyve testenv run python -m pytest -v
+```
+
+**What it does:**
+
+- `--init`: Creates `.pyve/testenv/venv` using the system Python.
+- `--install`: Installs packages into the testenv. Without `-r`, installs pytest only.
+- `--purge`: Removes the testenv entirely.
+- `run`: Executes a command inside the testenv by prepending its `bin/` to PATH. If the command binary exists in the testenv, it is executed directly; otherwise the command is run with the testenv's `bin/` on PATH.
+
+**Notes:**
+
+- The testenv survives `pyve --init --force` and `pyve --purge` (use `pyve testenv --purge` to remove it explicitly).
+- `pyve test` is a convenience shortcut that runs pytest inside the testenv with auto-install support.
+- Exit code matches the executed command's exit code.
 
 ---
 

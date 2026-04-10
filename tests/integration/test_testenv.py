@@ -13,6 +13,60 @@
 # limitations under the License.
 
 import os
+import pytest
+
+
+class TestTestenvRun:
+    """Test pyve testenv run <command>."""
+
+    @pytest.mark.venv
+    def test_testenv_run_no_command_shows_error(self, pyve, project_builder):
+        """testenv run with no command exits 1 with usage hint."""
+        project_builder.create_requirements([])
+        pyve.init(backend='venv')
+        # Ensure testenv exists
+        pyve.run('testenv', '--init')
+
+        result = pyve.run('testenv', 'run', check=False)
+        assert result.returncode == 1
+        assert 'no command' in result.stderr.lower() or 'usage' in result.stderr.lower()
+
+    @pytest.mark.venv
+    def test_testenv_run_before_init_shows_error(self, pyve, project_builder):
+        """testenv run before --init exits 1 with init hint."""
+        project_builder.create_requirements([])
+        pyve.init(backend='venv')
+        # pyve --init auto-creates the testenv, so remove it to test the guard
+        import shutil
+        testenv_venv = pyve.cwd / '.pyve' / 'testenv' / 'venv'
+        if testenv_venv.exists():
+            shutil.rmtree(testenv_venv)
+
+        result = pyve.run('testenv', 'run', 'python', '--version', check=False)
+        assert result.returncode == 1
+        assert 'not initialized' in result.stderr.lower()
+        assert 'testenv --init' in result.stderr.lower()
+
+    @pytest.mark.venv
+    def test_testenv_run_python_version(self, pyve, project_builder):
+        """testenv run python --version succeeds."""
+        project_builder.create_requirements([])
+        pyve.init(backend='venv')
+        pyve.run('testenv', '--init')
+
+        result = pyve.run('testenv', 'run', 'python', '--version')
+        assert result.returncode == 0
+        assert 'python' in result.stdout.lower()
+
+    @pytest.mark.venv
+    def test_testenv_run_propagates_exit_code(self, pyve, project_builder):
+        """testenv run propagates non-zero exit code from command."""
+        project_builder.create_requirements([])
+        pyve.init(backend='venv')
+        pyve.run('testenv', '--init')
+
+        result = pyve.run('testenv', 'run', 'python', '-c', 'import sys; sys.exit(42)', check=False)
+        assert result.returncode == 42
 
 
 def test_testenv_survives_force_reinit(pyve, project_builder):

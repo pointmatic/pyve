@@ -5,6 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-04-09
+
+### Added
+- `pyve testenv run <command> [args...]`: execute any command inside the dev/test runner environment (`.pyve/testenv/venv`). Supports dev tools like ruff, mypy, and black that should live in the testenv rather than the project venv. If the command binary exists in the testenv's `bin/`, it is executed directly; otherwise the testenv's `bin/` is prepended to PATH.
+
 ## [1.9.1] - 2026-04-08
 
 ### Fixed

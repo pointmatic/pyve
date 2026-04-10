@@ -18,9 +18,7 @@ Integration tests for pyve doctor command.
 Tests the doctor command for both venv and micromamba backends.
 """
 
-import os
 import pytest
-import platform
 
 
 class TestDoctorVenv:

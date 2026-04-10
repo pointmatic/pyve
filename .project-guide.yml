@@ -1,3 +1,5 @@
-version: '1.0'
-installed_version: 1.3.1
-target_dir: docs/guides
+version: '2.0'
+installed_version: 2.0.17
+target_dir: docs/project-guide
+metadata_file: .metadata.yml
+current_mode: default
