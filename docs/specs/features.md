@@ -246,6 +246,7 @@ Provide an isolated test environment separate from the project environment.
 - Test environment located at `.pyve/testenv/venv/`.
 - `pyve test` runs pytest in the test environment; prompts to install pytest if missing (interactive) or exits with instructions (non-interactive).
 - `pyve testenv --init` and `pyve testenv --install` for explicit management.
+- `pyve testenv run <command>` executes any command inside the test environment (ruff, mypy, black, etc.).
 - Survives `pyve --init --force` (separate from project environment).
 
 ### FR-12: Smart Re-Initialization

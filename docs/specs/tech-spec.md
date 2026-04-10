@@ -351,6 +351,9 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 | `doctor` | | Environment diagnostics |
 | `test [args]` | | Run pytest in dev/test environment |
 | `testenv --init` | | Initialize dev/test environment |
+| `testenv --install [-r]` | | Install dev/test dependencies |
+| `testenv --purge` | | Remove dev/test environment |
+| `testenv run <cmd>` | | Execute command in dev/test environment |
 
 ### Modifier Flags
 

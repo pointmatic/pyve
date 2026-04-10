@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.9.1"
+VERSION="1.10.0"
 DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -126,7 +126,7 @@ USAGE:
                 [--update | --force] [--allow-synced-dir]
     pyve lock [--check]
     pyve run <command> [args...]
-    pyve testenv --init | --install [-r <requirements.txt>] | --purge
+    pyve testenv --init | --install [-r <requirements.txt>] | --purge | run <command> [args...]
     pyve test [pytest args...]
     pyve doctor
     pyve --validate
@@ -177,6 +177,7 @@ COMMANDS:
     testenv              Manage a dedicated dev/test runner environment
                         Uses: .pyve/testenv/venv
                         Preserved across: pyve --init --force, pyve --purge
+                        Use 'testenv run <cmd>' to execute dev tools (ruff, mypy, etc.)
 
     test [pytest args...] Run pytest via the dev/test runner environment
 
@@ -218,6 +219,8 @@ EXAMPLES:
     pyve run python script.py            # Run script in environment
     pyve testenv --init                  # Create dev/test runner environment
     pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
+    pyve testenv run ruff check .        # Run dev tools from testenv
+    pyve testenv run mypy src/           # Run type checker from testenv
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
@@ -1203,6 +1206,11 @@ testenv_command() {
                 requirements_file="$2"
                 shift 2
                 ;;
+            run)
+                action="run"
+                shift
+                break  # Remaining args are the command to execute
+                ;;
             --help|-h)
                 cat << 'EOF'
 pyve testenv - Manage a dedicated dev/test runner environment
@@ -1211,10 +1219,12 @@ Usage:
   pyve testenv --init
   pyve testenv --install [-r requirements-dev.txt]
   pyve testenv --purge
+  pyve testenv run <command> [args...]
 
 Notes:
   - Uses: .pyve/testenv/venv
   - This environment is preserved across `pyve --init --force` and `pyve --purge`.
+  - `run` executes a command inside the dev/test runner environment.
 EOF
                 exit 0
                 ;;
@@ -1227,7 +1237,7 @@ EOF
 
     if [[ -z "$action" ]]; then
         log_error "No testenv action provided"
-        log_error "Use: pyve testenv --init | --install | --purge"
+        log_error "Use: pyve testenv --init | --install | --purge | run <command>"
         exit 1
     fi
 
@@ -1258,6 +1268,29 @@ EOF
             ;;
         purge)
             purge_testenv_dir
+            ;;
+        run)
+            if [[ $# -lt 1 ]]; then
+                log_error "No command provided"
+                log_error "Usage: pyve testenv run <command> [args...]"
+                log_error "Example: pyve testenv run ruff check ."
+                exit 1
+            fi
+            if [[ ! -x "$testenv_venv/bin/python" ]]; then
+                log_error "Dev/test runner environment not initialized"
+                log_error "Run: pyve testenv --init"
+                exit 1
+            fi
+            local cmd="$1"
+            shift
+            local testenv_bin="$testenv_venv/bin"
+            local cmd_path="$testenv_bin/$cmd"
+            if [[ -x "$cmd_path" ]]; then
+                exec "$cmd_path" "$@"
+            fi
+            export VIRTUAL_ENV="$PWD/$testenv_venv"
+            export PATH="$testenv_bin:$PATH"
+            exec "$cmd" "$@"
             ;;
     esac
 }

@@ -30,3 +30,7 @@ coverage-kcov/
 
 # Project
 .archive/
+docs/specs/go-project-guide.md
+
+# project-guide
+docs/project-guide/**/*.bak.*
