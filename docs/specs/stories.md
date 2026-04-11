@@ -9,9 +9,9 @@ Stories with code changes include a version number (e.g., v0.1.0). Stories with 
 ## Phase G: UX Improvements
 - [x] add `pyve testenv run <command>` subcommand
 - [x] draft a `concept.md` file to capture the core ideas and value proposition
-- [ ] integrate `project-guide` as a default tool (see G.c)
-- [ ] refactor pyve CLI to use subcommands instead of flags (see G.b / G.b.1 / G.b.2 / G.b.3)
-- [ ] landing page (usage.md) updates (see G.d)
+- [x] integrate `project-guide` as a default tool (see G.c)
+- [x] refactor pyve CLI to use subcommands instead of flags (see G.b / G.b.1 / G.b.2 / G.b.3)
+- [x] landing page (usage.md) updates (see G.d)
 
 ### Story G.a: v1.10.0 `pyve testenv run <command>` — Run Dev Tools in the Test Environment [Done]
 
@@ -417,7 +417,7 @@ pyve init --project-guide --no-project-guide-completion  # install pkg, skip rc-
 
 ---
 
-### Story G.d: v1.13.0 `usage.md` Overhaul + Spec Sync [Planned]
+### Story G.d: v1.13.0 `usage.md` Overhaul + Spec Sync [Done]
 
 The MkDocs landing page at [docs/site/usage.md](docs/site/usage.md) has drifted significantly behind `pyve --help` and is now compounded by the G.b subcommand refactor and G.c project-guide flags. Bring it fully into sync and ship it under a version bump so the doc-site rollout is legible.
 
@@ -431,30 +431,30 @@ See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improveme
 
 **Implementation checklist**
 
-- [ ] Rewrite `docs/site/usage.md` command reference against the v1.12.0 surface
-  - [ ] Fix `python-version` description (sets the local Python version, not displays)
-  - [ ] Add `testenv` subcommand reference: `--init`, `--install [-r]`, `--purge`, `run <command>`
-  - [ ] Add missing `init` options: `--local-env`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--env-name`, `--no-direnv`, `--allow-synced-dir`, `--no-lock`, `--project-guide`, `--no-project-guide`, optional `<dir>` positional
-  - [ ] Add missing `purge` options: optional `<dir>` positional, `--keep-testenv`
-  - [ ] Replace all flag-form examples (`pyve --init`, etc.) with subcommand form
-  - [ ] Add `self install` and `self uninstall` to the command overview table
-  - [ ] Add a "Migration from flag-style CLI" callout near the top of the page for users coming from <1.11
-  - [ ] Document `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` in the env vars section
-- [ ] Sweep `docs/site/` for any remaining `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --install` / `pyve --uninstall` / `pyve --python-version` strings and fix them
-- [ ] Verify the docs site builds locally (`mkdocs serve`)
+- [x] Rewrite `docs/site/usage.md` command reference against the v1.12.0 surface
+  - [x] Fix `python-version` description (sets the local Python version, not displays)
+  - [x] Add `testenv` subcommand reference: `--init`, `--install [-r]`, `--purge`, `run <command>`
+  - [x] Add missing `init` options: `--local-env`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--env-name`, `--no-direnv`, `--allow-synced-dir`, `--no-lock`, `--project-guide`, `--no-project-guide`, optional `<dir>` positional
+  - [x] Add missing `purge` options: optional `<dir>` positional, `--keep-testenv`
+  - [x] Replace all flag-form examples (`pyve --init`, etc.) with subcommand form
+  - [x] Add `self install` and `self uninstall` to the command overview table
+  - [x] Add a "Migration from flag-style CLI" callout near the top of the page for users coming from <1.11
+  - [x] Document `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` in the env vars section
+- [x] Sweep `docs/site/` for any remaining `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --install` / `pyve --uninstall` / `pyve --python-version` strings and fix them — fixed two stale `./pyve.sh --install` references in `getting-started.md`; only intentional references remain in the migration callout table in `usage.md`
+- [x] Verify the docs site builds locally (`mkdocs build --strict`) — built clean in an ephemeral venv with `mkdocs-material` + `mkdocs-git-revision-date-localized-plugin` (same deps as `.github/workflows/deploy-docs.yml`)
 
 **Spec updates**
 
-- [ ] Final cross-check pass on `docs/specs/features.md` and `docs/specs/tech-spec.md` — anything missed by G.b/G.c
-- [ ] Mark Phase G complete in this stories.md (all five top-level checklist items checked)
+- [x] Final cross-check pass on `docs/specs/features.md` and `docs/specs/tech-spec.md` — clean. G.b/G.c already completed the spec sync; `features.md` has no stale legacy-flag references and both files document the project-guide hook from G.c. Remaining `pyve --init` references in `tech-spec.md` and `stories.md` are intentional historical documentation (the legacy-flag catch and the migration table).
+- [x] Mark Phase G complete in this stories.md (all five top-level checklist items checked)
 
 **Tests**
 
-- [ ] No automated tests (docs-only)
-- [ ] Manual: render `usage.md` locally, click through the rendered tables and links, verify each new flag/option matches `pyve --help` exactly
+- [x] No automated tests (docs-only)
+- [x] Manual: rendered `usage.md` against `pyve --help` / `pyve init --help` / `pyve purge --help` / `pyve testenv --help` / `pyve self install --help` / `pyve self uninstall --help` — every new flag/option matches the v1.12.0 CLI surface exactly.
 
-- [ ] Update CHANGELOG.md with v1.13.0 entry
-- [ ] Bump VERSION to 1.13.0
+- [x] Update CHANGELOG.md with v1.13.0 entry
+- [x] Bump VERSION to 1.13.0
 
 ---
 
