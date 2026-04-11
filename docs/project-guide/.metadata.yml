@@ -53,6 +53,8 @@ modes:
     artifacts:
       - file: "{{spec_artifacts_path}}/tech-spec.md"
         action: create
+      - file: "{{spec_artifacts_path}}/project-essentials.md"
+        action: create
     files_exist:
       - "{{spec_artifacts_path}}/concept.md"
       - "{{spec_artifacts_path}}/features.md"
@@ -94,6 +96,8 @@ modes:
     artifacts:
       - file: "{{spec_artifacts_path}}/new-phase-{{phase_name}}.md"
       - file: "{{spec_artifacts_path}}/stories.md"
+        action: modify
+      - file: "{{spec_artifacts_path}}/project-essentials.md"
         action: modify
     files_exist:
       - "{{spec_artifacts_path}}/concept.md"
@@ -180,6 +184,9 @@ modes:
     sequence_or_cycle: cycle
     generation_type: document
     mode_template: "{{mode_templates_path}}/refactor-plan-mode.md"
+    artifacts:
+      - file: "{{spec_artifacts_path}}/project-essentials.md"
+        action: modify
   - name: refactor_document
     info: Update documentation artifacts (README, brand descriptions, landing page, MkDocs)
     description: Update existing documentation files because of new features or improvements, including README, brand descriptions, landing page, and MkDocs configuration. You can also migrate legacy project-guide documentation--it will preserve information while restructuring into standardized sections.

@@ -36,6 +36,24 @@ The approved `docs/specs/concept.md` and `docs/specs/features.md` must exist bef
 
 4. Present the complete document to the developer for approval. Iterate as needed.
 
+5. **After tech-spec approval, capture project essentials.** Ask the developer whether there are any must-know facts that future LLMs would need to avoid blunders on this project — things that are **not** obvious from the tech-spec alone. Put these concrete worked examples in front of them to jog their memory (don't just name the categories — name the gotchas):
+
+   - **Workflow rules — tool wrappers and environment conventions.** A common source of "random walks" by LLMs: multiple invocation forms all *work*, but only one is canonical. Capture which form to use so the LLM doesn't pick whatever happens to succeed first.
+     - *Python invocation*: wrapper command (e.g., `pyve run python ...`, `poetry run python ...`, `hatch run python ...`, `uv run python ...`) vs `python -m ...` vs `.venv/bin/python ...`. All may execute, but only one matches the project's setup.
+     - *Dev tool installation*: dedicated dev/test environment (e.g., `pyve testenv --install`, `poetry install --with dev`, `uv sync --extra dev`) vs `pip install -e ".[dev]"` into the main venv. Different isolation guarantees — the latter pollutes the runtime venv.
+     - *Test invocation*: project-specific runner (e.g., `pyve test`, `poetry run pytest`, `make test`) vs bare `pytest`. Bare `pytest` may fail because the tool isn't in the active venv — that's a signal to use the wrapper, not to `pip install pytest`.
+     - **Principle:** legitimate alternatives exist, but they should be intentional choices, not a random walk to whatever works.
+   - **Architecture quirks** — source-of-truth vs generated/installed file locations (edit the source, not the copy); build outputs that get regenerated; files that look hand-edited but aren't.
+   - **Domain conventions** — e.g., money stored in cents, all timestamps UTC, IDs are strings not ints, and similar non-obvious rules.
+   - **Hidden coupling** — files that mirror each other, auto-generated code, regenerated outputs that look hand-edited.
+   - **Dogfooding / meta notes** — if the project uses itself, capture the rules that keep the dogfood loop safe.
+
+   If the developer says there are none, skip to step 7 — do not create an empty `project-essentials.md`. An empty file is acceptable when maintaining an existing one, but a new project should only get this file if there's actual content to put in it.
+
+6. If the developer provides any facts, generate `docs/specs/project-essentials.md` using the artifact template at `templates/artifacts/project-essentials.md`. Follow the template's heading convention: **do NOT include a top-level `#` heading** (the rendered `go.md` wrapper provides `## Project Essentials`), and use `###` for subsection headings so they nest correctly. Present the document to the developer for approval and iterate as needed.
+
+7. Done — proceed to the next mode.
+
 **Note:** Adapt sections to fit the project type:
 - **Web apps**: Add routing, database schema, API endpoints, deployment
 - **Mobile apps**: Add screen navigation, platform APIs, build targets
