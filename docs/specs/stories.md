@@ -178,27 +178,31 @@ pyve self uninstall                    # was: pyve --uninstall
 - [x] Update CHANGELOG.md with v1.11.0 entry — note the breaking CLI change prominently at the top
 - [x] Bump VERSION to 1.11.0
 
-### Story G.b.2: Per-Subcommand `--help` Plumbing + `print_help()` Reorganization [Planned]
+### Story G.b.2: Per-Subcommand `--help` Plumbing + `print_help()` Reorganization [Done]
 
-Pure UX enhancement on top of the new dispatcher from G.b.1. No CLI behavior change. Folds into v1.11.0 if it ships before release; otherwise patch bump to v1.11.1.
+Pure UX enhancement on top of the new dispatcher from G.b.1. No CLI behavior change. **Folded into v1.11.0** — the whole phase ships as one PR, so G.b.1 and G.b.2 are released together.
 
 See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improvements-plan.md) FR-G4.
 
 **Implementation checklist**
 
-- [ ] Add per-subcommand `--help` text for `init`, `purge`, `validate`, `python-version`, `self`, `self install`, `self uninstall` (those that don't already have it after G.b.1; `testenv` already has it from G.a)
-- [ ] Reorganize `print_help()` into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*
-- [ ] Verify each subcommand `--help` is reachable through the dispatcher (returns 0, prints non-empty)
+- [x] Add per-subcommand `--help` text for `init`, `purge`, `validate`, `python-version`, `self`, `self install`, `self uninstall` (those that don't already have it after G.b.1; `testenv` already has it from G.a)
+- [x] Reorganize `print_help()` into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*
+  - Placement: `init`/`purge`/`python-version`/`lock` → Environment, `run`/`test`/`testenv` → Execution, `doctor`/`validate` → Diagnostics, `self install`/`self uninstall`/`self` → Self management.
+- [x] Verify each subcommand `--help` is reachable through the dispatcher (returns 0, prints non-empty)
 
 **Tests**
 
-- [ ] Bats: extend `tests/unit/test_cli_dispatch.bats` (or new `tests/unit/test_subcommand_help.bats`)
-  - [ ] `pyve <sub> --help` returns 0 and prints a non-empty block for each new subcommand
-  - [ ] `pyve --help` output contains all four section headers (*Environment*, *Execution*, *Diagnostics*, *Self management*)
-- [ ] pytest: extend `tests/integration/test_subcommand_cli.py`
-  - [ ] Per-subcommand `--help` smoke test for the renamed subcommands
+- [x] Bats: new `tests/unit/test_subcommand_help.bats` (20 tests, all green)
+  - [x] `pyve <sub> --help` returns 0 and prints a non-empty block for each new subcommand (tests both `--help` and `-h`)
+  - [x] `pyve --help` output contains all four section headers (*Environment*, *Execution*, *Diagnostics*, *Self management*)
+  - [x] Regression guards: `pyve init --help` does not create `.venv`, `pyve purge --help` does not delete files. Proves the `--help` intercept runs BEFORE the real handler.
+- [x] pytest: extended `tests/integration/test_subcommand_cli.py` (+19 tests, all green)
+  - [x] Per-subcommand `--help` smoke test for the renamed subcommands (14 parameterized cases covering `--help` and `-h` for each subcommand + strict marker line assertion)
+  - [x] 4 parameterized top-level section-header tests
+  - [x] 1 regression guard: `pyve init --help` doesn't create `.venv`
 
-- [ ] If shipped after v1.11.0, bump VERSION to 1.11.1 and add CHANGELOG entry; otherwise fold the work into v1.11.0
+- [x] Folded into v1.11.0 (no separate version bump). CHANGELOG.md v1.11.0 entry gained a dedicated G.b.2 section.
 
 ### Story G.b.3: CLI Refactor Doc + Spec Sync [Planned]
 

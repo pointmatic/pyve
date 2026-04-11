@@ -44,9 +44,17 @@ The flag-style top-level CLI is replaced with a subcommand-style CLI consistent 
 - Repo-wide sweep of `tests/integration/*.py` and `tests/unit/*.bats`: every legacy `pyve.run("--init", ...)` / `pyve.run("--purge", ...)` / `pyve.run("--validate", ...)` invocation rewritten to subcommand form. Affected files: `test_validate.py`, `test_reinit.py`, `test_micromamba_workflow.py`, `test_force_ambiguous_prompt.py`, `test_force_backend_detection.py`, `test_lock_command.py`, `test_pip_upgrade.py`, `test_auto_detection.py`, `test_testenv.py`, `test_doctor.bats`. CI's legacy-flag catch surfaces any miss as a clean failure.
 - Full suite green after the swap: 330 bats unit tests + 213 pytest integration tests pass (26 environment-conditional skips).
 
+### Added (G.b.2 — Per-subcommand `--help` plumbing, FR-G4)
+- **Per-subcommand `--help`** for every renamed subcommand from G.b.1. `pyve init --help`, `pyve purge --help`, `pyve validate --help`, `pyve python-version --help`, `pyve self --help`, `pyve self install --help`, and `pyve self uninstall --help` all print a focused man-page-style block and exit 0 **before** the real handler runs — no side effects, no filesystem mutation, no slow Python install. `-h` is accepted everywhere `--help` is.
+- `show_init_help()`, `show_purge_help()`, `show_validate_help()`, `show_python_version_help()`, `show_self_install_help()`, `show_self_uninstall_help()` helper functions in `pyve.sh`. Each opens with a strict marker line of the form `pyve <sub> - <one-line summary>` so tests can assert on exactly the right help block.
+- `main()` dispatcher: each new subcommand arm now intercepts `--help` / `-h` immediately after `shift`, before the `PYVE_DISPATCH_TRACE` hook and before the handler call. `self_command()` does the same for `install` and `uninstall`.
+- `tests/unit/test_subcommand_help.bats`: 20 black-box bats tests covering every per-subcommand `--help` / `-h`, the four top-level section headers, and two regression guards (`pyve init --help` must not create `.venv`, `pyve purge --help` must not delete files).
+- `tests/integration/test_subcommand_cli.py`: 19 new pytest cases (14 parameterized per-subcommand `--help` smoke tests, 4 parameterized top-level section-header tests, 1 regression guard).
+
+### Changed (G.b.2)
+- **`pyve --help` reorganized into four categories** (FR-G4): *Environment* (`init`, `purge`, `python-version`, `lock`), *Execution* (`run`, `test`, `testenv`), *Diagnostics* (`doctor`, `validate`), *Self management* (`self install`, `self uninstall`, `self`). Each subcommand entry is a one-line summary with a pointer to its own `--help` for full options. Replaces the single flat `COMMANDS:` dump from v1.10.0.
+
 ### Deferred to later Phase G stories
-- Per-subcommand `--help` plumbing (`pyve init --help`, `pyve purge --help`, etc.): G.b.2.
-- Full reorganization of `pyve --help` into Environment / Execution / Diagnostics / Self management categories: G.b.2.
 - Sweep of `docs/site/`, `docs/specs/`, `README.md`, and other docs for legacy flag references: G.b.3.
 - `project-guide` integration in `pyve init` (FR-G2): G.c (v1.12.0).
 - `usage.md` overhaul (FR-G3): G.d (v1.13.0).

@@ -148,6 +148,65 @@ class TestLegacyFlagCatch:
         assert result.returncode != 0
 
 
+class TestPerSubcommandHelp:
+    """Story G.b.2 / FR-G4: every renamed subcommand responds to --help."""
+
+    @pytest.mark.parametrize(
+        "args,marker",
+        [
+            (["init", "--help"], "pyve init - Initialize"),
+            (["init", "-h"], "pyve init - Initialize"),
+            (["purge", "--help"], "pyve purge - Remove"),
+            (["purge", "-h"], "pyve purge - Remove"),
+            (["validate", "--help"], "pyve validate - Validate"),
+            (["validate", "-h"], "pyve validate - Validate"),
+            (["python-version", "--help"], "pyve python-version - Set Python version"),
+            (["python-version", "-h"], "pyve python-version - Set Python version"),
+            (["self", "--help"], "Usage: pyve self <subcommand>"),
+            (["self", "-h"], "Usage: pyve self <subcommand>"),
+            (["self", "install", "--help"], "pyve self install - Install pyve"),
+            (["self", "install", "-h"], "pyve self install - Install pyve"),
+            (["self", "uninstall", "--help"], "pyve self uninstall - Remove pyve"),
+            (["self", "uninstall", "-h"], "pyve self uninstall - Remove pyve"),
+        ],
+    )
+    def test_subcommand_help_prints_marker_and_exits_zero(
+        self, pyve, test_project, args, marker
+    ):
+        """Each subcommand --help prints its strict marker and exits 0."""
+        result = pyve.run(*args)
+        assert result.returncode == 0, f"{' '.join(args)} should exit 0"
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert marker in combined, (
+            f"{' '.join(args)} output missing marker {marker!r}\n"
+            f"Got:\n{combined}"
+        )
+
+    def test_init_help_does_not_create_venv(self, pyve, test_project):
+        """`pyve init --help` must not invoke the real init handler."""
+        result = pyve.run("init", "--help")
+        assert result.returncode == 0
+        assert not (pyve.cwd / ".venv").exists()
+        assert not (pyve.cwd / ".pyve").exists()
+
+
+class TestTopLevelHelpSections:
+    """Story G.b.2 / FR-G4: pyve --help is grouped into four sections."""
+
+    @pytest.mark.parametrize(
+        "section_header",
+        ["Environment:", "Execution:", "Diagnostics:", "Self management:"],
+    )
+    def test_top_level_help_contains_section_header(
+        self, pyve, test_project, section_header
+    ):
+        result = pyve.run("--help")
+        assert result.returncode == 0
+        assert section_header in result.stdout, (
+            f"Top-level --help missing section header {section_header!r}"
+        )
+
+
 class TestUniversalFlagsRegression:
     """Regression guard: --help / --version / --config still work."""
 
