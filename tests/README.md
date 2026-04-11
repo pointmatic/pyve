@@ -118,7 +118,7 @@ make test-unit
 
 #### Why use the dev/test runner environment?
 
-Pyve's integration tests exercise destructive flows (e.g. `pyve --init --force`) to validate correctness. If your pytest runner lives inside the same `.venv` that Pyve manages for the project under test, those tests can wipe your local pytest install.
+Pyve's integration tests exercise destructive flows (e.g. `pyve init --force`) to validate correctness. If your pytest runner lives inside the same `.venv` that Pyve manages for the project under test, those tests can wipe your local pytest install.
 
 To keep the workflow easy and natural without being invasive, Pyve uses a dedicated dev/test runner environment:
 
@@ -292,7 +292,7 @@ import pytest
 from pathlib import Path
 
 def test_venv_init_creates_directory(pyve, test_project):
-    """Test that pyve --init creates .venv directory"""
+    """Test that pyve init creates .venv directory"""
     result = pyve.init(backend='venv')
     
     assert result.returncode == 0

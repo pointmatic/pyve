@@ -5,6 +5,162 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-04-11
+
+### Added — `project-guide` integration in `pyve init` (Story G.c, FR-G2 / FR-16)
+
+`pyve init` (fresh init or `--force`) now wires [`project-guide`](https://pointmatic.github.io/project-guide/) into the project as an opinionated, opt-out post-init hook. The hook runs after the existing pip-deps prompt and consists of three steps:
+
+1. **`pip install --upgrade project-guide`** — installs (or upgrades) project-guide into the project env. Always uses `--upgrade` so users get the latest. Default upgrade strategy (`only-if-needed`) so transitive deps aren't cascaded.
+2. **`<env>/bin/project-guide init --no-input`** — runs the project-guide initializer in unattended mode to create `.project-guide.yml` and `docs/project-guide/` artifacts. Requires `project-guide >= 2.2.3`. Older versions degrade gracefully (failure non-fatal).
+3. **Shell completion** — appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc` so `project-guide` tab-completion works in interactive shells.
+
+**Trigger logic** (priority order, first match wins):
+
+| Input | Behavior |
+|---|---|
+| `--no-project-guide` flag | Skip all three steps, no prompt |
+| `--project-guide` flag | Run all three steps (overrides auto-skip) |
+| `PYVE_NO_PROJECT_GUIDE=1` env var | Skip all three steps |
+| `PYVE_PROJECT_GUIDE=1` env var | Run all three steps |
+| **`project-guide` already in project deps** | **Auto-skip with INFO message** |
+| Non-interactive (`CI=1` / `PYVE_FORCE_YES=1`) | Run install + init; skip completion (asymmetry) |
+| Interactive (default) | Prompt: `Install project-guide? [Y/n]` |
+
+**Auto-skip safety mechanism.** If `project-guide` is already declared as a dep in `pyproject.toml`, `requirements.txt`, or `environment.yml`, pyve auto-skips the entire hook with an informative message. The user's pin wins; pyve refuses to manage what the user already manages, avoiding a version conflict at the next `pip install -e .`. The explicit `--project-guide` flag overrides this auto-skip. Word-boundary regex prevents false matches with similar-named packages like `project-guide-extras`.
+
+**`pyve init --update` does NOT run the hook** — preserves the minimal-touch promise of update mode. Users who want to refresh project-guide on update run `pyve init --force`.
+
+**CI default asymmetry — install vs. completion.** Non-interactive mode defaults the install flow to **install** (matches the interactive default of Y), but defaults the completion flow to **skip**. Editing user rc files in unattended environments is the kind of surprise pyve avoids; explicit opt-in via `PYVE_PROJECT_GUIDE_COMPLETION=1` or `--project-guide-completion` is required.
+
+**Failure handling.** All three steps are failure-non-fatal — pip failure, project-guide init failure, unwritable rc file, or unknown shell all log a warning and continue. `pyve init` itself still exits 0.
+
+**Removal.** `pyve self uninstall` removes the completion sentinel block from both `~/.zshrc` and `~/.bashrc` (covering users who switched shells). The sentinel comments make this safe and idempotent.
+
+**`pyve purge` does not touch `.project-guide.yml` or `docs/project-guide/`** — they're committable artifacts that survive purge.
+
+### Added — new CLI flags on `pyve init`
+
+- `--project-guide` / `--no-project-guide` — explicit opt-in / opt-out for the entire hook (mutually exclusive)
+- `--project-guide-completion` / `--no-project-guide-completion` — explicit control over the rc-file step only (mutually exclusive)
+
+### Added — new env vars
+
+- `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE`
+- `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION`
+
+### Added — new helpers in `lib/utils.sh`
+
+- `prompt_install_project_guide`, `prompt_install_project_guide_completion` — Y/n prompts respecting env vars and CI defaults
+- `is_project_guide_installed(backend, env_path)` — fast import probe (`python -c 'import project_guide'`, ~50ms)
+- `install_project_guide(backend, env_path)` — pip install --upgrade with backend dispatch (venv vs. micromamba)
+- `run_project_guide_init_in_env(backend, env_path)` — invokes `project-guide init --no-input`
+- `project_guide_in_project_deps()` — auto-skip detection across pyproject.toml, requirements.txt, environment.yml
+- `detect_user_shell()`, `get_shell_rc_path(shell)` — shell + rc path detection
+- `is_project_guide_completion_present(rc_path)` — sentinel detection
+- `add_project_guide_completion(rc_path, shell)` — idempotent insertion
+- `remove_project_guide_completion(rc_path)` — surgical removal (awk-based, BSD/GNU compatible)
+
+Plus orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` that resolves CLI flags into the helper protocol and sequences the three-step hook.
+
+### Added — `uninstall_project_guide_completion` helper in `pyve.sh`
+
+Called from `uninstall_self()` after the existing PATH/prompt-hook cleanup. Removes the project-guide completion sentinel block from both `~/.zshrc` and `~/.bashrc`.
+
+### Changed
+- `pyve init --help` now documents the three-step hook, the auto-skip safety mechanism, all four new flags, all four new env vars, the CI-default asymmetry, and the `--update` mode exemption.
+- `pyve self uninstall --help` now documents the rc-file completion-block removal.
+
+### Tests
+- **Bats:** new `tests/unit/test_project_guide.bats` with 54 tests covering all 11 helpers — trigger logic for both prompt helpers (including the CI asymmetry), shell detection, rc-path mapping, sentinel detection, idempotent insertion (creating missing rc files), surgical removal preserving surrounding content, add→remove round-trip, `--upgrade` flag passthrough, `--no-input` flag passthrough, missing-binary safe no-ops, failure-non-fatal exit-code propagation, and the auto-skip detection matrix (pyproject.toml positive/negative/word-boundary/comments, requirements.txt positive/negative/word-boundary/comments, environment.yml positive/negative/comments, pip-nested deps).
+- **Pytest integration:** new `tests/integration/test_project_guide_integration.py` with 11 tests across four classes:
+  - `TestMutexFlags` — both flag pairs error on simultaneous use
+  - `TestSkipPaths` — `--no-project-guide`, `PYVE_NO_PROJECT_GUIDE=1`, and the independent completion-skip flag
+  - `TestAutoSkipWhenInProjectDeps` — auto-skip on pyproject.toml dep, auto-skip on requirements.txt dep, explicit `--project-guide` overrides auto-skip
+  - `TestRealInstall` — three slow tests with real network: full three-step hook (install + artifacts + sentinel), CI asymmetry (install yes, completion no), idempotency timing
+- Full bats suite: 404 tests passing (350 pre-G.c + 54 new). Full pytest integration: 242 passing, 26 environment-conditional skips, 0 real failures.
+
+### Spec updates
+- `docs/specs/features.md` — new FR-16 with full hook spec, 4 new modifier flags in **Optional Inputs** table, 4 new env vars in **Environment Variables** table, FR-1 updated to mention the post-init hook, FR-7 updated to mention the rc-file removal.
+- `docs/specs/tech-spec.md` — 4 new flags in **Modifier Flags** table, new **project-guide rc-file Sentinel** section in **Cross-Cutting Concerns**, new **project-guide Helper Functions** section documenting all 11 helpers.
+- Upstream dependency spec: [docs/specs/project-guide-no-input-spec.md](docs/specs/project-guide-no-input-spec.md) — proposed and implemented in `project-guide >= 2.2.3`.
+
+### Changed — CI matrix narrowed to Python 3.12
+
+The integration test matrix was narrowed from `['3.10', '3.11', '3.12']` to `['3.12']`, and the micromamba matrix was bumped from `['3.11']` to `['3.12']`. Both run on `[ubuntu-latest, macos-latest]`. This is a **6-job → 4-job reduction** (counting venv + micromamba matrices).
+
+**Why now:**
+- `project-guide >= 2.2.3` (the upstream dep newly required by FR-16) requires Python `>= 3.11`. The 3.10 matrix entry could not run the new `TestRealInstall` tests because pip refuses to install project-guide on 3.10. Rather than skip those tests on the 3.10 entry indefinitely, drop 3.10 from the matrix.
+- The project owner (currently the only user) targets Python 3.12 for both venv and micromamba projects.
+- Modern tooling (project-guide, etc.) and the conda ecosystem are converging on 3.12 as the practical baseline.
+
+**What this implies:**
+- Pyve no longer claims active support for Python 3.10 or 3.11. Venvs pyve creates likely still work on those versions, but they are not exercised in CI.
+- `DEFAULT_PYTHON_VERSION` in `pyve.sh` is `3.14.4` (the latest stable as of v1.12.0). CI does NOT exercise the default — `PyveRunner.run()`'s auto-pin detects the runner's pyenv-installed 3.12 and pins that, so tests use 3.12 even though pyve's user-facing default is 3.14.4. This is a deliberate trade-off to avoid expensive source builds on each CI run; it's tracked as a follow-up story (see "Investigate Python 3.14 CI testing" in `docs/specs/stories.md`).
+- The `SKIP_PYTHON_TOO_OLD` mark on `TestRealInstall` is kept as a no-op safety net. It costs nothing and protects future contributors who might run the tests locally on older Python.
+
+### Test infrastructure changes (`tests/helpers/pyve_test_helpers.py`)
+
+Two changes were needed to make the project-guide tests pass on CI runners:
+
+1. **Auto-pin Python for `pyve.run("init", ...)` invocations.** The existing `PyveRunner.init()` method already detected the runner's Python and pinned it via `--python-version`, but `PyveRunner.run("init", ...)` (used by tests that need to pass extra CLI flags) bypassed that logic. Centralized the pin into `_auto_pin_python_for_init()` so any subprocess invocation targeting the `init` subcommand inherits the pin automatically. Skipped when `--help` / `-h` is in args (the dispatcher's help intercept needs `--help` to be the immediate next arg after `init`).
+
+2. **`PYVE_NO_PROJECT_GUIDE=1` is now a test-runner default.** Tests opt out of the project-guide hook by default (same pattern as the existing `PYVE_NO_INSTALL_DEPS` / `PYVE_NO_LOCK` defaults). Tests that actually want to test the project-guide hook opt in via `PYVE_TEST_ALLOW_PROJECT_GUIDE=1`. This isolates every existing test from the new hook's side effects (network calls, `.gitignore` mutations, rc-file edits) and prevents the kind of regression we caught on the Ubuntu CI run where `test_gitignore_idempotent` failed because the project-guide hook ran successfully and modified `.gitignore` non-idempotently.
+
+## [1.11.0] - 2026-04-10
+
+### ⚠️ BREAKING CHANGE — CLI surface migrated from flags to subcommands
+
+The flag-style top-level CLI is replaced with a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). This is a clean break — no deprecation cycle, no silent translation.
+
+| Old (removed) | New |
+|---|---|
+| `pyve --init [dir]` | `pyve init [dir]` |
+| `pyve --purge [dir]` | `pyve purge [dir]` |
+| `pyve --validate` | `pyve validate` |
+| `pyve --python-version <ver>` | `pyve python-version <ver>` |
+| `pyve --install` | `pyve self install` |
+| `pyve --uninstall` | `pyve self uninstall` |
+
+**Migration:** invoking a removed flag form prints a precise migration error and exits non-zero — e.g. `ERROR: 'pyve --init' is no longer supported. Use 'pyve init' instead.` This catch is kept forever (Decision D3): users coming from old README snippets, blog posts, or LLM training data will hit it for years and get a clear hint instead of an opaque "unknown command" error.
+
+**Unchanged:** `pyve run`, `pyve lock`, `pyve doctor`, `pyve test`, `pyve testenv [...]`, and the universal flags `--help` / `--version` / `--config`. All modifier flags (`--backend`, `--force`, `--update`, `--no-direnv`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--no-lock`, `--allow-synced-dir`, `--env-name`, `--local-env`, `--keep-testenv`) keep their names and continue to attach to their renamed subcommands.
+
+**Short flag aliases dropped (Decision D1):** `-i` and `-p` are removed. Subcommands are already short; users who want fewer keystrokes can write a shell alias.
+
+**`pyve self` namespace (Decision D4):** `pyve self` with no subcommand prints just the namespace help (mirrors `git remote`, `kubectl config`).
+
+### Added
+- Subcommand routing in `main()` dispatcher: `init`, `purge`, `validate`, `python-version`, and the `self` namespace (`self install`, `self uninstall`).
+- `legacy_flag_error()` helper in `pyve.sh`: emits the precise migration error for any removed flag form.
+- `show_self_help()` and `self_command()` helpers in `pyve.sh`: dispatch and print help for the `self` namespace.
+- `tests/unit/test_cli_dispatch.bats`: 20 black-box bats tests covering subcommand routing, the legacy-flag catch, the `self` namespace, modifier-flag preservation, and universal-flag regression guards. Uses a test-only `PYVE_DISPATCH_TRACE=1` hook (gated in `main()`) so routing assertions don't trigger the real handlers.
+- `tests/integration/test_subcommand_cli.py`: 20 end-to-end pytest cases exercising every renamed subcommand against a temp project, the legacy-flag catch (parameterized over all six removed flags), and the universal-flag regression guards.
+
+### Changed
+- All user-visible runtime strings in `pyve.sh` and `lib/*.sh` that previously emitted `pyve --init` / `pyve --purge` / `pyve --validate` / etc. now emit the subcommand form (e.g. `pyve init --force`, `pyve validate`, `pyve init --no-lock`). Affects help/error guidance from `lib/version.sh`, `lib/micromamba_core.sh`, `lib/micromamba_bootstrap.sh`, `lib/micromamba_env.sh`, `lib/utils.sh`, and the `pyve lock` success guidance.
+- `show_help()` USAGE/COMMANDS/EXAMPLES sections rewritten to reflect the subcommand surface. *(Note: per-subcommand `--help` plumbing and the full category reorganization — Environment / Execution / Diagnostics / Self management — are deferred to G.b.2.)*
+- `tests/helpers/pyve_test_helpers.py` `PyveRunner.init()` and `PyveRunner.purge()` now emit the subcommand form (`init` / `purge` instead of `--init` / `--purge`).
+
+### Tests
+- Repo-wide sweep of `tests/integration/*.py` and `tests/unit/*.bats`: every legacy `pyve.run("--init", ...)` / `pyve.run("--purge", ...)` / `pyve.run("--validate", ...)` invocation rewritten to subcommand form. Affected files: `test_validate.py`, `test_reinit.py`, `test_micromamba_workflow.py`, `test_force_ambiguous_prompt.py`, `test_force_backend_detection.py`, `test_lock_command.py`, `test_pip_upgrade.py`, `test_auto_detection.py`, `test_testenv.py`, `test_doctor.bats`. CI's legacy-flag catch surfaces any miss as a clean failure.
+- Full suite green after the swap: 330 bats unit tests + 213 pytest integration tests pass (26 environment-conditional skips).
+
+### Added (G.b.2 — Per-subcommand `--help` plumbing, FR-G4)
+- **Per-subcommand `--help`** for every renamed subcommand from G.b.1. `pyve init --help`, `pyve purge --help`, `pyve validate --help`, `pyve python-version --help`, `pyve self --help`, `pyve self install --help`, and `pyve self uninstall --help` all print a focused man-page-style block and exit 0 **before** the real handler runs — no side effects, no filesystem mutation, no slow Python install. `-h` is accepted everywhere `--help` is.
+- `show_init_help()`, `show_purge_help()`, `show_validate_help()`, `show_python_version_help()`, `show_self_install_help()`, `show_self_uninstall_help()` helper functions in `pyve.sh`. Each opens with a strict marker line of the form `pyve <sub> - <one-line summary>` so tests can assert on exactly the right help block.
+- `main()` dispatcher: each new subcommand arm now intercepts `--help` / `-h` immediately after `shift`, before the `PYVE_DISPATCH_TRACE` hook and before the handler call. `self_command()` does the same for `install` and `uninstall`.
+- `tests/unit/test_subcommand_help.bats`: 20 black-box bats tests covering every per-subcommand `--help` / `-h`, the four top-level section headers, and two regression guards (`pyve init --help` must not create `.venv`, `pyve purge --help` must not delete files).
+- `tests/integration/test_subcommand_cli.py`: 19 new pytest cases (14 parameterized per-subcommand `--help` smoke tests, 4 parameterized top-level section-header tests, 1 regression guard).
+
+### Changed (G.b.2)
+- **`pyve --help` reorganized into four categories** (FR-G4): *Environment* (`init`, `purge`, `python-version`, `lock`), *Execution* (`run`, `test`, `testenv`), *Diagnostics* (`doctor`, `validate`), *Self management* (`self install`, `self uninstall`, `self`). Each subcommand entry is a one-line summary with a pointer to its own `--help` for full options. Replaces the single flat `COMMANDS:` dump from v1.10.0.
+
+### Deferred to later Phase G stories
+- Sweep of `docs/site/`, `docs/specs/`, `README.md`, and other docs for legacy flag references: G.b.3.
+- `project-guide` integration in `pyve init` (FR-G2): G.c (v1.12.0).
+- `usage.md` overhaul (FR-G3): G.d (v1.13.0).
+
 ## [1.10.0] - 2026-04-09
 
 ### Added

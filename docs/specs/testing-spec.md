@@ -226,7 +226,7 @@ import pytest
 @pytest.mark.venv
 class TestVenvInit:
     def test_venv_init_creates_directory(self, pyve, test_project):
-        """Test that pyve --init creates .venv directory"""
+        """Test that pyve init creates .venv directory"""
         result = pyve.init(backend='venv')
 
         assert result.returncode == 0

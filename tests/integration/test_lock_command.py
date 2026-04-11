@@ -36,7 +36,7 @@ class TestLockCommandGuards:
         The venv backend check must fire before any conda-lock logic.
         """
         project_builder.create_pyproject_toml("test-project")
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
 
         result = pyve.run("lock")
@@ -49,7 +49,7 @@ class TestLockCommandGuards:
     def test_lock_fails_without_environment_yml(self, pyve, project_builder):
         """
         pyve lock without an environment.yml must fail with a clear error
-        that includes a 'pyve --init --backend micromamba' hint.
+        that includes a 'pyve init --backend micromamba' hint.
         No .pyve/config exists so the venv guard does not apply.
         """
         # No project files — no config, no environment.yml
@@ -85,7 +85,7 @@ class TestLockCommandGuards:
         """
         project_builder.create_environment_yml("test-env")  # file exists but backend is venv
         project_builder.create_pyproject_toml("test-project")
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
 
         result = pyve.run("lock")
@@ -112,7 +112,7 @@ class TestLockCommandEndToEnd:
         conda-lock.yml in the project directory.
         """
         project_builder.create_environment_yml("test-env")
-        result = pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
+        result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
         assert result.returncode == 0
 
         lock_path = project_builder.project_dir / "conda-lock.yml"
@@ -125,15 +125,15 @@ class TestLockCommandEndToEnd:
     def test_lock_success_output_references_pyve_init_force(self, pyve, project_builder):
         """
         On a successful run, pyve lock should print guidance referencing
-        'pyve --init --force' — not raw conda-lock commands.
+        'pyve init --force' — not raw conda-lock commands.
         """
         project_builder.create_environment_yml("test-env")
-        pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
+        pyve.run("init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
 
         result = pyve.run("lock")
         assert result.returncode == 0
         combined = (result.stdout or "") + (result.stderr or "")
-        assert "pyve --init --force" in combined
+        assert "pyve init --force" in combined
 
     def test_lock_success_output_does_not_contain_misleading_install_message(
         self, pyve, project_builder
@@ -143,7 +143,7 @@ class TestLockCommandEndToEnd:
         message, which describes a non-Pyve workflow.
         """
         project_builder.create_environment_yml("test-env")
-        pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
+        pyve.run("init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
 
         result = pyve.run("lock")
         assert result.returncode == 0
@@ -158,7 +158,7 @@ class TestLockCommandEndToEnd:
         leave conda-lock.yml's mtime unchanged.
         """
         project_builder.create_environment_yml("test-env")
-        pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
+        pyve.run("init", "--backend", "micromamba", "--auto-bootstrap", "--no-lock")
 
         # First run — generates lock file
         result = pyve.run("lock")

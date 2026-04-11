@@ -146,7 +146,7 @@ error_micromamba_not_found() {
     log_error "     Linux:  See https://mamba.readthedocs.io/en/latest/installation.html"
     log_error ""
     log_error "  2. Bootstrap installation (future feature in v0.7.3):"
-    log_error "     pyve --init --backend micromamba --auto-bootstrap"
+    log_error "     pyve init --backend micromamba --auto-bootstrap"
     log_error ""
     log_error "After installation, micromamba will be detected in:"
     log_error "  - Project sandbox: .pyve/bin/micromamba"

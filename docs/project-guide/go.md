@@ -22,7 +22,7 @@ For efficiency, when you change modes, start a new LLM conversation.
 ### For LLMs
 
 **Modes**
-This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for plan_concept.
+This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for default.
 
 **Approval Gate**
 When you have completed the steps, pause for the developer to review, correct, redirect, or ask questions about your work.  
@@ -36,67 +36,103 @@ When you have completed the steps, pause for the developer to review, correct, r
 
 ---
 
-# plan_concept mode (sequence)
+# default mode (sequence)
 
-> Generate a high-level concept (problem and solution space)
+> Getting started -- full project lifecycle overview
 
 
-Define the problem space (problem statement, why, pain points, target users, value criteria) and the solution space (solution statement, goals, scope, constraints), and pain point to solution mapping.
-
-**Next Action**
-Prompt the user to change modes. 
-
-```bash
-project-guide mode plan_features
-```
+This is the default mode for new projects. It provides an overview of the full project lifecycle. For focused work, switch to a specific mode with `project-guide mode <name>`.
 
 ---
 
+## Project Lifecycle
 
-## Prerequisites
+| Step | Mode | What it does |
+|------|------|-------------|
+| 1 | `plan_concept` | Define the problem and solution space |
+| 2 | `plan_features` | Define requirements, inputs, outputs, behavior |
+| 3 | `plan_tech_spec` | Define architecture, modules, dependencies |
+| 4 | `plan_stories` | Break into phases and stories with checklists |
+| 5 | `project_scaffold` | Scaffold LICENSE, headers, manifest, README, CHANGELOG, .gitignore |
+| 6 | `code_velocity` | Implement stories with fast iteration |
 
-Before starting, the developer must provide (or the LLM must ask for):
+## Get Started
 
-1. **A project idea** -- a short description of what the project should do (a few sentences to a few paragraphs). This is often documented in a `docs/specs/idea.md` file.
+To begin a new project, run:
 
-## Steps
-
-1. Define the problem space 
-   - problem_statement: A few sentences describing the problem, plus any other useful context, examples, or references
-   - problem_why: Root causes of the problem and why the problem persists
-   - pain_points: A list of points 
-   - target_users: A description of those impacted by the problem (positively/negatively, directly/indirectly)
-   - value_criteria: How to measure solution value
-2. Define the solution space 
-   - one_liner: A catchy, benefit-oriented phrase starting with a verb that completes the sentence "This project <one_liner>."
-   - solution_statement: A few sentences that describe the solution in action, benefitting the target users, with some hints at technical approach
-   - goals: How the solution addresses the value criteria
-   - scope: What the solution will and won't do
-   - constraints: Technical, regulatory, or business limitations
-3. Map pain points to solution
-   - pain_point_to_solution_mapping: A mapping of pain point labels to descriptions on how the solution addresses the pain in the pain_point_to_solution_mapping format below. 
-   
-## Formats
-
-### pain_points
-
-```markdown
-- **<pain_point_label_1>**: <pain_point_description_1>
-- **<pain_point_label_2>**: <pain_point_description_2>
-- ...
+```bash
+project-guide mode plan_concept
 ```
 
-### pain_point_to_solution_mapping
+## Suggesting the Next Step
 
-```markdown
-**<pain_point_label_1>**: 
-  - <solution_description_1>
-  - <solution_description_2>
-  ...
-**<pain_point_label_2>**: 
-  - <solution_description_1>
-  - <solution_description_2>
-  ...
-...
-```
+When this mode is set, read `docs/specs/stories.md` (if it exists) and check the status of every `### Story X.y: ... [<status>]` heading.
+
+### If all stories are `[Done]`
+
+The current phase is complete. There is no in-progress work to resume. Suggest **both** of the following next steps to the developer and explain the trade-off:
+
+> All stories in `stories.md` are marked `[Done]`. The current phase is finished. Two reasonable next steps:
+>
+> **Option A — `archive_stories` first, then `plan_phase`** (clean slate)
+> ```bash
+> project-guide mode archive_stories
+> ```
+> This moves the current `stories.md` to `docs/specs/.archive/stories-vX.Y.Z.md` and re-renders an empty `stories.md` (preserving the `## Future` section). Then `plan_phase` plans against an empty file. Phase letters continue across the archive boundary (`.archive/` is consulted to determine the next letter).
+>
+> *Use this when:* the completed phase is large enough that scrolling past it during planning is friction, or you want each phase as a self-contained file in `.archive/` for git history clarity.
+>
+> **Option B — `plan_phase` directly** (plan against history)
+> ```bash
+> project-guide mode plan_phase
+> ```
+> This appends the new phase to the existing `stories.md` alongside the completed phases.
+>
+> *Use this when:* the completed phases provide useful context that should remain visible during planning, or the project is still small enough that a single `stories.md` is comfortable to scroll.
+>
+> Which would you like?
+
+Wait for the developer to choose before changing modes.
+
+### If at least one story is non-`[Done]`
+
+The current phase still has in-progress, planned, or otherwise incomplete work. Use the existing project lifecycle suggestions above — direct the developer to the relevant coding mode (`code_velocity`, `code_test_first`) or, if planning artifacts are missing, to the appropriate planning mode.
+
+### If `stories.md` does not exist
+
+This is a fresh project. Direct the developer to `project-guide mode plan_concept` to begin the lifecycle.
+
+## All Available Modes
+
+### Planning (sequence)
+| Mode | Command | Output |
+|------|---------|--------|
+| **Concept** | `project-guide mode plan_concept` | `docs/specs/concept.md` |
+| **Features** | `project-guide mode plan_features` | `docs/specs/features.md` |
+| **Tech Spec** | `project-guide mode plan_tech_spec` | `docs/specs/tech-spec.md` |
+| **Stories** | `project-guide mode plan_stories` | `docs/specs/stories.md` |
+| **Phase** | `project-guide mode plan_phase` | Add a new phase to an existing project |
+
+### Scaffold (sequence)
+| Mode | Command | Purpose |
+|------|---------|---------|
+| **Project Scaffold** | `project-guide mode project_scaffold` | One-time project scaffolding |
+
+### Coding (cycle)
+| Mode | Command | Workflow |
+|------|---------|----------|
+| **Velocity** | `project-guide mode code_velocity` | Direct commits, fast iteration |
+| **Test-First** | `project-guide mode code_test_first` | TDD red-green-refactor cycle |
+| **Debug** | `project-guide mode debug` | Test-driven debugging |
+
+### Documentation (sequence)
+| Mode | Command | Output |
+|------|---------|--------|
+| **Branding** | `project-guide mode document_brand` | `docs/specs/brand-descriptions.md` |
+| **Landing Page** | `project-guide mode document_landing` | GitHub Pages + MkDocs docs |
+
+### Post-Release (sequence)
+| Mode | Command | Purpose |
+|------|---------|---------|
+| **Archive Stories** | `project-guide mode archive_stories` | Move completed `stories.md` to `.archive/` and re-render an empty one for the next phase |
 

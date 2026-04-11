@@ -167,6 +167,395 @@ prompt_install_pip_dependencies() {
 }
 
 #============================================================
+# project-guide Integration (Story G.c / FR-G2)
+#============================================================
+#
+# pyve init has an opinionated, opt-out hook that installs
+# project-guide into the project environment and optionally
+# adds a shell-completion eval line to the user's rc file.
+#
+# Two independent sub-features, each with its own trigger
+# logic and a deliberate CI-default asymmetry:
+#
+#   Install flow (pip install project-guide):
+#     CI default: INSTALL (matches interactive default of Y)
+#
+#   Completion wiring (rc-file edit):
+#     CI default: SKIP (editing user rc files in unattended
+#     environments is the kind of surprise Pyve avoids)
+#
+# Both flows are failure-non-fatal: a failed pip install or
+# unwritable rc file warns and continues — pyve init still
+# exits 0.
+#
+# Sentinel comments bracket the rc-file block for idempotent
+# insertion and removal. Keep these exactly in sync with the
+# unit tests (test_project_guide.bats) and with the removal
+# logic in uninstall_self() (pyve.sh).
+#------------------------------------------------------------
+
+# Sentinel comments used to bracket the project-guide completion
+# block in user rc files. These must not change without a
+# migration plan — users who installed the block with an older
+# sentinel would end up with orphaned blocks on uninstall.
+readonly PROJECT_GUIDE_COMPLETION_OPEN="# >>> project-guide completion (added by pyve) >>>"
+readonly PROJECT_GUIDE_COMPLETION_CLOSE="# <<< project-guide completion <<<"
+
+# Prompt whether to install project-guide into the project env.
+#
+# Returns 0 to install, 1 to skip.
+#
+# Priority order (first match wins):
+#   PYVE_NO_PROJECT_GUIDE=1 → skip
+#   PYVE_PROJECT_GUIDE=1    → install
+#   CI=1 or PYVE_FORCE_YES  → install (CI default matches interactive default Y)
+#   else (interactive)      → prompt, default Y
+prompt_install_project_guide() {
+    if [[ "${PYVE_NO_PROJECT_GUIDE:-}" == "1" ]]; then
+        return 1
+    fi
+    if [[ "${PYVE_PROJECT_GUIDE:-}" == "1" ]]; then
+        return 0
+    fi
+    if [[ -n "${CI:-}" ]] || [[ "${PYVE_FORCE_YES:-}" == "1" ]]; then
+        return 0
+    fi
+
+    local response
+    printf "Install project-guide? [Y/n]: "
+    read -r response
+    if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Prompt whether to add project-guide shell completion to the user rc file.
+#
+# Returns 0 to add, 1 to skip.
+#
+# Priority order (first match wins) — DELIBERATE ASYMMETRY WITH install flow:
+#   PYVE_NO_PROJECT_GUIDE_COMPLETION=1 → skip
+#   PYVE_PROJECT_GUIDE_COMPLETION=1    → add
+#   CI=1 or PYVE_FORCE_YES             → SKIP (not add — editing rc files in
+#                                        unattended environments is surprising)
+#   else (interactive)                 → prompt, default Y
+prompt_install_project_guide_completion() {
+    if [[ "${PYVE_NO_PROJECT_GUIDE_COMPLETION:-}" == "1" ]]; then
+        return 1
+    fi
+    if [[ "${PYVE_PROJECT_GUIDE_COMPLETION:-}" == "1" ]]; then
+        return 0
+    fi
+    if [[ -n "${CI:-}" ]] || [[ "${PYVE_FORCE_YES:-}" == "1" ]]; then
+        return 1
+    fi
+
+    local response
+    printf "Add project-guide shell completion to your rc file? [Y/n]: "
+    read -r response
+    if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# Detect the user's shell from $SHELL.
+# Prints "zsh" | "bash" | "unknown" to stdout.
+detect_user_shell() {
+    local shell_basename=""
+    if [[ -n "${SHELL:-}" ]]; then
+        shell_basename="$(basename "$SHELL")"
+    fi
+    case "$shell_basename" in
+        zsh)  printf "zsh\n" ;;
+        bash) printf "bash\n" ;;
+        *)    printf "unknown\n" ;;
+    esac
+}
+
+# Map a shell name to its rc file path.
+# Prints "$HOME/.zshrc" | "$HOME/.bashrc" | empty string.
+get_shell_rc_path() {
+    local shell="$1"
+    case "$shell" in
+        zsh)  printf "%s/.zshrc\n" "$HOME" ;;
+        bash) printf "%s/.bashrc\n" "$HOME" ;;
+        *)    printf "" ;;
+    esac
+}
+
+# Check whether the project-guide completion sentinel block is present in a file.
+# Returns 0 if present, 1 if absent (including missing file).
+is_project_guide_completion_present() {
+    local rc_path="$1"
+    if [[ ! -f "$rc_path" ]]; then
+        return 1
+    fi
+    grep -qF "$PROJECT_GUIDE_COMPLETION_OPEN" "$rc_path"
+}
+
+# Append a project-guide completion block to the user's rc file.
+# Idempotent: no-op if the sentinel is already present.
+# Creates the rc file if it does not exist.
+#
+# Usage: add_project_guide_completion <rc_path> <shell>
+#   shell: "zsh" or "bash" — determines the completion eval command
+add_project_guide_completion() {
+    local rc_path="$1"
+    local shell="$2"
+
+    # Idempotency: if sentinel already present, no-op success.
+    if is_project_guide_completion_present "$rc_path"; then
+        return 0
+    fi
+
+    # Create the rc file if missing so users without an existing
+    # config still get completion wiring.
+    if [[ ! -f "$rc_path" ]]; then
+        touch "$rc_path" || return 1
+    fi
+
+    # Ensure the block is preceded by a blank line if the file
+    # has content, for readability.
+    local needs_blank_line=false
+    if [[ -s "$rc_path" ]]; then
+        local last_line
+        last_line="$(tail -n 1 "$rc_path")"
+        if [[ -n "$last_line" ]]; then
+            needs_blank_line=true
+        fi
+    fi
+
+    {
+        if [[ "$needs_blank_line" == true ]]; then
+            printf "\n"
+        fi
+        printf "%s\n" "$PROJECT_GUIDE_COMPLETION_OPEN"
+        printf "command -v project-guide >/dev/null 2>&1 && \\\n"
+        printf "  eval \"\$(_PROJECT_GUIDE_COMPLETE=%s_source project-guide)\"\n" "$shell"
+        printf "%s\n" "$PROJECT_GUIDE_COMPLETION_CLOSE"
+    } >> "$rc_path"
+}
+
+# Remove the project-guide completion sentinel block from a user rc file.
+# Safe no-op if the file is missing or the sentinel is absent.
+# Also drops one immediately-preceding blank line (added by add_...) so that
+# add→remove round-trips cleanly.
+remove_project_guide_completion() {
+    local rc_path="$1"
+
+    if [[ ! -f "$rc_path" ]]; then
+        return 0  # Nothing to remove
+    fi
+    if ! is_project_guide_completion_present "$rc_path"; then
+        return 0  # Already clean
+    fi
+
+    local tmpfile
+    tmpfile="$(mktemp "${rc_path}.tmp.XXXXXX")"
+
+    # Note: awk variable names here intentionally avoid `close` (reserved
+    # function name in BSD awk on macOS) by using `end_marker` instead.
+    awk -v begin_marker="$PROJECT_GUIDE_COMPLETION_OPEN" \
+        -v end_marker="$PROJECT_GUIDE_COMPLETION_CLOSE" '
+    BEGIN { in_block = 0; pending_blank = 0 }
+    {
+        if (in_block) {
+            if ($0 == end_marker) {
+                in_block = 0
+            }
+            next
+        }
+        if ($0 == begin_marker) {
+            in_block = 1
+            # Discard the pending blank line we were holding.
+            pending_blank = 0
+            next
+        }
+        # Buffer one blank line at a time so we can discard it
+        # if the next line is the sentinel open.
+        if ($0 == "") {
+            if (pending_blank) {
+                print ""
+            }
+            pending_blank = 1
+            next
+        }
+        if (pending_blank) {
+            print ""
+            pending_blank = 0
+        }
+        print
+    }
+    END {
+        if (pending_blank) {
+            print ""
+        }
+    }
+    ' "$rc_path" > "$tmpfile"
+
+    mv "$tmpfile" "$rc_path"
+}
+
+# Detect whether project-guide is importable from the project env's Python.
+# Returns 0 if installed, 1 if not (including missing env path / python).
+#
+# Usage: is_project_guide_installed <backend> <env_path>
+#   backend:  "venv" or "micromamba"
+#   env_path: for venv, the venv directory; for micromamba, the env prefix
+is_project_guide_installed() {
+    local backend="$1"
+    local env_path="$2"
+
+    if [[ -z "$env_path" ]] || [[ ! -d "$env_path" ]]; then
+        return 1
+    fi
+
+    local env_python="$env_path/bin/python"
+    if [[ ! -x "$env_python" ]]; then
+        return 1
+    fi
+
+    "$env_python" -c 'import project_guide' >/dev/null 2>&1
+}
+
+# Install (or upgrade) project-guide into the project env via pip.
+# Always uses --upgrade so fresh init / --force gets the latest project-guide.
+# Warn-don't-fail on pip error.
+#
+# Usage: install_project_guide <backend> <env_path>
+# Returns 0 on success (install or already present), 1 if we had no way
+# to run pip. A pip install *failure* still returns 0 because the caller
+# wants pyve init to continue even if project-guide can't be installed.
+install_project_guide() {
+    local backend="$1"
+    local env_path="$2"
+
+    if [[ -z "$env_path" ]]; then
+        log_warning "Cannot install project-guide: env path not provided"
+        return 1
+    fi
+
+    local pip_cmd=""
+    if [[ "$backend" == "venv" ]]; then
+        pip_cmd="$env_path/bin/pip"
+        if [[ ! -x "$pip_cmd" ]]; then
+            log_warning "Cannot install project-guide: pip not found at $pip_cmd"
+            return 1
+        fi
+    elif [[ "$backend" == "micromamba" ]]; then
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_warning "Cannot install project-guide: micromamba not found"
+            return 1
+        fi
+        pip_cmd="$micromamba_path run -p $env_path pip"
+    else
+        log_warning "Cannot install project-guide: unknown backend '$backend'"
+        return 1
+    fi
+
+    log_info "Installing/upgrading project-guide into the project environment..."
+    if $pip_cmd install --upgrade project-guide; then
+        log_success "Installed project-guide"
+    else
+        log_warning "Failed to install project-guide (skip with --no-project-guide)"
+    fi
+    return 0
+}
+
+# Run `project-guide init` inside the project environment to populate the
+# project-guide artifacts (`.project-guide.yml`, `docs/project-guide/`).
+#
+# Relies on project-guide >= 2.2.3's --no-input flag for unattended runs.
+# Older project-guide versions ignore the flag (and prompt-and-fail-on-closed-stdin
+# in pyve's subprocess context); failure is non-fatal.
+#
+# Usage: run_project_guide_init_in_env <backend> <env_path>
+# Returns 0 always — failure is non-fatal by design.
+run_project_guide_init_in_env() {
+    local backend="$1"
+    local env_path="$2"
+
+    local pg_cmd=""
+    if [[ "$backend" == "venv" ]]; then
+        pg_cmd="$env_path/bin/project-guide"
+        if [[ ! -x "$pg_cmd" ]]; then
+            log_warning "Cannot run 'project-guide init': binary not found at $pg_cmd"
+            return 0
+        fi
+    elif [[ "$backend" == "micromamba" ]]; then
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_warning "Cannot run 'project-guide init': micromamba not found"
+            return 0
+        fi
+        pg_cmd="$micromamba_path run -p $env_path project-guide"
+    else
+        log_warning "Cannot run 'project-guide init': unknown backend '$backend'"
+        return 0
+    fi
+
+    log_info "Running 'project-guide init --no-input' in the project environment..."
+    if $pg_cmd init --no-input; then
+        log_success "project-guide artifacts generated"
+    else
+        log_warning "'project-guide init' failed (skip with --no-project-guide)"
+    fi
+    return 0
+}
+
+# Detect whether project-guide is declared as a dependency in the project's
+# Python or conda dep files. Used by the auto-skip safety mechanism that
+# prevents pyve from upgrading a user-pinned project-guide.
+#
+# Checks (in order, returns 0 on first match):
+#   - pyproject.toml: any line mentioning project-guide as a dep string
+#   - requirements.txt: any line starting with project-guide
+#   - environment.yml: any non-comment line containing project-guide
+#
+# Returns 0 if found (auto-skip), 1 if not found.
+#
+# Edge cases handled:
+#   - Word boundary: "project-guide-extras" does NOT match
+#   - Comments: "# project-guide==..." does NOT match
+#   - Quoted strings in pyproject.toml: both "project-guide" and 'project-guide'
+project_guide_in_project_deps() {
+    # pyproject.toml — any line mentioning project-guide (in quotes or not),
+    # ignoring comment lines.
+    if [[ -f "pyproject.toml" ]]; then
+        # Strip comment lines, then look for project-guide bounded by a
+        # quote, comma, whitespace, version specifier, or end-of-line.
+        if grep -v '^[[:space:]]*#' pyproject.toml \
+           | grep -qE '(^|[[:space:]"'\''[,(])project-guide([[:space:]"'\''<>=!~,)]|$)'; then
+            return 0
+        fi
+    fi
+
+    # requirements.txt — line starts with project-guide (after optional
+    # whitespace and ignoring comment lines).
+    if [[ -f "requirements.txt" ]]; then
+        if grep -v '^[[:space:]]*#' requirements.txt \
+           | grep -qE '^[[:space:]]*project-guide([[:space:]<>=!~]|$)'; then
+            return 0
+        fi
+    fi
+
+    # environment.yml — any non-comment line containing project-guide as a word.
+    if [[ -f "environment.yml" ]]; then
+        if grep -v '^[[:space:]]*#' environment.yml \
+           | grep -qE '(^|[[:space:]"'\''=-])project-guide([[:space:]"'\''<>=!~]|$)'; then
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+#============================================================
 # Gitignore Management
 #============================================================
 
@@ -263,7 +652,7 @@ remove_pattern_from_gitignore() {
 # lines, section headers, and comments.
 #
 # The result is: Pyve-managed entries at the top, user entries below.
-# Running `pyve --init` (or --force) is therefore idempotent — the file
+# Running `pyve init` (or --force) is therefore idempotent — the file
 # converges to a stable layout without unnecessary git diffs.
 #
 # Note: .gitignore does not support inline comments.  A `#` is only a
@@ -530,7 +919,7 @@ doctor_check_duplicate_dist_info() {
             fi
         done
     done <<< "$dup_pkgs"
-    printf "  Run 'pyve --init --force' to rebuild the environment cleanly.\n"
+    printf "  Run 'pyve init --force' to rebuild the environment cleanly.\n"
 }
 
 # Scan the environment tree for files/directories with a " 2" suffix — the
@@ -566,7 +955,7 @@ doctor_check_collision_artifacts() {
         printf "    ... and %d more\n" "$(( ${#artifacts[@]} - 5 ))"
     fi
     printf "  Caused by cloud sync running concurrently with environment extraction.\n"
-    printf "  Rebuild outside a cloud-synced directory: pyve --init --force\n"
+    printf "  Rebuild outside a cloud-synced directory: pyve init --force\n"
 }
 
 # Check for known conflicts between pip-bundled native libraries and
@@ -701,7 +1090,7 @@ doctor_check_venv_path() {
         printf "⚠ Environment: venv path mismatch (project may have been relocated)\n"
         printf "  Created at: %s\n" "$cfg_venv_path"
         printf "  Expected:   %s\n" "$expected_venv_path"
-        printf "  Run 'pyve --init --force' to recreate the environment.\n"
+        printf "  Run 'pyve init --force' to recreate the environment.\n"
         return 0
     fi
 
@@ -811,7 +1200,7 @@ check_cloud_sync_path() {
     printf "  Recommended fix: move your project outside the synced directory.\n" >&2
     printf "    mv \"%s\" ~/Developer/%s\n\n" "$current_dir" "$(basename "$current_dir")" >&2
     printf "  If you have disabled sync for this directory and understand the risk:\n" >&2
-    printf "    pyve --init --allow-synced-dir\n" >&2
+    printf "    pyve init --allow-synced-dir\n" >&2
     exit 1
 }
 

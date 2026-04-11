@@ -145,7 +145,7 @@ venv:
         config_path.write_text(config_content)
         
         # Use run() instead of init() to avoid --force flag that would purge the config
-        result = pyve.run('--init', '--no-direnv', check=False)
+        result = pyve.run('init', '--no-direnv', check=False)
         
         # Config should be respected even if init succeeds or fails
         if result.returncode == 0:
@@ -262,7 +262,7 @@ class TestEdgeCases:
         config_path.write_text(config_content)
         
         # Use run() instead of init() to avoid --force flag that would purge the config
-        result = pyve.run('--init', '--no-direnv', check=False)
+        result = pyve.run('init', '--no-direnv', check=False)
         
         # In CI mode with --force, invalid config is purged and init succeeds
         # This test only works in non-CI mode where config is read

@@ -31,12 +31,12 @@ A command-line tool that simplifies setting up and managing Python virtual envir
 
 ## Benefits
 
-- One-command environment setup (`pyve --init`)
+- One-command environment setup (`pyve init`)
 - Dual backend support — venv (pip) and micromamba (conda-compatible)
 - Automatic Python version management via asdf or pyenv
 - direnv integration for seamless shell activation
 - CI/CD-ready with `--no-direnv`, `--auto-bootstrap`, and `--strict` flags
-- Clean teardown with `pyve --purge` — preserves your secrets
+- Clean teardown with `pyve purge` — preserves your secrets
 - Zero runtime dependencies — pure Bash, no daemons
 
 ## Technical Description
@@ -55,12 +55,12 @@ Short blurbs for landing pages and feature grids. Each card has a title and a on
 
 | # | Title | Description |
 |---|-------|-------------|
-| 1 | One-Command Setup | Initialize Python version, virtual environment, direnv, and `.gitignore` in a single `pyve --init`. |
+| 1 | One-Command Setup | Initialize Python version, virtual environment, direnv, and `.gitignore` in a single `pyve init`. |
 | 2 | Dual Backends | Choose venv for pure-Python projects or micromamba for scientific/ML stacks — auto-detected from project files. |
 | 3 | Deterministic Execution | Run commands inside the project environment with `pyve run` — no manual activation, no shell state. |
-| 4 | Clean Teardown | `pyve --purge` removes all artifacts while preserving your secrets and user data. |
+| 4 | Clean Teardown | `pyve purge` removes all artifacts while preserving your secrets and user data. |
 | 5 | CI/CD Ready | Non-interactive flags (`--no-direnv`, `--auto-bootstrap`, `--strict`) for reproducible pipelines. |
-| 6 | Environment Diagnostics | `pyve doctor` and `pyve --validate` report health, version compatibility, and lock file status. |
+| 6 | Environment Diagnostics | `pyve doctor` and `pyve validate` report health, version compatibility, and lock file status. |
 | 7 | Isolated Test Runner | `pyve test` runs pytest in a dedicated dev/test environment that survives force re-initialization. |
 | 8 | Zero Dependencies | Pure Bash script — no runtime dependencies, no daemons, no background processes. |
 

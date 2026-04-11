@@ -323,12 +323,12 @@ pyve run conda env export > environment-export.yml
 ```bash
 # Test with venv
 cd project-venv
-pyve --init --backend venv
+pyve init --backend venv
 pyve run pytest tests/
 
 # Test with micromamba
 cd project-micromamba
-pyve --init --backend micromamba
+pyve init --backend micromamba
 pyve run pytest tests/
 ```
 
@@ -387,9 +387,9 @@ $ pyve run pytest
 ERROR: No Pyve environment found in current directory.
 
 Run one of:
-  pyve --init                    # Auto-detect backend
-  pyve --init --backend venv     # Explicit venv
-  pyve --init --backend micromamba  # Explicit micromamba
+  pyve init                    # Auto-detect backend
+  pyve init --backend venv     # Explicit venv
+  pyve init --backend micromamba  # Explicit micromamba
 ```
 
 ### Command not found in environment

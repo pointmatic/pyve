@@ -160,7 +160,7 @@ If a Bats unit test references `"$HOME/.pyve"` (or any user-global path), sandbo
 
 ### Running pytest integration tests (v0.9.3)
 
-Pyve integration tests can exercise destructive flows (e.g. `pyve --init --force`). To avoid clobbering your local dev tooling, follow the pattern Pyve already uses of running pytest from Pyve's dedicated dev/test runner environment. The environment will be automatically created if needed when running `pyve test`. 
+Pyve integration tests can exercise destructive flows (e.g. `pyve init --force`). To avoid clobbering your local dev tooling, follow the pattern Pyve already uses of running pytest from Pyve's dedicated dev/test runner environment. The environment will be automatically created if needed when running `pyve test`. 
 
 You can also initialize the dev/test runner environment manually:
 
@@ -185,12 +185,12 @@ pytest is not installed in the dev/test runner environment. Install now? [y/N]
 
 ### Purge behavior
 
-`pyve --purge` removes Pyve-managed artifacts, including `.pyve/testenv`, by default.
+`pyve purge` removes Pyve-managed artifacts, including `.pyve/testenv`, by default.
 
 To preserve the dev/test runner environment:
 
 ```bash
-pyve --purge --keep-testenv
+pyve purge --keep-testenv
 ```
 
 ### Testing Both Backends
@@ -200,11 +200,11 @@ pyve --purge --keep-testenv
 # Test venv initialization
 cd /tmp/test-venv
 echo 'requests==2.31.0' > requirements.txt
-pyve --init --backend venv
+pyve init --backend venv
 pyve run python --version
 pyve run pip list
 pyve doctor
-pyve --purge
+pyve purge
 ```
 
 **Micromamba Backend:**
@@ -218,11 +218,11 @@ dependencies:
   - numpy
   - pandas
 EOF
-pyve --init --backend micromamba --auto-bootstrap
+pyve init --backend micromamba --auto-bootstrap
 pyve run python --version
 pyve run python -c "import numpy; print(numpy.__version__)"
 pyve doctor
-pyve --purge
+pyve purge
 ```
 
 ### Testing Auto-Detection
@@ -235,19 +235,19 @@ name: autotest
 dependencies:
   - python=3.11
 EOF
-pyve --init  # Should auto-detect micromamba
+pyve init  # Should auto-detect micromamba
 
 # Test auto-detection with requirements.txt
 cd /tmp/test-auto-venv
 echo 'requests' > requirements.txt
-pyve --init  # Should auto-detect venv
+pyve init  # Should auto-detect venv
 ```
 
 ### Testing `pyve run`
 
 ```bash
 # Test command execution
-pyve --init
+pyve init
 pyve run python --version
 pyve run python -c "print('Hello from pyve')"
 pyve run pip install requests
@@ -258,7 +258,7 @@ pyve run python -c "import requests; print(requests.__version__)"
 
 ```bash
 # Test diagnostics
-pyve --init
+pyve init
 pyve doctor  # Should show healthy environment
 
 # Test with issues
@@ -276,44 +276,44 @@ name: stricttest
 dependencies:
   - python=3.11
 EOF
-pyve --init --backend micromamba --strict  # Should error (no lock file)
+pyve init --backend micromamba --strict  # Should error (no lock file)
 
 # Generate lock file
 conda-lock -f environment.yml -p linux-64
-pyve --init --backend micromamba --strict  # Should succeed
+pyve init --backend micromamba --strict  # Should succeed
 
 # Test stale lock file
 touch environment.yml
-pyve --init --backend micromamba --strict  # Should error (stale)
+pyve init --backend micromamba --strict  # Should error (stale)
 ```
 
 ### Testing CI/CD Mode
 
 ```bash
 # Test --no-direnv flag
-pyve --init --no-direnv
+pyve init --no-direnv
 test ! -f .envrc  # Should pass (no .envrc created)
 pyve run python --version  # Should still work
 
 # Test auto-bootstrap
-pyve --init --backend micromamba --auto-bootstrap --no-direnv
+pyve init --backend micromamba --auto-bootstrap --no-direnv
 ```
 
 ### Testing Edge Cases
 
 ```bash
 # Test reserved environment names
-pyve --init --backend micromamba --env-name base  # Should error
+pyve init --backend micromamba --env-name base  # Should error
 
 # Test invalid environment names
-pyve --init --backend micromamba --env-name "My Project!"  # Should sanitize
+pyve init --backend micromamba --env-name "My Project!"  # Should sanitize
 
 # Test missing micromamba
 # (Uninstall micromamba first)
-pyve --init --backend micromamba  # Should prompt for bootstrap
+pyve init --backend micromamba  # Should prompt for bootstrap
 
 # Test command not found
-pyve --init
+pyve init
 pyve run nonexistent  # Should error with exit code 127
 ```
 

@@ -13,7 +13,7 @@
 # limitations under the License.
 
 """
-Integration tests for pyve --validate command.
+Integration tests for pyve validate command.
 
 Tests validation functionality including version compatibility checks,
 structure validation, and exit codes.
@@ -27,11 +27,11 @@ from pathlib import Path
 
 
 class TestValidateCommand:
-    """Test pyve --validate command functionality."""
+    """Test pyve validate command functionality."""
     
     def test_validate_no_project(self, pyve, test_project):
         """Test validate command with no initialized project."""
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 1
         assert "not configured" in result.stdout or "missing" in result.stdout.lower()
@@ -40,7 +40,7 @@ class TestValidateCommand:
         """Test validate command on healthy venv project."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
         assert "All validations passed" in result.stdout
@@ -50,7 +50,7 @@ class TestValidateCommand:
         # Create config but no venv
         project_builder.create_pyve_config(backend="venv")
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 1
         assert "missing" in result.stdout.lower()
@@ -64,7 +64,7 @@ class TestValidateCommand:
         # Initialize micromamba project
         project_builder.init_micromamba()
         
-        result = pyve.run("--validate")
+        result = pyve.run("validate")
         
         assert result.returncode == 0
         assert "✓" in result.stdout or "All validations passed" in result.stdout
@@ -74,7 +74,7 @@ class TestValidateCommand:
         # Create config for micromamba but no environment.yml
         project_builder.create_pyve_config(backend="micromamba")
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 1
         assert "environment.yml" in result.stdout.lower()
@@ -89,7 +89,7 @@ class TestValidateCommand:
         config_content = re.sub(r'pyve_version: "[^"]+"', 'pyve_version: "0.6.6"', config_content)
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Should warn but not fail
         assert result.returncode == 2
@@ -105,7 +105,7 @@ class TestValidateCommand:
         config_content = re.sub(r'pyve_version: "[^"]+"', 'pyve_version: "99.0.0"', config_content)
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Should warn but not fail
         assert result.returncode == 2
@@ -119,7 +119,7 @@ class TestValidateCommand:
         config_content = re.sub(r'pyve_version: "[^"]+"\n', '', config_path.read_text())
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Should suggest adding version
         assert result.returncode == 2
@@ -129,7 +129,7 @@ class TestValidateCommand:
         """Test validate command returns 0 on success."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
     
@@ -139,7 +139,7 @@ class TestValidateCommand:
         project_builder.create_pyve_config(backend="venv")
         # Don't create venv
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 1
     
@@ -155,7 +155,7 @@ class TestValidateCommand:
         )
         config_path.write_text(config_content)
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 2
     
@@ -163,7 +163,7 @@ class TestValidateCommand:
         """Test validate command output format."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
         assert "Pyve Installation Validation" in result.stdout
@@ -173,7 +173,7 @@ class TestValidateCommand:
         """Test validate command checks backend configuration."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
         assert "Backend: venv" in result.stdout
@@ -182,7 +182,7 @@ class TestValidateCommand:
         """Test validate command checks Python version."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
         assert "Python version:" in result.stdout
@@ -191,7 +191,7 @@ class TestValidateCommand:
         """Test validate command checks direnv integration."""
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
         assert "direnv integration:" in result.stdout
@@ -235,7 +235,7 @@ class TestValidateEdgeCases:
         project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
         project_builder.project_dir.joinpath(".pyve/config").write_text("invalid: yaml: content:")
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Should handle gracefully — backend not configured
         assert result.returncode == 1
@@ -246,7 +246,7 @@ class TestValidateEdgeCases:
         project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
         project_builder.project_dir.joinpath(".pyve/config").write_text("")
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 1
         assert "not configured" in result.stdout
@@ -260,7 +260,7 @@ class TestValidateEdgeCases:
         )
         project_builder.create_venv(venv_dir="custom_venv")
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Exit 2 because config version (0.8.8) triggers a version warning
         assert result.returncode == 2
@@ -272,7 +272,7 @@ class TestValidateEdgeCases:
         # Create config but missing everything else
         project_builder.create_pyve_config(backend="venv", include_version=False)
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         # Should report multiple issues
         assert result.returncode == 1
@@ -292,7 +292,7 @@ class TestValidateMacOS:
         
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0
 
@@ -308,6 +308,6 @@ class TestValidateLinux:
         
         pyve.init(backend='venv')
         
-        result = pyve.run("--validate", check=False)
+        result = pyve.run("validate", check=False)
         
         assert result.returncode == 0

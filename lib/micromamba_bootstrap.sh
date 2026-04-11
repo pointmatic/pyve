@@ -261,12 +261,12 @@ bootstrap_micromamba_interactive() {
                     printf "  See: https://mamba.readthedocs.io/en/latest/installation.html\n"
                 fi
                 printf "\n"
-                log_info "After installation, run 'pyve --init' again."
+                log_info "After installation, run 'pyve init' again."
                 return 1
                 ;;
             4)
                 log_info "Installation aborted."
-                log_info "Install micromamba manually and run 'pyve --init' again."
+                log_info "Install micromamba manually and run 'pyve init' again."
                 return 1
                 ;;
             *)

@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.10.1"
+VERSION="1.12.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -120,113 +120,69 @@ show_help() {
 pyve - Python Virtual Environment Manager
 
 USAGE:
-    pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
-                [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
-                [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
-                [--update | --force] [--allow-synced-dir]
-    pyve lock [--check]
-    pyve run <command> [args...]
-    pyve testenv --init | --install [-r <requirements.txt>] | --purge | run <command> [args...]
-    pyve test [pytest args...]
-    pyve doctor
-    pyve --validate
-    pyve --purge [<dir>]
-    pyve --python-version <ver>
-    pyve --install
-    pyve --uninstall
+    pyve <command> [options]
     pyve --help | --version | --config
 
+For per-command help:
+    pyve <command> --help
+
 COMMANDS:
-    --init, -i          Initialize Python virtual environment in current directory
-                        Optional: specify custom venv directory name (default: .venv)
-                        Optional: --python-version <ver> to set Python version
-                        Optional: --backend <type> to specify backend (venv, micromamba, auto)
-                        Optional: --auto-bootstrap to install micromamba without prompting
-                        Optional: --bootstrap-to <location> where to install (project, user)
-                        Optional: --strict to error on stale/missing lock files
-                        Optional: --no-lock to bypass missing conda-lock.yml error (not recommended)
-                        Optional: --env-name <name> to specify environment name (micromamba)
-                        Optional: --no-direnv to skip .envrc creation
-                        Optional: --auto-install-deps to auto-install from pyproject.toml/requirements.txt
-                        Optional: --no-install-deps to skip dependency installation prompt (for CI/CD)
-                        Optional: --local-env to copy ~/.local/.env template
-                        Optional: --update to safely update existing installation
-                        Optional: --force to purge and re-initialize (destructive)
-                        Optional: --allow-synced-dir to bypass cloud-sync directory check
 
-    lock                Generate (or verify) conda-lock.yml for the current platform
-                        Requires: conda-lock on PATH (add to environment.yml dependencies)
-                        Detects platform automatically (osx-arm64, linux-64, etc.)
-                        Suppresses misleading conda-lock post-run messages
-                        Micromamba projects only
-      --check           Check if conda-lock.yml is up to date (mtime comparison only)
-                        Exits 0 if current, 1 if stale or missing
-                        Does not invoke conda-lock — safe for CI without conda-lock installed
+  Environment:
+    init [<dir>]              Initialize a Python virtual environment
+                              Auto-detects backend (venv / micromamba)
+                              See `pyve init --help` for all options
+    purge [<dir>]             Remove all Python environment artifacts
+                              See `pyve purge --help` for all options
+    python-version <ver>      Set Python version without creating an environment
+                              Format: #.#.# (e.g., 3.13.7)
+    lock [--check]            Generate or verify conda-lock.yml (micromamba only)
+                              --check: mtime-only verification (no conda-lock needed)
 
-    run <command> [args...]
-                        Execute commands in environment (for CI/CD and automation)
-                        <command>: The executable to run (python, pytest, pip, etc.)
-                        [args...]: Optional arguments passed to the command
-                        
-                        NOTE: With direnv (default), just use 'cd' + normal commands
-                        This is primarily for: CI/CD, Docker, --no-direnv setups
-                        
-                        Automatically detects backend (venv or micromamba)
-                        Preserves exit codes and output
+  Execution:
+    run <command> [args...]   Run a command inside the project environment
+                              For CI/CD, Docker, and --no-direnv setups
+    test [pytest args...]     Run pytest via the dev/test runner environment
+    testenv <subcommand>      Manage the dev/test runner environment
+                              Subcommands: --init | --install [-r <req>] | --purge | run <cmd>
+                              See `pyve testenv --help` for details
 
-    testenv              Manage a dedicated dev/test runner environment
-                        Uses: .pyve/testenv/venv
-                        Preserved across: pyve --init --force, pyve --purge
-                        Use 'testenv run <cmd>' to execute dev tools (ruff, mypy, etc.)
+  Diagnostics:
+    doctor                    Check environment health and show diagnostics
+                              Reports backend, Python version, packages, and status
+    validate                  Validate Pyve installation and configuration
+                              Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
-    test [pytest args...] Run pytest via the dev/test runner environment
+  Self management:
+    self install              Install pyve to ~/.local/bin
+    self uninstall            Remove pyve from ~/.local/bin
+    self                      Show the self-namespace help
 
-    doctor              Check environment health and show diagnostics
-                        Reports backend, Python version, packages, and status
-                        Detects issues with lock files and configuration
-
-    --validate          Validate Pyve installation and configuration
-                        Checks version compatibility, structure, and backend setup
-                        Exit codes: 0 (pass), 1 (errors), 2 (warnings)
-
-    --purge, -p         Remove all Python environment artifacts
-                        Optional: specify custom venv directory name (default: .venv)
-                        Optional: --keep-testenv to preserve .pyve/testenv
-
-    --python-version    Set Python version without creating virtual environment
-                        Format: #.#.# (e.g., 3.13.7)
-
-    --install           Install pyve to ~/.local/bin
-
-    --uninstall         Remove pyve from ~/.local/bin
-
-    --help, -h          Show this help message
-
-    --version, -v       Show version
-
-    --config, -c        Show current configuration
+UNIVERSAL FLAGS:
+    --help, -h                Show this help message
+    --version, -v             Show version
+    --config, -c              Show current configuration
 
 EXAMPLES:
-    pyve --init                          # Initialize with defaults (auto-detect backend)
-    pyve --init myenv                    # Use custom venv directory
-    pyve --init --python-version 3.12.0  # Specify Python version
-    pyve --init --backend venv           # Explicitly use venv backend
-    pyve --init --backend micromamba     # Explicitly use micromamba backend
-    pyve --init --local-env              # Copy ~/.local/.env template
-    pyve --init --no-direnv              # Skip direnv (for CI/CD)
+    pyve init                            # Initialize with defaults (auto-detect backend)
+    pyve init myenv                      # Use custom venv directory
+    pyve init --python-version 3.12.0    # Specify Python version
+    pyve init --backend venv             # Explicitly use venv backend
+    pyve init --backend micromamba       # Explicitly use micromamba backend
+    pyve init --no-direnv                # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
-    pyve run python script.py            # Run script in environment
     pyve testenv --init                  # Create dev/test runner environment
     pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
     pyve testenv run ruff check .        # Run dev tools from testenv
-    pyve testenv run mypy src/           # Run type checker from testenv
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
     pyve doctor                          # Check environment health
-    pyve --purge                         # Remove environment
-    pyve --python-version 3.13.7         # Set Python version only
+    pyve validate                        # Validate installation and config
+    pyve purge                           # Remove environment
+    pyve python-version 3.13.7           # Set Python version only
+    pyve self install                    # Install pyve to ~/.local/bin
 
 REQUIREMENTS:
     - asdf (recommended) or pyenv for Python version management
@@ -345,6 +301,138 @@ show_config() {
 # Init Command
 #============================================================
 
+# Run the project-guide post-init hooks: install the package into the
+# project env, then optionally add shell completion to the user rc file.
+#
+# Both steps are failure-non-fatal — pyve init continues even on errors.
+# Respects CLI-flag overrides via the "mode" arguments (pre-resolved by
+# init() from --project-guide / --no-project-guide and their completion
+# siblings). When mode is empty, falls through to the env-var / CI /
+# interactive logic inside the prompt helpers.
+#
+# Usage: run_project_guide_hooks <backend> <env_path> <pg_mode> <comp_mode>
+#   backend:   "venv" | "micromamba"
+#   env_path:  path to the project environment
+#   pg_mode:   "" | "yes" | "no"  (from --project-guide / --no-project-guide)
+#   comp_mode: "" | "yes" | "no"  (from --project-guide-completion / etc.)
+run_project_guide_hooks() {
+    local backend="$1"
+    local env_path="$2"
+    local pg_mode="$3"
+    local comp_mode="$4"
+
+    # Resolve CLI flag overrides into a tri-state.
+    local should_install=0  # 0 = unknown (consult env vars / prompt), 1 = yes, 2 = no
+    case "$pg_mode" in
+        yes) should_install=1 ;;
+        no)  should_install=2 ;;
+    esac
+
+    local should_add_completion=0
+    case "$comp_mode" in
+        yes) should_add_completion=1 ;;
+        no)  should_add_completion=2 ;;
+    esac
+
+    #--- Install decision -------------------------------------------------
+    # Priority order:
+    #   1. --no-project-guide flag                  → skip silent
+    #   2. --project-guide flag                     → install (overrides auto-skip)
+    #   3. PYVE_NO_PROJECT_GUIDE=1 / PYVE_PROJECT_GUIDE=1 → handled by prompt_install_project_guide
+    #   4. project-guide already in project deps    → AUTO-SKIP with INFO message
+    #   5. CI / PYVE_FORCE_YES                      → install (CI default)
+    #   6. interactive                              → prompt, default Y
+    #---------------------------------------------------------------------
+    if [[ $should_install -eq 2 ]]; then
+        log_info "Skipping project-guide install (--no-project-guide)"
+        return 0
+    fi
+
+    local do_install=false
+    if [[ $should_install -eq 1 ]]; then
+        do_install=true
+    else
+        # Auto-skip safety: if project-guide is already declared as a project
+        # dependency, do not let pyve manage it. The user's pin wins; pyve's
+        # install/upgrade would just create a version conflict at the next
+        # `pip install -e .`.
+        if project_guide_in_project_deps; then
+            log_info "Detected 'project-guide' in your project dependencies."
+            log_info "Pyve will not auto-install or run 'project-guide init' to avoid a version conflict."
+            log_info "Project-guide will be installed when your project dependencies are installed."
+            log_info "To override and let pyve manage it anyway, pass --project-guide."
+            log_info "To suppress this message, pass --no-project-guide."
+            return 0
+        fi
+
+        if prompt_install_project_guide; then
+            do_install=true
+        fi
+    fi
+
+    if [[ "$do_install" != true ]]; then
+        return 0
+    fi
+
+    #--- Step 1: pip install --upgrade project-guide ----------------------
+    install_project_guide "$backend" "$env_path" || true
+
+    # If install actually failed, don't proceed to step 2 or 3 — running
+    # `project-guide init` against a missing binary or adding a completion
+    # eval for a missing tool would just leave dead state.
+    if ! is_project_guide_installed "$backend" "$env_path"; then
+        return 0
+    fi
+
+    #--- Step 2: project-guide init --no-input ----------------------------
+    run_project_guide_init_in_env "$backend" "$env_path"
+
+    #--- Step 3: shell completion wiring ----------------------------------
+    if [[ $should_add_completion -eq 2 ]]; then
+        log_info "Skipping project-guide completion wiring (--no-project-guide-completion)"
+        return 0
+    fi
+
+    local do_completion=false
+    if [[ $should_add_completion -eq 1 ]]; then
+        do_completion=true
+    elif prompt_install_project_guide_completion; then
+        do_completion=true
+    fi
+
+    if [[ "$do_completion" != true ]]; then
+        return 0
+    fi
+
+    local user_shell
+    user_shell="$(detect_user_shell)"
+    if [[ "$user_shell" == "unknown" ]]; then
+        log_warning "Unknown shell — skipping project-guide completion wiring."
+        log_warning "  For manual setup, add to your shell rc file:"
+        log_warning "    eval \"\$(_PROJECT_GUIDE_COMPLETE=<shell>_source project-guide)\""
+        return 0
+    fi
+
+    local rc_path
+    rc_path="$(get_shell_rc_path "$user_shell")"
+    if [[ -z "$rc_path" ]]; then
+        log_warning "Could not determine rc file for shell '$user_shell' — skipping completion wiring"
+        return 0
+    fi
+
+    if is_project_guide_completion_present "$rc_path"; then
+        log_info "project-guide completion already present in $rc_path"
+        return 0
+    fi
+
+    if add_project_guide_completion "$rc_path" "$user_shell"; then
+        log_success "Added project-guide completion to $rc_path"
+        log_info "  Reload your shell or run: source $rc_path"
+    else
+        log_warning "Failed to write project-guide completion to $rc_path (continuing)"
+    fi
+}
+
 init() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -357,6 +445,12 @@ init() {
     local no_direnv=false
     local lock_preflight_done=false
     local preflight_backend=""
+
+    # project-guide integration (Story G.c / FR-G2) — tri-state:
+    # "" (unset — use env vars / prompt / CI default), "yes" (force install),
+    # "no" (force skip). Set by --project-guide / --no-project-guide flags.
+    local project_guide_mode=""
+    local project_guide_completion_mode=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -438,6 +532,38 @@ init() {
                 PYVE_REINIT_MODE="force"
                 shift
                 ;;
+            --project-guide)
+                if [[ "$project_guide_mode" == "no" ]]; then
+                    log_error "--project-guide and --no-project-guide are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_mode="yes"
+                shift
+                ;;
+            --no-project-guide)
+                if [[ "$project_guide_mode" == "yes" ]]; then
+                    log_error "--project-guide and --no-project-guide are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_mode="no"
+                shift
+                ;;
+            --project-guide-completion)
+                if [[ "$project_guide_completion_mode" == "no" ]]; then
+                    log_error "--project-guide-completion and --no-project-guide-completion are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_completion_mode="yes"
+                shift
+                ;;
+            --no-project-guide-completion)
+                if [[ "$project_guide_completion_mode" == "yes" ]]; then
+                    log_error "--project-guide-completion and --no-project-guide-completion are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_completion_mode="no"
+                shift
+                ;;
             -*)
                 log_error "Unknown option: $1"
                 exit 1
@@ -471,7 +597,7 @@ init() {
                 log_error "  Requested: $backend_flag"
                 echo ""
                 log_error "Backend changes require a clean re-initialization."
-                log_error "Run: pyve --init --force"
+                log_error "Run: pyve init --force"
                 exit 1
             fi
             
@@ -784,10 +910,14 @@ EOF
         
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
-        
+
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
-        
+
+        # project-guide hook (Story G.c / FR-G2)
+        run_project_guide_hooks "micromamba" "$env_path" \
+            "$project_guide_mode" "$project_guide_completion_mode"
+
         printf "\nNext steps:\n"
         if [[ "$no_direnv" == false ]]; then
             printf "  Note: Ignore micromamba's 'activate' instructions above — Pyve uses direnv activation (or 'pyve run').\n"
@@ -875,10 +1005,16 @@ EOF
     ensure_testenv_exists
     
     printf "\n✓ Python environment initialized successfully!\n"
-    
+
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
     prompt_install_pip_dependencies
-    
+
+    # project-guide hook (Story G.c / FR-G2)
+    local _venv_abs
+    _venv_abs="$(cd "$venv_dir" && pwd)"
+    run_project_guide_hooks "venv" "$_venv_abs" \
+        "$project_guide_mode" "$project_guide_completion_mode"
+
     if [[ "$no_direnv" == false ]]; then
         printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
     else
@@ -1223,7 +1359,7 @@ Usage:
 
 Notes:
   - Uses: .pyve/testenv/venv
-  - This environment is preserved across `pyve --init --force` and `pyve --purge`.
+  - This environment is preserved across `pyve init --force` and `pyve purge`.
   - `run` executes a command inside the dev/test runner environment.
 EOF
                 exit 0
@@ -1364,8 +1500,8 @@ purge_gitignore() {
 set_python_version_only() {
     if [[ $# -lt 1 ]]; then
         log_error "--python-version requires a version argument"
-        log_error "Usage: pyve --python-version <version>"
-        log_error "Example: pyve --python-version 3.13.7"
+        log_error "Usage: pyve python-version <version>"
+        log_error "Example: pyve python-version 3.13.7"
         exit 1
     fi
     
@@ -1662,11 +1798,31 @@ uninstall_self() {
 
     # Remove prompt hook
     uninstall_prompt_hook
-    
+
     # Remove PATH from profile (v0.6.1 feature)
     uninstall_clean_path
-    
+
+    # Remove project-guide completion blocks from both common rc files.
+    # Covers users who switched shells after installing the block. Each
+    # call is a safe no-op if the block is absent or the file is missing.
+    # (Story G.c / FR-G2)
+    uninstall_project_guide_completion
+
     printf "\n✓ pyve uninstalled.\n"
+}
+
+uninstall_project_guide_completion() {
+    local rc_files=(
+        "$HOME/.zshrc"
+        "$HOME/.bashrc"
+    )
+    local rc_file
+    for rc_file in "${rc_files[@]}"; do
+        if [[ -f "$rc_file" ]] && is_project_guide_completion_present "$rc_file"; then
+            remove_project_guide_completion "$rc_file"
+            log_success "Removed project-guide completion block from $rc_file"
+        fi
+    done
 }
 
 uninstall_clean_path() {
@@ -1750,7 +1906,7 @@ run_command() {
     # Error if no environment found
     if [[ -z "$backend" ]]; then
         log_error "No Python environment found"
-        log_error "Run 'pyve --init' to create an environment first"
+        log_error "Run 'pyve init' to create an environment first"
         exit 1
     fi
     
@@ -1848,7 +2004,7 @@ doctor_command() {
     # Check if no environment found
     if [[ -z "$backend" ]]; then
         printf "✗ No environment found\n"
-        printf "  Run 'pyve --init' to create an environment\n"
+        printf "  Run 'pyve init' to create an environment\n"
         exit 1
     fi
     
@@ -2091,14 +2247,14 @@ run_lock() {
     # Guard 2: environment.yml must exist
     if [[ ! -f "environment.yml" ]]; then
         log_error "environment.yml not found. pyve lock requires a conda environment file."
-        log_error "Initialize with: pyve --init --backend micromamba"
+        log_error "Initialize with: pyve init --backend micromamba"
         exit 1
     fi
 
     # Guard 3: conda-lock must be on PATH
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
         exit 1
     fi
 
@@ -2139,7 +2295,7 @@ run_lock() {
     printf "✓ conda-lock.yml updated for %s.\n" "$platform"
     printf "\n"
     printf "To rebuild the environment from the new lock file:\n"
-    printf "  pyve --init --force\n"
+    printf "  pyve init --force\n"
     printf "\n"
     printf "If the environment is already initialized and you only need to commit the\n"
     printf "updated lock file, rebuilding is optional.\n"
@@ -2149,6 +2305,275 @@ run_lock() {
 # Main Entry Point
 #============================================================
 
+#------------------------------------------------------------
+# Legacy-flag catch (Decision D3 — kept forever).
+#
+# v1.11.0 broke the flag-style top-level CLI in favor of
+# subcommands. Old invocations like `pyve --init` get a
+# precise migration error instead of an opaque "unknown
+# command". Three lines of code, great error message, zero
+# cost. Users coming from old README snippets, blog posts,
+# or LLM training data will hit this for years.
+#------------------------------------------------------------
+legacy_flag_error() {
+    local old_flag="$1"
+    local new_form="$2"
+    log_error "'pyve $old_flag' is no longer supported. Use 'pyve $new_form' instead."
+    log_error "See: pyve --help"
+    exit 1
+}
+
+#------------------------------------------------------------
+# Per-subcommand help blocks (Story G.b.2 / FR-G4).
+#
+# Each renamed subcommand gets a focused man-page-style help
+# block. The dispatcher intercepts `--help` / `-h` for the
+# new subcommands and calls these BEFORE the real handler
+# runs, so help is always fast and side-effect-free.
+#
+# Each block opens with a strict marker line of the form
+# `pyve <sub> - <one-line summary>` so tests can assert on
+# exactly the right help block (not a fall-through to
+# top-level help).
+#------------------------------------------------------------
+
+show_init_help() {
+    cat << 'EOF'
+pyve init - Initialize a Python virtual environment in the current directory
+
+Usage:
+  pyve init [<dir>] [options]
+
+Arguments:
+  <dir>                              Custom venv directory name (default: .venv)
+
+Options:
+  --python-version <ver>             Set Python version (e.g., 3.13.7)
+  --backend <type>                   Backend to use: venv, micromamba, auto
+  --auto-bootstrap                   Install micromamba without prompting (if needed)
+  --bootstrap-to <location>          Where to install micromamba: project, user
+  --strict                           Error on stale or missing lock files
+  --no-lock                          Bypass missing conda-lock.yml error (not recommended)
+  --env-name <name>                  Environment name (micromamba backend)
+  --no-direnv                        Skip .envrc creation (for CI/CD)
+  --auto-install-deps                Auto-install from pyproject.toml / requirements.txt
+  --no-install-deps                  Skip dependency installation prompt (for CI/CD)
+  --local-env                        Copy ~/.local/.env template
+  --update                           Safely update an existing installation
+  --force                            Purge and re-initialize (destructive)
+  --allow-synced-dir                 Bypass cloud-sync directory check
+
+  project-guide integration (three-step post-init hook):
+    1. pip install --upgrade project-guide   (latest version)
+    2. project-guide init --no-input          (creates .project-guide.yml + docs/project-guide/)
+    3. shell completion in ~/.zshrc / ~/.bashrc (sentinel-bracketed block)
+
+    --project-guide                  Run all three steps (overrides auto-skip below)
+    --no-project-guide               Skip all three steps (no prompt)
+    --project-guide-completion       Add shell completion (no prompt) — step 3 only
+    --no-project-guide-completion    Skip shell completion (no prompt) — step 3 only
+
+  Auto-skip safety:
+    If 'project-guide' is already declared as a dependency in your
+    pyproject.toml, requirements.txt, or environment.yml, pyve will NOT
+    auto-install or run 'project-guide init' (avoids version conflicts
+    with your pin). Pass --project-guide to override.
+
+  Environment variables for the project-guide hooks:
+    PYVE_PROJECT_GUIDE=1              Same as --project-guide
+    PYVE_NO_PROJECT_GUIDE=1           Same as --no-project-guide
+    PYVE_PROJECT_GUIDE_COMPLETION=1   Same as --project-guide-completion
+    PYVE_NO_PROJECT_GUIDE_COMPLETION=1 Same as --no-project-guide-completion
+
+  CI defaults (non-interactive, i.e. CI=1 or PYVE_FORCE_YES=1):
+    project-guide install             → INSTALL (matches interactive default)
+    project-guide shell completion    → SKIP (editing rc files in CI is surprising)
+
+  Note: pyve init --update does NOT run the project-guide hook (minimal-touch).
+
+Examples:
+  pyve init                                # Auto-detect backend, default venv
+  pyve init myenv                          # Custom venv directory name
+  pyve init --backend venv                 # Force venv backend
+  pyve init --backend micromamba           # Force micromamba backend
+  pyve init --python-version 3.13.7        # Pin Python version
+  pyve init --no-direnv                    # Skip direnv (CI/CD)
+  pyve init --force                        # Purge and rebuild
+  pyve init --project-guide                # Install project-guide without prompting
+  pyve init --no-project-guide             # Skip project-guide entirely
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+show_purge_help() {
+    cat << 'EOF'
+pyve purge - Remove all Python environment artifacts
+
+Usage:
+  pyve purge [<dir>] [options]
+
+Arguments:
+  <dir>                       Custom venv directory name (default: .venv)
+
+Options:
+  --keep-testenv              Preserve .pyve/testenv (the dev/test runner env)
+
+Examples:
+  pyve purge                               # Remove .pyve and the venv
+  pyve purge --keep-testenv                # Preserve the testenv across purge
+  pyve purge custom_venv                   # Remove a custom-named venv
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+show_validate_help() {
+    cat << 'EOF'
+pyve validate - Validate Pyve installation and configuration
+
+Usage:
+  pyve validate
+
+Description:
+  Checks version compatibility, .pyve/config structure, backend setup,
+  and environment health. Useful as a pre-build gate in CI.
+
+Exit codes:
+  0    All validations passed
+  1    Errors found (e.g., missing venv, invalid backend)
+  2    Warnings only (e.g., version mismatch)
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+show_python_version_help() {
+    cat << 'EOF'
+pyve python-version - Set Python version without creating an environment
+
+Usage:
+  pyve python-version <version>
+
+Arguments:
+  <version>                   Python version in #.#.# form (e.g., 3.13.7)
+
+Description:
+  Writes the version to .python-version (asdf/pyenv format) so
+  subsequent `pyve init` invocations pick it up. Does not create
+  or modify any virtual environment.
+
+Examples:
+  pyve python-version 3.13.7
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+show_self_install_help() {
+    cat << 'EOF'
+pyve self install - Install pyve to ~/.local/bin
+
+Usage:
+  pyve self install
+
+Description:
+  Copies the pyve script and lib/ modules to ~/.local/bin and adds
+  ~/.local/bin to PATH (via ~/.zshrc or ~/.bashrc) if not already
+  present. Idempotent — safe to run multiple times.
+
+See also:
+  pyve self uninstall    Remove pyve from ~/.local/bin
+  pyve --help            Full command list
+EOF
+}
+
+show_self_uninstall_help() {
+    cat << 'EOF'
+pyve self uninstall - Remove pyve from ~/.local/bin
+
+Usage:
+  pyve self uninstall
+
+Description:
+  Removes the pyve script and lib/ modules from ~/.local/bin, plus:
+    - the PATH entry added by the installer (from ~/.zprofile / ~/.bash_profile)
+    - the pyve prompt hook (from ~/.zshrc / ~/.bashrc)
+    - the project-guide shell completion block (from ~/.zshrc / ~/.bashrc),
+      if one was added by `pyve init --project-guide-completion`
+
+  Non-empty ~/.local/.env is preserved (warn, don't delete).
+
+See also:
+  pyve self install      Install pyve to ~/.local/bin
+  pyve --help            Full command list
+EOF
+}
+
+#------------------------------------------------------------
+# self namespace help — printed when `pyve self` is invoked
+# with no subcommand. Mirrors `git remote`, `kubectl config`.
+#------------------------------------------------------------
+show_self_help() {
+    cat << 'EOF'
+pyve self - Manage pyve's own installation
+
+Usage: pyve self <subcommand>
+
+Subcommands:
+  pyve self install      Install pyve to ~/.local/bin (and add to PATH if needed)
+  pyve self uninstall    Remove pyve from ~/.local/bin
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+#------------------------------------------------------------
+# self namespace dispatcher.
+#------------------------------------------------------------
+self_command() {
+    if [[ $# -eq 0 ]]; then
+        show_self_help
+        return 0
+    fi
+
+    case "$1" in
+        install)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_self_install_help
+                return 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-install %s\n' "$*"
+                return 0
+            fi
+            install_self
+            ;;
+        uninstall)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_self_uninstall_help
+                return 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-uninstall %s\n' "$*"
+                return 0
+            fi
+            uninstall_self
+            ;;
+        --help|-h)
+            show_self_help
+            return 0
+            ;;
+        *)
+            log_error "Unknown 'pyve self' subcommand: $1"
+            show_self_help
+            exit 1
+            ;;
+    esac
+}
+
 main() {
     # No arguments - show help
     if [[ $# -eq 0 ]]; then
@@ -2156,9 +2581,10 @@ main() {
         show_help
         exit 1
     fi
-    
+
     # Parse command
     case "$1" in
+        # Universal flags (CLI convention — these stay as flags)
         --help|-h)
             show_help
             ;;
@@ -2168,24 +2594,90 @@ main() {
         --config|-c)
             show_config
             ;;
-        --init|-i)
-            shift
-            init "$@"
+
+        # Legacy-flag catch (Decision D3 — kept forever)
+        --init)
+            legacy_flag_error "--init" "init"
             ;;
-        --purge|-p)
-            shift
-            purge "$@"
+        --purge)
+            legacy_flag_error "--purge" "purge"
+            ;;
+        --validate)
+            legacy_flag_error "--validate" "validate"
             ;;
         --python-version)
-            shift
-            set_python_version_only "$@"
+            legacy_flag_error "--python-version" "python-version <ver>"
             ;;
         --install)
-            install_self
+            legacy_flag_error "--install" "self install"
             ;;
         --uninstall)
-            uninstall_self
+            legacy_flag_error "--uninstall" "self uninstall"
             ;;
+        # Short aliases removed in v1.11.0 (Decision D1)
+        -i)
+            legacy_flag_error "-i" "init"
+            ;;
+        -p)
+            legacy_flag_error "-p" "purge"
+            ;;
+
+        # New subcommand surface (v1.11.0+)
+        init)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_init_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:init %s\n' "$*"
+                exit 0
+            fi
+            init "$@"
+            ;;
+        purge)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_purge_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:purge %s\n' "$*"
+                exit 0
+            fi
+            purge "$@"
+            ;;
+        validate)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_validate_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:validate %s\n' "$*"
+                exit 0
+            fi
+            run_full_validation
+            exit $?
+            ;;
+        python-version)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_python_version_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:python-version %s\n' "$*"
+                exit 0
+            fi
+            set_python_version_only "$@"
+            ;;
+        self)
+            shift
+            self_command "$@"
+            ;;
+
+        # Unchanged subcommands (already subcommand-form pre-v1.11.0)
         run)
             shift
             run_command "$@"
@@ -2205,10 +2697,7 @@ main() {
         doctor)
             doctor_command
             ;;
-        --validate)
-            run_full_validation
-            exit $?
-            ;;
+
         *)
             log_error "Unknown command: $1"
             show_help
