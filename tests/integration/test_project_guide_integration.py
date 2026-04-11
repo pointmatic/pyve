@@ -37,10 +37,67 @@ functions in isolation — this file only verifies pyve-init wiring.
 
 import os
 import subprocess
+import sys
 import time
 from pathlib import Path
 
 import pytest
+
+# project-guide requires Python >= 3.11. The pyve CI matrix runs Python 3.10,
+# 3.11, and 3.12 — the 3.10 entry can't run real-install tests because pip
+# refuses to install project-guide on 3.10. The tests that require an actual
+# install of project-guide (TestRealInstall) are gated on the runner's
+# detected pyenv/asdf Python version, since that's the version pyve will
+# pin into the project venv via the auto-pin in PyveRunner.run().
+#
+# We also accept the host's sys.version_info as a fallback when the version
+# manager doesn't pick anything up — that mirrors what pyve.sh's
+# `_detect_version_manager_python_version` does in its third fallback path.
+PROJECT_GUIDE_MIN_PYTHON = (3, 11)
+
+
+def _detected_python_tuple():
+    """
+    Detect the Python version pyve will use in the project venv. Mirrors the
+    detection chain in tests/helpers/pyve_test_helpers.py: pyenv → asdf →
+    python3 on PATH. Returns a (major, minor) tuple, or None if undetectable.
+    """
+    # Reuse the helper detection logic so we always agree with the auto-pin.
+    helpers_path = Path(__file__).parent.parent / "helpers"
+    sys.path.insert(0, str(helpers_path))
+    try:
+        from pyve_test_helpers import _detect_version_manager_python_version
+    finally:
+        sys.path.pop(0)
+
+    detected = _detect_version_manager_python_version(os.environ.copy())
+    if not detected:
+        return None
+    parts = detected.split(".")
+    if len(parts) < 2:
+        return None
+    try:
+        return (int(parts[0]), int(parts[1]))
+    except ValueError:
+        return None
+
+
+def _python_version_too_old_for_project_guide():
+    """True if the detected runner Python is older than PROJECT_GUIDE_MIN_PYTHON."""
+    py = _detected_python_tuple()
+    if py is None:
+        return False  # Unknown — let the test run; it'll fail loudly if pip rejects.
+    return py < PROJECT_GUIDE_MIN_PYTHON
+
+
+SKIP_PYTHON_TOO_OLD = pytest.mark.skipif(
+    _python_version_too_old_for_project_guide(),
+    reason=(
+        f"project-guide requires Python >= "
+        f"{PROJECT_GUIDE_MIN_PYTHON[0]}.{PROJECT_GUIDE_MIN_PYTHON[1]}; "
+        f"detected runner Python is older. Skipping real-install tests."
+    ),
+)
 
 
 # ---------------------------------------------------------------------------
@@ -294,8 +351,15 @@ class TestAutoSkipWhenInProjectDeps:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.venv
+@SKIP_PYTHON_TOO_OLD
 class TestRealInstall:
-    """End-to-end validation that project-guide is actually installed and wired."""
+    """End-to-end validation that project-guide is actually installed and wired.
+
+    Skipped entirely on Python 3.10 runners because project-guide requires
+    Python >= 3.11 — pip refuses to install on older Pythons. The pyve CI
+    matrix runs on 3.10/3.11/3.12; this class runs on the 3.11 and 3.12
+    entries only.
+    """
 
     def test_install_with_completion_wires_everything(
         self, pyve, test_project, tmp_path, monkeypatch

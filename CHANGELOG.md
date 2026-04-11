@@ -85,6 +85,28 @@ Called from `uninstall_self()` after the existing PATH/prompt-hook cleanup. Remo
 - `docs/specs/tech-spec.md` — 4 new flags in **Modifier Flags** table, new **project-guide rc-file Sentinel** section in **Cross-Cutting Concerns**, new **project-guide Helper Functions** section documenting all 11 helpers.
 - Upstream dependency spec: [docs/specs/project-guide-no-input-spec.md](docs/specs/project-guide-no-input-spec.md) — proposed and implemented in `project-guide >= 2.2.3`.
 
+### Changed — CI matrix narrowed to Python 3.12
+
+The integration test matrix was narrowed from `['3.10', '3.11', '3.12']` to `['3.12']`, and the micromamba matrix was bumped from `['3.11']` to `['3.12']`. Both run on `[ubuntu-latest, macos-latest]`. This is a **6-job → 4-job reduction** (counting venv + micromamba matrices).
+
+**Why now:**
+- `project-guide >= 2.2.3` (the upstream dep newly required by FR-16) requires Python `>= 3.11`. The 3.10 matrix entry could not run the new `TestRealInstall` tests because pip refuses to install project-guide on 3.10. Rather than skip those tests on the 3.10 entry indefinitely, drop 3.10 from the matrix.
+- The project owner (currently the only user) targets Python 3.12 for both venv and micromamba projects.
+- Modern tooling (project-guide, etc.) and the conda ecosystem are converging on 3.12 as the practical baseline.
+
+**What this implies:**
+- Pyve no longer claims active support for Python 3.10 or 3.11. Venvs pyve creates likely still work on those versions, but they are not exercised in CI.
+- `DEFAULT_PYTHON_VERSION` in `pyve.sh` is `3.14.4` (the latest stable as of v1.12.0). CI does NOT exercise the default — `PyveRunner.run()`'s auto-pin detects the runner's pyenv-installed 3.12 and pins that, so tests use 3.12 even though pyve's user-facing default is 3.14.4. This is a deliberate trade-off to avoid expensive source builds on each CI run; it's tracked as a follow-up story (see "Investigate Python 3.14 CI testing" in `docs/specs/stories.md`).
+- The `SKIP_PYTHON_TOO_OLD` mark on `TestRealInstall` is kept as a no-op safety net. It costs nothing and protects future contributors who might run the tests locally on older Python.
+
+### Test infrastructure changes (`tests/helpers/pyve_test_helpers.py`)
+
+Two changes were needed to make the project-guide tests pass on CI runners:
+
+1. **Auto-pin Python for `pyve.run("init", ...)` invocations.** The existing `PyveRunner.init()` method already detected the runner's Python and pinned it via `--python-version`, but `PyveRunner.run("init", ...)` (used by tests that need to pass extra CLI flags) bypassed that logic. Centralized the pin into `_auto_pin_python_for_init()` so any subprocess invocation targeting the `init` subcommand inherits the pin automatically. Skipped when `--help` / `-h` is in args (the dispatcher's help intercept needs `--help` to be the immediate next arg after `init`).
+
+2. **`PYVE_NO_PROJECT_GUIDE=1` is now a test-runner default.** Tests opt out of the project-guide hook by default (same pattern as the existing `PYVE_NO_INSTALL_DEPS` / `PYVE_NO_LOCK` defaults). Tests that actually want to test the project-guide hook opt in via `PYVE_TEST_ALLOW_PROJECT_GUIDE=1`. This isolates every existing test from the new hook's side effects (network calls, `.gitignore` mutations, rc-file edits) and prevents the kind of regression we caught on the Ubuntu CI run where `test_gitignore_idempotent` failed because the project-guide hook ran successfully and modified `.gitignore` non-idempotently.
+
 ## [1.11.0] - 2026-04-10
 
 ### ⚠️ BREAKING CHANGE — CLI surface migrated from flags to subcommands

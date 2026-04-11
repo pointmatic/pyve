@@ -456,4 +456,52 @@ See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improveme
 - [ ] Update CHANGELOG.md with v1.13.0 entry
 - [ ] Bump VERSION to 1.13.0
 
+---
+
+### Story G.e: Investigate Python 3.14 CI Testing [Planned]
+
+Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
+
+**Motivation:**
+
+- v1.12.0 narrowed the CI matrix from `['3.10', '3.11', '3.12']` to `['3.12']` (see CHANGELOG and `docs/specs/features.md`) to fix the project-guide / Python 3.10 incompatibility and reduce CI cost. As a side effect, **CI no longer exercises pyve's `DEFAULT_PYTHON_VERSION` (currently `3.14.4`)** — the auto-pin in `PyveRunner.run()` always pins to the runner's pyenv-installed 3.12.
+- Pyve has a [lib/distutils_shim.sh](lib/distutils_shim.sh) specifically because Python 3.12+ removed `distutils`. Future Python releases could break the shim's `sitecustomize.py` loading mechanism. Without 3.14 in the matrix, no integration test ever runs the shim against the latest CPython.
+- The project owner is on Python 3.14.2/3.14.4 locally as the daily-driver Python, so tests on 3.14 close the dev/CI gap.
+
+**Open questions to answer:**
+
+1. **Is Python 3.14 available on `actions/setup-python@v6`?** As of v1.12.0 we didn't verify this. Quick check: does `actions/setup-python` install a pre-built 3.14 binary, or does it fall back to source build? (Source build is what timed out the Ubuntu runner during the v1.12.0 G.c CI failures.)
+2. **If pre-built binaries exist, is the install fast enough?** The pyve workflow currently runs `pyenv install $PYTHON_VERSION` after `actions/setup-python` to register the version with pyenv (so pyve's auto-pin works). For 3.14, would we need to skip pyenv entirely and have pyve detect Python directly from the runner's PATH?
+3. **What CI minutes does adding 3.14 to the matrix actually cost?** The current 3.12-only integration matrix runs in ~10–13 min per OS. Adding 3.14 doubles integration test runtime per push.
+4. **Does the conda ecosystem support 3.14?** Probably not yet. Micromamba matrix should stay at 3.12 even if venv matrix gains 3.14.
+
+**Implementation checklist:**
+
+- [ ] Read [.github/workflows/test.yml](.github/workflows/test.yml) and identify exactly what would need to change to add `'3.14'` to the integration matrix
+- [ ] Check `actions/setup-python@v6` documentation / changelog for 3.14 support
+- [ ] Push a throwaway branch with the matrix change and observe CI behavior (build vs. binary install, duration, any errors)
+- [ ] If pyenv source-build is required and slow, evaluate alternatives:
+  - Use `actions/setup-python` directly without registering with pyenv (requires changing pyve's auto-pin to detect plain `python3` on PATH)
+  - Cache the pyenv source build between runs
+  - Skip pyenv entirely on the 3.14 matrix entry
+- [ ] Validate that pyve's `distutils_shim.sh` works against 3.14 — this is the main thing we'd be buying with the matrix expansion
+- [ ] Document findings in this story's body (replace this checklist with the actual recommendation)
+- [ ] If the recommendation is to add 3.14: implement the matrix change in a separate PR with its own CHANGELOG entry
+- [ ] If the recommendation is to defer: document why (e.g., "3.14 source-build cost not justified by current shim coverage") and close the story
+
+**Tests:**
+
+- [ ] No code-side tests for this story — it's an investigation. Any tests added would be part of the follow-up PR (if any).
+
+**Spec updates:**
+
+- [ ] If we add 3.14 to the matrix, update `docs/specs/features.md` line about the Python version matrix to match
+- [ ] If we defer, add a note to the same line linking back to this story for future reference
+
+**Out of scope (deferred to other stories):**
+
+- Bumping `DEFAULT_PYTHON_VERSION` further (already at 3.14.4, that's fine)
+- Adding multi-version matrix entries for the conda ecosystem (micromamba stays at 3.12)
+- Dropping 3.12 in favor of 3.14 only (would deprecate the version most modern tooling targets — separate product decision)
+
 
