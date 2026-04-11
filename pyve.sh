@@ -29,8 +29,8 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.10.1"
-DEFAULT_PYTHON_VERSION="3.14.4"
+VERSION="1.11.0"
+DEFAULT_PYTHON_VERSION="3.14.3"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
 TESTENV_DIR_NAME="testenv"
@@ -120,24 +120,24 @@ show_help() {
 pyve - Python Virtual Environment Manager
 
 USAGE:
-    pyve --init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
-                [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
-                [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
-                [--update | --force] [--allow-synced-dir]
+    pyve init [<dir>] [--python-version <ver>] [--backend <type>] [--local-env]
+              [--auto-bootstrap] [--bootstrap-to <location>] [--strict] [--no-lock]
+              [--env-name <name>] [--no-direnv] [--auto-install-deps | --no-install-deps]
+              [--update | --force] [--allow-synced-dir]
     pyve lock [--check]
     pyve run <command> [args...]
     pyve testenv --init | --install [-r <requirements.txt>] | --purge | run <command> [args...]
     pyve test [pytest args...]
     pyve doctor
-    pyve --validate
-    pyve --purge [<dir>]
-    pyve --python-version <ver>
-    pyve --install
-    pyve --uninstall
+    pyve validate
+    pyve purge [<dir>]
+    pyve python-version <ver>
+    pyve self install
+    pyve self uninstall
     pyve --help | --version | --config
 
 COMMANDS:
-    --init, -i          Initialize Python virtual environment in current directory
+    init                Initialize Python virtual environment in current directory
                         Optional: specify custom venv directory name (default: .venv)
                         Optional: --python-version <ver> to set Python version
                         Optional: --backend <type> to specify backend (venv, micromamba, auto)
@@ -167,16 +167,16 @@ COMMANDS:
                         Execute commands in environment (for CI/CD and automation)
                         <command>: The executable to run (python, pytest, pip, etc.)
                         [args...]: Optional arguments passed to the command
-                        
+
                         NOTE: With direnv (default), just use 'cd' + normal commands
                         This is primarily for: CI/CD, Docker, --no-direnv setups
-                        
+
                         Automatically detects backend (venv or micromamba)
                         Preserves exit codes and output
 
     testenv              Manage a dedicated dev/test runner environment
                         Uses: .pyve/testenv/venv
-                        Preserved across: pyve --init --force, pyve --purge
+                        Preserved across: pyve init --force, pyve purge
                         Use 'testenv run <cmd>' to execute dev tools (ruff, mypy, etc.)
 
     test [pytest args...] Run pytest via the dev/test runner environment
@@ -185,20 +185,20 @@ COMMANDS:
                         Reports backend, Python version, packages, and status
                         Detects issues with lock files and configuration
 
-    --validate          Validate Pyve installation and configuration
+    validate            Validate Pyve installation and configuration
                         Checks version compatibility, structure, and backend setup
                         Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
-    --purge, -p         Remove all Python environment artifacts
+    purge               Remove all Python environment artifacts
                         Optional: specify custom venv directory name (default: .venv)
                         Optional: --keep-testenv to preserve .pyve/testenv
 
-    --python-version    Set Python version without creating virtual environment
+    python-version      Set Python version without creating virtual environment
                         Format: #.#.# (e.g., 3.13.7)
 
-    --install           Install pyve to ~/.local/bin
+    self install        Install pyve to ~/.local/bin
 
-    --uninstall         Remove pyve from ~/.local/bin
+    self uninstall      Remove pyve from ~/.local/bin
 
     --help, -h          Show this help message
 
@@ -207,13 +207,13 @@ COMMANDS:
     --config, -c        Show current configuration
 
 EXAMPLES:
-    pyve --init                          # Initialize with defaults (auto-detect backend)
-    pyve --init myenv                    # Use custom venv directory
-    pyve --init --python-version 3.12.0  # Specify Python version
-    pyve --init --backend venv           # Explicitly use venv backend
-    pyve --init --backend micromamba     # Explicitly use micromamba backend
-    pyve --init --local-env              # Copy ~/.local/.env template
-    pyve --init --no-direnv              # Skip direnv (for CI/CD)
+    pyve init                            # Initialize with defaults (auto-detect backend)
+    pyve init myenv                      # Use custom venv directory
+    pyve init --python-version 3.12.0    # Specify Python version
+    pyve init --backend venv             # Explicitly use venv backend
+    pyve init --backend micromamba       # Explicitly use micromamba backend
+    pyve init --local-env                # Copy ~/.local/.env template
+    pyve init --no-direnv                # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
     pyve run python script.py            # Run script in environment
@@ -225,8 +225,8 @@ EXAMPLES:
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
     pyve doctor                          # Check environment health
-    pyve --purge                         # Remove environment
-    pyve --python-version 3.13.7         # Set Python version only
+    pyve purge                           # Remove environment
+    pyve python-version 3.13.7           # Set Python version only
 
 REQUIREMENTS:
     - asdf (recommended) or pyenv for Python version management
@@ -471,7 +471,7 @@ init() {
                 log_error "  Requested: $backend_flag"
                 echo ""
                 log_error "Backend changes require a clean re-initialization."
-                log_error "Run: pyve --init --force"
+                log_error "Run: pyve init --force"
                 exit 1
             fi
             
@@ -1223,7 +1223,7 @@ Usage:
 
 Notes:
   - Uses: .pyve/testenv/venv
-  - This environment is preserved across `pyve --init --force` and `pyve --purge`.
+  - This environment is preserved across `pyve init --force` and `pyve purge`.
   - `run` executes a command inside the dev/test runner environment.
 EOF
                 exit 0
@@ -1364,8 +1364,8 @@ purge_gitignore() {
 set_python_version_only() {
     if [[ $# -lt 1 ]]; then
         log_error "--python-version requires a version argument"
-        log_error "Usage: pyve --python-version <version>"
-        log_error "Example: pyve --python-version 3.13.7"
+        log_error "Usage: pyve python-version <version>"
+        log_error "Example: pyve python-version 3.13.7"
         exit 1
     fi
     
@@ -1750,7 +1750,7 @@ run_command() {
     # Error if no environment found
     if [[ -z "$backend" ]]; then
         log_error "No Python environment found"
-        log_error "Run 'pyve --init' to create an environment first"
+        log_error "Run 'pyve init' to create an environment first"
         exit 1
     fi
     
@@ -1848,7 +1848,7 @@ doctor_command() {
     # Check if no environment found
     if [[ -z "$backend" ]]; then
         printf "✗ No environment found\n"
-        printf "  Run 'pyve --init' to create an environment\n"
+        printf "  Run 'pyve init' to create an environment\n"
         exit 1
     fi
     
@@ -2091,14 +2091,14 @@ run_lock() {
     # Guard 2: environment.yml must exist
     if [[ ! -f "environment.yml" ]]; then
         log_error "environment.yml not found. pyve lock requires a conda environment file."
-        log_error "Initialize with: pyve --init --backend micromamba"
+        log_error "Initialize with: pyve init --backend micromamba"
         exit 1
     fi
 
     # Guard 3: conda-lock must be on PATH
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve --init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
         exit 1
     fi
 
@@ -2139,7 +2139,7 @@ run_lock() {
     printf "✓ conda-lock.yml updated for %s.\n" "$platform"
     printf "\n"
     printf "To rebuild the environment from the new lock file:\n"
-    printf "  pyve --init --force\n"
+    printf "  pyve init --force\n"
     printf "\n"
     printf "If the environment is already initialized and you only need to commit the\n"
     printf "updated lock file, rebuilding is optional.\n"
@@ -2149,6 +2149,78 @@ run_lock() {
 # Main Entry Point
 #============================================================
 
+#------------------------------------------------------------
+# Legacy-flag catch (Decision D3 — kept forever).
+#
+# v1.11.0 broke the flag-style top-level CLI in favor of
+# subcommands. Old invocations like `pyve --init` get a
+# precise migration error instead of an opaque "unknown
+# command". Three lines of code, great error message, zero
+# cost. Users coming from old README snippets, blog posts,
+# or LLM training data will hit this for years.
+#------------------------------------------------------------
+legacy_flag_error() {
+    local old_flag="$1"
+    local new_form="$2"
+    log_error "'pyve $old_flag' is no longer supported. Use 'pyve $new_form' instead."
+    log_error "See: pyve --help"
+    exit 1
+}
+
+#------------------------------------------------------------
+# self namespace help — printed when `pyve self` is invoked
+# with no subcommand. Mirrors `git remote`, `kubectl config`.
+#------------------------------------------------------------
+show_self_help() {
+    cat << 'EOF'
+pyve self - Manage pyve's own installation
+
+Usage: pyve self <subcommand>
+
+Subcommands:
+  pyve self install      Install pyve to ~/.local/bin (and add to PATH if needed)
+  pyve self uninstall    Remove pyve from ~/.local/bin
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+#------------------------------------------------------------
+# self namespace dispatcher.
+#------------------------------------------------------------
+self_command() {
+    if [[ $# -eq 0 ]]; then
+        show_self_help
+        return 0
+    fi
+
+    case "$1" in
+        install)
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-install %s\n' "${*:2}"
+                return 0
+            fi
+            install_self
+            ;;
+        uninstall)
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-uninstall %s\n' "${*:2}"
+                return 0
+            fi
+            uninstall_self
+            ;;
+        --help|-h)
+            show_self_help
+            return 0
+            ;;
+        *)
+            log_error "Unknown 'pyve self' subcommand: $1"
+            show_self_help
+            exit 1
+            ;;
+    esac
+}
+
 main() {
     # No arguments - show help
     if [[ $# -eq 0 ]]; then
@@ -2156,9 +2228,10 @@ main() {
         show_help
         exit 1
     fi
-    
+
     # Parse command
     case "$1" in
+        # Universal flags (CLI convention — these stay as flags)
         --help|-h)
             show_help
             ;;
@@ -2168,24 +2241,74 @@ main() {
         --config|-c)
             show_config
             ;;
-        --init|-i)
-            shift
-            init "$@"
+
+        # Legacy-flag catch (Decision D3 — kept forever)
+        --init)
+            legacy_flag_error "--init" "init"
             ;;
-        --purge|-p)
-            shift
-            purge "$@"
+        --purge)
+            legacy_flag_error "--purge" "purge"
+            ;;
+        --validate)
+            legacy_flag_error "--validate" "validate"
             ;;
         --python-version)
-            shift
-            set_python_version_only "$@"
+            legacy_flag_error "--python-version" "python-version <ver>"
             ;;
         --install)
-            install_self
+            legacy_flag_error "--install" "self install"
             ;;
         --uninstall)
-            uninstall_self
+            legacy_flag_error "--uninstall" "self uninstall"
             ;;
+        # Short aliases removed in v1.11.0 (Decision D1)
+        -i)
+            legacy_flag_error "-i" "init"
+            ;;
+        -p)
+            legacy_flag_error "-p" "purge"
+            ;;
+
+        # New subcommand surface (v1.11.0+)
+        init)
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:init %s\n' "$*"
+                exit 0
+            fi
+            init "$@"
+            ;;
+        purge)
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:purge %s\n' "$*"
+                exit 0
+            fi
+            purge "$@"
+            ;;
+        validate)
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:validate %s\n' "$*"
+                exit 0
+            fi
+            run_full_validation
+            exit $?
+            ;;
+        python-version)
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:python-version %s\n' "$*"
+                exit 0
+            fi
+            set_python_version_only "$@"
+            ;;
+        self)
+            shift
+            self_command "$@"
+            ;;
+
+        # Unchanged subcommands (already subcommand-form pre-v1.11.0)
         run)
             shift
             run_command "$@"
@@ -2205,10 +2328,7 @@ main() {
         doctor)
             doctor_command
             ;;
-        --validate)
-            run_full_validation
-            exit $?
-            ;;
+
         *)
             log_error "Unknown command: $1"
             show_help

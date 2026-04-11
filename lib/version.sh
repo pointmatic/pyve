@@ -61,7 +61,7 @@ validate_pyve_version() {
         less)
             if [[ "${PYVE_SKIP_VERSION_CHECK:-}" != "1" ]]; then
                 log_warning "Project initialized with Pyve v$recorded_version (current: v$VERSION)"
-                log_warning "Run 'pyve --validate' to check compatibility"
+                log_warning "Run 'pyve validate' to check compatibility"
             fi
             return 0
             ;;
@@ -185,7 +185,7 @@ run_full_validation() {
     
     if [[ -z "$recorded_version" ]]; then
         echo "⚠ Pyve version: not recorded (legacy project)"
-        echo "  Run 'pyve --init --update' to add version tracking"
+        echo "  Run 'pyve init --update' to add version tracking"
         _escalate 2
     else
         local comparison
@@ -197,7 +197,7 @@ run_full_validation() {
                 ;;
             less)
                 echo "⚠ Pyve version: $recorded_version (current: $VERSION)"
-                echo "  Migration recommended. Run 'pyve --init --update' to update."
+                echo "  Migration recommended. Run 'pyve init --update' to update."
                 _escalate 2
                 ;;
             greater)
@@ -228,7 +228,7 @@ run_full_validation() {
                 echo "✓ Virtual environment: $venv_dir (exists)"
             else
                 echo "✗ Virtual environment: $venv_dir (missing)"
-                echo "  Run 'pyve --init' to create."
+                echo "  Run 'pyve init' to create."
                 _escalate 1
             fi
             ;;

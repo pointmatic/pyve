@@ -263,7 +263,7 @@ remove_pattern_from_gitignore() {
 # lines, section headers, and comments.
 #
 # The result is: Pyve-managed entries at the top, user entries below.
-# Running `pyve --init` (or --force) is therefore idempotent — the file
+# Running `pyve init` (or --force) is therefore idempotent — the file
 # converges to a stable layout without unnecessary git diffs.
 #
 # Note: .gitignore does not support inline comments.  A `#` is only a
@@ -530,7 +530,7 @@ doctor_check_duplicate_dist_info() {
             fi
         done
     done <<< "$dup_pkgs"
-    printf "  Run 'pyve --init --force' to rebuild the environment cleanly.\n"
+    printf "  Run 'pyve init --force' to rebuild the environment cleanly.\n"
 }
 
 # Scan the environment tree for files/directories with a " 2" suffix — the
@@ -566,7 +566,7 @@ doctor_check_collision_artifacts() {
         printf "    ... and %d more\n" "$(( ${#artifacts[@]} - 5 ))"
     fi
     printf "  Caused by cloud sync running concurrently with environment extraction.\n"
-    printf "  Rebuild outside a cloud-synced directory: pyve --init --force\n"
+    printf "  Rebuild outside a cloud-synced directory: pyve init --force\n"
 }
 
 # Check for known conflicts between pip-bundled native libraries and
@@ -701,7 +701,7 @@ doctor_check_venv_path() {
         printf "⚠ Environment: venv path mismatch (project may have been relocated)\n"
         printf "  Created at: %s\n" "$cfg_venv_path"
         printf "  Expected:   %s\n" "$expected_venv_path"
-        printf "  Run 'pyve --init --force' to recreate the environment.\n"
+        printf "  Run 'pyve init --force' to recreate the environment.\n"
         return 0
     fi
 
@@ -811,7 +811,7 @@ check_cloud_sync_path() {
     printf "  Recommended fix: move your project outside the synced directory.\n" >&2
     printf "    mv \"%s\" ~/Developer/%s\n\n" "$current_dir" "$(basename "$current_dir")" >&2
     printf "  If you have disabled sync for this directory and understand the risk:\n" >&2
-    printf "    pyve --init --allow-synced-dir\n" >&2
+    printf "    pyve init --allow-synced-dir\n" >&2
     exit 1
 }
 

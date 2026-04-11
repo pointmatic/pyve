@@ -9,9 +9,9 @@ Stories with code changes include a version number (e.g., v0.1.0). Stories with 
 ## Phase G: UX Improvements
 - [x] add `pyve testenv run <command>` subcommand
 - [x] draft a `concept.md` file to capture the core ideas and value proposition
-- [ ] integrate `project-guide` as a default tool (see `ux-improvements.md`)
-- [ ] refactor pyve CLI to use subcommands instead of flags (see `ux-improvements.md`)
-- [ ] landing page (usage.md) updates (see `ux-improvements.md`)
+- [ ] integrate `project-guide` as a default tool (see G.c)
+- [ ] refactor pyve CLI to use subcommands instead of flags (see G.b / G.b.1 / G.b.2 / G.b.3)
+- [ ] landing page (usage.md) updates (see G.d)
 
 ### Story G.a: v1.10.0 `pyve testenv run <command>` — Run Dev Tools in the Test Environment [Done]
 
@@ -73,13 +73,39 @@ pyve testenv run python -m pytest --co -q        # alternative to pyve test
 - [x] Update CHANGELOG.md with v1.10.0 entry
 - [x] Bump VERSION to 1.10.0
 
-### Story G.b: v1.11.0 CLI Subcommand Refactor [Planned]
+### Story G.b: CLI Subcommand Refactor — Planning [Done]
 
-Pyve's top-level CLI is a mix of flag-style commands (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --install`, `pyve --uninstall`) and bare subcommands (`pyve run`, `pyve doctor`, `pyve test`, `pyve testenv`, `pyve lock`). The inconsistency is jarring and the flag-style form is unfamiliar to users coming from `git`, `cargo`, `kubectl`, `gh`, etc.
+Pyve's top-level CLI is a mix of flag-style commands (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --install`, `pyve --uninstall`) and bare subcommands (`pyve run`, `pyve doctor`, `pyve test`, `pyve testenv`, `pyve lock`). The original G.b story bundled the dispatcher refactor, the per-subcommand `--help` plumbing, the `print_help()` reorganization, two new test files, a mechanical sweep across ~11 pytest files plus several bats files, README, two spec docs, VERSION, and CHANGELOG into one story. That's too much surface area for a single TDD cycle and a single review gate.
 
-**Motivation:** A consistent subcommand surface is more discoverable, easier to document, and matches modern developer-tool conventions. This is a one-time breaking change with no compatibility shim — the developer has explicitly opted out of backwards compatibility for the future-now release. A friendly legacy-flag error catch makes the migration cost ~one keystroke per user invocation.
+This planning story breaks G.b into three sub-stories so each has a focused review gate and CI stays green between merges.
 
 See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improvements-plan.md) FR-G1 and FR-G4 for full design.
+
+**Sub-story summary**
+
+| Sub-story | Version | Scope |
+|---|---|---|
+| G.b.1 | v1.11.0 | Dispatcher refactor + legacy-flag catch + test sweep (atomic — CI red→green window) |
+| G.b.2 | folds into v1.11.0 (or v1.11.1 if shipped after) | Per-subcommand `--help` plumbing + `print_help()` reorganization |
+| G.b.3 | docs-only, no version bump | README + features.md + tech-spec.md sync (excludes `usage.md`, owned by G.d) |
+
+**Why this split**
+
+- **G.b.1 must be atomic.** The moment the dispatcher changes, every legacy-flag invocation in the test suite fails. The sweep cannot be deferred without leaving CI red between merges. Bundling the dispatcher rewrite with the sweep keeps the diff focused on a single concern: "rename the CLI surface".
+- **G.b.2 is pure UX, no behavior change.** Help text bikeshedding shouldn't hold up the dispatcher refactor.
+- **G.b.3 is pure prose.** Reviewable in a text editor without running tests.
+
+**Planning checklist**
+
+- [x] Decide breakdown (3 sub-stories vs monolithic)
+- [x] Replace this G.b body with sub-story sections in `stories.md`
+- [x] Confirm `usage.md` overhaul stays in G.d (out of scope for G.b.*)
+
+### Story G.b.1: v1.11.0 Dispatcher Refactor + Legacy-Flag Catch + Test Sweep [Done]
+
+Replace the flag-style top-level dispatcher with subcommand routing and sweep every test invocation in one story. **Atomic by necessity:** the moment the dispatcher changes, every `pyve --init` / `pyve --purge` / etc. in the test suite fails, so the sweep cannot be deferred.
+
+See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improvements-plan.md) FR-G1 and Decision D1 (drop short aliases), D3 (legacy-flag catch lifetime), D4 (`pyve self` with no subcommand).
 
 **Command behavior**
 
@@ -102,8 +128,8 @@ Unchanged: `pyve run`, `pyve lock`, `pyve doctor`, `pyve test`, `pyve testenv`, 
   ERROR: 'pyve --init' is no longer supported. Use 'pyve init' instead.
   See: pyve --help
   ```
-- Per-subcommand `--help`: every subcommand supports `pyve <subcommand> --help` printing a focused block. `pyve --help` becomes the index, regrouped into categories: *Environment*, *Execution*, *Diagnostics*, *Self management*.
 - `pyve self` with no subcommand prints the `self` namespace help only (mirrors `git remote`, `kubectl config`).
+- **Per-subcommand `--help` plumbing for the new subcommands is deferred to G.b.2.** G.b.1 only needs to ensure `pyve <new-sub> --help` doesn't crash; it can fall through to top-level help if necessary.
 
 **Examples**
 
@@ -115,25 +141,73 @@ pyve purge --keep-testenv              # was: pyve --purge --keep-testenv
 pyve python-version 3.12.0             # was: pyve --python-version 3.12.0
 pyve self install                      # was: pyve --install
 pyve self uninstall                    # was: pyve --uninstall
-pyve init --help                       # NEW: focused per-subcommand help
 ```
 
 **Implementation checklist**
 
-- [ ] Refactor top-level dispatcher in `pyve.sh`
-  - [ ] Replace top-level `case` block (around [pyve.sh:2179](pyve.sh#L2179)) with subcommand routing
-  - [ ] Replace pre-pass `case` block (around [pyve.sh:1189](pyve.sh#L1189)) with subcommand routing
-  - [ ] Add `self` namespace dispatcher (`self install`, `self uninstall`)
-  - [ ] Add legacy-flag error catch for `--init`, `--purge`, `--validate`, `--install`, `--uninstall`, `--python-version`
-  - [ ] Drop `-i` / `-p` short aliases from top-level
-  - [ ] `pyve self` (no subcommand) → print namespace help only
-- [ ] Reorganize `print_help()` into the four categories
-- [ ] Add per-subcommand `--help` plumbing where missing (`init`, `purge`, `validate`, `python-version`, `self`, `self install`, `self uninstall`)
-- [ ] Repo-wide sweep for legacy flag invocations
-  - [ ] All `tests/integration/*.py` test invocations
-  - [ ] All `tests/unit/*.bats` references
-  - [ ] `README.md` examples
-  - [ ] Any remaining doc examples (excluding `docs/site/usage.md`, which is rewritten in G.d)
+- [x] Refactor top-level dispatcher in `pyve.sh`
+  - [x] Replace top-level `case` block in `main()` (currently around [pyve.sh:2161](pyve.sh#L2161)) with subcommand routing
+  - [x] Locate and refactor the "pre-pass" `case` block referenced by the planning doc at ~pyve.sh:1189 (resolved: no separate pre-pass exists today — line 1189 is inside `testenv_command()`'s inner case block, which is testenv-scoped and unchanged. All top-level dispatch lives in `main()`.)
+  - [x] Add `self` namespace dispatcher (`self install`, `self uninstall`)
+  - [x] `pyve self` (no subcommand) → print namespace help only
+  - [x] Add legacy-flag error catch for `--init`, `--purge`, `--validate`, `--install`, `--uninstall`, `--python-version` with the precise migration message
+  - [x] Drop `-i` / `-p` short aliases from top-level
+- [x] Update `tests/helpers/pyve_test_helpers.py` `PyveRunner` methods (`init()`, `purge()`, `version()`, etc.) to emit subcommand form
+- [x] Repo-wide sweep for legacy flag invocations in test code only (docs sweep is G.b.3)
+  - [x] All `tests/integration/*.py` test invocations
+  - [x] All `tests/unit/*.bats` references
+  - [x] Any test fixtures, conftest.py, or helper scripts that still spell out the flag form
+
+**Bonus (in scope by necessity):** swept legacy `pyve --init` / `pyve --purge` / etc. strings out of `pyve.sh` runtime output and `lib/*.sh` (`lib/version.sh`, `lib/micromamba_core.sh`, `lib/micromamba_bootstrap.sh`, `lib/micromamba_env.sh`, `lib/utils.sh`). Without this, runtime error/info messages would point users at commands the new dispatcher rejects. `show_help()` USAGE/COMMANDS/EXAMPLES were also rewritten to subcommand form (full category reorganization deferred to G.b.2 per the planning doc).
+
+**Tests**
+
+- [x] Bats: new `tests/unit/test_cli_dispatch.bats` (20 tests, all green)
+  - [x] Each new subcommand routes to the correct handler (`init`, `purge`, `validate`, `python-version`)
+  - [x] `pyve self install` and `pyve self uninstall` route correctly
+  - [x] `pyve self` with no arg prints namespace help only and exits 0 (asserts on strict marker line `Usage: pyve self <subcommand>`)
+  - [x] Each removed legacy flag (`--init`, `--purge`, `--validate`, `--install`, `--uninstall`, `--python-version`) prints the migration error and exits non-zero
+  - [x] `-i` and `-p` short flags are no longer recognized (exit non-zero)
+  - Note: routing assertions use a test-only `PYVE_DISPATCH_TRACE=1` hook in `main()` so they don't trigger real handlers (filesystem mutation, slow Python install, etc.)
+- [x] pytest: new `tests/integration/test_subcommand_cli.py` (20 tests, all green)
+  - [x] `pyve init`, `pyve purge`, `pyve validate`, `pyve python-version`, `pyve self install`, `pyve self uninstall` execute their handlers black-box
+  - [x] Modifier flags still work attached to subcommands (e.g., `pyve init --backend venv --no-direnv`, `pyve purge --keep-testenv`)
+- [x] Full bats and pytest suites pass after the dispatcher swap: 330 bats unit tests + 213 pytest integration tests pass (26 environment-conditional skips, 0 failures)
+- [ ] `make coverage-kcov` not regressed on dispatcher coverage *(not run locally — CI gate)*
+
+- [x] Update CHANGELOG.md with v1.11.0 entry — note the breaking CLI change prominently at the top
+- [x] Bump VERSION to 1.11.0
+
+### Story G.b.2: Per-Subcommand `--help` Plumbing + `print_help()` Reorganization [Planned]
+
+Pure UX enhancement on top of the new dispatcher from G.b.1. No CLI behavior change. Folds into v1.11.0 if it ships before release; otherwise patch bump to v1.11.1.
+
+See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improvements-plan.md) FR-G4.
+
+**Implementation checklist**
+
+- [ ] Add per-subcommand `--help` text for `init`, `purge`, `validate`, `python-version`, `self`, `self install`, `self uninstall` (those that don't already have it after G.b.1; `testenv` already has it from G.a)
+- [ ] Reorganize `print_help()` into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*
+- [ ] Verify each subcommand `--help` is reachable through the dispatcher (returns 0, prints non-empty)
+
+**Tests**
+
+- [ ] Bats: extend `tests/unit/test_cli_dispatch.bats` (or new `tests/unit/test_subcommand_help.bats`)
+  - [ ] `pyve <sub> --help` returns 0 and prints a non-empty block for each new subcommand
+  - [ ] `pyve --help` output contains all four section headers (*Environment*, *Execution*, *Diagnostics*, *Self management*)
+- [ ] pytest: extend `tests/integration/test_subcommand_cli.py`
+  - [ ] Per-subcommand `--help` smoke test for the renamed subcommands
+
+- [ ] If shipped after v1.11.0, bump VERSION to 1.11.1 and add CHANGELOG entry; otherwise fold the work into v1.11.0
+
+### Story G.b.3: CLI Refactor Doc + Spec Sync [Planned]
+
+Pure documentation. Excludes [docs/site/usage.md](docs/site/usage.md), which is owned by G.d. No code changes, no tests, no version bump (per the docs-only convention in this `stories.md` header).
+
+**Implementation checklist**
+
+- [ ] Update [README.md](README.md) examples from flag form to subcommand form
+- [ ] Sweep `docs/` (excluding `docs/site/usage.md` and `docs/specs/.archive/`) for any remaining `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --install` / `pyve --uninstall` / `pyve --python-version` strings and fix them
 
 **Spec updates**
 
@@ -144,22 +218,6 @@ pyve init --help                       # NEW: focused per-subcommand help
   - [ ] Update **CLI Design > Commands** table to the subcommand surface
   - [ ] Document the `self` namespace
   - [ ] Note the legacy-flag error catch in **Cross-Cutting Concerns**
-
-**Tests**
-
-- [ ] Bats: new `tests/unit/test_cli_dispatch.bats`
-  - [ ] Each new subcommand routes to the correct handler
-  - [ ] `pyve self install` and `pyve self uninstall` route correctly
-  - [ ] `pyve self` with no arg prints namespace help only
-  - [ ] Each removed legacy flag prints the migration error and exits non-zero
-- [ ] pytest: new `tests/integration/test_subcommand_cli.py`
-  - [ ] `pyve init`, `pyve purge`, `pyve validate`, `pyve python-version`, `pyve self install`, `pyve self uninstall` execute their handlers black-box
-  - [ ] Modifier flags still work attached to subcommands (e.g., `pyve init --backend venv --no-direnv`, `pyve purge --keep-testenv`)
-  - [ ] Per-subcommand `--help` returns 0 and prints a non-empty block
-- [ ] Mechanical sweep: update existing integration tests from flag form to subcommand form (CI catches misses via the legacy-flag error)
-
-- [ ] Update CHANGELOG.md with v1.11.0 entry — note the breaking CLI change prominently
-- [ ] Bump VERSION to 1.11.0
 
 ---
 
@@ -195,14 +253,47 @@ See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improveme
 - **Idempotent**: no-op if `project-guide` is already importable from the project env's Python.
 - **Failure is non-fatal**: a failed `pip install project-guide` warns with the underlying pip stderr and a `--no-project-guide` hint, then `pyve init` continues. Pyve's job is environment setup; project-guide is a value-add.
 
+**Shell completion wiring (one-time, user-global)**
+
+After `project-guide` is successfully installed (whether prompted, flagged, or env-var-driven), Pyve also offers to add the shell completion eval line to the user's shell rc file. **Why this can't be done via direnv `.envrc`:** direnv only propagates *environment variables* from a bash subprocess into the parent shell — shell completions are internal builtin state (`compdef`/`_comps` in zsh, `complete` in bash), not env vars. They have to live in the user's interactive shell config to take effect. Since this is user-global rather than per-project, Pyve only does this once (idempotent — it checks before inserting).
+
+- **Detection**: Pyve reads `$SHELL` to determine zsh vs bash. Other shells (fish, etc.) are skipped with a warning that points to `_PROJECT_GUIDE_COMPLETE=<shell>_source` for manual setup.
+- **Target file**: `~/.zshrc` for zsh, `~/.bashrc` for bash.
+- **Inserted block** (zsh example):
+  ```bash
+  # >>> project-guide completion (added by pyve) >>>
+  command -v project-guide >/dev/null 2>&1 && \
+    eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+  # <<< project-guide completion <<<
+  ```
+  The `command -v` guard means it's a no-op in shells where `project-guide` isn't yet on PATH.
+- **Trigger logic** (parallels the install flow):
+
+  | Input | Behavior |
+  |---|---|
+  | `--no-project-guide-completion` flag | Skip, no prompt |
+  | `--project-guide-completion` flag | Add, no prompt |
+  | `PYVE_NO_PROJECT_GUIDE_COMPLETION=1` env var | Skip, no prompt |
+  | `PYVE_PROJECT_GUIDE_COMPLETION=1` env var | Add, no prompt |
+  | Non-interactive (`CI=1` or `PYVE_FORCE_YES=1`) | **Skip** (touching shell rc files in CI is surprising) |
+  | Interactive, completion block already present | Skip silently (idempotent) |
+  | Interactive, completion block missing | Prompt: `Add project-guide shell completion to ~/.zshrc? (Y/n) [Y]` |
+
+  Note the deliberate asymmetry with the install flow: CI defaults to **skip** here, not install. Modifying user rc files in an unattended environment is the kind of surprise Pyve avoids.
+- `--project-guide-completion` and `--no-project-guide-completion` are mutually exclusive.
+- **Idempotency**: detected via the `# >>> project-guide completion (added by pyve) >>>` sentinel. Already-present blocks are never duplicated.
+- **Removal**: `pyve self uninstall` removes the completion block from the rc file (mirrors how it removes the `~/.local/bin` PATH entry today). The block's sentinel comments make this safe.
+- **Failure is non-fatal**: rc file unwritable, unknown shell, etc. → warn and continue. project-guide is still installed and functional; the user just won't get tab completion until they manually add the line.
+
 **Examples**
 
 ```bash
-pyve init                                # prompts: Install project-guide? (Y/n) [Y]
-pyve init --project-guide                # install without prompting
-pyve init --no-project-guide             # skip without prompting
-PYVE_NO_PROJECT_GUIDE=1 pyve init        # skip via env var (CI override)
-pyve init --backend micromamba           # also installs project-guide via micromamba pip
+pyve init                                       # prompts: Install project-guide? Add completion?
+pyve init --project-guide                       # install without prompting
+pyve init --no-project-guide                    # skip without prompting
+PYVE_NO_PROJECT_GUIDE=1 pyve init               # skip via env var (CI override)
+pyve init --backend micromamba                  # also installs project-guide via micromamba pip
+pyve init --project-guide --no-project-guide-completion  # install pkg, skip rc-file edit
 ```
 
 **Implementation checklist**
@@ -211,24 +302,43 @@ pyve init --backend micromamba           # also installs project-guide via micro
   - [ ] `is_project_guide_installed(backend, env_path)` — probe by running `<env_python> -c "import project_guide"` (or whichever module the package exposes)
   - [ ] `install_project_guide(backend, env_path)` — pip-install into the project env; idempotent (no-op if already installed); warn-don't-fail on error
   - [ ] `prompt_install_project_guide()` — Y/n prompt with default Y; respects env vars; respects `CI` / `PYVE_FORCE_YES`
-- [ ] Wire the hook into `init_command()` in `pyve.sh`
+  - [ ] `detect_user_shell()` → `zsh` | `bash` | `unknown` — read `$SHELL`, fall back to `unknown`
+  - [ ] `get_shell_rc_path(shell)` → `~/.zshrc` | `~/.bashrc` | empty
+  - [ ] `is_project_guide_completion_present(rc_path)` → 0/1 — check for the sentinel comment
+  - [ ] `add_project_guide_completion(rc_path, shell)` — append the sentinel-bracketed completion block; idempotent (no-op if sentinel already present); atomic write via temp file + `mv`
+  - [ ] `remove_project_guide_completion(rc_path)` — remove the sentinel-bracketed block; safe no-op if absent (called by `self uninstall`)
+  - [ ] `prompt_install_project_guide_completion()` — Y/n prompt with default Y; respects env vars; **CI defaults to SKIP** (not install — see asymmetry note above)
+- [ ] Wire the install hook into `init_command()` in `pyve.sh`
   - [ ] Run after pip-deps install, before final success summary
   - [ ] Parse `--project-guide` / `--no-project-guide` flags; error if both
   - [ ] Read `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` env vars
   - [ ] Honor non-interactive mode (`CI` / `PYVE_FORCE_YES`) — default install
   - [ ] On failure, log warning with pip stderr and `--no-project-guide` hint, continue
-- [ ] Update `pyve init --help` to document the new flags and the post-init hook
+- [ ] Wire the completion hook into `init_command()` in `pyve.sh`
+  - [ ] Only run if `project-guide` was actually installed (or already present from prior init)
+  - [ ] Parse `--project-guide-completion` / `--no-project-guide-completion` flags; error if both
+  - [ ] Read `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION` env vars
+  - [ ] Honor non-interactive mode — **default skip**
+  - [ ] If user shell is unknown (not zsh/bash) → warn with manual-setup hint, continue
+  - [ ] If sentinel already present in rc file → silent no-op
+  - [ ] On rc-file write failure → warn and continue
+- [ ] Wire completion removal into `uninstall_pyve()` (or wherever `self uninstall` lives) in `pyve.sh`
+  - [ ] Call `remove_project_guide_completion()` for both `~/.zshrc` and `~/.bashrc` (covers users who switched shells)
+- [ ] Update `pyve init --help` to document the four new flags and both post-init hooks
+- [ ] Update `pyve self uninstall --help` to mention completion-block removal
 
 **Spec updates**
 
 - [ ] `docs/specs/features.md`
-  - [ ] Add new **FR-16: project-guide integration** with full behavior spec
-  - [ ] Add `--project-guide` and `--no-project-guide` to the **Optional Inputs** table
-  - [ ] Add `PYVE_PROJECT_GUIDE` and `PYVE_NO_PROJECT_GUIDE` to the **Environment Variables** table
-  - [ ] Update **FR-1: Environment Initialization** to mention the new post-init hook
+  - [ ] Add new **FR-16: project-guide integration** with full behavior spec, including the completion sub-feature and the install/completion CI-default asymmetry
+  - [ ] Add `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion` to the **Optional Inputs** table
+  - [ ] Add `PYVE_PROJECT_GUIDE`, `PYVE_NO_PROJECT_GUIDE`, `PYVE_PROJECT_GUIDE_COMPLETION`, `PYVE_NO_PROJECT_GUIDE_COMPLETION` to the **Environment Variables** table
+  - [ ] Update **FR-1: Environment Initialization** to mention the two post-init hooks
+  - [ ] Update **FR-7: Script Installation/Uninstallation** to note that `self uninstall` removes the project-guide completion block
 - [ ] `docs/specs/tech-spec.md`
-  - [ ] Document the three new helpers in the `lib/utils.sh` function table
-  - [ ] Add `--project-guide` / `--no-project-guide` to the **Modifier Flags** table
+  - [ ] Document the new helpers in the `lib/utils.sh` function table (install + completion families)
+  - [ ] Add the four new modifier flags to the **Modifier Flags** table
+  - [ ] Note the rc-file sentinel format in **Cross-Cutting Concerns** alongside the existing PATH-entry handling
 
 **Tests**
 
@@ -237,12 +347,27 @@ pyve init --backend micromamba           # also installs project-guide via micro
   - [ ] Returns 1 (skip) with `PYVE_NO_PROJECT_GUIDE=1`
   - [ ] Returns 0 (install) with `CI=1` and no other env vars
   - [ ] `is_project_guide_installed` returns 1 against an env without it
+  - [ ] `prompt_install_project_guide_completion` returns 0 with `PYVE_PROJECT_GUIDE_COMPLETION=1`
+  - [ ] Returns 1 with `PYVE_NO_PROJECT_GUIDE_COMPLETION=1`
+  - [ ] Returns 1 (skip) with `CI=1` — verifies CI-default asymmetry vs install
+  - [ ] `detect_user_shell` returns `zsh` / `bash` / `unknown` from `$SHELL`
+  - [ ] `is_project_guide_completion_present` detects the sentinel
+  - [ ] `add_project_guide_completion` is idempotent (running it twice produces one block)
+  - [ ] `remove_project_guide_completion` removes only the sentinel-bracketed block, preserving other lines
+  - [ ] `add_project_guide_completion` against a missing rc file creates the file
 - [ ] pytest: new `tests/integration/test_project_guide_integration.py`
-  - [ ] `pyve init --no-project-guide` → no project-guide files, package not installed
+  - [ ] `pyve init --no-project-guide` → no project-guide files, package not installed, no rc-file edit
   - [ ] `PYVE_PROJECT_GUIDE=1 pyve init` → package importable from project env, `.project-guide.yml` and `docs/project-guide/` exist after `project-guide init`
   - [ ] `pyve init --project-guide --no-project-guide` → mutex error
+  - [ ] `pyve init --project-guide-completion --no-project-guide-completion` → mutex error
+  - [ ] `PYVE_PROJECT_GUIDE=1 PYVE_PROJECT_GUIDE_COMPLETION=1 pyve init` against an isolated `HOME` → sentinel block present in `~/.zshrc` (or `~/.bashrc` per `$SHELL`)
+  - [ ] Re-running the above is a no-op (single block, no duplication)
+  - [ ] `pyve init --project-guide --no-project-guide-completion` → package installed, rc file untouched
+  - [ ] `CI=1 pyve init --project-guide` → package installed, rc file untouched (CI-default asymmetry)
+  - [ ] `pyve self uninstall` after a completion-enabled install → sentinel block removed
   - [ ] Idempotency: second `pyve init --project-guide` doesn't re-pip-install
   - [ ] Failure path: simulate pip failure → `pyve init` still exits 0 with warning
+  - [ ] Failure path: simulate unwritable rc file → warn, `pyve init` still exits 0
   - [ ] Both backends: venv and micromamba (markers `venv`, `micromamba`)
 
 - [ ] Update CHANGELOG.md with v1.12.0 entry

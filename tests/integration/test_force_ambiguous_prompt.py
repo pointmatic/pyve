@@ -41,7 +41,7 @@ class TestForceAmbiguousPrompt:
         project_builder.create_pyproject_toml("test-project")
         
         # Step 2: Initialize with venv backend
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
         
         # Verify venv was created
@@ -52,7 +52,7 @@ class TestForceAmbiguousPrompt:
         
         # Step 3: Run --init --force and answer 'y' to use micromamba
         # The system should prompt: "Initialize with micromamba backend? [Y/n]:"
-        result = pyve.run("--init", "--force", input="y\ny\n")  # y for force confirmation, y for micromamba
+        result = pyve.run("init", "--force", input="y\ny\n")  # y for force confirmation, y for micromamba
         
         # Step 4: Verify it prompted and used the user's choice (micromamba)
         assert result.returncode == 0, f"Command failed: {result.stderr}"
@@ -75,11 +75,11 @@ class TestForceAmbiguousPrompt:
         project_builder.create_pyproject_toml("test-project")
         
         # Step 2: Initialize with venv backend
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
         
         # Step 3: Run --init --force and answer 'n' to use venv
-        result = pyve.run("--init", "--force", input="y\nn\n")  # y for force confirmation, n for venv
+        result = pyve.run("init", "--force", input="y\nn\n")  # y for force confirmation, n for venv
         
         # Step 4: Verify it used venv (user's choice)
         assert result.returncode == 0

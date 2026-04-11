@@ -36,7 +36,7 @@ class TestTestenvRun:
         """testenv run before --init exits 1 with init hint."""
         project_builder.create_requirements([])
         pyve.init(backend='venv')
-        # pyve --init auto-creates the testenv, so remove it to test the guard
+        # pyve init auto-creates the testenv, so remove it to test the guard
         import shutil
         testenv_venv = pyve.cwd / '.pyve' / 'testenv' / 'venv'
         if testenv_venv.exists():
@@ -84,7 +84,7 @@ def test_testenv_survives_force_reinit(pyve, project_builder):
 
     # Force re-init should purge the project env but preserve testenv.
     os.environ["PYVE_FORCE_YES"] = "1"
-    result = pyve.run("--init", "--force", "--no-direnv")
+    result = pyve.run("init", "--force", "--no-direnv")
     assert result.returncode == 0
 
     assert testenv_python.exists()

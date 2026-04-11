@@ -157,13 +157,13 @@ class TestMicromambaWorkflow:
         
         # Create testenv
         pyve.run('testenv', '--init')
-        
+
         # Verify both exist
         assert (pyve.cwd / '.pyve' / 'envs').exists()
         assert (pyve.cwd / '.pyve' / 'testenv').exists()
-        
+
         # Purge with keep-testenv
-        result = pyve.run('--purge', '--keep-testenv', input='y\n')
+        result = pyve.run('purge', '--keep-testenv', input='y\n')
         
         assert result.returncode == 0
         # Micromamba env should be removed

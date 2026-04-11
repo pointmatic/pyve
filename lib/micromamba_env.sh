@@ -363,7 +363,7 @@ validate_lock_file_status() {
         printf "For reproducible builds, generate one first:\n" >&2
         printf "  pyve lock\n\n" >&2
         printf "To proceed without a lock file (not recommended):\n" >&2
-        printf "  pyve --init --no-lock\n" >&2
+        printf "  pyve init --no-lock\n" >&2
         return 1
     fi
     

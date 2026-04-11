@@ -26,7 +26,7 @@ from pyve_test_helpers import get_pyve_version
 
 
 class TestReinitUpdate:
-    """Test pyve --init --update (safe update mode)."""
+    """Test pyve init --update (safe update mode)."""
     
     def test_update_preserves_venv(self, pyve, project_builder):
         """Test that --update preserves existing venv."""
@@ -36,7 +36,7 @@ class TestReinitUpdate:
         venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
         venv_marker.write_text("test marker")
         
-        result = pyve.run("--init", "--update")
+        result = pyve.run("init", "--update")
         
         assert result.returncode == 0
         assert "Updating existing Pyve installation" in result.stdout
@@ -58,7 +58,7 @@ class TestReinitUpdate:
         config_content = config_content.replace(f'pyve_version: "{current_version}"', f'pyve_version: "{old_version}"')
         config_path.write_text(config_content)
         
-        result = pyve.run("--init", "--update")
+        result = pyve.run("init", "--update")
         
         assert result.returncode == 0
         assert old_version in result.stdout
@@ -69,7 +69,7 @@ class TestReinitUpdate:
         # Initialize with venv first
         pyve.init()
         
-        result = pyve.run("--init", "--backend", "micromamba", "--update", check=False)
+        result = pyve.run("init", "--backend", "micromamba", "--update", check=False)
         
         assert result.returncode == 1
         assert "Cannot update in-place" in result.stderr or "Backend change detected" in result.stderr
@@ -79,14 +79,14 @@ class TestReinitUpdate:
         # Initialize with venv first
         pyve.init()
         
-        result = pyve.run("--init", "--backend", "venv", "--update")
+        result = pyve.run("init", "--backend", "venv", "--update")
         
         assert result.returncode == 0
         assert "Configuration updated" in result.stdout
 
 
 class TestReinitForce:
-    """Test pyve --init --force (destructive re-initialization)."""
+    """Test pyve init --force (destructive re-initialization)."""
     
     def test_force_purges_existing_venv(self, pyve, project_builder):
         """Test that --force purges existing venv."""
@@ -95,7 +95,7 @@ class TestReinitForce:
         venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
         venv_marker.write_text("test marker")
         
-        result = pyve.run("--init", "--force", input="y\n")
+        result = pyve.run("init", "--force", input="y\n")
         
         assert result.returncode == 0
         # In CI mode, prompts are skipped - just verify purge happened
@@ -108,7 +108,7 @@ class TestReinitForce:
         """Test that --force prompts for confirmation."""
         pyve.init()
         
-        result = pyve.run("--init", "--force", input="n\n")
+        result = pyve.run("init", "--force", input="n\n")
         
         assert result.returncode == 0
         assert "Proceed?" in result.stdout
@@ -118,7 +118,7 @@ class TestReinitForce:
         """Test that --force allows backend changes."""
         pyve.init()
         
-        result = pyve.run("--init", "--backend", "venv", "--force", input="y\n")
+        result = pyve.run("init", "--backend", "venv", "--force", input="y\n")
         
         assert result.returncode == 0
         assert "Purging" in result.stdout or "purge" in result.stdout.lower()
@@ -132,7 +132,7 @@ class TestReinitInteractive:
         """Test interactive mode option 1 (update)."""
         pyve.init()
         
-        result = pyve.run("--init", input="1\n")
+        result = pyve.run("init", input="1\n")
         
         assert result.returncode == 0
         assert "What would you like to do?" in result.stdout
@@ -143,7 +143,7 @@ class TestReinitInteractive:
         """Test interactive mode option 2 (purge and re-init)."""
         pyve.init()
         
-        result = pyve.run("--init", input="2\n")
+        result = pyve.run("init", input="2\n")
         
         assert result.returncode == 0
         assert "What would you like to do?" in result.stdout
@@ -154,7 +154,7 @@ class TestReinitInteractive:
         """Test interactive mode option 3 (cancel)."""
         pyve.init()
         
-        result = pyve.run("--init", input="3\n")
+        result = pyve.run("init", input="3\n")
         
         assert result.returncode == 0
         assert "What would you like to do?" in result.stdout
@@ -165,7 +165,7 @@ class TestReinitInteractive:
         """Test interactive mode with invalid choice."""
         pyve.init()
         
-        result = pyve.run("--init", input="5\n")
+        result = pyve.run("init", input="5\n")
         
         assert result.returncode == 1
         assert "Invalid choice" in result.stderr or "invalid" in result.stdout.lower()
@@ -185,7 +185,7 @@ class TestReinitInteractive:
         config_content = config_content.replace(f'pyve_version: "{current_version}"', f'pyve_version: "{old_version}"')
         config_path.write_text(config_content)
         
-        result = pyve.run("--init", input="3\n")
+        result = pyve.run("init", input="3\n")
         
         assert old_version in result.stdout
         assert current_version in result.stdout
@@ -199,7 +199,7 @@ class TestConflictDetection:
         """Test backend conflict detection in interactive mode."""
         pyve.init()
         
-        result = pyve.run("--init", "--backend", "micromamba", input="1\n")
+        result = pyve.run("init", "--backend", "micromamba", input="1\n")
         
         assert result.returncode == 1
         assert "Cannot update in-place" in result.stderr or "Backend change" in result.stderr
@@ -209,7 +209,7 @@ class TestConflictDetection:
         """Test no conflict when backend not specified."""
         pyve.init()
         
-        result = pyve.run("--init", input="1\n")
+        result = pyve.run("init", input="1\n")
         
         assert result.returncode == 0
         assert "Configuration updated" in result.stdout
@@ -223,7 +223,7 @@ class TestLegacyProjects:
         project_builder.create_pyve_config(backend="venv", include_version=False)
         project_builder.create_venv()
         
-        result = pyve.run("--init", "--update")
+        result = pyve.run("init", "--update")
         
         assert result.returncode == 0
         assert "Configuration updated" in result.stdout
@@ -237,7 +237,7 @@ class TestLegacyProjects:
         project_builder.create_pyve_config(backend="venv", include_version=False)
         project_builder.create_venv()
         
-        result = pyve.run("--init", input="1\n")
+        result = pyve.run("init", input="1\n")
         
         assert result.returncode == 0
         assert "What would you like to do?" in result.stdout
@@ -248,7 +248,7 @@ class TestConfigCreation:
     
     def test_venv_init_creates_config(self, pyve, project_builder):
         """Test that venv init creates config with version."""
-        result = pyve.run("--init")
+        result = pyve.run("init")
         
         assert result.returncode == 0
         
@@ -267,7 +267,7 @@ class TestConfigCreation:
         """Test that micromamba init creates config with version."""
         project_builder.create_environment_yml()
         
-        result = pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap")
+        result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap")
         
         assert result.returncode == 0
         
@@ -287,7 +287,7 @@ class TestEdgeCases:
         project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
         project_builder.project_dir.joinpath(".pyve/config").write_text("invalid: yaml: content:")
         
-        result = pyve.run("--init", "--update", check=False)
+        result = pyve.run("init", "--update", check=False)
         
         # In CI mode, corrupted config might be handled gracefully
         # In non-CI mode, should fail with error
@@ -298,7 +298,7 @@ class TestEdgeCases:
         """Test force re-init when venv is missing."""
         project_builder.create_pyve_config(backend="venv")
         
-        result = pyve.run("--init", "--force", input="y\n")
+        result = pyve.run("init", "--force", input="y\n")
         
         assert result.returncode == 0
     
@@ -307,7 +307,7 @@ class TestEdgeCases:
         project_builder.create_pyve_config(backend="venv", venv_dir="custom_venv")
         project_builder.create_venv(venv_dir="custom_venv")
         
-        result = pyve.run("--init", "--update")
+        result = pyve.run("init", "--update")
         
         assert result.returncode == 0
         
@@ -331,7 +331,7 @@ class TestReinitUpdateMissingEnv:
         project_builder.create_pyproject_toml("test-project")
         # Deliberately do NOT call project_builder.create_venv()
 
-        result = pyve.run("--init", "--update")
+        result = pyve.run("init", "--update")
 
         assert result.returncode == 0
         assert (project_builder.project_dir / ".venv").is_dir()
@@ -342,7 +342,7 @@ class TestReinitUpdateMissingEnv:
         project_builder.create_pyve_config(backend="venv")
         project_builder.create_pyproject_toml("test-project")
 
-        result = pyve.run("--init", input="1\n")
+        result = pyve.run("init", input="1\n")
 
         assert result.returncode == 0
         assert (project_builder.project_dir / ".venv").is_dir()

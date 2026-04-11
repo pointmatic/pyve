@@ -22,7 +22,7 @@ For efficiency, when you change modes, start a new LLM conversation.
 ### For LLMs
 
 **Modes**
-This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for plan_phase.
+This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused cycle of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for code_test_first.
 
 **Approval Gate**
 When you have completed the steps, pause for the developer to review, correct, redirect, or ask questions about your work.  
@@ -36,57 +36,71 @@ When you have completed the steps, pause for the developer to review, correct, r
 
 ---
 
-# plan_phase mode (sequence)
+# code_test_first mode (cycle)
 
-> Generate a feature phase prompt, which includes a mini-concept, features, and technical details
+> Generate code with a test-first approach
 
 
-Generate a combined concept/features/tech-spec document for a new phase in an existing project, then add the phase and stories to `docs/specs/stories.md`.
-
-Use this mode when the developer wants to add a significant new capability to a project that already has an established codebase and spec documents.
+Implement stories using test-driven development (TDD). Write a failing test before writing any implementation code.
 
 **Next Action**
-Prompt the user to change modes. 
-
-```bash
-project-guide mode code_velocity
-```
+Restart the cycle of steps. 
 
 ---
 
 
-## Prerequisites
+## Cycle Steps
 
-Before planning a new phase, the following should exist:
-- `docs/specs/concept.md`
-- `docs/specs/features.md`
-- `docs/specs/tech-spec.md`
-- `docs/specs/stories.md`
+For each story:
 
-## Steps
+1. **Read** the story's checklist from `docs/specs/stories.md`
+2. For each task in the checklist:
+   a. **Write a failing test** that describes the expected behavior
+   b. **Run the test** -- confirm it fails (red)
+   c. **Write the minimal implementation** to make the test pass
+   d. **Run the test** -- confirm it passes (green)
+   e. **Refactor** if needed -- clean up while tests still pass
+   f. **Run full test suite** -- `pyve run pytest` -- no regressions
+3. **Add copyright/license headers** to every new source file
+4. **Run linting** -- fix any issues immediately
+5. **Mark tasks** as `[x]` in `stories.md` and change story suffix to `[Done]`
+6. **Bump version** in package manifest and source (if the story has a version)
+7. **Update CHANGELOG.md** with the version entry
+8. **Present** the completed story to the developer for approval
+9. **Wait** for the developer to say "go" before starting the next story
 
-1. Read the existing spec documents to understand the current project state.
+## Red-Green-Refactor
 
-2. Gather information from the developer about the new phase:
-   - phase_name: A short name for the phase (e.g., "Mode System", "API Integration")
-   - problem_gap: What capability is missing or what problem this phase solves
-   - new_features: What the phase will add (functional requirements)
-   - technical_approach: How it will be built (architecture changes, new modules, new dependencies)
-   - constraints: Any limitations or compatibility requirements with existing code
-   - scope: What this phase will and won't do
+The TDD cycle:
 
-3. Generate a phase plan document at `docs/specs/phase-<name>-plan.md` that combines:
-   - **Gap analysis**: What exists vs. what's needed
-   - **Feature requirements**: What the phase adds (mini features.md)
-   - **Technical changes**: New/modified modules, dependencies, config changes (mini tech-spec.md)
-   - **Out of scope**: What's deferred to future phases
+1. **Red** -- Write a test that fails. The test defines the desired behavior.
+2. **Green** -- Write the simplest code that makes the test pass. No more.
+3. **Refactor** -- Clean up the code while keeping tests green. Remove duplication, improve naming, simplify logic.
 
-4. Present the phase plan to the developer for approval.
+## Test Writing Guidelines
 
-5. After approval, add a new phase section and stories to `docs/specs/stories.md`:
-   - Determine the next phase letter
-   - Break the phase into stories following the standard story format
-   - Include a spike story if the phase introduces a new integration boundary
+- **Test behavior, not implementation** -- assert on outputs and side effects, not internal state
+- **One assertion per concept** -- each test should verify one thing
+- **Use descriptive names** -- `test_override_with_nonexistent_guide_errors` not `test_override_3`
+- **Prefer unit tests** -- test individual functions in isolation
+- **Use integration tests sparingly** -- for verifying component interactions
+- **Test edge cases** -- empty inputs, boundary values, error conditions
 
-6. Present the updated stories to the developer for approval.
+## Test Hierarchy
+
+| Level | Speed | Scope | Use for |
+|-------|-------|-------|---------|
+| Unit | Fast | Single function | Core logic, edge cases, error paths |
+| Integration | Medium | Multiple components | Verifying wiring, config loading |
+| End-to-end | Slow | Full system | Final validation, smoke tests |
+
+## When to Switch Modes
+
+Switch to **code_velocity** when:
+- The story is straightforward and TDD overhead isn't justified
+- The developer requests faster iteration
+
+Switch to **debug** when:
+- A bug is discovered during implementation
+- Tests are failing unexpectedly and need root cause analysis
 

@@ -59,7 +59,7 @@ class TestPipUpgradeVenv:
         pyve.init(backend='venv')
         
         # Run update
-        result = pyve.run('--init', '--update', '--no-direnv')
+        result = pyve.run('init', '--update', '--no-direnv')
         assert result.returncode == 0
         
         # Verify pip is upgraded
@@ -109,7 +109,7 @@ class TestPipUpgradeMicromamba:
         pyve.init(backend='micromamba')
         
         # Run update
-        result = pyve.run('--init', '--update', '--no-direnv')
+        result = pyve.run('init', '--update', '--no-direnv')
         assert result.returncode == 0
         
         # Verify pip is present and working

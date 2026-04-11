@@ -187,17 +187,17 @@ class PyveRunner:
         **kwargs
     ) -> subprocess.CompletedProcess:
         """
-        Run pyve --init.
-        
+        Run pyve init.
+
         Args:
             backend: Backend to use (venv, micromamba, auto)
             venv_dir: Custom venv directory
             **kwargs: Additional flags (converted to --flag-name) and subprocess options
-            
+
         Returns:
             CompletedProcess instance
         """
-        args = ['--init']
+        args = ['init']
 
         # pyve.sh uses a positional argument for custom venv directory name.
         # The test helper accepts venv_dir=... for convenience.
@@ -268,17 +268,17 @@ class PyveRunner:
     
     def purge(self, force: bool = False, auto_yes: bool = False, **kwargs) -> subprocess.CompletedProcess:
         """
-        Run pyve --purge.
-        
+        Run pyve purge.
+
         Args:
             force: Skip confirmation prompt (deprecated, use auto_yes)
             auto_yes: Skip confirmation prompt
             **kwargs: Additional arguments passed to run()
-            
+
         Returns:
             CompletedProcess instance
         """
-        args = ['--purge']
+        args = ['purge']
         if force or auto_yes:
             # Send 'y' to confirmation prompt
             return self.run(*args, input='y\n', **kwargs)
@@ -475,7 +475,7 @@ version = "{version}"
     
     def create_venv(self, venv_dir: str = ".venv"):
         """
-        Create a venv directory structure (for testing without running pyve --init).
+        Create a venv directory structure (for testing without running pyve init).
         
         Args:
             venv_dir: Virtual environment directory name
@@ -492,7 +492,7 @@ version = "{version}"
         venv_dir: Optional[str] = None,
     ) -> subprocess.CompletedProcess:
         """
-        Initialize a venv project by running pyve --init --backend venv.
+        Initialize a venv project by running pyve init --backend venv.
 
         Args:
             pyve_script: Path to pyve.sh (auto-detected if None)
@@ -514,7 +514,7 @@ version = "{version}"
         env_name: Optional[str] = None,
     ) -> subprocess.CompletedProcess:
         """
-        Initialize a micromamba project by running pyve --init --backend micromamba.
+        Initialize a micromamba project by running pyve init --backend micromamba.
 
         Args:
             pyve_script: Path to pyve.sh (auto-detected if None)

@@ -159,7 +159,7 @@ _make_conflict_env() {
     [[ "$output" == *"✗ Duplicate dist-info detected: numpy"* ]]
     [[ "$output" == *"numpy-1.24.0.dist-info"* ]]
     [[ "$output" == *"numpy-1.25.0.dist-info"* ]]
-    [[ "$output" == *"pyve --init --force"* ]]
+    [[ "$output" == *"pyve init --force"* ]]
 }
 
 @test "doctor_check_duplicate_dist_info: passes for missing site-packages" {
@@ -280,7 +280,7 @@ FOOTER
     [[ "$output" == *"⚠ Environment: venv path mismatch"* ]]
     [[ "$output" == *"relocated"* ]]
     [[ "$output" == *"/Users/someone/old-location/project/.venv"* ]]
-    [[ "$output" == *"pyve --init --force"* ]]
+    [[ "$output" == *"pyve init --force"* ]]
 }
 
 @test "doctor_check_venv_path: no warning when pyvenv.cfg missing" {

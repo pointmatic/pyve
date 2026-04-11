@@ -96,6 +96,14 @@ This matches Pyve's "self-contained microcosm" philosophy: no dependence on glob
 
 **Failure handling.** A failed `pip install project-guide` **does not fail `pyve init`** — it logs a warning with the underlying pip stderr and a "skip with `--no-project-guide`" hint, then continues. Pyve's job is environment setup; project-guide is a value-add.
 
+**Sub-feature: shell completion wiring.** After `project-guide` is successfully installed, Pyve also offers to add the shell completion eval line to the user's shell rc file (`~/.zshrc` or `~/.bashrc`). This is **user-global**, not per-project — done once and survives.
+
+- **Why not direnv `.envrc`?** direnv only propagates *environment variables* from a bash subprocess into the parent shell. Shell completions are internal builtin state (`compdef`/`_comps` in zsh, `complete` in bash), not env vars, and have to live in the user's interactive shell config to take effect.
+- **Inserted block** is bracketed by sentinel comments (`# >>> project-guide completion (added by pyve) >>>` / `# <<< project-guide completion <<<`) for safe idempotent insertion and removal. The block uses a `command -v` guard so it's a no-op when `project-guide` isn't on PATH.
+- **Trigger logic** mirrors the install flow but with a deliberate asymmetry: `--project-guide-completion` / `--no-project-guide-completion` flags, `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION` env vars, prompt-with-default-Y interactively. **CI mode defaults to *skip*, not install** — modifying user rc files in unattended environments is the kind of surprise Pyve avoids.
+- **Removal**: `pyve self uninstall` removes the completion block from both `~/.zshrc` and `~/.bashrc`, mirroring how it removes the `~/.local/bin` PATH entry today.
+- **Failure is non-fatal**: unknown shell (fish, etc.), unwritable rc file, etc. → warn with manual setup hint, continue.
+
 ### FR-G3: `usage.md` Corrections
 
 Bring [docs/site/usage.md](docs/site/usage.md) in line with `pyve --help` after the FR-G1 refactor lands. Specific gaps from `ux-improvements.md`:

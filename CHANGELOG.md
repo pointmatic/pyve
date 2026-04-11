@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0] - 2026-04-10
+
+### ⚠️ BREAKING CHANGE — CLI surface migrated from flags to subcommands
+
+The flag-style top-level CLI is replaced with a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). This is a clean break — no deprecation cycle, no silent translation.
+
+| Old (removed) | New |
+|---|---|
+| `pyve --init [dir]` | `pyve init [dir]` |
+| `pyve --purge [dir]` | `pyve purge [dir]` |
+| `pyve --validate` | `pyve validate` |
+| `pyve --python-version <ver>` | `pyve python-version <ver>` |
+| `pyve --install` | `pyve self install` |
+| `pyve --uninstall` | `pyve self uninstall` |
+
+**Migration:** invoking a removed flag form prints a precise migration error and exits non-zero — e.g. `ERROR: 'pyve --init' is no longer supported. Use 'pyve init' instead.` This catch is kept forever (Decision D3): users coming from old README snippets, blog posts, or LLM training data will hit it for years and get a clear hint instead of an opaque "unknown command" error.
+
+**Unchanged:** `pyve run`, `pyve lock`, `pyve doctor`, `pyve test`, `pyve testenv [...]`, and the universal flags `--help` / `--version` / `--config`. All modifier flags (`--backend`, `--force`, `--update`, `--no-direnv`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--no-lock`, `--allow-synced-dir`, `--env-name`, `--local-env`, `--keep-testenv`) keep their names and continue to attach to their renamed subcommands.
+
+**Short flag aliases dropped (Decision D1):** `-i` and `-p` are removed. Subcommands are already short; users who want fewer keystrokes can write a shell alias.
+
+**`pyve self` namespace (Decision D4):** `pyve self` with no subcommand prints just the namespace help (mirrors `git remote`, `kubectl config`).
+
+### Added
+- Subcommand routing in `main()` dispatcher: `init`, `purge`, `validate`, `python-version`, and the `self` namespace (`self install`, `self uninstall`).
+- `legacy_flag_error()` helper in `pyve.sh`: emits the precise migration error for any removed flag form.
+- `show_self_help()` and `self_command()` helpers in `pyve.sh`: dispatch and print help for the `self` namespace.
+- `tests/unit/test_cli_dispatch.bats`: 20 black-box bats tests covering subcommand routing, the legacy-flag catch, the `self` namespace, modifier-flag preservation, and universal-flag regression guards. Uses a test-only `PYVE_DISPATCH_TRACE=1` hook (gated in `main()`) so routing assertions don't trigger the real handlers.
+- `tests/integration/test_subcommand_cli.py`: 20 end-to-end pytest cases exercising every renamed subcommand against a temp project, the legacy-flag catch (parameterized over all six removed flags), and the universal-flag regression guards.
+
+### Changed
+- All user-visible runtime strings in `pyve.sh` and `lib/*.sh` that previously emitted `pyve --init` / `pyve --purge` / `pyve --validate` / etc. now emit the subcommand form (e.g. `pyve init --force`, `pyve validate`, `pyve init --no-lock`). Affects help/error guidance from `lib/version.sh`, `lib/micromamba_core.sh`, `lib/micromamba_bootstrap.sh`, `lib/micromamba_env.sh`, `lib/utils.sh`, and the `pyve lock` success guidance.
+- `show_help()` USAGE/COMMANDS/EXAMPLES sections rewritten to reflect the subcommand surface. *(Note: per-subcommand `--help` plumbing and the full category reorganization — Environment / Execution / Diagnostics / Self management — are deferred to G.b.2.)*
+- `tests/helpers/pyve_test_helpers.py` `PyveRunner.init()` and `PyveRunner.purge()` now emit the subcommand form (`init` / `purge` instead of `--init` / `--purge`).
+
+### Tests
+- Repo-wide sweep of `tests/integration/*.py` and `tests/unit/*.bats`: every legacy `pyve.run("--init", ...)` / `pyve.run("--purge", ...)` / `pyve.run("--validate", ...)` invocation rewritten to subcommand form. Affected files: `test_validate.py`, `test_reinit.py`, `test_micromamba_workflow.py`, `test_force_ambiguous_prompt.py`, `test_force_backend_detection.py`, `test_lock_command.py`, `test_pip_upgrade.py`, `test_auto_detection.py`, `test_testenv.py`, `test_doctor.bats`. CI's legacy-flag catch surfaces any miss as a clean failure.
+- Full suite green after the swap: 330 bats unit tests + 213 pytest integration tests pass (26 environment-conditional skips).
+
+### Deferred to later Phase G stories
+- Per-subcommand `--help` plumbing (`pyve init --help`, `pyve purge --help`, etc.): G.b.2.
+- Full reorganization of `pyve --help` into Environment / Execution / Diagnostics / Self management categories: G.b.2.
+- Sweep of `docs/site/`, `docs/specs/`, `README.md`, and other docs for legacy flag references: G.b.3.
+- `project-guide` integration in `pyve init` (FR-G2): G.c (v1.12.0).
+- `usage.md` overhaul (FR-G3): G.d (v1.13.0).
+
 ## [1.10.0] - 2026-04-09
 
 ### Added

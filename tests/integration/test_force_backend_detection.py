@@ -45,7 +45,7 @@ class TestForceBackendDetection:
         project_builder.create_environment_yml()
         
         # Step 2: Initialize with micromamba backend
-        result = pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap")
+        result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap")
         assert result.returncode == 0
         
         # Verify micromamba environment was created
@@ -55,7 +55,7 @@ class TestForceBackendDetection:
         assert "backend: micromamba" in config_content
         
         # Step 3: Run --init --force (this should purge and re-detect backend)
-        result = pyve.run("--init", "--force", "--auto-bootstrap", input="y\n")
+        result = pyve.run("init", "--force", "--auto-bootstrap", input="y\n")
         
         # Step 4: Verify it detected micromamba backend from environment.yml
         assert result.returncode == 0
@@ -88,7 +88,7 @@ class TestForceBackendDetection:
         project_builder.create_pyproject_toml("test-project")
         
         # Step 2: Initialize with micromamba backend explicitly
-        result = pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap")
+        result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap")
         assert result.returncode == 0
         
         # Verify micromamba environment was created
@@ -99,7 +99,7 @@ class TestForceBackendDetection:
         
         # Step 3: Run --init --force WITHOUT --backend flag
         # This should preserve micromamba backend despite ambiguity
-        result = pyve.run("--init", "--force", "--auto-bootstrap", input="y\n")
+        result = pyve.run("init", "--force", "--auto-bootstrap", input="y\n")
         
         # Step 4: Verify it preserved micromamba backend
         assert result.returncode == 0
@@ -123,7 +123,7 @@ class TestForceBackendDetection:
         project_builder.create_pyproject_toml("test-project")
         
         # Step 2: Initialize with venv backend
-        result = pyve.run("--init")
+        result = pyve.run("init")
         assert result.returncode == 0
         
         # Verify venv was created
@@ -133,7 +133,7 @@ class TestForceBackendDetection:
         assert "backend: venv" in config_content
         
         # Step 3: Run --init --force (this should purge and re-detect backend)
-        result = pyve.run("--init", "--force", input="y\n")
+        result = pyve.run("init", "--force", input="y\n")
         
         # Step 4: Verify it detected venv backend from pyproject.toml
         assert result.returncode == 0
@@ -161,7 +161,7 @@ class TestForceBackendDetection:
         project_builder.create_pyproject_toml("test-project")
 
         # Step 2: Initialize with venv backend explicitly
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
 
         # Verify venv was created
@@ -173,7 +173,7 @@ class TestForceBackendDetection:
         # Step 3: Run --init --force
         # Prompt 1 (backend): 'n' → choose venv (not micromamba)
         # Prompt 2 (confirmation): 'y' → proceed with purge
-        result = pyve.run("--init", "--force", input="n\ny\n")
+        result = pyve.run("init", "--force", input="n\ny\n")
 
         # Step 4: Verify the backend prompt was shown (proving skip_config worked)
         combined = (result.stdout or "") + (result.stderr or "")
@@ -212,7 +212,7 @@ class TestForceBackendDetection:
         project_builder.create_pyproject_toml("test-project")
 
         # Step 2: Initialize with venv explicitly → writes backend: venv to config
-        result = pyve.run("--init", "--backend", "venv")
+        result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
 
         config_path = project_builder.project_dir / ".pyve" / "config"
@@ -221,7 +221,7 @@ class TestForceBackendDetection:
         # Step 3: Force reinit interactively
         # Prompt 1 (backend, ambiguous): 'y' → choose micromamba
         # Prompt 2 (confirmation):        'y' → proceed with purge
-        result = pyve.run("--init", "--force", input="y\ny\n")
+        result = pyve.run("init", "--force", input="y\ny\n")
 
         # Step 4: Verify the backend detection prompt appeared (proving skip_config worked)
         combined = (result.stdout or "") + (result.stderr or "")
@@ -240,11 +240,11 @@ class TestForceBackendDetection:
         project_builder.create_environment_yml()
         
         # Initialize with micromamba
-        result = pyve.run("--init", "--backend", "micromamba", "--auto-bootstrap")
+        result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap")
         assert result.returncode == 0
         
         # Force reinit with explicit venv backend (should override detection)
-        result = pyve.run("--init", "--force", "--backend", "venv", input="y\n")
+        result = pyve.run("init", "--force", "--backend", "venv", input="y\n")
         assert result.returncode == 0
         
         # Verify venv backend was used despite environment.yml
