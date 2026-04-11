@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.0] - 2026-04-11
+
+### Changed — `docs/site/usage.md` overhaul + spec sync (Story G.d, FR-G3)
+
+The MkDocs landing page at [`docs/site/usage.md`](docs/site/usage.md) had drifted significantly behind `pyve --help` and was further out of sync after the G.b subcommand refactor and G.c project-guide flags. This release brings it fully into sync with the v1.12.0 CLI surface in one coherent pass.
+
+**What changed in `usage.md`:**
+
+- **Migration callout** added near the top of the page documenting the six removed flag forms (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --install`, `pyve --uninstall`) and their subcommand replacements, for users coming from <1.11 README snippets, blog posts, or LLM training data.
+- **Command overview** reorganized into the four `pyve --help` categories: *Environment* (`init`, `purge`, `python-version`, `lock`), *Execution* (`run`, `test`, `testenv`), *Diagnostics* (`doctor`, `validate`), *Self management* (`self install`, `self uninstall`, `self`).
+- **`init` reference** rewritten to document the full v1.12.0 surface: optional `<dir>` positional, plus all 17 options (`--python-version`, `--backend`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--no-lock`, `--env-name`, `--no-direnv`, `--auto-install-deps`, `--no-install-deps`, `--local-env`, `--update`, `--force`, `--allow-synced-dir`, `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion`).
+- **`init` project-guide hook section** added: three-step hook description, trigger logic table (priority order), auto-skip safety mechanism, CI default asymmetry (install yes, completion no), and the `--update` mode exemption — mirrors `pyve init --help` and the G.c CHANGELOG entry.
+- **`purge` reference** rewritten with the optional `<dir>` positional and `--keep-testenv` option.
+- **`python-version` reference** rewritten — old description ("Display Python version") was wrong; the command *sets* the local Python version by writing `.python-version`.
+- **`testenv` reference** added as a top-level command section (was missing entirely): all four subcommands (`--init`, `--install [-r <file>]`, `--purge`, `run <command> [args...]`) with examples.
+- **`self install` / `self uninstall` / `self`** added as top-level command sections (were missing entirely).
+- **Environment variables table** expanded to document `PYVE_PROJECT_GUIDE`, `PYVE_NO_PROJECT_GUIDE`, `PYVE_PROJECT_GUIDE_COMPLETION`, `PYVE_NO_PROJECT_GUIDE_COMPLETION`.
+- **`.project-guide.yml` and `docs/project-guide/`** mentioned in the configuration files section as committable artifacts that survive `pyve purge`.
+- **CI/CD example** updated to show `PYVE_NO_PROJECT_GUIDE=1` as a recommended env var for CI runs.
+- **All flag-form examples** (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --uninstall`) replaced with subcommand form throughout.
+
+**Sweep of `docs/site/`:** Two stale `./pyve.sh --install` references in [`docs/site/getting-started.md`](docs/site/getting-started.md) (manual installation and update sections) updated to `./pyve.sh self install`. The only remaining `pyve --<flag>` strings under `docs/site/` are in the intentional migration callout table in `usage.md`.
+
+**Build verification:** `mkdocs build --strict` against the rewritten site builds clean using the same dependencies as [`.github/workflows/deploy-docs.yml`](.github/workflows/deploy-docs.yml) (`mkdocs-material` + `mkdocs-git-revision-date-localized-plugin`).
+
+### Spec updates
+
+- `docs/specs/stories.md` — Story G.d marked `[Done]`. All five top-level Phase G checklist items now `[x]`, marking Phase G complete.
+- `docs/specs/features.md` and `docs/specs/tech-spec.md` — final cross-check pass, no changes needed. G.b and G.c already completed the spec sync work; both files already document the post-init project-guide hook, the four new flags, the four new env vars, and the subcommand surface. The remaining `pyve --init` / `pyve --purge` etc. references in `tech-spec.md` and `stories.md` are intentional historical documentation (the legacy-flag catch and the migration table from G.b.1).
+
+### Tests
+
+No automated tests (docs-only release). The existing `deploy-docs.yml` GitHub Actions workflow runs `mkdocs build --strict` on every push to main and is the authoritative gate for the rendered site.
+
 ## [1.12.0] - 2026-04-11
 
 ### Added — `project-guide` integration in `pyve init` (Story G.c, FR-G2 / FR-16)

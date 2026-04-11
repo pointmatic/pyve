@@ -34,7 +34,7 @@ git clone https://github.com/pointmatic/pyve.git
 cd pyve
 
 # Install to ~/.local/bin
-./pyve.sh --install
+./pyve.sh self install
 
 # Verify installation
 pyve --version
@@ -45,7 +45,7 @@ To update a manual installation:
 ```bash
 cd /path/to/pyve
 git pull origin main
-./pyve.sh --install
+./pyve.sh self install
 ```
 
 To uninstall:
