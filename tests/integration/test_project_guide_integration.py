@@ -207,6 +207,9 @@ class TestAutoSkipWhenInProjectDeps:
     ):
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
+        # Opt in to the project-guide hook (overrides the test-runner default
+        # of PYVE_NO_PROJECT_GUIDE=1) so the auto-skip code path can run.
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         # Don't set --no-project-guide — test relies on auto-skip detection.
         monkeypatch.delenv("PYVE_PROJECT_GUIDE", raising=False)
         monkeypatch.delenv("PYVE_NO_PROJECT_GUIDE", raising=False)
@@ -239,6 +242,7 @@ class TestAutoSkipWhenInProjectDeps:
     ):
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.delenv("PYVE_PROJECT_GUIDE", raising=False)
         monkeypatch.delenv("PYVE_NO_PROJECT_GUIDE", raising=False)
 
@@ -260,10 +264,12 @@ class TestAutoSkipWhenInProjectDeps:
         """
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
-        # Force skip the actual pip install to keep the test network-free.
-        # The point here is to verify that --project-guide bypasses the
-        # auto-skip; we don't need to verify the install actually runs
-        # (TestRealInstall covers that).
+        # Opt in to the project-guide hook (the explicit --project-guide flag
+        # below would otherwise be neutralised by the test-runner default).
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
+        monkeypatch.delenv("PYVE_PROJECT_GUIDE", raising=False)
+        monkeypatch.delenv("PYVE_NO_PROJECT_GUIDE", raising=False)
+        # Skip the rc-file edit to keep the test network/file-edit free.
         monkeypatch.setenv("PYVE_NO_PROJECT_GUIDE_COMPLETION", "1")
 
         project_builder.create_pyproject_toml(
@@ -305,6 +311,7 @@ class TestRealInstall:
         """
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE_COMPLETION", "1")
         # Block auto-CI-forces-yes inherited from test runner shell.
@@ -347,6 +354,8 @@ class TestRealInstall:
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("CI", "1")
+        # Opt in to the project-guide hook so the CI default path runs.
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         # Block PYVE_FORCE_YES from being inherited indirectly.
         monkeypatch.delenv("PYVE_FORCE_YES", raising=False)
         # Don't set PYVE_PROJECT_GUIDE — we're testing the CI default path.
@@ -380,6 +389,7 @@ class TestRealInstall:
         """
         fake_home = _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_NO_PROJECT_GUIDE_COMPLETION", "1")
         monkeypatch.delenv("CI", raising=False)
