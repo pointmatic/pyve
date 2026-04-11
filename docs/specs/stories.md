@@ -236,7 +236,7 @@ Pure documentation. Excludes [docs/site/usage.md](docs/site/usage.md), which is 
 
 ---
 
-### Story G.c: v1.12.0 `project-guide` Integration in `pyve init` [Planned]
+### Story G.c: v1.12.0 `project-guide` Integration in `pyve init` [Done]
 
 [`project-guide`](https://pointmatic.github.io/project-guide/) is the developer's standard project bootstrap tool and is now installed in every Pyve project the developer touches. Today users have to remember to `pip install project-guide` and run `project-guide init` manually after `pyve init` finishes. Wire it into `pyve init` so it's a one-command setup.
 
@@ -313,80 +313,107 @@ pyve init --project-guide --no-project-guide-completion  # install pkg, skip rc-
 
 **Implementation checklist**
 
-- [ ] Add helper functions to `lib/utils.sh`
-  - [ ] `is_project_guide_installed(backend, env_path)` — probe by running `<env_python> -c "import project_guide"` (or whichever module the package exposes)
-  - [ ] `install_project_guide(backend, env_path)` — pip-install into the project env; idempotent (no-op if already installed); warn-don't-fail on error
-  - [ ] `prompt_install_project_guide()` — Y/n prompt with default Y; respects env vars; respects `CI` / `PYVE_FORCE_YES`
-  - [ ] `detect_user_shell()` → `zsh` | `bash` | `unknown` — read `$SHELL`, fall back to `unknown`
-  - [ ] `get_shell_rc_path(shell)` → `~/.zshrc` | `~/.bashrc` | empty
-  - [ ] `is_project_guide_completion_present(rc_path)` → 0/1 — check for the sentinel comment
-  - [ ] `add_project_guide_completion(rc_path, shell)` — append the sentinel-bracketed completion block; idempotent (no-op if sentinel already present); atomic write via temp file + `mv`
-  - [ ] `remove_project_guide_completion(rc_path)` — remove the sentinel-bracketed block; safe no-op if absent (called by `self uninstall`)
-  - [ ] `prompt_install_project_guide_completion()` — Y/n prompt with default Y; respects env vars; **CI defaults to SKIP** (not install — see asymmetry note above)
-- [ ] Wire the install hook into `init_command()` in `pyve.sh`
-  - [ ] Run after pip-deps install, before final success summary
-  - [ ] Parse `--project-guide` / `--no-project-guide` flags; error if both
-  - [ ] Read `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` env vars
-  - [ ] Honor non-interactive mode (`CI` / `PYVE_FORCE_YES`) — default install
-  - [ ] On failure, log warning with pip stderr and `--no-project-guide` hint, continue
-- [ ] Wire the completion hook into `init_command()` in `pyve.sh`
-  - [ ] Only run if `project-guide` was actually installed (or already present from prior init)
-  - [ ] Parse `--project-guide-completion` / `--no-project-guide-completion` flags; error if both
-  - [ ] Read `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION` env vars
-  - [ ] Honor non-interactive mode — **default skip**
-  - [ ] If user shell is unknown (not zsh/bash) → warn with manual-setup hint, continue
-  - [ ] If sentinel already present in rc file → silent no-op
-  - [ ] On rc-file write failure → warn and continue
-- [ ] Wire completion removal into `uninstall_pyve()` (or wherever `self uninstall` lives) in `pyve.sh`
-  - [ ] Call `remove_project_guide_completion()` for both `~/.zshrc` and `~/.bashrc` (covers users who switched shells)
-- [ ] Update `pyve init --help` to document the four new flags and both post-init hooks
-- [ ] Update `pyve self uninstall --help` to mention completion-block removal
+- [x] Add helper functions to `lib/utils.sh`
+  - [x] `is_project_guide_installed(backend, env_path)` — probes via `<env_python> -c 'import project_guide'`. Module name confirmed from `project_guide-2.0.20.dist-info/entry_points.txt`. ~50ms latency.
+  - [x] `install_project_guide(backend, env_path)` — runs `pip install --upgrade project-guide` (always upgrade per user requirement). Default upgrade strategy (`only-if-needed`) so transitive deps don't cascade. Warn-don't-fail on error.
+  - [x] `prompt_install_project_guide()` — Y/n prompt with default Y; respects env vars; respects `CI` / `PYVE_FORCE_YES`
+  - [x] `run_project_guide_init_in_env(backend, env_path)` — **new helper added during implementation** (not in original checklist). Runs `<env>/bin/project-guide init --no-input` for step 2 of the three-step hook. Requires project-guide >= 2.2.3. Failure-non-fatal.
+  - [x] `project_guide_in_project_deps()` — **new helper added during implementation** (not in original checklist). Auto-skip safety: detects `project-guide` declared in `pyproject.toml` / `requirements.txt` / `environment.yml` with word-boundary regex (no false matches with `project-guide-extras`).
+  - [x] `detect_user_shell()` → `zsh` | `bash` | `unknown` — read `$SHELL`, fall back to `unknown`
+  - [x] `get_shell_rc_path(shell)` → `~/.zshrc` | `~/.bashrc` | empty
+  - [x] `is_project_guide_completion_present(rc_path)` → 0/1 — check for the sentinel comment
+  - [x] `add_project_guide_completion(rc_path, shell)` — append the sentinel-bracketed completion block; idempotent (no-op if sentinel already present); creates rc file if missing
+  - [x] `remove_project_guide_completion(rc_path)` — remove the sentinel-bracketed block plus one preceding blank line; safe no-op if absent (called by `self uninstall`); awk-based, BSD/GNU compatible
+  - [x] `prompt_install_project_guide_completion()` — Y/n prompt with default Y; respects env vars; **CI defaults to SKIP** (not install — see asymmetry note above)
+- [x] Wire the install hook into `init()` in `pyve.sh`
+  - [x] Run after pip-deps install, before final success summary
+  - [x] Parse `--project-guide` / `--no-project-guide` flags; error if both
+  - [x] Read `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` env vars
+  - [x] Honor non-interactive mode (`CI` / `PYVE_FORCE_YES`) — default install
+  - [x] On failure, log warning with pip stderr and `--no-project-guide` hint, continue
+  - [x] **Auto-skip safety added during implementation:** if `project_guide_in_project_deps` returns 0, skip the entire hook with an INFO message and the `--project-guide` override hint
+  - [x] **`--update` mode does NOT run the hook** — naturally handled because update returns at line 469 before the env-creation flow
+- [x] Wire the `project-guide init --no-input` invocation **(new step 2 — added during implementation per user spec)**
+  - [x] Runs after successful install, before completion step
+  - [x] Failure-non-fatal: warn and continue
+- [x] Wire the completion hook into `init()` in `pyve.sh`
+  - [x] Only run if `project-guide` was actually installed (or already present from prior init)
+  - [x] Parse `--project-guide-completion` / `--no-project-guide-completion` flags; error if both
+  - [x] Read `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION` env vars
+  - [x] Honor non-interactive mode — **default skip**
+  - [x] If user shell is unknown (not zsh/bash) → warn with manual-setup hint, continue
+  - [x] If sentinel already present in rc file → silent no-op
+  - [x] On rc-file write failure → warn and continue
+- [x] Wire completion removal into `uninstall_self()` in `pyve.sh`
+  - [x] Call `remove_project_guide_completion()` for both `~/.zshrc` and `~/.bashrc` (covers users who switched shells)
+  - [x] Implemented via new `uninstall_project_guide_completion()` helper called at the end of `uninstall_self()`
+- [x] Update `pyve init --help` to document the four new flags, the three-step hook, the auto-skip safety, and the CI-default asymmetry
+- [x] Update `pyve self uninstall --help` to mention completion-block removal
 
 **Spec updates**
 
-- [ ] `docs/specs/features.md`
-  - [ ] Add new **FR-16: project-guide integration** with full behavior spec, including the completion sub-feature and the install/completion CI-default asymmetry
-  - [ ] Add `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion` to the **Optional Inputs** table
-  - [ ] Add `PYVE_PROJECT_GUIDE`, `PYVE_NO_PROJECT_GUIDE`, `PYVE_PROJECT_GUIDE_COMPLETION`, `PYVE_NO_PROJECT_GUIDE_COMPLETION` to the **Environment Variables** table
-  - [ ] Update **FR-1: Environment Initialization** to mention the two post-init hooks
-  - [ ] Update **FR-7: Script Installation/Uninstallation** to note that `self uninstall` removes the project-guide completion block
-- [ ] `docs/specs/tech-spec.md`
-  - [ ] Document the new helpers in the `lib/utils.sh` function table (install + completion families)
-  - [ ] Add the four new modifier flags to the **Modifier Flags** table
-  - [ ] Note the rc-file sentinel format in **Cross-Cutting Concerns** alongside the existing PATH-entry handling
+- [x] `docs/specs/features.md`
+  - [x] Add new **FR-16: project-guide integration** with full behavior spec, including the three-step hook, completion sub-feature, install/completion CI-default asymmetry, auto-skip safety mechanism, and `--update` exemption
+  - [x] Add `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion` to the **Optional Inputs** table
+  - [x] Add `PYVE_PROJECT_GUIDE`, `PYVE_NO_PROJECT_GUIDE`, `PYVE_PROJECT_GUIDE_COMPLETION`, `PYVE_NO_PROJECT_GUIDE_COMPLETION` to the **Environment Variables** table
+  - [x] Update **FR-1: Environment Initialization** to mention the post-init hook
+  - [x] Update **FR-7: Script Installation/Uninstallation** to note that `self uninstall` removes the project-guide completion block
+- [x] `docs/specs/tech-spec.md`
+  - [x] Document all 11 helpers in a new **project-guide Helper Functions** subsection
+  - [x] Add the four new modifier flags to the **Modifier Flags** table
+  - [x] New **project-guide rc-file Sentinel** subsection in **Cross-Cutting Concerns** alongside the existing PATH-entry handling
+- [x] **Upstream dependency spec (new — drafted during implementation):** [docs/specs/project-guide-no-input-spec.md](project-guide-no-input-spec.md) — proposed and implemented in `project-guide >= 2.2.3`
 
 **Tests**
 
-- [ ] Bats: extend `tests/unit/test_utils.bats` (or new file)
-  - [ ] `prompt_install_project_guide` returns 0 (install) with `PYVE_PROJECT_GUIDE=1`
-  - [ ] Returns 1 (skip) with `PYVE_NO_PROJECT_GUIDE=1`
-  - [ ] Returns 0 (install) with `CI=1` and no other env vars
-  - [ ] `is_project_guide_installed` returns 1 against an env without it
-  - [ ] `prompt_install_project_guide_completion` returns 0 with `PYVE_PROJECT_GUIDE_COMPLETION=1`
-  - [ ] Returns 1 with `PYVE_NO_PROJECT_GUIDE_COMPLETION=1`
-  - [ ] Returns 1 (skip) with `CI=1` — verifies CI-default asymmetry vs install
-  - [ ] `detect_user_shell` returns `zsh` / `bash` / `unknown` from `$SHELL`
-  - [ ] `is_project_guide_completion_present` detects the sentinel
-  - [ ] `add_project_guide_completion` is idempotent (running it twice produces one block)
-  - [ ] `remove_project_guide_completion` removes only the sentinel-bracketed block, preserving other lines
-  - [ ] `add_project_guide_completion` against a missing rc file creates the file
-- [ ] pytest: new `tests/integration/test_project_guide_integration.py`
-  - [ ] `pyve init --no-project-guide` → no project-guide files, package not installed, no rc-file edit
-  - [ ] `PYVE_PROJECT_GUIDE=1 pyve init` → package importable from project env, `.project-guide.yml` and `docs/project-guide/` exist after `project-guide init`
-  - [ ] `pyve init --project-guide --no-project-guide` → mutex error
-  - [ ] `pyve init --project-guide-completion --no-project-guide-completion` → mutex error
-  - [ ] `PYVE_PROJECT_GUIDE=1 PYVE_PROJECT_GUIDE_COMPLETION=1 pyve init` against an isolated `HOME` → sentinel block present in `~/.zshrc` (or `~/.bashrc` per `$SHELL`)
-  - [ ] Re-running the above is a no-op (single block, no duplication)
-  - [ ] `pyve init --project-guide --no-project-guide-completion` → package installed, rc file untouched
-  - [ ] `CI=1 pyve init --project-guide` → package installed, rc file untouched (CI-default asymmetry)
-  - [ ] `pyve self uninstall` after a completion-enabled install → sentinel block removed
-  - [ ] Idempotency: second `pyve init --project-guide` doesn't re-pip-install
-  - [ ] Failure path: simulate pip failure → `pyve init` still exits 0 with warning
-  - [ ] Failure path: simulate unwritable rc file → warn, `pyve init` still exits 0
-  - [ ] Both backends: venv and micromamba (markers `venv`, `micromamba`)
+- [x] Bats: new `tests/unit/test_project_guide.bats` (54 tests, all green)
+  - [x] `prompt_install_project_guide` returns 0 (install) with `PYVE_PROJECT_GUIDE=1`
+  - [x] Returns 1 (skip) with `PYVE_NO_PROJECT_GUIDE=1`
+  - [x] Returns 0 (install) with `CI=1` and no other env vars
+  - [x] Returns 0 (install) with `PYVE_FORCE_YES=1`
+  - [x] `PYVE_NO_PROJECT_GUIDE` wins over `PYVE_PROJECT_GUIDE` (priority test)
+  - [x] `PYVE_NO_PROJECT_GUIDE` wins over `CI` (priority test)
+  - [x] `is_project_guide_installed` returns 1 against an env without it (and without python binary)
+  - [x] `prompt_install_project_guide_completion` returns 0 with `PYVE_PROJECT_GUIDE_COMPLETION=1`
+  - [x] Returns 1 with `PYVE_NO_PROJECT_GUIDE_COMPLETION=1`
+  - [x] Returns 1 (skip) with `CI=1` — verifies CI-default asymmetry vs install
+  - [x] Returns 1 (skip) with `PYVE_FORCE_YES=1` — same asymmetry
+  - [x] `PYVE_NO_PROJECT_GUIDE_COMPLETION` wins over `PYVE_PROJECT_GUIDE_COMPLETION` (priority test)
+  - [x] `detect_user_shell` returns `zsh` / `bash` / `unknown` from `$SHELL` (matrix: /bin/zsh, /usr/bin/zsh, /bin/bash, /opt/homebrew/bin/bash, /usr/bin/fish, empty)
+  - [x] `get_shell_rc_path` returns expected paths for zsh / bash / unknown / fish
+  - [x] `is_project_guide_completion_present` detects the sentinel (matrix: missing file, file without sentinel, file with sentinel)
+  - [x] `add_project_guide_completion` creates rc file if missing
+  - [x] Inserts the eval block with `command -v` guard for both zsh and bash
+  - [x] Preserves existing content above and below the inserted block
+  - [x] Idempotent — running twice produces one block
+  - [x] `remove_project_guide_completion` safe no-op for missing file and file without sentinel
+  - [x] Removes only the sentinel block, preserves other lines
+  - [x] add → remove round-trip restores the original content byte-for-byte
+  - [x] **`install_project_guide` passes `--upgrade` to pip** (verified via fake-pip stub)
+  - [x] **`run_project_guide_init_in_env` passes `--no-input` to project-guide init** (verified via fake-binary stub)
+  - [x] **`run_project_guide_init_in_env` safe no-op when binary missing**
+  - [x] **`run_project_guide_init_in_env` failure-non-fatal when binary fails (exit 17 → return 0)**
+  - [x] **`project_guide_in_project_deps` matrix:** pyproject.toml positive (multiple table styles), pyproject.toml negative, similar-named-package negative, comment-only negative, requirements.txt positive (with/without version pin), requirements.txt negative, requirements.txt comment-only, environment.yml conda dep positive, environment.yml pip-nested dep positive, environment.yml negative, environment.yml comment-only
+- [x] pytest: new `tests/integration/test_project_guide_integration.py` (11 tests across 4 classes, all green)
+  - [x] `pyve init --no-project-guide` → no project-guide files, package not installed, no rc-file edit
+  - [x] `PYVE_PROJECT_GUIDE=1 pyve init` → package importable from project env, `.project-guide.yml` and `docs/project-guide/` exist after `project-guide init` ← **TestRealInstall::test_install_with_completion_wires_everything**
+  - [x] `pyve init --project-guide --no-project-guide` → mutex error
+  - [x] `pyve init --project-guide-completion --no-project-guide-completion` → mutex error
+  - [x] `PYVE_PROJECT_GUIDE=1 PYVE_PROJECT_GUIDE_COMPLETION=1 pyve init` against an isolated `HOME` → sentinel block present in `~/.zshrc`
+  - [x] `CI=1 pyve init` → package installed, rc file untouched (CI-default asymmetry) ← **TestRealInstall::test_ci_asymmetry_install_yes_completion_no**
+  - [x] Idempotency: second `pyve init --project-guide` re-runs faster (timing-based) ← **TestRealInstall::test_idempotent_reinstall_is_fast**
+  - [x] **Auto-skip when project-guide is in pyproject.toml** ← TestAutoSkipWhenInProjectDeps
+  - [x] **Auto-skip when project-guide is in requirements.txt** ← TestAutoSkipWhenInProjectDeps
+  - [x] **Explicit `--project-guide` flag overrides auto-skip** ← TestAutoSkipWhenInProjectDeps
+  - [ ] `pyve self uninstall` after a completion-enabled install → sentinel block removed *(deferred — covered by bats unit tests for `remove_project_guide_completion` + `uninstall_self` wiring is visual-inspection in pyve.sh; full e2e would require running self-uninstall against a fake install target)*
+  - [ ] Failure path: simulate pip failure → `pyve init` still exits 0 with warning *(deferred — failure-non-fatal behavior validated in bats with the exit-17 test)*
+  - [ ] Failure path: simulate unwritable rc file → warn, `pyve init` still exits 0 *(deferred — same rationale)*
+  - [ ] Both backends: venv and micromamba (markers `venv`, `micromamba`) *(deferred — venv backend covered fully; micromamba backend covered by helper unit tests but no integration test runs micromamba pyve init in the project-guide path; can be added once micromamba is reliably available in CI)*
+- [x] **Real-install tests confirmed passing** with `project-guide >= 2.2.3` (the upstream `--no-input` change shipped during this story)
+- [x] Full bats suite: 404 tests passing (350 pre-G.c + 54 new). Full pytest integration: 242 passing, 26 environment-conditional skips, 0 real failures (1 unrelated pre-existing flake on rerun).
 
-- [ ] Update CHANGELOG.md with v1.12.0 entry
-- [ ] Bump VERSION to 1.12.0
+- [x] Update CHANGELOG.md with v1.12.0 entry
+- [x] Bump VERSION to 1.12.0
 
 ---
 

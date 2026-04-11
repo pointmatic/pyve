@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.11.0"
+VERSION="1.12.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -301,6 +301,138 @@ show_config() {
 # Init Command
 #============================================================
 
+# Run the project-guide post-init hooks: install the package into the
+# project env, then optionally add shell completion to the user rc file.
+#
+# Both steps are failure-non-fatal — pyve init continues even on errors.
+# Respects CLI-flag overrides via the "mode" arguments (pre-resolved by
+# init() from --project-guide / --no-project-guide and their completion
+# siblings). When mode is empty, falls through to the env-var / CI /
+# interactive logic inside the prompt helpers.
+#
+# Usage: run_project_guide_hooks <backend> <env_path> <pg_mode> <comp_mode>
+#   backend:   "venv" | "micromamba"
+#   env_path:  path to the project environment
+#   pg_mode:   "" | "yes" | "no"  (from --project-guide / --no-project-guide)
+#   comp_mode: "" | "yes" | "no"  (from --project-guide-completion / etc.)
+run_project_guide_hooks() {
+    local backend="$1"
+    local env_path="$2"
+    local pg_mode="$3"
+    local comp_mode="$4"
+
+    # Resolve CLI flag overrides into a tri-state.
+    local should_install=0  # 0 = unknown (consult env vars / prompt), 1 = yes, 2 = no
+    case "$pg_mode" in
+        yes) should_install=1 ;;
+        no)  should_install=2 ;;
+    esac
+
+    local should_add_completion=0
+    case "$comp_mode" in
+        yes) should_add_completion=1 ;;
+        no)  should_add_completion=2 ;;
+    esac
+
+    #--- Install decision -------------------------------------------------
+    # Priority order:
+    #   1. --no-project-guide flag                  → skip silent
+    #   2. --project-guide flag                     → install (overrides auto-skip)
+    #   3. PYVE_NO_PROJECT_GUIDE=1 / PYVE_PROJECT_GUIDE=1 → handled by prompt_install_project_guide
+    #   4. project-guide already in project deps    → AUTO-SKIP with INFO message
+    #   5. CI / PYVE_FORCE_YES                      → install (CI default)
+    #   6. interactive                              → prompt, default Y
+    #---------------------------------------------------------------------
+    if [[ $should_install -eq 2 ]]; then
+        log_info "Skipping project-guide install (--no-project-guide)"
+        return 0
+    fi
+
+    local do_install=false
+    if [[ $should_install -eq 1 ]]; then
+        do_install=true
+    else
+        # Auto-skip safety: if project-guide is already declared as a project
+        # dependency, do not let pyve manage it. The user's pin wins; pyve's
+        # install/upgrade would just create a version conflict at the next
+        # `pip install -e .`.
+        if project_guide_in_project_deps; then
+            log_info "Detected 'project-guide' in your project dependencies."
+            log_info "Pyve will not auto-install or run 'project-guide init' to avoid a version conflict."
+            log_info "Project-guide will be installed when your project dependencies are installed."
+            log_info "To override and let pyve manage it anyway, pass --project-guide."
+            log_info "To suppress this message, pass --no-project-guide."
+            return 0
+        fi
+
+        if prompt_install_project_guide; then
+            do_install=true
+        fi
+    fi
+
+    if [[ "$do_install" != true ]]; then
+        return 0
+    fi
+
+    #--- Step 1: pip install --upgrade project-guide ----------------------
+    install_project_guide "$backend" "$env_path" || true
+
+    # If install actually failed, don't proceed to step 2 or 3 — running
+    # `project-guide init` against a missing binary or adding a completion
+    # eval for a missing tool would just leave dead state.
+    if ! is_project_guide_installed "$backend" "$env_path"; then
+        return 0
+    fi
+
+    #--- Step 2: project-guide init --no-input ----------------------------
+    run_project_guide_init_in_env "$backend" "$env_path"
+
+    #--- Step 3: shell completion wiring ----------------------------------
+    if [[ $should_add_completion -eq 2 ]]; then
+        log_info "Skipping project-guide completion wiring (--no-project-guide-completion)"
+        return 0
+    fi
+
+    local do_completion=false
+    if [[ $should_add_completion -eq 1 ]]; then
+        do_completion=true
+    elif prompt_install_project_guide_completion; then
+        do_completion=true
+    fi
+
+    if [[ "$do_completion" != true ]]; then
+        return 0
+    fi
+
+    local user_shell
+    user_shell="$(detect_user_shell)"
+    if [[ "$user_shell" == "unknown" ]]; then
+        log_warning "Unknown shell — skipping project-guide completion wiring."
+        log_warning "  For manual setup, add to your shell rc file:"
+        log_warning "    eval \"\$(_PROJECT_GUIDE_COMPLETE=<shell>_source project-guide)\""
+        return 0
+    fi
+
+    local rc_path
+    rc_path="$(get_shell_rc_path "$user_shell")"
+    if [[ -z "$rc_path" ]]; then
+        log_warning "Could not determine rc file for shell '$user_shell' — skipping completion wiring"
+        return 0
+    fi
+
+    if is_project_guide_completion_present "$rc_path"; then
+        log_info "project-guide completion already present in $rc_path"
+        return 0
+    fi
+
+    if add_project_guide_completion "$rc_path" "$user_shell"; then
+        log_success "Added project-guide completion to $rc_path"
+        log_info "  Reload your shell or run: source $rc_path"
+    else
+        log_warning "Failed to write project-guide completion to $rc_path (continuing)"
+    fi
+}
+
 init() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -313,6 +445,12 @@ init() {
     local no_direnv=false
     local lock_preflight_done=false
     local preflight_backend=""
+
+    # project-guide integration (Story G.c / FR-G2) — tri-state:
+    # "" (unset — use env vars / prompt / CI default), "yes" (force install),
+    # "no" (force skip). Set by --project-guide / --no-project-guide flags.
+    local project_guide_mode=""
+    local project_guide_completion_mode=""
     
     # Parse arguments
     while [[ $# -gt 0 ]]; do
@@ -392,6 +530,38 @@ init() {
                 ;;
             --force)
                 PYVE_REINIT_MODE="force"
+                shift
+                ;;
+            --project-guide)
+                if [[ "$project_guide_mode" == "no" ]]; then
+                    log_error "--project-guide and --no-project-guide are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_mode="yes"
+                shift
+                ;;
+            --no-project-guide)
+                if [[ "$project_guide_mode" == "yes" ]]; then
+                    log_error "--project-guide and --no-project-guide are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_mode="no"
+                shift
+                ;;
+            --project-guide-completion)
+                if [[ "$project_guide_completion_mode" == "no" ]]; then
+                    log_error "--project-guide-completion and --no-project-guide-completion are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_completion_mode="yes"
+                shift
+                ;;
+            --no-project-guide-completion)
+                if [[ "$project_guide_completion_mode" == "yes" ]]; then
+                    log_error "--project-guide-completion and --no-project-guide-completion are mutually exclusive"
+                    exit 1
+                fi
+                project_guide_completion_mode="no"
                 shift
                 ;;
             -*)
@@ -740,10 +910,14 @@ EOF
         
         printf "\n✓ Micromamba environment initialized successfully!\n"
         printf "\nEnvironment location: %s\n" "$env_path"
-        
+
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
-        
+
+        # project-guide hook (Story G.c / FR-G2)
+        run_project_guide_hooks "micromamba" "$env_path" \
+            "$project_guide_mode" "$project_guide_completion_mode"
+
         printf "\nNext steps:\n"
         if [[ "$no_direnv" == false ]]; then
             printf "  Note: Ignore micromamba's 'activate' instructions above — Pyve uses direnv activation (or 'pyve run').\n"
@@ -831,10 +1005,16 @@ EOF
     ensure_testenv_exists
     
     printf "\n✓ Python environment initialized successfully!\n"
-    
+
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
     prompt_install_pip_dependencies
-    
+
+    # project-guide hook (Story G.c / FR-G2)
+    local _venv_abs
+    _venv_abs="$(cd "$venv_dir" && pwd)"
+    run_project_guide_hooks "venv" "$_venv_abs" \
+        "$project_guide_mode" "$project_guide_completion_mode"
+
     if [[ "$no_direnv" == false ]]; then
         printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
     else
@@ -1618,11 +1798,31 @@ uninstall_self() {
 
     # Remove prompt hook
     uninstall_prompt_hook
-    
+
     # Remove PATH from profile (v0.6.1 feature)
     uninstall_clean_path
-    
+
+    # Remove project-guide completion blocks from both common rc files.
+    # Covers users who switched shells after installing the block. Each
+    # call is a safe no-op if the block is absent or the file is missing.
+    # (Story G.c / FR-G2)
+    uninstall_project_guide_completion
+
     printf "\n✓ pyve uninstalled.\n"
+}
+
+uninstall_project_guide_completion() {
+    local rc_files=(
+        "$HOME/.zshrc"
+        "$HOME/.bashrc"
+    )
+    local rc_file
+    for rc_file in "${rc_files[@]}"; do
+        if [[ -f "$rc_file" ]] && is_project_guide_completion_present "$rc_file"; then
+            remove_project_guide_completion "$rc_file"
+            log_success "Removed project-guide completion block from $rc_file"
+        fi
+    done
 }
 
 uninstall_clean_path() {
@@ -2145,23 +2345,51 @@ Usage:
   pyve init [<dir>] [options]
 
 Arguments:
-  <dir>                       Custom venv directory name (default: .venv)
+  <dir>                              Custom venv directory name (default: .venv)
 
 Options:
-  --python-version <ver>      Set Python version (e.g., 3.13.7)
-  --backend <type>            Backend to use: venv, micromamba, auto
-  --auto-bootstrap            Install micromamba without prompting (if needed)
-  --bootstrap-to <location>   Where to install micromamba: project, user
-  --strict                    Error on stale or missing lock files
-  --no-lock                   Bypass missing conda-lock.yml error (not recommended)
-  --env-name <name>           Environment name (micromamba backend)
-  --no-direnv                 Skip .envrc creation (for CI/CD)
-  --auto-install-deps         Auto-install from pyproject.toml / requirements.txt
-  --no-install-deps           Skip dependency installation prompt (for CI/CD)
-  --local-env                 Copy ~/.local/.env template
-  --update                    Safely update an existing installation
-  --force                     Purge and re-initialize (destructive)
-  --allow-synced-dir          Bypass cloud-sync directory check
+  --python-version <ver>             Set Python version (e.g., 3.13.7)
+  --backend <type>                   Backend to use: venv, micromamba, auto
+  --auto-bootstrap                   Install micromamba without prompting (if needed)
+  --bootstrap-to <location>          Where to install micromamba: project, user
+  --strict                           Error on stale or missing lock files
+  --no-lock                          Bypass missing conda-lock.yml error (not recommended)
+  --env-name <name>                  Environment name (micromamba backend)
+  --no-direnv                        Skip .envrc creation (for CI/CD)
+  --auto-install-deps                Auto-install from pyproject.toml / requirements.txt
+  --no-install-deps                  Skip dependency installation prompt (for CI/CD)
+  --local-env                        Copy ~/.local/.env template
+  --update                           Safely update an existing installation
+  --force                            Purge and re-initialize (destructive)
+  --allow-synced-dir                 Bypass cloud-sync directory check
+
+  project-guide integration (three-step post-init hook):
+    1. pip install --upgrade project-guide   (latest version)
+    2. project-guide init --no-input          (creates .project-guide.yml + docs/project-guide/)
+    3. shell completion in ~/.zshrc / ~/.bashrc (sentinel-bracketed block)
+
+    --project-guide                  Run all three steps (overrides auto-skip below)
+    --no-project-guide               Skip all three steps (no prompt)
+    --project-guide-completion       Add shell completion (no prompt) — step 3 only
+    --no-project-guide-completion    Skip shell completion (no prompt) — step 3 only
+
+  Auto-skip safety:
+    If 'project-guide' is already declared as a dependency in your
+    pyproject.toml, requirements.txt, or environment.yml, pyve will NOT
+    auto-install or run 'project-guide init' (avoids version conflicts
+    with your pin). Pass --project-guide to override.
+
+  Environment variables for the project-guide hooks:
+    PYVE_PROJECT_GUIDE=1              Same as --project-guide
+    PYVE_NO_PROJECT_GUIDE=1           Same as --no-project-guide
+    PYVE_PROJECT_GUIDE_COMPLETION=1   Same as --project-guide-completion
+    PYVE_NO_PROJECT_GUIDE_COMPLETION=1 Same as --no-project-guide-completion
+
+  CI defaults (non-interactive, i.e. CI=1 or PYVE_FORCE_YES=1):
+    project-guide install             → INSTALL (matches interactive default)
+    project-guide shell completion    → SKIP (editing rc files in CI is surprising)
+
+  Note: pyve init --update does NOT run the project-guide hook (minimal-touch).
 
 Examples:
   pyve init                                # Auto-detect backend, default venv
@@ -2171,6 +2399,8 @@ Examples:
   pyve init --python-version 3.13.7        # Pin Python version
   pyve init --no-direnv                    # Skip direnv (CI/CD)
   pyve init --force                        # Purge and rebuild
+  pyve init --project-guide                # Install project-guide without prompting
+  pyve init --no-project-guide             # Skip project-guide entirely
 
 See `pyve --help` for the full command list.
 EOF
@@ -2266,9 +2496,13 @@ Usage:
   pyve self uninstall
 
 Description:
-  Removes the pyve script and lib/ modules from ~/.local/bin.
-  Does not remove the PATH entry from ~/.zshrc / ~/.bashrc — you
-  may want to leave that for other tools you've installed there.
+  Removes the pyve script and lib/ modules from ~/.local/bin, plus:
+    - the PATH entry added by the installer (from ~/.zprofile / ~/.bash_profile)
+    - the pyve prompt hook (from ~/.zshrc / ~/.bashrc)
+    - the project-guide shell completion block (from ~/.zshrc / ~/.bashrc),
+      if one was added by `pyve init --project-guide-completion`
+
+  Non-empty ~/.local/.env is preserved (warn, don't delete).
 
 See also:
   pyve self install      Install pyve to ~/.local/bin

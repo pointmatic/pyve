@@ -405,6 +405,10 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--no-lock` | `pyve init` | Bypass missing `conda-lock.yml` hard error |
 | `--allow-synced-dir` | `pyve init` | Bypass cloud-synced directory check |
 | `--keep-testenv` | `pyve purge` | Preserve dev/test environment |
+| `--project-guide` | `pyve init` | Force project-guide hook (overrides auto-skip) |
+| `--no-project-guide` | `pyve init` | Skip the project-guide hook |
+| `--project-guide-completion` | `pyve init` | Force shell completion wiring |
+| `--no-project-guide-completion` | `pyve init` | Skip shell completion wiring |
 
 ### Exit Codes
 
@@ -418,6 +422,47 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 ---
 
 ## Cross-Cutting Concerns
+
+### project-guide rc-file Sentinel (v1.12.0+, Story G.c / FR-G2)
+
+The `pyve init --project-guide-completion` hook appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc`:
+
+```bash
+# >>> project-guide completion (added by pyve) >>>
+command -v project-guide >/dev/null 2>&1 && \
+  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+# <<< project-guide completion <<<
+```
+
+The opening sentinel comment (`# >>> project-guide completion (added by pyve) >>>`) is the source of truth for idempotent insertion and removal:
+
+- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Preserves the rest of the rc file. Creates the rc file if missing.
+- **Removal** (`remove_project_guide_completion` in `lib/utils.sh`): removes only the sentinel-bracketed block plus one immediately-preceding blank line (so add → remove round-trips cleanly). Awk-based, BSD/GNU compatible.
+- **Detection** (`is_project_guide_completion_present` in `lib/utils.sh`): a single `grep -qF` against the opening sentinel.
+
+The sentinels must not change without a migration plan. Users who installed the block with an older sentinel would end up with orphaned blocks on uninstall.
+
+`pyve self uninstall` calls `remove_project_guide_completion()` for both `~/.zshrc` and `~/.bashrc` to cover users who switched shells after installing the block.
+
+### project-guide Helper Functions (v1.12.0+, Story G.c / FR-G2)
+
+The following helpers in `lib/utils.sh` implement the three-step project-guide hook (FR-16):
+
+| Function | Purpose |
+|---|---|
+| `prompt_install_project_guide` | Y/n prompt with default Y; honors `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE` / `CI` / `PYVE_FORCE_YES`. CI default = install. |
+| `prompt_install_project_guide_completion` | Y/n prompt with default Y; honors `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION`. **CI default = SKIP** (deliberate asymmetry — editing rc files in CI is surprising). |
+| `is_project_guide_installed(backend, env_path)` | Probes `<env_python> -c 'import project_guide'`. ~50ms. Returns 0 if importable. |
+| `install_project_guide(backend, env_path)` | Step 1: runs `pip install --upgrade project-guide` against the project env. Always uses `--upgrade`. Failure-non-fatal. |
+| `run_project_guide_init_in_env(backend, env_path)` | Step 2: runs `<env>/bin/project-guide init --no-input`. Requires project-guide >= 2.2.3. Failure-non-fatal. |
+| `project_guide_in_project_deps()` | Auto-skip safety: returns 0 if `project-guide` is declared in `pyproject.toml`, `requirements.txt`, or `environment.yml`. Word-boundary regex to avoid false matches with similar names like `project-guide-extras`. |
+| `detect_user_shell()` | Reads `$SHELL`, prints `zsh` / `bash` / `unknown`. |
+| `get_shell_rc_path(shell)` | Maps `zsh` → `$HOME/.zshrc`, `bash` → `$HOME/.bashrc`, anything else → empty string. |
+| `is_project_guide_completion_present(rc_path)` | Detects the sentinel block. |
+| `add_project_guide_completion(rc_path, shell)` | Step 3: appends the sentinel-bracketed block. Idempotent. Creates rc file if missing. |
+| `remove_project_guide_completion(rc_path)` | Removes the sentinel block. Safe no-op if absent. |
+
+The orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` calls these in priority order. Tri-state mode arguments (`""` / `"yes"` / `"no"`) come from CLI flag parsing in `init()`. The auto-skip safety mechanism fires between explicit flag overrides and the prompt/CI default path.
 
 ### Legacy-Flag Error Catch (v1.11.0+, Decision D3 — kept forever)
 

@@ -82,6 +82,10 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `--no-lock` | Bypass missing `conda-lock.yml` hard error (not recommended) | `--init --no-lock` |
 | `--allow-synced-dir` | Bypass cloud-synced directory check | `--init --allow-synced-dir` |
 | `--keep-testenv` | Preserve dev/test runner environment during purge | `--purge --keep-testenv` |
+| `--project-guide` | Force project-guide install + init + completion (overrides auto-skip) | `--init --project-guide` |
+| `--no-project-guide` | Skip the entire project-guide hook | `--init --no-project-guide` |
+| `--project-guide-completion` | Force shell completion wiring (no prompt) | `--init --project-guide-completion` |
+| `--no-project-guide-completion` | Skip shell completion wiring (no prompt) | `--init --no-project-guide-completion` |
 
 ### Project Files (Auto-Detection)
 
@@ -146,6 +150,7 @@ Initialize a complete Python development environment in the current directory.
 - Create `.pyve/config` for version and backend tracking.
 - **Micromamba only**: Generate `.vscode/settings.json` pointing at `.pyve/envs/<name>/bin/python` with `python.terminal.activateEnvironment: false` and `python.condaPath: ""` to prevent IDE interference. Skips if file already exists (use `--force` to overwrite). Adds `.vscode/settings.json` to `.gitignore`.
 - **Edge cases**: Existing environment detected → offer update/force/cancel. Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
+- **Post-init project-guide hook (FR-16)**: After environment creation and pip-deps install, runs the three-step project-guide hook (install, `project-guide init --no-input`, shell completion). Skipped in `--update` mode. Auto-skipped if `project-guide` is already declared as a project dep.
 
 ### FR-2: Environment Purge (`pyve purge`)
 
@@ -217,7 +222,7 @@ Validate Pyve installation structure and version compatibility.
 Install or remove the Pyve script from the user's system. Lives under the `self` namespace (mirrors `git remote`, `kubectl config`); `pyve self` with no subcommand prints the namespace help only.
 
 - **Install** (`pyve self install`): Copy script and lib/ to `~/.local/bin`, create symlink, add to PATH, create `~/.local/.env` template. Idempotent.
-- **Uninstall** (`pyve self uninstall`): Remove script, symlink, lib/, PATH entry. Preserve `~/.local/.env` if non-empty.
+- **Uninstall** (`pyve self uninstall`): Remove script, symlink, lib/, PATH entry. Preserve `~/.local/.env` if non-empty. Also removes the project-guide shell completion sentinel block from both `~/.zshrc` and `~/.bashrc` (if previously added by `pyve init --project-guide-completion`).
 
 ### FR-8: Backend Auto-Detection
 
@@ -279,6 +284,47 @@ On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent Tensor
 
 - Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
 
+### FR-16: project-guide Integration (`pyve init`)
+
+Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github.io/project-guide/) into `pyve init` so the LLM-assisted workflow is available from the first command. Runs after the existing pip-deps prompt, as the final step of `pyve init` before the success summary.
+
+**Three-step hook** (fresh init or `--force`; **not** `--update`):
+
+1. `pip install --upgrade project-guide` — installs (or upgrades) project-guide into the project env. Always uses `--upgrade` so users get the latest. Default upgrade strategy (`only-if-needed`) so transitive deps are not cascaded.
+2. `<env>/bin/project-guide init --no-input` — runs the project-guide initializer in unattended mode to create `.project-guide.yml` and `docs/project-guide/` artifacts. Requires `project-guide >= 2.2.3`. Older versions will prompt-and-fail-on-closed-stdin; failure is non-fatal.
+3. Shell completion wiring — appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc` so `project-guide` tab-completion works in interactive shells.
+
+**Trigger logic** (priority order, first match wins):
+
+| Input | Behavior |
+|---|---|
+| `--no-project-guide` flag | Skip all three steps, no prompt |
+| `--project-guide` flag | Run all three steps (overrides auto-skip below) |
+| `PYVE_NO_PROJECT_GUIDE=1` env var | Skip all three steps, no prompt |
+| `PYVE_PROJECT_GUIDE=1` env var | Run all three steps, no prompt |
+| **`project-guide` already in project deps** | **Auto-skip with INFO message** |
+| Non-interactive (`CI=1` or `PYVE_FORCE_YES=1`) | Run install + step 2; **skip step 3** (CI asymmetry) |
+| Interactive (default) | Prompt: `Install project-guide? [Y/n]` |
+
+`--project-guide` and `--no-project-guide` are mutually exclusive — using both is a hard error. Same for `--project-guide-completion` / `--no-project-guide-completion`.
+
+**Auto-skip safety mechanism.** If `project-guide` is already declared as a dependency in `pyproject.toml`, `requirements.txt`, or `environment.yml`, pyve auto-skips the entire hook with an informative message. The user's pin wins; pyve refuses to manage what the user already manages, avoiding a version conflict at the next `pip install -e .`. The explicit `--project-guide` flag overrides this auto-skip.
+
+**`--update` does not run the hook.** `pyve init --update` is a config-only metadata bump and must not touch the environment or run network operations. Users who want a fresh project-guide on update run `pyve init --force` instead.
+
+**CI default asymmetry — install vs. completion.** Non-interactive mode (`CI=1` or `PYVE_FORCE_YES=1`) defaults the install flow to **install** (matches the interactive default of Y), but defaults the completion flow to **skip**. Editing user rc files in unattended environments is the kind of surprise pyve avoids; explicit opt-in via `PYVE_PROJECT_GUIDE_COMPLETION=1` or `--project-guide-completion` is required.
+
+**Idempotency.**
+- Step 1: `pip install --upgrade` is naturally idempotent — re-running it just confirms the latest is installed.
+- Step 2: relies on `project-guide >= 2.2.3`'s own idempotency. Re-running `project-guide init` against an already-initialized project is a no-op success unless `--force` is given.
+- Step 3: detected via the sentinel comment `# >>> project-guide completion (added by pyve) >>>`. Already-present blocks are never duplicated.
+
+**Failure handling.** All three steps are failure-non-fatal. A failed pip install, a failed `project-guide init`, an unwritable rc file, or an unknown shell all log a warning with a `--no-project-guide` hint and continue. `pyve init` itself still exits 0. Pyve's job is environment setup; project-guide is a value-add.
+
+**Removal.** `pyve self uninstall` removes the completion sentinel block from both `~/.zshrc` and `~/.bashrc` (covering users who switched shells). The block's sentinel comments make this safe and idempotent.
+
+**Purge.** `pyve purge` does **not** touch the rendered `.project-guide.yml` or `docs/project-guide/` artifacts. They live alongside the project's source and survive purge for the same reason `pyproject.toml` does.
+
 ### FR-15: conda-lock Wrapper (`pyve lock`)
 
 Generate or update `conda-lock.yml` for the current platform.
@@ -315,6 +361,10 @@ Generate or update `conda-lock.yml` for the current platform.
 | `PYVE_FORCE_YES` | Set to `1` to auto-default to micromamba in ambiguous backend cases |
 | `PYVE_NO_LOCK` | Set to `1` to bypass missing `conda-lock.yml` hard error (same as `--no-lock`) |
 | `PYVE_ALLOW_SYNCED_DIR` | Set to `1` to bypass cloud-synced directory check (same as `--allow-synced-dir`) |
+| `PYVE_PROJECT_GUIDE` | Set to `1` to force project-guide install (same as `--project-guide`) |
+| `PYVE_NO_PROJECT_GUIDE` | Set to `1` to skip the project-guide hook (same as `--no-project-guide`) |
+| `PYVE_PROJECT_GUIDE_COMPLETION` | Set to `1` to force shell completion wiring (same as `--project-guide-completion`) |
+| `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Set to `1` to skip shell completion wiring (same as `--no-project-guide-completion`) |
 | `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)

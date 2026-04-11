@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0] - 2026-04-11
+
+### Added — `project-guide` integration in `pyve init` (Story G.c, FR-G2 / FR-16)
+
+`pyve init` (fresh init or `--force`) now wires [`project-guide`](https://pointmatic.github.io/project-guide/) into the project as an opinionated, opt-out post-init hook. The hook runs after the existing pip-deps prompt and consists of three steps:
+
+1. **`pip install --upgrade project-guide`** — installs (or upgrades) project-guide into the project env. Always uses `--upgrade` so users get the latest. Default upgrade strategy (`only-if-needed`) so transitive deps aren't cascaded.
+2. **`<env>/bin/project-guide init --no-input`** — runs the project-guide initializer in unattended mode to create `.project-guide.yml` and `docs/project-guide/` artifacts. Requires `project-guide >= 2.2.3`. Older versions degrade gracefully (failure non-fatal).
+3. **Shell completion** — appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc` so `project-guide` tab-completion works in interactive shells.
+
+**Trigger logic** (priority order, first match wins):
+
+| Input | Behavior |
+|---|---|
+| `--no-project-guide` flag | Skip all three steps, no prompt |
+| `--project-guide` flag | Run all three steps (overrides auto-skip) |
+| `PYVE_NO_PROJECT_GUIDE=1` env var | Skip all three steps |
+| `PYVE_PROJECT_GUIDE=1` env var | Run all three steps |
+| **`project-guide` already in project deps** | **Auto-skip with INFO message** |
+| Non-interactive (`CI=1` / `PYVE_FORCE_YES=1`) | Run install + init; skip completion (asymmetry) |
+| Interactive (default) | Prompt: `Install project-guide? [Y/n]` |
+
+**Auto-skip safety mechanism.** If `project-guide` is already declared as a dep in `pyproject.toml`, `requirements.txt`, or `environment.yml`, pyve auto-skips the entire hook with an informative message. The user's pin wins; pyve refuses to manage what the user already manages, avoiding a version conflict at the next `pip install -e .`. The explicit `--project-guide` flag overrides this auto-skip. Word-boundary regex prevents false matches with similar-named packages like `project-guide-extras`.
+
+**`pyve init --update` does NOT run the hook** — preserves the minimal-touch promise of update mode. Users who want to refresh project-guide on update run `pyve init --force`.
+
+**CI default asymmetry — install vs. completion.** Non-interactive mode defaults the install flow to **install** (matches the interactive default of Y), but defaults the completion flow to **skip**. Editing user rc files in unattended environments is the kind of surprise pyve avoids; explicit opt-in via `PYVE_PROJECT_GUIDE_COMPLETION=1` or `--project-guide-completion` is required.
+
+**Failure handling.** All three steps are failure-non-fatal — pip failure, project-guide init failure, unwritable rc file, or unknown shell all log a warning and continue. `pyve init` itself still exits 0.
+
+**Removal.** `pyve self uninstall` removes the completion sentinel block from both `~/.zshrc` and `~/.bashrc` (covering users who switched shells). The sentinel comments make this safe and idempotent.
+
+**`pyve purge` does not touch `.project-guide.yml` or `docs/project-guide/`** — they're committable artifacts that survive purge.
+
+### Added — new CLI flags on `pyve init`
+
+- `--project-guide` / `--no-project-guide` — explicit opt-in / opt-out for the entire hook (mutually exclusive)
+- `--project-guide-completion` / `--no-project-guide-completion` — explicit control over the rc-file step only (mutually exclusive)
+
+### Added — new env vars
+
+- `PYVE_PROJECT_GUIDE` / `PYVE_NO_PROJECT_GUIDE`
+- `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION`
+
+### Added — new helpers in `lib/utils.sh`
+
+- `prompt_install_project_guide`, `prompt_install_project_guide_completion` — Y/n prompts respecting env vars and CI defaults
+- `is_project_guide_installed(backend, env_path)` — fast import probe (`python -c 'import project_guide'`, ~50ms)
+- `install_project_guide(backend, env_path)` — pip install --upgrade with backend dispatch (venv vs. micromamba)
+- `run_project_guide_init_in_env(backend, env_path)` — invokes `project-guide init --no-input`
+- `project_guide_in_project_deps()` — auto-skip detection across pyproject.toml, requirements.txt, environment.yml
+- `detect_user_shell()`, `get_shell_rc_path(shell)` — shell + rc path detection
+- `is_project_guide_completion_present(rc_path)` — sentinel detection
+- `add_project_guide_completion(rc_path, shell)` — idempotent insertion
+- `remove_project_guide_completion(rc_path)` — surgical removal (awk-based, BSD/GNU compatible)
+
+Plus orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` that resolves CLI flags into the helper protocol and sequences the three-step hook.
+
+### Added — `uninstall_project_guide_completion` helper in `pyve.sh`
+
+Called from `uninstall_self()` after the existing PATH/prompt-hook cleanup. Removes the project-guide completion sentinel block from both `~/.zshrc` and `~/.bashrc`.
+
+### Changed
+- `pyve init --help` now documents the three-step hook, the auto-skip safety mechanism, all four new flags, all four new env vars, the CI-default asymmetry, and the `--update` mode exemption.
+- `pyve self uninstall --help` now documents the rc-file completion-block removal.
+
+### Tests
+- **Bats:** new `tests/unit/test_project_guide.bats` with 54 tests covering all 11 helpers — trigger logic for both prompt helpers (including the CI asymmetry), shell detection, rc-path mapping, sentinel detection, idempotent insertion (creating missing rc files), surgical removal preserving surrounding content, add→remove round-trip, `--upgrade` flag passthrough, `--no-input` flag passthrough, missing-binary safe no-ops, failure-non-fatal exit-code propagation, and the auto-skip detection matrix (pyproject.toml positive/negative/word-boundary/comments, requirements.txt positive/negative/word-boundary/comments, environment.yml positive/negative/comments, pip-nested deps).
+- **Pytest integration:** new `tests/integration/test_project_guide_integration.py` with 11 tests across four classes:
+  - `TestMutexFlags` — both flag pairs error on simultaneous use
+  - `TestSkipPaths` — `--no-project-guide`, `PYVE_NO_PROJECT_GUIDE=1`, and the independent completion-skip flag
+  - `TestAutoSkipWhenInProjectDeps` — auto-skip on pyproject.toml dep, auto-skip on requirements.txt dep, explicit `--project-guide` overrides auto-skip
+  - `TestRealInstall` — three slow tests with real network: full three-step hook (install + artifacts + sentinel), CI asymmetry (install yes, completion no), idempotency timing
+- Full bats suite: 404 tests passing (350 pre-G.c + 54 new). Full pytest integration: 242 passing, 26 environment-conditional skips, 0 real failures.
+
+### Spec updates
+- `docs/specs/features.md` — new FR-16 with full hook spec, 4 new modifier flags in **Optional Inputs** table, 4 new env vars in **Environment Variables** table, FR-1 updated to mention the post-init hook, FR-7 updated to mention the rc-file removal.
+- `docs/specs/tech-spec.md` — 4 new flags in **Modifier Flags** table, new **project-guide rc-file Sentinel** section in **Cross-Cutting Concerns**, new **project-guide Helper Functions** section documenting all 11 helpers.
+- Upstream dependency spec: [docs/specs/project-guide-no-input-spec.md](docs/specs/project-guide-no-input-spec.md) — proposed and implemented in `project-guide >= 2.2.3`.
+
 ## [1.11.0] - 2026-04-10
 
 ### ⚠️ BREAKING CHANGE — CLI surface migrated from flags to subcommands

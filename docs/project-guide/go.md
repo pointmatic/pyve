@@ -22,7 +22,7 @@ For efficiency, when you change modes, start a new LLM conversation.
 ### For LLMs
 
 **Modes**
-This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused cycle of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for code_test_first.
+This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for default.
 
 **Approval Gate**
 When you have completed the steps, pause for the developer to review, correct, redirect, or ask questions about your work.  
@@ -36,71 +36,103 @@ When you have completed the steps, pause for the developer to review, correct, r
 
 ---
 
-# code_test_first mode (cycle)
+# default mode (sequence)
 
-> Generate code with a test-first approach
+> Getting started -- full project lifecycle overview
 
 
-Implement stories using test-driven development (TDD). Write a failing test before writing any implementation code.
-
-**Next Action**
-Restart the cycle of steps. 
+This is the default mode for new projects. It provides an overview of the full project lifecycle. For focused work, switch to a specific mode with `project-guide mode <name>`.
 
 ---
 
+## Project Lifecycle
 
-## Cycle Steps
+| Step | Mode | What it does |
+|------|------|-------------|
+| 1 | `plan_concept` | Define the problem and solution space |
+| 2 | `plan_features` | Define requirements, inputs, outputs, behavior |
+| 3 | `plan_tech_spec` | Define architecture, modules, dependencies |
+| 4 | `plan_stories` | Break into phases and stories with checklists |
+| 5 | `project_scaffold` | Scaffold LICENSE, headers, manifest, README, CHANGELOG, .gitignore |
+| 6 | `code_velocity` | Implement stories with fast iteration |
 
-For each story:
+## Get Started
 
-1. **Read** the story's checklist from `docs/specs/stories.md`
-2. For each task in the checklist:
-   a. **Write a failing test** that describes the expected behavior
-   b. **Run the test** -- confirm it fails (red)
-   c. **Write the minimal implementation** to make the test pass
-   d. **Run the test** -- confirm it passes (green)
-   e. **Refactor** if needed -- clean up while tests still pass
-   f. **Run full test suite** -- `pyve run pytest` -- no regressions
-3. **Add copyright/license headers** to every new source file
-4. **Run linting** -- fix any issues immediately
-5. **Mark tasks** as `[x]` in `stories.md` and change story suffix to `[Done]`
-6. **Bump version** in package manifest and source (if the story has a version)
-7. **Update CHANGELOG.md** with the version entry
-8. **Present** the completed story to the developer for approval
-9. **Wait** for the developer to say "go" before starting the next story
+To begin a new project, run:
 
-## Red-Green-Refactor
+```bash
+project-guide mode plan_concept
+```
 
-The TDD cycle:
+## Suggesting the Next Step
 
-1. **Red** -- Write a test that fails. The test defines the desired behavior.
-2. **Green** -- Write the simplest code that makes the test pass. No more.
-3. **Refactor** -- Clean up the code while keeping tests green. Remove duplication, improve naming, simplify logic.
+When this mode is set, read `docs/specs/stories.md` (if it exists) and check the status of every `### Story X.y: ... [<status>]` heading.
 
-## Test Writing Guidelines
+### If all stories are `[Done]`
 
-- **Test behavior, not implementation** -- assert on outputs and side effects, not internal state
-- **One assertion per concept** -- each test should verify one thing
-- **Use descriptive names** -- `test_override_with_nonexistent_guide_errors` not `test_override_3`
-- **Prefer unit tests** -- test individual functions in isolation
-- **Use integration tests sparingly** -- for verifying component interactions
-- **Test edge cases** -- empty inputs, boundary values, error conditions
+The current phase is complete. There is no in-progress work to resume. Suggest **both** of the following next steps to the developer and explain the trade-off:
 
-## Test Hierarchy
+> All stories in `stories.md` are marked `[Done]`. The current phase is finished. Two reasonable next steps:
+>
+> **Option A — `archive_stories` first, then `plan_phase`** (clean slate)
+> ```bash
+> project-guide mode archive_stories
+> ```
+> This moves the current `stories.md` to `docs/specs/.archive/stories-vX.Y.Z.md` and re-renders an empty `stories.md` (preserving the `## Future` section). Then `plan_phase` plans against an empty file. Phase letters continue across the archive boundary (`.archive/` is consulted to determine the next letter).
+>
+> *Use this when:* the completed phase is large enough that scrolling past it during planning is friction, or you want each phase as a self-contained file in `.archive/` for git history clarity.
+>
+> **Option B — `plan_phase` directly** (plan against history)
+> ```bash
+> project-guide mode plan_phase
+> ```
+> This appends the new phase to the existing `stories.md` alongside the completed phases.
+>
+> *Use this when:* the completed phases provide useful context that should remain visible during planning, or the project is still small enough that a single `stories.md` is comfortable to scroll.
+>
+> Which would you like?
 
-| Level | Speed | Scope | Use for |
-|-------|-------|-------|---------|
-| Unit | Fast | Single function | Core logic, edge cases, error paths |
-| Integration | Medium | Multiple components | Verifying wiring, config loading |
-| End-to-end | Slow | Full system | Final validation, smoke tests |
+Wait for the developer to choose before changing modes.
 
-## When to Switch Modes
+### If at least one story is non-`[Done]`
 
-Switch to **code_velocity** when:
-- The story is straightforward and TDD overhead isn't justified
-- The developer requests faster iteration
+The current phase still has in-progress, planned, or otherwise incomplete work. Use the existing project lifecycle suggestions above — direct the developer to the relevant coding mode (`code_velocity`, `code_test_first`) or, if planning artifacts are missing, to the appropriate planning mode.
 
-Switch to **debug** when:
-- A bug is discovered during implementation
-- Tests are failing unexpectedly and need root cause analysis
+### If `stories.md` does not exist
+
+This is a fresh project. Direct the developer to `project-guide mode plan_concept` to begin the lifecycle.
+
+## All Available Modes
+
+### Planning (sequence)
+| Mode | Command | Output |
+|------|---------|--------|
+| **Concept** | `project-guide mode plan_concept` | `docs/specs/concept.md` |
+| **Features** | `project-guide mode plan_features` | `docs/specs/features.md` |
+| **Tech Spec** | `project-guide mode plan_tech_spec` | `docs/specs/tech-spec.md` |
+| **Stories** | `project-guide mode plan_stories` | `docs/specs/stories.md` |
+| **Phase** | `project-guide mode plan_phase` | Add a new phase to an existing project |
+
+### Scaffold (sequence)
+| Mode | Command | Purpose |
+|------|---------|---------|
+| **Project Scaffold** | `project-guide mode project_scaffold` | One-time project scaffolding |
+
+### Coding (cycle)
+| Mode | Command | Workflow |
+|------|---------|----------|
+| **Velocity** | `project-guide mode code_velocity` | Direct commits, fast iteration |
+| **Test-First** | `project-guide mode code_test_first` | TDD red-green-refactor cycle |
+| **Debug** | `project-guide mode debug` | Test-driven debugging |
+
+### Documentation (sequence)
+| Mode | Command | Output |
+|------|---------|--------|
+| **Branding** | `project-guide mode document_brand` | `docs/specs/brand-descriptions.md` |
+| **Landing Page** | `project-guide mode document_landing` | GitHub Pages + MkDocs docs |
+
+### Post-Release (sequence)
+| Mode | Command | Purpose |
+|------|---------|---------|
+| **Archive Stories** | `project-guide mode archive_stories` | Move completed `stories.md` to `.archive/` and re-render an empty one for the next phase |
 
