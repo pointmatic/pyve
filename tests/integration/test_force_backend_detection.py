@@ -13,10 +13,10 @@
 # limitations under the License.
 
 """
-Integration test for bug: pyve --init --force should detect environment.yml
+Integration test for bug: pyve init --force should detect environment.yml
 and use micromamba backend after purge.
 
-Bug report: When running `pyve --init --force` on a micromamba environment,
+Bug report: When running `pyve init --force` on a micromamba environment,
 it doesn't check for environment.yml and reinstall micromamba. It just switches to venv.
 """
 
@@ -34,7 +34,7 @@ class TestForceBackendDetection:
     )
     def test_force_reinit_detects_environment_yml(self, pyve, project_builder):
         """
-        Test that pyve --init --force on a micromamba environment
+        Test that pyve init --force on a micromamba environment
         detects environment.yml and reinstalls micromamba backend.
         
         This is a regression test for the bug where --force would
@@ -76,7 +76,7 @@ class TestForceBackendDetection:
     )
     def test_force_reinit_preserves_backend_when_ambiguous(self, pyve, project_builder):
         """
-        Test that pyve --init --force preserves the backend when both
+        Test that pyve init --force preserves the backend when both
         environment.yml and pyproject.toml exist (ambiguous case).
         
         This is the exact bug scenario reported: when both conda and Python
@@ -116,7 +116,7 @@ class TestForceBackendDetection:
     
     def test_force_reinit_detects_pyproject_toml(self, pyve, project_builder):
         """
-        Test that pyve --init --force on a venv environment
+        Test that pyve init --force on a venv environment
         detects pyproject.toml and reinstalls venv backend.
         """
         # Step 1: Create pyproject.toml
@@ -149,7 +149,7 @@ class TestForceBackendDetection:
     
     def test_force_reinit_prompts_and_respects_venv_choice_in_ambiguous_case(self, pyve, project_builder):
         """
-        Test that pyve --init --force prompts for backend choice when both
+        Test that pyve init --force prompts for backend choice when both
         environment.yml and pyproject.toml exist, and respects user choosing venv.
 
         Prompt order after F.k/F.l fixes:

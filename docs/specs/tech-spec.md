@@ -333,44 +333,78 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 
 ## CLI Design
 
-### Commands and Flags
+As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). The legacy flag-style top-level commands (`--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall`) have been **removed**, and the `-i` / `-p` short aliases are **dropped** (Decision D1). Universal flags (`--help`, `--version`, `--config`) remain as flags per CLI convention.
 
-| Command | Short | Description |
-|---------|-------|-------------|
-| `--init [dir]` | `-i` | Initialize environment |
-| `--purge [dir]` | `-p` | Remove environment artifacts |
-| `--python-version <ver>` | | Set Python version only |
-| `--install` | | Install pyve to `~/.local/bin` |
-| `--uninstall` | | Remove pyve from `~/.local/bin` |
-| `--validate` | | Validate installation structure |
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `pyve init [dir]` | Initialize Python virtual environment |
+| `pyve purge [dir]` | Remove all Python environment artifacts |
+| `pyve python-version <ver>` | Set Python version without creating an environment |
+| `pyve validate` | Validate Pyve installation structure and version compatibility |
+| `pyve lock [--check]` | Generate/update `conda-lock.yml` for current platform (micromamba only) |
+| `pyve run <cmd> [args]` | Execute command in project environment |
+| `pyve doctor` | Environment diagnostics |
+| `pyve test [args]` | Run pytest in dev/test environment |
+| `pyve testenv --init` | Initialize dev/test environment |
+| `pyve testenv --install [-r]` | Install dev/test dependencies |
+| `pyve testenv --purge` | Remove dev/test environment |
+| `pyve testenv run <cmd>` | Execute command in dev/test environment |
+| `pyve self install` | Install pyve to `~/.local/bin` |
+| `pyve self uninstall` | Remove pyve from `~/.local/bin` |
+| `pyve self` | Show `self` namespace help (no subcommand → namespace help only) |
+
+### Universal Flags
+
+| Flag | Short | Description |
+|------|-------|-------------|
 | `--help` | `-h` | Show help |
 | `--version` | `-v` | Show version |
 | `--config` | `-c` | Show configuration |
-| `lock` | | Generate/update `conda-lock.yml` for current platform (micromamba only) |
-| `run <cmd> [args]` | | Execute command in environment |
-| `doctor` | | Environment diagnostics |
-| `test [args]` | | Run pytest in dev/test environment |
-| `testenv --init` | | Initialize dev/test environment |
-| `testenv --install [-r]` | | Install dev/test dependencies |
-| `testenv --purge` | | Remove dev/test environment |
-| `testenv run <cmd>` | | Execute command in dev/test environment |
+
+### Per-Subcommand Help (Story G.b.2 / FR-G4)
+
+Every renamed subcommand responds to `--help` / `-h` with a focused, man-page-style help block:
+
+```
+pyve init --help
+pyve purge --help
+pyve validate --help
+pyve python-version --help
+pyve self --help
+pyve self install --help
+pyve self uninstall --help
+```
+
+The `--help` intercept fires **before** the real handler runs, so help is always fast and side-effect-free. `pyve --help` is reorganized into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*.
+
+### `self` Namespace
+
+The `self` subcommand namespace (Decision D4) groups commands that manage Pyve's own installation, mirroring `git remote` / `kubectl config`:
+
+- `pyve self install` — copy script + lib to `~/.local/bin`, create symlink, add to PATH, create `~/.local/.env` template. Idempotent.
+- `pyve self uninstall` — remove script, symlink, lib/, PATH entry. Preserve `~/.local/.env` if non-empty.
+- `pyve self` (no subcommand) — print the namespace help only. Does **not** fall through to top-level help.
 
 ### Modifier Flags
 
+All modifier flags keep their names from pre-v1.11.0 and attach to their renamed subcommands.
+
 | Flag | Applies to | Description |
 |------|-----------|-------------|
-| `--backend <type>` | `--init` | Force backend selection |
-| `--env-name <name>` | `--init` | Micromamba environment name |
-| `--local-env` | `--init` | Copy `~/.local/.env` template |
-| `--no-direnv` | `--init` | Skip `.envrc` creation |
-| `--force` | `--init` | Purge and re-initialize |
-| `--update` | `--init` | Update in-place |
-| `--auto-bootstrap` | `--init` | Auto-install micromamba |
-| `--bootstrap-to <loc>` | `--init` | Bootstrap location (project/user) |
-| `--strict` | `--init` | Enforce lock file validation |
-| `--no-lock` | `--init` | Bypass missing `conda-lock.yml` hard error |
-| `--allow-synced-dir` | `--init` | Bypass cloud-synced directory check |
-| `--keep-testenv` | `--purge` | Preserve dev/test environment |
+| `--backend <type>` | `pyve init` | Force backend selection |
+| `--env-name <name>` | `pyve init` | Micromamba environment name |
+| `--local-env` | `pyve init` | Copy `~/.local/.env` template |
+| `--no-direnv` | `pyve init` | Skip `.envrc` creation |
+| `--force` | `pyve init` | Purge and re-initialize |
+| `--update` | `pyve init` | Update in-place |
+| `--auto-bootstrap` | `pyve init` | Auto-install micromamba |
+| `--bootstrap-to <loc>` | `pyve init` | Bootstrap location (project/user) |
+| `--strict` | `pyve init` | Enforce lock file validation |
+| `--no-lock` | `pyve init` | Bypass missing `conda-lock.yml` hard error |
+| `--allow-synced-dir` | `pyve init` | Bypass cloud-synced directory check |
+| `--keep-testenv` | `pyve purge` | Preserve dev/test environment |
 
 ### Exit Codes
 
@@ -384,6 +418,19 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 ---
 
 ## Cross-Cutting Concerns
+
+### Legacy-Flag Error Catch (v1.11.0+, Decision D3 — kept forever)
+
+When a user invokes a removed legacy flag form (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --install`, `pyve --uninstall`, or the `-i` / `-p` short aliases), the dispatcher in `main()` catches it and prints a precise migration error, then exits non-zero:
+
+```
+ERROR: 'pyve --init' is no longer supported. Use 'pyve init' instead.
+ERROR: See: pyve --help
+```
+
+**Why kept forever:** Three lines of code, great error message, zero cost. Users coming from old README snippets, blog posts, third-party tutorials, and LLM training data will hit it for years and get a precise hint instead of an opaque "unknown command" error. Implemented via `legacy_flag_error()` helper in `pyve.sh`, called from the top-level dispatcher `case` block before any subcommand dispatch runs.
+
+**No compat shim, no silent translation.** Silent translation hides the rename from users and builds long-term tech debt.
 
 ### Platform Portability
 

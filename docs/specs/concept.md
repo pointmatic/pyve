@@ -54,7 +54,7 @@ wrangles your Python virtual environments with one command
 
 Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management (asdf or pyenv), virtual environments (venv or micromamba), and direnv integration in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
 
-With one command (`pyve --init`), Pyve auto-detects the right backend, pins a Python version, configures direnv for auto-activation, secures a `.env` file with `chmod 600`, and self-heals `.gitignore`. For teardown, `pyve --purge` removes Pyve's footprint while preserving user data (non-empty `.env` files, user code, git history). Pyve orchestrates existing tools rather than replacing them — staying small, scriptable, and easy to reason about.
+With one command (`pyve init`), Pyve auto-detects the right backend, pins a Python version, configures direnv for auto-activation, secures a `.env` file with `chmod 600`, and self-heals `.gitignore`. For teardown, `pyve purge` removes Pyve's footprint while preserving user data (non-empty `.env` files, user code, git history). Pyve orchestrates existing tools rather than replacing them — staying small, scriptable, and easy to reason about.
 
 ### goals
 
@@ -104,7 +104,7 @@ With one command (`pyve --init`), Pyve auto-detects the right backend, pins a Py
 ## Pain Point to Solution Mapping
 
 **repetitive_setup**:
-  - `pyve --init` collapses Python version selection, venv creation, direnv configuration, `.env` setup, and `.gitignore` management into a single command
+  - `pyve init` collapses Python version selection, venv creation, direnv configuration, `.env` setup, and `.gitignore` management into a single command
   - Smart re-init (`--update` / `--force`) handles existing projects without manual cleanup
 
 **command_recall**:
@@ -113,7 +113,7 @@ With one command (`pyve --init`), Pyve auto-detects the right backend, pins a Py
   - `pyve doctor` surfaces current state without requiring memorized inspection commands
 
 **activation_friction**:
-  - direnv integration is configured automatically by `pyve --init`, giving auto-activation/deactivation on directory entry/exit for free
+  - direnv integration is configured automatically by `pyve init`, giving auto-activation/deactivation on directory entry/exit for free
   - `pyve run <cmd>` provides explicit, stateless execution for contexts where direnv isn't appropriate
 
 **venv_setup_complexity**:
@@ -127,22 +127,22 @@ With one command (`pyve --init`), Pyve auto-detects the right backend, pins a Py
   - `.pyve/config` records backend and version choices so the project's environment intent is portable
 
 **machine_inconsistency**:
-  - The same `pyve --init` produces the same environment shape on every machine
+  - The same `pyve init` produces the same environment shape on every machine
   - CI/CD-friendly flags (`--no-direnv`, `--auto-bootstrap`, `--strict`) make the same workflow work in pipelines as on a laptop
-  - `pyve --validate` and `pyve doctor` confirm that a project's setup matches expectations
+  - `pyve validate` and `pyve doctor` confirm that a project's setup matches expectations
 
 **secret_safety**:
   - `.env` is created with `chmod 600` (owner read/write only)
   - `.env` is automatically added to `.gitignore` to prevent accidental commits
-  - `pyve --purge` preserves non-empty `.env` files instead of deleting them
+  - `pyve purge` preserves non-empty `.env` files instead of deleting them
   - `~/.local/.env` template can be copied with `--init --local-env`
 
 **cloud_sync_corruption**:
-  - `pyve --init` refuses to initialize inside known cloud-synced directories (`~/Documents`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`, `~/Library/Mobile Documents`) using both path heuristics and macOS xattr inspection
+  - `pyve init` refuses to initialize inside known cloud-synced directories (`~/Documents`, `~/Dropbox`, `~/Google Drive`, `~/OneDrive`, `~/Library/Mobile Documents`) using both path heuristics and macOS xattr inspection
   - Error messages include the detected sync provider, recommended `mv` command, and `--allow-synced-dir` override for users who have disabled sync on the directory
 
 **reinit_footguns**:
-  - The dev/test runner environment lives at `.pyve/testenv/venv/`, separate from the project environment, so `pyve --init --force` cannot wipe it
+  - The dev/test runner environment lives at `.pyve/testenv/venv/`, separate from the project environment, so `pyve init --force` cannot wipe it
   - `--update` rejects backend changes that would require a destructive rebuild
   - `--force` requires interactive confirmation before purging
   - `pyve doctor` and `--strict` mode surface stale `conda-lock.yml` files before they cause divergence

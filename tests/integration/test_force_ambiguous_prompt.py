@@ -13,10 +13,10 @@
 # limitations under the License.
 
 """
-Integration test for bug: pyve --init --force should prompt for backend choice
+Integration test for bug: pyve init --force should prompt for backend choice
 when both environment.yml and pyproject.toml exist (ambiguous case).
 
-Bug report: When running `pyve --init --force` on a project with both files,
+Bug report: When running `pyve init --force` on a project with both files,
 it uses venv backend without prompting, instead of asking the user to choose.
 """
 
@@ -30,7 +30,7 @@ class TestForceAmbiguousPrompt:
     
     def test_force_prompts_for_backend_in_ambiguous_case(self, pyve, project_builder):
         """
-        Test that pyve --init --force prompts for backend choice when both
+        Test that pyve init --force prompts for backend choice when both
         environment.yml and pyproject.toml exist.
         
         This is a regression test for the bug where --force would use venv
@@ -67,7 +67,7 @@ class TestForceAmbiguousPrompt:
     
     def test_force_respects_no_response_in_ambiguous_case(self, pyve, project_builder):
         """
-        Test that pyve --init --force respects 'n' response to use venv
+        Test that pyve init --force respects 'n' response to use venv
         when both files exist.
         """
         # Step 1: Create BOTH environment.yml and pyproject.toml (ambiguous)

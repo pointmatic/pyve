@@ -43,7 +43,7 @@ Include in your report:
 
 ## Security Best Practices for Pyve Users
 
-- **Keep Pyve updated**: Run `brew upgrade pyve` regularly (Homebrew) or `git pull && ./pyve.sh --install` (source)
+- **Keep Pyve updated**: Run `brew upgrade pyve` regularly (Homebrew) or `git pull && ./pyve.sh self install` (source)
 - **Protect .env files**: Pyve creates `.env` files with `chmod 600` permissions - never change this
 - **Review .gitignore**: Ensure `.env` is always in `.gitignore` to prevent committing secrets
 - **Use trusted Python sources**: Only use official Python versions from asdf/pyenv
@@ -63,7 +63,7 @@ Pyve creates `.env` files for storing environment variables. These files:
 Pyve-managed virtual environments:
 - Are isolated from system Python
 - Do not have access to system site-packages by default
-- Should be recreated (`pyve --purge && pyve --init`) if compromised
+- Should be recreated (`pyve purge && pyve init`) if compromised
 
 ### Dependency Management
 

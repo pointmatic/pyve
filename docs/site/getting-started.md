@@ -51,7 +51,7 @@ git pull origin main
 To uninstall:
 
 ```bash
-pyve --uninstall
+pyve self uninstall
 ```
 
 ## Prerequisites
@@ -111,7 +111,7 @@ Navigate to your project directory and initialize Pyve:
 
 ```bash
 cd my-project
-pyve --init
+pyve init
 ```
 
 This will:
@@ -168,7 +168,7 @@ mkdir my-new-project
 cd my-new-project
 
 # Initialize with specific Python version
-pyve --init 3.11
+pyve init 3.11
 
 # Install packages
 pip install requests pytest
@@ -185,7 +185,7 @@ git clone https://github.com/user/project.git
 cd project
 
 # Initialize Pyve (reads .python-version if present)
-pyve --init
+pyve init
 
 # Install dependencies
 pip install -r requirements.txt
@@ -195,7 +195,7 @@ pip install -r requirements.txt
 
 ```bash
 # Change Python version
-pyve --init 3.12
+pyve init 3.12
 
 # Verify new version
 python --version
@@ -217,25 +217,25 @@ dependencies:
   - pandas
 EOF
 
-# 2. Generate conda-lock.yml (required before pyve --init)
+# 2. Generate conda-lock.yml (required before pyve init)
 conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
 conda-lock -f environment.yml -p linux-64     # Linux
 
 # 3. Initialize (lock file ensures reproducibility)
-pyve --init --backend micromamba
+pyve init --backend micromamba
 
 # 4. Install additional conda packages
 micromamba install scipy -c conda-forge
 ```
 
-> **Important:** `pyve --init` requires `conda-lock.yml`. For the initial setup before the file exists, use `pyve --init --no-lock`.
+> **Important:** `pyve init` requires `conda-lock.yml`. For the initial setup before the file exists, use `pyve init --no-lock`.
 
 ### Cleaning Up
 
 Remove the virtual environment:
 
 ```bash
-pyve --purge
+pyve purge
 ```
 
 This removes:
@@ -254,12 +254,12 @@ This removes:
 
 ### Project Inside a Cloud-Synced Directory
 
-If `pyve --init` fails with `ERROR: Project is inside a cloud-synced directory`, move the project out of `~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, or `~/OneDrive`:
+If `pyve init` fails with `ERROR: Project is inside a cloud-synced directory`, move the project out of `~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, or `~/OneDrive`:
 
 ```bash
 mv ~/Documents/myproject ~/Developer/myproject
 cd ~/Developer/myproject
-pyve --init
+pyve init
 ```
 
 ### Environment Not Activating

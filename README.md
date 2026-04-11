@@ -14,12 +14,12 @@ See https://pointmatic.github.io/pyve/ for more information.
 
 Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management (asdf or pyenv), virtual environments (venv or micromamba), and direnv integration in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
 
-- One-command environment setup (`pyve --init`)
+- One-command environment setup (`pyve init`)
 - Dual backend support — venv (pip) and micromamba (conda-compatible)
 - Automatic Python version management via asdf or pyenv
 - direnv integration for seamless shell activation
 - CI/CD-ready with `--no-direnv`, `--auto-bootstrap`, and `--strict` flags
-- Clean teardown with `pyve --purge` — preserves your secrets
+- Clean teardown with `pyve purge` — preserves your secrets
 - Zero runtime dependencies — pure Bash, no daemons
 
 ### Philosophy
@@ -30,9 +30,9 @@ Make things easy and natural, but avoid being invasive.
 - Pyve does not install `conda-lock`, but wraps its invocation via `pyve lock` when it is available — handling platform detection and suppressing the misleading post-run message.
 
 ## Key Features
-- **Install**: Install Pyve via Homebrew (`brew install pointmatic/tap/pyve`) or manually from source (`./pyve.sh --install`, which copies the script to `~/.local/bin/` and creates a symlink).
+- **Install**: Install Pyve via Homebrew (`brew install pointmatic/tap/pyve`) or manually from source (`./pyve.sh self install`, which copies the script to `~/.local/bin/` and creates a symlink).
 - **Init**: Pyve will automatically initialize your Python coding environment as a virtual environment with your specified (or the default) version of Python and configure `direnv` to autoactivate and deactivate your virtual environment when you change directories.
-  - **Re-Init**: Refresh your Pyve initialization using `pyve --init --force`. This will first purge, then initialize Pyve in one commmand. 
+  - **Re-Init**: Refresh your Pyve initialization using `pyve init --force`. This will first purge, then initialize Pyve in one commmand. 
 - **Purge**: Remove all the Pyve setup and artifacts, except if you've added any secrets to the `.env` file, Pyve will leave it and let you know that.
 
 ## Conceptual Model
@@ -68,7 +68,7 @@ for scripts, automation, and CI workflows.
 - Either of these Python version managers:
   - **asdf** (recommended, with Python plugin). Pyve auto-installs requested Python versions.
   - **pyenv**. Pyve auto-installs requested Python versions.
-- **direnv** (required for `--init`; not required for standalone `--python-version`)
+- **direnv** (required for `pyve init`; not required for standalone `pyve python-version`)
 - **micromamba** (optional):
   - Required only when initializing conda-compatible environments
   - Used for ML / scientific stacks that benefit from binary dependencies
@@ -87,12 +87,12 @@ pyve --help
 Or install from source:
 
 ```bash
-git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh --install; pyve --help
+git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh self install; pyve --help
 ```
 
 ### Initialize a Python Virtual Environment
 
-Go to the root of your project directory and run `pyve --init` to initialize your Python virtual environment. 
+Go to the root of your project directory and run `pyve init` to initialize your Python virtual environment. 
 
 In a single command, Pyve will:
 
@@ -105,7 +105,7 @@ In a single command, Pyve will:
 
 ### Purge
 
-Run `pyve --purge` to cleanly remove all Pyve-created artifacts:
+Run `pyve purge` to cleanly remove all Pyve-created artifacts:
 
 - Removes `.venv` directory
 - Removes `.tool-versions` or `.python-version` file
@@ -137,7 +137,7 @@ brew upgrade pointmatic/tap/pyve
 
 2. Install to your local bin directory:
    ```bash
-   ./pyve.sh --install
+   ./pyve.sh self install
    ```
 
 This will:
@@ -153,24 +153,23 @@ After installation, run `pyve` from any directory.
 
 ### Initialize a Python Virtual Environment
 
-By default, `pyve --init` creates a Python `venv`-based backend or auto-detects from project files.
+By default, `pyve init` creates a Python `venv`-based backend or auto-detects from project files.
 
 #### Backend Selection
 
 ```bash
-pyve --init                          # Auto-detect or default to venv
-pyve --init --backend venv           # Explicit venv backend
-pyve --init --backend micromamba     # Explicit micromamba backend
-pyve --init --backend auto           # Auto-detect from files
+pyve init                          # Auto-detect or default to venv
+pyve init --backend venv           # Explicit venv backend
+pyve init --backend micromamba     # Explicit micromamba backend
+pyve init --backend auto           # Auto-detect from files
 ```
 
 #### Standard Options
 
 ```bash
-pyve --init my_venv                  # Custom venv directory name
-pyve --init --python-version 3.12.0  # Specific Python version
-pyve --init --local-env              # Copy ~/.local/.env template to .env
-pyve -i                              # Short form
+pyve init my_venv                    # Custom venv directory name
+pyve init --python-version 3.12.0    # Specific Python version
+pyve init --local-env                # Copy ~/.local/.env template to .env
 ```
 
 #### Backend Auto-Detection Priority
@@ -222,23 +221,23 @@ Initialize with micromamba backend? [Y/n]:
 ```bash
 # Project with environment.yml → automatically uses micromamba
 cd my-ml-project
-pyve --init  # Detects environment.yml, uses micromamba
+pyve init  # Detects environment.yml, uses micromamba
 
 # Project with requirements.txt → automatically uses venv
 cd my-web-app
-pyve --init  # Detects requirements.txt, uses venv
+pyve init  # Detects requirements.txt, uses venv
 
 # Empty project → defaults to venv
 cd new-project
-pyve --init  # No files detected, uses venv
+pyve init  # No files detected, uses venv
 
 # Ambiguous project → prompts for choice
 cd ml-project-with-both-files
-pyve --init  # Prompts: "Initialize with micromamba backend? [Y/n]:"
+pyve init  # Prompts: "Initialize with micromamba backend? [Y/n]:"
 
 # Override auto-detection
-pyve --init --backend micromamba  # Force micromamba (skip prompt)
-pyve --init --backend venv         # Force venv (skip prompt)
+pyve init --backend micromamba  # Force micromamba (skip prompt)
+pyve init --backend venv         # Force venv (skip prompt)
 ```
 
 #### Backend Comparison
@@ -291,16 +290,16 @@ This runs `pip install -e .` to install your project in editable mode, making yo
 **Examples:**
 ```bash
 # Standard initialization (prompts for pip dependencies)
-pyve --init
+pyve init
 
 # Auto-install dependencies without prompting
-pyve --init --auto-install-deps
+pyve init --auto-install-deps
 
 # Skip dependency installation prompt (useful for CI)
-pyve --init --no-install-deps
+pyve init --no-install-deps
 
 # CI/CD with auto-install
-PYVE_AUTO_INSTALL_DEPS=1 pyve --init --no-direnv
+PYVE_AUTO_INSTALL_DEPS=1 pyve init --no-direnv
 ```
 
 After setup, run `direnv allow` to activate the environment.
@@ -308,7 +307,7 @@ After setup, run `direnv allow` to activate the environment.
 ### Set Python Version Only
 
 ```bash
-pyve --python-version 3.13.7
+pyve python-version 3.13.7
 ```
 
 Sets the Python version in the current directory (via asdf or pyenv) without creating a virtual environment.
@@ -316,10 +315,9 @@ Sets the Python version in the current directory (via asdf or pyenv) without cre
 ### Remove Environment
 
 ```bash
-pyve --purge                         # Remove all artifacts
-pyve --purge my_venv                 # Remove custom-named venv
-pyve --purge --keep-testenv          # Preserve the dev/test runner environment
-pyve -p                              # Short form
+pyve purge                           # Remove all artifacts
+pyve purge my_venv                   # Remove custom-named venv
+pyve purge --keep-testenv            # Preserve the dev/test runner environment
 ```
 
 ## Testing (v1.5.2)
@@ -332,10 +330,10 @@ As a tool, Pyve supports the developer with an isolated test environment.
 
 Pyve supports integration testing via a dedicated dev/test runner environment separate from the project runtime virtual environment. When you run `pyve test`, Pyve will initialize the dev/test runner environment. If `pytest` is missing, Pyve prompts to install `pytest` (interactive shell). 
 
-- Project environment: `.venv/` (created by `pyve --init`)
+- Project environment: `.venv/` (created by `pyve init`)
 - Dev/test runner environment: `.pyve/testenv/venv/` (used by `pyve test`)
 
-This separation prevents destructive actions like `pyve --init --force` from wiping your test tooling.
+This separation prevents destructive actions like `pyve init --force` from wiping your test tooling.
 
 ### Running tests
 
@@ -363,17 +361,32 @@ pyve testenv --install -r requirements-dev.txt
 ### All Commands
 
 ```bash
-pyve --init, -i       # Initialize your Python coding environment
-pyve --purge, -p      # Remove environment artifacts
-pyve --python-version # Set Python version only
-pyve lock             # Generate/update conda-lock.yml (micromamba projects)
-pyve run <cmd>        # Execute command in project environment
-pyve doctor           # Check environment health and configuration
-pyve --install        # Install pyve to ~/.local/bin
-pyve --uninstall      # Remove pyve from ~/.local/bin
-pyve --help, -h       # Show help
-pyve --version, -v    # Show version
-pyve --config, -c     # Show configuration
+# Environment
+pyve init                 # Initialize your Python coding environment
+pyve purge                # Remove environment artifacts
+pyve python-version <ver> # Set Python version only
+pyve lock                 # Generate/update conda-lock.yml (micromamba projects)
+
+# Execution
+pyve run <cmd>            # Execute command in project environment
+pyve test [pytest args]   # Run pytest via the dev/test runner environment
+pyve testenv <subcommand> # Manage the dev/test runner environment
+
+# Diagnostics
+pyve doctor               # Check environment health and configuration
+pyve validate             # Validate installation and configuration
+
+# Self management
+pyve self install         # Install pyve to ~/.local/bin
+pyve self uninstall       # Remove pyve from ~/.local/bin
+
+# Universal flags
+pyve --help, -h           # Show help
+pyve --version, -v        # Show version
+pyve --config, -c         # Show configuration
+
+# Per-command help
+pyve <command> --help     # Show focused help for a specific command
 ```
 
 ## Configuration
@@ -419,7 +432,7 @@ brew uninstall pyve
 ### From Source
 
 ```bash
-pyve --uninstall
+pyve self uninstall
 ```
 
 This removes:
@@ -437,7 +450,7 @@ See `CONTRIBUTING.md` for contribution guidelines.
 
 The script checks for prerequisites (asdf/pyenv, direnv) before initialization and provides helpful error messages if anything is missing.
 
-**Direct execution**: You can run the script directly without installing: `./pyve.sh --init`
+**Direct execution**: You can run the script directly without installing: `./pyve.sh init`
 
 ### Diagnostic Command
 
@@ -484,14 +497,14 @@ For CI/CD and automation, use `--auto-bootstrap` to skip prompts:
 
 ```bash
 # Auto-bootstrap to user sandbox (default)
-pyve --init --backend micromamba --auto-bootstrap
+pyve init --backend micromamba --auto-bootstrap
 
 # Explicitly specify installation location
-pyve --init --backend micromamba --auto-bootstrap --bootstrap-to user
-pyve --init --backend micromamba --auto-bootstrap --bootstrap-to project
+pyve init --backend micromamba --auto-bootstrap --bootstrap-to user
+pyve init --backend micromamba --auto-bootstrap --bootstrap-to project
 
 # CI/CD example
-pyve --init --backend micromamba --auto-bootstrap --no-direnv
+pyve init --backend micromamba --auto-bootstrap --no-direnv
 ```
 
 **Bootstrap Flags:**
@@ -505,7 +518,7 @@ Pyve automatically resolves environment names for micromamba using this priority
 
 1. **`--env-name` flag** - Explicit CLI override (highest priority)
    ```bash
-   pyve --init --backend micromamba --env-name myproject-dev
+   pyve init --backend micromamba --env-name myproject-dev
    ```
 
 2. **`.pyve/config` file** - Project configuration
@@ -524,7 +537,7 @@ Pyve automatically resolves environment names for micromamba using this priority
 4. **Project directory basename** - Sanitized directory name (default)
    ```bash
    # In /path/to/my-ml-project
-   pyve --init --backend micromamba
+   pyve init --backend micromamba
    # Environment name: my-ml-project
    ```
 
@@ -537,7 +550,7 @@ Pyve automatically resolves environment names for micromamba using this priority
 **Examples:**
 ```bash
 # Explicit name
-pyve --init --backend micromamba --env-name my-env
+pyve init --backend micromamba --env-name my-env
 
 # From environment.yml
 cat > environment.yml << EOF
@@ -546,11 +559,11 @@ dependencies:
   - python=3.11
   - pandas
 EOF
-pyve --init  # Uses name: data-science-project
+pyve init  # Uses name: data-science-project
 
 # Auto-generated from directory
 cd "My ML Project"
-pyve --init --backend micromamba  # Environment: my-ml-project
+pyve init --backend micromamba  # Environment: my-ml-project
 ```
 
 ### Lock File Validation
@@ -574,10 +587,10 @@ Use `--strict` to enforce lock file requirements:
 
 ```bash
 # Error if lock file is stale or missing
-pyve --init --backend micromamba --strict
+pyve init --backend micromamba --strict
 
 # Useful for CI/CD to ensure reproducibility
-pyve --init --backend micromamba --strict --auto-bootstrap --no-direnv
+pyve init --backend micromamba --strict --auto-bootstrap --no-direnv
 ```
 
 **Strict Mode Behavior:**
@@ -640,7 +653,7 @@ pip install requests   # Works directly
 **CI/CD / Automation Use (without direnv):**
 ```bash
 # GitHub Actions, Docker, scripts
-pyve --init --no-direnv
+pyve init --no-direnv
 pyve run python --version
 pyve run pytest
 pyve run pip install requests
@@ -689,7 +702,7 @@ pyve run nonexistent
 # No environment
 pyve run python
 # ERROR: No Python environment found
-# ERROR: Run 'pyve --init' to create an environment first
+# ERROR: Run 'pyve init' to create an environment first
 ```
 
 **Use Cases:**
@@ -762,12 +775,12 @@ Pyve Environment Diagnostics
 - **CI/CD** - Validate environment in pipelines
 - **Troubleshooting** - Quick health check
 
-### `pyve --validate` - Validate Installation
+### `pyve validate` — Validate Installation
 
 Validate Pyve installation structure and version compatibility:
 
 ```bash
-pyve --validate
+pyve validate
 ```
 
 **What it checks:**
@@ -799,10 +812,10 @@ Pyve Installation Validation
 ==============================
 
 ⚠ Pyve version: 1.4.0 (current: 1.5.2)
-  Migration recommended. Run 'pyve --init --update' to update.
+  Migration recommended. Run 'pyve init --update' to update.
 ✓ Backend: venv
 ✗ Virtual environment: .venv (missing)
-  Run 'pyve --init' to create.
+  Run 'pyve init' to create.
 ✓ Configuration: valid
 ✓ Python version: 3.11 (available)
 
@@ -824,12 +837,12 @@ Validation completed with warnings and errors.
 
 Pyve intelligently handles re-initialization of existing projects without requiring manual cleanup.
 
-**Running `pyve --init` on existing project:**
+**Running `pyve init` on existing project:**
 
-When you run `pyve --init` on an already-initialized project, Pyve detects the existing installation and offers options:
+When you run `pyve init` on an already-initialized project, Pyve detects the existing installation and offers options:
 
 ```bash
-$ pyve --init
+$ pyve init
 ⚠ Project already initialized with Pyve
   Recorded version: 1.5.1
   Current version: 1.5.2
@@ -847,10 +860,10 @@ Choose [1/2/3]:
 
 ```bash
 # Safe update (preserves environment)
-pyve --init --update
+pyve init --update
 
 # Force re-initialization (auto-purge, prompts for confirmation)
-pyve --init --force
+pyve init --force
 ```
 
 **Safe Update (`--update`):**
@@ -862,7 +875,7 @@ pyve --init --force
 
 **Example:**
 ```bash
-$ pyve --init --update
+$ pyve init --update
 Updating existing Pyve installation...
 ✓ Configuration updated
   Version: 1.5.1 → 1.5.2
@@ -879,7 +892,7 @@ Project updated to Pyve v1.5.2
 
 **Example:**
 ```bash
-$ pyve --init --force
+$ pyve init --force
 ⚠ Force re-initialization: This will purge the existing environment
   Current backend: venv
 
@@ -896,13 +909,13 @@ Proceeding with fresh initialization...
 Backend changes are detected and require `--force`:
 
 ```bash
-$ pyve --init --backend micromamba --update
+$ pyve init --backend micromamba --update
 ✗ Cannot update in-place: Backend change detected
   Current: venv
   Requested: micromamba
 
 Backend changes require a clean re-initialization.
-Run: pyve --init --force
+Run: pyve init --force
 ```
 
 **Use Cases:**
@@ -916,7 +929,7 @@ Run: pyve --init --force
 Skip `.envrc` creation for environments where direnv isn't available:
 
 ```bash
-pyve --init --no-direnv
+pyve init --no-direnv
 ```
 
 **When to use:**
@@ -934,15 +947,15 @@ pyve --init --no-direnv
 **Examples:**
 ```bash
 # Venv without direnv
-pyve --init --no-direnv
+pyve init --no-direnv
 pyve run python --version
 
 # Micromamba without direnv
-pyve --init --backend micromamba --no-direnv
+pyve init --backend micromamba --no-direnv
 pyve run pytest
 
 # CI/CD setup
-pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 pyve run pytest tests/
 ```
 
@@ -974,10 +987,10 @@ jobs:
       - name: Install Pyve
         run: |
           git clone https://github.com/pointmatic/pyve.git /tmp/pyve
-          /tmp/pyve/pyve.sh --install
+          /tmp/pyve/pyve.sh self install
       
       - name: Initialize environment
-        run: pyve --init --no-direnv
+        run: pyve init --no-direnv
       
       - name: Run tests
         run: pyve run pytest tests/
@@ -1000,11 +1013,11 @@ jobs:
       - name: Install Pyve
         run: |
           git clone https://github.com/pointmatic/pyve.git /tmp/pyve
-          /tmp/pyve/pyve.sh --install
+          /tmp/pyve/pyve.sh self install
       
       - name: Initialize environment
         run: |
-          pyve --init --backend micromamba \
+          pyve init --backend micromamba \
                --auto-bootstrap \
                --no-direnv \
                --strict
@@ -1040,10 +1053,10 @@ test:
   before_script:
     - apt-get update && apt-get install -y git curl
     - git clone https://github.com/pointmatic/pyve.git /tmp/pyve
-    - /tmp/pyve/pyve.sh --install
+    - /tmp/pyve/pyve.sh self install
     - export PATH="$HOME/.local/bin:$PATH"
   script:
-    - pyve --init --no-direnv
+    - pyve init --no-direnv
     - pyve run pytest tests/
     - pyve doctor
 ```
@@ -1055,10 +1068,10 @@ test:
   before_script:
     - apt-get update && apt-get install -y git curl
     - git clone https://github.com/pointmatic/pyve.git /tmp/pyve
-    - /tmp/pyve/pyve.sh --install
+    - /tmp/pyve/pyve.sh self install
     - export PATH="$HOME/.local/bin:$PATH"
   script:
-    - pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+    - pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
     - pyve run pytest tests/
     - pyve doctor
   cache:
@@ -1077,13 +1090,13 @@ WORKDIR /app
 
 # Install Pyve
 RUN git clone https://github.com/pointmatic/pyve.git /tmp/pyve && \
-    /tmp/pyve/pyve.sh --install
+    /tmp/pyve/pyve.sh self install
 
 # Copy project files
 COPY . .
 
 # Initialize environment
-RUN pyve --init --no-direnv
+RUN pyve init --no-direnv
 
 # Run application
 CMD ["pyve", "run", "python", "app.py"]
@@ -1100,13 +1113,13 @@ RUN apt-get update && apt-get install -y git curl
 
 # Install Pyve
 RUN git clone https://github.com/pointmatic/pyve.git /tmp/pyve && \
-    /tmp/pyve/pyve.sh --install
+    /tmp/pyve/pyve.sh self install
 
 # Copy project files
 COPY environment.yml conda-lock.yml ./
 
 # Initialize environment
-RUN pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 
 # Copy application
 COPY . .
@@ -1153,11 +1166,11 @@ jobs:
       - name: Install Pyve
         run: |
           git clone https://github.com/pointmatic/pyve.git /tmp/pyve
-          /tmp/pyve/pyve.sh --install
+          /tmp/pyve/pyve.sh self install
       
       - name: Setup environment
         run: |
-          pyve --init --backend micromamba \
+          pyve init --backend micromamba \
                --auto-bootstrap \
                --no-direnv \
                --strict

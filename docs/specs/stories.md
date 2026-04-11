@@ -204,24 +204,35 @@ See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improveme
 
 - [x] Folded into v1.11.0 (no separate version bump). CHANGELOG.md v1.11.0 entry gained a dedicated G.b.2 section.
 
-### Story G.b.3: CLI Refactor Doc + Spec Sync [Planned]
+### Story G.b.3: CLI Refactor Doc + Spec Sync [Done]
 
 Pure documentation. Excludes [docs/site/usage.md](docs/site/usage.md), which is owned by G.d. No code changes, no tests, no version bump (per the docs-only convention in this `stories.md` header).
 
 **Implementation checklist**
 
-- [ ] Update [README.md](README.md) examples from flag form to subcommand form
-- [ ] Sweep `docs/` (excluding `docs/site/usage.md` and `docs/specs/.archive/`) for any remaining `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --install` / `pyve --uninstall` / `pyve --python-version` strings and fix them
+- [x] Update [README.md](README.md) examples from flag form to subcommand form
+  - Bulk-converted all `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --python-version` / `pyve --uninstall` / `./pyve.sh --install` / `/tmp/pyve/pyve.sh --install` to subcommand form.
+  - Removed the `pyve -i` / `pyve -p` "Short form" example lines (short aliases dropped in G.b.1).
+  - Rewrote the "All Commands" block into five groups (Environment / Execution / Diagnostics / Self management / Universal flags) mirroring the new top-level `pyve --help` layout from G.b.2, and added a "Per-command help" pointer line.
+  - Fixed the direnv "Requirements" bullet to reference `pyve init` and `pyve python-version`.
+- [x] Sweep `docs/` (excluding `docs/site/usage.md` and `docs/specs/.archive/`) for any remaining `pyve --init` / `pyve --purge` / `pyve --validate` / `pyve --install` / `pyve --uninstall` / `pyve --python-version` strings and fix them
+  - Cleaned: `docs/site/ci-cd.md`, `docs/site/backends.md`, `docs/site/getting-started.md`, `docs/site/index.html`, `docs/specs/concept.md`, `docs/specs/brand-descriptions.md`, `docs/specs/pyve-run-examples.md`, `docs/specs/testing-spec.md`.
+  - Also cleaned top-level docs: `CONTRIBUTING.md`, `SECURITY.md`, `tests/README.md`.
+  - Also cleaned stale docstrings in integration test files: `test_force_ambiguous_prompt.py`, `test_force_backend_detection.py`, `test_pip_upgrade.py`, `test_lock_command.py` (docstring references only — test invocations were already converted in G.b.1).
+  - **Deliberately left alone** (intentional historical/narrative references): `docs/specs/phase-g-ux-improvements-plan.md` (planning doc for this refactor), `docs/specs/stories.md` (story history and Old→New tables), `CHANGELOG.md` v1.11.0 breaking-change section, `docs/specs/tech-spec.md` Legacy-Flag Error Catch section, `pyve.sh` dispatcher catch, `tests/unit/test_cli_dispatch.bats` (tests the catch itself).
 
 **Spec updates**
 
-- [ ] `docs/specs/features.md`
-  - [ ] Replace flag list in **Inputs > Required** with the subcommand list
-  - [ ] Update FR-1 (`init`), FR-2 (`purge`), FR-3 (`python-version`), FR-7 (`self install` / `self uninstall`) invocation syntax
-- [ ] `docs/specs/tech-spec.md`
-  - [ ] Update **CLI Design > Commands** table to the subcommand surface
-  - [ ] Document the `self` namespace
-  - [ ] Note the legacy-flag error catch in **Cross-Cutting Concerns**
+- [x] `docs/specs/features.md`
+  - [x] Replaced flag list in **Inputs > Required** with the subcommand list plus a note that legacy flag forms were removed in v1.11.0 (Decision D3)
+  - [x] Updated FR-1 (`pyve init`), FR-2 (`pyve purge`), FR-3 (`pyve python-version`), FR-6 (`pyve validate`), FR-7 (`pyve self install` / `pyve self uninstall`) headings and invocation syntax
+  - [x] Updated Core Requirements bullet 8 and Usability Requirements bullet 2 to reflect the dropped short aliases and new `self` namespace
+- [x] `docs/specs/tech-spec.md`
+  - [x] Rewrote **CLI Design > Commands** table to the subcommand surface (flat list with `pyve <sub>` syntax instead of the old two-part flag table)
+  - [x] Documented the `self` namespace (`self install`, `self uninstall`, and `self` with no subcommand → namespace help only)
+  - [x] Added a new **Per-Subcommand Help** subsection describing the G.b.2 `--help` plumbing and the four top-level categories
+  - [x] Updated the **Modifier Flags** table to show each flag attached to its renamed subcommand (e.g. `pyve init` instead of `--init`)
+  - [x] Added a dedicated **Legacy-Flag Error Catch** subsection to **Cross-Cutting Concerns** documenting the Decision D3 catch (kept forever, precise migration error, no compat shim)
 
 ---
 

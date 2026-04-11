@@ -49,7 +49,7 @@ class TestLockCommandGuards:
     def test_lock_fails_without_environment_yml(self, pyve, project_builder):
         """
         pyve lock without an environment.yml must fail with a clear error
-        that includes a 'pyve --init --backend micromamba' hint.
+        that includes a 'pyve init --backend micromamba' hint.
         No .pyve/config exists so the venv guard does not apply.
         """
         # No project files — no config, no environment.yml

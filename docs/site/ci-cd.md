@@ -39,7 +39,7 @@ jobs:
           /tmp/pyve/pyve.sh --install
       
       - name: Initialize environment
-        run: pyve --init --no-direnv
+        run: pyve init --no-direnv
       
       - name: Install dependencies
         run: pyve run pip install -r requirements.txt
@@ -70,7 +70,7 @@ jobs:
       
       - name: Initialize environment
         run: |
-          pyve --init --backend micromamba \
+          pyve init --backend micromamba \
                --auto-bootstrap \
                --no-direnv \
                --strict
@@ -127,7 +127,7 @@ jobs:
       
       - name: Setup environment
         run: |
-          pyve --init --backend micromamba \
+          pyve init --backend micromamba \
                --auto-bootstrap \
                --no-direnv \
                --strict
@@ -185,9 +185,9 @@ jobs:
       - name: Initialize environment
         run: |
           if [ "${{ matrix.backend }}" = "micromamba" ]; then
-            pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+            pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
           else
-            pyve --init --backend venv --no-direnv
+            pyve init --backend venv --no-direnv
           fi
       
       - name: Run tests
@@ -218,7 +218,7 @@ jobs:
           /tmp/pyve/pyve.sh --install
       
       - name: Setup environment
-        run: pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+        run: pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
       
       - name: Run tests
         run: pyve run pytest tests/
@@ -262,7 +262,7 @@ stages:
 test:
   stage: test
   script:
-    - pyve --init --no-direnv
+    - pyve init --no-direnv
     - pyve run pytest tests/ -v --cov
   artifacts:
     reports:
@@ -273,7 +273,7 @@ test:
 lint:
   stage: lint
   script:
-    - pyve --init --no-direnv
+    - pyve init --no-direnv
     - pyve run black --check .
     - pyve run mypy src/
     - pyve run ruff check
@@ -305,7 +305,7 @@ stages:
 test:
   stage: test
   script:
-    - pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+    - pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
     - pyve doctor
     - pyve run pytest tests/ -v
 ```
@@ -339,7 +339,7 @@ setup:
     - git clone https://github.com/pointmatic/pyve.git /tmp/pyve
     - /tmp/pyve/pyve.sh --install
     - export PATH="$HOME/.local/bin:$PATH"
-    - pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+    - pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
     - pyve doctor
   artifacts:
     paths:
@@ -428,7 +428,7 @@ COPY requirements.txt .
 COPY . .
 
 # Initialize environment and install dependencies
-RUN pyve --init --no-direnv && \
+RUN pyve init --no-direnv && \
     pyve run pip install -r requirements.txt
 
 # Run application
@@ -459,7 +459,7 @@ ENV PATH="/root/.local/bin:$PATH"
 COPY environment.yml conda-lock.yml ./
 
 # Initialize environment
-RUN pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 
 # Copy application code
 COPY . .
@@ -490,7 +490,7 @@ ENV PATH="/root/.local/bin:$PATH"
 
 COPY environment.yml conda-lock.yml ./
 
-RUN pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 
 # Stage 2: Runtime
 FROM ubuntu:22.04
@@ -598,7 +598,7 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 
 # Cache environment creation
 RUN --mount=type=cache,target=/root/.pyve \
-    pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict
+    pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 ```
 
 ## Best Practices
@@ -608,7 +608,7 @@ RUN --mount=type=cache,target=/root/.pyve \
 Direnv is not needed in CI environments:
 
 ```bash
-pyve --init --no-direnv
+pyve init --no-direnv
 ```
 
 ### 2. Use `--auto-bootstrap` for Micromamba
@@ -616,7 +616,7 @@ pyve --init --no-direnv
 Skip interactive prompts in CI:
 
 ```bash
-pyve --init --backend micromamba --auto-bootstrap
+pyve init --backend micromamba --auto-bootstrap
 ```
 
 ### 3. Use `--strict` for Lock File Validation
@@ -624,7 +624,7 @@ pyve --init --backend micromamba --auto-bootstrap
 Ensure reproducibility:
 
 ```bash
-pyve --init --backend micromamba --strict
+pyve init --backend micromamba --strict
 ```
 
 ### 4. Cache Aggressively
@@ -683,7 +683,7 @@ strategy:
 Use `--strict` to catch issues early:
 
 ```bash
-pyve --init --strict
+pyve init --strict
 ```
 
 ### 11. Gate on Lock File Currency
@@ -706,7 +706,7 @@ Add a pre-build step that fails CI if `conda-lock.yml` is out of date with `envi
 **Solution:** Ensure `--auto-bootstrap` is used:
 
 ```bash
-pyve --init --backend micromamba --auto-bootstrap
+pyve init --backend micromamba --auto-bootstrap
 ```
 
 ### Cache Not Working
@@ -745,10 +745,10 @@ chmod +x /tmp/pyve/pyve.sh
 
 **Problem:** `pyve run` fails with "No environment found".
 
-**Solution:** Ensure `pyve --init` ran successfully:
+**Solution:** Ensure `pyve init` ran successfully:
 
 ```bash
-pyve --init --no-direnv
+pyve init --no-direnv
 pyve doctor  # Verify setup
 pyve run python --version
 ```
@@ -788,7 +788,7 @@ dependencies:
 **Solution:** Use `--no-direnv` and check logs:
 
 ```dockerfile
-RUN pyve --init --backend micromamba --auto-bootstrap --no-direnv --strict && \
+RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict && \
     pyve doctor
 ```
 

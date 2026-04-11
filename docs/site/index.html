@@ -281,7 +281,7 @@
 
 <span class="comment"># Initialize your project environment</span>
 <span class="cmd">cd</span> ~/my-project
-<span class="cmd">pyve --init</span>
+<span class="cmd">pyve init</span>
 
 <span class="comment"># Run commands inside the environment</span>
 <span class="cmd">pyve run</span> python --version
@@ -301,7 +301,7 @@
         <div class="feature-card">
           <div class="feature-icon">&#9889;</div>
           <h3>One-Command Setup</h3>
-          <p>Initialize Python version, virtual environment, direnv, and <code>.gitignore</code> in a single <code>pyve --init</code>.</p>
+          <p>Initialize Python version, virtual environment, direnv, and <code>.gitignore</code> in a single <code>pyve init</code>.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">&#128260;</div>
@@ -316,7 +316,7 @@
         <div class="feature-card">
           <div class="feature-icon">&#128683;</div>
           <h3>Clean Teardown</h3>
-          <p><code>pyve --purge</code> removes all artifacts while preserving your secrets and user data.</p>
+          <p><code>pyve purge</code> removes all artifacts while preserving your secrets and user data.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">&#9881;</div>
@@ -326,7 +326,7 @@
         <div class="feature-card">
           <div class="feature-icon">&#128269;</div>
           <h3>Environment Diagnostics</h3>
-          <p><code>pyve doctor</code> and <code>pyve --validate</code> report health, version compatibility, and lock file status.</p>
+          <p><code>pyve doctor</code> and <code>pyve validate</code> report health, version compatibility, and lock file status.</p>
         </div>
         <div class="feature-card">
           <div class="feature-icon">&#128295;</div>
@@ -350,12 +350,12 @@
         <p>Make things easy and natural, but avoid being invasive.</p>
       </div>
       <div class="benefits-list">
-        <div class="benefit-item"><span class="check">&#10003;</span> One-command environment setup (<code>pyve --init</code>)</div>
+        <div class="benefit-item"><span class="check">&#10003;</span> One-command environment setup (<code>pyve init</code>)</div>
         <div class="benefit-item"><span class="check">&#10003;</span> Dual backend support &mdash; venv (pip) and micromamba (conda-compatible)</div>
         <div class="benefit-item"><span class="check">&#10003;</span> Automatic Python version management via asdf or pyenv</div>
         <div class="benefit-item"><span class="check">&#10003;</span> direnv integration for seamless shell activation</div>
         <div class="benefit-item"><span class="check">&#10003;</span> CI/CD-ready with non-interactive flags</div>
-        <div class="benefit-item"><span class="check">&#10003;</span> Clean teardown with <code>pyve --purge</code> &mdash; preserves your secrets</div>
+        <div class="benefit-item"><span class="check">&#10003;</span> Clean teardown with <code>pyve purge</code> &mdash; preserves your secrets</div>
         <div class="benefit-item"><span class="check">&#10003;</span> Zero runtime dependencies &mdash; pure Bash, no daemons</div>
       </div>
     </div>

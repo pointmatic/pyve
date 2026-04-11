@@ -15,7 +15,7 @@
 """
 Integration tests for pip auto-upgrade during initialization.
 
-Tests that pyve --init and pyve --init --update automatically upgrade pip
+Tests that pyve init and pyve init --update automatically upgrade pip
 to the latest version for both venv and micromamba backends.
 """
 
@@ -28,7 +28,7 @@ class TestPipUpgradeVenv:
     
     @pytest.mark.venv
     def test_init_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve --init upgrades pip to latest version."""
+        """Test that pyve init upgrades pip to latest version."""
         project_builder.create_requirements(['requests==2.31.0'])
         
         # Initialize with venv backend
@@ -52,7 +52,7 @@ class TestPipUpgradeVenv:
     
     @pytest.mark.venv
     def test_update_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve --init --update upgrades pip."""
+        """Test that pyve init --update upgrades pip."""
         project_builder.create_requirements(['requests==2.31.0'])
         
         # Initial setup
@@ -74,7 +74,7 @@ class TestPipUpgradeMicromamba:
     """Test pip auto-upgrade with micromamba backend."""
     
     def test_init_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve --init upgrades pip with micromamba backend."""
+        """Test that pyve init upgrades pip with micromamba backend."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11', 'requests']
@@ -99,7 +99,7 @@ class TestPipUpgradeMicromamba:
         assert major >= 23, f"pip version {pip_version} seems outdated"
     
     def test_update_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve --init --update upgrades pip with micromamba."""
+        """Test that pyve init --update upgrades pip with micromamba."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11', 'requests']

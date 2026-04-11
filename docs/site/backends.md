@@ -41,7 +41,7 @@ Pyve supports two virtual environment backends: **venv** (Python's built-in) and
 
 ```bash
 # Initialize with venv
-pyve --init 3.11
+pyve init 3.11
 
 # Install packages
 pip install requests flask pytest
@@ -99,7 +99,7 @@ pytest==7.4.3
 
 ```bash
 # Initialize with micromamba
-pyve --init 3.11 --backend micromamba
+pyve init 3.11 --backend micromamba
 
 # Install conda packages
 micromamba install numpy pandas matplotlib -c conda-forge
@@ -178,14 +178,14 @@ Force a specific backend:
 
 ```bash
 # Force venv (skip prompt)
-pyve --init --backend venv
+pyve init --backend venv
 
 # Force micromamba (skip prompt)
-pyve --init --backend micromamba
+pyve init --backend micromamba
 
 # Or set environment variable
 export PYVE_BACKEND=micromamba
-pyve --init
+pyve init
 ```
 
 ---
@@ -199,7 +199,7 @@ pyve --init
 pip freeze > requirements.txt
 
 # 2. Remove venv environment
-pyve --purge
+pyve purge
 
 # 3. Create environment.yml
 cat > environment.yml << EOF
@@ -216,7 +216,7 @@ dependencies:
 EOF
 
 # 4. Initialize with micromamba
-pyve --init --backend micromamba
+pyve init --backend micromamba
 
 # 5. Install dependencies
 micromamba install --file environment.yml
@@ -229,10 +229,10 @@ micromamba install --file environment.yml
 pip freeze > requirements.txt
 
 # 2. Remove micromamba environment
-pyve --purge
+pyve purge
 
 # 3. Initialize with venv
-pyve --init --backend venv
+pyve init --backend venv
 
 # 4. Install dependencies
 pip install -r requirements.txt
@@ -295,12 +295,12 @@ dependencies:
 **With conda-lock (reproducible):**
 
 ```bash
-# Add conda-lock to environment.yml, then run pyve --init --force to install it
+# Add conda-lock to environment.yml, then run pyve init --force to install it
 # Afterwards, generate a lock file:
 pyve lock
 
 # Creates conda-lock.yml with exact versions and hashes for the current platform
-# Commit conda-lock.yml — pyve --init reads it for reproducible builds
+# Commit conda-lock.yml — pyve init reads it for reproducible builds
 ```
 
 ---
@@ -348,7 +348,7 @@ pyve lock
 
 ```bash
 # Initialize
-pyve --init 3.11
+pyve init 3.11
 
 # Install dependencies
 pip install django psycopg2-binary gunicorn
@@ -364,7 +364,7 @@ pip freeze > requirements.txt
 
 ```bash
 # Initialize
-pyve --init 3.11 --backend micromamba
+pyve init 3.11 --backend micromamba
 
 # Install scientific stack
 micromamba install numpy pandas matplotlib jupyter scikit-learn -c conda-forge
@@ -398,7 +398,7 @@ EOF
 pyve lock
 
 # Initialize (reads conda-lock.yml for reproducibility)
-pyve --init --backend micromamba
+pyve init --backend micromamba
 
 # Install PyPI-only packages
 pip install custom-internal-package
@@ -406,7 +406,7 @@ pip install custom-internal-package
 # Both work together in same environment
 ```
 
-> **Note:** `pyve --init` requires `conda-lock.yml` to exist. During initial project setup before the file has been generated, use `pyve --init --no-lock`.
+> **Note:** `pyve init` requires `conda-lock.yml` to exist. During initial project setup before the file has been generated, use `pyve init --no-lock`.
 
 ### ML/Data Science Project with Both Files (v1.6.2+)
 
@@ -416,7 +416,7 @@ pip install custom-internal-package
 # - pyproject.toml (project metadata and pip-only packages)
 
 # Initialize (will prompt for backend)
-pyve --init
+pyve init
 
 # Output:
 # Detected files:
@@ -436,10 +436,10 @@ pyve --init
 ```bash
 # Non-interactive mode
 export CI=1
-pyve --init --auto-install-deps
+pyve init --auto-install-deps
 
 # Or explicit flags
-pyve --init --backend micromamba --auto-install-deps
+pyve init --backend micromamba --auto-install-deps
 ```
 
 ---
@@ -467,13 +467,13 @@ When Pyve initializes a micromamba environment, it automatically generates
 
 **`.gitignore` behavior:** `.vscode/settings.json` is automatically added to `.gitignore` (it is machine-specific). `.vscode/extensions.json` is not ignored — it is conventionally committed.
 
-**Re-initialization:** The file is not overwritten on `pyve --init --update`. It is regenerated on `pyve --init --force`.
+**Re-initialization:** The file is not overwritten on `pyve init --update`. It is regenerated on `pyve init --force`.
 
 ## Troubleshooting
 
 ### Project Inside a Cloud-Synced Directory
 
-**Problem:** `pyve --init` fails with `ERROR: Project is inside a cloud-synced directory`
+**Problem:** `pyve init` fails with `ERROR: Project is inside a cloud-synced directory`
 
 **Why it happens:** Pyve refuses to initialize inside `~/Documents`, `~/Desktop`, `~/Dropbox`, `~/Google Drive`, or `~/OneDrive`. Cloud sync daemons race against micromamba's package extraction, causing non-deterministic environment corruption.
 
@@ -482,25 +482,25 @@ When Pyve initializes a micromamba environment, it automatically generates
 ```bash
 mv ~/Documents/myproject ~/Developer/myproject
 cd ~/Developer/myproject
-pyve --init
+pyve init
 ```
 
 If you have disabled sync for that path and understand the risk:
 
 ```bash
-pyve --init --allow-synced-dir
+pyve init --allow-synced-dir
 # or: export PYVE_ALLOW_SYNCED_DIR=1
 ```
 
 ### Missing conda-lock.yml (micromamba)
 
-**Problem:** `pyve --init` fails with `ERROR: No conda-lock.yml found`
+**Problem:** `pyve init` fails with `ERROR: No conda-lock.yml found`
 
 **Solution:** Generate the lock file first:
 
 ```bash
 pyve lock       # detects platform automatically
-pyve --init
+pyve init
 ```
 
 Or invoke conda-lock directly if needed:
@@ -513,7 +513,7 @@ conda-lock -f environment.yml -p linux-64     # Linux
 During initial project setup before the lock file exists:
 
 ```bash
-pyve --init --no-lock   # not recommended for shared projects
+pyve init --no-lock   # not recommended for shared projects
 ```
 
 ### venv: Package Won't Install
@@ -523,8 +523,8 @@ pyve --init --no-lock   # not recommended for shared projects
 **Solution:** Switch to micromamba for pre-built binaries
 
 ```bash
-pyve --purge
-pyve --init --backend micromamba
+pyve purge
+pyve init --backend micromamba
 micromamba install numpy -c conda-forge
 ```
 
@@ -549,7 +549,7 @@ pip install problematic-package
 **Solution:** Force the backend explicitly
 
 ```bash
-pyve --init --backend venv
+pyve init --backend venv
 ```
 
 ### Ambiguous Backend Prompt Appears
@@ -566,16 +566,16 @@ pyve --init --backend venv
 # Or type 'n' to use venv
 
 # Option 2: Force backend explicitly
-pyve --init --backend micromamba
+pyve init --backend micromamba
 
 # Option 3: Set environment variable for CI/CD
 export CI=1  # Auto-defaults to micromamba
-pyve --init
+pyve init
 
 # Option 4: Remove unused file
 # If you don't need conda packages, remove environment.yml
 rm environment.yml
-pyve --init  # Will use venv
+pyve init  # Will use venv
 ```
 
 ### Environment Size Too Large
@@ -589,8 +589,8 @@ pyve --init  # Will use venv
 micromamba clean --all
 
 # Or switch to venv if you don't need conda packages
-pyve --purge
-pyve --init --backend venv
+pyve purge
+pyve init --backend venv
 ```
 
 ---
@@ -624,7 +624,7 @@ pip-compile --generate-hashes requirements.in
 ```bash
 pyve lock
 # Commit conda-lock.yml to git — it must be committed, not ignored
-# (pyve --init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
+# (pyve init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
 ```
 
 ### Document Your Choice
@@ -637,7 +637,7 @@ Add to README.md:
 This project uses Pyve with the **venv** backend.
 
 \`\`\`bash
-pyve --init
+pyve init
 pip install -r requirements.txt
 \`\`\`
 ```
@@ -650,7 +650,7 @@ Or for micromamba:
 This project uses Pyve with the **micromamba** backend for scientific packages.
 
 \`\`\`bash
-pyve --init --backend micromamba
+pyve init --backend micromamba
 micromamba install --file environment.yml
 \`\`\`
 ```
