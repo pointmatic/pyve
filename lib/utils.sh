@@ -120,7 +120,17 @@ prompt_install_pip_dependencies() {
         fi
         pip_cmd="$micromamba_path run -p $env_path pip"
     else
-        pip_cmd="pip"
+        # venv backend: use the venv's own pip to avoid the asdf shim
+        # (which installs into the base Python and auto-reshims).
+        if [[ -z "$env_path" ]]; then
+            log_warning "Cannot install pip dependencies: venv env_path not provided"
+            return 1
+        fi
+        pip_cmd="$env_path/bin/pip"
+        if [[ ! -x "$pip_cmd" ]]; then
+            log_warning "Cannot install pip dependencies: pip not found at $pip_cmd"
+            return 1
+        fi
     fi
     
     # Auto-install mode (CI or --auto-install-deps flag)

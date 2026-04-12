@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.13.1"
+VERSION="1.13.2"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1006,12 +1006,14 @@ EOF
     
     printf "\n✓ Python environment initialized successfully!\n"
 
-    # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
-    prompt_install_pip_dependencies
-
-    # project-guide hook (Story G.c / FR-G2)
+    # Absolute venv path — used by both dep install and project-guide hooks
     local _venv_abs
     _venv_abs="$(cd "$venv_dir" && pwd)"
+
+    # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
+    prompt_install_pip_dependencies "venv" "$_venv_abs"
+
+    # project-guide hook (Story G.c / FR-G2)
     run_project_guide_hooks "venv" "$_venv_abs" \
         "$project_guide_mode" "$project_guide_completion_mode"
 
