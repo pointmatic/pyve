@@ -425,7 +425,7 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 
 ### project-guide rc-file Sentinel (v1.12.0+, Story G.c / FR-G2)
 
-The `pyve init --project-guide-completion` hook appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc`:
+The `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 # >>> project-guide completion (added by pyve) >>>
@@ -436,7 +436,8 @@ command -v project-guide >/dev/null 2>&1 && \
 
 The opening sentinel comment (`# >>> project-guide completion (added by pyve) >>>`) is the source of truth for idempotent insertion and removal:
 
-- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Preserves the rest of the rc file. Creates the rc file if missing.
+- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the eval block via an unquoted heredoc (a doubled `\\` followed by a real newline produces a proper shell line continuation in the output — see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead). Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
+- **SDKMan-aware insertion** (`insert_text_before_sdkman_marker_or_append` in `lib/utils.sh`, v1.13.1+, Story G.e): if the SDKMan end-of-file marker `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present in the rc file, the new block is inserted *immediately above* it via awk so SDKMan retains its required last-position. Otherwise the block is appended to the end. Always emits a leading blank line before the inserted block (unless the file is empty in the SDKMan-absent case), which gives `remove_project_guide_completion` a stable preceding-blank to consume and guarantees byte-identical add → remove round-trips. The same helper is used by `install_prompt_hook` in `pyve.sh` so the prompt hook and the completion block share one SDKMan-aware code path.
 - **Removal** (`remove_project_guide_completion` in `lib/utils.sh`): removes only the sentinel-bracketed block plus one immediately-preceding blank line (so add → remove round-trips cleanly). Awk-based, BSD/GNU compatible.
 - **Detection** (`is_project_guide_completion_present` in `lib/utils.sh`): a single `grep -qF` against the opening sentinel.
 
@@ -459,8 +460,9 @@ The following helpers in `lib/utils.sh` implement the three-step project-guide h
 | `detect_user_shell()` | Reads `$SHELL`, prints `zsh` / `bash` / `unknown`. |
 | `get_shell_rc_path(shell)` | Maps `zsh` → `$HOME/.zshrc`, `bash` → `$HOME/.bashrc`, anything else → empty string. |
 | `is_project_guide_completion_present(rc_path)` | Detects the sentinel block. |
-| `add_project_guide_completion(rc_path, shell)` | Step 3: appends the sentinel-bracketed block. Idempotent. Creates rc file if missing. |
+| `add_project_guide_completion(rc_path, shell)` | Step 3: builds the sentinel-bracketed block via heredoc and delegates insertion to `insert_text_before_sdkman_marker_or_append`. Idempotent. Creates rc file if missing. |
 | `remove_project_guide_completion(rc_path)` | Removes the sentinel block. Safe no-op if absent. |
+| `insert_text_before_sdkman_marker_or_append(rc_path, content)` | (v1.13.1+, Story G.e) Shared SDKMan-aware rc-file insertion. If `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present, inserts `content` immediately above it; otherwise appends. Always emits a leading blank line for round-trip symmetry with `remove_project_guide_completion`. Used by both `add_project_guide_completion` and `install_prompt_hook` in `pyve.sh`. |
 
 The orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` calls these in priority order. Tri-state mode arguments (`""` / `"yes"` / `"no"`) come from CLI flag parsing in `init()`. The auto-skip safety mechanism fires between explicit flag overrides and the prompt/CI default path.
 

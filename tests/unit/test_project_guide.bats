@@ -272,6 +272,210 @@ EOF
 }
 
 #============================================================
+# add_project_guide_completion — Story G.e regression tests
+# Bug 1: literal '\n' instead of newline + line continuation
+# Bug 2: SDKMan-blind append breaks SDKMan load order
+#============================================================
+
+@test "add_project_guide_completion: emits a real newline + backslash, not literal '\\n' (G.e bug 2)" {
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # The pre-G.e bug emitted the 2-char sequence (backslash + 'n')
+    # in place of a real newline. Assert no literal backslash-n
+    # appears anywhere in the file.
+    ! grep -qF '\n' "$HOME/.zshrc"
+
+    # The continuation line and the eval line must both exist as
+    # SEPARATE lines. Use grep -nE to confirm the eval is on its
+    # own line (not joined onto the &&\\ line).
+    grep -qE '&& \\$' "$HOME/.zshrc"
+    grep -qE '^  eval ' "$HOME/.zshrc"
+}
+
+@test "add_project_guide_completion: emitted block is syntactically valid zsh (G.e bug 2)" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    add_project_guide_completion "$HOME/.zshrc" zsh
+    zsh -n "$HOME/.zshrc"
+}
+
+@test "add_project_guide_completion: emitted block is syntactically valid bash (G.e bug 2)" {
+    add_project_guide_completion "$HOME/.bashrc" bash
+    bash -n "$HOME/.bashrc"
+}
+
+@test "add_project_guide_completion: SDKMan absent — block appended to end (G.e bug 1)" {
+    cat > "$HOME/.zshrc" << 'EOF'
+export PATH="/usr/local/bin:$PATH"
+alias ll='ls -lah'
+EOF
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # Sentinel block must be present and below the existing content.
+    grep -qF "$SENTINEL_OPEN" "$HOME/.zshrc"
+    local user_line sentinel_line
+    user_line=$(grep -nF "alias ll=" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    sentinel_line=$(grep -nF "$SENTINEL_OPEN" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    [ "$user_line" -lt "$sentinel_line" ]
+}
+
+@test "add_project_guide_completion: SDKMan present — block inserted BEFORE the marker (G.e bug 1)" {
+    cat > "$HOME/.zshrc" << 'EOF'
+export PATH="/usr/local/bin:$PATH"
+alias ll='ls -lah'
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+EOF
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # Sentinel must precede the SDKMan marker line.
+    local sentinel_line sdkman_line
+    sentinel_line=$(grep -nF "$SENTINEL_OPEN" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    sdkman_line=$(grep -nF "THIS MUST BE AT THE END" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    [ -n "$sentinel_line" ]
+    [ -n "$sdkman_line" ]
+    [ "$sentinel_line" -lt "$sdkman_line" ]
+}
+
+@test "add_project_guide_completion: SDKMan present — SDKMan section unchanged (G.e bug 1)" {
+    cat > "$HOME/.zshrc" << 'EOF'
+alias ll='ls -lah'
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+EOF
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # SDKMan marker and the two SDKMan lines below it must still be
+    # present, in order, and the second SDKMan line must remain the
+    # last non-blank line in the file.
+    grep -qF "THIS MUST BE AT THE END" "$HOME/.zshrc"
+    grep -qF 'SDKMAN_DIR="$HOME/.sdkman"' "$HOME/.zshrc"
+    grep -qF "sdkman-init.sh" "$HOME/.zshrc"
+
+    local last_nonblank
+    last_nonblank=$(grep -v '^$' "$HOME/.zshrc" | tail -n 1)
+    [[ "$last_nonblank" == *"sdkman-init.sh"* ]]
+}
+
+@test "add_project_guide_completion: SDKMan present — round-trip add+remove is byte-identical (G.e bug 1)" {
+    cat > "$HOME/.zshrc" << 'EOF'
+export PATH="/usr/local/bin:$PATH"
+alias ll='ls -lah'
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+EOF
+    local before
+    before="$(cat "$HOME/.zshrc")"
+
+    add_project_guide_completion "$HOME/.zshrc" zsh
+    remove_project_guide_completion "$HOME/.zshrc"
+
+    local after
+    after="$(cat "$HOME/.zshrc")"
+    [[ "$before" == "$after" ]]
+}
+
+#============================================================
+# insert_text_before_sdkman_marker_or_append — Story G.e helper
+# Shared SDKMan-aware insertion used by both install_prompt_hook
+# and add_project_guide_completion.
+#============================================================
+
+@test "insert_text_before_sdkman_marker_or_append: SDKMan absent — appends to end" {
+    cat > "$HOME/.zshrc" << 'EOF'
+existing_line
+EOF
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "new_line"
+
+    grep -qxF "existing_line" "$HOME/.zshrc"
+    grep -qxF "new_line" "$HOME/.zshrc"
+    local last
+    last=$(tail -n 1 "$HOME/.zshrc")
+    [[ "$last" == "new_line" ]]
+}
+
+@test "insert_text_before_sdkman_marker_or_append: SDKMan present — inserts above marker" {
+    cat > "$HOME/.zshrc" << 'EOF'
+line_a
+line_b
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+sdkman_payload
+EOF
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "inserted_line"
+
+    grep -qxF "inserted_line" "$HOME/.zshrc"
+    local inserted_lineno marker_lineno
+    inserted_lineno=$(grep -nF "inserted_line" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    marker_lineno=$(grep -nF "THIS MUST BE AT THE END" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    [ "$inserted_lineno" -lt "$marker_lineno" ]
+
+    # SDKMan payload must remain after the marker.
+    grep -qxF "sdkman_payload" "$HOME/.zshrc"
+}
+
+@test "insert_text_before_sdkman_marker_or_append: empty file — content becomes the only content" {
+    : > "$HOME/.zshrc"
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "only_line"
+
+    grep -qxF "only_line" "$HOME/.zshrc"
+    [ "$(wc -l < "$HOME/.zshrc")" -eq 1 ]
+}
+
+@test "insert_text_before_sdkman_marker_or_append: missing file — creates it" {
+    [ ! -f "$HOME/.zshrc" ]
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "fresh_line"
+    [ -f "$HOME/.zshrc" ]
+    grep -qxF "fresh_line" "$HOME/.zshrc"
+}
+
+@test "insert_text_before_sdkman_marker_or_append: multi-line content preserved verbatim" {
+    cat > "$HOME/.zshrc" << 'EOF'
+existing
+EOF
+    local block
+    block="$(printf 'line_one\nline_two\nline_three\n')"
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "$block"
+
+    grep -qxF "line_one" "$HOME/.zshrc"
+    grep -qxF "line_two" "$HOME/.zshrc"
+    grep -qxF "line_three" "$HOME/.zshrc"
+
+    # Order: existing → line_one → line_two → line_three
+    local existing_n one_n two_n three_n
+    existing_n=$(grep -nxF "existing" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    one_n=$(grep -nxF "line_one" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    two_n=$(grep -nxF "line_two" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    three_n=$(grep -nxF "line_three" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    [ "$existing_n" -lt "$one_n" ]
+    [ "$one_n" -lt "$two_n" ]
+    [ "$two_n" -lt "$three_n" ]
+}
+
+@test "insert_text_before_sdkman_marker_or_append: SDKMan present — multi-line block lands above marker" {
+    cat > "$HOME/.zshrc" << 'EOF'
+user_line
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+sdkman_init
+EOF
+    local block
+    block="$(printf 'block_a\nblock_b\nblock_c\n')"
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "$block"
+
+    local a_n marker_n
+    a_n=$(grep -nxF "block_a" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    marker_n=$(grep -nF "THIS MUST BE AT THE END" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    [ "$a_n" -lt "$marker_n" ]
+    grep -qxF "sdkman_init" "$HOME/.zshrc"
+}
+
+#============================================================
 # remove_project_guide_completion — surgical removal
 #============================================================
 

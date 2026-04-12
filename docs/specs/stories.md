@@ -458,7 +458,84 @@ See [docs/specs/phase-g-ux-improvements-plan.md](docs/specs/phase-g-ux-improveme
 
 ---
 
-### Story G.e: Investigate Python 3.14 CI Testing [Planned]
+### Story G.e: v1.13.1 `project-guide` Completion Hotfix — SDKMan-Aware Insertion + Literal `\n` Bug [Done]
+
+Hotfix for two real bugs in the `project-guide` shell-completion step (step 3 of the three-step hook from G.c, v1.12.0). Both surfaced when the project owner ran `pyve init --project-guide-completion` against their daily-driver `~/.zshrc` and discovered (a) the block was inserted *after* the SDKMan end-of-file marker, breaking SDKMan's load order, and (b) static completion didn't work even after restarting the shell because the emitted block contained a literal `\n` instead of a real newline + line continuation.
+
+**Bug 1 — SDKMan-blind append.** `add_project_guide_completion()` in [lib/utils.sh:304-339](lib/utils.sh#L304-L339) appends to the rc file with a plain `>> "$rc_path"` redirect. Pyve already has SDKMan-aware insertion logic in `install_prompt_hook()` at [pyve.sh:1717-1729](pyve.sh#L1717-L1729) that scans for the marker
+
+```
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+```
+
+and `awk`-inserts the new line *before* it. G.c reimplemented its own append rather than reusing or factoring out this existing helper. Result: the project-guide completion block lands after the SDKMan marker, demoting SDKMan from "last thing in the file" and breaking its load order.
+
+**Bug 2 — Literal `\n` instead of newline + continuation.** Line 335 emits the eval block via:
+
+```bash
+printf "command -v project-guide >/dev/null 2>&1 && \\\n"
+```
+
+In a bash double-quoted string, `\n` is *not* an escape — `n` is not in bash's double-quote escape set, so bash preserves both characters literally. The format string handed to `printf` is `\\n` (3 chars), which printf renders as `\n` (2 chars: backslash, `n`). The user's `~/.zshrc` ends up with this single broken line:
+
+```
+command -v project-guide >/dev/null 2>&1 && \n  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+```
+
+Zsh parses `\n` after `&&` as the literal command `n`, which doesn't exist. The eval never runs. `project-guide st<TAB>` does not complete even after restarting the shell. The fix is either to switch the format string to single quotes (so bash leaves the backslash alone) or use a heredoc.
+
+**Why a hotfix and not a follow-up release.** Both bugs are user-visible regressions on the v1.12.0 happy path. The completion step is opt-in for CI but defaults *on* for interactive `pyve init`, so any user who took the default `[Y/n]` prompt has a broken rc file. The fix is small (~30 lines of code + tests) and well-isolated to the project-guide hook.
+
+**Implementation checklist**
+
+- [x] **Extract SDKMan-aware insertion helper.** Added `insert_text_before_sdkman_marker_or_append(rc_path, content)` to `lib/utils.sh`. SDKMan-present branch uses awk + temp-file `getline` (BSD awk on macOS rejects newlines in `-v` variables). SDKMan-absent branch appends. Always emits a leading blank line for round-trip symmetry with `remove_project_guide_completion`. Also added the `SDKMAN_END_MARKER` constant.
+- [x] **Refactor `install_prompt_hook()`** in `pyve.sh` to call the new helper instead of inlining the SDKMan-marker awk. Behavior preserved for both SDKMan-present and SDKMan-absent users (smoke-tested against a fixture rc file with the marker).
+- [x] **Refactor `add_project_guide_completion()`** in `lib/utils.sh` to call the new helper. Block construction is now a single heredoc + helper call (~12 lines vs. 36 lines pre-G.e).
+- [x] **Fix the literal-`\n` bug** via unquoted heredoc — `\\` followed by a real newline produces a real backslash + real newline in the output (`od -c` confirms `... & & \  \n` instead of `... & & \  \\  n`). The escaped `\$(...)` writes a literal `$(...)` to the rc file so the eval runs at shell startup.
+- [x] **`remove_project_guide_completion()`** unchanged — the sentinel lines are unchanged so the existing awk-based stripper handles the new block correctly. Verified by the round-trip test in both SDKMan-present and SDKMan-absent cases.
+- [x] **Bump VERSION to 1.13.1** in `pyve.sh`.
+
+**Tests**
+
+- [x] **Bats — 7 new tests for `add_project_guide_completion` in `tests/unit/test_project_guide.bats`:**
+  - `emits a real newline + backslash, not literal '\n'` — regression guard for bug 2 (asserts no literal `\n` in the file, asserts the `&& \` and `  eval` lines are separate)
+  - `emitted block is syntactically valid zsh` — `zsh -n` parse-only check (skipped if zsh not on PATH)
+  - `emitted block is syntactically valid bash` — `bash -n` parse-only check
+  - `SDKMan absent — block appended to end` — happy-path regression guard
+  - `SDKMan present — block inserted BEFORE the marker` — bug 1 fix verification
+  - `SDKMan present — SDKMan section unchanged` — asserts the SDKMan marker line and its `sdkman-init.sh` payload survive insertion and remain the last non-blank lines
+  - `SDKMan present — round-trip add+remove is byte-identical`
+- [x] **Bats — 6 new tests for the extracted helper:**
+  - `SDKMan absent — appends to end`
+  - `SDKMan present — inserts above marker`
+  - `empty file — content becomes the only content`
+  - `missing file — creates it`
+  - `multi-line content preserved verbatim`
+  - `SDKMan present — multi-line block lands above marker`
+- [x] **Regression guard for `install_prompt_hook()`** — covered by the existing 11 project-guide pytest integration tests (which exercise the prompt hook indirectly via `pyve init --project-guide-completion`) plus the smoke test of the helper's contract. No tests previously pinned `install_prompt_hook()`'s exact byte output, so the refactor has no broken-test surface.
+- [x] **Pytest integration** — full suite still passes (243 passed, 26 environment-conditional skips, 0 failures). The SDKMan-marker fixture case is covered exhaustively by bats; no new pytest cases needed.
+- [x] **Skipped per developer decision (Q3):** end-to-end "spawn zsh, source the rc file, tab-complete `project-guide st<TAB>`" test. Brittle, untestable in non-interactive zsh. Bats `zsh -n` syntax check + the `od -c` byte assertion are sufficient.
+- [ ] **Manual verification on the project owner's `~/.zshrc`** — deferred to user (will be tested post-merge against the daily-driver rc file)
+
+**Spec updates**
+
+- [x] `docs/specs/tech-spec.md` — **project-guide rc-file Sentinel** section updated to document SDKMan-aware insertion and the heredoc construction. **project-guide Helper Functions** table extended with `insert_text_before_sdkman_marker_or_append`.
+- [x] `docs/specs/features.md` — no changes (FR-16 still describes the same observable behavior)
+- [x] `docs/site/usage.md` — no changes (the user-facing description of the hook is unchanged; this is a bugfix, not a behavior change)
+
+**CHANGELOG**
+
+- [x] Updated CHANGELOG.md with a `[1.13.1] - 2026-04-11` entry documenting both bugs by symptom and root cause, the refactor, and a manual migration note. No automated migration / legacy detection (the broken block is benign at runtime, audience for the hotfix is small).
+
+**Out of scope (deferred)**
+
+- Generalizing the SDKMan-marker handling beyond the project-guide hook and the prompt hook (e.g., hypothetical future features that touch rc files) — the helper exists, future features can call it
+- Detecting *other* "must be last" markers from other tools (nvm, rbenv, etc.) — SDKMan is the only one we know about today
+- Verifying completion against `bash` (we currently target zsh as the daily driver; bash coverage stays at "the block is syntactically valid bash")
+
+---
+
+### Story G.f: Investigate Python 3.14 CI Testing [Planned]
 
 Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
 
