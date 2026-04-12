@@ -201,6 +201,76 @@ prompt_install_pip_dependencies() {
 readonly PROJECT_GUIDE_COMPLETION_OPEN="# >>> project-guide completion (added by pyve) >>>"
 readonly PROJECT_GUIDE_COMPLETION_CLOSE="# <<< project-guide completion <<<"
 
+# SDKMan's "must be at end of file" load-order marker. Pyve respects
+# this marker when inserting any new content into a user rc file:
+# instead of appending, the new content is inserted immediately
+# above the marker so SDKMan retains its end-of-file position.
+readonly SDKMAN_END_MARKER="#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!"
+
+# Insert a multi-line text block into a user rc file. If the SDKMan
+# end-of-file marker is present, insert the block immediately before
+# it (preserving SDKMan's "must be last" load-order requirement).
+# Otherwise, append the block to the end of the file.
+#
+# Creates the rc file if missing. ALWAYS emits a leading blank line
+# before the inserted block (when the file is non-empty in the
+# SDKMan-absent case, or unconditionally in the SDKMan-present
+# case). The companion remove_project_guide_completion() eats one
+# preceding blank line, so this convention guarantees byte-identical
+# add → remove round-trips regardless of the original file's
+# trailing whitespace.
+#
+# Usage: insert_text_before_sdkman_marker_or_append <rc_path> <content>
+#   content: the text to insert. A trailing newline will be added if
+#            absent so the inserted block is well-formed.
+insert_text_before_sdkman_marker_or_append() {
+    local rc_path="$1"
+    local content="$2"
+
+    # Create the rc file if missing.
+    if [[ ! -f "$rc_path" ]]; then
+        touch "$rc_path" || return 1
+    fi
+
+    # Ensure content ends with a newline so the inserted block is
+    # well-formed regardless of how the caller built it.
+    [[ "$content" == *$'\n' ]] || content+=$'\n'
+
+    if grep -qF "$SDKMAN_END_MARKER" "$rc_path"; then
+        # SDKMan present: insert the content immediately above the
+        # marker line, always preceded by a blank line for
+        # readability and round-trip symmetry.
+        #
+        # Implementation note: BSD awk on macOS rejects embedded
+        # newlines in -v variables, so we stage the multi-line block
+        # in a temp file and have awk read it line-by-line via
+        # getline on the first marker hit.
+        local tmpfile blockfile
+        tmpfile="$(mktemp "${rc_path}.tmp.XXXXXX")" || return 1
+        blockfile="$(mktemp "${rc_path}.blk.XXXXXX")" || { rm -f "$tmpfile"; return 1; }
+        printf "%s" "$content" > "$blockfile"
+        awk -v marker="$SDKMAN_END_MARKER" -v block_file="$blockfile" '
+            BEGIN { inserted = 0 }
+            $0 == marker && !inserted {
+                print ""
+                while ((getline line < block_file) > 0) print line
+                close(block_file)
+                inserted = 1
+            }
+            { print }
+        ' "$rc_path" > "$tmpfile" || { rm -f "$tmpfile" "$blockfile"; return 1; }
+        rm -f "$blockfile"
+        mv -f "$tmpfile" "$rc_path"
+    else
+        # SDKMan absent: append. Always emit a leading blank line
+        # if the file is non-empty (round-trip symmetry with remove).
+        if [[ -s "$rc_path" ]]; then
+            printf "\n" >> "$rc_path"
+        fi
+        printf "%s" "$content" >> "$rc_path"
+    fi
+}
+
 # Prompt whether to install project-guide into the project env.
 #
 # Returns 0 to install, 1 to skip.
@@ -298,6 +368,10 @@ is_project_guide_completion_present() {
 # Append a project-guide completion block to the user's rc file.
 # Idempotent: no-op if the sentinel is already present.
 # Creates the rc file if it does not exist.
+# SDKMan-aware: if the SDKMan end-of-file marker is present, the
+# block is inserted immediately above it via
+# insert_text_before_sdkman_marker_or_append() so SDKMan retains its
+# "must be last" load-order position.
 #
 # Usage: add_project_guide_completion <rc_path> <shell>
 #   shell: "zsh" or "bash" — determines the completion eval command
@@ -310,32 +384,24 @@ add_project_guide_completion() {
         return 0
     fi
 
-    # Create the rc file if missing so users without an existing
-    # config still get completion wiring.
-    if [[ ! -f "$rc_path" ]]; then
-        touch "$rc_path" || return 1
-    fi
+    # Build the completion block via an unquoted heredoc. The doubled
+    # backslash before the embedded newline (\\) is critical: bash
+    # heredoc processing turns \\ into a single literal backslash,
+    # which is then followed by a real newline, producing a proper
+    # shell line-continuation in the output. The escaped \$(...) is
+    # likewise critical: it writes a literal $(...) substitution to
+    # the rc file so the eval runs at SHELL STARTUP, not at
+    # block-construction time.
+    local block
+    block="$(cat <<EOF
+$PROJECT_GUIDE_COMPLETION_OPEN
+command -v project-guide >/dev/null 2>&1 && \\
+  eval "\$(_PROJECT_GUIDE_COMPLETE=${shell}_source project-guide)"
+$PROJECT_GUIDE_COMPLETION_CLOSE
+EOF
+)"
 
-    # Ensure the block is preceded by a blank line if the file
-    # has content, for readability.
-    local needs_blank_line=false
-    if [[ -s "$rc_path" ]]; then
-        local last_line
-        last_line="$(tail -n 1 "$rc_path")"
-        if [[ -n "$last_line" ]]; then
-            needs_blank_line=true
-        fi
-    fi
-
-    {
-        if [[ "$needs_blank_line" == true ]]; then
-            printf "\n"
-        fi
-        printf "%s\n" "$PROJECT_GUIDE_COMPLETION_OPEN"
-        printf "command -v project-guide >/dev/null 2>&1 && \\\n"
-        printf "  eval \"\$(_PROJECT_GUIDE_COMPLETE=%s_source project-guide)\"\n" "$shell"
-        printf "%s\n" "$PROJECT_GUIDE_COMPLETION_CLOSE"
-    } >> "$rc_path"
+    insert_text_before_sdkman_marker_or_append "$rc_path" "$block"
 }
 
 # Remove the project-guide completion sentinel block from a user rc file.

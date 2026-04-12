@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.13.0"
+VERSION="1.13.1"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1709,26 +1709,18 @@ EOF
         touch "$rc_file"
     fi
 
-    # Remove any existing pyve prompt hook line (allows relocating it safely)
+    # Remove any existing pyve prompt hook line (idempotency: allows
+    # relocating the line safely on re-install).
     local tmp_rc
     tmp_rc="$(mktemp)"
     grep -vF "$PROMPT_HOOK_FILE" "$rc_file" > "$tmp_rc"
-
-    # Respect SDKMAN guidance about being at end of file
-    local sdkman_marker="#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!"
-    if grep -qF "$sdkman_marker" "$tmp_rc"; then
-        local tmp_out
-        tmp_out="$(mktemp)"
-        awk -v marker="$sdkman_marker" -v line="$source_line" '
-            $0 == marker { print line }
-            { print }
-        ' "$tmp_rc" > "$tmp_out"
-        mv -f "$tmp_out" "$tmp_rc"
-    else
-        printf "\n%s\n" "$source_line" >> "$tmp_rc"
-    fi
-
     mv -f "$tmp_rc" "$rc_file"
+
+    # Insert via the shared SDKMan-aware helper. This respects
+    # SDKMan's "must be last" load-order guidance and matches the
+    # insertion behavior of the project-guide completion block.
+    insert_text_before_sdkman_marker_or_append "$rc_file" "$source_line"
+
     log_success "Added prompt hook to $rc_file"
 }
 
