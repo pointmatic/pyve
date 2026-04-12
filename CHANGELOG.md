@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.2] - 2026-04-11
+
+### Fixed — `prompt_install_pip_dependencies` installs into base asdf Python instead of venv (Story G.f)
+
+`prompt_install_pip_dependencies()` in `lib/utils.sh` set `pip_cmd="pip"` for the venv backend. Because the venv is not yet activated during `pyve init` (direnv activation happens *after* init completes), bare `pip` resolved to `~/.asdf/shims/pip` — the asdf-python plugin's pip wrapper. This caused two problems:
+
+1. **Packages installed into the base asdf Python** instead of the project venv. `pip install -e .` wrote to `~/.asdf/installs/python/<version>/lib/pythonX.Y/site-packages/` rather than `.venv/lib/`.
+2. **asdf's pip wrapper auto-reshimmed** (`asdf reshim python` after every install), creating global shims (e.g., `~/.asdf/shims/project-guide`) for any console scripts the installed package declared. These shims persisted outside the venv, shadowed the correct venv binary, and reappeared every time `asdf reshim python` ran.
+
+**Root cause:** `install_project_guide()` (same file) correctly used `$env_path/bin/pip` for the venv backend, but `prompt_install_pip_dependencies()` used bare `pip`. The call site in `pyve.sh` also did not pass the venv path.
+
+**Fix:** `prompt_install_pip_dependencies()` now requires `env_path` for the venv backend and uses `$env_path/bin/pip`, matching the pattern in `install_project_guide()`. The call site in `pyve.sh` now passes the absolute venv path.
+
+### Tests
+
+- **Bats — 2 new tests in `tests/unit/test_utils.bats`:**
+  - `prompt_install_pip_dependencies: venv backend uses env_path/bin/pip, not bare pip` — verifies the venv's pip is called (not the asdf shim) when `env_path` is provided
+  - `prompt_install_pip_dependencies: venv backend without env_path returns error` — verifies the function returns 1 with a warning when `env_path` is missing, instead of falling back to bare `pip`
+- Full bats suite: **419 passing**, 0 failures.
+
+### Spec updates
+
+- `docs/specs/tech-spec.md` — updated `prompt_install_pip_dependencies` entry in the helper functions table: `env_path` is now required (not optional) for both backends.
+- `docs/specs/features.md` — no changes (observable behavior unchanged; this is a bugfix).
+
+---
+
 ## [1.13.1] - 2026-04-11
 
 ### Fixed — `project-guide` shell-completion bugs (Story G.e)

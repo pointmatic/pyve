@@ -141,7 +141,7 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `log_error` | `(message)` | Print `ERROR: <message>` to stderr |
 | `log_success` | `(message)` | Print `✓ <message>` to stdout |
 | `prompt_yes_no` | `(prompt)` → 0/1 | Prompt user for y/n confirmation |
-| `prompt_install_pip_dependencies` | `(backend?, env_path?)` → 0/1 | Prompt to install pip dependencies from `pyproject.toml` or `requirements.txt`; supports both venv and micromamba backends |
+| `prompt_install_pip_dependencies` | `(backend?, env_path)` → 0/1 | Prompt to install pip dependencies from `pyproject.toml` or `requirements.txt`. `env_path` is required for both backends: venv uses `$env_path/bin/pip`; micromamba uses `micromamba run -p $env_path pip`. Returns 1 if `env_path` is missing or pip is not found. |
 | `gitignore_has_pattern` | `(pattern)` → 0/1 | Check if exact line exists in `.gitignore` |
 | `append_pattern_to_gitignore` | `(pattern)` | Append pattern if not already present |
 | `insert_pattern_in_gitignore_section` | `(pattern, section_comment)` | Insert pattern after section comment; falls back to append |

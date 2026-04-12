@@ -535,7 +535,56 @@ Zsh parses `\n` after `&&` as the literal command `n`, which doesn't exist. The 
 
 ---
 
-### Story G.f: Investigate Python 3.14 CI Testing [Planned]
+### Story G.f: v1.13.2 Fix `prompt_install_pip_dependencies` Using Wrong pip (asdf Shim Leak) [Done]
+
+Bugfix for `prompt_install_pip_dependencies()` in [lib/utils.sh:77-167](lib/utils.sh#L77-L167). When the venv backend is used, the function sets `pip_cmd="pip"` (line 123) instead of using the venv's own pip. Because the venv is not yet activated at this point in `pyve init` (direnv activation happens *after* init completes), bare `pip` resolves to `~/.asdf/shims/pip` — the asdf pip wrapper. This causes two problems:
+
+1. **Packages install into the base asdf Python** instead of the project venv. The `pip install -e .` (lines 130, 146) installs the project and its dependencies into `~/.asdf/installs/python/<version>/lib/pythonX.Y/site-packages/`.
+2. **asdf's pip wrapper auto-reshims** (`~/.asdf/plugins/python/shims/pip` runs `asdf reshim python` after every install/uninstall), creating global shims for any console scripts the installed package declares — e.g., `~/.asdf/shims/project-guide`. These shims persist outside the venv and shadow the correct venv binary.
+
+**Reproduction:**
+1. Ensure `project-guide` is *not* installed in the base asdf Python (`~/.asdf/installs/python/3.14.4/bin/pip uninstall project-guide -y && asdf reshim python`)
+2. Verify `which project-guide` returns "not found" (outside any venv)
+3. `cd` into a project that has `[project.scripts]` in `pyproject.toml` (e.g., the `project-guide` repo)
+4. Run `pyve init --force`, answer Y to "Install pip dependencies from pyproject.toml?"
+5. Observe: `Reshimming asdf python...` in output; `ls ~/.asdf/shims/project-guide` confirms the shim was created
+6. Dependencies resolve from base Python: `Requirement already satisfied: click>=8.1 in /Users/.../.asdf/installs/python/3.14.4/lib/...`
+
+**Root cause:** `install_project_guide()` at [lib/utils.sh:507-508](lib/utils.sh#L507-L508) correctly uses `$env_path/bin/pip` for the venv backend. But `prompt_install_pip_dependencies()` at [lib/utils.sh:122-124](lib/utils.sh#L122-L124) uses bare `pip`, which falls through to the asdf shim.
+
+**Fix:** Pass the venv path to `prompt_install_pip_dependencies()` and use `$env_path/bin/pip` for the venv backend, matching the pattern already used in `install_project_guide()`.
+
+**Secondary issue (related, lower priority):** `project_guide_in_project_deps()` at [lib/utils.sh:592-622](lib/utils.sh#L592-L622) false-positives when `pyve init` runs inside the `project-guide` repo itself — the grep matches `name = "project-guide"` in the `[project]` metadata, not a dependency entry. This prevents `project-guide init` (template scaffolding) from running. Separate from the pip bug but discovered during the same investigation.
+
+**Tasks**
+
+Code changes
+
+- [x] Write a failing test for `prompt_install_pip_dependencies` using bare `pip` instead of venv pip
+- [x] Update `prompt_install_pip_dependencies()` in [lib/utils.sh](lib/utils.sh) to accept `env_path` for the venv backend and use `$env_path/bin/pip`
+- [x] Update the venv call site at [pyve.sh:1010](pyve.sh#L1010) to pass the venv path: `prompt_install_pip_dependencies "venv" "$_venv_abs"`
+- [x] Verify the micromamba call site at [pyve.sh:915](pyve.sh#L915) is unchanged (already passes `env_path`)
+- [x] Run the failing test — confirm it passes
+- [x] Run the full test suite — no regressions (419 passing)
+
+**Spec updates**
+
+- [x] `docs/specs/tech-spec.md` — updated `prompt_install_pip_dependencies` entry: `env_path` is now required (not optional) for both backends
+- [x] `docs/specs/features.md` — no changes (observable behavior unchanged; this is a bugfix)
+
+**CHANGELOG**
+
+- [x] Updated CHANGELOG.md with a `[1.13.2]` entry documenting the bug by symptom and root cause
+- [x] Bumped `VERSION` in `pyve.sh` from `1.13.1` to `1.13.2`
+
+**Out of scope (deferred)**
+
+- Fixing `project_guide_in_project_deps()` false-positive on project name — separate bug, separate story
+- Adding `ASDF_PYTHON_SKIP_RESHIM=1` as a workaround — treating the symptom, not the cause
+
+---
+
+### Story G.g: Investigate Python 3.14 CI Testing [Planned]
 
 Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
 

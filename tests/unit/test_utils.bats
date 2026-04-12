@@ -702,6 +702,64 @@ EOF
     [ "$status" -eq 0 ]
 }
 
+#============================================================
+# prompt_install_pip_dependencies() tests — pip_cmd resolution
+#============================================================
+
+@test "prompt_install_pip_dependencies: venv backend uses env_path/bin/pip, not bare pip" {
+    # Create a pyproject.toml so the function has something to install
+    cat > pyproject.toml << 'EOF'
+[project]
+name = "test-project"
+version = "0.1.0"
+dependencies = []
+EOF
+
+    # Create a fake venv with a pip stub that records its invocation
+    local fake_venv="$TEST_DIR/.venv"
+    mkdir -p "$fake_venv/bin"
+    cat > "$fake_venv/bin/pip" << 'STUB'
+#!/usr/bin/env bash
+echo "VENV_PIP_CALLED: $0 $*"
+STUB
+    chmod +x "$fake_venv/bin/pip"
+
+    # Also put a bare "pip" on PATH that records if IT gets called (the bug)
+    local fake_bin="$TEST_DIR/fake_bin"
+    mkdir -p "$fake_bin"
+    cat > "$fake_bin/pip" << 'STUB'
+#!/usr/bin/env bash
+echo "BARE_PIP_CALLED: $0 $*"
+STUB
+    chmod +x "$fake_bin/pip"
+    export PATH="$fake_bin:$PATH"
+
+    # Run in auto-install mode to skip interactive prompt
+    PYVE_AUTO_INSTALL_DEPS=1 run prompt_install_pip_dependencies "venv" "$fake_venv"
+    [ "$status" -eq 0 ]
+
+    # The venv pip should have been called
+    [[ "$output" == *"VENV_PIP_CALLED"* ]]
+
+    # The bare pip should NOT have been called
+    [[ "$output" != *"BARE_PIP_CALLED"* ]]
+}
+
+@test "prompt_install_pip_dependencies: venv backend without env_path returns error" {
+    # When no env_path is passed for venv backend, the function should
+    # return 1 with a warning instead of falling back to bare pip.
+    cat > pyproject.toml << 'EOF'
+[project]
+name = "test-project"
+version = "0.1.0"
+dependencies = []
+EOF
+
+    PYVE_AUTO_INSTALL_DEPS=1 run prompt_install_pip_dependencies "venv"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"env_path not provided"* ]]
+}
+
 @test "is_file_empty: returns 0 for empty file" {
     touch empty.txt
     
