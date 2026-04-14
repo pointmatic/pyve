@@ -584,7 +584,151 @@ Code changes
 
 ---
 
-### Story G.g: Investigate Python 3.14 CI Testing [Planned]
+### Story G.g: Cosmetic Blank-Line Fixes in `.gitignore` and `.zshrc` [Planned]
+
+Three related cosmetic issues where pyve leaves stale blank lines or omits a separator, all discovered during the G.f investigation.
+
+**Bug 1 — Extra blank lines in `.gitignore` after `pyve init --force`.** During purge, `remove_pattern_from_gitignore()` uses `sed` to delete lines (`.venv`, `.env`, `.envrc`) but leaves the blank lines that separated them. On reinit, `write_gitignore_template()` reads the existing file and passes through non-template lines. The "collapse consecutive blanks" logic (line 789) collapses runs into one, but blank lines left behind by the purge still appear as one or more extra blank lines after `.venv` in the "Pyve virtual environment" section.
+
+Example after `pyve init --force`:
+```
+# Pyve virtual environment
+.pyve/testenv
+.envrc
+.env
+.venv
+
+
+
+```
+Expected:
+```
+# Pyve virtual environment
+.pyve/testenv
+.envrc
+.env
+.venv
+```
+
+**Bug 2 — Purge leaves extra blank line.** `remove_pattern_from_gitignore()` deletes the pattern line but not any adjacent blank line that becomes orphaned. Over multiple purge/reinit cycles, blank lines accumulate.
+
+**Bug 3 — Missing blank line before SDKMan marker in `.zshrc`.** `insert_text_before_sdkman_marker_or_append()` inserts a blank line *before* the project-guide completion block (line 265 in awk) but the block's closing sentinel (`# <<< project-guide completion <<<`) has no trailing blank line before the SDKMan marker. Result: the completion block is visually cramped against the `#THIS MUST BE AT THE END...` marker.
+
+Example (current):
+```
+# <<< project-guide completion <<<
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+```
+Expected:
+```
+# <<< project-guide completion <<<
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+```
+
+**Key invariant:** `pyve init --force` must leave `.gitignore` byte-identical to its state before the reinit. Users should never have to commit a file just because of blank line changes.
+
+The existing idempotency test (`write_gitignore_template: idempotent after purge-then-reinit cycle`) passes because it uses a clean `.gitignore` with no user content below the Pyve section. The real-world `.gitignore` has user entries (e.g., `# MkDocs build output`, `# project-guide`) and the bug only manifests when user content follows the Pyve-managed section.
+
+**Tasks**
+
+Code changes
+
+- [ ] Write two failing idempotency tests (byte-level md5 comparison, like the existing test at line 319): (a) one with a Pyve-only `.gitignore` (no user content beyond the template), and (b) one with user-added patterns below the Pyve section (e.g., `# MkDocs build output`, `/site/`, `# project-guide`, `docs/project-guide/**/*.bak.*`)
+- [ ] Fix the blank line accumulation in `write_gitignore_template()` — when dynamic patterns are deduped, collapse any resulting consecutive blank lines at the boundary between the Pyve section and user content
+- [ ] Write a failing test for the missing blank line before SDKMan marker in `.zshrc`
+- [ ] Fix `insert_text_before_sdkman_marker_or_append()` awk to emit a blank line *after* the inserted block (before the SDKMan marker), not just before the block
+- [ ] Run the full test suite — no regressions
+
+**Spec updates**
+
+- [ ] `docs/specs/tech-spec.md` — no changes expected (internal formatting fix)
+- [ ] `docs/specs/features.md` — no changes expected
+
+**CHANGELOG**
+
+- [ ] Update CHANGELOG.md
+
+**Out of scope (deferred)**
+
+- Normalizing all blank lines in `.gitignore` (only fix the Pyve-managed section)
+- Blank line handling for non-SDKMan rc-file insertions
+
+---
+
+### Story G.h: Consolidate `pyve doctor` and `pyve validate` Recommendations [Planned]
+
+`pyve doctor` and `pyve validate` overlap in purpose and give the user a run-around instead of a single clear action.
+
+**Current behavior (v1.13.2):**
+
+```
+% pyve doctor
+✓ Pyve: v1.13.2 (homebrew: ...)
+WARNING: Project initialized with Pyve v0.9.9 (current: v1.13.2)
+WARNING: Run 'pyve validate' to check compatibility    ← bounces to validate
+✗ No environment found
+  Run 'pyve init' to create an environment
+
+% pyve validate
+⚠ Pyve version: 0.9.9 (current: 1.13.2)
+  Migration recommended. Run 'pyve init --update' to update.  ← second action
+✓ Backend: venv
+✗ Virtual environment: .venv (missing)
+  Run 'pyve init' to create.                                  ← third action
+```
+
+**Problems:**
+
+1. **Bouncing:** `doctor` tells the user to run `validate`, which then tells the user to run something else. The user is given three commands (`validate`, `init --update`, `init`) for what should be one clear next step.
+2. **Conflicting recommendations within `validate`:** When both a version mismatch and a missing venv are detected, `validate` outputs two different `init` invocations:
+   - `⚠ Pyve version: 0.9.9 ... Run 'pyve init --update' to update.` ([lib/version.sh:200](lib/version.sh#L200))
+   - `✗ Virtual environment: .venv (missing) ... Run 'pyve init' to create.` ([lib/version.sh:231](lib/version.sh#L231))
+
+   These are not additive — `init --update` is a minimal-touch operation (just updates config version), while `init` creates a fresh environment (which also updates the version). The user doesn't know which to run, whether they combine, or whether `pyve init --update --force` is a thing. In this case, `pyve init` alone would fix both issues.
+3. **Overlap:** Both commands check for a missing environment and version mismatches. It's unclear when a user should use one vs. the other.
+
+**Desired behavior:** Each command should give one clear action. If `doctor` detects problems, it should tell the user what to do — not redirect to another diagnostic command. If both commands surface the same issue, they should recommend the same single fix.
+
+**Tasks**
+
+Analysis
+
+- [ ] Decide: merge into one command, or keep both with distinct scopes. Current overlap analysis:
+  - **Shared checks (duplicated):** Pyve version compatibility, backend detection, venv existence, Python executable, `.env` presence
+  - **Unique to `doctor`:** micromamba binary/version, duplicate dist-info, cloud sync collision artifacts, native lib conflicts, venv path mismatch (relocated project), test runner diagnostics, package counts, lock file staleness
+  - **Unique to `validate`:** structured exit codes (0/1/2) for CI gates, strict pass/fail validation
+  - **Question:** Is `validate`'s CI-gate exit-code behavior worth a separate command, or could `doctor` return structured exit codes too? If `doctor` gained exit codes, `validate` would be fully redundant.
+- [ ] Ensure each recommendation is a single actionable command, not a chain
+
+Code changes
+
+- [ ] Eliminate the "run `pyve validate`" bounce from `doctor` — either inline the relevant check or give the direct fix command
+- [ ] Consolidate overlapping recommendations so the user sees one action per problem
+- [ ] Update help text for both commands to clarify when to use each (if both are kept)
+
+**Spec updates**
+
+- [ ] `docs/specs/features.md` — update the doctor/validate feature descriptions
+- [ ] `docs/site/usage.md` — update user-facing documentation
+
+**Design consideration: `--update` flag semantics**
+
+The current `pyve init --update` only updates the version in `.pyve/config` — a config-only operation. The flag name `--update` implies something broader. Two options:
+
+1. **Rename to `--config-only`** (or similar) if the scope stays narrow. Makes the flag self-documenting.
+2. **Expand `--update` to actually update things** — e.g., `pip install --upgrade project-guide`, refresh the distutils shim, update `.gitignore` template entries, etc. This gives the flag a meaningful purpose: "bring this environment up to date without rebuilding it." Then `validate` can recommend a single `pyve init --update` that genuinely fixes version mismatches *and* upgrades managed tooling.
+
+Option 2 makes `--update` a useful middle ground between `pyve init` (fresh build) and `pyve init --force` (destroy + rebuild).
+
+**Out of scope (deferred)**
+
+- Merging `doctor` and `validate` into a single command (evaluate in analysis, but don't force it if distinct scopes emerge)
+- Adding auto-fix capabilities (e.g., `pyve doctor --fix`)
+
+---
+
+### Story G.i: Investigate Python 3.14 CI Testing [Planned]
 
 Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
 
