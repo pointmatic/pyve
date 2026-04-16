@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.13.3] - 2026-04-16
+
+### Fixed — testenv built with system `python3` instead of project Python; not rebuilt on version change (Story G.g)
+
+`ensure_testenv_exists()` in `pyve.sh` created the testenv venv with `python3` (the system/Homebrew Python) instead of `python` (the version-manager shim). In environments where Homebrew Python is on `PATH` before asdf shims (common on macOS), this caused the testenv to be built with the global default Python (e.g., 3.14.4) even when the project was configured for a different version (e.g., 3.12.13).
+
+A second, compounding issue: `pyve init --force` calls `purge --keep-testenv`, which intentionally preserves the testenv across force-reinits so that dev tools don't need to be reinstalled. However, this also meant that a testenv built with the wrong Python version was never rebuilt, even after the user explicitly changed the project Python version and reran `pyve init --force --python-version 3.12.13`.
+
+**Symptoms:** `pyve doctor` reported `Test runner Python: 3.14.4` while `Python: 3.12.13` — the testenv and project were on different Python versions. Neither `pyve python-version 3.12.13` nor `pyve init --force --python-version 3.12.13` resolved it.
+
+**Root cause:** Two bugs:
+1. `ensure_testenv_exists()` used `python3` (resolves to system/Homebrew Python) instead of `python` (resolves through asdf/pyenv shim to the project-configured version).
+2. No version mismatch check — when an existing testenv's Python version differs from the project's current `python`, the testenv was silently kept rather than rebuilt.
+
+**Fix:**
+- Changed `python3 -m venv` to `python -m venv` in `ensure_testenv_exists()`.
+- Added a version mismatch check: before skipping creation of an existing testenv, `ensure_testenv_exists()` reads `pyvenv.cfg`'s `version` field and compares it against the current `python` version. If they differ, the stale testenv is deleted and rebuilt automatically.
+
+**User workaround (pre-fix):** `pyve testenv --purge && pyve testenv --init`
+
+### Tests
+
+- **Python integration — 1 new test in `tests/integration/test_testenv.py`:**
+  - `test_testenv_rebuilt_when_python_version_stale` — corrupts an existing testenv's `pyvenv.cfg` to report version `9.9.9`, then calls `pyve testenv --init` and asserts the testenv was rebuilt with the real project Python.
+- Full suite: **243 passing**, 26 skipped, 0 failures.
+
+### Spec updates
+
+- `docs/specs/features.md` — no changes (observable behavior unchanged for users whose testenv Python already matches).
+- `docs/specs/tech-spec.md` — no changes.
+
+---
+
 ## [1.13.2] - 2026-04-11
 
 ### Fixed — `prompt_install_pip_dependencies` installs into base asdf Python instead of venv (Story G.f)

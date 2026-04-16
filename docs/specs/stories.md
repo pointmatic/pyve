@@ -584,7 +584,46 @@ Code changes
 
 ---
 
-### Story G.g: Cosmetic Blank-Line Fixes in `.gitignore` and `.zshrc` [Planned]
+### Story G.g: v1.13.3 Fix testenv Created with System `python3` Instead of Project Python [Done]
+
+`pyve doctor` reports `Test runner Python: 3.14.4` even when the project is configured for `3.12.13`. Changing the project Python version with `pyve python-version 3.12.13` or `pyve init --force --python-version 3.12.13` does not resolve it.
+
+**Root cause:** `ensure_testenv_exists()` in [pyve.sh:210](pyve.sh#L210) creates the testenv venv with `python3`:
+
+```bash
+python3 -m venv "$testenv_venv"
+```
+
+`python3` resolves to the system Python (3.14.4), bypassing the asdf/pyenv shim. `init_venv()` at [pyve.sh:1047](pyve.sh#L1047) correctly uses `python` (no `3` suffix), which goes through the version manager shim and resolves to the project-configured version.
+
+**Why `pyve init --force` didn't help:** The `--force` path at [pyve.sh:687](pyve.sh#L687) calls `purge --keep-testenv`, so the testenv is intentionally preserved across force-reinit. The stale 3.14.4 testenv was never rebuilt.
+
+**Fix:** Change `python3` to `python` in `ensure_testenv_exists()`.
+
+**User workaround (until fix ships):** `pyve testenv --purge && pyve testenv --init`
+
+**Tasks**
+
+Code changes
+
+- [x] Write a failing integration test: after `pyve init`, the testenv Python version must match the project Python version in `.tool-versions`
+- [x] Fix `ensure_testenv_exists()` at [pyve.sh:210](pyve.sh#L210): change `python3 -m venv` to `python -m venv`; add version mismatch check that rebuilds the testenv if its `pyvenv.cfg` version differs from the current `python`
+- [x] Run the failing test — confirm it passes
+- [x] Run the full test suite — 243 passing, 26 skipped, 0 failures
+
+**Spec updates**
+
+- [x] `docs/specs/features.md` — no changes (behavior fix, observable output unchanged)
+- [x] `docs/specs/tech-spec.md` — no changes
+
+**CHANGELOG**
+
+- [x] Updated CHANGELOG.md with a `[1.13.3]` entry
+- [x] Bumped `VERSION` in `pyve.sh` from `1.13.2` to `1.13.3`
+
+---
+
+### Story G.?: Cosmetic Blank-Line Fixes in `.gitignore` and `.zshrc` [Planned]
 
 Three related cosmetic issues where pyve leaves stale blank lines or omits a separator, all discovered during the G.f investigation.
 
@@ -656,7 +695,7 @@ Code changes
 
 ---
 
-### Story G.h: Consolidate `pyve doctor` and `pyve validate` Recommendations [Planned]
+### Story G.?: Consolidate `pyve doctor` and `pyve validate` Recommendations [Planned]
 
 `pyve doctor` and `pyve validate` overlap in purpose and give the user a run-around instead of a single clear action.
 
@@ -728,7 +767,102 @@ Option 2 makes `--update` a useful middle ground between `pyve init` (fresh buil
 
 ---
 
-### Story G.i: Investigate Python 3.14 CI Testing [Planned]
+### Story G.?: Pyve init is ugly/messy -- make it beautiful
+It needs formatting, better organization, and a tasteful use of color
+
+Example
+```
+% pyve init --force --python-version 3.12.13
+WARNING: Force re-initialization: This will purge the existing environment
+WARNING:   Current backend: venv
+
+  Purge:   existing venv environment
+  Rebuild: fresh venv environment
+
+Proceed? [y/N]: y
+INFO: Purging existing environment...
+
+Purging Python environment artifacts...
+✓ Removed .tool-versions
+✓ Removed .venv
+✓ Removed .pyve directory contents (preserved .pyve/testenv)
+✓ Removed .envrc
+✓ Removed .env (was empty)
+✓ Cleaned .gitignore
+
+✓ Python environment artifacts removed.
+INFO: ✓ Environment purged
+
+INFO: Proceeding with fresh initialization...
+
+Initializing Python environment...
+  Backend:        venv
+  Python version: 3.12.13
+  Venv directory: .venv
+INFO: Using asdf for Python version management
+✓ Created .tool-versions with Python 3.12.13
+INFO: Creating virtual environment in '.venv'...
+✓ Created virtual environment
+INFO: Python >= 3.12 detected; installing distutils compatibility shim
+✓ Installed distutils compatibility shim: /Users/michaelsmith/Developer/WGU/d802-deep-learning/.venv/lib/python3.12/site-packages/sitecustomize.py
+INFO: Disable with: PYVE_DISABLE_DISTUTILS_SHIM=1
+✓ Distutils shim probe: SETUPTOOLS_USE_DISTUTILS=local
+✓ Created .envrc
+✓ Created empty .env
+✓ Updated .gitignore
+✓ Created .pyve/config
+
+✓ Python environment initialized successfully!
+Install project-guide? [Y/n]: 
+INFO: Installing/upgrading project-guide into the project environment...
+Collecting project-guide
+  Using cached project_guide-2.3.9-py3-none-any.whl.metadata (21 kB)
+Collecting click>=8.1 (from project-guide)
+  Using cached click-8.3.2-py3-none-any.whl.metadata (2.6 kB)
+Collecting jinja2>=3.1 (from project-guide)
+  Using cached jinja2-3.1.6-py3-none-any.whl.metadata (2.9 kB)
+Requirement already satisfied: packaging>=24.0 in ./.venv/lib/python3.12/site-packages (from project-guide) (26.1)
+Collecting pyyaml>=6.0 (from project-guide)
+  Using cached pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl.metadata (2.4 kB)
+Collecting MarkupSafe>=2.0 (from jinja2>=3.1->project-guide)
+  Downloading markupsafe-3.0.3-cp312-cp312-macosx_11_0_arm64.whl.metadata (2.7 kB)
+Using cached project_guide-2.3.9-py3-none-any.whl (135 kB)
+Using cached click-8.3.2-py3-none-any.whl (108 kB)
+Using cached jinja2-3.1.6-py3-none-any.whl (134 kB)
+Downloading markupsafe-3.0.3-cp312-cp312-macosx_11_0_arm64.whl (12 kB)
+Using cached pyyaml-6.0.3-cp312-cp312-macosx_11_0_arm64.whl (173 kB)
+Installing collected packages: pyyaml, MarkupSafe, click, jinja2, project-guide
+Successfully installed MarkupSafe-3.0.3 click-8.3.2 jinja2-3.1.6 project-guide-2.3.9 pyyaml-6.0.3
+✓ Installed project-guide
+INFO: Running 'project-guide init --no-input' in the project environment...
+project-guide already initialized at docs/project-guide/ (use --force to reinitialize).
+✓ project-guide artifacts generated
+Add project-guide shell completion to your rc file? [Y/n]: 
+INFO: project-guide completion already present in /Users/michaelsmith/.zshrc
+
+Next step: Run 'direnv allow' to activate the environment.
+direnv: loading ~/Developer/WGU/d802-deep-learning/.envrc                                                                                          
+direnv: export +PYVE_BACKEND +PYVE_ENV_NAME +PYVE_PROMPT_PREFIX +VIRTUAL_ENV +VIRTUAL_ENV_PROMPT ~PATH
+michaelsmith@Michaels-MB-Pro-M3 d802-deep-learning % pyve doctor
+Pyve Environment Diagnostics
+=============================
+
+✓ Pyve: v1.13.2 (homebrew: /opt/homebrew/Cellar/pyve/1.13.2/libexec)
+✓ Backend: venv
+✓ Environment: .venv
+✓ Python: 3.12.13
+✓ Version file: .tool-versions (asdf)
+  Python: 3.12.13
+  Packages: 9 installed
+✓ Direnv: .envrc configured
+✓ Environment file: .env (empty)
+✓ Test runner: .pyve/testenv/venv
+  Test runner Python: 3.14.4
+  ⚠ pytest: missing
+    Install with: pyve test (interactive) or pyve testenv --install -r requirements-dev.txt
+```
+
+### Story G.?: Investigate Python 3.14 CI Testing [Planned]
 
 Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
 
