@@ -13,6 +13,8 @@
 # limitations under the License.
 
 import os
+import re
+import subprocess
 import pytest
 
 
@@ -93,3 +95,44 @@ def test_testenv_survives_force_reinit(pyve, project_builder):
     result = pyve.run("test", "-q", check=False)
     # If there are no tests, pytest exits 5. Accept that as success signal for wiring.
     assert result.returncode in (0, 5)
+
+
+@pytest.mark.venv
+def test_testenv_rebuilt_when_python_version_stale(pyve, project_builder):
+    """ensure_testenv_exists must rebuild the testenv when its Python version
+    differs from the project Python.
+
+    Regression test for: pyve init --force called purge --keep-testenv, so a
+    testenv built with an older Python was preserved even after the project's
+    Python version changed. The fix: ensure_testenv_exists() compares the
+    testenv's pyvenv.cfg version against the current 'python' shim and rebuilds
+    on mismatch.
+    """
+    project_builder.create_requirements([])
+    pyve.init(backend='venv')
+
+    testenv_venv = pyve.cwd / '.pyve' / 'testenv' / 'venv'
+    assert testenv_venv.exists(), "testenv was not created by pyve init"
+
+    pyvenv_cfg = testenv_venv / 'pyvenv.cfg'
+    assert pyvenv_cfg.exists(), "pyvenv.cfg missing from testenv"
+
+    # Corrupt pyvenv.cfg to simulate a stale testenv from a different Python
+    # version (e.g., testenv was 3.14.4, project was changed to 3.12.13).
+    original = pyvenv_cfg.read_text()
+    stale = re.sub(r'(?m)^version\s*=.*$', 'version = 9.9.9', original)
+    pyvenv_cfg.write_text(stale)
+    assert 'version = 9.9.9' in pyvenv_cfg.read_text()
+
+    # Running testenv --init should detect the version mismatch and rebuild.
+    result = pyve.run('testenv', '--init')
+    assert result.returncode == 0
+
+    # After rebuild, pyvenv.cfg must no longer report 9.9.9.
+    rebuilt_cfg = pyvenv_cfg.read_text()
+    assert 'version = 9.9.9' not in rebuilt_cfg, (
+        "ensure_testenv_exists() did not rebuild the testenv after detecting "
+        "a Python version mismatch (pyvenv.cfg still says 9.9.9). "
+        "This is the regression: pyve init --force preserves a stale testenv "
+        "via --keep-testenv without checking whether the Python version changed."
+    )

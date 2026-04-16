@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.13.2"
+VERSION="1.13.3"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -205,9 +205,23 @@ ensure_testenv_exists() {
     testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
 
     mkdir -p "$testenv_root"
+
+    # If the testenv exists but was built with a different Python version (e.g.
+    # the project Python was changed after the initial pyve init, then pyve init
+    # --force preserved the old testenv via --keep-testenv), rebuild it.
+    if [[ -d "$testenv_venv" ]] && [[ -f "$testenv_venv/pyvenv.cfg" ]]; then
+        local testenv_ver current_ver
+        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
+        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
+        if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
+            log_warning "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
+            rm -rf "$testenv_venv"
+        fi
+    fi
+
     if [[ ! -d "$testenv_venv" ]]; then
         log_info "Creating dev/test runner environment in '$testenv_venv'..."
-        python3 -m venv "$testenv_venv"
+        python -m venv "$testenv_venv"
         log_success "Created dev/test runner environment"
     fi
 }
