@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0] - 2026-04-16
+
+### Added — `pyve init --force` refreshes `project-guide` scaffolding via `project-guide update` (Story G.h)
+
+First-time `pyve init` already runs `project-guide init` (Story G.c), but `pyve init --force` previously left `project-guide` scaffolding untouched: `project-guide init --no-input` silently no-ops with "already initialized" when `.project-guide.yml` exists, so template changes shipped by newer `project-guide` releases never reached user projects without manual intervention.
+
+`pyve init --force` now branches based on `.project-guide.yml` presence:
+
+- **Present (reinit case):** runs `project-guide update --no-input`. This is content-aware — it hash-compares each managed file, skips ones that already match, creates `.bak.<timestamp>` siblings for files the user has modified before overwriting, and preserves the config state (`current_mode`, overrides, `metadata_overrides`, `test_first`, `pyve_version`).
+- **Absent (first time or previously skipped):** runs `project-guide init --no-input` as before.
+
+Why `update` and not `init --force`: `project-guide init --force` is destructive — it resets `.project-guide.yml` to defaults (losing mode and overrides) with no backups. `update` is the correct command for ongoing template refreshes; `init --force` is reserved for the rare manual reset case. Pyve never auto-runs `init --force`, even on schema mismatch — that decision stays with the user.
+
+The existing gate logic in `run_project_guide_hooks` is reused — no new flags:
+- `--no-project-guide` / `PYVE_NO_PROJECT_GUIDE=1` still fully skips.
+- `--project-guide` / `PYVE_PROJECT_GUIDE=1` still forces install.
+- Auto-skip when `project-guide` is in project deps still applies.
+- `project-guide update` failure (including a future `SchemaVersionError`) is surfaced as a warning and is non-fatal — `pyve init` continues.
+
+### Added — `run_project_guide_update_in_env(backend, env_path)` helper
+
+New helper in `lib/utils.sh`, mirroring `run_project_guide_init_in_env`. Invokes `project-guide update --no-input` in the project environment. Failure is non-fatal. Requires `project-guide >= 2.4.0` (earlier versions lack the `update` subcommand).
+
+### Tests
+
+- **Python integration — 4 new tests in `tests/integration/test_project_guide_integration.py::TestRefreshOnReinit`:**
+  - `test_force_reinit_restores_modified_template_with_backup` — verifies a user-modified managed template (e.g., `developer/debug-guide.md`) is restored and a `.bak.<timestamp>` sibling is created
+  - `test_force_reinit_skipped_by_no_project_guide` — verifies `--no-project-guide` still suppresses the refresh
+  - `test_force_reinit_falls_back_to_init_when_config_absent` — verifies deleting `.project-guide.yml` forces the first-time `init` path
+  - `test_force_reinit_update_failure_is_non_fatal` — verifies a corrupt `.project-guide.yml` (simulating future `SchemaVersionError`) surfaces a warning but does not abort `pyve init`
+- **Bats unit — 3 new tests in `tests/unit/test_project_guide.bats`:**
+  - `run_project_guide_update_in_env` passes `--no-input`, is a safe no-op when binary is missing, and is failure-non-fatal
+
+---
+
 ## [1.13.3] - 2026-04-16
 
 ### Fixed — testenv built with system `python3` instead of project Python; not rebuilt on version change (Story G.g)

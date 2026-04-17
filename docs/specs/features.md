@@ -291,7 +291,9 @@ Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github
 **Three-step hook** (fresh init or `--force`; **not** `--update`):
 
 1. `pip install --upgrade project-guide` — installs (or upgrades) project-guide into the project env. Always uses `--upgrade` so users get the latest. Default upgrade strategy (`only-if-needed`) so transitive deps are not cascaded.
-2. `<env>/bin/project-guide init --no-input` — runs the project-guide initializer in unattended mode to create `.project-guide.yml` and `docs/project-guide/` artifacts. Requires `project-guide >= 2.2.3`. Older versions will prompt-and-fail-on-closed-stdin; failure is non-fatal.
+2. **Scaffold or refresh managed artifacts**, branching on `.project-guide.yml` presence:
+   - **Absent** (first-time, or a previous `--no-project-guide` skipped the initial scaffold): `<env>/bin/project-guide init --no-input` — creates `.project-guide.yml` and `docs/project-guide/` artifacts. Requires `project-guide >= 2.2.3`.
+   - **Present** (reinit case — v1.14.0+): `<env>/bin/project-guide update --no-input` — content-aware refresh. Hash-compares each managed file against its shipped template, skips matches, creates `.bak.<timestamp>` siblings for modified files before overwriting, and preserves `.project-guide.yml` state (`current_mode`, overrides, `metadata_overrides`, `test_first`, `pyve_version`). Requires `project-guide >= 2.4.0` (the `update` subcommand). Failure (including a future `SchemaVersionError`) is surfaced as a warning and is non-fatal; pyve never auto-runs `project-guide init --force`, since that would be destructive.
 3. Shell completion wiring — appends a sentinel-bracketed eval block to the user's `~/.zshrc` or `~/.bashrc` so `project-guide` tab-completion works in interactive shells.
 
 **Trigger logic** (priority order, first match wins):
@@ -316,7 +318,8 @@ Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github
 
 **Idempotency.**
 - Step 1: `pip install --upgrade` is naturally idempotent — re-running it just confirms the latest is installed.
-- Step 2: relies on `project-guide >= 2.2.3`'s own idempotency. Re-running `project-guide init` against an already-initialized project is a no-op success unless `--force` is given.
+- Step 2 (first-time, `init`): `project-guide init --no-input` is a no-op success on an already-initialized project unless `--force` is given (which pyve never passes).
+- Step 2 (reinit, `update`): `project-guide update --no-input` hash-compares each managed file; files that already match are skipped. Modified files get `.bak.<timestamp>` siblings before being overwritten, so re-running is safe and cumulative.
 - Step 3: detected via the sentinel comment `# >>> project-guide completion (added by pyve) >>>`. Already-present blocks are never duplicated.
 
 **Failure handling.** All three steps are failure-non-fatal. A failed pip install, a failed `project-guide init`, an unwritable rc file, or an unknown shell all log a warning with a `--no-project-guide` hint and continue. `pyve init` itself still exits 0. Pyve's job is environment setup; project-guide is a value-add.

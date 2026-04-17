@@ -482,3 +482,177 @@ class TestRealInstall:
             f"second run ({second_duration:.1f}s) should be faster than "
             f"first ({first_duration:.1f}s)"
         )
+
+
+# ---------------------------------------------------------------------------
+# Refresh on reinit (Story G.h — slow, network required)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.venv
+@SKIP_PYTHON_TOO_OLD
+class TestRefreshOnReinit:
+    """
+    Story G.h: `pyve init --force` refreshes the project-guide scaffolding.
+
+    Branching on `.project-guide.yml` presence:
+      - present → `project-guide update --no-input` (preserves state,
+                  creates `.bak.<timestamp>` siblings for modified files)
+      - absent  → `project-guide init --no-input` (first-time path,
+                  unchanged from Story G.c)
+
+    `--no-project-guide` still fully skips the hook. `project-guide update`
+    failures (e.g., corrupt config, future `SchemaVersionError`) surface as
+    warnings and do not abort `pyve init`.
+    """
+
+    def _first_install(self, pyve, monkeypatch, tmp_path):
+        """Run pyve init to install + scaffold project-guide. Returns fake_home."""
+        fake_home = _isolate_home(monkeypatch, tmp_path)
+        monkeypatch.setenv("SHELL", "/bin/zsh")
+        monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
+        monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
+        monkeypatch.setenv("PYVE_NO_PROJECT_GUIDE_COMPLETION", "1")
+        # Auto-confirm the re-init "Proceed? [y/N]:" prompt that fires on the
+        # second `pyve init --force` (once a venv exists). Does not affect
+        # project-guide install/completion decisions here — those are already
+        # pinned by PYVE_PROJECT_GUIDE=1 / PYVE_NO_PROJECT_GUIDE_COMPLETION=1.
+        monkeypatch.setenv("PYVE_FORCE_YES", "1")
+        monkeypatch.delenv("CI", raising=False)
+
+        result = pyve.run("init", "--no-direnv", "--force", timeout=300)
+        assert result.returncode == 0, f"first pyve init failed: {result.stderr}"
+        return fake_home
+
+    # A template file under docs/project-guide/ that `project-guide update`
+    # hash-compares and refreshes. (`go.md` is intentionally excluded — it's
+    # a dynamically rendered artifact, not a template, and `update` leaves
+    # it alone even when modified. Template files like debug-guide.md are
+    # the right target for verifying the refresh behaviour.)
+    TEMPLATE_FILE = Path("docs") / "project-guide" / "developer" / "debug-guide.md"
+
+    def test_force_reinit_restores_modified_template_with_backup(
+        self, pyve, test_project, tmp_path, monkeypatch
+    ):
+        """
+        After `pyve init --force`, a user-modified managed template file
+        must be restored to the shipped template and a `.bak.<timestamp>`
+        sibling must be created containing the user's edits.
+
+        Today this fails: `project-guide init --no-input` no-ops with
+        'already initialized' when .project-guide.yml exists, so the
+        user's edit persists and no backup is created.
+        """
+        self._first_install(pyve, monkeypatch, tmp_path)
+
+        tmpl = test_project / self.TEMPLATE_FILE
+        assert tmpl.exists(), f"expected first init to create {self.TEMPLATE_FILE}"
+
+        marker = "PYVE_REFRESH_TEST_SENTINEL_DO_NOT_COMMIT"
+        tmpl.write_text(f"# Tampered by test\n{marker}\n")
+
+        result = pyve.run("init", "--no-direnv", "--force", timeout=300)
+        assert result.returncode == 0, f"reinit failed: {result.stderr}"
+
+        assert marker not in tmpl.read_text(), (
+            f"Expected {self.TEMPLATE_FILE} to be restored by "
+            "`project-guide update` during `pyve init --force`; got the "
+            "user's tampered content still in place. The refresh hook did "
+            "not run (init --no-input no-ops when .project-guide.yml exists)."
+        )
+
+        backups = list(tmpl.parent.glob(f"{tmpl.name}.bak.*"))
+        assert backups, (
+            f"Expected `project-guide update` to create "
+            f"{tmpl.name}.bak.<timestamp> before overwriting the "
+            f"user-modified file"
+        )
+        assert marker in backups[0].read_text(), (
+            "Backup file should contain the original user-modified content"
+        )
+
+    def test_force_reinit_skipped_by_no_project_guide(
+        self, pyve, test_project, tmp_path, monkeypatch
+    ):
+        """
+        `pyve init --force --no-project-guide` leaves project-guide scaffolding
+        alone: user's edits intact, no backups created, no refresh performed.
+        """
+        self._first_install(pyve, monkeypatch, tmp_path)
+
+        tmpl = test_project / self.TEMPLATE_FILE
+        marker = "PYVE_NO_REFRESH_SENTINEL"
+        tmpl.write_text(f"# User edits\n{marker}\n")
+
+        monkeypatch.delenv("PYVE_PROJECT_GUIDE", raising=False)
+
+        result = pyve.run(
+            "init", "--no-direnv", "--force", "--no-project-guide", timeout=300
+        )
+        assert result.returncode == 0, f"reinit failed: {result.stderr}"
+
+        assert marker in tmpl.read_text(), (
+            f"Expected --no-project-guide to suppress the refresh; "
+            f"{self.TEMPLATE_FILE} was rewritten anyway"
+        )
+
+        backups = list(tmpl.parent.glob(f"{tmpl.name}.bak.*"))
+        assert not backups, (
+            f"Expected no backups when --no-project-guide is set, found: {backups}"
+        )
+
+    def test_force_reinit_falls_back_to_init_when_config_absent(
+        self, pyve, test_project, tmp_path, monkeypatch
+    ):
+        """
+        With `docs/project-guide/` present but `.project-guide.yml` missing,
+        `pyve init --force` must run `project-guide init` (not `update`,
+        which would abort with "No .project-guide.yml found").
+        """
+        self._first_install(pyve, monkeypatch, tmp_path)
+
+        config = test_project / ".project-guide.yml"
+        assert config.exists()
+        config.unlink()
+
+        result = pyve.run("init", "--no-direnv", "--force", timeout=300)
+        assert result.returncode == 0, f"reinit failed: {result.stderr}"
+
+        assert config.exists(), (
+            "Expected `project-guide init` to recreate .project-guide.yml "
+            "when config is absent"
+        )
+
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "project-guide init" in combined, (
+            f"Expected 'project-guide init' in log for fall-through path, "
+            f"got:\n{combined}"
+        )
+
+    def test_force_reinit_update_failure_is_non_fatal(
+        self, pyve, test_project, tmp_path, monkeypatch
+    ):
+        """
+        If `project-guide update` exits non-zero (e.g., corrupt config, or a
+        future `SchemaVersionError`), `pyve init` surfaces a warning and
+        continues with exit 0. Pyve never auto-runs `init --force` — that's
+        destructive and must stay opt-in for the user.
+        """
+        self._first_install(pyve, monkeypatch, tmp_path)
+
+        config = test_project / ".project-guide.yml"
+        # Corrupt YAML → `project-guide update` exits 3.
+        config.write_text("not: valid: yaml: ::\n")
+
+        result = pyve.run("init", "--no-direnv", "--force", timeout=300)
+        assert result.returncode == 0, (
+            f"reinit aborted on project-guide update failure: {result.stderr}"
+        )
+
+        combined = (result.stdout or "") + (result.stderr or "")
+        combined_lower = combined.lower()
+        assert "project-guide update" in combined_lower and (
+            "fail" in combined_lower or "warning" in combined_lower
+        ), (
+            f"Expected a `project-guide update` failure warning in output; "
+            f"got:\n{combined}"
+        )

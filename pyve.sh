@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.13.3"
+VERSION="1.14.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -398,8 +398,19 @@ run_project_guide_hooks() {
         return 0
     fi
 
-    #--- Step 2: project-guide init --no-input ----------------------------
-    run_project_guide_init_in_env "$backend" "$env_path"
+    #--- Step 2: scaffold or refresh managed artifacts --------------------
+    # Branch on `.project-guide.yml` presence (Story G.h):
+    #   - absent → first-time scaffolding: `project-guide init --no-input`
+    #   - present → refresh: `project-guide update --no-input` — preserves
+    #     user state (current_mode, overrides, test_first, pyve_version)
+    #     and creates `.bak.<ts>` siblings for modified managed files.
+    # Pyve never auto-runs `project-guide init --force` because it is
+    # destructive (resets config, no backups); that remains user-initiated.
+    if [[ -f ".project-guide.yml" ]]; then
+        run_project_guide_update_in_env "$backend" "$env_path"
+    else
+        run_project_guide_init_in_env "$backend" "$env_path"
+    fi
 
     #--- Step 3: shell completion wiring ----------------------------------
     if [[ $should_add_completion -eq 2 ]]; then
