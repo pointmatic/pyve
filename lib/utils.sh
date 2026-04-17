@@ -584,6 +584,52 @@ run_project_guide_init_in_env() {
     return 0
 }
 
+# Run `project-guide update` inside the project environment to refresh the
+# managed artifacts (templates + rendered `go.md`) while preserving user
+# state (`.project-guide.yml`'s current_mode, overrides, metadata_overrides,
+# test_first, pyve_version). Creates `.bak.<timestamp>` siblings for any
+# managed file the user has modified.
+#
+# Invoked by `pyve init --force` when `.project-guide.yml` is present.
+# Failure (including a future SchemaVersionError) is surfaced as a warning
+# and is non-fatal — pyve must never auto-run `project-guide init --force`,
+# since that is destructive.
+#
+# Usage: run_project_guide_update_in_env <backend> <env_path>
+# Returns 0 always — failure is non-fatal by design.
+run_project_guide_update_in_env() {
+    local backend="$1"
+    local env_path="$2"
+
+    local pg_cmd=""
+    if [[ "$backend" == "venv" ]]; then
+        pg_cmd="$env_path/bin/project-guide"
+        if [[ ! -x "$pg_cmd" ]]; then
+            log_warning "Cannot run 'project-guide update': binary not found at $pg_cmd"
+            return 0
+        fi
+    elif [[ "$backend" == "micromamba" ]]; then
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_warning "Cannot run 'project-guide update': micromamba not found"
+            return 0
+        fi
+        pg_cmd="$micromamba_path run -p $env_path project-guide"
+    else
+        log_warning "Cannot run 'project-guide update': unknown backend '$backend'"
+        return 0
+    fi
+
+    log_info "Running 'project-guide update --no-input' in the project environment..."
+    if $pg_cmd update --no-input; then
+        log_success "project-guide artifacts refreshed"
+    else
+        log_warning "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"
+    fi
+    return 0
+}
+
 # Detect whether project-guide is declared as a dependency in the project's
 # Python or conda dep files. Used by the auto-skip safety mechanism that
 # prevents pyve from upgrading a user-pinned project-guide.

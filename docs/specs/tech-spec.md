@@ -455,7 +455,8 @@ The following helpers in `lib/utils.sh` implement the three-step project-guide h
 | `prompt_install_project_guide_completion` | Y/n prompt with default Y; honors `PYVE_PROJECT_GUIDE_COMPLETION` / `PYVE_NO_PROJECT_GUIDE_COMPLETION`. **CI default = SKIP** (deliberate asymmetry — editing rc files in CI is surprising). |
 | `is_project_guide_installed(backend, env_path)` | Probes `<env_python> -c 'import project_guide'`. ~50ms. Returns 0 if importable. |
 | `install_project_guide(backend, env_path)` | Step 1: runs `pip install --upgrade project-guide` against the project env. Always uses `--upgrade`. Failure-non-fatal. |
-| `run_project_guide_init_in_env(backend, env_path)` | Step 2: runs `<env>/bin/project-guide init --no-input`. Requires project-guide >= 2.2.3. Failure-non-fatal. |
+| `run_project_guide_init_in_env(backend, env_path)` | Step 2 (first-time): runs `<env>/bin/project-guide init --no-input`. Invoked by the orchestrator when `.project-guide.yml` is absent. Requires project-guide >= 2.2.3. Failure-non-fatal. |
+| `run_project_guide_update_in_env(backend, env_path)` | Step 2 (reinit, v1.14.0+): runs `<env>/bin/project-guide update --no-input`. Invoked by the orchestrator when `.project-guide.yml` is present. Content-aware: hash-compares, skips matches, creates `.bak.<timestamp>` siblings for modified managed files, preserves `.project-guide.yml` state. Requires project-guide >= 2.4.0. Failure-non-fatal (including a future `SchemaVersionError`). |
 | `project_guide_in_project_deps()` | Auto-skip safety: returns 0 if `project-guide` is declared in `pyproject.toml`, `requirements.txt`, or `environment.yml`. Word-boundary regex to avoid false matches with similar names like `project-guide-extras`. |
 | `detect_user_shell()` | Reads `$SHELL`, prints `zsh` / `bash` / `unknown`. |
 | `get_shell_rc_path(shell)` | Maps `zsh` → `$HOME/.zshrc`, `bash` → `$HOME/.bashrc`, anything else → empty string. |
@@ -465,6 +466,8 @@ The following helpers in `lib/utils.sh` implement the three-step project-guide h
 | `insert_text_before_sdkman_marker_or_append(rc_path, content)` | (v1.13.1+, Story G.e) Shared SDKMan-aware rc-file insertion. If `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present, inserts `content` immediately above it; otherwise appends. Always emits a leading blank line for round-trip symmetry with `remove_project_guide_completion`. Used by both `add_project_guide_completion` and `install_prompt_hook` in `pyve.sh`. |
 
 The orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` calls these in priority order. Tri-state mode arguments (`""` / `"yes"` / `"no"`) come from CLI flag parsing in `init()`. The auto-skip safety mechanism fires between explicit flag overrides and the prompt/CI default path.
+
+For step 2, the orchestrator branches on `.project-guide.yml` presence (v1.14.0+, Story G.h): when present, it calls `run_project_guide_update_in_env` (reinit refresh); when absent, it calls `run_project_guide_init_in_env` (first-time scaffold). Pyve never auto-runs `project-guide init --force` — that is destructive (wipes config state, no backups) and must remain user-initiated.
 
 ### Legacy-Flag Error Catch (v1.11.0+, Decision D3 — kept forever)
 

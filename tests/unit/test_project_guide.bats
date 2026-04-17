@@ -780,3 +780,47 @@ EOF
     run run_project_guide_init_in_env "venv" "$fake_venv"
     [ "$status" -eq 0 ]  # Returns 0 even when project-guide exits non-zero
 }
+
+#============================================================
+# run_project_guide_update_in_env — invokes project-guide update --no-input
+#============================================================
+
+@test "run_project_guide_update_in_env: passes --no-input to project-guide update" {
+    local fake_venv="$TEST_DIR/fake-venv"
+    mkdir -p "$fake_venv/bin"
+
+    cat > "$fake_venv/bin/project-guide" << EOF
+#!/bin/bash
+echo "\$@" > "$TEST_DIR/pg-update-args.log"
+exit 0
+EOF
+    chmod +x "$fake_venv/bin/project-guide"
+
+    run run_project_guide_update_in_env "venv" "$fake_venv"
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/pg-update-args.log" ]
+    grep -qF "update --no-input" "$TEST_DIR/pg-update-args.log"
+}
+
+@test "run_project_guide_update_in_env: safe no-op when binary missing" {
+    local fake_venv="$TEST_DIR/fake-venv"
+    mkdir -p "$fake_venv/bin"
+    # No project-guide binary
+
+    run run_project_guide_update_in_env "venv" "$fake_venv"
+    [ "$status" -eq 0 ]  # Always returns 0 (failure non-fatal)
+}
+
+@test "run_project_guide_update_in_env: failure-non-fatal when binary fails" {
+    local fake_venv="$TEST_DIR/fake-venv"
+    mkdir -p "$fake_venv/bin"
+
+    cat > "$fake_venv/bin/project-guide" << 'EOF'
+#!/bin/bash
+exit 3
+EOF
+    chmod +x "$fake_venv/bin/project-guide"
+
+    run run_project_guide_update_in_env "venv" "$fake_venv"
+    [ "$status" -eq 0 ]  # Non-fatal: exits 0 even on update failure (incl. future SchemaVersionError)
+}

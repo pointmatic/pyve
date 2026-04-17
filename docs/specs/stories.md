@@ -623,6 +623,122 @@ Code changes
 
 ---
 
+### Story G.h: v1.14.0 Improve project-guide integration [Done]
+
+The integration of pyve and `project-guide` is clunky. First-time `pyve init` already runs `project-guide init` (Story G.c), but subsequent `pyve init --force` leaves the `project-guide` scaffolding untouched even when templates have changed upstream. Users must manually run `project-guide update` to pick up template changes after upgrading either tool.
+
+**Investigation (performed 2026-04-16):** Confirmed via live runs of `project-guide init/update --help` and reading the source's documented semantics:
+
+- `project-guide init --no-input` (the current hook at [lib/utils.sh:554-585](lib/utils.sh#L554-L585)) silently no-ops with "already initialized" and exit 0 when `.project-guide.yml` exists. This is the observed bug.
+- `project-guide init --force` is **destructive**: overwrites `.project-guide.yml` with defaults (loses `current_mode`, overrides, `metadata_overrides`, `test_first`, `pyve_version`), no backups, ignores overrides. Appropriate only when resetting from scratch.
+- `project-guide update --no-input` is the correct command for ongoing refreshes: SHA-256 hash-per-file (skips matches), creates `.bak.<timestamp>` backups before overwriting modified files, respects overrides, re-renders `go.md` in the current mode, preserves all config state. Exits 1 with a clear error if `.project-guide.yml` is missing.
+
+**Desired behavior:**
+
+- **First-time `pyve init`** (no `.project-guide.yml`): existing behavior — `project-guide init --no-input`. No change.
+- **`pyve init --force` with `.project-guide.yml` present:** run `project-guide update --no-input` to refresh managed files while preserving user state.
+- **`pyve init --force` without `.project-guide.yml`** (e.g., user previously passed `--no-project-guide`): fall through to the first-time path (`project-guide init --no-input`).
+- Honor existing `--project-guide` / `--no-project-guide` tri-state and `PYVE_FORCE_YES=1`; reuse the existing `run_project_guide_hooks` gate — no new flags, no new prompts.
+- `project-guide update` failure (including a future `SchemaVersionError` from the separate project-guide story) is surfaced as a `log_warning` and does NOT abort `pyve init`. Pyve never auto-runs `project-guide init --force` on schema mismatch — that's destructive and must stay opt-in for the user.
+
+**Tasks**
+
+Analysis
+
+- [x] Decide which `init` modes trigger the refresh: `--force` only (`pyve update` is deferred to the CLI-refactor story)
+- [x] Decide prompt wording and default: no new prompt — reuse existing `run_project_guide_hooks` gate; `update` is safe (state-preserving, backups) so no user confirmation required beyond the existing install-or-skip gate
+- [x] Confirm command choice: `update` (not `init --force`, not `purge && init`) — verified `update` preserves user state and backs up modified files
+
+Code changes
+
+- [x] Write a failing integration test: after `pyve init --force` in a project with `project-guide` already scaffolded, a managed template file (`developer/debug-guide.md`) is regenerated — note: `go.md` in the initial task list was incorrect; `project-guide update` does not touch the rendered `go.md`, only template files. Switched the test target to a template file.
+- [x] Write a failing test: user-modified managed template produces a `.bak.<timestamp>` sibling after `pyve init --force` (verifies `update` ran, not `init`) — combined with the restore test above into `test_force_reinit_restores_modified_template_with_backup`
+- [x] Write a failing test: `pyve init --force` with `--no-project-guide` skips the refresh entirely (no `update` call, no backups) — `test_force_reinit_skipped_by_no_project_guide`
+- [x] Write a failing test: `pyve init --force` without `.project-guide.yml` (skipped first time) runs `project-guide init --no-input`, not `update` — `test_force_reinit_falls_back_to_init_when_config_absent`
+- [x] Write a failing test: `project-guide update` non-zero exit surfaces as a warning and `pyve init` continues (exit 0) — `test_force_reinit_update_failure_is_non_fatal`
+- [x] Add `run_project_guide_update_in_env(backend, env_path)` helper in [lib/utils.sh:588-622](lib/utils.sh#L588-L622), mirroring `run_project_guide_init_in_env` but invoking `project-guide update --no-input`
+- [x] Modify `run_project_guide_hooks` in [pyve.sh:401-414](pyve.sh#L401-L414) to branch on `.project-guide.yml` presence: call `run_project_guide_update_in_env` if present, else existing `run_project_guide_init_in_env`
+- [x] Reuse existing `--project-guide` / `--no-project-guide` flags and `PYVE_FORCE_YES` — no new flags added
+- [x] Add 3 bats unit tests for `run_project_guide_update_in_env` in [tests/unit/test_project_guide.bats](tests/unit/test_project_guide.bats) mirroring the existing `init` bats tests
+- [x] Run the full test suite — **248 passed, 26 skipped, 0 failures** (pytest); **70 passed** (bats). Previous baseline was 243 pytest passing.
+
+**Spec updates**
+
+- [x] `docs/specs/features.md` — FR-16 updated to describe the init-vs-update branching based on `.project-guide.yml` presence; idempotency section updated
+- [x] `docs/specs/tech-spec.md` — `run_project_guide_update_in_env` helper row added; orchestrator branching note added
+- [ ] `docs/site/usage.md` — deferred (low priority; behavior change is transparent to users who follow the existing flow)
+
+**CHANGELOG**
+
+- [x] Added [1.14.0] entry to CHANGELOG.md
+- [x] Bumped `VERSION` in `pyve.sh` from `1.13.3` to `1.14.0`
+
+**Out of scope (deferred)**
+
+- Upgrading the `project-guide` pip package itself (`pip install --upgrade project-guide`) — better handled when the proposed `pyve update` subcommand is implemented
+- Auto-running `project-guide init --force` on `SchemaVersionError` — destructive, must stay opt-in; pyve only surfaces the warning
+- Merging `project-guide` commands into pyve's CLI surface
+
+---
+
+## Future
+
+### Story G.?: Refactor Subcommands and Flags for Cohesion and Intuitiveness [Planned]
+
+The v1.11.0 CLI refactor (Story G.b) fixed the worst issues — no more `pyve --init`, subcommands are real subcommands. But friction remains: the surface grew organically, and the current set of subcommands and flags is not fully coherent.
+
+**Observed friction:**
+
+1. **Flag vs. subcommand overlap for reinit/update.** `pyve init --force`, `pyve init --update`, `pyve purge`, and `pyve purge --keep-testenv` cover overlapping territory. `--update` is a narrow config-version bump despite its broad-sounding name. When something is wrong, users don't know which to run (see also the doctor/validate consolidation story).
+2. **No non-destructive upgrade path.** Upgrading pyve itself (brew), bumping `.pyve/config` version, refreshing `project-guide` scaffolding, and rewriting managed files (`.gitignore`, `.envrc`, completion block) currently requires `brew upgrade pyve` plus `pyve init --force` — which destroys the venv. A proper `pyve update` would apply new conventions without rebuilding the venv.
+3. **Flag collisions feel positional even though they're not.** `pyve init --backend venv --purge` fails silently (`--purge` is not an `init` flag — the user meant `--force`). Muscle memory from `pyve purge` bleeds over. The error is generic.
+4. **`testenv` uses `--init` / `--purge` flags while top-level uses `init` / `purge` as subcommands.** Two grammars for the same verbs. Either promote to `pyve testenv init` / `pyve testenv purge` (nested subcommands, matching the top level) or keep as flags and document the rationale.
+5. **`python-version` is hyphenated while other subcommands are single words.** Minor, but inconsistent. Candidates: `pyve python set 3.12.13` / `pyve python show`, or document the naming convention.
+
+**Goal:** One obvious command per intent. No silent flag collisions. Consistent grammar between top-level and nested subcommands.
+
+**Tasks**
+
+Analysis
+
+- [ ] Inventory every current subcommand and flag with a one-line intent. Flag overlaps, synonyms, and dead flags.
+- [ ] Design the proposed surface. Candidate direction (not final):
+  - Add `pyve update` — non-destructive: bump brew if possible, update `.pyve/config` version, rewrite managed files in place, refresh `project-guide` scaffolding. Does NOT rebuild the venv. The existing `--update` scaffolding at [pyve.sh:541-544](pyve.sh#L541-L544) is the natural starting point.
+  - Keep `pyve init --force` as "destroy and rebuild venv"; deprecate the `--update` flag in favor of the subcommand.
+  - Normalize `testenv`: `pyve testenv init` / `pyve testenv purge` / `pyve testenv run …`; deprecate `--init` / `--purge` flags.
+  - Decide on `python-version` (rename to `pyve python set/show` or keep).
+- [ ] Decide deprecation window: emit warnings for one or more minor releases, or ship a hard break as 2.0?
+- [ ] Sync with the doctor/validate consolidation story — `--update` semantics are entangled
+- [ ] Confirm backend preference is preserved across `pyve update` (today, `init --force` re-prompts for backend unless `--backend` is passed)
+
+Code changes
+
+- [ ] Write failing tests for the proposed new surface (one per new/changed command)
+- [ ] Implement `pyve update` — reuses existing `--update` code path where applicable
+- [ ] Add deprecation warnings for renamed flags/subcommands with a one-line pointer to the replacement (match the `legacy_flag_error` pattern at [pyve.sh:2620-2631](pyve.sh#L2620-L2631) but as a warning, not an exit)
+- [ ] Update shell completion (`lib/completion/*`) for the new surface
+- [ ] Improve the "unknown flag for this subcommand" error — surface the valid flags and the closest match (e.g., `pyve init --purge` → "did you mean `--force`?")
+- [ ] Run the full test suite — no regressions
+
+**Spec updates**
+
+- [ ] `docs/specs/features.md` — rewrite the command reference
+- [ ] `docs/specs/tech-spec.md` — document the new dispatcher layout
+- [ ] `docs/site/usage.md` — rewrite user-facing command reference
+- [ ] `docs/site/migration.md` — migration guide from the old surface (new file or section)
+
+**CHANGELOG**
+
+- [ ] Update CHANGELOG.md — likely a 2.0 if deprecated flags are dropped; a minor release if deprecations are warnings only
+
+**Out of scope (deferred)**
+
+- Merging `doctor` and `validate` (covered by the consolidation story)
+- Visual overhaul of init output (covered by the "Pyve init is ugly" story)
+- `pyve doctor --fix` / auto-remediation
+
+---
+
 ### Story G.?: Cosmetic Blank-Line Fixes in `.gitignore` and `.zshrc` [Planned]
 
 Three related cosmetic issues where pyve leaves stale blank lines or omits a separator, all discovered during the G.f investigation.
