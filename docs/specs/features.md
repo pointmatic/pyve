@@ -342,6 +342,16 @@ Generate or update `conda-lock.yml` for the current platform.
 - **Error case**: on non-zero exit from conda-lock, pass through output unmodified and propagate exit code.
 - **Scope**: generates for the current platform only. Multi-platform generation and `--check` mode are future enhancements (FR-16).
 
+### FR-17: Unified CLI UX Pattern (Phase H / v2.0+)
+
+All pyve commands share a unified terminal output pattern delivered via `lib/ui.sh` (see `tech-spec.md`). This ensures consistent visual feedback across every command: rounded-box headers and footers, a standardized color palette, `✓` / `✗` / `⚠` / `▸` status symbols, `[Y/n]` (default yes) and `[y/N]` (default no) prompt conventions, and dimmed `$ cmd args…` echo before every subprocess invocation.
+
+- Pyve commands use `lib/ui.sh` helpers for all user-facing output. Raw `echo` / `printf` is reserved for structured-output subcommands (e.g. JSON), debug logs (`PYVE_DEBUG=1`), and pass-through of subprocess stdout.
+- The palette and symbols are shared with the [`gitbetter`](https://github.com/pointmatic/gitbetter) project — the two tools intentionally look and feel identical in the same terminal.
+- ANSI escape codes degrade gracefully under `NO_COLOR=1` (no leaked escape sequences in non-color terminals).
+
+Phase H introduces the module (H.e first sub-story, `lib/ui.sh`) and sweeps the remaining commands to adopt it (H.f). See `stories.md` for story detail and `tech-spec.md` for the delegation contract and implementation policy.
+
 ---
 
 ## Configuration
@@ -398,7 +408,7 @@ venv:
 - **Unit tests** (Bats): White-box testing of shell functions in `lib/*.sh`.
 - **Integration tests** (pytest): Black-box testing of full `pyve` workflows (init, purge, run, doctor) across both backends.
 - **Platform coverage**: macOS and Linux (Ubuntu) via CI matrix.
-- **Python version matrix**: Integration tests run against Python 3.12. Pyve's `DEFAULT_PYTHON_VERSION` is 3.14.4 (set in `pyve.sh`), but CI tests pin the runner's pyenv-installed Python via the auto-pin in `PyveRunner.run()` to avoid expensive source builds on each run. The matrix was narrowed from 3.10/3.11/3.12 to 3.12 only in v1.12.0 — see CHANGELOG and the deferred "Python 3.14 CI investigation" story for the rationale and follow-up.
+- **Python version matrix**: Integration tests run against Python 3.12 and 3.14 (added in v1.14.2 per Story H.b.i). The matrix was narrowed from 3.10/3.11/3.12 to 3.12 only in v1.12.0, then re-broadened to 3.12 + 3.14 in v1.14.2 — see CHANGELOG. Pyve's `DEFAULT_PYTHON_VERSION` is 3.14.4 (set in `pyve.sh`). CI re-uses `actions/setup-python`'s pre-built binary as pyenv's version directory via a symlink shim in the workflow, avoiding pyenv's ~10–15 min source build. Auto-pin in `PyveRunner.run()` pins each job to the runner's matrix Python.
 
 ---
 

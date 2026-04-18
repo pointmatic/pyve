@@ -297,6 +297,36 @@ Version comparison, installation validation, and config file management.
 
 ---
 
+### `lib/ui.sh` — Unified UI Helpers (Phase H / v2.0+)
+
+Standalone module providing the shared terminal UX primitives used across every pyve command. Introduced in H.e (first sub-story) and adopted during H.e and H.f.
+
+Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmatic/gitbetter) project — the module contains **no pyve-specific identifiers** (no `pyve_`-prefixed names, no references to backends, `.pyve/config`, or any other pyve concept). Pyve-specific logic lives in the command scripts that call the helpers, not in the helpers themselves. The color palette and symbol set are synchronized with `gitbetter`'s `tech-spec.md` "Shared Constants & Helpers" section; changes to either side require a coordinated update.
+
+**Module contents** (baseline — final signatures settle in H.e):
+
+| Item | Signature | Description |
+|------|-----------|-------------|
+| Color constants | `R` `G` `Y` `B` `C` `M` `DIM` `BOLD` `RESET` | ANSI color codes |
+| Symbols | `CHECK` `CROSS` `ARROW` `WARN` | Pre-colorized status glyphs (`✓` `✗` `▸` `⚠`) |
+| `banner` | `(title)` | Section banner in blue + bold |
+| `info` | `(msg)` | Dimmed cyan-arrow line |
+| `success` | `(msg)` | Green-check line |
+| `warn` | `(msg)` | Yellow-warn line |
+| `fail` | `(msg)` | Red-cross line; exits 1 |
+| `confirm` | `(prompt)` → 0 on yes | `[Y/n]` prompt, default yes; clean-exits 0 on abort |
+| `ask_yn` | `(prompt)` → 0/1 | `[y/N]` prompt, default no |
+| `divider` | `()` | Dimmed horizontal rule |
+| `run_cmd` | `(cmd args…)` | Echoes `$ cmd args…` dimmed, then executes; propagates exit code |
+| `render_header` | `(title)` | Rounded-box cyan + bold header |
+| `render_footer` | `()` | Rounded-box green + bold "✓ All done." footer |
+
+**Sourcing.** `pyve.sh` sources `lib/ui.sh` alongside the other `lib/*.sh` modules so UI helpers are available before any command dispatcher runs.
+
+**Delegation from existing `log_*` functions.** The legacy `log_info` / `log_warning` / `log_error` / `log_success` helpers in `utils.sh` are deprecated at v2.0 in favor of `info` / `warn` / `fail` / `success` from `lib/ui.sh`. Removal follows the project's deprecate-in-minor, remove-in-major policy (see the "Deprecation Policy" section in `docs/project-guide/developer/best-practices-guide.md`).
+
+---
+
 ## Configuration
 
 ### `.pyve/config` Format
@@ -512,6 +542,23 @@ All user-facing output uses the `log_*` functions from `utils.sh`:
 - `log_warning` → `WARNING:` to stderr
 - `log_error` → `ERROR:` to stderr
 - `log_info` → `INFO:` to stdout
+
+Deprecated at v2.0 in favor of `lib/ui.sh` helpers (see below). Removal scheduled for a future major release.
+
+### UI Helper Policy (Phase H / v2.0+)
+
+Once `lib/ui.sh` lands (H.e first sub-story), every user-facing output line in pyve commands **must** go through a `lib/ui.sh` helper. Raw `echo` / `printf` for user-facing text is a policy violation.
+
+**Exceptions — do not route through `lib/ui.sh`:**
+
+- Internal debug logs gated by `PYVE_DEBUG=1`.
+- Test-fixture helpers in `tests/helpers/`.
+- Pass-through of subprocess stdout/stderr (`pip install`, `micromamba create`, etc.). That stream is not pyve's own voice, so it keeps its upstream formatting.
+- Subcommands emitting structured output intended for shell parsing (e.g. a future `pyve status --format json`) — these emit on stdout without UI chrome.
+
+**Why this matters.** Visual consistency is the user-facing contract H.e and H.f establish. A single `echo "WARNING: foo"` slipped into a new command regresses the contract silently. Visual-regression captures in H.f encode the expected output for each command; CI can be extended to enforce this if drift becomes a real problem.
+
+**Backport discipline.** When modifying `lib/ui.sh`, preserve the "no pyve identifiers" invariant. If a helper needs something pyve-specific (e.g. a path into `.pyve/`), that logic goes in the calling command, not in the helper. Any signature or palette change requires a coordinated update to `gitbetter`'s copy of the module.
 
 ---
 

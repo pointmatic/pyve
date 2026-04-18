@@ -5,6 +5,181 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-04-18
+
+### Fixed — `.pyve/envs/` not ignored on venv-init'd projects (Story H.e.2a)
+
+Before this release, `.pyve/envs/` was added to `.gitignore` only by the **micromamba** init path ([pyve.sh:918-922](pyve.sh#L918-L922) pre-fix); the venv init path ([pyve.sh:1179-1182](pyve.sh#L1179-L1182) pre-fix) omitted it. A project originally venv-init'd that later had a micromamba env drop into `.pyve/envs/` (e.g., manual `micromamba create -p .pyve/envs/foo`, backend switch without `--force`, tooling drift) would leak tens of thousands of env files to `git status`.
+
+**Root cause — asymmetric per-backend `.gitignore` population.** Five pyve-managed ignore patterns (`.pyve/envs`, `.pyve/testenv`, `.envrc`, `.env`, `.vscode/settings.json`) are pyve-internal regardless of backend, but they were being inserted by backend-specific post-template `insert_pattern_in_gitignore_section` calls — so whichever backend you last init'd determined which of these appeared in your `.gitignore`.
+
+**Fix — bake the pyve-internal patterns into the static template in `write_gitignore_template()`.** The `# Pyve virtual environment` section in the template now statically includes all five patterns. Per-backend init paths retain only the dynamic insert for the user-overridable venv directory name (defaults to `.venv`, customizable via `pyve init <dir>`). The existing template-dedup logic prevents any duplication when users migrate from pre-fix `.gitignore` files.
+
+**Upgrade path for existing projects.** Run `pyve update` (shipped in v1.16.0) — it calls `write_gitignore_template()` as part of the non-destructive refresh, so `.pyve/envs` and the other baked-in patterns appear without touching the venv or user state. Alternatively, `pyve init --force` achieves the same on a fresh rebuild.
+
+Byte-level idempotency tests from Story H.a continue to pass — the new template is a superset of the old one and the dedup logic handles the transition cleanly.
+
+### Tests
+
+- **`tests/unit/test_utils.bats` — 4 new tests** asserting each of the newly-baked patterns is present after `write_gitignore_template` (`.pyve/envs`, `.pyve/testenv`, `.envrc` + `.env`, `.vscode/settings.json`).
+- **`tests/unit/test_update.bats` — 1 new regression test** that reproduces the user-reported scenario: a venv-init'd project with a pre-fix `.gitignore` (missing `.pyve/envs`) gains the ignore after `pyve update`.
+- All 479 Bats unit tests pass (474 prior + 5 new).
+
+### Changed — `init_gitignore()` and micromamba init path simplified
+
+- `init_gitignore()` ([pyve.sh:1171-1183](pyve.sh#L1171-L1183)) now calls `write_gitignore_template` followed by one `insert_pattern_in_gitignore_section` for the venv directory. Drops the four now-redundant `ENV_FILE_NAME` / `.envrc` / `.pyve/testenv` inserts.
+- Micromamba init `.gitignore` block ([pyve.sh:915-918](pyve.sh#L915-L918)) drops all five per-backend inserts — the template now covers them.
+- `dynamic_patterns` array in `write_gitignore_template()` shrinks from six entries to one (`${DEFAULT_VENV_DIR:-.venv}`). Template lines contributed via the heredoc cover the rest via the existing template-line deduplication path.
+
+### Out of scope (not addressed in this release)
+
+- `.gitignore` formatting normalization beyond the Pyve section.
+- Migrating historical `.pyve/envs/` files that are ALREADY tracked in a user's repo — that requires `git rm --cached`, a user-initiated operation.
+
+---
+
+## [1.16.0] - 2026-04-18
+
+### Added — `pyve update` subcommand (Story H.e.2)
+
+Non-destructive upgrade path for pyve-managed projects. Ratifies Decision C3 from Story H.c and D4 from Story H.d (see [docs/specs/phase-H-cli-refactor-design.md §4.3](docs/specs/phase-H-cli-refactor-design.md)).
+
+**Usage:**
+
+```
+pyve update [--no-project-guide]
+```
+
+**What it refreshes (all idempotent):**
+
+- `pyve_version` in `.pyve/config` → bumped to the running pyve version.
+- Pyve-managed sections of `.gitignore` → re-applied via the existing `write_gitignore_template()`.
+- `.vscode/settings.json` → refreshed only if it already exists (never created; respects user opt-in at init time).
+- `project-guide` scaffolding → via `project-guide update --no-input` when `.project-guide.yml` is present, unless suppressed by `--no-project-guide` / `PYVE_NO_PROJECT_GUIDE=1`.
+
+**Invariants (spec-level — enforced by tests):**
+
+- Does NOT rebuild the virtual environment. Use `pyve init --force` for that.
+- Does NOT create `.env` or `.envrc`. Those are user state.
+- Does NOT re-prompt for backend. The recorded backend is preserved.
+- Does NOT prompt under any circumstances (safe for CI and one-command upgrades).
+- Returns `0` on success (including no-op when already at current version) and `1` on failure (missing config, corrupt config, unwritable files).
+
+**Boundary vs. `pyve init --force`:**
+
+- `pyve init --force` destroys + rebuilds the venv + all managed files.
+- `pyve update` refreshes managed files only; the venv and user state are preserved.
+
+**v1.x `pyve init --update` is unchanged in this release.** The old flag still performs its narrow config-version bump. It will become a legacy-flag error in v2.0 per H.d §5 (semantics have broadened in the new `pyve update`; silent delegation would surprise users).
+
+### Added — `show_update_help()` + top-level `--help` entry
+
+- New `show_update_help()` function in [pyve.sh](pyve.sh) — standard help block with usage, options, exit codes, and cross-references.
+- Top-level `pyve --help` now lists `update` in the "Environment" section.
+- `PYVE_DISPATCH_TRACE=1 pyve update` emits `DISPATCH:update <args>` for dispatcher debugging (consistent with the other v1.11.0+ subcommands).
+
+### Tests
+
+- **`tests/unit/test_update.bats` — 20 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - Precondition failures: missing `.pyve/config`, missing `backend` key.
+  - Happy path for venv backend: pyve_version bump, no-op at current version, adding pyve_version when not previously recorded.
+  - `.gitignore` refresh with user-section preservation.
+  - Backend preservation.
+  - Spec-level invariants: does NOT create `.venv`, `.env`, `.envrc`, `.vscode/settings.json` (when absent); leaves existing `.venv` and `.env` untouched.
+  - Non-prompting invariant: runs cleanly with `</dev/null`.
+  - `--no-project-guide` skip path.
+  - Unknown-flag error handling.
+  - `PYVE_DISPATCH_TRACE` dispatch trace.
+- All 474 Bats unit tests pass (454 prior + 20 new).
+
+### Out of scope (deferred to later H.e sub-stories)
+
+- `pyve check` (H.e.3) and `pyve status` (H.e.4) implementations.
+- `testenv --init|--install|--purge` → `testenv init|install|purge` normalization.
+- `python-version` → `python set` rename.
+- Adopting `lib/ui.sh` styling inside `update_command` — will be done alongside the `lib/ui.sh` adoption pass (H.f).
+- Removing or warning on `pyve init --update` — deferred to v2.0 per H.d §5.
+
+---
+
+## [1.15.0] - 2026-04-18
+
+### Added — `lib/ui.sh` shared UX helpers module (Story H.e, first sub-story)
+
+Introduces a standalone UI helpers module — the foundational building block for the Phase H CLI refactor. No existing pyve commands adopt it yet; this sub-story ships the module in isolation with full test coverage so every later H.e sub-story can source it without the module itself being on the critical path.
+
+Ported verbatim from the sibling [`gitbetter`](https://github.com/pointmatic/gitbetter) project's `lib/ui.sh` with two deliberate enhancements:
+
+- **`NO_COLOR=1` support** (https://no-color.org) — when `NO_COLOR` is non-empty, all color variables (`R`/`G`/`Y`/`B`/`C`/`M`/`DIM`/`BOLD`/`RESET`) become empty strings and the symbols (`CHECK`/`CROSS`/`ARROW`/`WARN`) degrade to unadorned glyphs. Output contains no ANSI escape sequences. Planned backport to `gitbetter`.
+- **Pyve-free**: stripped `gitbetter`-specific identifiers (`GITBETTER_VERSION`, `GITBETTER_HOMEPAGE`, `print_version`, `fetch_quiet_or_warn`) so the module is a pure UI-primitives library. The remaining surface is what both projects genuinely share.
+
+**Public API:**
+
+- Color constants: `R`, `G`, `Y`, `B`, `C`, `M`, `DIM`, `BOLD`, `RESET`.
+- Symbols: `CHECK` (✔), `CROSS` (✘), `ARROW` (▸), `WARN` (⚠).
+- Helpers: `banner`, `info`, `success`, `warn`, `fail` (exits 1), `confirm` (default Y; exits 0 on abort), `ask_yn` (default N; returns 0/1), `divider`, `run_cmd` (dim-echoes `$ cmd` then executes).
+- Rounded-corner boxes: `header_box <title>` (cyan+bold), `footer_box` (green+bold, "All done.").
+
+**Backport discipline:** `lib/ui.sh` must not contain pyve-specific identifiers (`PYVE_*`, `.pyve`, `pyve.sh`, etc.). Enforced by a bats test that greps for pyve markers and fails if any are present.
+
+### Tests
+
+- **`tests/unit/test_ui.bats` — 29 new tests** covering color palette presence, `NO_COLOR=1` ANSI degradation, symbol output, each helper's glyph + exit behavior, `confirm`/`ask_yn` default handling and abort-path, `run_cmd` status propagation, rounded-corner rendering, and the backport-discipline invariant.
+- All 454 Bats unit tests pass (425 pre-existing + 29 new).
+- ShellCheck on `lib/ui.sh` produces zero warnings.
+
+### Out of scope (deferred to later H.e sub-stories)
+
+- Adopting `lib/ui.sh` in any existing pyve command (`init`, `purge`, `doctor`, etc.). No command changes in this release.
+- Implementing `pyve update`, `pyve check`, `pyve status` (H.e sub-stories 2–4, per `docs/specs/phase-H-cli-refactor-design.md`).
+
+---
+
+## [1.14.2] - 2026-04-17
+
+### Added — Python 3.14 in the integration-tests CI matrix (Story H.b.i)
+
+Workflow-only change. The `integration-tests` job in [.github/workflows/test.yml](.github/workflows/test.yml) now runs against `['3.12', '3.14']` on both `ubuntu-latest` and `macos-latest`. `integration-tests-micromamba` stays at `'3.12'` only (conda ecosystem lead time for 3.14 wheels).
+
+Why this matters: pyve's `DEFAULT_PYTHON_VERSION` is `3.14.4`, but CI has been pinning every runner to 3.12 since v1.12.0 — so the `distutils_shim.sh` path for Python 3.12+ has had no upper-bound coverage against the latest CPython. Adding 3.14 closes the dev/CI gap (the project owner's daily-driver Python) and exercises the shim on the newest stable release.
+
+### Changed — `actions/setup-python` → pyenv symlink shim (avoids source build)
+
+Previously the workflow ran `pyenv install $PYTHON_VERSION` after `actions/setup-python@v6` so that pyve's `ensure_python_version_installed()` would recognize the version. For 3.14, that pyenv step is a ~10–15 min source build on Ubuntu (worse on macOS) per runner per push — unacceptable for a matrix entry.
+
+The new "Setup pyenv with Python" step reuses setup-python's pre-built binary by symlinking its install directory (`$(dirname $(dirname $(python -c 'import sys; print(sys.executable)')))`) into `$PYENV_ROOT/versions/$PYTHON_VERSION`. `pyenv versions --bare` reports the version as installed, `pyenv global $PYTHON_VERSION` switches to it, and `ensure_python_version_installed()` passes without a source build. If the symlink path isn't populated (e.g., setup-python didn't place a binary), the step falls back to the old `pyenv install` behavior.
+
+No pyve code changes. No Bats or pytest test changes. Validation happens on this PR's CI run — a paper analysis (Story H.b) determined Option D (symlink) as the cleanest path and this change implements it.
+
+### Spec
+
+- `docs/specs/features.md` — Python version matrix line updated to reflect 3.12 + 3.14 and the symlink-shim approach.
+
+---
+
+## [1.14.1] - 2026-04-17
+
+### Fixed — Cosmetic blank-line accumulation in `.gitignore` and `.zshrc` (Story H.a)
+
+Three related formatting fixes discovered during the G.f investigation, all cosmetic (no behavioral change, no breaking change) but each produced spurious diffs on `pyve init --force` that users would otherwise have to commit.
+
+**`.gitignore` — blank-line accumulation after purge-then-reinit.** `write_gitignore_template()` in `lib/utils.sh` eagerly emitted every blank line it read from the existing file, then skipped template/dynamic patterns. When the user had content below the Pyve-managed section, consecutive blank lines accumulated at the section boundary on each reinit cycle. Fixed by buffering blank lines and emitting them only when followed by a non-skipped (user) line, so blanks around skipped patterns no longer leak through.
+
+**`.zshrc` — missing blank line before SDKMan marker.** `insert_text_before_sdkman_marker_or_append()` in `lib/utils.sh` emitted a leading blank line before the inserted project-guide completion block but none after it, so the block's closing sentinel (`# <<< project-guide completion <<<`) sat flush against `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!`. Fixed by emitting a trailing blank line after the block. `remove_project_guide_completion()` was updated in lockstep to swallow one trailing blank line immediately following the close sentinel, preserving the byte-identical add→remove round-trip invariant (in both the SDKMan-absent and SDKMan-present cases).
+
+### Tests
+
+- **`tests/unit/test_utils.bats` — 2 new byte-level idempotency tests for `write_gitignore_template`:**
+  - `idempotent after multiple purge-reinit cycles with Pyve-only content (H.a)` — regression guard for the Pyve-only path; md5 match across two purge-reinit cycles.
+  - `idempotent after purge-reinit with user content below Pyve section (H.a)` — reproduces the real-world layout (user-added `# MkDocs build output`, `# project-guide` sections below) that triggered the bug.
+- **`tests/unit/test_project_guide.bats` — 1 new test for `insert_text_before_sdkman_marker_or_append`:**
+  - `SDKMan present — blank line precedes marker (H.a bug 3)` — asserts the line immediately before the SDKMan marker is blank after insertion.
+
+All 425 Bats unit tests and all 89 venv integration tests pass.
+
+---
+
 ## [1.14.0] - 2026-04-16
 
 ### Added — `pyve init --force` refreshes `project-guide` scaffolding via `project-guide update` (Story G.h)

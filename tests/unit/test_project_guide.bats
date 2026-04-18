@@ -475,6 +475,24 @@ EOF
     grep -qxF "sdkman_init" "$HOME/.zshrc"
 }
 
+@test "insert_text_before_sdkman_marker_or_append: SDKMan present — blank line precedes marker (H.a bug 3)" {
+    # Story H.a bug 3: the inserted block must be separated from the SDKMan
+    # marker by a blank line so the two aren't visually cramped.
+    cat > "$HOME/.zshrc" << 'EOF'
+alias ll='ls -lah'
+
+#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!
+export SDKMAN_DIR="$HOME/.sdkman"
+EOF
+    insert_text_before_sdkman_marker_or_append "$HOME/.zshrc" "inserted_line"
+
+    # The line immediately before the SDKMan marker must be blank.
+    local marker_lineno prev_line
+    marker_lineno=$(grep -nF "THIS MUST BE AT THE END" "$HOME/.zshrc" | head -1 | cut -d: -f1)
+    prev_line=$(sed -n "$((marker_lineno - 1))p" "$HOME/.zshrc")
+    [ -z "$prev_line" ]
+}
+
 #============================================================
 # remove_project_guide_completion — surgical removal
 #============================================================
