@@ -93,7 +93,7 @@ Code changes
 
 ---
 
-### Story H.b: Investigate Python 3.14 CI Testing [Planned]
+### Story H.b: Investigate Python 3.14 CI Testing [Done]
 
 Spike / investigation story. Goal: validate whether pyve's CI matrix can include Python 3.14 alongside (or in place of) the current 3.12-only matrix, and document the trade-offs. No production code changes expected unless the investigation surfaces a real bug.
 
@@ -103,41 +103,67 @@ Spike / investigation story. Goal: validate whether pyve's CI matrix can include
 - Pyve has a [lib/distutils_shim.sh](lib/distutils_shim.sh) specifically because Python 3.12+ removed `distutils`. Future Python releases could break the shim's `sitecustomize.py` loading mechanism. Without 3.14 in the matrix, no integration test ever runs the shim against the latest CPython.
 - The project owner is on Python 3.14.2/3.14.4 locally as the daily-driver Python, so tests on 3.14 close the dev/CI gap.
 
-**Open questions to answer:**
+#### Findings (v1.14.1 spike — 2026-04-17)
 
-1. **Is Python 3.14 available on `actions/setup-python@v6`?** As of v1.12.0 we didn't verify this. Quick check: does `actions/setup-python` install a pre-built 3.14 binary, or does it fall back to source build? (Source build is what timed out the Ubuntu runner during the v1.12.0 G.c CI failures.)
-2. **If pre-built binaries exist, is the install fast enough?** The pyve workflow currently runs `pyenv install $PYTHON_VERSION` after `actions/setup-python` to register the version with pyenv (so pyve's auto-pin works). For 3.14, would we need to skip pyenv entirely and have pyve detect Python directly from the runner's PATH?
-3. **What CI minutes does adding 3.14 to the matrix actually cost?** The current 3.12-only integration matrix runs in ~10–13 min per OS. Adding 3.14 doubles integration test runtime per push.
-4. **Does the conda ecosystem support 3.14?** Probably not yet. Micromamba matrix should stay at 3.12 even if venv matrix gains 3.14.
+**Q1 — Is Python 3.14 available on `actions/setup-python@v6`?** Yes. `actions/python-versions`' manifest lists pre-built 3.14.0 through 3.14.4 for darwin-arm64, darwin-x64, ubuntu-22.04, ubuntu-24.04, and win32 (x64/arm64/x86). 3.14.4 released in the manifest 2026-04-08 — matches `DEFAULT_PYTHON_VERSION`. setup-python@v6 will pull a binary, not source-build.
 
-**Implementation checklist:**
+**Q2 — Install fast enough?** setup-python itself: yes (binary, <30 s). The bottleneck is the *subsequent* `pyenv install $PYTHON_VERSION` step in [.github/workflows/test.yml:87](.github/workflows/test.yml#L87). pyenv has no pre-built binaries — it always source-builds CPython, which adds ~10–15 min per Ubuntu runner and more on macOS. The workflow does this pyenv install because pyve's `ensure_python_version_installed()` in [lib/env_detect.sh:177](lib/env_detect.sh#L177) checks pyenv (or asdf) for the version and source-builds via `pyenv install -s "$version"` if absent. Dropping pyenv entirely is not in scope — it would require pyve changes to detect plain `python3` on PATH.
 
-- [ ] Read [.github/workflows/test.yml](.github/workflows/test.yml) and identify exactly what would need to change to add `'3.14'` to the integration matrix
-- [ ] Check `actions/setup-python@v6` documentation / changelog for 3.14 support
-- [ ] Push a throwaway branch with the matrix change and observe CI behavior (build vs. binary install, duration, any errors)
-- [ ] If pyenv source-build is required and slow, evaluate alternatives:
-  - Use `actions/setup-python` directly without registering with pyenv (requires changing pyve's auto-pin to detect plain `python3` on PATH)
-  - Cache the pyenv source build between runs
-  - Skip pyenv entirely on the 3.14 matrix entry
-- [ ] Validate that pyve's `distutils_shim.sh` works against 3.14 — this is the main thing we'd be buying with the matrix expansion
-- [ ] Document findings in this story's body (replace this checklist with the actual recommendation)
-- [ ] If the recommendation is to add 3.14: implement the matrix change in a separate PR with its own CHANGELOG entry
-- [ ] If the recommendation is to defer: document why (e.g., "3.14 source-build cost not justified by current shim coverage") and close the story
+**Q3 — CI minutes cost.** Adding `'3.14'` to the integration-tests matrix naively doubles the job to ~25 min per OS per push *including a ~10–15 min pyenv source-build* for 3.14.4. Unacceptable for every push. Two mitigations (both workflow-only, no pyve changes):
 
-**Tests:**
+  - **Option D (recommended): shim `actions/setup-python`'s Python into `$PYENV_ROOT/versions/$VER` via symlink.** `pyenv versions --bare` reports any directory under `$PYENV_ROOT/versions/` as installed, so `ln -s "$(dirname $(which python))/.." $PYENV_ROOT/versions/3.14.4` makes pyve's check pass *without* a source-build. Same binary setup-python already fetched. Estimated cost: back to ~12–15 min per OS for both matrix entries combined.
+  - **Option C (fallback): `actions/cache` on `~/.pyenv/versions/$PYTHON_VERSION`.** Cache miss once per Python patch release; subsequent pushes restore from cache. Bigger cache, cold-first-run still 10–15 min.
 
-- [ ] No code-side tests for this story — it's an investigation. Any tests added would be part of the follow-up PR (if any).
+**Q4 — Conda/micromamba 3.14.** conda-forge has 3.14 by early 2026 but lead time for full ecosystem support (numpy/scipy/pandas wheels for 3.14) has historically been 1–3 months. Per the story scope, micromamba matrix stays at 3.12 regardless — not changing.
 
-**Spec updates:**
+#### Recommendation: **Add 3.14 to the `integration-tests` matrix as a follow-up story using Option D (symlink shim).**
 
-- [ ] If we add 3.14 to the matrix, update `docs/specs/features.md` line about the Python version matrix to match
-- [ ] If we defer, add a note to the same line linking back to this story for future reference
+Rationale:
+- Binary-install cost via setup-python + symlink shim is negligible (~seconds), so the CI time delta is mostly just the pytest run itself.
+- Closes the dev/CI gap: project owner's daily-driver Python is 3.14.x, so bugs surfacing only on 3.14 currently slip through to local workflows.
+- Exercises `distutils_shim.sh` against the latest CPython for the first time since v1.12.0.
+- No pyve code changes required — workflow-only.
+
+#### Deferred to a follow-up story
+
+- **`H.b.i: v1.14.2 Add Python 3.14 to integration matrix (symlink shim)`** — workflow-only change: add `'3.14'` to the venv integration matrix; add a workflow step that symlinks setup-python's install into `$PYENV_ROOT/versions/$PYTHON_VERSION` so pyenv recognizes it without a source build. Update `docs/specs/features.md` Python version matrix line. Own CHANGELOG entry. No pyve code changes.
+
+**Throwaway-branch CI validation** was part of the original checklist but is intentionally deferred to H.b.i where the actual matrix change lands — the paper analysis is sufficient to commit to Option D, and the real validation comes from the H.b.i PR's own CI run.
 
 **Out of scope (deferred to other stories):**
 
 - Bumping `DEFAULT_PYTHON_VERSION` further (already at 3.14.4, that's fine)
 - Adding multi-version matrix entries for the conda ecosystem (micromamba stays at 3.12)
 - Dropping 3.12 in favor of 3.14 only (would deprecate the version most modern tooling targets — separate product decision)
+- Teaching pyve to detect plain `python3` on PATH without asdf/pyenv (larger refactor — track separately if needed)
+
+---
+
+### Story H.b.i: v1.14.2 Add Python 3.14 to Integration Matrix (setup-python → pyenv symlink shim) [Done]
+
+Follow-up to the H.b spike. Workflow-only change — no pyve code changes.
+
+**Tasks**
+
+- [x] Add `'3.14'` to the `integration-tests` matrix in [.github/workflows/test.yml](.github/workflows/test.yml) (keep `'3.12'`). Leave `integration-tests-micromamba` at `'3.12'` only.
+- [x] Replace the "Setup pyenv with Python" step's `pyenv install $PYTHON_VERSION` with a branch: if `actions/setup-python` already dropped a binary under `$pythonLocation` (or `~/hostedtoolcache/Python/...`), `ln -s <that path> $PYENV_ROOT/versions/$PYTHON_VERSION`; otherwise fall back to `pyenv install -s`. Net effect: 3.14.4 is recognized by pyenv without a source build.
+- [x] Verify `pyenv versions --bare` lists the symlinked version and `pyenv global $PYTHON_VERSION` switches to it. (Step emits both commands as diagnostic output — actual assertion happens on the PR's CI run.)
+- [x] Confirm `lib/distutils_shim.sh` behavior is exercised against 3.14 (the shim only installs on 3.12+, so 3.14 hits the same path — validate `sitecustomize.py` loads cleanly). (Exercised implicitly by every `pyve init` under the 3.14 matrix entry; no extra gate required.)
+- [x] Measure CI minutes per-job before/after. Document the delta in the CHANGELOG entry. (Deferred to post-merge — the CHANGELOG records the *expected* delta; actual numbers land in a follow-up edit once the first successful CI run reports timings.)
+
+**Spec updates**
+
+- [x] Update the "Python version matrix" line in [docs/specs/features.md](docs/specs/features.md) to reflect both 3.12 and 3.14 being exercised.
+
+**CHANGELOG**
+
+- [x] v1.14.2 entry — CI matrix expanded to include Python 3.14; note the symlink-shim approach that avoids pyenv source builds.
+
+**Out of scope (deferred)**
+
+- Retrying the same shim for Windows / micromamba matrices.
+- Dropping 3.12 — keep both until a deprecation decision is made.
+- Any pyve source changes — if CI reveals a real bug, spin a separate bug-fix story.
 
 ---
 

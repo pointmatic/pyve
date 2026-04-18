@@ -408,7 +408,7 @@ venv:
 - **Unit tests** (Bats): White-box testing of shell functions in `lib/*.sh`.
 - **Integration tests** (pytest): Black-box testing of full `pyve` workflows (init, purge, run, doctor) across both backends.
 - **Platform coverage**: macOS and Linux (Ubuntu) via CI matrix.
-- **Python version matrix**: Integration tests run against Python 3.12. Pyve's `DEFAULT_PYTHON_VERSION` is 3.14.4 (set in `pyve.sh`), but CI tests pin the runner's pyenv-installed Python via the auto-pin in `PyveRunner.run()` to avoid expensive source builds on each run. The matrix was narrowed from 3.10/3.11/3.12 to 3.12 only in v1.12.0 — see CHANGELOG and the deferred "Python 3.14 CI investigation" story for the rationale and follow-up.
+- **Python version matrix**: Integration tests run against Python 3.12 and 3.14 (added in v1.14.2 per Story H.b.i). The matrix was narrowed from 3.10/3.11/3.12 to 3.12 only in v1.12.0, then re-broadened to 3.12 + 3.14 in v1.14.2 — see CHANGELOG. Pyve's `DEFAULT_PYTHON_VERSION` is 3.14.4 (set in `pyve.sh`). CI re-uses `actions/setup-python`'s pre-built binary as pyenv's version directory via a symlink shim in the workflow, avoiding pyenv's ~10–15 min source build. Auto-pin in `PyveRunner.run()` pins each job to the runner's matrix Python.
 
 ---
 

@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.2] - 2026-04-17
+
+### Added — Python 3.14 in the integration-tests CI matrix (Story H.b.i)
+
+Workflow-only change. The `integration-tests` job in [.github/workflows/test.yml](.github/workflows/test.yml) now runs against `['3.12', '3.14']` on both `ubuntu-latest` and `macos-latest`. `integration-tests-micromamba` stays at `'3.12'` only (conda ecosystem lead time for 3.14 wheels).
+
+Why this matters: pyve's `DEFAULT_PYTHON_VERSION` is `3.14.4`, but CI has been pinning every runner to 3.12 since v1.12.0 — so the `distutils_shim.sh` path for Python 3.12+ has had no upper-bound coverage against the latest CPython. Adding 3.14 closes the dev/CI gap (the project owner's daily-driver Python) and exercises the shim on the newest stable release.
+
+### Changed — `actions/setup-python` → pyenv symlink shim (avoids source build)
+
+Previously the workflow ran `pyenv install $PYTHON_VERSION` after `actions/setup-python@v6` so that pyve's `ensure_python_version_installed()` would recognize the version. For 3.14, that pyenv step is a ~10–15 min source build on Ubuntu (worse on macOS) per runner per push — unacceptable for a matrix entry.
+
+The new "Setup pyenv with Python" step reuses setup-python's pre-built binary by symlinking its install directory (`$(dirname $(dirname $(python -c 'import sys; print(sys.executable)')))`) into `$PYENV_ROOT/versions/$PYTHON_VERSION`. `pyenv versions --bare` reports the version as installed, `pyenv global $PYTHON_VERSION` switches to it, and `ensure_python_version_installed()` passes without a source build. If the symlink path isn't populated (e.g., setup-python didn't place a binary), the step falls back to the old `pyenv install` behavior.
+
+No pyve code changes. No Bats or pytest test changes. Validation happens on this PR's CI run — a paper analysis (Story H.b) determined Option D (symlink) as the cleanest path and this change implements it.
+
+### Spec
+
+- `docs/specs/features.md` — Python version matrix line updated to reflect 3.12 + 3.14 and the symlink-shim approach.
+
+---
+
 ## [1.14.1] - 2026-04-17
 
 ### Fixed — Cosmetic blank-line accumulation in `.gitignore` and `.zshrc` (Story H.a)
