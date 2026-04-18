@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
 # Unit tests for lib/ui.sh — shared UI helpers ported from the

@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 # Variables below are part of this library's public API — they

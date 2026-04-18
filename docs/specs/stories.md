@@ -377,8 +377,24 @@ Adds the v2.0 diagnostic surface: `pyve check` replaces the semantic of `pyve va
 
 ---
 
+### Story H.e.4: v1.18.0 Implement 'pyve status' command [Done]
+
+Adds the read-only state dashboard that pairs with `pyve check`. State reporting is `status`'s job; diagnostics (and actionable fixes) are `check`'s job. First `pyve.sh`-level consumer of `lib/ui.sh`.
+
+- [x] Implement `status_command()` + three-section layout per [docs/specs/phase-H-check-status-design.md §4](phase-H-check-status-design.md) (Project / Environment / Integrations).
+- [x] Add `show_status_help()` + dispatcher case + top-level `--help` entry.
+- [x] Always exit `0` on findings (contract per H.c §4.2); `1` only on unknown flag / positional arg.
+- [x] Non-prompting invariant: runs cleanly with `</dev/null`.
+- [x] `NO_COLOR=1` → zero ANSI escape sequences in output (layout unchanged).
+- [x] Source `lib/ui.sh` at the top of `pyve.sh`.
+- [x] Fix `set -euo pipefail` interaction with `find` pipelines on a just-init'd venv (no `lib/` dir yet).
+- [x] 25 new tests in `tests/unit/test_status.bats`; 521 / 521 unit tests pass.
+
+**Deliverables:** `status_command()` + `show_status_help()` in [pyve.sh](../../pyve.sh), [tests/unit/test_status.bats](../../tests/unit/test_status.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] Implement `pyve status` command (replaces `validate` per H.c).
 - [ ] Promote `testenv --init` / `--purge` flags to `pyve testenv init` / `pyve testenv purge` subcommands. Deprecation warnings on old flags.
 - [ ] Rename `pyve python-version` per H.d's decision. Deprecation warnings.
 - [ ] Add deprecation warnings for every renamed flag/subcommand (match the `legacy_flag_error` pattern at [pyve.sh:2620-2631](pyve.sh#L2620-L2631) but as warnings, not exits).

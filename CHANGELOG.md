@@ -5,6 +5,93 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0] - 2026-04-18
+
+### Added — `pyve status` subcommand (Story H.e.4)
+
+Read-only state dashboard. Implements the spec in [docs/specs/phase-H-check-status-design.md §4](docs/specs/phase-H-check-status-design.md). Pairs with `pyve check` (diagnostics + suggested fixes) — `status` reports what is, `check` reports what's wrong.
+
+**Usage:**
+
+```
+pyve status
+```
+
+**Contract (per H.c §4.2):**
+
+- Always exits `0` based on findings. An "environment is broken" reading is `pyve check`'s job, not `status`'s.
+- `1` only for pyve-internal errors (unknown flag, positional arg — same conventions as `update` / `check`).
+- Never prompts. Safe under `</dev/null`. Safe in CI.
+
+**Output layout (sectioned, per H.c §4.3):**
+
+```
+Pyve project status
+───────────────────
+
+Project
+  Path:             <absolute project path>
+  Backend:          venv | micromamba | not configured
+  Pyve config:      v<recorded> (current | current: v<running> | newer than pyve v<running>)
+  Python:           <version> (.tool-versions via asdf | .python-version via pyenv | .pyve/config | not pinned)
+
+Environment
+  # venv backend:
+  Path:             <venv dir> [(missing)]
+  Python:           <version from bin/python --version>
+  Packages:         <N> installed
+  distutils shim:   installed | not installed           (Python 3.12+ venv only)
+
+  # micromamba backend:
+  Name:             <env_name>
+  Path:             .pyve/envs/<env_name> [(missing)]
+  Python:           <version>
+  Packages:         <N> installed                       (from conda-meta/)
+  environment.yml:  present | missing
+  conda-lock.yml:   up to date | stale | missing
+
+Integrations
+  direnv:           .envrc present | .envrc missing
+  .env:             present | present (empty) | missing
+  project-guide:    installed (v<ver>) | installed | not installed
+  testenv:          present, pytest installed | present, pytest not installed | not present
+```
+
+Non-project fallback: when `.pyve/config` is absent, `pyve status` prints the title, a "Not a pyve-managed project" marker, and exits `0`. Users who run `pyve status` in the wrong directory get a friendly answer, not a red error.
+
+**Rendering:** uses the `lib/ui.sh` color/style constants (`BOLD`, `DIM`, `RESET`) — first `pyve.sh`-level adopter of the module shipped in v1.15.0. Respects `NO_COLOR=1` (https://no-color.org): output contains zero ANSI escape sequences, layout unchanged.
+
+### Added — `show_status_help()` + top-level `--help` entry
+
+- `show_status_help()` with the read-only contract, output description, and cross-references to `check` and `--help`.
+- `pyve --help` lists `status` under Diagnostics, directly beneath `check`.
+- `PYVE_DISPATCH_TRACE=1 pyve status` emits `DISPATCH:status <args>`.
+
+### Changed — `pyve.sh` now sources `lib/ui.sh` at startup
+
+The main script now sources `lib/ui.sh` alongside the other lib modules at the top of the file. `status_command` is the first consumer; `update` and `check` migrate in a later adoption pass (tracked under the H.f retrofit scope).
+
+### Tests
+
+- **`tests/unit/test_status.bats` — 25 new tests** covering:
+  - `--help` / `-h` output, read-only-contract wording, and top-level help integration.
+  - Exit-code discipline: always `0` for missing config, missing venv, missing backend; `1` only on unknown flag / positional arg.
+  - Non-project fallback message.
+  - Title + three section headers (Project / Environment / Integrations).
+  - Project section: backend name, recorded pyve version, version drift, "(current)" marker.
+  - Environment section (venv backend): `.venv` path, "(missing)" marker when absent, Python version extraction from `bin/python`.
+  - Integrations section: `.envrc` / `.env` / testenv presence reporting.
+  - Non-prompting invariant (runs cleanly with `</dev/null`).
+  - `NO_COLOR=1` → no ANSI escape sequences in output.
+  - `PYVE_DISPATCH_TRACE` integration.
+- All 521 Bats unit tests pass (496 prior + 25 new).
+
+### Fixed — `set -euo pipefail` interaction with `find` pipelines
+
+`find`'s non-zero exit when the search root is missing, combined with `pipefail`, made several `status` helpers kill the script on a just-init'd venv (no `lib/` dir yet). Fixed the helpers (`_status_env_venv`, `_status_venv_package_count`, `_status_env_micromamba`) by guarding with `[[ -d ... ]]` checks and `|| true` on the pipeline output. No regressions in `pyve doctor`; this bug could only surface through `status`.
+
+---
+
 ## [1.17.0] - 2026-04-18
 
 ### Added — `pyve check` subcommand (Story H.e.3)

@@ -1206,7 +1206,7 @@ Apache License 2.0 - see LICENSE file.
 
 ## Copyright
 
-Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
+Copyright (c) 2025-2026-2026 Pointmatic (https://www.pointmatic.com)
 
 ## Acknowledgments
 

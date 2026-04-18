@@ -66,20 +66,20 @@ identifier. Use the comment syntax for the file type:
 
 **This project's header:**
 
-- **Copyright**: `Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)`
+- **Copyright**: `Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)`
 - **SPDX identifier**: `SPDX-License-Identifier: Apache-2.0`
 
 Bash example (leading shebang preserved):
 ```bash
 #!/usr/bin/env bash
 #
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 ```
 
 Python example:
 ```python
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 ```
 
