@@ -801,6 +801,13 @@ write_gitignore_template() {
     tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
 
     # --- 1. Write the Pyve-managed section ---
+    # The Pyve virtual environment block below bakes in every pyve-managed
+    # ignore pattern that is NOT user-overridable at init time. Before
+    # Story H.e.2a only `.pyve/envs` for micromamba and `.venv` for venv
+    # were added dynamically per-backend, which meant a venv-init'd project
+    # that later had a micromamba env drop into `.pyve/envs/` leaked
+    # thousands of files to `git status`. Static patterns eliminate that
+    # asymmetry — `pyve update` restores them on any pre-fix project.
     cat > "$tmpfile" << 'GITIGNORE_EOF'
 # macOS only
 .DS_Store
@@ -824,6 +831,11 @@ build/
 *.ipynb_checkpoints
 
 # Pyve virtual environment
+.pyve/envs
+.pyve/testenv
+.envrc
+.env
+.vscode/settings.json
 GITIGNORE_EOF
 
     # --- 2. Append non-template lines from the existing file ---
@@ -834,11 +846,11 @@ GITIGNORE_EOF
             [[ -n "$tline" ]] && template_lines+=("$tline")
         done < "$tmpfile"
 
-        # Also include dynamically inserted Pyve-managed patterns so they
-        # are stripped from the user-entries pass on subsequent inits.
+        # The only pyve-managed pattern still inserted dynamically is the
+        # venv directory name — the user can override it via
+        # `pyve init <custom_dir>`, so it can't be baked into the template.
         local -a dynamic_patterns=(
-            ".envrc" ".env" ".pyve/testenv" ".pyve/envs"
-            "${DEFAULT_VENV_DIR:-.venv}" ".vscode/settings.json"
+            "${DEFAULT_VENV_DIR:-.venv}"
         )
         template_lines+=("${dynamic_patterns[@]}")
 

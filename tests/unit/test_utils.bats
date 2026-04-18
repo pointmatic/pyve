@@ -233,7 +233,7 @@ EOF
 @test "write_gitignore_template: creates template when no .gitignore exists" {
     run write_gitignore_template
     [ "$status" -eq 0 ]
-    
+
     assert_file_exists ".gitignore"
     assert_file_contains ".gitignore" "# macOS only"
     assert_file_contains ".gitignore" ".DS_Store"
@@ -245,6 +245,36 @@ EOF
     assert_file_contains ".gitignore" "htmlcov/"
     assert_file_contains ".gitignore" ".pytest_cache/"
     assert_file_contains ".gitignore" "# Pyve virtual environment"
+}
+
+@test "write_gitignore_template: Pyve-managed section includes .pyve/envs (H.e.2a)" {
+    # Regression for H.e.2a: .pyve/envs must be ignored regardless of
+    # backend. Before the fix, it was only added by the micromamba init
+    # path — a venv-init'd project that later had a micromamba env drop
+    # into .pyve/envs/ would leak thousands of files to git status.
+    write_gitignore_template
+    run grep -qxF ".pyve/envs" .gitignore
+    [ "$status" -eq 0 ]
+}
+
+@test "write_gitignore_template: Pyve-managed section includes .pyve/testenv (H.e.2a)" {
+    write_gitignore_template
+    run grep -qxF ".pyve/testenv" .gitignore
+    [ "$status" -eq 0 ]
+}
+
+@test "write_gitignore_template: Pyve-managed section includes .envrc and .env (H.e.2a)" {
+    write_gitignore_template
+    run grep -qxF ".envrc" .gitignore
+    [ "$status" -eq 0 ]
+    run grep -qxF ".env" .gitignore
+    [ "$status" -eq 0 ]
+}
+
+@test "write_gitignore_template: Pyve-managed section includes .vscode/settings.json (H.e.2a)" {
+    write_gitignore_template
+    run grep -qxF ".vscode/settings.json" .gitignore
+    [ "$status" -eq 0 ]
 }
 
 @test "write_gitignore_template: preserves user entries below template" {

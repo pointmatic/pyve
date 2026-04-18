@@ -5,6 +5,104 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.1] - 2026-04-18
+
+### Fixed — `.pyve/envs/` not ignored on venv-init'd projects (Story H.e.2a)
+
+Before this release, `.pyve/envs/` was added to `.gitignore` only by the **micromamba** init path ([pyve.sh:918-922](pyve.sh#L918-L922) pre-fix); the venv init path ([pyve.sh:1179-1182](pyve.sh#L1179-L1182) pre-fix) omitted it. A project originally venv-init'd that later had a micromamba env drop into `.pyve/envs/` (e.g., manual `micromamba create -p .pyve/envs/foo`, backend switch without `--force`, tooling drift) would leak tens of thousands of env files to `git status`.
+
+**Root cause — asymmetric per-backend `.gitignore` population.** Five pyve-managed ignore patterns (`.pyve/envs`, `.pyve/testenv`, `.envrc`, `.env`, `.vscode/settings.json`) are pyve-internal regardless of backend, but they were being inserted by backend-specific post-template `insert_pattern_in_gitignore_section` calls — so whichever backend you last init'd determined which of these appeared in your `.gitignore`.
+
+**Fix — bake the pyve-internal patterns into the static template in `write_gitignore_template()`.** The `# Pyve virtual environment` section in the template now statically includes all five patterns. Per-backend init paths retain only the dynamic insert for the user-overridable venv directory name (defaults to `.venv`, customizable via `pyve init <dir>`). The existing template-dedup logic prevents any duplication when users migrate from pre-fix `.gitignore` files.
+
+**Upgrade path for existing projects.** Run `pyve update` (shipped in v1.16.0) — it calls `write_gitignore_template()` as part of the non-destructive refresh, so `.pyve/envs` and the other baked-in patterns appear without touching the venv or user state. Alternatively, `pyve init --force` achieves the same on a fresh rebuild.
+
+Byte-level idempotency tests from Story H.a continue to pass — the new template is a superset of the old one and the dedup logic handles the transition cleanly.
+
+### Tests
+
+- **`tests/unit/test_utils.bats` — 4 new tests** asserting each of the newly-baked patterns is present after `write_gitignore_template` (`.pyve/envs`, `.pyve/testenv`, `.envrc` + `.env`, `.vscode/settings.json`).
+- **`tests/unit/test_update.bats` — 1 new regression test** that reproduces the user-reported scenario: a venv-init'd project with a pre-fix `.gitignore` (missing `.pyve/envs`) gains the ignore after `pyve update`.
+- All 479 Bats unit tests pass (474 prior + 5 new).
+
+### Changed — `init_gitignore()` and micromamba init path simplified
+
+- `init_gitignore()` ([pyve.sh:1171-1183](pyve.sh#L1171-L1183)) now calls `write_gitignore_template` followed by one `insert_pattern_in_gitignore_section` for the venv directory. Drops the four now-redundant `ENV_FILE_NAME` / `.envrc` / `.pyve/testenv` inserts.
+- Micromamba init `.gitignore` block ([pyve.sh:915-918](pyve.sh#L915-L918)) drops all five per-backend inserts — the template now covers them.
+- `dynamic_patterns` array in `write_gitignore_template()` shrinks from six entries to one (`${DEFAULT_VENV_DIR:-.venv}`). Template lines contributed via the heredoc cover the rest via the existing template-line deduplication path.
+
+### Out of scope (not addressed in this release)
+
+- `.gitignore` formatting normalization beyond the Pyve section.
+- Migrating historical `.pyve/envs/` files that are ALREADY tracked in a user's repo — that requires `git rm --cached`, a user-initiated operation.
+
+---
+
+## [1.16.0] - 2026-04-18
+
+### Added — `pyve update` subcommand (Story H.e.2)
+
+Non-destructive upgrade path for pyve-managed projects. Ratifies Decision C3 from Story H.c and D4 from Story H.d (see [docs/specs/phase-H-cli-refactor-design.md §4.3](docs/specs/phase-H-cli-refactor-design.md)).
+
+**Usage:**
+
+```
+pyve update [--no-project-guide]
+```
+
+**What it refreshes (all idempotent):**
+
+- `pyve_version` in `.pyve/config` → bumped to the running pyve version.
+- Pyve-managed sections of `.gitignore` → re-applied via the existing `write_gitignore_template()`.
+- `.vscode/settings.json` → refreshed only if it already exists (never created; respects user opt-in at init time).
+- `project-guide` scaffolding → via `project-guide update --no-input` when `.project-guide.yml` is present, unless suppressed by `--no-project-guide` / `PYVE_NO_PROJECT_GUIDE=1`.
+
+**Invariants (spec-level — enforced by tests):**
+
+- Does NOT rebuild the virtual environment. Use `pyve init --force` for that.
+- Does NOT create `.env` or `.envrc`. Those are user state.
+- Does NOT re-prompt for backend. The recorded backend is preserved.
+- Does NOT prompt under any circumstances (safe for CI and one-command upgrades).
+- Returns `0` on success (including no-op when already at current version) and `1` on failure (missing config, corrupt config, unwritable files).
+
+**Boundary vs. `pyve init --force`:**
+
+- `pyve init --force` destroys + rebuilds the venv + all managed files.
+- `pyve update` refreshes managed files only; the venv and user state are preserved.
+
+**v1.x `pyve init --update` is unchanged in this release.** The old flag still performs its narrow config-version bump. It will become a legacy-flag error in v2.0 per H.d §5 (semantics have broadened in the new `pyve update`; silent delegation would surprise users).
+
+### Added — `show_update_help()` + top-level `--help` entry
+
+- New `show_update_help()` function in [pyve.sh](pyve.sh) — standard help block with usage, options, exit codes, and cross-references.
+- Top-level `pyve --help` now lists `update` in the "Environment" section.
+- `PYVE_DISPATCH_TRACE=1 pyve update` emits `DISPATCH:update <args>` for dispatcher debugging (consistent with the other v1.11.0+ subcommands).
+
+### Tests
+
+- **`tests/unit/test_update.bats` — 20 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - Precondition failures: missing `.pyve/config`, missing `backend` key.
+  - Happy path for venv backend: pyve_version bump, no-op at current version, adding pyve_version when not previously recorded.
+  - `.gitignore` refresh with user-section preservation.
+  - Backend preservation.
+  - Spec-level invariants: does NOT create `.venv`, `.env`, `.envrc`, `.vscode/settings.json` (when absent); leaves existing `.venv` and `.env` untouched.
+  - Non-prompting invariant: runs cleanly with `</dev/null`.
+  - `--no-project-guide` skip path.
+  - Unknown-flag error handling.
+  - `PYVE_DISPATCH_TRACE` dispatch trace.
+- All 474 Bats unit tests pass (454 prior + 20 new).
+
+### Out of scope (deferred to later H.e sub-stories)
+
+- `pyve check` (H.e.3) and `pyve status` (H.e.4) implementations.
+- `testenv --init|--install|--purge` → `testenv init|install|purge` normalization.
+- `python-version` → `python set` rename.
+- Adopting `lib/ui.sh` styling inside `update_command` — will be done alongside the `lib/ui.sh` adoption pass (H.f).
+- Removing or warning on `pyve init --update` — deferred to v2.0 per H.d §5.
+
+---
+
 ## [1.15.0] - 2026-04-18
 
 ### Added — `lib/ui.sh` shared UX helpers module (Story H.e, first sub-story)

@@ -280,9 +280,83 @@ Introduces a standalone shared UX helpers module that every pyve command will so
 
 **Deliverables:** [lib/ui.sh](../../lib/ui.sh), [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats). Enhancement beyond gitbetter's copy: `NO_COLOR=1` support (planned backport to gitbetter).
 
-### Remaining H.e sub-stories (placeholder — each becomes an `H.e.N` story as it begins):
+### Story H.e.2: v1.16.0 Implement `pyve update` subcommand [Done]
 
-- [ ] Implement `pyve update` subcommand (non-destructive upgrade path).
+Non-destructive upgrade path per H.c Decision C3 and H.d Decision D4. Refreshes managed files + `.pyve/config` without rebuilding the venv.
+
+- [x] Add `update_command()` in `pyve.sh` with the spec from [docs/specs/phase-H-cli-refactor-design.md §4.3](phase-H-cli-refactor-design.md).
+- [x] Add `show_update_help()` + dispatcher case + top-level `--help` listing.
+- [x] Non-destructive invariants verified by bats: does NOT create `.venv`, `.env`, `.envrc`, or `.vscode/settings.json` when absent; preserves backend.
+- [x] Non-prompting invariant verified (runs cleanly with `</dev/null`).
+- [x] `--no-project-guide` flag supported.
+- [x] 20 new tests in `tests/unit/test_update.bats`; 474 / 474 total unit tests pass.
+- [x] v1.x `pyve init --update` untouched (hard-break deferred to v2.0 per H.d §5).
+
+**Deliverables:** `update_command()` in [pyve.sh](../../pyve.sh), [tests/unit/test_update.bats](../../tests/unit/test_update.bats).
+
+### Story H.e.2a: v1.16.1 Bug fix — `.pyve/envs/` not ignored on venv-init'd projects [Done]
+
+Bug discovered while using a pyve-managed project (d802-deep-learning): thousands of untracked files appeared under `.pyve/envs/<env-name>/...` after a micromamba environment was created in a previously venv-init'd project.
+
+**Root cause.** `write_gitignore_template()` in `lib/utils.sh` writes a static template ending at the `# Pyve virtual environment` section header, with no patterns below it. The patterns are inserted per-backend by `insert_pattern_in_gitignore_section` calls in the init flow:
+
+- **venv path** ([pyve.sh:1179-1182](../../pyve.sh#L1179-L1182)) inserts: `.venv` (or custom dir), `.env`, `.envrc`, `.pyve/testenv` — but **not** `.pyve/envs`.
+- **micromamba path** ([pyve.sh:918-922](../../pyve.sh#L918-L922)) inserts: `.pyve/envs`, `.env`, `.envrc`, `.pyve/testenv`, `.vscode/settings.json`.
+
+Result: a project originally venv-init'd has no `.pyve/envs/` ignore. If a micromamba env is later created there (e.g., manual `micromamba create -p .pyve/envs/foo ...`, or the user reinitializes without `--force`, or tooling drift), the env's tens of thousands of files show as untracked in `git status`.
+
+**Design-level fix.** `.pyve/envs/` (and `.pyve/testenv/`) are pyve-internal regardless of backend. Bake them into the static template in `write_gitignore_template()` so every `pyve init` — venv or micromamba — ignores them. Backend-specific dynamic inserts shrink to just the user-overridable venv directory name (default `.venv`).
+
+**Baked-into-template patterns (new):**
+
+```
+# Pyve virtual environment
+.pyve/envs/
+.pyve/testenv/
+.envrc
+.env
+.vscode/settings.json
+```
+
+**Dynamic inserts (unchanged scope):**
+
+- venv: the actual venv dir name (respects `pyve init <custom_dir>`).
+- micromamba: nothing additional (all covered by the static template).
+
+**Key invariant (regression guard):** running `pyve init` (any backend) on a fresh project, then manually creating `.pyve/envs/foo/` and running `git status`, should show no `.pyve/envs/foo/` files.
+
+**Tasks**
+
+Code changes
+
+- [x] Move `.pyve/envs`, `.pyve/testenv`, `.envrc`, `.env`, `.vscode/settings.json` from the per-backend insert lists into the static heredoc in `write_gitignore_template()` (no trailing slashes — matches the form stored in existing user `.gitignore` files so the dedup grep matches and prevents duplication on upgrade).
+- [x] Simplify the venv init path at `pyve.sh:1171-1183` to only insert the user-specified venv directory (default `.venv`) — everything else is static.
+- [x] Simplify the micromamba init path at `pyve.sh:915-918` to drop all now-static inserts.
+- [x] Keep the existing template dedup logic in `write_gitignore_template()` — `dynamic_patterns` now shrinks to just `${DEFAULT_VENV_DIR:-.venv}`; template-line extraction from the heredoc covers the rest.
+- [x] Write failing tests for each newly-baked pattern (`.pyve/envs`, `.pyve/testenv`, `.envrc`, `.env`, `.vscode/settings.json`) in `tests/unit/test_utils.bats`.
+- [x] Write a failing regression test in `tests/unit/test_update.bats`: a venv-init'd project with a pre-fix `.gitignore` (missing `.pyve/envs`) gains the ignore after `pyve update`.
+- [x] Existing byte-level idempotency tests from Story H.a still pass — the new template is a superset of the old one and the dedup logic handles the transition cleanly.
+- [x] Run the full test suite — 479 / 479 unit tests pass (474 prior + 5 new).
+
+**Upgrade path for existing projects.** `pyve update` (shipped in v1.16.0) calls `write_gitignore_template()` as part of the non-destructive refresh, so existing projects pick up the fix simply by running `pyve update`. No migration guide needed beyond the CHANGELOG entry.
+
+**Spec updates**
+
+- [x] No changes to `docs/specs/tech-spec.md` (internal formatting fix; §4 already says "Pyve-managed template section").
+- [x] No changes to `docs/specs/features.md`.
+
+**CHANGELOG**
+
+- [x] v1.16.1 entry — documents the template change, the upgrade path (`pyve update` picks it up), and the user-visible effect (`.pyve/envs/` no longer shows as untracked).
+
+**Out of scope (deferred)**
+
+- Normalizing all `.gitignore` formatting beyond the Pyve section.
+- Migrating historical `.pyve/envs/` files that are ALREADY tracked in a user's repo — that's a user-initiated `git rm --cached` operation, not pyve's job.
+
+---
+
+### Remaining H.e sub-stories (placeholder — each becomes an `H.e.N` story as it begins):
 - [ ] Implement `pyve check` command (replaces `doctor` per H.c).
 - [ ] Implement `pyve status` command (replaces `validate` per H.c).
 - [ ] Promote `testenv --init` / `--purge` flags to `pyve testenv init` / `pyve testenv purge` subcommands. Deprecation warnings on old flags.
@@ -302,12 +376,6 @@ Introduces a standalone shared UX helpers module that every pyve command will so
 **CHANGELOG**
 
 - [ ] v2.0.0 entry — breaking changes summary, renamed flags/commands, deprecation list.
-
-**Out of scope (deferred)**
-
-- Retrofitting `pyve init` / `pyve purge` / other surviving commands to the new UX — covered by H.f.
-- Removing (as opposed to deprecating) old flags — Future (Phase I).
-- `pyve check --fix` auto-remediation — Future.
 
 ---
 
@@ -491,6 +559,12 @@ Evaluate whether the bootstrap code verifies downloaded binaries and add verific
 ---
 
 ## Future
+
+### Story I.?: Out of scope (from Story H.e)
+
+- Retrofitting `pyve init` / `pyve purge` / other surviving commands to the new UX — covered by H.f.
+- Removing (as opposed to deprecating) old flags — Future (Phase I).
+- `pyve check --fix` auto-remediation — Future.
 
 ### Story I.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
