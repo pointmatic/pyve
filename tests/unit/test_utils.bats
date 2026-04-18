@@ -349,6 +349,77 @@ EOF
     [ "$first_md5" = "$second_md5" ]
 }
 
+@test "write_gitignore_template: idempotent after multiple purge-reinit cycles with Pyve-only content (H.a)" {
+    # Story H.a case (a): Pyve-only .gitignore (no user content beyond the
+    # template). Two purge-reinit cycles to catch any accumulating blank lines
+    # that a single cycle might miss.
+    local section="# Pyve virtual environment"
+
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".env" "$section"
+    insert_pattern_in_gitignore_section ".venv" "$section"
+
+    local first_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    local i
+    for i in 1 2; do
+        remove_pattern_from_gitignore ".venv"
+        remove_pattern_from_gitignore ".env"
+        remove_pattern_from_gitignore ".envrc"
+
+        write_gitignore_template
+        insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+        insert_pattern_in_gitignore_section ".envrc" "$section"
+        insert_pattern_in_gitignore_section ".env" "$section"
+        insert_pattern_in_gitignore_section ".venv" "$section"
+    done
+
+    local final_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    [ "$first_md5" = "$final_md5" ]
+}
+
+@test "write_gitignore_template: idempotent after purge-reinit with user content below Pyve section (H.a)" {
+    # Story H.a case (b): user-added patterns below the Pyve section. Without
+    # the fix, each purge-reinit cycle leaks blank lines at the boundary
+    # between the Pyve-managed section and the user content.
+    local section="# Pyve virtual environment"
+
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".env" "$section"
+    insert_pattern_in_gitignore_section ".venv" "$section"
+
+    # Append real-world user content below the Pyve section
+    cat >> .gitignore << 'EOF'
+
+# MkDocs build output
+/site/
+
+# project-guide
+docs/project-guide/**/*.bak.*
+EOF
+
+    local first_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    remove_pattern_from_gitignore ".venv"
+    remove_pattern_from_gitignore ".env"
+    remove_pattern_from_gitignore ".envrc"
+
+    write_gitignore_template
+    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".envrc" "$section"
+    insert_pattern_in_gitignore_section ".env" "$section"
+    insert_pattern_in_gitignore_section ".venv" "$section"
+
+    local second_md5=$(md5 -q .gitignore 2>/dev/null || md5sum .gitignore | cut -d' ' -f1)
+
+    [ "$first_md5" = "$second_md5" ]
+}
+
 @test "write_gitignore_template: conda-lock.yml is NOT in the generated template" {
     run write_gitignore_template
     [ "$status" -eq 0 ]

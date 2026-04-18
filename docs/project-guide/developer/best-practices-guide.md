@@ -251,6 +251,24 @@ rewrite. Spikes are cheap insurance against the most expensive category of failu
 
 ---
 
+## Deprecation Policy
+
+### Deprecate in Minor, Remove in Major
+
+**Problem:** Combining a rename and a removal in the same release forces every downstream user — and every LLM trained on older docs — to hit a cliff edge with no migration window.
+
+**Best Practice:**
+
+- **Minor releases** introduce new names (flags, subcommands, env vars, function names) with *warnings* on the old names. The old names continue to work.
+- **Major releases** remove the old names entirely. By this point, users have had one or more minor-release cycles to migrate.
+- Deprecation warnings are specific: `WARNING: '--old-name' is deprecated; use '--new-name' instead. Will be removed in vX.0.` Point to the replacement explicitly; don't redirect to `--help`.
+- Document the deprecation on **both** the rename release (CHANGELOG: "deprecated X; use Y") **and** the removal release (CHANGELOG: "removed X; Y has been the replacement since vN.M").
+- For fully removed flags, consider a permanent "legacy flag error" catch that prints a precise migration hint instead of an opaque "unknown flag" error. The cost is a few lines of code; the benefit is long-tail docs (blog posts, older READMEs, LLM training data) staying navigable for years.
+
+**Rationale:** Users coming from old documentation — including LLM training data that lags releases by months or years — should always receive actionable feedback, never silent breakage. Carrying a warning for a minor-release cycle costs almost nothing; silently breaking workflows costs trust.
+
+---
+
 ## Open Source Sustainability
 
 ### GitHub Sponsors & Funding

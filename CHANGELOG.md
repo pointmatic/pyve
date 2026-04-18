@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.1] - 2026-04-17
+
+### Fixed — Cosmetic blank-line accumulation in `.gitignore` and `.zshrc` (Story H.a)
+
+Three related formatting fixes discovered during the G.f investigation, all cosmetic (no behavioral change, no breaking change) but each produced spurious diffs on `pyve init --force` that users would otherwise have to commit.
+
+**`.gitignore` — blank-line accumulation after purge-then-reinit.** `write_gitignore_template()` in `lib/utils.sh` eagerly emitted every blank line it read from the existing file, then skipped template/dynamic patterns. When the user had content below the Pyve-managed section, consecutive blank lines accumulated at the section boundary on each reinit cycle. Fixed by buffering blank lines and emitting them only when followed by a non-skipped (user) line, so blanks around skipped patterns no longer leak through.
+
+**`.zshrc` — missing blank line before SDKMan marker.** `insert_text_before_sdkman_marker_or_append()` in `lib/utils.sh` emitted a leading blank line before the inserted project-guide completion block but none after it, so the block's closing sentinel (`# <<< project-guide completion <<<`) sat flush against `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!`. Fixed by emitting a trailing blank line after the block. `remove_project_guide_completion()` was updated in lockstep to swallow one trailing blank line immediately following the close sentinel, preserving the byte-identical add→remove round-trip invariant (in both the SDKMan-absent and SDKMan-present cases).
+
+### Tests
+
+- **`tests/unit/test_utils.bats` — 2 new byte-level idempotency tests for `write_gitignore_template`:**
+  - `idempotent after multiple purge-reinit cycles with Pyve-only content (H.a)` — regression guard for the Pyve-only path; md5 match across two purge-reinit cycles.
+  - `idempotent after purge-reinit with user content below Pyve section (H.a)` — reproduces the real-world layout (user-added `# MkDocs build output`, `# project-guide` sections below) that triggered the bug.
+- **`tests/unit/test_project_guide.bats` — 1 new test for `insert_text_before_sdkman_marker_or_append`:**
+  - `SDKMan present — blank line precedes marker (H.a bug 3)` — asserts the line immediately before the SDKMan marker is blank after insertion.
+
+All 425 Bats unit tests and all 89 venv integration tests pass.
+
+---
+
 ## [1.14.0] - 2026-04-16
 
 ### Added — `pyve init --force` refreshes `project-guide` scaffolding via `project-guide update` (Story G.h)

@@ -248,8 +248,10 @@ insert_text_before_sdkman_marker_or_append() {
 
     if grep -qF "$SDKMAN_END_MARKER" "$rc_path"; then
         # SDKMan present: insert the content immediately above the
-        # marker line, always preceded by a blank line for
-        # readability and round-trip symmetry.
+        # marker line, bracketed by a blank line before and after for
+        # readability and round-trip symmetry (the trailing blank
+        # keeps the block visually separated from the SDKMan marker —
+        # Story H.a bug 3).
         #
         # Implementation note: BSD awk on macOS rejects embedded
         # newlines in -v variables, so we stage the multi-line block
@@ -265,6 +267,7 @@ insert_text_before_sdkman_marker_or_append() {
                 print ""
                 while ((getline line < block_file) > 0) print line
                 close(block_file)
+                print ""
                 inserted = 1
             }
             { print }
@@ -416,8 +419,10 @@ EOF
 
 # Remove the project-guide completion sentinel block from a user rc file.
 # Safe no-op if the file is missing or the sentinel is absent.
-# Also drops one immediately-preceding blank line (added by add_...) so that
-# add→remove round-trips cleanly.
+# Also drops one immediately-preceding blank line AND one immediately-
+# following blank line (both added by add_...) so that add→remove
+# round-trips cleanly in both the SDKMan-absent (only leading blank) and
+# SDKMan-present (leading + trailing blank) cases.
 remove_project_guide_completion() {
     local rc_path="$1"
 
@@ -435,11 +440,14 @@ remove_project_guide_completion() {
     # function name in BSD awk on macOS) by using `end_marker` instead.
     awk -v begin_marker="$PROJECT_GUIDE_COMPLETION_OPEN" \
         -v end_marker="$PROJECT_GUIDE_COMPLETION_CLOSE" '
-    BEGIN { in_block = 0; pending_blank = 0 }
+    BEGIN { in_block = 0; pending_blank = 0; eat_trailing_blank = 0 }
     {
         if (in_block) {
             if ($0 == end_marker) {
                 in_block = 0
+                # Swallow one trailing blank line emitted by add_...
+                # when the SDKMan marker was present.
+                eat_trailing_blank = 1
             }
             next
         }
@@ -450,14 +458,20 @@ remove_project_guide_completion() {
             next
         }
         # Buffer one blank line at a time so we can discard it
-        # if the next line is the sentinel open.
+        # if the next line is the sentinel open, or swallow one
+        # blank line immediately following the sentinel close.
         if ($0 == "") {
+            if (eat_trailing_blank) {
+                eat_trailing_blank = 0
+                next
+            }
             if (pending_blank) {
                 print ""
             }
             pending_blank = 1
             next
         }
+        eat_trailing_blank = 0
         if (pending_blank) {
             print ""
             pending_blank = 0
@@ -828,18 +842,16 @@ GITIGNORE_EOF
         )
         template_lines+=("${dynamic_patterns[@]}")
 
-        # Pass through every line from the existing file
-        local prev_was_blank=false
+        # Pass through every line from the existing file. Blank lines are
+        # buffered and only emitted when followed by a non-skipped (user) line
+        # — otherwise they'd accumulate at the boundary between the Pyve
+        # section and user content across purge/reinit cycles (Story H.a).
+        local pending_blank=false
         while IFS= read -r line || [[ -n "$line" ]]; do
-            # Blank lines: pass through but collapse consecutive blanks
             if [[ -z "$line" ]]; then
-                if [[ "$prev_was_blank" == false ]]; then
-                    printf '\n' >> "$tmpfile"
-                fi
-                prev_was_blank=true
+                pending_blank=true
                 continue
             fi
-            prev_was_blank=false
 
             # Skip if this exact line is already in the template
             local found=false
@@ -851,8 +863,12 @@ GITIGNORE_EOF
             done
 
             if [[ "$found" == false ]]; then
+                if [[ "$pending_blank" == true ]]; then
+                    printf '\n' >> "$tmpfile"
+                fi
                 printf '%s\n' "$line" >> "$tmpfile"
             fi
+            pending_blank=false
         done < "$gitignore"
     fi
 
