@@ -5,6 +5,70 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.17.0] - 2026-04-18
+
+### Added — `pyve check` subcommand (Story H.e.3)
+
+New read-only diagnostic command. Implements the spec in [docs/specs/phase-H-check-status-design.md §3](docs/specs/phase-H-check-status-design.md) and unifies the roles of `pyve doctor` (health diagnostics) and `pyve validate` (CI exit-code gate).
+
+**Usage:**
+
+```
+pyve check
+```
+
+**Exit codes (same contract as `pyve validate`):**
+
+| Code | Meaning |
+|---|---|
+| `0` | All checks passed. |
+| `1` | One or more errors — environment is broken for `pyve run` / `pyve test`. |
+| `2` | Warnings only — environment works but is drifting. Errors never downgraded by subsequent warnings. |
+
+**Diagnostic surface (implemented in v1.17.0):**
+
+- Configuration: `.pyve/config` present and parseable.
+- Pyve version: drift from running `pyve` version (via `compare_versions` — points at `pyve update`).
+- Backend: configured in `.pyve/config`; unknown backend value flagged.
+- venv backend: environment directory + `bin/python` exist; venv path mismatch (relocated project) detection via `doctor_check_venv_path`; duplicate `dist-info` detection; cloud-sync collision artifact detection.
+- micromamba backend: `micromamba` binary available; `environment.yml` present; `conda-lock.yml` present + freshness via `is_lock_file_stale`; environment directory + `bin/python` exist; duplicate `dist-info`, cloud-sync artifact, native-library conflict detection via the existing `doctor_check_*` helpers.
+- Integrations: `.envrc` present; `.env` present.
+- testenv: if present, warn when `pytest` not installed (conditional — absent testenv is not a warning; `pyve test` bootstraps on demand).
+
+Every failure emits exactly one actionable command (no chains, no cross-references to other diagnostic commands — per H.c §3.1).
+
+**Deferred to a follow-up polish pass:**
+
+- Full **active-vs-configured Python version mismatch** gate (H.c Check 6). The venv and micromamba paths already surface `bin/python --version`; the explicit comparison against `.tool-versions` / `.python-version` / config lives in a follow-up.
+- Post-init **distutils shim** verification for Python 3.12+ (H.c Check 8). Needs a new `is_distutils_shim_installed` helper.
+- `pyve check --fix` auto-remediation (H.c C2 — deferred to Phase I; [docs/specs/stories.md](docs/specs/stories.md) "Future" section).
+
+### Added — `show_check_help()` + top-level `--help` entry
+
+- New `show_check_help()` with the usage contract, exit-code semantics, and cross-references to `doctor` / `validate` / `--help`.
+- Top-level `pyve --help` now lists `check` under "Diagnostics". `doctor` and `validate` re-labeled as "Legacy (superseded by `pyve check`)" — actual delegation / deprecation warnings on those old commands land in v2.0 per H.d §5.
+- `PYVE_DISPATCH_TRACE=1 pyve check` emits `DISPATCH:check <args>` for dispatcher debugging.
+
+### Tests
+
+- **`tests/unit/test_check.bats` — 17 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - Exit-code semantics: 0 (happy path), 1 (errors: missing `.pyve/config`, missing backend, missing venv, missing `bin/python`), 2 (warnings: pyve_version drift, missing `.env`, missing `.envrc`).
+  - Escalation invariant: an error status is never downgraded by a subsequent warning.
+  - Summary footer format.
+  - Actionable-message discipline: failure output contains at least one executable command.
+  - micromamba-specific path: missing `environment.yml` flagged as error.
+  - Unknown-flag handling.
+  - Dispatcher integration (`PYVE_DISPATCH_TRACE`).
+- All 496 Bats unit tests pass (479 prior + 17 new).
+
+### Unchanged in this release
+
+- `pyve doctor` and `pyve validate` still work exactly as before. Delegation-with-warning is planned for v2.0 per the H.d deprecation plan.
+- No code was removed. `check` is additive; the pre-existing `doctor_check_*` helpers in `lib/utils.sh` are reused in place (they serve both `doctor_command` and `check_command`).
+
+---
+
 ## [1.16.1] - 2026-04-18
 
 ### Fixed — `.pyve/envs/` not ignored on venv-init'd projects (Story H.e.2a)

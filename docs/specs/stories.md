@@ -294,7 +294,7 @@ Non-destructive upgrade path per H.c Decision C3 and H.d Decision D4. Refreshes 
 
 **Deliverables:** `update_command()` in [pyve.sh](../../pyve.sh), [tests/unit/test_update.bats](../../tests/unit/test_update.bats).
 
-### Story H.e.2a: v1.16.1 Bug fix — `.pyve/envs/` not ignored on venv-init'd projects [Done]
+### Story H.e.2a: v1.16.1 Bug fix — '.pyve/envs/' not ignored on venv-init'd projects [Done]
 
 Bug discovered while using a pyve-managed project (d802-deep-learning): thousands of untracked files appeared under `.pyve/envs/<env-name>/...` after a micromamba environment was created in a previously venv-init'd project.
 
@@ -356,8 +356,28 @@ Code changes
 
 ---
 
-### Remaining H.e sub-stories (placeholder — each becomes an `H.e.N` story as it begins):
-- [ ] Implement `pyve check` command (replaces `doctor` per H.c).
+### Story H.e.3: v1.17.0 Implement 'pyve check' command [Done]
+
+Adds the v2.0 diagnostic surface: `pyve check` replaces the semantic of `pyve validate` (structured 0/1/2 exit codes) and most of `pyve doctor` (per-problem findings with one actionable next-step). `doctor` and `validate` remain in v1.x; delegate-with-warning arrives in v2.0 per H.d §5.
+
+- [x] Implement `check_command()` per [docs/specs/phase-H-check-status-design.md §3](phase-H-check-status-design.md).
+- [x] Add `show_check_help()` + dispatcher case + top-level `--help` entry.
+- [x] Exit codes 0/1/2 with errors never downgraded by subsequent warnings.
+- [x] Every failure emits exactly one actionable command.
+- [x] Backend-gated checks: venv (path mismatch, dist-info, collision); micromamba (binary, environment.yml, conda-lock freshness, dist-info, collision, native-lib conflict).
+- [x] 17 new tests in `tests/unit/test_check.bats`; 496 / 496 unit tests pass.
+
+**Deferred to a follow-up polish pass:**
+
+- Active-vs-configured Python version mismatch gate (H.c Check 6).
+- Post-init distutils shim verification for Python 3.12+ (H.c Check 8).
+- `pyve check --fix` auto-remediation (Phase I).
+
+**Deliverables:** `check_command()` + `show_check_help()` in [pyve.sh](../../pyve.sh), [tests/unit/test_check.bats](../../tests/unit/test_check.bats).
+
+---
+
+### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
 - [ ] Implement `pyve status` command (replaces `validate` per H.c).
 - [ ] Promote `testenv --init` / `--purge` flags to `pyve testenv init` / `pyve testenv purge` subcommands. Deprecation warnings on old flags.
 - [ ] Rename `pyve python-version` per H.d's decision. Deprecation warnings.
