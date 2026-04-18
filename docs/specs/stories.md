@@ -167,9 +167,11 @@ Follow-up to the H.b spike. Workflow-only change — no pyve code changes.
 
 ---
 
-### Story H.c: Design `check` and `status` Commands (Diagnostics and State Dashboard) [Planned]
+### Story H.c: Design `check` and `status` Commands (Diagnostics and State Dashboard) [Done]
 
 Design-only story. No code changes. Produces a specification for the replacement of `pyve doctor` and `pyve validate` with two complementary commands: `check` (actionable diagnostics; one clear next step per problem) and `status` (at-a-glance dashboard of current environment state).
+
+**Deliverable:** [docs/specs/phase-H-check-status-design.md](phase-H-check-status-design.md) — design approved pending H.d confirmation of `pyve update` subcommand (Decision C3).
 
 **Rationale.** `doctor` and `validate` overlap in scope and bounce the user between commands and between recommendations. Example (v1.13.2):
 
@@ -189,26 +191,26 @@ Goal: one obvious command per intent, and one actionable recommendation per prob
 **Design tasks**
 
 1. **`check` command**
-  - [ ] Define the diagnostic surface: which checks run, what each check asserts, what a failure looks like.
-  - [ ] Each failure must yield one actionable command — no chains, no references to other diagnostic commands.
-  - [ ] Decide exit code semantics (0/1/2 for CI gates, or structured per-category codes).
-  - [ ] Decide whether `check --fix` auto-remediation is in scope (recommendation: NO — deferred to Future).
-  - [ ] Resolve the `--update` flag semantics referenced by both `doctor` and `validate`: keep narrow (rename to `--config-only`) or broaden (actual upgrade of managed tooling). Decision feeds directly into H.d.
+  - [x] Define the diagnostic surface: which checks run, what each check asserts, what a failure looks like.
+  - [x] Each failure must yield one actionable command — no chains, no references to other diagnostic commands.
+  - [x] Decide exit code semantics (0/1/2 for CI gates, or structured per-category codes). **Resolved:** 0/1/2 (C1).
+  - [x] Decide whether `check --fix` auto-remediation is in scope (recommendation: NO — deferred to Future). **Resolved:** No (C2).
+  - [x] Resolve the `--update` flag semantics referenced by both `doctor` and `validate`: keep narrow (rename to `--config-only`) or broaden (actual upgrade of managed tooling). Decision feeds directly into H.d. **Recommended:** broaden to `pyve update` subcommand (C3); final call in H.d.
 
 2. **`status` command**
-  - [ ] Define the dashboard surface: what's surfaced at-a-glance (backend, python, venv, env files, test runner, project-guide, etc.).
-  - [ ] Decide output format: compact single-screen vs. sectioned.
-  - [ ] Decide whether `status` runs any checks or just reports observed state. (Recommendation: state only — checks belong in `check`.)
+  - [x] Define the dashboard surface: what's surfaced at-a-glance (backend, python, venv, env files, test runner, project-guide, etc.).
+  - [x] Decide output format: compact single-screen vs. sectioned. **Resolved:** sectioned (C4).
+  - [x] Decide whether `status` runs any checks or just reports observed state. (Recommendation: state only — checks belong in `check`.) **Resolved:** state only.
 
 3. **Mapping existing coverage.** Go through every diagnostic in `doctor` and `validate` today; decide which command each belongs to (or neither):
   - **Shared today:** Pyve version compatibility, backend detection, venv existence, Python executable, `.env` presence.
   - **Unique to `doctor`:** micromamba binary/version, duplicate dist-info, cloud sync collision artifacts, native lib conflicts, venv path mismatch (relocated project), test runner diagnostics, package counts, lock file staleness.
   - **Unique to `validate`:** structured exit codes (0/1/2) for CI gates, strict pass/fail validation.
-  - [ ] Decide per-diagnostic: keep in `check`, surface in `status`, or drop (redundant with modern pyve behavior).
-  - [ ] Identify gaps — diagnostics not currently covered that should be.
+  - [x] Decide per-diagnostic: keep in `check`, surface in `status`, or drop (redundant with modern pyve behavior). **See mapping table §5 of the design doc.**
+  - [x] Identify gaps — diagnostics not currently covered that should be. **Added:** active-vs-configured Python mismatch; distutils shim post-init status (C7).
 
 4. **Deprecation plan for `doctor` / `validate`**
-  - [ ] One-release warning phase (`pyve doctor` emits "renamed to `pyve check`") vs. hard swap at 2.0? Coordinate with H.d's overall deprecation-window decision.
+  - [x] One-release warning phase (`pyve doctor` emits "renamed to `pyve check`") vs. hard swap at 2.0? Coordinate with H.d's overall deprecation-window decision. **Recommended:** delegate-with-warning in v2.0, hard-remove in v3.0 (C5).
 
 **Deliverable**
 
@@ -222,9 +224,11 @@ A design document at `docs/specs/phase-H-check-status-design.md` capturing the a
 
 ---
 
-### Story H.d: Design Subcommands and Flags Refactor [Planned]
+### Story H.d: Design Subcommands and Flags Refactor [Done]
 
 Design-only story. No code changes. Produces a specification for the v2.0 CLI surface: one obvious command per intent, no silent flag collisions, consistent grammar between top-level and nested subcommands.
+
+**Deliverable:** [docs/specs/phase-H-cli-refactor-design.md](phase-H-cli-refactor-design.md). Ratifies H.c Decision C3 (`pyve update` subcommand). H.e is now unblocked.
 
 **Observed friction (from v1.x):**
 
@@ -236,16 +240,16 @@ Design-only story. No code changes. Produces a specification for the v2.0 CLI su
 
 **Design tasks**
 
-1. **Inventory the current surface.** Every subcommand and flag, one-line intent. Mark overlaps, synonyms, dead flags.
+1. **Inventory the current surface.** Every subcommand and flag, one-line intent. Mark overlaps, synonyms, dead flags. **Done** — §2 of the design doc.
 2. **Propose the new surface.** Candidate direction (not final — this design story decides):
-  - Add `pyve update` — non-destructive: bump brew if possible, update `.pyve/config` version, rewrite managed files in place, refresh `project-guide` scaffolding. Does NOT rebuild the venv. The existing `--update` scaffolding at [pyve.sh:541-544](pyve.sh#L541-L544) is the natural starting point.
-  - Keep `pyve init --force` as "destroy and rebuild venv"; deprecate the `--update` flag in favor of the subcommand.
-  - Normalize `testenv`: `pyve testenv init` / `pyve testenv purge` / `pyve testenv run …`; deprecate `--init` / `--purge` flags.
-  - Decide on `python-version` (rename to `pyve python set/show`, or keep and document the naming convention).
-  - Incorporate `pyve check` / `pyve status` from H.c into the top-level surface.
-3. **Decide deprecation window.** Warnings across one or more minor releases, or hard break at 2.0?
-4. **Confirm backend-preference preservation across `pyve update`.** Today, `init --force` re-prompts for backend unless `--backend` is passed.
-5. **Align `--update` flag semantics** with H.c's decision (narrow rename vs. broadened behavior).
+  - [x] Add `pyve update` — non-destructive: bump brew if possible, update `.pyve/config` version, rewrite managed files in place, refresh `project-guide` scaffolding. Does NOT rebuild the venv. **Ratified (D4).**
+  - [x] Keep `pyve init --force` as "destroy and rebuild venv"; deprecate the `--update` flag in favor of the subcommand. **Ratified — `init --update` is a hard error in v2.0 (D3).**
+  - [x] Normalize `testenv`: `pyve testenv init` / `pyve testenv purge` / `pyve testenv run …`; deprecate `--init` / `--purge` flags. **Ratified (D5).**
+  - [x] Decide on `python-version` (rename to `pyve python set/show`, or keep and document the naming convention). **Ratified — `pyve python set / show` (D1).**
+  - [x] Incorporate `pyve check` / `pyve status` from H.c into the top-level surface. **Done — top-level subcommands in §4.1.**
+3. **Decide deprecation window.** Warnings across one or more minor releases, or hard break at 2.0? **Ratified — v2.0 delegate-with-warning; v3.0 hard-remove (D3).**
+4. **Confirm backend-preference preservation across `pyve update`.** Today, `init --force` re-prompts for backend unless `--backend` is passed. **Ratified — `pyve update` never prompts, never changes the recorded backend (§7, D6).**
+5. **Align `--update` flag semantics** with H.c's decision (narrow rename vs. broadened behavior). **Ratified — broadened per H.c C3 (D4).**
 
 **Deliverable**
 
@@ -258,21 +262,25 @@ A design document at `docs/specs/phase-H-cli-refactor-design.md` capturing the n
 
 ---
 
-### Story H.e: v2.0.0 Implement CLI Refactor (foundational — likely splits) [Planned]
+### Story H.e: v2.0.0 Implement CLI Refactor (foundational — splits into H.e.1, H.e.2, …) [In progress]
 
-Implement the design from H.c and H.d. This story is explicitly scoped as a placeholder: once H.d's design concretizes, break this into multiple sequential sub-stories. Subsequent phase letters (H.f, H.g, …) shift accordingly.
+Implement the design from H.c and H.d. Split into sub-stories below.
 
-**First sub-story (mandatory, do this first): Port `lib/ui.sh`.** Introduce a standalone shared UX helpers module that every pyve command sources. Designed for verbatim backport to the `gitbetter` project — keep zero pyve-specific dependencies inside the module.
+### Story H.e.1: v1.15.0 Port 'lib/ui.sh' [Done]
 
-- [ ] Create `lib/ui.sh` with:
+Introduces a standalone shared UX helpers module that every pyve command will source in later H.e sub-stories. Designed for verbatim backport to the `gitbetter` project — zero pyve-specific dependencies inside the module.
+
+- [x] Create `lib/ui.sh` with:
   - Color constants: `R` / `G` / `Y` / `B` / `C` / `M` / `DIM` / `BOLD` / `RESET`; symbols: `CHECK` / `CROSS` / `ARROW` / `WARN` (match `gitbetter`'s palette exactly).
   - Helper functions: `banner`, `info`, `success`, `warn`, `fail`, `confirm` (`[Y/n]`, default yes), `ask_yn` (`[y/N]`, default no), `divider`, `run_cmd` (echoes `$ cmd` dimmed, then executes).
   - Rounded-box header and footer rendering functions (cyan+bold header, green+bold footer — matching `gitbetter`).
-- [ ] Add ShellCheck coverage for `lib/ui.sh` (zero warnings).
-- [ ] Add unit tests for the helpers (prompt parsing, default-answer handling, exit behavior on abort, ANSI degradation with `NO_COLOR=1`).
-- [ ] No changes to existing pyve commands yet — the module must exist and be testable in isolation before any command adopts it.
+- [x] Add ShellCheck coverage for `lib/ui.sh` (zero warnings).
+- [x] Add unit tests for the helpers (prompt parsing, default-answer handling, exit behavior on abort, ANSI degradation with `NO_COLOR=1`). **29 tests in `tests/unit/test_ui.bats`.**
+- [x] No changes to existing pyve commands yet — the module must exist and be testable in isolation before any command adopts it.
 
-**Remaining sub-stories (placeholder list — split into real stories once H.d is approved):**
+**Deliverables:** [lib/ui.sh](../../lib/ui.sh), [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats). Enhancement beyond gitbetter's copy: `NO_COLOR=1` support (planned backport to gitbetter).
+
+### Remaining H.e sub-stories (placeholder — each becomes an `H.e.N` story as it begins):
 
 - [ ] Implement `pyve update` subcommand (non-destructive upgrade path).
 - [ ] Implement `pyve check` command (replaces `doctor` per H.c).

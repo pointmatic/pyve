@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0] - 2026-04-18
+
+### Added — `lib/ui.sh` shared UX helpers module (Story H.e, first sub-story)
+
+Introduces a standalone UI helpers module — the foundational building block for the Phase H CLI refactor. No existing pyve commands adopt it yet; this sub-story ships the module in isolation with full test coverage so every later H.e sub-story can source it without the module itself being on the critical path.
+
+Ported verbatim from the sibling [`gitbetter`](https://github.com/pointmatic/gitbetter) project's `lib/ui.sh` with two deliberate enhancements:
+
+- **`NO_COLOR=1` support** (https://no-color.org) — when `NO_COLOR` is non-empty, all color variables (`R`/`G`/`Y`/`B`/`C`/`M`/`DIM`/`BOLD`/`RESET`) become empty strings and the symbols (`CHECK`/`CROSS`/`ARROW`/`WARN`) degrade to unadorned glyphs. Output contains no ANSI escape sequences. Planned backport to `gitbetter`.
+- **Pyve-free**: stripped `gitbetter`-specific identifiers (`GITBETTER_VERSION`, `GITBETTER_HOMEPAGE`, `print_version`, `fetch_quiet_or_warn`) so the module is a pure UI-primitives library. The remaining surface is what both projects genuinely share.
+
+**Public API:**
+
+- Color constants: `R`, `G`, `Y`, `B`, `C`, `M`, `DIM`, `BOLD`, `RESET`.
+- Symbols: `CHECK` (✔), `CROSS` (✘), `ARROW` (▸), `WARN` (⚠).
+- Helpers: `banner`, `info`, `success`, `warn`, `fail` (exits 1), `confirm` (default Y; exits 0 on abort), `ask_yn` (default N; returns 0/1), `divider`, `run_cmd` (dim-echoes `$ cmd` then executes).
+- Rounded-corner boxes: `header_box <title>` (cyan+bold), `footer_box` (green+bold, "All done.").
+
+**Backport discipline:** `lib/ui.sh` must not contain pyve-specific identifiers (`PYVE_*`, `.pyve`, `pyve.sh`, etc.). Enforced by a bats test that greps for pyve markers and fails if any are present.
+
+### Tests
+
+- **`tests/unit/test_ui.bats` — 29 new tests** covering color palette presence, `NO_COLOR=1` ANSI degradation, symbol output, each helper's glyph + exit behavior, `confirm`/`ask_yn` default handling and abort-path, `run_cmd` status propagation, rounded-corner rendering, and the backport-discipline invariant.
+- All 454 Bats unit tests pass (425 pre-existing + 29 new).
+- ShellCheck on `lib/ui.sh` produces zero warnings.
+
+### Out of scope (deferred to later H.e sub-stories)
+
+- Adopting `lib/ui.sh` in any existing pyve command (`init`, `purge`, `doctor`, etc.). No command changes in this release.
+- Implementing `pyve update`, `pyve check`, `pyve status` (H.e sub-stories 2–4, per `docs/specs/phase-H-cli-refactor-design.md`).
+
+---
+
 ## [1.14.2] - 2026-04-17
 
 ### Added — Python 3.14 in the integration-tests CI matrix (Story H.b.i)
