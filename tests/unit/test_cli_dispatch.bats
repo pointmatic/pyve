@@ -153,11 +153,11 @@ run_pyve() {
     [[ "$output" == *"pyve self uninstall"* ]]
 }
 
-@test "legacy: 'pyve --python-version 3.12.0' prints migration error and exits non-zero" {
+@test "legacy: 'pyve --python-version 3.12.0' prints migration error pointing at v2.0-canonical form" {
     run_pyve --python-version 3.12.0
     [ "$status" -ne 0 ]
     [[ "$output" == *"'pyve --python-version' is no longer supported"* ]]
-    [[ "$output" == *"pyve python-version"* ]]
+    [[ "$output" == *"pyve python set"* ]]
 }
 
 #============================================================

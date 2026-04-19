@@ -3224,7 +3224,7 @@ main() {
             legacy_flag_error "--validate" "check"
             ;;
         --python-version)
-            legacy_flag_error "--python-version" "python-version <ver>"
+            legacy_flag_error "--python-version" "python set <ver>"
             ;;
         --install)
             legacy_flag_error "--install" "self install"
