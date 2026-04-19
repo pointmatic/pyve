@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-19
+
+Phase H's CLI-unification arc lands. This release rewires the top-level command surface for consistency (one grammar, not two), cuts `doctor` and `validate` in favor of `check` + `status`, and locks in a deliberate deprecation path for every rename introduced during H.e.
+
+See [docs/site/migration.md](docs/site/migration.md) for a tactical upgrade guide; see [docs/specs/phase-H-cli-refactor-design.md](docs/specs/phase-H-cli-refactor-design.md) and [docs/specs/phase-H-check-status-design.md](docs/specs/phase-H-check-status-design.md) for the design rationale.
+
+### BREAKING CHANGES
+
+- **`pyve doctor` removed.** Replaced by `pyve check` (diagnostics, 0/1/2 CI-safe exit codes) and `pyve status` (read-only state dashboard). Typing `pyve doctor` now prints a migration error and exits 1. (H.e.8a, superseding H.e.8's delegate-with-warning.)
+- **`pyve validate` removed.** Also replaced by `pyve check`. Typing `pyve validate` prints a migration error and exits 1. (H.e.8a.)
+- **`pyve init --update` removed.** Replaced by the new top-level `pyve update` subcommand (shipped in v1.16.0). Migration is deliberate — `pyve update` has broader semantics (config bump + managed-files refresh + project-guide refresh) than the old flag's narrow config-version bump; silent delegation would surprise scripted callers. (H.e.9.)
+- **New legacy-flag catches added** for flag-form invocations that never existed but that users might instinctively reach for: `pyve --update`, `pyve --doctor`, `pyve --status` each error with a migration message pointing at the correct subcommand. (H.e.9.)
+
+### Added
+
+- **`pyve update`** — non-destructive upgrade path (v1.16.0, H.e.2): refresh `.pyve/config` version, managed files (`.gitignore`, `.vscode/settings.json`), and `project-guide` scaffolding. Never rebuilds the venv — use `pyve init --force` for that.
+- **`pyve check`** — diagnostics + remediation (v1.17.0, H.e.3): 20 checks with 0/1/2 CI-safe exit codes.
+- **`pyve status`** — state dashboard (v1.18.0, H.e.4): sectioned read-only view of the project environment.
+- **`pyve testenv init | install | purge`** — nested subcommand grammar for testenv (v1.19.0, H.e.5). Flag forms (`--init` / `--install` / `--purge`) still work with a deprecation warning (see below).
+- **`pyve python set <ver>` / `pyve python show`** — nested subcommand grammar for the Python-version pin (v1.20.0, H.e.6). Legacy `pyve python-version <ver>` still works with a deprecation warning.
+
+### Deprecated (still works in v2.x; removed in v3.0)
+
+The following forms continue to work in v2.x but emit a one-shot deprecation warning to stderr on first use. Scripts that invoke them in a loop stay readable — warnings fire once per invocation, not once per call.
+
+- `pyve testenv --init` → use `pyve testenv init` (H.e.7).
+- `pyve testenv --install [-r <file>]` → use `pyve testenv install [-r <file>]` (H.e.7).
+- `pyve testenv --purge` → use `pyve testenv purge` (H.e.7).
+- `pyve python-version <ver>` → use `pyve python set <ver>` (H.e.7).
+
+### Migration table
+
+| v1.x form | v2.0 form | v2.0 behavior |
+|---|---|---|
+| `pyve doctor` | `pyve check` | Hard error, exit 1 |
+| `pyve validate` | `pyve check` | Hard error, exit 1 |
+| `pyve init --update` | `pyve update` | Hard error, exit 1 |
+| `pyve --update` | `pyve update` | Hard error, exit 1 |
+| `pyve --doctor` | `pyve check` | Hard error, exit 1 |
+| `pyve --status` | `pyve status` | Hard error, exit 1 |
+| `pyve testenv --init` | `pyve testenv init` | Works + deprecation warning |
+| `pyve testenv --install` | `pyve testenv install` | Works + deprecation warning |
+| `pyve testenv --purge` | `pyve testenv purge` | Works + deprecation warning |
+| `pyve python-version <ver>` | `pyve python set <ver>` | Works + deprecation warning |
+
+### Changed
+
+- `VERSION` bumped to `2.0.0` in [pyve.sh](pyve.sh).
+- Dead code removed: `doctor_command()`, `show_validate_help()`, `run_full_validation()` / `_escalate()`, and the `PYVE_REINIT_MODE="update"` branch inside `init()` — all rendered unreachable by the above changes (H.e.8a, H.e.9).
+
+### Internal
+
+- New `lib/ui.sh` module (v1.15.0, H.e.1) with colors, symbols, rounded-corner boxes, and shared prompt helpers. Ported from `gitbetter` verbatim; enhanced with `NO_COLOR=1` support.
+- `deprecation_warn()` helper in [lib/ui.sh](lib/ui.sh): once-per-invocation-per-key stderr warning. bash-3.2-safe (H.e.7a).
+- `legacy_flag_error()` catch list extended to 9 entries in [pyve.sh](pyve.sh).
+
 ## [1.20.0] - 2026-04-18
 
 ### Added — `pyve python set <ver>` and `pyve python show` (Story H.e.6)

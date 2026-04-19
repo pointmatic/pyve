@@ -622,7 +622,7 @@ Supersedes the H.d §5 D3 "delegate-with-warning" plan for `doctor` / `validate`
 
 ---
 
-### Story H.e.8b: Test cleanup fallout — remaining `pyve.doctor()` / `pyve.run("validate")` callers [Done]
+### Story H.e.8b: Test cleanup fallout — remaining 'pyve.doctor()' / 'pyve.run("validate")' callers [Done]
 
 H.e.8a deleted `tests/integration/test_doctor.py` and `tests/integration/test_validate.py` but missed four other pytest files that still invoked the removed commands via the `pyve.doctor()` helper method or `pyve.run("validate", ...)`. CI surfaced the miss: `TestMicromambaWorkflow.test_doctor_shows_micromamba_status` (and four others across `test_venv_workflow.py`, `test_subcommand_cli.py`, `test_micromamba_workflow.py`) raised `CalledProcessError` on the exit-1 migration error. The `.doctor()` helper method itself remained in `pyve_test_helpers.py` and the `tests/README.md` example still demonstrated the old pattern.
 
@@ -658,8 +658,55 @@ No code changes to `pyve.sh` / `lib/*` — this is pure test-and-docs cleanup co
 
 ---
 
+### Story H.e.9: v2.0.0 Breaking Cut — legacy-flag extensions, CHANGELOG, migration guide, version bump [Done]
+
+Final sub-story in the v2.0.0 arc. Closes out the H.e breaking-change window by locking in the remaining legacy-flag catches, converting `init --update` from a functional flag to a hard error, and cutting the v2.0.0 release. Superseded-by-H.e.8a design fixups in [phase-H-cli-refactor-design.md](phase-H-cli-refactor-design.md) ride along.
+
+**Scope (in):**
+
+Code changes in [pyve.sh](../../pyve.sh):
+
+- Add three top-level legacy-flag-catch arms alongside the existing `--init` / `--purge` / `--validate` catches (near [pyve.sh:3267](../../pyve.sh#L3267)):
+  - `--update)` → `legacy_flag_error "--update" "update"` — "'pyve --update' is no longer supported. Use 'pyve update' instead."
+  - `--doctor)` → `legacy_flag_error "--doctor" "check"` — pre-emptive catch for users migrating from another tool's convention; `doctor` as a subcommand was hard-removed in H.e.8a.
+  - `--status)` → `legacy_flag_error "--status" "status"` — pre-emptive catch for the flag-form instinct. `pyve status` subcommand is the real command (from H.e.4).
+- Convert the `--update)` arm inside `init`'s parser at [pyve.sh:572](../../pyve.sh#L572) from `PYVE_REINIT_MODE="update"` to `legacy_flag_error "init --update" "update"`. Rationale per [phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md): the semantics of `pyve update` (config bump + managed-files refresh + project-guide refresh) are broader than v1.x `init --update` (config bump only), so silent delegation would surprise users who scripted `init --update` expecting the narrow behavior. Hard error forces deliberate migration.
+- Bump `VERSION="1.20.0"` at [pyve.sh:32](../../pyve.sh#L32) to `VERSION="2.0.0"`.
+
+Doc changes:
+
+- [CHANGELOG.md](../../CHANGELOG.md) — new `[2.0.0] - <date>` entry at the top. Structured as: (1) breaking-changes summary list, (2) migration table mapping every removed/renamed form to its v2.0 replacement (per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md)), (3) deprecation list of forms that still work but warn (testenv flags + `python-version`, per H.e.7). Links out to design docs for deep dives; no long prose.
+- New [docs/site/migration.md](../../docs/site/migration.md) file. Short: one-paragraph framing, the migration table mirrored from the CHANGELOG, a "you can keep using these with warnings until v3.0" section for the testenv flags + `python-version`. Cross-links to `CHANGELOG.md` and `phase-H-cli-refactor-design.md`.
+- Update [phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md) table and §12 sub-story list — doctor/validate were hard-removed in v2.0 (via H.e.8a), not delegate-with-warning as originally planned. One row change in the §5 table, one sub-story line update in §12. Self-contained.
+
+**Scope (out — remain as placeholder sub-stories, tracked separately below):**
+
+- Shell completion (`lib/completion/*`) updates for the new surface.
+- "Unknown flag for this subcommand" closest-match errors (H.d §4.5 D2).
+- [docs/specs/features.md](../../docs/specs/features.md) command-reference rewrite.
+- [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md) dispatcher-layout update.
+- [docs/site/usage.md](../../docs/site/usage.md) rewrite.
+
+The four doc-heavy items are substantial on their own and should be their own sub-stories after the cut, not bundled into the v2.0.0 release gate.
+
+**Tasks**
+
+- [x] **Red:** 5 failing tests added to [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats): `pyve --update`, `pyve --doctor`, `pyve --status`, `pyve init --update` (with `.pyve`/`.venv`-absent assertions), and `pyve --version` reports 2.0.0.
+- [x] **Green:** Added three top-level legacy-flag arms (`--update` / `--doctor` / `--status`) in [pyve.sh](../../pyve.sh) next to the existing catches.
+- [x] **Green:** Converted `init`'s `--update)` arm to `legacy_flag_error "init --update" "update"`. Audited `PYVE_REINIT_MODE="update"` usage and removed the entire dead `PYVE_REINIT_MODE == "update"` branch (~55 lines) inside `init()` — the variable was set only in that one arm, no other readers of the `"update"` value existed, the whole branch is now unreachable.
+- [x] **Green:** Bumped `VERSION="1.20.0"` → `VERSION="2.0.0"` in [pyve.sh:32](../../pyve.sh#L32).
+- [x] **CHANGELOG:** New `[2.0.0] - 2026-04-19` entry at the top of [CHANGELOG.md](../../CHANGELOG.md). Sections: Phase-H framing paragraph, BREAKING CHANGES, Added, Deprecated (still works in v2.x), Migration table, Changed, Internal.
+- [x] **Migration guide:** New [docs/site/migration.md](../../docs/site/migration.md) (76 lines). Sections: What breaks immediately (with migration table), What still works but warns, What didn't change, Quick migration recipe.
+- [x] **Design-doc fixup:** Updated [phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md) — `doctor` / `validate` rows now say "Legacy-flag error" with a post-H.e.8a amendment paragraph explaining the reasoning; the "delegate-with-warning" prose was narrowed to apply only to testenv flags + `python-version`. Updated §12 to reflect the actual shipped sub-story sequence (H.e.1 through H.e.9) and explicitly move unknown-flag / completion / doc-rewrites out of v2.0.0 scope.
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **578 / 578** pass (573 baseline + 5 new).
+- [x] **Lint:** `shellcheck pyve.sh` → exit 0, only pre-existing warnings (2 in unrelated `lib/version.sh`).
+- [x] **Smoke reproduction:** `/bin/bash -c '"pyve.sh" --version'` → `pyve version 2.0.0`. Each of the four legacy forms produces its expected `legacy_flag_error` message under `/bin/bash`.
+
+**Deliverables:** `VERSION` bumped to 2.0.0 in [pyve.sh](../../pyve.sh); three new top-level legacy-flag catches; `init --update` converted to hard error + ~55 lines of now-dead `PYVE_REINIT_MODE=="update"` branch removed; new `[2.0.0]` CHANGELOG entry; new [docs/site/migration.md](../../docs/site/migration.md); [phase-H-cli-refactor-design.md](../../docs/specs/phase-H-cli-refactor-design.md) §5 D3 amendment + §12 rewrite; 5 new bats tests in [test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] **H.e.9 (v2.0.0 cut):** Extend `legacy_flag_error` ([pyve.sh:3104](../../pyve.sh#L3104)) with `--update` / `--doctor` / `--status` per [phase-H-cli-refactor-design.md §6](phase-H-cli-refactor-design.md). Convert `init --update` to a legacy-flag error pointing at `pyve update`. CHANGELOG v2.0.0 entry per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md) migration matrix. Migration guide stub at `docs/site/migration.md`. **Bump to 2.0.0.**
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
 - [ ] Improve "unknown flag for this subcommand" errors — surface valid flags and closest match (`pyve init --purge` → "did you mean `--force`?").
 - [ ] Write/update tests for every changed command.

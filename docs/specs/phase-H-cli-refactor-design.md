@@ -179,19 +179,21 @@ Implementation approach (for H.e):
 
 | Rename | v2.0 behavior | v3.0 behavior |
 |---|---|---|
-| `doctor` → `check` | Delegate; print `pyve doctor: renamed to 'pyve check'. Running 'pyve check'...` once. Exit code matches. | Legacy-flag error. |
-| `validate` → `check` | Delegate; same warning pattern. Exit code matches. | Legacy-flag error. |
-| `python-version` → `python set` | Delegate; same warning pattern. | Legacy-flag error. |
+| `doctor` → `check` | **Legacy-flag error** (see H.e.8a amendment below). | Legacy-flag error (unchanged). |
+| `validate` → `check` | **Legacy-flag error** (see H.e.8a amendment below). | Legacy-flag error (unchanged). |
+| `python-version` → `python set` | Delegate-with-warning. Exit code matches. | Legacy-flag error. |
 | `testenv --init` / `--install` / `--purge` → `testenv init` / `install` / `purge` | **Deprecation warning**, not error — delegate. | Legacy-flag error. |
 | `init --update` → `pyve update` | **Legacy-flag error** (not delegate). Rationale below. | Legacy-flag error (unchanged). |
+
+**Amendment (Story H.e.8a, after H.e.8 landed):** `doctor` and `validate` were originally planned to delegate-with-warning in v2.0 (the strike-through behavior above was the H.e.8 implementation). During H.e.8's fallout review, the pytest integration suite had ~43 tests asserting the old doctor/validate string contract — semantics that no longer exist. The delegation stopgap offered no real continuity for those scripted callers (strings had still diverged), only the illusion of it. H.e.8a accelerated the v3.0 hard-removal forward to v2.0: `doctor` and `validate` now hit `legacy_flag_error` immediately. Testenv flags and `python-version` retain the delegate-with-warning path on the original v2.0 → v3.0 schedule.
 
 **Why `init --update` is a hard error in v2.0, not a delegate:**
 
 The new `pyve update` has broader semantics than the old `--update` flag (refreshes managed files + `project-guide`, not just `pyve_version`). Silently delegating would surprise users who scripted `pyve init --update` expecting the narrow behavior. A hard error forces the migration to be deliberate.
 
-**Why everything else is delegate-with-warning:**
+**Why testenv flags and `python-version` remain delegate-with-warning:**
 
-`doctor`, `validate`, `python-version`, and the `testenv` flags have the same semantics after the rename. Silent delegation preserves green CI builds while the warning text steers users toward the new form. One release cycle (v2.0 → v3.0) gives enough migration window.
+These four forms have the same semantics after the rename — `pyve testenv --init` still lands in the same code path as `pyve testenv init`; `pyve python-version <ver>` still lands in the same Python-pin code as `pyve python set <ver>`. Silent delegation preserves green CI builds while the warning text steers users toward the new form. One release cycle (v2.0 → v3.0) gives enough migration window.
 
 **Deprecation output guardrails:**
 - Warnings write to stderr (never stdout — scripts parsing stdout stay clean).
@@ -274,18 +276,22 @@ No change needed for `pyve init` (fresh init with no config). Remains "auto-dete
 
 ## 12. Impact on Story H.e
 
-H.e's sub-story list (currently placeholder in `stories.md`) now concretizes:
+H.e's sub-story list as it actually shipped (see [stories.md](stories.md) for the canonical record):
 
-1. **Port `lib/ui.sh`** (unchanged — first sub-story, already defined).
-2. **Implement `pyve update` subcommand** (new).
-3. **Implement `pyve check`** (from H.c).
-4. **Implement `pyve status`** (from H.c).
-5. **Normalize `testenv --init|--install|--purge` → `testenv init|install|purge`** with delegation.
-6. **Rename `pyve python-version` → `pyve python set`** with delegation.
-7. **Add closest-match unknown-flag errors** (D2).
-8. **Add deprecation warnings** for every renamed flag/subcommand (D3, D5).
-9. **Extend legacy-flag catch** (§6) for `--update`, `--doctor`, `--status`.
-10. **Update shell completion** (`lib/completion/*`) for the new surface.
-11. **Update tests** for every changed command + new commands.
+1. **H.e.1 / v1.15.0** — Port `lib/ui.sh`.
+2. **H.e.2 / v1.16.0** — Implement `pyve update` subcommand.
+3. **H.e.3 / v1.17.0** — Implement `pyve check`.
+4. **H.e.4 / v1.18.0** — Implement `pyve status`.
+5. **H.e.5 / v1.19.0** — Normalize `testenv --init|--install|--purge` → `testenv init|install|purge`.
+6. **H.e.6 / v1.20.0** — Rename `pyve python-version` → `pyve python set`.
+7. **H.e.7** — Deprecation warnings for `testenv` flag forms and `python-version` (delegate-with-warning).
+8. **H.e.7a** — Bug fix: bash 3.2 compatibility in `deprecation_warn`.
+9. **H.e.8** (superseded) — Delegate-with-warning for `pyve doctor` and `pyve validate` → `pyve check`. Landed, then superseded by H.e.8a.
+10. **H.e.8a** — Rip out `pyve doctor` and `pyve validate` entirely (legacy-flag error). Supersedes H.e.8's delegation.
+11. **H.e.8b** — Test cleanup fallout from H.e.8a.
+12. **H.e.9 / v2.0.0** — Legacy-flag extensions (`--update` / `--doctor` / `--status`), convert `init --update` to hard error, CHANGELOG + migration guide, version bump.
 
-Each of these is a candidate for splitting into its own sub-story as H.e kicks off.
+Out of scope for v2.0.0 and tracked as separate sub-stories after the cut:
+- Closest-match unknown-flag errors (D2).
+- Shell completion (`lib/completion/*`) updates.
+- Per-document rewrites of `features.md`, `tech-spec.md`, and `usage.md` to reflect the v2.0 surface.

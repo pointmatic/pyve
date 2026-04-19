@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.20.0"
+VERSION="2.0.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -570,8 +570,11 @@ init() {
                 shift
                 ;;
             --update)
-                PYVE_REINIT_MODE="update"
-                shift
+                # Removed in v2.0 (H.e.9). Hard error — semantics of
+                # `pyve update` are broader than v1.x's narrow
+                # config-bump, so delegation would surprise scripted
+                # callers. See phase-H-cli-refactor-design.md §5 D3.
+                legacy_flag_error "init --update" "update"
                 ;;
             --force)
                 PYVE_REINIT_MODE="force"
@@ -630,62 +633,10 @@ init() {
         local existing_version
         existing_version="$(read_config_value "pyve_version")"
         
-        # Handle re-initialization based on mode
-        if [[ "${PYVE_REINIT_MODE:-}" == "update" ]]; then
-            # Safe update mode
-            log_info "Updating existing Pyve installation..."
-            
-            # Check for conflicts
-            if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
-                log_error "Cannot update in-place: Backend change detected"
-                log_error "  Current: $existing_backend"
-                log_error "  Requested: $backend_flag"
-                echo ""
-                log_error "Backend changes require a clean re-initialization."
-                log_error "Run: pyve init --force"
-                exit 1
-            fi
-            
-            # Perform safe update
-            if ! update_config_version; then
-                log_error "Failed to update configuration (config may be corrupted)"
-                exit 1
-            fi
-            log_info "✓ Configuration updated"
-            if [[ -n "$existing_version" ]]; then
-                log_info "  Version: $existing_version → $VERSION"
-            else
-                log_info "  Version: (not recorded) → $VERSION"
-            fi
-            log_info "  Backend: $existing_backend (unchanged)"
-            echo ""
-            log_info "Project updated to Pyve v$VERSION"
-
-            # If the environment directory is missing (e.g. freshly cloned repo where
-            # .venv is gitignored), fall through to create it rather than returning.
-            local _update_env_missing=false
-            if [[ "$existing_backend" == "venv" ]]; then
-                local _update_venv_dir
-                _update_venv_dir="$(read_config_value "venv.directory")"
-                _update_venv_dir="${_update_venv_dir:-$DEFAULT_VENV_DIR}"
-                if [[ ! -d "$_update_venv_dir" ]]; then
-                    log_info "Environment directory '$_update_venv_dir' not found — creating it now..."
-                    _update_env_missing=true
-                fi
-            elif [[ "$existing_backend" == "micromamba" ]]; then
-                local _update_env_name
-                _update_env_name="$(read_config_value "micromamba.env_name")"
-                if [[ -n "$_update_env_name" ]] && [[ ! -d ".pyve/envs/$_update_env_name" ]]; then
-                    log_info "Environment '.pyve/envs/$_update_env_name' not found — creating it now..."
-                    _update_env_missing=true
-                fi
-            fi
-            if [[ "$_update_env_missing" == false ]]; then
-                return 0
-            fi
-            # Fall through to environment creation below.
-
-        elif [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
+        # Handle re-initialization based on mode.
+        # (PYVE_REINIT_MODE="update" path removed in v2.0 / H.e.9 —
+        # `pyve update` is the new entry point.)
+        if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
             log_warning "Force re-initialization: This will purge the existing environment"
             log_warning "  Current backend: $existing_backend"
@@ -3280,6 +3231,18 @@ main() {
             ;;
         --uninstall)
             legacy_flag_error "--uninstall" "self uninstall"
+            ;;
+        # Added in v2.0 (H.e.9) — top-level flag forms catch
+        # users who instinctively reach for a flag when the
+        # corresponding subcommand is the actual shape.
+        --update)
+            legacy_flag_error "--update" "update"
+            ;;
+        --doctor)
+            legacy_flag_error "--doctor" "check"
+            ;;
+        --status)
+            legacy_flag_error "--status" "status"
             ;;
         # Short aliases removed in v1.11.0 (Decision D1)
         -i)
