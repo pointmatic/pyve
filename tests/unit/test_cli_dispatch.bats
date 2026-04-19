@@ -65,12 +65,6 @@ run_pyve() {
     [[ "$output" == *"DISPATCH:purge"* ]]
 }
 
-@test "dispatch: 'pyve validate' routes to the validate handler" {
-    PYVE_DISPATCH_TRACE=1 run_pyve validate
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"DISPATCH:validate"* ]]
-}
-
 @test "dispatch: 'pyve python-version 3.12.0' routes to the python-version handler" {
     PYVE_DISPATCH_TRACE=1 run_pyve python-version 3.12.0
     [ "$status" -eq 0 ]
@@ -142,7 +136,7 @@ run_pyve() {
     run_pyve --validate
     [ "$status" -ne 0 ]
     [[ "$output" == *"'pyve --validate' is no longer supported"* ]]
-    [[ "$output" == *"pyve validate"* ]]
+    [[ "$output" == *"pyve check"* ]]
 }
 
 @test "legacy: 'pyve --install' prints migration error and exits non-zero" {

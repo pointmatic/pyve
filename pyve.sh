@@ -2073,247 +2073,6 @@ run_command() {
 }
 
 #============================================================
-# Doctor Command
-#
-# Legacy — unreachable via the dispatcher after H.e.8 (the
-# `doctor)` arm now delegates to `check_command`). Removed in
-# v3.0 per phase-H-cli-refactor-design.md §9.
-#============================================================
-
-doctor_command() {
-    printf "Pyve Environment Diagnostics\n"
-    printf "=============================\n\n"
-    
-    # Detect install source
-    local install_source
-    install_source="$(detect_install_source)"
-    printf "✓ Pyve: v%s (%s: %s)\n" "$VERSION" "$install_source" "$SCRIPT_DIR"
-    
-    # Check version compatibility
-    if config_file_exists; then
-        validate_pyve_version
-    fi
-    
-    local backend=""
-    local venv_dir="$DEFAULT_VENV_DIR"
-    local env_path=""
-    local env_name=""
-
-    # If a project config exists, prefer its venv directory for venv detection.
-    if config_file_exists; then
-        local configured_venv_dir
-        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        if [[ -n "$configured_venv_dir" ]]; then
-            venv_dir="$configured_venv_dir"
-        fi
-    fi
-    
-    # Detect active backend
-    # Check for micromamba environment first
-    if [[ -d ".pyve/envs" ]]; then
-        local env_dirs=(.pyve/envs/*)
-        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
-            backend="micromamba"
-            env_path="${env_dirs[0]}"
-            env_name="$(basename "$env_path")"
-        fi
-    fi
-    
-    # Check for venv if micromamba not found
-    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
-        backend="venv"
-        env_path="$venv_dir"
-    fi
-    
-    # Check if no environment found
-    if [[ -z "$backend" ]]; then
-        printf "✗ No environment found\n"
-        printf "  Run 'pyve init' to create an environment\n"
-        exit 1
-    fi
-    
-    # Report backend
-    printf "✓ Backend: %s\n" "$backend"
-    
-    # Backend-specific checks
-    if [[ "$backend" == "micromamba" ]]; then
-        # Check micromamba binary
-        if check_micromamba_available; then
-            local mm_path
-            mm_path="$(get_micromamba_path)"
-            local mm_version
-            mm_version="$(get_micromamba_version)"
-            local mm_location
-            mm_location="$(get_micromamba_location)"
-            printf "✓ Micromamba: %s (%s) v%s\n" "$mm_path" "$mm_location" "$mm_version"
-        else
-            printf "✗ Micromamba: not found\n"
-            if [[ -f ".pyve/bin/micromamba" ]] && [[ ! -x ".pyve/bin/micromamba" ]]; then
-                printf "  Found at: %s (not executable)\n" "$(pwd)/.pyve/bin/micromamba"
-                printf "  Fix with: chmod +x .pyve/bin/micromamba\n"
-            elif [[ -f "$HOME/.pyve/bin/micromamba" ]] && [[ ! -x "$HOME/.pyve/bin/micromamba" ]]; then
-                printf "  Found at: %s (not executable)\n" "$HOME/.pyve/bin/micromamba"
-                printf "  Fix with: chmod +x $HOME/.pyve/bin/micromamba\n"
-            else
-                printf "  Checked: .pyve/bin/micromamba\n"
-                printf "  Checked: $HOME/.pyve/bin/micromamba\n"
-                printf "  Checked: micromamba on PATH\n"
-            fi
-        fi
-        
-        # Check environment
-        if [[ -d "$env_path" ]]; then
-            printf "✓ Environment: %s\n" "$env_path"
-            printf "  Name: %s\n" "$env_name"
-        else
-            printf "✗ Environment: not found\n"
-        fi
-        
-        # Check Python in environment
-        if [[ -f "$env_path/bin/python" ]]; then
-            local py_version
-            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "✓ Python: %s\n" "$py_version"
-        else
-            printf "⚠ Python: not found in environment\n"
-        fi
-        
-        # Check environment file
-        local env_file
-        env_file="$(detect_environment_file 2>/dev/null)" || true
-        if [[ -n "$env_file" ]]; then
-            printf "✓ Environment file: %s\n" "$env_file"
-            
-            # Check lock file status if environment.yml exists
-            if [[ "$env_file" == "environment.yml" ]] || [[ -f "environment.yml" ]]; then
-                if [[ -f "conda-lock.yml" ]]; then
-                    if is_lock_file_stale; then
-                        printf "⚠ Lock file: conda-lock.yml (stale)\n"
-                        local env_mtime
-                        local lock_mtime
-                        env_mtime="$(get_file_mtime_formatted "environment.yml")"
-                        lock_mtime="$(get_file_mtime_formatted "conda-lock.yml")"
-                        printf "  environment.yml: %s\n" "$env_mtime"
-                        printf "  conda-lock.yml:  %s\n" "$lock_mtime"
-                    else
-                        printf "✓ Lock file: conda-lock.yml (up to date)\n"
-                    fi
-                else
-                    printf "⚠ Lock file: missing\n"
-                    printf "  Generate with: conda-lock -f environment.yml\n"
-                fi
-            fi
-        else
-            printf "⚠ Environment file: not found\n"
-        fi
-        
-        # Count packages
-        if [[ -d "$env_path/conda-meta" ]]; then
-            local pkg_count
-            pkg_count=$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
-            printf "  Packages: %s installed\n" "$pkg_count"
-        fi
-
-        # Check for duplicate dist-info, cloud sync collision artifacts, and native lib conflicts
-        doctor_check_duplicate_dist_info "$env_path"
-        doctor_check_collision_artifacts "$env_path"
-        doctor_check_native_lib_conflicts "$env_path"
-
-    elif [[ "$backend" == "venv" ]]; then
-        # Check venv directory
-        if [[ -d "$env_path" ]]; then
-            printf "✓ Environment: %s\n" "$env_path"
-        else
-            printf "✗ Environment: not found\n"
-        fi
-        
-        # Check Python in venv
-        if [[ -f "$env_path/bin/python" ]]; then
-            local py_version
-            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "✓ Python: %s\n" "$py_version"
-        else
-            printf "✗ Python: not found in venv\n"
-        fi
-
-        # Check venv path consistency (detect relocated projects)
-        doctor_check_venv_path "$env_path"
-
-        # Check Python version file
-        if [[ -f ".tool-versions" ]]; then
-            local version_manager="asdf"
-            local py_ver
-            py_ver="$(grep "^python " .tool-versions | awk '{print $2}')"
-            printf "✓ Version file: .tool-versions (asdf)\n"
-            printf "  Python: %s\n" "$py_ver"
-        elif [[ -f ".python-version" ]]; then
-            local version_manager="pyenv"
-            local py_ver
-            py_ver="$(cat .python-version)"
-            printf "✓ Version file: .python-version (pyenv)\n"
-            printf "  Python: %s\n" "$py_ver"
-        else
-            printf "⚠ Version file: not found\n"
-        fi
-        
-        # Count packages in venv
-        if [[ -d "$env_path/lib" ]]; then
-            local site_packages
-            site_packages=$(find "$env_path/lib" -type d -name "site-packages" 2>/dev/null | head -1)
-            if [[ -n "$site_packages" ]]; then
-                local pkg_count
-                pkg_count=$(find "$site_packages" -maxdepth 1 -name "*.dist-info" 2>/dev/null | wc -l | tr -d ' ')
-                printf "  Packages: %s installed\n" "$pkg_count"
-            fi
-        fi
-    fi
-    
-    # Check direnv
-    if [[ -f ".envrc" ]]; then
-        printf "✓ Direnv: .envrc configured\n"
-    else
-        printf "⚠ Direnv: .envrc not found\n"
-        printf "  Use 'pyve run' to execute commands\n"
-    fi
-    
-    # Check .env file
-    if [[ -f ".env" ]]; then
-        if is_file_empty ".env"; then
-            printf "✓ Environment file: .env (empty)\n"
-        else
-            printf "✓ Environment file: .env (configured)\n"
-        fi
-    else
-        printf "⚠ Environment file: .env not found\n"
-    fi
-
-    # Dev/test runner environment (non-invasive diagnostics)
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
-    if [[ -d "$testenv_venv" ]]; then
-        printf "✓ Test runner: %s\n" "$testenv_venv"
-        if [[ -x "$testenv_venv/bin/python" ]]; then
-            local test_py_version
-            test_py_version="$("$testenv_venv/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "  Test runner Python: %s\n" "$test_py_version"
-            if "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1; then
-                printf "  ✓ pytest: installed\n"
-            else
-                printf "  ⚠ pytest: missing\n"
-                printf "    Install with: pyve test (interactive) or pyve testenv --install -r requirements-dev.txt\n"
-            fi
-        else
-            printf "  ⚠ Test runner Python: not found\n"
-        fi
-    else
-        printf "⚠ Test runner: not found\n"
-        printf "  Create with: pyve testenv --init (or run: pyve test)\n"
-    fi
-    
-    printf "\n"
-}
-
-#============================================================
 # Status Command (Story H.e.4)
 #============================================================
 
@@ -3329,29 +3088,6 @@ See also:
 EOF
 }
 
-# Legacy — unreachable via the dispatcher after H.e.8
-# (`pyve validate --help` now shows `show_check_help`).
-# Removed in v3.0 per phase-H-cli-refactor-design.md §9.
-show_validate_help() {
-    cat << 'EOF'
-pyve validate - Validate Pyve installation and configuration
-
-Usage:
-  pyve validate
-
-Description:
-  Checks version compatibility, .pyve/config structure, backend setup,
-  and environment health. Useful as a pre-build gate in CI.
-
-Exit codes:
-  0    All validations passed
-  1    Errors found (e.g., missing venv, invalid backend)
-  2    Warnings only (e.g., version mismatch)
-
-See `pyve --help` for the full command list.
-EOF
-}
-
 show_python_help() {
     cat << 'EOF'
 pyve python - Manage the project's Python version pin
@@ -3534,7 +3270,7 @@ main() {
             legacy_flag_error "--purge" "purge"
             ;;
         --validate)
-            legacy_flag_error "--validate" "validate"
+            legacy_flag_error "--validate" "check"
             ;;
         --python-version)
             legacy_flag_error "--python-version" "python-version <ver>"
@@ -3579,19 +3315,8 @@ main() {
             purge "$@"
             ;;
         validate)
-            # Legacy subcommand — delegates to `pyve check` (H.e.8).
-            # Removed in v3.0 per H.d §5 D3.
-            shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_check_help
-                exit 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:validate→check %s\n' "$*"
-                exit 0
-            fi
-            delegation_warn "validate" "pyve validate" "pyve check"
-            check_command "$@"
+            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
+            legacy_flag_error "validate" "check"
             ;;
         update)
             shift
@@ -3656,19 +3381,8 @@ main() {
             run_lock "$@"
             ;;
         doctor)
-            # Legacy subcommand — delegates to `pyve check` (H.e.8).
-            # Removed in v3.0 per H.d §5 D3.
-            shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_check_help
-                exit 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:doctor→check %s\n' "$*"
-                exit 0
-            fi
-            delegation_warn "doctor" "pyve doctor" "pyve check"
-            check_command "$@"
+            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
+            legacy_flag_error "doctor" "check"
             ;;
         check)
             shift

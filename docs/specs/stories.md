@@ -566,6 +566,62 @@ Second of three sub-stories contributing to the v2.0.0 breaking cut (no version 
 
 ---
 
+### Story H.e.8a: Rip out 'pyve doctor' and 'pyve validate' entirely [Done]
+
+H.e.8 routed `doctor` and `validate` through `check` as delegating aliases. Review of the fallout in the pytest integration suite (43 tests asserting the old doctor/validate contract) showed no reason to keep the legacy names alive through v2.0.x. This story accelerates the v3.0 hard-removal forward to v2.0.0 — no more delegation, no transparent aliasing, no silent behavior change via the old command names.
+
+Supersedes the H.d §5 D3 "delegate-with-warning" plan for `doctor` / `validate` specifically. The testenv flag forms and `python-version` still follow H.e.7's delegate-with-warning path; only `doctor` / `validate` hard-remove in v2.0. The H.d spec table is updated in H.e.9 as part of the v2.0.0 CHANGELOG + migration guide pass.
+
+**Scope (in):**
+
+- Replace the `doctor)` and `validate)` dispatcher arms with one-line `legacy_flag_error` calls — `legacy_flag_error "doctor" "check"` / `legacy_flag_error "validate" "check"`. Exit 1. Message already reads `'pyve <old>' is no longer supported. Use 'pyve check' instead.` — the existing helper format covers this case without modification.
+- Remove dead code:
+  - `doctor_command()` in [pyve.sh](../../pyve.sh) (the entire function body).
+  - `show_validate_help()` in [pyve.sh](../../pyve.sh).
+  - `run_full_validation()` in [lib/version.sh](../../lib/version.sh). Audit: `_escalate()` is defined inside `run_full_validation` and used only by it — dies with the function. Nothing else to rescue.
+  - `delegation_warn()` + the 7 helper tests in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats). `_rename_seen()` stays (still used by `deprecation_warn`).
+- Remove tests that assert removed behavior:
+  - [tests/integration/test_doctor.py](../../tests/integration/test_doctor.py) (20 tests, all classes).
+  - [tests/integration/test_validate.py](../../tests/integration/test_validate.py) (23 tests, all classes).
+  - [tests/unit/test_doctor_validate_delegation.bats](../../tests/unit/test_doctor_validate_delegation.bats) (14 tests from H.e.8).
+  - `run_full_validation` tests in [tests/unit/test_version.bats](../../tests/unit/test_version.bats) (5 tests).
+  - The 2 `validate --help` tests in [tests/unit/test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats) — replaced by the removal assertion in the new file below.
+- Add a new small bats file `tests/unit/test_doctor_validate_removed.bats` asserting:
+  - `pyve doctor` exits 1.
+  - Stderr contains `'pyve doctor' is no longer supported` and `Use 'pyve check' instead`.
+  - `pyve validate` same pattern.
+  - `pyve check` is unaffected (smoke test — exit 1 on missing config, but output contains `Pyve Environment Check`).
+
+**Scope (out — belongs to later sub-stories):**
+
+- H.d §5 table / §12 story list edits — rolls into the H.e.9 design-doc pass.
+- CHANGELOG entry / migration guide — H.e.9.
+- Version bump — H.e.9 (v2.0.0 cut).
+
+**Tasks**
+
+- [x] **Red:** New [tests/unit/test_doctor_validate_removed.bats](../../tests/unit/test_doctor_validate_removed.bats) (8 assertions — exit 1, migration message on stderr, check's banner absent from stdout for both `doctor` and `validate`; `pyve check` regression guard). 4 red initially (delegation still in place), 4 green coincidentally (exit 1 matched on missing config).
+- [x] **Green:** `doctor)` arm shrunk to `legacy_flag_error "doctor" "check"` (3 lines).
+- [x] **Green:** `validate)` arm shrunk to `legacy_flag_error "validate" "check"` (3 lines).
+- [x] **Green (dead-code removal):** Deleted `doctor_command()` + its section header (~241 lines) in [pyve.sh](../../pyve.sh).
+- [x] **Green:** Deleted `show_validate_help()` + its legacy-marker comment in [pyve.sh](../../pyve.sh).
+- [x] **Green:** Deleted `run_full_validation()` and its inner `_escalate()` helper (~127 lines) in [lib/version.sh](../../lib/version.sh). Audited: `_escalate` was function-local, no other callers.
+- [x] **Green:** Deleted `delegation_warn()` from [lib/ui.sh](../../lib/ui.sh). Collapsed the "Rename announcements" dual-helper section back to a "Deprecation warning" single-helper section. `_rename_seen()` stays (still used by `deprecation_warn`).
+- [x] **Test cleanup:** Deleted the 7 `delegation_warn` tests + their section header from [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats).
+- [x] **Test cleanup:** `rm tests/integration/test_doctor.py tests/integration/test_validate.py tests/unit/test_doctor_validate_delegation.bats` (57 tests total — 20 + 23 pytest + 14 bats).
+- [x] **Test cleanup:** Deleted the 5 `run_full_validation` tests + their section header from [tests/unit/test_version.bats](../../tests/unit/test_version.bats).
+- [x] **Test cleanup:** Deleted the 2 `validate --help` tests from [tests/unit/test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats).
+- [x] **Fallout fix:** The `--validate)` legacy flag arm at [pyve.sh:3272](../../pyve.sh#L3272) previously routed `'pyve --validate'` error message at `pyve validate` — which now also errors. Updated to point at `pyve check` instead. Matching `legacy: 'pyve --validate'` test in [test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats) updated to expect `pyve check` in the message.
+- [x] **Fallout fix:** Deleted the `dispatch: 'pyve validate' routes to the validate handler` test in [test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats) — the validate arm no longer emits a `DISPATCH:validate` trace (it exits 1 via `legacy_flag_error` before reaching that branch).
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **573 / 573** pass (baseline from end of H.e.7a, after removing 21 H.e.8-specific tests and adding 8 H.e.8a removal tests = 594 − 29 + 8 = 573).
+- [x] **Lint:** `shellcheck lib/ui.sh` + `lib/version.sh` → exit 0. `shellcheck pyve.sh` → only pre-existing warnings unchanged.
+- [x] **Smoke reproduction:** `/bin/bash -c '"pyve.sh" doctor; echo EXIT:$?'` → `ERROR: 'pyve doctor' is no longer supported. Use 'pyve check' instead. / EXIT:1`. Same for `validate`. Matches under macOS system bash 3.2.
+- [x] **No CHANGELOG entry, no version bump** — still rolls into the v2.0.0 cut in H.e.9.
+
+**Deliverables:** `doctor)` / `validate)` dispatcher arms shrunk to `legacy_flag_error` one-liners in [pyve.sh](../../pyve.sh); `doctor_command()`, `show_validate_help()`, `run_full_validation()` / `_escalate()`, `delegation_warn()` removed; `--validate` legacy flag target updated to `check`; new [tests/unit/test_doctor_validate_removed.bats](../../tests/unit/test_doctor_validate_removed.bats) (8 tests); 29 obsolete tests deleted (7 delegation_warn + 14 delegation integration + 5 run_full_validation + 2 validate --help + 1 dispatch trace); 43 pytest integration tests deleted (test_doctor.py + test_validate.py).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
 - [ ] **H.e.9 (v2.0.0 cut):** Extend `legacy_flag_error` ([pyve.sh:3104](../../pyve.sh#L3104)) with `--update` / `--doctor` / `--status` per [phase-H-cli-refactor-design.md §6](phase-H-cli-refactor-design.md). Convert `init --update` to a legacy-flag error pointing at `pyve update`. CHANGELOG v2.0.0 entry per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md) migration matrix. Migration guide stub at `docs/site/migration.md`. **Bump to 2.0.0.**
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
