@@ -168,6 +168,11 @@ validate_micromamba_structure() {
 
 #------------------------------------------------------------
 # Full Validation Report
+#
+# Legacy — unreachable via the pyve dispatcher after H.e.8
+# (the `validate)` arm now delegates to `check_command`).
+# Tests still exercise this function directly. Removed in
+# v3.0 per phase-H-cli-refactor-design.md §9.
 #------------------------------------------------------------
 
 run_full_validation() {

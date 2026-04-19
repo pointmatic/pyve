@@ -64,17 +64,16 @@ run_pyve() {
     [[ "$output" == *"pyve purge - Remove"* ]]
 }
 
-@test "help: 'pyve validate --help' prints validate help and exits 0" {
+@test "help: 'pyve validate --help' delegates to check's help (H.e.8)" {
     run_pyve validate --help
     [ "$status" -eq 0 ]
-    [ -n "$output" ]
-    [[ "$output" == *"pyve validate - Validate"* ]]
+    [[ "$output" == *"pyve check"* ]]
 }
 
-@test "help: 'pyve validate -h' is equivalent to --help" {
+@test "help: 'pyve validate -h' delegates to check's help (H.e.8)" {
     run_pyve validate -h
     [ "$status" -eq 0 ]
-    [[ "$output" == *"pyve validate - Validate"* ]]
+    [[ "$output" == *"pyve check"* ]]
 }
 
 @test "help: 'pyve python-version --help' prints python-version help and exits 0" {

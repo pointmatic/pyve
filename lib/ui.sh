@@ -77,32 +77,52 @@ run_cmd() {
     "$@"
 }
 
-# ── Deprecation warning (once per invocation per key) ───────
-# Emits a single warning to stderr, formatted like warn() for
-# visual continuity. Subsequent calls with the same <key> in
-# the same process are suppressed — scripts that invoke a
-# deprecated form in a loop stay readable.
+# ── Rename announcements (once per invocation per key) ──────
+# Two helpers for rename-on-the-way-to-removal situations:
 #
-# Usage: deprecation_warn <key> <old_form> <new_form>
+#   deprecation_warn  — old form still runs its own code; the
+#                       user is advised to switch. Glyph ⚠.
+#   delegation_warn   — old form has been re-routed to a new
+#                       command; stating the redirect plainly.
+#                       No glyph, stated as a transparent note.
 #
-# The <key> exists so callers can suppress duplicates even
-# when <old_form> / <new_form> vary (e.g. parameterized
-# commands). Typical callers pass <old_form> as the key.
+# Both:
+#   - write to stderr (never stdout — scripts parsing stdout
+#     stay clean);
+#   - guard duplicates with a shared <key> space so the same
+#     rename can't fire twice even if one caller picks
+#     `deprecation_warn` and another picks `delegation_warn`;
+#   - include the exact replacement command, not a `--help`
+#     reference.
 #
-# Implementation note: the guard uses a colon-delimited flat
-# string (not `declare -A`) so lib/ui.sh works under macOS's
-# system bash 3.2. Keys must not contain ':' — see the
-# invariant test in tests/unit/test_ui.bats.
+# The guard uses a colon-delimited flat string (not `declare
+# -A`) so lib/ui.sh works under macOS's system bash 3.2.
+# Keys must not contain ':' — locked by an invariant test in
+# tests/unit/test_ui.bats.
 __DEPRECATION_WARNED_KEYS=""
-deprecation_warn() {
+
+_rename_seen() {
+    # _rename_seen <key> — returns 0 if <key> was already
+    # announced in this invocation, 1 otherwise. On first
+    # sight records <key> and returns 1.
     local key="$1"
-    local old_form="$2"
-    local new_form="$3"
     case ":${__DEPRECATION_WARNED_KEYS}:" in
         *":${key}:"*) return 0 ;;
     esac
     __DEPRECATION_WARNED_KEYS="${__DEPRECATION_WARNED_KEYS}:${key}"
+    return 1
+}
+
+deprecation_warn() {
+    local key="$1" old_form="$2" new_form="$3"
+    _rename_seen "$key" && return 0
     echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
+}
+
+delegation_warn() {
+    local key="$1" old_form="$2" new_form="$3"
+    _rename_seen "$key" && return 0
+    echo -e "${old_form}: renamed to '${new_form}'. Running '${new_form}' now..." >&2
 }
 
 # ── Rounded-corner boxes ─────────────────────────────────────

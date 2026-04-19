@@ -303,6 +303,64 @@ setup() {
 }
 
 #============================================================
+# delegation_warn — once-per-invocation stderr notice for a
+#   fully-delegating rename (e.g. `doctor` → `check`).
+#   delegation_warn <key> <old_form> <new_form>
+# Message template per phase-H-check-status-design.md §6:
+#   "<old_form>: renamed to '<new_form>'. Running '<new_form>' now..."
+# Shares __DEPRECATION_WARNED_KEYS state with deprecation_warn
+# (single rename-announcement key space).
+#============================================================
+
+@test "ui.sh: delegation_warn writes to stderr (stdout stays empty)" {
+    run bash -c "source '$UI_PATH'; delegation_warn doctor 'pyve doctor' 'pyve check' 2>/dev/null"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "ui.sh: delegation_warn message matches 'X: renamed to Y. Running Y now...' template" {
+    run bash -c "source '$UI_PATH'; delegation_warn doctor 'pyve doctor' 'pyve check' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve doctor: renamed to 'pyve check'. Running 'pyve check' now..."* ]]
+}
+
+@test "ui.sh: delegation_warn message does NOT reference --help" {
+    run bash -c "source '$UI_PATH'; delegation_warn doctor 'pyve doctor' 'pyve check' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--help"* ]]
+}
+
+@test "ui.sh: delegation_warn prints once per key within a single invocation" {
+    run bash -c "source '$UI_PATH'; { delegation_warn k1 'old' 'new'; delegation_warn k1 'old' 'new'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    local count
+    count=$(printf '%s\n' "$output" | grep -c "renamed" || true)
+    [ "$count" -eq 1 ]
+}
+
+@test "ui.sh: delegation_warn prints each distinct key once" {
+    run bash -c "source '$UI_PATH'; { delegation_warn ka 'oldA' 'newA'; delegation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+@test "ui.sh: delegation_warn under NO_COLOR=1 emits no ANSI escape sequences" {
+    run bash -c "export NO_COLOR=1; source '$UI_PATH'; delegation_warn doctor 'pyve doctor' 'pyve check' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    ! printf '%s' "$output" | grep -q $'\033'
+    [[ "$output" == *"pyve doctor"* ]]
+}
+
+@test "ui.sh: delegation_warn distinct-keys correctness under /bin/bash" {
+    # bash 3.2 guard: same coverage as deprecation_warn's /bin/bash test.
+    run /bin/bash -c "source '$UI_PATH'; { delegation_warn ka 'oldA' 'newA'; delegation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+#============================================================
 # bash 3.2 compatibility (H.e.7a regression guard)
 #   macOS /bin/bash is 3.2.57; pyve.sh uses `set -euo pipefail`
 #   and sources lib/ui.sh, so any bash 4+ construct at source

@@ -2074,6 +2074,10 @@ run_command() {
 
 #============================================================
 # Doctor Command
+#
+# Legacy — unreachable via the dispatcher after H.e.8 (the
+# `doctor)` arm now delegates to `check_command`). Removed in
+# v3.0 per phase-H-cli-refactor-design.md §9.
 #============================================================
 
 doctor_command() {
@@ -3325,6 +3329,9 @@ See also:
 EOF
 }
 
+# Legacy — unreachable via the dispatcher after H.e.8
+# (`pyve validate --help` now shows `show_check_help`).
+# Removed in v3.0 per phase-H-cli-refactor-design.md §9.
 show_validate_help() {
     cat << 'EOF'
 pyve validate - Validate Pyve installation and configuration
@@ -3572,17 +3579,19 @@ main() {
             purge "$@"
             ;;
         validate)
+            # Legacy subcommand — delegates to `pyve check` (H.e.8).
+            # Removed in v3.0 per H.d §5 D3.
             shift
             if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_validate_help
+                show_check_help
                 exit 0
             fi
             if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:validate %s\n' "$*"
+                printf 'DISPATCH:validate→check %s\n' "$*"
                 exit 0
             fi
-            run_full_validation
-            exit $?
+            delegation_warn "validate" "pyve validate" "pyve check"
+            check_command "$@"
             ;;
         update)
             shift
@@ -3647,7 +3656,19 @@ main() {
             run_lock "$@"
             ;;
         doctor)
-            doctor_command
+            # Legacy subcommand — delegates to `pyve check` (H.e.8).
+            # Removed in v3.0 per H.d §5 D3.
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_check_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:doctor→check %s\n' "$*"
+                exit 0
+            fi
+            delegation_warn "doctor" "pyve doctor" "pyve check"
+            check_command "$@"
             ;;
         check)
             shift

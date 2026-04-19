@@ -529,8 +529,44 @@ Current keys (`testenv --init`, `testenv --install`, `testenv --purge`, `python-
 
 ---
 
+### Story H.e.8: Delegate-with-warning for 'pyve doctor' and 'pyve validate' → 'pyve check' [Done]
+
+Second of three sub-stories contributing to the v2.0.0 breaking cut (no version bump here — version lands at H.e.9). Implements the delegate-with-warning pattern for `doctor` and `validate` per [phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md) and [phase-H-check-status-design.md §6](phase-H-check-status-design.md).
+
+**Scope (in):**
+
+- Both `pyve doctor` and `pyve validate` reroute through `check_command` — they stop running their own diagnostic code and instead run `check`'s.
+- Each emits a single **delegation** notice on stderr, once per invocation: `pyve doctor: renamed to 'pyve check'. Running 'pyve check' now...` (and likewise for `validate`). This is a distinct message shape from H.e.7's `deprecation_warn` ("X is deprecated. Use Y instead."), because `doctor` / `validate` are fully delegating (transparent redirect), whereas `testenv --init` / `python-version` continue to execute their own code paths.
+- New helper `delegation_warn(key, old_form, new_form)` in `lib/ui.sh`. Same once-per-key guard mechanism as `deprecation_warn` (shared `__DEPRECATION_WARNED_KEYS` state — single key space to prevent accidental double-fires for the same rename), different message template. Stderr-only. No `--help` reference.
+- Exit code of `pyve doctor` / `pyve validate` matches what `pyve check` would return for the same project state (the 0/1/2 semantics from [phase-H-check-status-design.md §3.2](phase-H-check-status-design.md)).
+- `pyve doctor --help` and `pyve validate --help` show `check`'s help text (not `doctor_command`'s built-in banner and not `show_validate_help`). The old help would advertise flags that no longer route anywhere.
+- `PYVE_DISPATCH_TRACE` traces emit a distinctive `DISPATCH:doctor→check` / `DISPATCH:validate→check` line so existing trace-based tests can distinguish the delegating arm from a direct `check` invocation.
+
+**Scope (out — deferred):**
+
+- **Do not delete** `doctor_command()` at [pyve.sh:2079](../../pyve.sh#L2079), `run_full_validation()` (the `validate` backend), or `show_validate_help()` at [pyve.sh:3328](../../pyve.sh#L3328). After H.e.8 they are unreachable via the dispatcher but stay in the source tree. Removal lands in Phase I / v3.0 per [phase-H-cli-refactor-design.md §9](phase-H-cli-refactor-design.md). A single-line comment over each notes the status so a future reader isn't misled.
+- **Do not add** `--doctor` / `--status` entries to `legacy_flag_error` yet — that's H.e.9 (the v2.0.0 breaking cut).
+
+**Tasks**
+
+- [x] **Red:** 7 failing helper-level tests for `delegation_warn()` appended to [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — stderr-only, exact message template, `--help` absence, once-per-key, distinct-key, `NO_COLOR=1` strips ANSI, `/bin/bash` 3.2 parity.
+- [x] **Red:** 14 failing integration tests in new [tests/unit/test_doctor_validate_delegation.bats](../../tests/unit/test_doctor_validate_delegation.bats) — delegation notice on stderr / not stdout / no `--help` reference for both `doctor` and `validate`; `check`'s banner replaces the legacy banners on stdout; `--help` routes to `show_check_help` and does NOT fire the notice; `PYVE_DISPATCH_TRACE` emits `DISPATCH:doctor→check` and `DISPATCH:validate→check`; direct `pyve check` stays silent.
+- [x] **Refactor during green:** Extracted a tiny internal `_rename_seen()` guard in [lib/ui.sh](../../lib/ui.sh) so `deprecation_warn` and `delegation_warn` share the once-per-key mechanism without duplicating the delimiter logic. One template each, no drift.
+- [x] **Green:** Added `delegation_warn()` in [lib/ui.sh](../../lib/ui.sh) sharing `__DEPRECATION_WARNED_KEYS` with `deprecation_warn()` via `_rename_seen()`. Message matches `<old>: renamed to '<new>'. Running '<new>' now...` literally.
+- [x] **Green:** Rewrote the `doctor)` dispatcher arm at [pyve.sh:3655-3670](../../pyve.sh#L3655-L3670) with the `--help` / `PYVE_DISPATCH_TRACE` / `delegation_warn` / `check_command "$@"` pattern.
+- [x] **Green:** Rewrote the `validate)` arm at [pyve.sh:3574-3587](../../pyve.sh#L3574-L3587) with the same pattern.
+- [x] **Green:** Added "Legacy — unreachable via dispatcher after H.e.8; removed in v3.0" comment blocks above [doctor_command()](../../pyve.sh#L2079), [show_validate_help()](../../pyve.sh#L3332), and [run_full_validation() in lib/version.sh:173](../../lib/version.sh#L173).
+- [x] **Fallout fix:** Two `test_subcommand_help.bats` tests (`validate --help` / `validate -h`) previously asserted the old `show_validate_help` banner. Updated to assert `check`'s help instead, consistent with H.e.8's delegation contract.
+- [x] **Full suite green:** `bats tests/unit/*.bats` — **594 / 594** pass (was 573 before H.e.8; +7 helper tests + 14 integration tests).
+- [x] **Lint:** `shellcheck lib/ui.sh` clean (exit 0). Pre-existing SC2206 warning in `lib/version.sh:23` unchanged (comment-only touch on this file).
+- [x] **No CHANGELOG entry yet** — rolls into the v2.0.0 entry in H.e.9.
+- [x] **No version bump** — pyve stays at 1.20.1 through H.e.8.
+
+**Deliverables:** new `delegation_warn()` helper + shared `_rename_seen()` guard in [lib/ui.sh](../../lib/ui.sh); rewritten `doctor)` and `validate)` dispatcher arms in [pyve.sh](../../pyve.sh); legacy-marker comments above `doctor_command()` / `run_full_validation()` / `show_validate_help()`; new [tests/unit/test_doctor_validate_delegation.bats](../../tests/unit/test_doctor_validate_delegation.bats); 7 `delegation_warn` helper tests appended to [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats); 2 `validate --help` tests updated in [tests/unit/test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] **H.e.8:** Delegate-with-warning for `pyve doctor` → `pyve check`, `pyve validate` → `pyve check`. Reuses `deprecation_warn()` from H.e.7; exit code mirrors `check`. No version bump.
 - [ ] **H.e.9 (v2.0.0 cut):** Extend `legacy_flag_error` ([pyve.sh:3104](../../pyve.sh#L3104)) with `--update` / `--doctor` / `--status` per [phase-H-cli-refactor-design.md §6](phase-H-cli-refactor-design.md). Convert `init --update` to a legacy-flag error pointing at `pyve update`. CHANGELOG v2.0.0 entry per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md) migration matrix. Migration guide stub at `docs/site/migration.md`. **Bump to 2.0.0.**
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
 - [ ] Improve "unknown flag for this subcommand" errors — surface valid flags and closest match (`pyve init --purge` → "did you mean `--force`?").
