@@ -706,6 +706,33 @@ The four doc-heavy items are substantial on their own and should be their own su
 
 ---
 
+### Story H.e.9a: Test cleanup fallout from H.e.9 [Done]
+
+Mirrors the H.e.8b pattern. H.e.9 converted `init --update` to a `legacy_flag_error` call (hard exit 1) but left behind 11 pytest callers across 3 files still asserting the old flag's behavior. CI surfaced the first one (`TestPipUpgradeMicromamba::test_update_upgrades_pip`); audit found 10 more.
+
+**Scope:** test-and-docstring cleanup only. Zero pyve.sh / lib/* changes.
+
+**Tasks**
+
+- [x] **Audit:** `grep -rE 'init.*--update|"--update"|'\''--update'\''' tests/` — 11 callers enumerated across `test_reinit.py` (8), `test_pip_upgrade.py` (2), `test_project_guide_integration.py` (1).
+- [x] **Delete — 10 tests whose intent was specifically about old `init --update` flag behavior:**
+  - `test_reinit.py::TestReinitUpdate` — entire class (4 tests: `test_update_preserves_venv`, `test_update_updates_version`, `test_update_rejects_backend_change`, `test_update_allows_same_backend`).
+  - `test_reinit.py::TestLegacyProjects::test_update_legacy_project` (1 test).
+  - `test_reinit.py::TestEdgeCases::test_update_with_corrupted_config` (1 test).
+  - `test_reinit.py::TestEdgeCases::test_update_preserves_custom_venv_dir` (1 test).
+  - `test_reinit.py::TestReinitUpdateMissingEnv::test_update_flag_creates_missing_venv` (1 test — v1-only semantics; `pyve update` explicitly doesn't rebuild the venv per H.d §4.3).
+  - `test_pip_upgrade.py::TestPipUpgradeVenv::test_update_upgrades_pip` (1 test — v1-only pip-upgrade-on-update semantics).
+  - `test_pip_upgrade.py::TestPipUpgradeMicromamba::test_update_upgrades_pip` (1 test — same).
+- [x] **Migrate — 1 surgical change in `test_project_guide_integration.py::test_idempotent_reinstall_is_fast`:** changed `pyve.run("init", "--update", timeout=60)` → `pyve.run("update", timeout=60)` at line 472. Outer test's intent (first run = real install, second run = fast idempotent refresh) carries over cleanly to the new `pyve update` command; assertion (`second_duration < first_duration`) unchanged. Updated the surrounding comment to reflect `pyve update`'s semantics (refreshes managed files, never rebuilds the venv).
+- [x] **Docstring cleanup:** Removed stale `--update flag` references from the module-level docstrings of `test_reinit.py` and `test_pip_upgrade.py`. Dropped the `TestReinitUpdateMissingEnv` class docstring reference to the `--update flag path` (only the interactive option 1 test survives; class docstring narrowed to match).
+- [x] **Post-cleanup grep:** `init.*--update|"--update"|'--update'` across `tests/` — only legitimate remaining hits are (a) [test_cli_dispatch.bats:188-191](../../tests/unit/test_cli_dispatch.bats#L188-L191) (the H.e.9 migration-error assertion) and (b) [test_project_guide_integration.py:471](../../tests/integration/test_project_guide_integration.py#L471) (an in-code comment explaining the H.e.9a migration).
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **578 / 578** pass (no bats-level changes in H.e.9a).
+- [x] **No CHANGELOG entry, no version bump** — v2.0.0 already cut in H.e.9; H.e.9a is CHANGELOG-silent test cleanup.
+
+**Deliverables:** 10 pytest tests deleted across 2 files; 1 call-site edit + comment rewrite in `test_project_guide_integration.py`; 3 module-level docstring updates (`test_reinit.py`, `test_pip_upgrade.py`, and the `TestReinitUpdateMissingEnv` class docstring).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
 - [ ] Improve "unknown flag for this subcommand" errors — surface valid flags and closest match (`pyve init --purge` → "did you mean `--force`?").
