@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.18.0"
+VERSION="1.19.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -155,7 +155,8 @@ COMMANDS:
                               For CI/CD, Docker, and --no-direnv setups
     test [pytest args...]     Run pytest via the dev/test runner environment
     testenv <subcommand>      Manage the dev/test runner environment
-                              Subcommands: --init | --install [-r <req>] | --purge | run <cmd>
+                              Subcommands: init | install [-r <req>] | purge | run <cmd>
+                              (Legacy flag forms --init / --install / --purge still accepted)
                               See `pyve testenv --help` for details
 
   Diagnostics:
@@ -1361,15 +1362,18 @@ testenv_command() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --init)
+            # New subcommand grammar (v2.0 spec per H.d §4.4; available
+            # in v1.x alongside the old flag forms). The flag forms stay
+            # here unchanged — deprecation warnings land in v2.0.
+            init|--init)
                 action="init"
                 shift
                 ;;
-            --install)
+            install|--install)
                 action="install"
                 shift
                 ;;
-            --purge)
+            purge|--purge)
                 action="purge"
                 shift
                 ;;
@@ -1391,10 +1395,15 @@ testenv_command() {
 pyve testenv - Manage a dedicated dev/test runner environment
 
 Usage:
-  pyve testenv --init
-  pyve testenv --install [-r requirements-dev.txt]
-  pyve testenv --purge
+  pyve testenv init
+  pyve testenv install [-r requirements-dev.txt]
+  pyve testenv purge
   pyve testenv run <command> [args...]
+
+Legacy flag forms (accepted in v1.x; deprecated in v2.0, removed in v3.0):
+  pyve testenv --init         (use: pyve testenv init)
+  pyve testenv --install      (use: pyve testenv install)
+  pyve testenv --purge        (use: pyve testenv purge)
 
 Notes:
   - Uses: .pyve/testenv/venv
@@ -1404,7 +1413,8 @@ EOF
                 exit 0
                 ;;
             *)
-                log_error "Unknown testenv option: $1"
+                log_error "Unknown testenv argument: $1"
+                log_error "Usage: pyve testenv <init|install|purge|run> [options]"
                 exit 1
                 ;;
         esac

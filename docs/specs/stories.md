@@ -394,8 +394,23 @@ Adds the read-only state dashboard that pairs with `pyve check`. State reporting
 
 ---
 
+### Story H.e.5: v1.19.0 Normalize `testenv` subcommand grammar [Done]
+
+Promotes `pyve testenv --init | --install | --purge` flag forms to `pyve testenv init | install | purge` subcommand forms. Both grammars work in v1.x; deprecation warnings on the flag forms land in v2.0 per H.d §5 / D5; hard removal in v3.0.
+
+- [x] Add `init | install | purge` subcommand aliases alongside existing `--init | --install | --purge` flag forms in `testenv_command()`.
+- [x] Update `pyve testenv --help` to document the new grammar as primary and list the flag forms under a "Legacy" subsection with the v3.0 removal timeline.
+- [x] Update top-level `pyve --help` testenv line to show the new subcommand grammar.
+- [x] Both grammars route to the same action; parsing is proven equivalent by a direct equivalence test.
+- [x] `-r <req>` argument for `install` still works (syntactically unchanged).
+- [x] 13 new tests in `tests/unit/test_testenv_grammar.bats`; 534 / 534 unit tests pass.
+- [x] No deprecation warning yet — that's v2.0's job per H.d §5.
+
+**Deliverables:** argument-parsing changes in `testenv_command()` ([pyve.sh](../../pyve.sh)), updated help text, [tests/unit/test_testenv_grammar.bats](../../tests/unit/test_testenv_grammar.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] Promote `testenv --init` / `--purge` flags to `pyve testenv init` / `pyve testenv purge` subcommands. Deprecation warnings on old flags.
 - [ ] Rename `pyve python-version` per H.d's decision. Deprecation warnings.
 - [ ] Add deprecation warnings for every renamed flag/subcommand (match the `legacy_flag_error` pattern at [pyve.sh:2620-2631](pyve.sh#L2620-L2631) but as warnings, not exits).
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.

@@ -5,6 +5,62 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0] - 2026-04-18
+
+### Added — `pyve testenv init | install | purge` subcommand grammar (Story H.e.5)
+
+Normalizes the `testenv` sub-surface to match top-level pyve grammar (`pyve init`, `pyve purge`, etc.). Implements H.d Decision D5 from [docs/specs/phase-H-cli-refactor-design.md §4.4](docs/specs/phase-H-cli-refactor-design.md).
+
+Before this release, `testenv` used two grammars:
+
+```
+pyve testenv --init / --install / --purge    (flag form; inconsistent with top-level)
+pyve testenv run <cmd>                        (subcommand form)
+```
+
+Now both forms are accepted; the new subcommand form is the preferred grammar going forward:
+
+```
+pyve testenv init
+pyve testenv install [-r requirements-dev.txt]
+pyve testenv purge
+pyve testenv run <cmd> [args...]
+```
+
+**Deprecation schedule** (per H.d §5):
+
+- **v1.x (this release):** Both forms accepted. No warnings. Scripts that use the flag form keep working unchanged.
+- **v2.0 (coming):** Flag forms emit a deprecation warning and delegate to the new form.
+- **v3.0:** Flag forms removed (hard error).
+
+### Changed — `pyve testenv --help` and top-level `pyve --help`
+
+- `pyve testenv --help` usage block now shows the new subcommand grammar as primary. The flag forms are listed under a "Legacy flag forms" subsection with the v3.0 removal timeline.
+- `pyve --help` testenv line updated from `--init | --install [-r <req>] | --purge | run <cmd>` to `init | install [-r <req>] | purge | run <cmd>` with a note that the old flag forms are still accepted.
+
+### Tests
+
+- **`tests/unit/test_testenv_grammar.bats` — 13 new tests** covering:
+  - Each new subcommand form (`init`, `install`, `purge`) routes to the correct action.
+  - Each legacy flag form (`--init`, `--install`, `--purge`) still routes to the same action.
+  - `init` and `--init` reach the identical code path (equivalence check).
+  - `install -r <req>` syntax remains accepted.
+  - `--help` documents both grammars.
+  - `--help` notes the legacy status of the flag forms.
+  - Unknown subcommand / unknown flag both exit 1 with actionable errors.
+  - Top-level `pyve --help` lists the new subcommand grammar.
+- All 534 Bats unit tests pass (521 prior + 13 new).
+
+The tests verify argument **parsing** by asserting on each action's distinctive banner line, so they do not depend on a working `python` / `python -m venv` at test time. Actual testenv-creation paths are covered by the existing integration tests in `tests/integration/test_testenv.py`.
+
+### Unchanged in this release
+
+- `pyve testenv run <cmd>` — already correct subcommand grammar; no change.
+- The `-r` / `--requirements` flag still takes a file argument exactly as before.
+- No deprecation warnings on the flag forms yet — that's v2.0's job per H.d §5.
+
+---
+
 ## [1.18.0] - 2026-04-18
 
 ### Added — `pyve status` subcommand (Story H.e.4)
