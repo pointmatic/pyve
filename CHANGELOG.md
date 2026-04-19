@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0] - 2026-04-18
+
+### Added — `pyve python set <ver>` and `pyve python show` (Story H.e.6)
+
+Adds the `python` nested subcommand namespace, ratifying H.d Decision D1 in [docs/specs/phase-H-cli-refactor-design.md §4.2](docs/specs/phase-H-cli-refactor-design.md). Two subcommands in this release:
+
+- **`pyve python set <version>`** — identical semantics to `pyve python-version <version>`: pins the project's Python via asdf / pyenv (writes `.tool-versions` or `.python-version`).
+- **`pyve python show`** — NEW capability: reads the currently pinned Python version and prints it along with its source (`.tool-versions` / `.python-version` / `.pyve/config`). Returns "not pinned" message when no pin is set. Read-only; never installs or modifies anything.
+
+**Why the nested grammar (D1 rationale):**
+
+- `python-version` was the only hyphenated top-level subcommand in pyve — inconsistent with `init`, `purge`, `lock`, etc.
+- Renaming directly to `python` would collide with the name of the underlying tool (`pyve python` — is that "pyve's python subcommand" or "run python via pyve"?). Nesting with an action verb (`set` / `show`) disambiguates.
+- Leaves room for future `pyve python list` / `pyve python available` without another rename.
+
+**Deprecation schedule (per H.d §5, D1):**
+
+- **v1.x (this release):** Both `pyve python set <ver>` and `pyve python-version <ver>` work. No warnings.
+- **v2.0:** `python-version` delegates to `python set` with a deprecation warning.
+- **v3.0:** `python-version` removed (hard error via `legacy_flag_error`).
+
+### Added — `show_python_help()` + top-level `--help` entries
+
+- New `show_python_help()` function documents the `set` / `show` subcommands and calls out the legacy `python-version` form with its v3.0 removal timeline.
+- `pyve --help` now lists `python set <ver>` and `python show` under the Environment section, with a note that the legacy `python-version` form is still accepted.
+
+### Tests
+
+- **`tests/unit/test_python_command.bats` — 16 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - `PYVE_DISPATCH_TRACE` emits `DISPATCH:python <args>`.
+  - `pyve python` with no subcommand exits 1 actionably.
+  - Unknown subcommand exits 1 actionably.
+  - `python set` without a version exits 1 with usage guidance.
+  - `python set` with invalid version formats (`3.13.7.1`, `abc`) exits 1.
+  - `python show` on a fresh directory reports "not pinned" and exits 0.
+  - `python show` reads `.tool-versions` / `.python-version` correctly.
+  - `python show` prefers `.tool-versions` over `.python-version` (same precedence as `pyve init`).
+  - Legacy `pyve python-version` still validates args and still has `--help`.
+  - Top-level `pyve --help` references the new grammar.
+- All 550 Bats unit tests pass (534 prior + 16 new).
+
+### Changed — `set_python_version_only()` error messages
+
+The function is still invoked by the legacy `python-version` dispatch path AND the new `python set` path. Error messages now point at `pyve python set <version>` as the usage example. The legacy `pyve python-version <version>` path still works — only the error text guides new users toward the new grammar.
+
+### Unchanged in this release
+
+- `pyve python-version <ver>` — still works end-to-end in v1.x.
+- All asdf / pyenv integration logic (`detect_version_manager`, `ensure_python_version_installed`, `set_local_python_version`). This sub-story is a rename + addition, not a rewrite.
+
+---
+
 ## [1.19.0] - 2026-04-18
 
 ### Added — `pyve testenv init | install | purge` subcommand grammar (Story H.e.5)

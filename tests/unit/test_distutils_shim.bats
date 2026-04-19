@@ -1,5 +1,7 @@
 #!/usr/bin/env bats
 
+bats_require_minimum_version 1.5.0
+
 load ../helpers/test_helper.bash
 
 setup() {
@@ -111,7 +113,7 @@ PYEOF
 }
 
 @test "pyve_get_python_major_minor: returns empty for invalid python path" {
-    run pyve_get_python_major_minor "/nonexistent/python"
+    run -127 pyve_get_python_major_minor "/nonexistent/python"
     [ -z "$output" ]
 }
 

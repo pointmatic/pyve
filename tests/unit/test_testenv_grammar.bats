@@ -90,6 +90,10 @@ _install_banner_absent='Dev/test runner environment not initialized'
     local new_form_saw_banner=0
     [[ "$output" == *"$_init_banner"* ]] && new_form_saw_banner=1
 
+    # Banner only fires on fresh venv creation; reset so the second
+    # invocation exercises the same code path.
+    rm -rf .pyve/testenv
+
     run "$PYVE_SCRIPT" testenv --init
     local old_form_saw_banner=0
     [[ "$output" == *"$_init_banner"* ]] && old_form_saw_banner=1

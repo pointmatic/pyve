@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.19.0"
+VERSION="1.20.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -145,8 +145,10 @@ COMMANDS:
                               See `pyve update --help` for all options
     purge [<dir>]             Remove all Python environment artifacts
                               See `pyve purge --help` for all options
-    python-version <ver>      Set Python version without creating an environment
-                              Format: #.#.# (e.g., 3.13.7)
+    python set <ver>          Pin the project's Python version (format: #.#.#)
+    python show               Show the currently pinned Python version
+                              See `pyve python --help` for details
+                              (Legacy: `pyve python-version <ver>` still accepted)
     lock [--check]            Generate or verify conda-lock.yml (micromamba only)
                               --check: mtime-only verification (no conda-lock needed)
 
@@ -1548,39 +1550,98 @@ purge_gitignore() {
 
 set_python_version_only() {
     if [[ $# -lt 1 ]]; then
-        log_error "--python-version requires a version argument"
-        log_error "Usage: pyve python-version <version>"
-        log_error "Example: pyve python-version 3.13.7"
+        log_error "pyve python set requires a version argument"
+        log_error "Usage: pyve python set <version>"
+        log_error "Example: pyve python set 3.13.7"
         exit 1
     fi
-    
+
     local version="$1"
-    
+
     if ! validate_python_version "$version"; then
         exit 1
     fi
-    
+
     printf "\nSetting Python version to %s...\n" "$version"
-    
+
     # Source shell profiles to find version managers
     source_shell_profiles
-    
+
     # Detect version manager
     if ! detect_version_manager; then
         exit 1
     fi
-    
+
     # Ensure version is installed
     if ! ensure_python_version_installed "$version"; then
         exit 1
     fi
-    
+
     # Set local version
     set_local_python_version "$version"
-    
+
     local version_file
     version_file="$(get_version_file_name)"
     log_success "Set Python $version in $version_file"
+}
+
+# `pyve python show` — read the current Python version pin from the
+# standard sources (Story H.e.6 / H.d D1). Pure read-only; never
+# installs or modifies anything.
+show_python_version() {
+    local version="" source=""
+    if [[ -f ".tool-versions" ]]; then
+        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
+        source=".tool-versions"
+    elif [[ -f ".python-version" ]]; then
+        version="$(cat .python-version 2>/dev/null | head -1)"
+        source=".python-version"
+    else
+        version="$(read_config_value "python.version" 2>/dev/null || true)"
+        source=".pyve/config"
+    fi
+
+    if [[ -z "$version" ]]; then
+        printf "No Python version pinned in this project.\n"
+        printf "  (not pinned — use 'pyve python set <version>' to pin one)\n"
+        return 0
+    fi
+    printf "Python %s (from %s)\n" "$version" "$source"
+}
+
+# Nested-subcommand dispatcher for `pyve python <action> [args]`.
+# Story H.e.6: new grammar alongside the legacy `pyve python-version`
+# command (which continues to work in v1.x).
+python_command() {
+    if [[ $# -lt 1 ]]; then
+        log_error "pyve python requires a subcommand"
+        log_error "Usage: pyve python set <version>"
+        log_error "       pyve python show"
+        log_error "See: pyve python --help"
+        exit 1
+    fi
+
+    local sub="$1"
+    shift
+
+    case "$sub" in
+        set)
+            set_python_version_only "$@"
+            ;;
+        show)
+            if [[ $# -gt 0 ]]; then
+                log_error "pyve python show takes no arguments (got: $1)"
+                exit 1
+            fi
+            show_python_version
+            ;;
+        *)
+            log_error "Unknown python subcommand: $sub"
+            log_error "Usage: pyve python set <version>"
+            log_error "       pyve python show"
+            exit 1
+            ;;
+    esac
 }
 
 #============================================================
@@ -3266,6 +3327,30 @@ See `pyve --help` for the full command list.
 EOF
 }
 
+show_python_help() {
+    cat << 'EOF'
+pyve python - Manage the project's Python version pin
+
+Usage:
+  pyve python set <version>
+  pyve python show
+
+Subcommands:
+  set <version>     Pin the project's Python version (format: #.#.#)
+                    Writes to .tool-versions (asdf) or .python-version (pyenv)
+  show              Print the currently pinned Python version
+
+Examples:
+  pyve python set 3.13.7
+  pyve python show
+
+Legacy command (accepted in v1.x; deprecated in v2.0, removed in v3.0):
+  pyve python-version <version>    (use: pyve python set <version>)
+
+See `pyve --help` for the full command list.
+EOF
+}
+
 show_python_version_help() {
     cat << 'EOF'
 pyve python-version - Set Python version without creating an environment
@@ -3501,6 +3586,18 @@ main() {
                 exit 0
             fi
             set_python_version_only "$@"
+            ;;
+        python)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_python_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:python %s\n' "$*"
+                exit 0
+            fi
+            python_command "$@"
             ;;
         self)
             shift

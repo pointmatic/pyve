@@ -394,7 +394,7 @@ Adds the read-only state dashboard that pairs with `pyve check`. State reporting
 
 ---
 
-### Story H.e.5: v1.19.0 Normalize `testenv` subcommand grammar [Done]
+### Story H.e.5: v1.19.0 Normalize 'testenv' subcommand grammar [Done]
 
 Promotes `pyve testenv --init | --install | --purge` flag forms to `pyve testenv init | install | purge` subcommand forms. Both grammars work in v1.x; deprecation warnings on the flag forms land in v2.0 per H.d §5 / D5; hard removal in v3.0.
 
@@ -410,8 +410,43 @@ Promotes `pyve testenv --init | --install | --purge` flag forms to `pyve testenv
 
 ---
 
+### Story H.e.6: v1.20.0 Implement 'pyve python set' / 'pyve python show' [Done]
+
+Adds the nested `python` subcommand namespace per H.d D1, with `set` (identical semantics to the legacy `pyve python-version`) and a new `show` capability. Legacy `python-version <ver>` keeps working in v1.x; deprecation warning in v2.0; hard removal in v3.0 per H.d §5.
+
+- [x] Add `python_command()` dispatcher with `set` and `show` subcommands.
+- [x] Add `show_python_version()` helper (pure read — `.tool-versions` → `.python-version` → `.pyve/config` precedence).
+- [x] Add `show_python_help()`; dispatcher case; top-level `--help` entries.
+- [x] `set_python_version_only()` error messages updated to point at the new grammar (legacy command path still works).
+- [x] 16 new tests in `tests/unit/test_python_command.bats`; 550 / 550 unit tests pass.
+- [x] No deprecation warning on `python-version` yet — that lands in v2.0 per H.d §5.
+
+**Deliverables:** `python_command()`, `show_python_version()`, `show_python_help()` in [pyve.sh](../../pyve.sh); [tests/unit/test_python_command.bats](../../tests/unit/test_python_command.bats).
+
+---
+
+### Story H.e.6a: v1.20.1 Bug fix — flaky 'testenv grammar' equivalence test and BW01 warning [Done]
+
+Test-only bug fixes surfaced by CI. No production code changed.
+
+**Bug 1 — `testenv: 'init' and '--init' reach the same action` fails intermittently.** The equivalence test at [tests/unit/test_testenv_grammar.bats:88-99](../../tests/unit/test_testenv_grammar.bats#L88-L99) runs `pyve testenv init` followed by `pyve testenv --init` in the same temp dir. Each test gets a fresh `mktemp -d` via `create_test_dir`, but state persists *within* a test. The first invocation creates `.pyve/testenv/venv`; the second finds it already present. `ensure_testenv_exists` at [pyve.sh:242-247](../../pyve.sh#L242-L247) only emits the `Creating dev/test runner environment` banner when `python -m venv` actually runs, so the second invocation's banner never fires and `[ "$old_form_saw_banner" -eq 1 ]` fails. The banner is an unreliable routing proxy when two invocations share a working tree.
+
+**Bug 2 — BW01 warning in `test_distutils_shim.bats`.** The test at [tests/unit/test_distutils_shim.bats:113-116](../../tests/unit/test_distutils_shim.bats#L113-L116) runs `pyve_get_python_major_minor /nonexistent/python` and expects empty output. Bash exits 127 ("command not found") for the invalid path; bats 1.5.0+ flags `run` invocations that expect a non-zero status but don't use the `run -N` assertion form.
+
+**Tasks**
+
+- [x] Insert `rm -rf .pyve/testenv` between the two invocations in the equivalence test so the second call exercises the fresh-venv path.
+- [x] Switch the distutils_shim test to `run -127 pyve_get_python_major_minor …` and add `bats_require_minimum_version 1.5.0` at the top of the file.
+- [x] Run the full unit suite — 550 / 550 pass, no BW01/BW02 warnings.
+- [x] Audit sibling tests for the same pattern (multiple `run "$PYVE_SCRIPT"` within one `@test` relying on one-time banner output) — none found outside the fixed test.
+
+**Why tests didn't catch it earlier.** Sibling tests in the same file (lines 43-48, 67-70) invoke `testenv init` and `testenv --init` independently, each in a fresh temp dir, so they always hit the creation branch. The equivalence test was the only one chaining two invocations and was added specifically to prove routing equivalence — the banner-as-proxy was the shortcut that broke.
+
+**Deliverables:** [tests/unit/test_testenv_grammar.bats](../../tests/unit/test_testenv_grammar.bats), [tests/unit/test_distutils_shim.bats](../../tests/unit/test_distutils_shim.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] Rename `pyve python-version` per H.d's decision. Deprecation warnings.
 - [ ] Add deprecation warnings for every renamed flag/subcommand (match the `legacy_flag_error` pattern at [pyve.sh:2620-2631](pyve.sh#L2620-L2631) but as warnings, not exits).
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
 - [ ] Improve "unknown flag for this subcommand" errors — surface valid flags and closest match (`pyve init --purge` → "did you mean `--force`?").
