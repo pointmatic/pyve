@@ -303,6 +303,46 @@ setup() {
 }
 
 #============================================================
+# bash 3.2 compatibility (H.e.7a regression guard)
+#   macOS /bin/bash is 3.2.57; pyve.sh uses `set -euo pipefail`
+#   and sources lib/ui.sh, so any bash 4+ construct at source
+#   time aborts every pyve invocation.
+#============================================================
+
+@test "ui.sh: sources cleanly under /bin/bash (bash 3.2 compatibility)" {
+    # Capture stderr only; swap fds so stdout is dropped.
+    run /bin/bash -c "source '$UI_PATH' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "ui.sh: deprecation_warn distinct-keys correctness under /bin/bash" {
+    # Under bash 3.2 with the broken `declare -A` + `[$key]` lookup,
+    # non-integer keys arithmetic-evaluate to index 0 — distinct
+    # string keys collapse, so only the FIRST call warns. This test
+    # catches that regression explicitly.
+    run /bin/bash -c "source '$UI_PATH'; { deprecation_warn ka 'oldA' 'newA'; deprecation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+@test "ui.sh: source contains no 'declare -A' (bash 3.2 invariant)" {
+    # Associative arrays are bash 4+. macOS /bin/bash is 3.2.
+    run grep -E '^\s*declare\s+-A\b' "$UI_PATH"
+    [ "$status" -eq 1 ]  # grep returns 1 when no match — that's what we want
+}
+
+@test "deprecation_warn: no call site in pyve.sh passes a key containing ':'" {
+    # The once-per-invocation guard uses ':' as its delimiter in
+    # the flat string; any key containing ':' would break the
+    # lookup. Rule: keys stay colon-free forever.
+    local pyve_script="$PYVE_ROOT/pyve.sh"
+    run grep -nE 'deprecation_warn[[:space:]]+"[^"]*:' "$pyve_script"
+    [ "$status" -eq 1 ]  # no match → rule holds
+}
+
+#============================================================
 # Backport-discipline invariant — zero pyve identifiers in ui.sh
 #============================================================
 

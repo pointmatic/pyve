@@ -446,7 +446,7 @@ Test-only bug fixes surfaced by CI. No production code changed.
 
 ---
 
-### Story H.e.7: Deprecation warnings for `testenv` flag forms and `python-version` [Done]
+### Story H.e.7: Deprecation warnings for 'testenv' flag forms and 'python-version' [Done]
 
 First of three sub-stories contributing to the v2.0.0 breaking cut (no version bump here — version lands at H.e.9). Adds delegate-with-warning for the `testenv` flag forms introduced in H.e.5 and the legacy `python-version` command preserved through H.e.6. Per [docs/specs/phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md) and the deprecation-output guardrails in the same section.
 
@@ -481,6 +481,51 @@ First of three sub-stories contributing to the v2.0.0 breaking cut (no version b
 - [x] **No version bump** — pyve stays at 1.20.1 through H.e.7 and H.e.8.
 
 **Deliverables:** new `deprecation_warn()` helper in [lib/ui.sh](../../lib/ui.sh); updated [testenv_command()](../../pyve.sh#L1361) and dispatcher `python-version)` arm at [pyve.sh:3578](../../pyve.sh#L3578); updated [show_python_version_help()](../../pyve.sh#L3372); new [tests/unit/test_deprecation_warnings.bats](../../tests/unit/test_deprecation_warnings.bats); 7 new tests appended to [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats).
+
+---
+
+### Story H.e.7a: Bug fix — bash 3.2 compatibility in 'deprecation_warn' [Done]
+
+Test-only + minimal-code bug fix. H.e.7's `deprecation_warn` helper used `declare -A __DEPRECATION_WARNED_KEYS` at [lib/ui.sh:91](../../lib/ui.sh#L91) for the once-per-key guard. Associative arrays are a bash 4.0+ feature. macOS ships `/bin/bash` at **3.2.57**, which fails at source time with:
+
+```
+lib/ui.sh: line 91: declare: -A: invalid option
+declare: usage: declare [-afFirtx] [-p] [name[=value] ...]
+```
+
+Dev machines silently pass because `#!/usr/bin/env bash` picks up brew's bash 5.x. CI and clean-macOS users hit exit-2 on every pyve invocation. Surfaced by CI after the H.e.7 commit ([c6f90f1](../../pyve.sh)) — the macOS `test_cross_platform.py` suite failed on sourcing, before any command ran.
+
+**Why tests didn't catch it earlier.** `test_ui.bats` sources `lib/ui.sh` via `bash -c "source '$UI_PATH'"`, which resolves `bash` through PATH — on dev machines brew's bash takes precedence over `/bin/bash`. No existing unit test forces `/bin/bash` explicitly. Locked in by H.e.7a.
+
+**Fix.** Replace the associative array with a delimited-string scan — semantically identical for our key set, bash-3.2-safe:
+
+```bash
+__DEPRECATION_WARNED_KEYS=""
+deprecation_warn() {
+    local key="$1" old_form="$2" new_form="$3"
+    case ":$__DEPRECATION_WARNED_KEYS:" in
+        *":$key:"*) return 0 ;;
+    esac
+    __DEPRECATION_WARNED_KEYS="$__DEPRECATION_WARNED_KEYS:$key"
+    echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
+}
+```
+
+Current keys (`testenv --init`, `testenv --install`, `testenv --purge`, `python-version`) contain no `:`; the delimiter is safe. New keys introduced later must remain colon-free — locked in by the delimiter-safety test below.
+
+**Tasks**
+
+- [x] **Red:** Source-under-`/bin/bash` regression test in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — stderr must stay empty. Failed before fix (declare error leaked), passes after.
+- [x] **Red:** Functional **distinct-keys** regression test — initial version used same-key (k1, k1) and passed coincidentally under bash 3.2's `[$key]` → arithmetic-eval-to-index-0 quirk. Strengthened to distinct keys (ka, kb), which collapses to the same index under the broken code and exposes the bug.
+- [x] **Red:** Grep invariant — no `^\s*declare\s+-A\b` in `lib/ui.sh`.
+- [x] **Red (forward-looking green):** Grep invariant — no `deprecation_warn` call in `pyve.sh` passes a key containing `:`. Already green today (current keys are colon-free); locks in the rule so a future `"python:set"`-shaped key can't silently break the guard.
+- [x] **Green:** Replaced `declare -A __DEPRECATION_WARNED_KEYS` with `__DEPRECATION_WARNED_KEYS=""` plus a `case ":$__…:" in *":$key:"*)` scan. Added an implementation-note comment inside `deprecation_warn` explaining the bash 3.2 constraint and the `:`-in-keys invariant.
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **573 / 573** pass (was 569 before H.e.7a; +4 regression tests).
+- [x] **Lint:** `shellcheck lib/ui.sh` clean (exit 0).
+- [x] **Smoke reproduction:** `/bin/bash -c "set -euo pipefail; source lib/ui.sh; deprecation_warn ka ...; deprecation_warn kb ..."` — both warnings fire, exit 0. Matches the CI invocation that previously failed.
+- [x] **No CHANGELOG entry, no version bump** — still rolls into the v2.0.0 cut in H.e.9.
+
+**Deliverables:** updated `deprecation_warn()` in [lib/ui.sh](../../lib/ui.sh); 4 new tests (36–39) in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats).
 
 ---
 

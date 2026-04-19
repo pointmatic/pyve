@@ -88,15 +88,20 @@ run_cmd() {
 # The <key> exists so callers can suppress duplicates even
 # when <old_form> / <new_form> vary (e.g. parameterized
 # commands). Typical callers pass <old_form> as the key.
-declare -A __DEPRECATION_WARNED_KEYS
+#
+# Implementation note: the guard uses a colon-delimited flat
+# string (not `declare -A`) so lib/ui.sh works under macOS's
+# system bash 3.2. Keys must not contain ':' — see the
+# invariant test in tests/unit/test_ui.bats.
+__DEPRECATION_WARNED_KEYS=""
 deprecation_warn() {
     local key="$1"
     local old_form="$2"
     local new_form="$3"
-    if [[ -n "${__DEPRECATION_WARNED_KEYS[$key]:-}" ]]; then
-        return 0
-    fi
-    __DEPRECATION_WARNED_KEYS["$key"]=1
+    case ":${__DEPRECATION_WARNED_KEYS}:" in
+        *":${key}:"*) return 0 ;;
+    esac
+    __DEPRECATION_WARNED_KEYS="${__DEPRECATION_WARNED_KEYS}:${key}"
     echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
 }
 
