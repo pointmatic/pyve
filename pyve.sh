@@ -1364,18 +1364,36 @@ testenv_command() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            # New subcommand grammar (v2.0 spec per H.d §4.4; available
-            # in v1.x alongside the old flag forms). The flag forms stay
-            # here unchanged — deprecation warnings land in v2.0.
-            init|--init)
+            # New subcommand grammar (H.d §4.4 D5) — silent.
+            init)
                 action="init"
                 shift
                 ;;
-            install|--install)
+            install)
                 action="install"
                 shift
                 ;;
-            purge|--purge)
+            purge)
+                action="purge"
+                shift
+                ;;
+            # Legacy flag forms — delegate-with-warning (H.e.7).
+            # Removed in v3.0 per H.d §5 D5.
+            --init)
+                deprecation_warn "testenv --init" \
+                    "pyve testenv --init" "pyve testenv init"
+                action="init"
+                shift
+                ;;
+            --install)
+                deprecation_warn "testenv --install" \
+                    "pyve testenv --install" "pyve testenv install"
+                action="install"
+                shift
+                ;;
+            --purge)
+                deprecation_warn "testenv --purge" \
+                    "pyve testenv --purge" "pyve testenv purge"
                 action="purge"
                 shift
                 ;;
@@ -3355,6 +3373,9 @@ show_python_version_help() {
     cat << 'EOF'
 pyve python-version - Set Python version without creating an environment
 
+  LEGACY — accepted in v1.x; deprecated in v2.0, removed in v3.0.
+  Use `pyve python set <version>` instead.
+
 Usage:
   pyve python-version <version>
 
@@ -3585,6 +3606,10 @@ main() {
                 printf 'DISPATCH:python-version %s\n' "$*"
                 exit 0
             fi
+            # Legacy command — delegate-with-warning (H.e.7).
+            # Removed in v3.0 per H.d §5 D3.
+            deprecation_warn "python-version" \
+                "pyve python-version" "pyve python set"
             set_python_version_only "$@"
             ;;
         python)

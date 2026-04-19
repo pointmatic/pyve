@@ -77,6 +77,29 @@ run_cmd() {
     "$@"
 }
 
+# ── Deprecation warning (once per invocation per key) ───────
+# Emits a single warning to stderr, formatted like warn() for
+# visual continuity. Subsequent calls with the same <key> in
+# the same process are suppressed — scripts that invoke a
+# deprecated form in a loop stay readable.
+#
+# Usage: deprecation_warn <key> <old_form> <new_form>
+#
+# The <key> exists so callers can suppress duplicates even
+# when <old_form> / <new_form> vary (e.g. parameterized
+# commands). Typical callers pass <old_form> as the key.
+declare -A __DEPRECATION_WARNED_KEYS
+deprecation_warn() {
+    local key="$1"
+    local old_form="$2"
+    local new_form="$3"
+    if [[ -n "${__DEPRECATION_WARNED_KEYS[$key]:-}" ]]; then
+        return 0
+    fi
+    __DEPRECATION_WARNED_KEYS["$key"]=1
+    echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
+}
+
 # ── Rounded-corner boxes ─────────────────────────────────────
 # Internal box width is 41 visible chars (between │…│); content
 # area after leading "  " is 39 chars, so pad with (39 - title_len) spaces.

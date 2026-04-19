@@ -243,6 +243,66 @@ setup() {
 }
 
 #============================================================
+# deprecation_warn — once-per-invocation stderr warning helper
+#   deprecation_warn <key> <old_form> <new_form>
+# See: docs/specs/phase-H-cli-refactor-design.md §5 guardrails.
+#============================================================
+
+@test "ui.sh: deprecation_warn writes to stderr (stdout stays empty)" {
+    # Discard stderr — stdout should be empty.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>/dev/null"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "ui.sh: deprecation_warn message contains both old_form and new_form literal strings" {
+    # Swap fds: stdout → /dev/null, capture stderr as bats output.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve testenv --init"* ]]
+    [[ "$output" == *"pyve testenv init"* ]]
+}
+
+@test "ui.sh: deprecation_warn message does NOT reference --help" {
+    # Per design guardrail: warnings include the exact replacement command,
+    # NOT a --help reference.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--help"* ]]
+}
+
+@test "ui.sh: deprecation_warn prepends the WARN glyph" {
+    run bash -c "NO_COLOR=1; source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠"* ]]
+}
+
+@test "ui.sh: deprecation_warn prints once per key within a single invocation" {
+    # Two calls with the same key — only ONE warning line should appear.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'old' 'new'; deprecation_warn k1 'old' 'new' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    # Count occurrences of 'old is deprecated' (or whatever text) — expect 1.
+    local count
+    count=$(printf '%s\n' "$output" | grep -c "old" || true)
+    [ "$count" -eq 1 ]
+}
+
+@test "ui.sh: deprecation_warn prints each distinct key once" {
+    # Two calls with different keys — both should warn.
+    run bash -c "source '$UI_PATH'; { deprecation_warn ka 'oldA' 'newA'; deprecation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+@test "ui.sh: deprecation_warn under NO_COLOR=1 emits no ANSI escape sequences" {
+    run bash -c "export NO_COLOR=1; source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    ! printf '%s' "$output" | grep -q $'\033'
+    [[ "$output" == *"pyve testenv --init"* ]]
+}
+
+#============================================================
 # Backport-discipline invariant — zero pyve identifiers in ui.sh
 #============================================================
 

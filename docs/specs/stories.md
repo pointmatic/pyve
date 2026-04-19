@@ -446,8 +446,47 @@ Test-only bug fixes surfaced by CI. No production code changed.
 
 ---
 
+### Story H.e.7: Deprecation warnings for `testenv` flag forms and `python-version` [Done]
+
+First of three sub-stories contributing to the v2.0.0 breaking cut (no version bump here — version lands at H.e.9). Adds delegate-with-warning for the `testenv` flag forms introduced in H.e.5 and the legacy `python-version` command preserved through H.e.6. Per [docs/specs/phase-H-cli-refactor-design.md §5 D3](phase-H-cli-refactor-design.md) and the deprecation-output guardrails in the same section.
+
+**Scope (in):**
+
+- Delegate-with-warning for `pyve testenv --init` → `pyve testenv init`.
+- Delegate-with-warning for `pyve testenv --install` → `pyve testenv install`.
+- Delegate-with-warning for `pyve testenv --purge` → `pyve testenv purge`.
+- Delegate-with-warning for `pyve python-version <ver>` → `pyve python set <ver>`.
+- Shared `deprecation_warn()` helper (location TBD during red-green — likely [lib/ui.sh](../../lib/ui.sh) or a new `lib/deprecation.sh` if scope grows). Writes to stderr. Includes exact replacement command, **no** `--help` reference.
+- Once-per-invocation guard: a single pyve invocation emits each distinct deprecation message at most once (per H.d §5 guardrail — "scripts that call `pyve testenv --init` in a loop shouldn't flood logs"). Keyed by the old-form token, not by message text.
+
+**Scope (out — deferred to later H.e sub-stories):**
+
+- `doctor` / `validate` delegation → H.e.8.
+- `--update` / `--doctor` / `--status` legacy-flag catch extensions → H.e.9.
+- `init --update` hard error → H.e.9 (currently still works in v1.x per [H.e.2:283](stories.md#L283) note).
+- CHANGELOG v2.0.0 entry + migration guide + version bump → H.e.9.
+
+**Tasks**
+
+- [x] **Red:** Failing integration tests in [tests/unit/test_deprecation_warnings.bats](../../tests/unit/test_deprecation_warnings.bats) — 12 tests covering: each of `testenv --init|--install|--purge` + `python-version <ver>` emits a warning to stderr (not stdout) containing the exact replacement command; warnings never reference `--help`; new forms stay silent; legacy purge still reaches the no-op path.
+- [x] **Red:** Failing helper-level tests in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — 7 tests covering: stderr-only, old/new-form content, no `--help` reference, WARN glyph, once-per-key guard, distinct-key emission, NO_COLOR=1 strips ANSI.
+- [x] **Green:** Added `deprecation_warn(key, old_form, new_form)` helper in [lib/ui.sh](../../lib/ui.sh) with an associative-array once-per-key guard. Writes to stderr, uses the shared `${WARN}` glyph for visual continuity with `warn()`.
+- [x] **Green:** Wired `deprecation_warn` into [testenv_command()](../../pyve.sh#L1361) on the `--init` / `--install` / `--purge` flag arms (split out from the old `init|--init` alternations so the subcommand forms stay silent).
+- [x] **Green:** Wired `deprecation_warn` into the dispatcher `python-version)` arm at [pyve.sh:3578](../../pyve.sh#L3578) — fires after the `--help` and `PYVE_DISPATCH_TRACE` short-circuits so neither path pays the warning cost.
+- [x] **Refactor:** No extraction needed — the four call sites each pass distinct `<key> <old_form> <new_form>` triples through a single template inside `deprecation_warn`. No drift.
+- [x] **Full suite green:** `bats tests/unit/*.bats` — **569 / 569** pass (was 550 before H.e.7; added 7 helper tests + 12 integration tests).
+- [x] **Lint:** `shellcheck lib/ui.sh` clean (exit 0, zero warnings). `shellcheck pyve.sh` surfaces only pre-existing warnings unrelated to H.e.7 changes.
+- [x] **Help text:** [show_python_version_help()](../../pyve.sh#L3372) now carries a "LEGACY — … deprecated in v2.0, removed in v3.0. Use `pyve python set <version>` instead." banner. `pyve testenv --help` already tagged the flag forms as Legacy in H.e.5 — no change needed.
+- [x] **No CHANGELOG entry yet** — H.e.7/H.e.8/H.e.9 roll up into a single v2.0.0 CHANGELOG entry written in H.e.9.
+- [x] **No version bump** — pyve stays at 1.20.1 through H.e.7 and H.e.8.
+
+**Deliverables:** new `deprecation_warn()` helper in [lib/ui.sh](../../lib/ui.sh); updated [testenv_command()](../../pyve.sh#L1361) and dispatcher `python-version)` arm at [pyve.sh:3578](../../pyve.sh#L3578); updated [show_python_version_help()](../../pyve.sh#L3372); new [tests/unit/test_deprecation_warnings.bats](../../tests/unit/test_deprecation_warnings.bats); 7 new tests appended to [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats).
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
-- [ ] Add deprecation warnings for every renamed flag/subcommand (match the `legacy_flag_error` pattern at [pyve.sh:2620-2631](pyve.sh#L2620-L2631) but as warnings, not exits).
+- [ ] **H.e.8:** Delegate-with-warning for `pyve doctor` → `pyve check`, `pyve validate` → `pyve check`. Reuses `deprecation_warn()` from H.e.7; exit code mirrors `check`. No version bump.
+- [ ] **H.e.9 (v2.0.0 cut):** Extend `legacy_flag_error` ([pyve.sh:3104](../../pyve.sh#L3104)) with `--update` / `--doctor` / `--status` per [phase-H-cli-refactor-design.md §6](phase-H-cli-refactor-design.md). Convert `init --update` to a legacy-flag error pointing at `pyve update`. CHANGELOG v2.0.0 entry per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md) migration matrix. Migration guide stub at `docs/site/migration.md`. **Bump to 2.0.0.**
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.
 - [ ] Improve "unknown flag for this subcommand" errors — surface valid flags and closest match (`pyve init --purge` → "did you mean `--force`?").
 - [ ] Write/update tests for every changed command.
