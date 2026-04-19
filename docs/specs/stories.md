@@ -622,6 +622,42 @@ Supersedes the H.d §5 D3 "delegate-with-warning" plan for `doctor` / `validate`
 
 ---
 
+### Story H.e.8b: Test cleanup fallout — remaining `pyve.doctor()` / `pyve.run("validate")` callers [Done]
+
+H.e.8a deleted `tests/integration/test_doctor.py` and `tests/integration/test_validate.py` but missed four other pytest files that still invoked the removed commands via the `pyve.doctor()` helper method or `pyve.run("validate", ...)`. CI surfaced the miss: `TestMicromambaWorkflow.test_doctor_shows_micromamba_status` (and four others across `test_venv_workflow.py`, `test_subcommand_cli.py`, `test_micromamba_workflow.py`) raised `CalledProcessError` on the exit-1 migration error. The `.doctor()` helper method itself remained in `pyve_test_helpers.py` and the `tests/README.md` example still demonstrated the old pattern.
+
+No code changes to `pyve.sh` / `lib/*` — this is pure test-and-docs cleanup completing H.e.8a's scope.
+
+**Scope (in):**
+
+- Delete the 6 remaining pytest tests that call `pyve.doctor()` or `pyve.run("validate", ...)`. All are behavioral tests of removed commands with no semantic target:
+  - `test_venv_workflow.py` — `test_doctor_shows_venv_status`, `test_doctor_without_init`.
+  - `test_micromamba_workflow.py` — `test_doctor_shows_micromamba_status`, `test_doctor_without_init`.
+  - `test_subcommand_cli.py` — `test_validate_subcommand_runs`, `test_validate_subcommand_no_project`.
+- Delete the `.doctor()` method on `PyveRunner` in [tests/helpers/pyve_test_helpers.py](../../tests/helpers/pyve_test_helpers.py) — zero callers after the above deletions.
+- Rewrite the `pyve.doctor()` example in [tests/README.md](../../tests/README.md) to use `pyve.run("check", check=False)` — the current recommended pattern.
+
+**Scope (out):**
+
+- Integration coverage of `pyve check`'s behavior remains a documented future gap (would be `tests/integration/test_check.py`). Tracked separately; not in this story.
+- No version bump, no CHANGELOG entry — still rolls into the v2.0.0 cut in H.e.9.
+
+**Tasks**
+
+- [x] **Audit widened:** Initial grep found the planned 6 pytest callers + helper + README, **plus** one more hit in [docs/specs/testing-spec.md:239](../../docs/specs/testing-spec.md#L239) — a `test_venv_doctor_shows_backend` example asserting `Backend: venv` (a doctor-specific string). Added to scope.
+- [x] Deleted the 2 doctor-based tests in [test_venv_workflow.py](../../tests/integration/test_venv_workflow.py).
+- [x] Deleted the 2 doctor-based tests in [test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py).
+- [x] Deleted the 2 validate-based tests in [test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py).
+- [x] Deleted the `.doctor()` method + its docstring in [pyve_test_helpers.py](../../tests/helpers/pyve_test_helpers.py).
+- [x] Rewrote the [tests/README.md:302-319](../../tests/README.md#L302-L319) example — parametrize block now calls `pyve.run("check", check=False)`, accepts exit 0 or 2 (pass or warnings-only), and asserts on `Pyve Environment Check`.
+- [x] Rewrote the [docs/specs/testing-spec.md:236-243](../../docs/specs/testing-spec.md#L236-L243) `test_venv_doctor_shows_backend` example into `test_venv_check_runs` with the same `check`-based pattern.
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **573 / 573** pass (unchanged — this story made no bats-level changes).
+- [x] **Post-cleanup grep:** `pyve\.doctor\(|pyve\.run\(["']validate["']|\.doctor\(self` across the repo returns **zero hits in code or tests** — only the self-references in this story entry remain in `stories.md`, which is expected.
+
+**Deliverables:** 6 pytest tests deleted across 3 files; `.doctor()` helper method removed from `pyve_test_helpers.py`; [tests/README.md](../../tests/README.md) and [docs/specs/testing-spec.md](../../docs/specs/testing-spec.md) examples rewritten to use `pyve.run("check", …)`.
+
+---
+
 ### Remaining H.e sub-stories (placeholder — each becomes an 'H.e.N' story as it begins):
 - [ ] **H.e.9 (v2.0.0 cut):** Extend `legacy_flag_error` ([pyve.sh:3104](../../pyve.sh#L3104)) with `--update` / `--doctor` / `--status` per [phase-H-cli-refactor-design.md §6](phase-H-cli-refactor-design.md). Convert `init --update` to a legacy-flag error pointing at `pyve update`. CHANGELOG v2.0.0 entry per [phase-H-cli-refactor-design.md §8](phase-H-cli-refactor-design.md) migration matrix. Migration guide stub at `docs/site/migration.md`. **Bump to 2.0.0.**
 - [ ] Update shell completion (`lib/completion/*`) for the new surface.

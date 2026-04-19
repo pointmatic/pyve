@@ -233,13 +233,14 @@ class TestVenvInit:
         assert (test_project / '.venv').is_dir()
         assert (test_project / '.venv' / 'bin' / 'python').exists()
 
-    def test_venv_doctor_shows_backend(self, pyve, test_project):
-        """Test that pyve doctor shows venv backend"""
+    def test_venv_check_runs(self, pyve, test_project):
+        """Test that `pyve check` reports cleanly on a venv project"""
         pyve.init(backend='venv')
-        result = pyve.doctor()
+        result = pyve.run("check", check=False)
 
-        assert result.returncode == 0
-        assert 'Backend: venv' in result.stdout
+        # 0 = all pass, 2 = warnings only — either is acceptable here.
+        assert result.returncode in (0, 2)
+        assert 'Pyve Environment Check' in result.stdout
 
     def test_venv_run_executes_python(self, pyve, test_project):
         """Test that pyve run executes Python commands"""

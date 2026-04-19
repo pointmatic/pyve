@@ -74,16 +74,6 @@ class TestVenvWorkflow:
         pip_list = pyve.run_cmd('pip', 'list')
         assert 'requests' in pip_list.stdout.lower()
     
-    def test_doctor_shows_venv_status(self, pyve, project_builder):
-        """Test that doctor command shows venv status."""
-        project_builder.create_requirements(['requests==2.31.0'])
-        pyve.init(backend='venv')
-        
-        result = pyve.doctor()
-        
-        assert result.returncode == 0
-        assert 'venv' in result.stdout.lower()
-    
     def test_run_executes_in_venv(self, pyve, project_builder):
         """Test that pyve run executes commands in venv."""
         project_builder.create_requirements(['requests==2.31.0'])
@@ -291,13 +281,6 @@ class TestVenvEdgeCases:
         
         # Should fail or warn
         assert result.returncode != 0 or 'not initialized' in result.stderr.lower()
-    
-    def test_doctor_without_init(self, pyve):
-        """Test doctor command without initialization."""
-        result = pyve.doctor(check=False)
-        
-        # Should succeed but show not initialized
-        assert 'not initialized' in result.stdout.lower() or result.returncode != 0
     
     def test_purge_without_init(self, pyve):
         """Test --purge without initialization."""
