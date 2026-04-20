@@ -1132,25 +1132,31 @@ Adopt `lib/ui.sh` helpers throughout `init()` in [pyve.sh:481](../../pyve.sh#L48
 
 ---
 
-### Story H.f.2: Retrofit `pyve purge` to Unified UX [Planned]
+### Story H.f.2: Retrofit `pyve purge` to Unified UX [Done]
 
 Adopt `lib/ui.sh` helpers throughout `purge()` in [pyve.sh:1159](../../pyve.sh#L1159).
 
 **Tasks**
 
-- [ ] Audit every `echo` / `printf` call inside `purge()` and helpers it invokes. Map each to a `lib/ui.sh` helper.
-- [ ] Wrap with `header_box "pyve purge"` / `footer_box`.
-- [ ] Use `ask_yn` for the destructive confirmation prompt.
-- [ ] Use `success` for per-artifact removal lines, `warn` for skipped/missing artifacts.
-- [ ] Write failing bats tests in `tests/unit/test_purge_ui.bats` covering: header/footer, confirmation prompt format, per-artifact output, abort path (user answers no), `NO_COLOR=1` cleanliness.
-- [ ] Implement minimally to pass; refactor when green.
-- [ ] Run the full unit suite — no regressions.
-- [ ] Run shellcheck — zero new warnings.
+- [x] Audit every `echo` / `printf` call inside `purge()` and helpers it invokes (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`). Mapped each to a `lib/ui.sh` helper.
+- [x] Wrap with `header_box "pyve purge"` / `footer_box`.
+- [x] Use `ask_yn` for the destructive confirmation prompt. Skipped when `--yes` / `-y` passed (new flag), `CI=1`, or `PYVE_FORCE_YES=1`.
+- [x] Added `--yes` / `-y` flag so internal callers (`init --force`, interactive option 2) skip the prompt without double-prompting. Updated both `purge --keep-testenv` call sites in `init()` to `purge --keep-testenv --yes`.
+- [x] Use `success` for per-artifact removal lines (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`); `info` for "no <artifact> found" cases; `warn` for `.env` preserved-because-not-empty.
+- [x] Write failing bats tests in `tests/unit/test_purge_ui.bats` — 6 tests: header at entry, NO_COLOR=1 no escapes, abort preserves artifacts, `--yes` skips confirmation, footer renders on success, per-artifact ✔ glyph.
+- [x] Run the full unit suite — 622 / 622 passing (6 new).
+- [x] Run shellcheck on `pyve.sh` — zero new warnings.
 
 **Deliverables**
 
-- Updated `purge()` in [pyve.sh](../../pyve.sh).
-- New `tests/unit/test_purge_ui.bats`.
+- Updated `purge()` and helpers in [pyve.sh](../../pyve.sh) (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`).
+- New `--yes` / `-y` flag for `pyve purge`.
+- New [tests/unit/test_purge_ui.bats](../../tests/unit/test_purge_ui.bats) (6 tests).
+
+**Out of scope (deferred)**
+
+- `unknown_flag_error` and other shared error helpers retain old format. → H.f.4.
+- Documentation of the new `--yes` flag in `features.md` / `usage.md`. → H.f.5.
 
 ---
 

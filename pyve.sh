@@ -681,7 +681,7 @@ init() {
 
             # Purge existing installation
             banner "Purging existing environment"
-            purge --keep-testenv
+            purge --keep-testenv --yes
             success "Environment purged"
             banner "Rebuilding fresh environment"
 
@@ -749,7 +749,7 @@ init() {
                 2)
                     # Purge and continue
                     banner "Purging existing environment"
-                    purge --keep-testenv
+                    purge --keep-testenv --yes
                     success "Environment purged"
                     banner "Rebuilding fresh environment"
                     ;;
@@ -1137,7 +1137,8 @@ purge() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local keep_testenv=false
     local venv_dir_explicit=false
-    
+    local skip_confirm=false
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1145,8 +1146,12 @@ purge() {
                 keep_testenv=true
                 shift
                 ;;
+            --yes|-y)
+                skip_confirm=true
+                shift
+                ;;
             -*)
-                unknown_flag_error "purge" "$1" --keep-testenv --help
+                unknown_flag_error "purge" "$1" --keep-testenv --yes --help
                 ;;
             *)
                 venv_dir="$1"
@@ -1155,13 +1160,23 @@ purge() {
                 ;;
         esac
     done
-    
-    printf "\nPurging Python environment artifacts...\n"
-    
+
+    header_box "pyve purge"
+
+    # Destructive-confirmation prompt. Skipped when:
+    #   --yes / -y passed (e.g., by `init --force`), CI=1, or PYVE_FORCE_YES=1.
+    if [[ "$skip_confirm" != true ]] && [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        warn "This will remove pyve-managed environment artifacts from the current project."
+        if ! ask_yn "Proceed"; then
+            info "Aborted — no changes made"
+            exit 0
+        fi
+    fi
+
     # Source shell profiles to detect version manager
     source_shell_profiles
     detect_version_manager 2>/dev/null || true
-    
+
     # Remove version file
     purge_version_file
 
@@ -1174,59 +1189,59 @@ purge() {
             venv_dir="$configured_venv_dir"
         fi
     fi
-    
+
     # Remove virtual environment
     purge_venv "$venv_dir"
-    
+
     # Remove .pyve directory (config and micromamba envs)
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
             if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
                 rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
                 find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
-                log_success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
+                success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
             else
                 rm -rf ".pyve"
-                log_success "Removed .pyve directory (config and micromamba environments)"
+                success "Removed .pyve directory (config and micromamba environments)"
             fi
         fi
     else
         purge_pyve_dir
         purge_testenv_dir
     fi
-    
+
     # Remove .envrc
     purge_envrc
-    
+
     # Remove .env (only if empty - v0.6.0 smart purge)
     purge_dotenv
-    
+
     # Clean .gitignore
     purge_gitignore "$venv_dir"
-    
-    printf "\n✓ Python environment artifacts removed.\n"
+
+    footer_box
 }
 
 purge_version_file() {
     local version_file
-    
+
     # Try to remove both possible version files
     for version_file in ".tool-versions" ".python-version"; do
         if [[ -f "$version_file" ]]; then
             rm -f "$version_file"
-            log_success "Removed $version_file"
+            success "Removed $version_file"
         fi
     done
 }
 
 purge_venv() {
     local venv_dir="$1"
-    
+
     if [[ -d "$venv_dir" ]]; then
         rm -rf "$venv_dir"
-        log_success "Removed $venv_dir"
+        success "Removed $venv_dir"
     else
-        log_info "No virtual environment found at '$venv_dir'"
+        info "No virtual environment found at '$venv_dir'"
     fi
 }
 
@@ -1237,52 +1252,50 @@ purge_pyve_dir() {
             # Try to remove micromamba environment(s) properly first
             local micromamba_path
             micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-            
+
             if [[ -n "$micromamba_path" ]] && [[ -x "$micromamba_path" ]]; then
                 # Get environment name from config if it exists
                 local env_name
                 if config_file_exists; then
                     env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
                 fi
-                
+
                 # If we have an env name, try to remove it
                 if [[ -n "$env_name" ]]; then
-                    log_info "Removing micromamba environment '$env_name'..."
+                    info "Removing micromamba environment '$env_name'..."
                     if "$micromamba_path" env remove -n "$env_name" -y 2>/dev/null; then
-                        log_success "Removed micromamba environment '$env_name'"
+                        success "Removed micromamba environment '$env_name'"
                     else
                         # If named removal fails, try prefix-based removal
-                        log_info "Named removal failed, trying prefix-based removal..."
+                        info "Named removal failed, trying prefix-based removal..."
                         "$micromamba_path" env remove -p ".pyve/envs/$env_name" -y 2>/dev/null || true
                     fi
                 else
                     # No env name in config, try to find and remove any environments in .pyve/envs
                     for env_dir in .pyve/envs/*; do
                         if [[ -d "$env_dir" ]]; then
-                            local env_basename
-                            env_basename="$(basename "$env_dir")"
-                            log_info "Removing micromamba environment at '$env_dir'..."
+                            info "Removing micromamba environment at '$env_dir'..."
                             "$micromamba_path" env remove -p "$env_dir" -y 2>/dev/null || true
                         fi
                     done
                 fi
             else
-                log_info "Micromamba not found, will force-remove .pyve directory"
+                info "Micromamba not found, will force-remove .pyve directory"
             fi
         fi
-        
+
         # Now remove the .pyve directory
         rm -rf ".pyve"
-        log_success "Removed .pyve directory (config and micromamba environments)"
+        success "Removed .pyve directory (config and micromamba environments)"
     fi
 }
 
 purge_testenv_dir() {
     if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
         rm -rf ".pyve/$TESTENV_DIR_NAME"
-        log_success "Removed .pyve/$TESTENV_DIR_NAME"
+        success "Removed .pyve/$TESTENV_DIR_NAME"
     else
-        log_info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
     fi
 }
 
@@ -1472,7 +1485,7 @@ test_command() {
 purge_envrc() {
     if [[ -f ".envrc" ]]; then
         rm -f ".envrc"
-        log_success "Removed .envrc"
+        success "Removed .envrc"
     fi
 }
 
@@ -1480,21 +1493,21 @@ purge_dotenv() {
     if [[ -f "$ENV_FILE_NAME" ]]; then
         if is_file_empty "$ENV_FILE_NAME"; then
             rm -f "$ENV_FILE_NAME"
-            log_success "Removed $ENV_FILE_NAME (was empty)"
+            success "Removed $ENV_FILE_NAME (was empty)"
         else
-            log_warning "$ENV_FILE_NAME preserved (contains data). Delete manually if desired."
+            warn "$ENV_FILE_NAME preserved (contains data). Delete manually if desired."
         fi
     fi
 }
 
 purge_gitignore() {
     local venv_dir="$1"
-    
+
     if [[ -f ".gitignore" ]]; then
         remove_pattern_from_gitignore "$venv_dir"
         remove_pattern_from_gitignore "$ENV_FILE_NAME"
         remove_pattern_from_gitignore ".envrc"
-        log_success "Cleaned .gitignore"
+        success "Cleaned .gitignore"
     fi
 }
 

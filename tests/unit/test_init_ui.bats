@@ -17,6 +17,10 @@ setup() {
     setup_pyve_env
     create_test_dir
     export PYVE_SCRIPT="$PYVE_ROOT/pyve.sh"
+    # Tests that exercise confirmation prompts rely on these being unset.
+    # When CI or PYVE_FORCE_YES is set, init/purge auto-accept and proceed
+    # into real work, which is not what these UX tests assert on.
+    unset CI PYVE_FORCE_YES
 }
 
 teardown() {
