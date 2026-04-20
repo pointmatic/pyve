@@ -613,8 +613,13 @@ init() {
                 shift
                 ;;
             -*)
-                log_error "Unknown option: $1"
-                exit 1
+                unknown_flag_error "init" "$1" \
+                    --python-version --backend --auto-bootstrap --bootstrap-to \
+                    --strict --no-lock --env-name --no-direnv --auto-install-deps \
+                    --no-install-deps --local-env --force --allow-synced-dir \
+                    --project-guide --no-project-guide \
+                    --project-guide-completion --no-project-guide-completion \
+                    --help
                 ;;
             *)
                 venv_dir="$1"
@@ -1163,9 +1168,8 @@ purge() {
                 keep_testenv=true
                 shift
                 ;;
-            -* )
-                log_error "Unknown option: $1"
-                exit 1
+            -*)
+                unknown_flag_error "purge" "$1" --keep-testenv --help
                 ;;
             *)
                 venv_dir="$1"
@@ -1382,6 +1386,10 @@ Notes:
   - `run` executes a command inside the dev/test runner environment.
 EOF
                 exit 0
+                ;;
+            -*)
+                unknown_flag_error "testenv" "$1" \
+                    --init --install --purge --requirements -r --help
                 ;;
             *)
                 log_error "Unknown testenv argument: $1"
@@ -1672,6 +1680,13 @@ install_self() {
         cp "$source_dir/lib/"*.sh "$TARGET_BIN_DIR/lib/"
         log_success "Installed lib/ helpers"
     fi
+
+    # Copy shell-completion scripts (H.e.9c)
+    if [[ -d "$source_dir/lib/completion" ]]; then
+        mkdir -p "$TARGET_BIN_DIR/lib/completion"
+        cp "$source_dir/lib/completion/"* "$TARGET_BIN_DIR/lib/completion/" 2>/dev/null || true
+        log_success "Installed lib/completion/ (shell completion)"
+    fi
     
     # Save source directory for future reinstalls
     mkdir -p "$(dirname "$SOURCE_DIR_FILE")"
@@ -1698,6 +1713,15 @@ install_self() {
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
     printf "  source ~/.zshrc     # or ~/.bashrc\n"
+
+    # Shell-completion activation hint (H.e.9c)
+    if [[ -d "$TARGET_BIN_DIR/lib/completion" ]]; then
+        printf "\nTo enable tab completion, add one of these to your shell rc:\n"
+        printf "  # bash:\n"
+        printf "  source %s/lib/completion/pyve.bash\n" "$TARGET_BIN_DIR"
+        printf "  # zsh (place _pyve on \$fpath, then compinit):\n"
+        printf "  fpath=(%s/lib/completion \$fpath) && autoload -U compinit && compinit\n" "$TARGET_BIN_DIR"
+    fi
 }
 
 install_update_path() {
@@ -2036,9 +2060,7 @@ status_command() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -*)
-                log_error "Unknown option: $1"
-                log_error "See: pyve status --help"
-                exit 1
+                unknown_flag_error "status" "$1" --help
                 ;;
             *)
                 log_error "pyve status takes no positional arguments (got: $1)"
@@ -2330,9 +2352,7 @@ check_command() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
             -*)
-                log_error "Unknown option: $1"
-                log_error "See: pyve check --help"
-                exit 1
+                unknown_flag_error "check" "$1" --help
                 ;;
             *)
                 log_error "pyve check takes no positional arguments (got: $1)"
@@ -2613,9 +2633,7 @@ update_command() {
                 shift
                 ;;
             -*)
-                log_error "Unknown option: $1"
-                log_error "See: pyve update --help"
-                exit 1
+                unknown_flag_error "update" "$1" --no-project-guide --help
                 ;;
             *)
                 log_error "pyve update takes no positional arguments (got: $1)"
@@ -2723,8 +2741,11 @@ run_lock() {
                 check_mode=true
                 shift
                 ;;
+            -*)
+                unknown_flag_error "lock" "$1" --check --help
+                ;;
             *)
-                log_error "Unknown option: $1"
+                log_error "pyve lock takes no positional arguments (got: $1)"
                 log_error "Usage: pyve lock [--check]"
                 exit 1
                 ;;
@@ -2838,6 +2859,43 @@ legacy_flag_error() {
     local new_form="$2"
     log_error "'pyve $old_flag' is no longer supported. Use 'pyve $new_form' instead."
     log_error "See: pyve --help"
+    exit 1
+}
+
+#------------------------------------------------------------
+# Unknown-flag error with closest-match suggestion (H.e.9d).
+#
+#   unknown_flag_error <subcommand> <bad_flag> <valid_flag1> [<valid_flag2> ...]
+#
+# Picks the single closest valid flag by Levenshtein distance
+# (via `_edit_distance` in lib/ui.sh). Emits "Did you mean X?"
+# only when distance <= 3; for more distant typos it omits the
+# hint to avoid suggesting an unrelated flag.
+#
+# Every line is an ERROR: line so scripts grepping stderr see
+# a coherent block. Always exits 1.
+#------------------------------------------------------------
+unknown_flag_error() {
+    local subcommand="$1"; shift
+    local bad_flag="$1"; shift
+
+    local best_match=""
+    local best_dist=999
+    local flag dist
+    for flag in "$@"; do
+        dist="$(_edit_distance "$bad_flag" "$flag")"
+        if (( dist < best_dist )); then
+            best_dist=$dist
+            best_match=$flag
+        fi
+    done
+
+    log_error "'pyve $subcommand' does not accept '$bad_flag'."
+    if (( best_dist <= 3 )) && [[ -n "$best_match" ]]; then
+        log_error "  Did you mean: '$best_match'?"
+    fi
+    log_error "  Valid flags for 'pyve $subcommand': $*"
+    log_error "  See: pyve $subcommand --help"
     exit 1
 }
 

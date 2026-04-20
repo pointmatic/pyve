@@ -343,6 +343,60 @@ setup() {
 }
 
 #============================================================
+# _edit_distance — Levenshtein helper (H.e.9d)
+#============================================================
+
+@test "_edit_distance: identical strings return 0" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abc'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "0" ]
+}
+
+@test "_edit_distance: empty-to-non-empty equals the non-empty length" {
+    run bash -c "source '$UI_PATH'; _edit_distance '' 'abc'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
+@test "_edit_distance: single substitution = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abd'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: single insertion = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abcd'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: single deletion = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'ab'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: --purge vs --force = 3" {
+    # p≠f, u≠o, r=r, g≠c, e=e → 3 substitutions.
+    run bash -c "source '$UI_PATH'; _edit_distance '--purge' '--force'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
+@test "_edit_distance: distant strings exceed the suggestion threshold" {
+    # --xyz vs --backend → should be >3 so callers skip the "did you mean" hint.
+    run bash -c "source '$UI_PATH'; _edit_distance '--xyz' '--backend'"
+    [ "$status" -eq 0 ]
+    (( output > 3 ))
+}
+
+@test "_edit_distance: works under /bin/bash (bash 3.2)" {
+    run /bin/bash -c "source '$UI_PATH'; _edit_distance '--purge' '--force'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
+#============================================================
 # Backport-discipline invariant — zero pyve identifiers in ui.sh
 #============================================================
 

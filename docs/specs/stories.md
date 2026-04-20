@@ -733,7 +733,7 @@ Mirrors the H.e.8b pattern. H.e.9 converted `init --update` to a `legacy_flag_er
 
 ---
 
-### Story H.e.9b: Retarget `--python-version` legacy-flag catch to `pyve python set` [Done]
+### Story H.e.9b: Retarget '--python-version' legacy-flag catch to 'pyve python set' [Done]
 
 Fit-and-finish follow-on to H.e.9. The `--python-version` legacy-flag catch at [pyve.sh:3276](../../pyve.sh#L3276) currently redirects users to `pyve python-version <ver>` — a form that still works in v2.x but is deprecated (warns + delegates per H.e.7). Retarget the error message at the new canonical form `pyve python set <ver>` so users migrating from pre-v1.11 flag-style CLIs land on the v2.0-canonical shape directly, bypassing the deprecation-warning path.
 
@@ -754,7 +754,7 @@ Fit-and-finish follow-on to H.e.9. The `--python-version` legacy-flag catch at [
 
 ---
 
-### Story H.e.9c: Introduce shell completion for bash and zsh [Planned]
+### Story H.e.9c: Introduce shell completion for bash and zsh [Done]
 
 Net-new feature. No `lib/completion/` directory exists today — pyve has shipped without completion support. Users who tab-complete `pyve <TAB>` get whatever their shell's default path-completion produces (noise). Shipping completion that matches the v2.0 surface improves day-one discoverability of the 12-ish top-level subcommands and their flags.
 
@@ -774,18 +774,25 @@ Net-new feature. No `lib/completion/` directory exists today — pyve has shippe
 
 **Tasks**
 
-- [ ] Survey: list every subcommand + flag in the v2.0 surface. Produce a machine-readable inventory (can be a bash associative array or a static YAML file consumed by the completion scripts).
-- [ ] **Red:** Tests asserting `lib/completion/pyve.bash` produces the expected completions for `pyve <TAB>`, `pyve testenv <TAB>`, `pyve python <TAB>`, `pyve init --<TAB>`.
-- [ ] **Green:** Implement `lib/completion/pyve.bash` and `lib/completion/_pyve`.
-- [ ] **Green:** Extend `pyve self install` / `pyve self uninstall` to deploy + remove the completion script based on detected shell.
-- [ ] Lint (ShellCheck on the bash completion; zsh has no lint but manual review).
-- [ ] CHANGELOG entry (v2.1.0 if we version-bump; otherwise landed as part of a larger v2.1 rollup).
+- [x] **Survey:** Extracted the canonical flag lists from each subcommand's parser in `pyve.sh` via `awk` + `grep`. Inventory embedded inline as literal space-delimited strings at the top of `_pyve()` (not a separate YAML — the lists are short enough that the indirection would be costlier than the duplication).
+- [x] **Red:** 15 failing tests in new [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats) covering: every top-level subcommand present; no removed subcommands (`doctor`/`validate`) offered; `pyve init --` lists all init flags; `--update` specifically excluded (post-H.e.9); `--backend` value completion (`venv` / `micromamba`); `testenv` action completion + legacy flag forms excluded; `testenv install -` offers `-r` / `--help`; `python` / `self` nested completion; `update` / `lock` / `purge` flags.
+- [x] **Green:** Implemented [lib/completion/pyve.bash](../../lib/completion/pyve.bash) — self-contained (no `bash-completion` library dependency); completes subcommands, flags, nested actions, and `--backend` value. Registers with `complete -F _pyve pyve`.
+- [x] **Green:** Implemented [lib/completion/_pyve](../../lib/completion/_pyve) — zsh-native using `_arguments` / `_describe`; parallel coverage. Flag descriptions included for better UX under zsh's rich completion UI.
+- [x] **Green:** Extended `install_pyve()` in [pyve.sh](../../pyve.sh) to copy `lib/completion/` alongside `lib/*.sh`; post-install hint emits shell-specific activation instructions.
+- [x] **Uninstall:** No change needed — existing `rm -rf "$TARGET_BIN_DIR/lib"` already removes the completion dir.
+- [x] **Lint:** `shellcheck lib/completion/pyve.bash` → exit 0. `zsh -n lib/completion/_pyve` → exit 0 (syntax check).
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **593 / 593** pass (578 baseline + 15 completion tests).
 
-**Deliverables:** `lib/completion/pyve.bash`, `lib/completion/_pyve`, install/uninstall wiring in `pyve self`, unit + integration tests, CHANGELOG entry.
+**Scope deviations from the draft:**
+
+- The draft proposed deploying completion scripts to the user's shell completion directory with shell detection. Dropped in favor of the simpler approach: copy scripts into `~/.local/bin/lib/completion/` alongside other lib files, and emit activation instructions post-install. Rationale: shell-completion-dir detection is brittle (bash uses `~/.bash_completion.d/`, XDG dirs, or `/usr/local/etc/bash_completion.d/`; zsh uses `$fpath`; users' setups vary widely). Emitting a one-line `source ~/.local/bin/lib/completion/pyve.bash` is honest and works in every environment.
+- The draft mentioned a CHANGELOG entry; deferred until the next version bump rollup (completion is additive; no new release cut today).
+
+**Deliverables:** [lib/completion/pyve.bash](../../lib/completion/pyve.bash); [lib/completion/_pyve](../../lib/completion/_pyve); `install_pyve()` updated to copy `lib/completion/` and emit activation hints; new [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats) (15 tests).
 
 ---
 
-### Story H.e.9d: Closest-match "did you mean?" for unknown flags [Planned]
+### Story H.e.9d: Closest-match "did you mean?" for unknown flags [Done]
 
 Ratifies [phase-H-cli-refactor-design.md §4.5 D2](phase-H-cli-refactor-design.md). When a user typos a flag (`pyve init --purge` — meant `--force`), the current error is a generic `log_error "Unknown option: ..."`. D2 specifies a helpful error with the closest-match valid flag + the full valid-flag list.
 
@@ -808,18 +815,20 @@ Ratifies [phase-H-cli-refactor-design.md §4.5 D2](phase-H-cli-refactor-design.m
 
 **Tasks**
 
-- [ ] **Red:** Helper-level tests in `tests/unit/test_ui.bats` for the edit-distance helper (covers known cases, boundary cases, empty strings).
-- [ ] **Red:** Integration tests asserting `pyve init --purge` produces the `Did you mean: '--force'?` line; `pyve init --xyz` (distance > 3) produces the valid-flag list without a "did you mean" line; `pyve testenv --frg` produces the correct closest match.
-- [ ] **Green:** Implement `_edit_distance()` in `lib/ui.sh` (bash-native).
-- [ ] **Green:** Implement shared `unknown_flag_error <subcommand> <bad_flag> <flag1> <flag2> …` helper that formats the D2-shaped error.
-- [ ] **Green:** Retrofit `init`, `purge`, `testenv_command`, `python_command`, `update_command`, `check_command`, `status_command` to call `unknown_flag_error` from their unknown-flag branch.
-- [ ] Bats full suite green; ShellCheck clean.
+- [x] **Red:** 8 helper-level tests for `_edit_distance` in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — identical strings, empty→non-empty, single substitution/insertion/deletion, `--purge` vs `--force` = 3, far-typo > 3, bash 3.2 parity under `/bin/bash`.
+- [x] **Red:** 11 integration tests in new [tests/unit/test_unknown_flag.bats](../../tests/unit/test_unknown_flag.bats) — close typo (`--forse` → `--force`) fires "Did you mean"; far typo suppresses the hint; valid-flag list enumerated; per-command help pointer included; and `init` / `update` / `check` / `status` / `purge` / `lock` / `testenv` all produce their respective valid-flag lists.
+- [x] **Green:** `_edit_distance()` added to [lib/ui.sh](../../lib/ui.sh). Flat-array DP simulation; bash 3.2 safe (no associative arrays).
+- [x] **Green:** `unknown_flag_error()` added to [pyve.sh](../../pyve.sh) adjacent to `legacy_flag_error()`. Picks the single closest flag, suppresses the "Did you mean" line when distance > 3, always exits 1. All lines prefixed `ERROR: ` via `log_error` for grep consistency.
+- [x] **Green:** Retrofitted **7 sites** to call `unknown_flag_error`: `init` (line 615; 17-flag list), `purge` (1171; 2 flags), `testenv_command` (1391; 6 flags), `status_command` (2058; 1 flag), `check_command` (2352; 1 flag), `update_command` (2636; 2 flags), `run_lock` (2747; 2 flags). Note: single-flag commands technically don't need the suggestion machinery but use it for consistency.
+- [x] **Scope carve-out:** `python_command` and `self_command` have unknown-*subcommand* branches (`*)`), not unknown-*flag* branches. Per story scope ("closest-match on subcommands is a separate cycle"), left unchanged.
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **612 / 612** pass (593 baseline + 8 helper + 11 integration = 612).
+- [x] **Lint:** `shellcheck lib/ui.sh` → exit 0.
 
-**Deliverables:** `_edit_distance()` + `unknown_flag_error()` helpers in [lib/ui.sh](../../lib/ui.sh); canonical flag-list arrays in every retrofitted command; helper + integration tests.
+**Deliverables:** `_edit_distance()` in [lib/ui.sh](../../lib/ui.sh); `unknown_flag_error()` in [pyve.sh](../../pyve.sh); 7 retrofitted command parsers; new [tests/unit/test_unknown_flag.bats](../../tests/unit/test_unknown_flag.bats) (11 tests); 8 `_edit_distance` tests in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats).
 
 ---
 
-### Story H.e.9e: Rewrite `docs/specs/features.md` command reference for v2.0 [Planned]
+### Story H.e.9e: Rewrite `docs/specs/features.md` command reference for v2.0 [Done]
 
 Internal-spec documentation hygiene. [features.md](../../docs/specs/features.md) currently describes the v1.x command surface; the v2.0 cut left it stale. Rewrite the command-reference section to match what `pyve.sh` actually ships after H.e.9.
 
@@ -834,16 +843,30 @@ Internal-spec documentation hygiene. [features.md](../../docs/specs/features.md)
 
 **Tasks**
 
-- [ ] Read current `features.md`; identify every v1.x-specific statement.
-- [ ] Rewrite in place; avoid wholesale replacement if the pre-v2 structure is still useful.
-- [ ] Sanity check: each v2.0 subcommand + each deprecation + each exit-code is covered.
-- [ ] Grep-based verification: `grep -n 'doctor\|validate\|init --update'` in features.md returns only clearly-labeled "removed in v2.0" context.
+- [x] **Audit:** 14 grep hits for `doctor|validate|init --update|--update` in the pre-edit file — enumerated before touching prose.
+- [x] **Targeted rewrites (in place, preserving structure):**
+  - Core Requirements line 7: diagnostics → `pyve check` + `pyve status` split.
+  - Operational Requirements line 4: smart re-init updated to describe `pyve update` subcommand semantics.
+  - Usability Requirements line 3: flag list trimmed of `--update`.
+  - Inputs subcommand list: rewritten to the v2.0 surface.
+  - Legacy-flag-catches note: expanded to v1.11.0 + v2.0 (H.e.8a) + v2.0 (H.e.9) tiers; also documents the testenv / `python-version` delegate-with-warning path.
+  - Optional flags table: removed `--update`; added `--check` for `pyve lock`; all flag-use examples converted from `--init` flag-shape to `pyve init` subcommand-shape.
+  - FR-3 retitled + rewritten: `pyve python-version` → `pyve python set` / `pyve python show`.
+  - FR-5 retitled + rewritten: `pyve doctor` → `pyve check` with CI-safe 0/1/2 exit codes and ~20-check surface; cross-link to `phase-H-check-status-design.md`.
+  - FR-5a added: `pyve status` as read-only companion to check.
+  - FR-6 removed: `pyve validate` folded into `pyve check`.
+  - FR-12 Smart Re-Initialization: rewritten to describe `pyve update` vs. `pyve init --force` choice.
+  - FR-15a added: `pyve update` non-destructive upgrade path (refreshes config + managed files + project-guide; never touches venv).
+  - FR-16 project-guide hook: reframed step 2's "only on fresh init / --force, not --update" callout as "`pyve update` runs step 2 independently"; documented what step 2 does inside `pyve update` vs. full `init`.
+  - Testing Strategy + Definition of Done: updated `doctor` references to `check` + `status`.
+- [x] **Grep-verification:** post-edit `grep -n 'doctor|validate|init --update|--update'` in features.md returns only self-referential "was removed" / "redirected at" lines — no stale positive references to the removed shapes.
+- [x] **Regression guard:** `bats tests/unit/*.bats` → **612 / 612** pass (no code changes in H.e.9e; doc edits don't affect bats).
 
-**Deliverables:** updated [docs/specs/features.md](../../docs/specs/features.md).
+**Deliverables:** updated [docs/specs/features.md](../../docs/specs/features.md) — FR-3 retitled, FR-5 rewritten, FR-5a + FR-15a added, FR-6 removed, FR-12 and FR-16 amended, Inputs/Outputs/Usability tables refreshed to v2.0 surface.
 
 ---
 
-### Story H.e.9f: Update `docs/specs/tech-spec.md` for the v2.0 dispatcher layout [Planned]
+### Story H.e.9f: Update `docs/specs/tech-spec.md` for the v2.0 dispatcher layout [Done]
 
 Internal-spec documentation hygiene, companion to H.e.9e. `tech-spec.md` should describe the v2.0 dispatcher structure (top-level arms + nested subcommands), the finalized `lib/ui.sh` signatures (after H.e.7a + H.e.8a trimmed `delegation_warn`), and — per [phase-H-check-status-design.md §2](phase-H-check-status-design.md) — the semantic distinction between `check` (diagnostics with exit-code severity) and `status` (read-only dashboard, always exit 0).
 
@@ -858,17 +881,27 @@ Internal-spec documentation hygiene, companion to H.e.9e. `tech-spec.md` should 
 
 **Tasks**
 
-- [ ] Read current `tech-spec.md`; identify the dispatcher / UX-helpers sections to update.
-- [ ] Extract the canonical dispatcher arm list from `pyve.sh` (grep the `case "$1" in` block; this is the authoritative source).
-- [ ] Extract the canonical `lib/ui.sh` helper list (grep for `^[a-z_]*\(\)` in the file).
-- [ ] Write the check-vs-status invariant paragraph; verify each command's `--help` text matches.
-- [ ] Grep-verify zero references to removed helpers (`delegation_warn`, `doctor_command`, `run_full_validation`).
+- [x] **Audit:** Greppped stale refs — 30+ hits for `doctor|validate|init --update|--update|python-version|delegation_warn|run_full_validation`. Classified each as "replace" vs. "leave (self-referential)" before touching prose.
+- [x] **File tree:** Removed `test_doctor.py` and `test_validate.py` from the pytest inventory (deleted in H.e.8a/H.e.8b).
+- [x] **pyve.sh section:** VERSION bumped to `2.0.0`; top-level command list rewritten to the v2.0 surface; library sourcing order updated to include `ui.sh` early.
+- [x] **`doctor_check_*` helper table:** retained the four helpers (backport continuity) but annotated each with "Reused by `check_command` in v2.0" so future readers understand the name is historical.
+- [x] **`lib/version.sh` table:** removed `run_full_validation()` row; added a one-line note that the function + its `_escalate()` helper were deleted in H.e.8a and its semantics migrated to `check_command`.
+- [x] **`lib/ui.sh` section: expanded** the helper inventory to cover `_rename_seen`, `deprecation_warn`, `_edit_distance`, and the updated `header_box` / `footer_box` names. Added a bash-3.2 compatibility guard paragraph documenting the H.e.7a invariants (no `declare -A`, no `${var^^}`, etc.). Added a backport-discipline paragraph documenting the "no pyve identifiers" + "no `:` in deprecation keys" invariants.
+- [x] **`## CLI Design` framing paragraph:** rewritten to describe the v2.0 cut as the completion of the CLI-unification arc; each rename's v2.0 / v3.0 fate listed.
+- [x] **Commands table:** fully rewritten for the v2.0 surface (16 rows including `check`, `status`, `update`, `python set|show`, `testenv init|install|purge|run`). Legacy-form subcommand + flag removals documented inline.
+- [x] **Check-vs-status invariant:** added canonical paragraph immediately under the Commands table stating the 0/1/2 vs. always-0 exit-code contract, the "if something looks wrong → check; if 'what is this project?' → status" decision rule, and the requirement that each command's `--help` text mirrors this contract. Cross-links to [phase-H-check-status-design.md §2](phase-H-check-status-design.md).
+- [x] **`### Per-Subcommand Help` list:** expanded from the pre-v2.0 command set to the v2.0 surface; noted that `doctor --help` / `validate --help` error out.
+- [x] **Modifier Flags table:** removed the `--update` row (the flag was removed in H.e.9).
+- [x] **`### Legacy-Flag Error Catch` section:** rewritten with a tiered catches table (v1.11.0 flag-form, v1.11.0 short-alias, v2.0 H.e.8a subcommand-form, v2.0 H.e.9 flag-form, v2.0 H.e.9 `init --update`). Added a paragraph distinguishing this from the H.e.9d unknown-flag closest-match behavior. Added a pointer to the H.e.7 delegate-with-warning path for testenv flags + `python-version`.
+- [x] **Unit tests table:** removed the `test_doctor.bats` row (deleted in H.e.8a).
+- [x] **Grep-verification:** post-edit `grep -nE "pyve doctor|pyve validate|pyve init --update"` in tech-spec.md returns only three hits, all of which are explicit "was removed" / "error out" self-referential context.
+- [x] **Regression guard:** `bats tests/unit/*.bats` → **612 / 612** pass (no code changes in H.e.9f).
 
-**Deliverables:** updated [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md).
+**Deliverables:** updated [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md) — Package Structure file tree, `pyve.sh` section, `lib/utils.sh` / `lib/version.sh` / `lib/ui.sh` tables, CLI Design framing + Commands table + check-vs-status invariant paragraph, Per-Subcommand Help list, Modifier Flags table, Legacy-Flag Error Catch section, Unit Tests table.
 
 ---
 
-### Story H.e.9g: Rewrite `docs/site/usage.md` for the v2.0 user surface [Planned]
+### Story H.e.9g: Rewrite `docs/site/usage.md` for the v2.0 user surface [Done]
 
 User-facing documentation hygiene. [usage.md](../../docs/site/usage.md) is the "how do I use pyve?" page shipped with the docs site. It still lists v1.x commands. Rewrite to match the v2.0 surface, matching the tone of the existing file (concrete examples, short paragraphs, no spec-style rigor).
 
@@ -882,12 +915,23 @@ User-facing documentation hygiene. [usage.md](../../docs/site/usage.md) is the "
 
 **Tasks**
 
-- [ ] Read current `usage.md`; inventory v1.x-specific statements.
-- [ ] Rewrite in place; preserve narrative structure and tone.
-- [ ] Cross-link to `docs/site/migration.md` in the upgrading section.
-- [ ] Grep-verify zero stale references to `doctor` / `validate` / `init --update`.
+- [x] **Audit:** 30+ grep hits for `doctor|validate|init --update|--update|python-version|testenv --` in the 1048-line pre-edit file. Classified as "replace" vs. "leave (self-referential)".
+- [x] **Migration note at top:** rewrote the pre-v1.11 admonition into a v2.0 upgrade summary, linking to `docs/site/migration.md`. Documents doctor/validate removal, `init --update` → `update`, `python-version` → `python set` deprecation, testenv flag deprecation, and the new `pyve status` command.
+- [x] **Command Overview tables:** rewrote all three category tables (Environment / Execution / Diagnostics) to the v2.0 surface; replaced `doctor` + `validate` rows with `check` + `status`; added `update` and `python set|show` rows; updated `testenv` row to show the subcommand forms.
+- [x] **`init` flag list:** dropped `--update` (removed in v2.0); added a one-liner pointing at `pyve update` for non-destructive refresh.
+- [x] **project-guide hook callout:** rewrote the "`pyve init --update` does NOT run the hook" paragraph as "`pyve update` runs step 2 independently" with the new semantics.
+- [x] **`### python-version <ver>` section:** retitled and rewritten to `### python set <ver> / python show`; added usage for both; documented the legacy-form delegation + v3.0 removal.
+- [x] **`### testenv` section:** updated all usage examples + subcommand-list bullets from `--init`/`--install`/`--purge` flag forms to the `init`/`install`/`purge` subcommand forms; kept a small "legacy forms deprecated" paragraph at the bottom.
+- [x] **`### doctor` section deleted**, replaced with `### check`: 0/1/2 exit-code contract, check list, example output, explicit "legacy forms removed" migration note.
+- [x] **`### validate` section deleted**, replaced with `### status`: sectioned output, always-zero exit-code contract, example output (venv).
+- [x] **`### update` section added** (placed after status): describes the non-destructive upgrade path, its "never rebuilds venv / never prompts / never creates user files" invariants, and the v1.x `init --update` migration.
+- [x] **Per-command help listing:** updated to include all v2.0 commands (`check`, `status`, `update`, `python`, `lock`); removed `validate --help`.
+- [x] **Workflow Examples section:** replaced `pyve doctor` with `pyve check` / `pyve status` as appropriate (Daily Development, Switching Backends, CI/CD Integration).
+- [x] **Tips and Best Practices section:** rewrote "Regular Validation" to describe `pyve check` / `pyve status` semantics; rewrote "Use `.python-version`" example to use `pyve python set`.
+- [x] **Grep-verification:** post-edit `grep -nE 'pyve doctor|pyve validate|pyve init --update|pyve testenv --|pyve python-version '` returns only self-referential "was removed" / "still works but deprecated" context, plus the intentional upgrade-summary table at the top and the valid `pyve testenv --help` invocation line.
+- [x] **Regression guard:** `bats tests/unit/*.bats` → **612 / 612** pass (no code changes in H.e.9g).
 
-**Deliverables:** updated [docs/site/usage.md](../../docs/site/usage.md).
+**Deliverables:** updated [docs/site/usage.md](../../docs/site/usage.md) — upgrade summary, Command Overview tables, `init` flag list, project-guide hook callout, `### python set|show` section, `### testenv` examples, `### check` / `### status` / `### update` sections (replacing doctor/validate), Per-command help listing, Workflow Examples, Tips and Best Practices.
 
 ---
 

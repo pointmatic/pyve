@@ -1,0 +1,163 @@
+#compdef pyve
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
+# SPDX-License-Identifier: Apache-2.0
+#
+# Zsh completion for pyve (v2.0 surface, Story H.e.9c).
+#
+# To enable: place this file on your $fpath, e.g. ~/.zsh/completions/_pyve,
+# then ensure your ~/.zshrc has:
+#   fpath=(~/.zsh/completions $fpath)
+#   autoload -U compinit && compinit
+#
+# The `pyve self install` command emits these instructions on install.
+
+_pyve() {
+    local state line
+    typeset -A opt_args
+
+    _arguments -C \
+        '1: :_pyve_subcommands' \
+        '*::arg:->args'
+
+    case $state in
+        args)
+            case $line[1] in
+                init) _pyve_init ;;
+                purge) _pyve_purge ;;
+                lock) _pyve_lock ;;
+                update) _pyve_update ;;
+                check) _arguments '--help[Show help]' ;;
+                status) _arguments '--help[Show help]' ;;
+                testenv) _pyve_testenv ;;
+                python) _pyve_python ;;
+                self) _pyve_self ;;
+                run|test) _command_names -e ;;
+            esac
+            ;;
+    esac
+}
+
+_pyve_subcommands() {
+    local -a subs
+    subs=(
+        'init:Initialize the project environment'
+        'purge:Remove pyve artifacts'
+        'lock:Generate or verify conda-lock.yml (micromamba)'
+        'run:Run a command inside the pyve environment'
+        'test:Run pytest via the dev/test runner environment'
+        'testenv:Manage the dev/test runner environment'
+        'check:Diagnose environment problems (CI-safe 0/1/2)'
+        'status:Read-only project-state dashboard'
+        'update:Non-destructive upgrade of managed files + config'
+        'python:Manage the project Python-version pin'
+        'self:Manage the pyve installation itself'
+        '--help:Show top-level help'
+        '--version:Show pyve version'
+        '--config:Show current project config'
+    )
+    _describe 'subcommand' subs
+}
+
+_pyve_init() {
+    _arguments \
+        '--python-version[Python version to pin]:version' \
+        '--backend[Backend to use]:backend:(venv micromamba)' \
+        '--force[Destroy + rebuild]' \
+        '--no-direnv[Skip direnv integration]' \
+        '--allow-synced-dir[Allow creation in a cloud-synced dir]' \
+        '--auto-bootstrap[Auto-install micromamba]' \
+        '--bootstrap-to[Bootstrap install path]:path:_files -/' \
+        '--env-name[micromamba env name]:name' \
+        '--strict[Strict lock-file mode]' \
+        '--no-lock[Skip conda-lock generation]' \
+        '--local-env[Create a .env template]' \
+        '--auto-install-deps[Auto-install from pyproject.toml]' \
+        '--no-install-deps[Skip dep install]' \
+        '--project-guide[Install project-guide scaffolding]' \
+        '--no-project-guide[Skip project-guide]' \
+        '--project-guide-completion[Install project-guide completion]' \
+        '--no-project-guide-completion[Skip project-guide completion]' \
+        '--help[Show help]'
+}
+
+_pyve_purge() {
+    _arguments \
+        '--keep-testenv[Preserve the dev/test runner environment]' \
+        '--help[Show help]'
+}
+
+_pyve_lock() {
+    _arguments \
+        '--check[Verify lock without regenerating]' \
+        '--help[Show help]'
+}
+
+_pyve_update() {
+    _arguments \
+        '--no-project-guide[Skip project-guide refresh]' \
+        '--help[Show help]'
+}
+
+_pyve_testenv() {
+    local state line
+    _arguments \
+        '1: :->action' \
+        '*::arg:->args'
+    case $state in
+        action)
+            local -a actions
+            actions=(
+                'init:Create the dev/test runner venv'
+                'install:Install requirements into the testenv'
+                'purge:Remove the testenv'
+                'run:Execute a command inside the testenv'
+                '--help:Show testenv help'
+            )
+            _describe 'testenv action' actions
+            ;;
+        args)
+            case $line[1] in
+                install) _arguments '-r[Requirements file]:file:_files' '--help[Show help]' ;;
+                init|purge) _arguments '--help[Show help]' ;;
+                run) _command_names -e ;;
+            esac
+            ;;
+    esac
+}
+
+_pyve_python() {
+    local state line
+    _arguments \
+        '1: :->action' \
+        '*::arg:->args'
+    case $state in
+        action)
+            local -a actions
+            actions=(
+                'set:Pin the project Python version'
+                'show:Print the current pin'
+                '--help:Show python help'
+            )
+            _describe 'python action' actions
+            ;;
+    esac
+}
+
+_pyve_self() {
+    local state line
+    _arguments \
+        '1: :->action'
+    case $state in
+        action)
+            local -a actions
+            actions=(
+                'install:Install pyve to ~/.local/bin'
+                'uninstall:Remove pyve from ~/.local/bin'
+                '--help:Show self help'
+            )
+            _describe 'self action' actions
+            ;;
+    esac
+}
+
+_pyve "$@"
