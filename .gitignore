@@ -35,3 +35,6 @@ coverage-kcov/
 
 # project-guide
 docs/project-guide/**/*.bak.*
+
+# MkDocs build output (configured as site_dir in mkdocs.yml)
+/site/

@@ -2,7 +2,7 @@
 
 pyve 2.0 rewires the top-level command surface for consistency. Most users will see zero disruption: the high-traffic commands (`init`, `purge`, `run`, `test`, `lock`) are unchanged. The changes cluster around diagnostics (`doctor` / `validate` merged into `check` + `status`) and a handful of flag-to-subcommand conversions.
 
-For the full rationale, see [phase-H-cli-refactor-design.md](../specs/phase-H-cli-refactor-design.md) and [phase-H-check-status-design.md](../specs/phase-H-check-status-design.md). The canonical per-change record is [CHANGELOG.md](../../CHANGELOG.md).
+For the full rationale, see [phase-H-cli-refactor-design.md](https://github.com/pointmatic/pyve/blob/main/docs/specs/phase-H-cli-refactor-design.md) and [phase-H-check-status-design.md](https://github.com/pointmatic/pyve/blob/main/docs/specs/phase-H-check-status-design.md). The canonical per-change record is [CHANGELOG.md](https://github.com/pointmatic/pyve/blob/main/CHANGELOG.md).
 
 ## What breaks immediately
 

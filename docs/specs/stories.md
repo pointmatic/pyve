@@ -935,7 +935,7 @@ User-facing documentation hygiene. [usage.md](../../docs/site/usage.md) is the "
 
 ---
 
-### Story H.e.9h: Bug fix — bash 3.2 compatibility in `lib/completion/pyve.bash` [Done]
+### Story H.e.9h: Bug fix — bash 3.2 compatibility in 'lib/completion/pyve.bash' [Done]
 
 Test-only + minimal-code bug fix, same class as H.e.7a. H.e.9c's `lib/completion/pyve.bash` used `mapfile -t COMPREPLY < <(compgen -W ... -- "$cur")` at 19 call sites. `mapfile` is a bash 4+ builtin; macOS ships `/bin/bash` at 3.2.57, which fails with:
 
@@ -965,6 +965,35 @@ Adds `# shellcheck disable=SC2207` to the file header because the portable shape
 **Scope-out:** broader audit of `lib/*.sh` and other `lib/completion/*` for bash 4+ constructs. If a future CI run surfaces another instance, spin up H.e.9i. Nothing currently pending.
 
 **Deliverables:** 19 `mapfile` → `COMPREPLY=( $(compgen ...) )` swaps in [lib/completion/pyve.bash](../../lib/completion/pyve.bash) + header lint-disable comment; `_complete` test harness rewritten to use `/bin/bash` in [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats); 2 new regression tests (sourcing + grep invariant).
+
+---
+
+### Story H.e.9i: Bug fix — 'mkdocs build --strict' fails on cross-'docs_dir' links in 'migration.md' [Done]
+
+Docs-only bug fix. No production code changed. Post-merge CI surfaced three `WARNING` lines promoted to fatal by `--strict`:
+
+```
+WARNING -  Doc file 'migration.md' contains a link '../specs/phase-H-cli-refactor-design.md', but the target is not found among documentation files.
+WARNING -  Doc file 'migration.md' contains a link '../specs/phase-H-check-status-design.md', but the target is not found among documentation files.
+WARNING -  Doc file 'migration.md' contains a link '../../CHANGELOG.md', but the target is not found among documentation files.
+Aborted with 3 warnings in strict mode!
+```
+
+**Root cause.** [docs/site/migration.md:5](../../docs/site/migration.md#L5) was written in H.e.9 with three relative markdown links pointing *outside* `docs_dir=docs/site` ([mkdocs.yml:38](../../mkdocs.yml#L38)) — `../specs/…` and `../../CHANGELOG.md`. mkdocs only validates links against files inside `docs_dir`, so these were treated as broken references. migration.md was also the first file under `docs/site/` to link to repo-root / `docs/specs/` artifacts, so no prior build exercised the pattern. Separately, migration.md was added without being registered in `nav`, producing an `INFO` line (not fatal) that the page was orphaned from the site.
+
+**Fix.** Convert the three cross-`docs_dir` relative links in migration.md to absolute GitHub URLs (`https://github.com/pointmatic/pyve/blob/main/...`). The referenced `docs/specs/` design docs and `CHANGELOG.md` are intentionally developer artifacts, not user docs — linking to GitHub is the correct cross-reference. Register `migration.md` under `nav` in [mkdocs.yml](../../mkdocs.yml) so the page actually ships on the docs site.
+
+**Tasks**
+
+- [x] **Red:** Reproduced the failure via `mkdocs build --strict` (same command CI runs).
+- [x] **Green:** Rewrote the three out-of-`docs_dir` links in `docs/site/migration.md` as absolute GitHub URLs.
+- [x] **Green:** Added `- Migration (v1.x → v2.0): migration.md` entry to the `nav` list in `mkdocs.yml` (resolves the orphan-page INFO line).
+- [x] **Verify:** `mkdocs build --strict` now completes with "Documentation built in 1.46 seconds", no warnings.
+- [x] **Audit:** Grep `docs/site/**` for other `](../` relative links that cross `docs_dir`. None found — migration.md was the only offender.
+
+**Why tests didn't catch it earlier.** CI *did* catch it — this very Phase-H merge was the first build of main with migration.md on disk, and CI failed on first run. Local pre-merge builds of the H.e.9 branch either skipped `--strict`, skipped the docs job entirely, or weren't rebuilt after the file was added. The reliable guard going forward is the same `mkdocs build --strict` CI step — no additional test coverage needed.
+
+**Deliverables:** link rewrite in [docs/site/migration.md](../../docs/site/migration.md); nav entry added in [mkdocs.yml](../../mkdocs.yml).
 
 ---
 
