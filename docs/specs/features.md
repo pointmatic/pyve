@@ -358,11 +358,14 @@ Generate or update `conda-lock.yml` for the current platform.
 
 ### FR-17: Unified CLI UX Pattern (Phase H / v2.0+)
 
-All pyve commands share a unified terminal output pattern delivered via `lib/ui.sh` (see `tech-spec.md`). This ensures consistent visual feedback across every command: rounded-box headers and footers, a standardized color palette, `✓` / `✗` / `⚠` / `▸` status symbols, `[Y/n]` (default yes) and `[y/N]` (default no) prompt conventions, and dimmed `$ cmd args…` echo before every subprocess invocation.
+All pyve commands share a unified terminal output pattern delivered via `lib/ui.sh` (see `tech-spec.md`). This ensures consistent visual feedback across every command: rounded-box headers and footers, a standardized color palette, `✔` / `✘` / `⚠` / `▸` status symbols, `[Y/n]` (default yes) and `[y/N]` (default no) prompt conventions, and dimmed `$ cmd args…` echo before every subprocess invocation.
 
 - Pyve commands use `lib/ui.sh` helpers for all user-facing output. Raw `echo` / `printf` is reserved for structured-output subcommands (e.g. JSON), debug logs (`PYVE_DEBUG=1`), and pass-through of subprocess stdout.
 - The palette and symbols are shared with the [`gitbetter`](https://github.com/pointmatic/gitbetter) project — the two tools intentionally look and feel identical in the same terminal.
 - ANSI escape codes degrade gracefully under `NO_COLOR=1` (no leaked escape sequences in non-color terminals).
+- **Subprocess output policy: full pass-through.** Pip, micromamba, direnv, and other subprocesses keep their upstream formatting. `run_cmd`'s dimmed `$ cmd args…` echo provides the header line pyve needs; the subprocess's own progress bars and error diagnostics stay visible at both the dev console and in CI logs. Decision made in H.f.4; rejected alternatives: `pip install --quiet` with a custom pyve progress line (hides meaningful error detail) and suppression to `/dev/null` on success (breaks debuggability).
+- **Read-only commands stay quiet.** Commands that emit machine-parseable output (`pyve python show`, a future `pyve status --format json`) do **not** wrap their output in `header_box` / `footer_box`. The `git status` / `gitbetter status` convention is preserved.
+- **Legacy `log_*` helpers** in `lib/utils.sh` emit the unified glyph palette as of H.f.4. Every pre-H.f call site in `pyve.sh` and `lib/*.sh` (~257 sites) automatically adopts the new style — no per-site rewrite needed.
 
 Phase H introduces the module (H.e first sub-story, `lib/ui.sh`) and sweeps the remaining commands to adopt it (H.f). See `stories.md` for story detail and `tech-spec.md` for the delegation contract and implementation policy.
 

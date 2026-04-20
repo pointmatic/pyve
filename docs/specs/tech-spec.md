@@ -307,7 +307,7 @@ Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmati
 | Item | Signature | Description |
 |------|-----------|-------------|
 | Color constants | `R` `G` `Y` `B` `C` `M` `DIM` `BOLD` `RESET` | ANSI color codes; empty under `NO_COLOR=1` |
-| Symbols | `CHECK` `CROSS` `ARROW` `WARN` | Pre-colorized status glyphs (`✓` `✗` `▸` `⚠`); plain glyphs under `NO_COLOR=1` |
+| Symbols | `CHECK` `CROSS` `ARROW` `WARN` | Pre-colorized status glyphs (`✔` `✘` `▸` `⚠`); plain glyphs under `NO_COLOR=1` |
 | `banner` | `(title)` | Section banner in blue + bold |
 | `info` | `(msg)` | Dimmed cyan-arrow line |
 | `success` | `(msg)` | Green-check line |
@@ -329,7 +329,9 @@ Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmati
 
 **Backport-discipline guard.** The module contains no pyve-specific identifiers — enforced by a grep test in `test_ui.bats`. Rename-announcement keys passed by callers must be colon-free (delimiter invariant) — also enforced by a grep test.
 
-**Delegation from existing `log_*` functions.** The legacy `log_info` / `log_warning` / `log_error` / `log_success` helpers in `utils.sh` remain in use through v2.x; their replacement by `info` / `warn` / `fail` / `success` from `lib/ui.sh` is tracked in H.f's retrofit work, not completed in H.e.
+**Delegation from existing `log_*` functions.** As of H.f.4, the `log_info` / `log_warning` / `log_error` / `log_success` helpers in `lib/utils.sh` emit the unified glyph palette (`▸` / `⚠` / `✘` / `✔`, two-space indent, stderr vs. stdout routing preserved). They do **not** currently delegate by calling `info` / `warn` / `fail` / `success` directly — `log_error` keeps its non-exiting contract (calling `fail` would change exit semantics for ~87 callers), and bats tests that source `lib/utils.sh` standalone (without `lib/ui.sh`) still need to work via `${CHECK:-✔}` / `${WARN:-⚠}` / `${CROSS:-✘}` / `${ARROW:-▸}` fallbacks. Future refactor (v3.x): collapse `log_*` to thin aliases once the non-exiting-error pattern is named and exported from `lib/ui.sh`.
+
+**H.f backport-sync note.** H.f.1 – H.f.4 added no new helpers to `lib/ui.sh`; the retrofit consumed the palette already shipped in H.e.1. Nothing to backport to `gitbetter`'s copy from this phase.
 
 ---
 
@@ -583,8 +585,9 @@ Once `lib/ui.sh` lands (H.e first sub-story), every user-facing output line in p
 
 - Internal debug logs gated by `PYVE_DEBUG=1`.
 - Test-fixture helpers in `tests/helpers/`.
-- Pass-through of subprocess stdout/stderr (`pip install`, `micromamba create`, etc.). That stream is not pyve's own voice, so it keeps its upstream formatting.
+- Pass-through of subprocess stdout/stderr (`pip install`, `micromamba create`, etc.). That stream is not pyve's own voice, so it keeps its upstream formatting. Policy locked in H.f.4: full pass-through, not `--quiet`; `run_cmd`'s dimmed `$ cmd` echo is the only pyve-owned line around a subprocess invocation.
 - Subcommands emitting structured output intended for shell parsing (e.g. a future `pyve status --format json`) — these emit on stdout without UI chrome.
+- Read-only `show` commands (`pyve python show`) — no `header_box` / `footer_box` wrapper; match `git status` / `gitbetter status` convention of quiet machine-friendly output.
 
 **Why this matters.** Visual consistency is the user-facing contract H.e and H.f establish. A single `echo "WARNING: foo"` slipped into a new command regresses the contract silently. Visual-regression captures in H.f encode the expected output for each command; CI can be extended to enforce this if drift becomes a real problem.
 

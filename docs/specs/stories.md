@@ -997,7 +997,7 @@ Aborted with 3 warnings in strict mode!
 
 ---
 
-### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (umbrella — split into H.f.1, H.f.2, …) [In progress]
+### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (umbrella — split into H.f.1, H.f.2, …) [Done]
 
 Apply the `lib/ui.sh` pattern (introduced in H.e's first sub-story) to every pyve command that H.e did not rewrite. Goal: every pyve command looks and feels like the `gitbetter` commands — rounded-box header, consistent banners, confirmation prompts, dimmed command echo, outcome proof, rounded-box footer.
 
@@ -1220,31 +1220,39 @@ Cross-cutting cleanup once H.f.1 – H.f.3 land. Walks every error exit in `pyve
 
 ---
 
-### Story H.f.5: v2.0.1 Release Wrap — Captures, Specs, CHANGELOG, Version Bump [Planned]
+### Story H.f.5: v2.0.1 Release Wrap — Captures, Specs, CHANGELOG, Version Bump [Done]
 
 Final sub-story of the H.f umbrella. Ships the unified-UX retrofit as v2.0.1.
 
 **Tasks**
 
-- [ ] Capture before/after terminal recordings of each retrofitted command's output. Save to `docs/specs/ux-retrofit-before-after/`. (Before-shots come from git history pre-H.f.1; after-shots come from current `main`.)
-- [ ] Update `docs/specs/features.md` — document the unified UX contract (palette, symbols, prompt conventions) and reference `lib/ui.sh`. Include the pip-output-policy decision from H.f.4.
-- [ ] Update `docs/specs/tech-spec.md` — document `lib/ui.sh` helper signatures.
-- [ ] Update `docs/site/usage.md` — refresh any screenshots that show old output.
-- [ ] In-binary help sync — update `show_help()` in [pyve.sh:126](../../pyve.sh#L126) to drop the stale `doctor` and `validate` rows (both commands now hard-error per H.e.8a; they should not appear in the primary command list). Consider whether a short "removed in v2.0 — see `pyve check`" footnote is warranted or whether the error message on invocation is sufficient.
-- [ ] In-binary help sync — update `show_purge_help()` to document the `--yes` / `-y` flag added in H.f.2 (skip the destructive-confirmation prompt; same semantics as `CI=1` / `PYVE_FORCE_YES=1`).
-- [ ] In-binary help sweep — spot-check every subcommand's `--help` against the retrofit. Anything that references the old output format, obsolete flags, or missing flags added during H.f gets fixed here.
-- [ ] Backport-sync note: append a section to `docs/specs/tech-spec.md` (or the H.f.5 deliverables list) listing any `lib/ui.sh` enhancements added during H.f.1 – H.f.4 that should be pushed back to `gitbetter`'s `lib/ui.sh`.
-- [ ] Bump version: `pyve.sh` `PYVE_VERSION`, any other manifest pinning the version. Confirm with `pyve --version`.
-- [ ] Add `## [2.0.1] – 2026-MM-DD` entry to `CHANGELOG.md` summarising the unified-UX retrofit (link to H.f.1 – H.f.4).
-- [ ] Mark H.f umbrella `[Done]` after this sub-story.
-- [ ] Run the full test suite once more — no regressions.
+- [x] Capture before/after terminal output for each retrofitted command. Saved as a consolidated markdown doc at [docs/specs/ux-retrofit-before-after/README.md](../ux-retrofit-before-after/README.md) — text captures, not video, so the diffs are greppable and render inline on GitHub. Covers `init --backend foo`, `init --force` (abort), `purge --yes`, `testenv purge`, `python set badversion`. Before-snippets reproduce the pre-H.f.1 output at commit `0c1fbd1`; after-snippets are the current v2.0.1 output.
+- [x] Updated [docs/specs/features.md](features.md) FR-17 — corrected glyph palette to `✔ / ✘ / ⚠ / ▸` (was `✓ / ✗`), added the pip-output policy bullet, added the "read-only commands stay quiet" bullet, added the "legacy `log_*` helpers now emit the unified palette" bullet.
+- [x] Updated [docs/specs/tech-spec.md](tech-spec.md) — corrected Symbols row glyphs to `✔ / ✘ / ▸ / ⚠`; rewrote the "Delegation from existing `log_*` functions" paragraph to reflect H.f.4's in-place helper upgrade (with `${VAR:-glyph}` fallback for standalone sourcing); added the H.f backport-sync note (nothing to backport — H.f.1 – H.f.4 added no helpers); added the subprocess-output policy and read-only-commands exception to the UI Helper Policy section.
+- [x] Updated [docs/site/usage.md](../../docs/site/usage.md) — swapped `ERROR:` → `  ✘ ` on the cloud-sync refusal example and `INFO:` → `  ▸ ` on the two `conda-lock.yml` generation examples. Other example blocks (notably `pyve check` and raw-`printf` sites inside `pyve lock`) left intact because the underlying code still emits the older style — those are touched in a future pass, not a bookkeeping mismatch.
+- [x] In-binary help sync — `show_help()` at [pyve.sh:126](../../pyve.sh#L126): removed the `doctor` and `validate` rows from the Diagnostics section; removed `pyve doctor` / `pyve validate` from EXAMPLES; updated EXAMPLES to v2.0 canonical grammar (`pyve testenv init`, `pyve testenv install -r requirements-dev.txt`, `pyve check`, `pyve status`, `pyve purge --yes`, `pyve python set 3.13.7`, `pyve python show`). The command-description row for `python` keeps its informational `(Legacy: pyve python-version <ver> still accepted)` note so migrating v1.x users can discover the deprecation.
+- [x] In-binary help sync — `show_purge_help()` at [pyve.sh:2986](../../pyve.sh#L2986): documents the `--yes` / `-y` flag, with the `CI=1` / `PYVE_FORCE_YES=1` equivalence called out. Added a new example: `pyve purge --yes`.
+- [x] In-binary help sweep — spot-checked every `show_*_help` block. No drift beyond the two above (init/update/check/status/python/testenv already reviewed during H.e and remain accurate).
+- [x] Backport-sync note — H.f.1 – H.f.4 added **no** new helpers to `lib/ui.sh`; all retrofit consumed the palette already shipped in H.e.1. Nothing to backport to `gitbetter`. Noted in the H.f backport-sync paragraph inside `tech-spec.md`.
+- [x] Bumped `VERSION="2.0.0"` → `VERSION="2.0.1"` at [pyve.sh:32](../../pyve.sh#L32). Confirmed `pyve --version` reports `pyve version 2.0.1`. Bumped the canonical bats assertion in [tests/unit/test_cli_dispatch.bats:202](../../tests/unit/test_cli_dispatch.bats#L202) to match.
+- [x] Added `## [2.0.1] - 2026-04-20` entry to [CHANGELOG.md](../../CHANGELOG.md) under the existing `## [2.0.0]` entry. Covers Added / Changed / Fixed / Developer notes, linking each bullet to the H.f sub-story.
+- [x] Added 6 bats tests in [tests/unit/test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) covering the help sync (doctor/validate absence; v2.0 grammar in EXAMPLES; `--yes` documented in purge help).
+- [x] Marked H.f umbrella `[Done]` above.
+- [x] Full suite: 640 / 640 passing.
 
 **Deliverables**
 
-- `docs/specs/ux-retrofit-before-after/` with captures.
-- Updated `docs/specs/features.md`, `docs/specs/tech-spec.md`, `docs/site/usage.md`.
-- v2.0.1 entry in `CHANGELOG.md`.
-- Version bump in `pyve.sh`.
+- [docs/specs/ux-retrofit-before-after/README.md](../ux-retrofit-before-after/README.md) — consolidated before/after text captures.
+- Updated [docs/specs/features.md](features.md), [docs/specs/tech-spec.md](tech-spec.md), [docs/site/usage.md](../../docs/site/usage.md).
+- v2.0.1 entry in [CHANGELOG.md](../../CHANGELOG.md).
+- Version bump in [pyve.sh](../../pyve.sh).
+- In-binary help cleanup in `show_help()` and `show_purge_help()`.
+- New [tests/unit/test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) (6 tests).
+
+**Out of scope (deferred to a future cosmetic pass)**
+
+- Raw `printf "✓ ..."` / `printf "✗ ..."` inside `pyve lock` and `pyve check` still emit the old glyph. Low-volume, reachable by a future grep-and-replace pass once the lock / check output design is reviewed holistically.
+- `unknown_flag_error` continuation lines have a cosmetic indent drift (`  ✘   msg` — glyph + 3 spaces — from manual `"  "` prepended to each message). Mentioned in H.f.4 deferrals; not fixed here.
 
 ---
 

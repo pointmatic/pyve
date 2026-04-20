@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-04-20
+
+Unified UX retrofit across every top-level pyve command. Output from `pyve init`, `pyve purge`, `pyve testenv`, and `pyve python set` now looks and feels like the sibling `gitbetter` tool — rounded-box header, consistent phase banners, `▸` / `⚠` / `✘` / `✔` glyph palette, `▸`-prefixed info lines for per-artifact outcomes, and a closing "All done" footer on success. No behavior changes — this is a cosmetic retrofit plus one new convenience flag.
+
+### Added
+
+- **`pyve purge --yes` / `-y`** — skip the destructive-confirmation prompt. Same semantics as `CI=1` or `PYVE_FORCE_YES=1`. Used internally by `pyve init --force` (which already prompts at its own layer) to avoid double-prompting. (H.f.2.)
+- **`▸ / ⚠ / ✘ / ✔` unified-glyph palette** across `lib/utils.sh` logging helpers. The `log_info` / `log_warning` / `log_error` / `log_success` helpers now emit the shared-UX palette instead of the pre-H.f `INFO:` / `WARNING:` / `ERROR:` / `✓` prefixes. Stderr vs. stdout routing and non-exiting semantics preserved. (H.f.4.)
+
+### Changed
+
+- **`pyve init` output** rewritten end-to-end: `header_box "pyve init"` at entry; `banner` for phase boundaries ("Purging existing environment", "Rebuilding fresh environment", "Initializing Python environment", "Initializing micromamba environment"); `info` / `success` / `warn` for per-artifact outcomes; `ask_yn` for the `--force` confirmation; `footer_box` on success. (H.f.1.)
+- **`pyve purge` output** rewritten with the same contract. Destructive-confirmation prompt now fires via `ask_yn` (skippable via `--yes` / `-y`). (H.f.2.)
+- **`pyve testenv init | install | purge` output** retrofitted. `pyve testenv run <cmd>` still `exec`s into the target command (no footer — the called command owns the terminal from that point). `pyve testenv install` wraps the pip install with `run_cmd`, showing the dimmed `$ cmd` echo before the subprocess output. (H.f.3.)
+- **`pyve python set <ver>` output** wrapped with `header_box` / `banner "Setting Python version to <ver>"` / `footer_box`. `pyve python show` intentionally stays quiet — read-only commands follow the `git status` / `gitbetter` "unwrapped" convention. (H.f.3.)
+- **Error hint on `pyve testenv run` before init** now recommends the v2.0-canonical `pyve testenv init` (previously advertised the deprecated `pyve testenv --init` flag form). (H.f.3.)
+- **Pip / micromamba subprocess output policy**: full pass-through. `run_cmd`'s dimmed `$ cmd` echo provides the header line; the subprocess's own progress bars and error diagnostics stay visible at both the dev console and in CI logs. (H.f.4 decision, documented in `docs/specs/features.md`.)
+
+### Fixed
+
+- **`show_help()`** no longer advertises `doctor` or `validate` as active commands. Both were hard-removed in v2.0.0 (H.e.8a) but still appeared in the Diagnostics section and EXAMPLES block. (H.f.5.)
+- **`show_help()` EXAMPLES** use v2.0-canonical grammar throughout (`pyve testenv init`, `pyve python set 3.13.7`, `pyve check`, `pyve status`, `pyve purge --yes`). The deprecated flag forms (`--init` / `--install` / `python-version <ver>`) continue to work with a deprecation warning — the informational note in the Commands section remains — but they are no longer promoted in examples. (H.f.5.)
+- **`pyve purge --help`** documents `--yes` / `-y`. (H.f.5.)
+- **Integration test `test_testenv_run_before_init_shows_error`** updated to match the v2.0-canonical error-hint wording. (Caught by CI after H.f.3; fixed alongside H.f.5.)
+
+### Developer notes
+
+- All new `lib/ui.sh` helpers used by H.f (`header_box` / `footer_box` / `banner` / `info` / `success` / `warn` / `fail` / `ask_yn` / `confirm` / `run_cmd`) were already present from H.e.1 — no additions during H.f. The module stays verbatim-backport-clean for the sibling `gitbetter` project.
+- 27 new bats tests added across H.f.1 – H.f.5 — 3 init UX, 6 purge UX, 3 testenv UX, 2 python UX, 8 error-path, 5 release-sync — plus 4 refreshed `log_*` format assertions in `test_utils.bats` and an updated version assertion in `test_cli_dispatch.bats`. Test suite now 640 / 640 passing.
+
 ## [2.0.0] - 2026-04-19
 
 Phase H's CLI-unification arc lands. This release rewires the top-level command surface for consistency (one grammar, not two), cuts `doctor` and `validate` in favor of `check` + `status`, and locks in a deliberate deprecation path for every rename introduced during H.e.

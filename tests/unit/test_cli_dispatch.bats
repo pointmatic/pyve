@@ -196,13 +196,13 @@ run_pyve() {
 }
 
 #============================================================
-# Version — v2.0.0 bump (H.e.9)
+# Version — v2.0.1 (H.f.5 release wrap; v2.0.0 was H.e.9)
 #============================================================
 
-@test "version: 'pyve --version' reports 2.0.0" {
+@test "version: 'pyve --version' reports 2.0.1" {
     run_pyve --version
     [ "$status" -eq 0 ]
-    [[ "$output" == *"2.0.0"* ]]
+    [[ "$output" == *"2.0.1"* ]]
 }
 
 #============================================================

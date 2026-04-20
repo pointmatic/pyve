@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.0.0"
+VERSION="2.0.1"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -168,10 +168,6 @@ COMMANDS:
     status                    Read-only snapshot of current project state
                               (backend, python, integrations). Never exits non-zero.
                               See `pyve status --help` for details
-    doctor                    Legacy diagnostics (superseded by `pyve check`)
-                              Reports backend, Python version, packages, and status
-    validate                  Legacy CI gate (superseded by `pyve check`)
-                              Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
   Self management:
     self install              Install pyve to ~/.local/bin
@@ -192,16 +188,18 @@ EXAMPLES:
     pyve init --no-direnv                # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
-    pyve testenv --init                  # Create dev/test runner environment
-    pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
+    pyve testenv init                    # Create dev/test runner environment
+    pyve testenv install -r requirements-dev.txt  # Install dev/test deps
     pyve testenv run ruff check .        # Run dev tools from testenv
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
-    pyve doctor                          # Check environment health
-    pyve validate                        # Validate installation and config
-    pyve purge                           # Remove environment
-    pyve python-version 3.13.7           # Set Python version only
+    pyve check                           # Diagnose environment problems
+    pyve status                          # Read-only snapshot of project state
+    pyve purge                           # Remove environment (prompts for confirmation)
+    pyve purge --yes                     # Remove environment without prompting
+    pyve python set 3.13.7               # Set the project's Python version
+    pyve python show                     # Show the currently pinned Python version
     pyve self install                    # Install pyve to ~/.local/bin
 
 REQUIREMENTS:
@@ -2995,9 +2993,12 @@ Arguments:
 
 Options:
   --keep-testenv              Preserve .pyve/testenv (the dev/test runner env)
+  --yes, -y                   Skip the destructive-confirmation prompt.
+                              Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
 
 Examples:
-  pyve purge                               # Remove .pyve and the venv
+  pyve purge                               # Remove .pyve and the venv (prompts)
+  pyve purge --yes                         # Remove without the prompt
   pyve purge --keep-testenv                # Preserve the testenv across purge
   pyve purge custom_venv                   # Remove a custom-named venv
 
