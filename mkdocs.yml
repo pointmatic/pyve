@@ -44,6 +44,7 @@ nav:
   - Usage Guide: usage.md
   - Backends: backends.md
   - CI/CD Integration: ci-cd.md
+  - Migration (v1.x → v2.0): migration.md
 
 # Extensions
 markdown_extensions:
