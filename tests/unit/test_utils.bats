@@ -20,28 +20,28 @@ teardown() {
 # Logging functions tests
 #============================================================
 
-@test "log_info: outputs INFO prefix" {
+@test "log_info: outputs ▸ prefix (unified UX)" {
     run log_info "Test message"
     [ "$status" -eq 0 ]
-    [[ "$output" == "INFO: Test message" ]]
+    [[ "$output" == "  ▸ Test message" ]]
 }
 
-@test "log_warning: outputs WARNING prefix to stderr" {
+@test "log_warning: outputs ⚠ prefix to stderr (unified UX)" {
     run log_warning "Test warning"
     [ "$status" -eq 0 ]
-    [[ "$output" == "WARNING: Test warning" ]]
+    [[ "$output" == "  ⚠ Test warning" ]]
 }
 
-@test "log_error: outputs ERROR prefix to stderr" {
+@test "log_error: outputs ✘ prefix to stderr (unified UX)" {
     run log_error "Test error"
     [ "$status" -eq 0 ]
-    [[ "$output" == "ERROR: Test error" ]]
+    [[ "$output" == "  ✘ Test error" ]]
 }
 
-@test "log_success: outputs checkmark prefix" {
+@test "log_success: outputs ✔ prefix (unified UX)" {
     run log_success "Test success"
     [ "$status" -eq 0 ]
-    [[ "$output" == "✓ Test success" ]]
+    [[ "$output" == "  ✔ Test success" ]]
 }
 
 #============================================================
