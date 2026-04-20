@@ -1375,9 +1375,15 @@ Then proceed with normal micromamba bootstrap. The user sees the unified-UX head
 
 ---
 
-### Story H.g: v2.0.2 Reconcile Bootstrap Test Fixtures [Planned]
+## Phase I: Bootstrap Test Activation and Hardening
 
-The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests. First story of the bootstrap-hardening sub-phase.
+The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests. 
+
+**Intended release version:** `v2.2.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (L.d).
+
+### Story I.a: Reconcile Bootstrap Test Fixtures [Planned]
+
+First story of the bootstrap-hardening sub-phase.
 
 - [ ] Audit `test_bootstrap.py` test methods against actual CLI flags (`--auto-bootstrap`, `--bootstrap-to project|user`)
 - [ ] Remove non-existent flag references (`bootstrap_url`, `micromamba_version`, `bootstrap_location` as a path)
@@ -1387,7 +1393,7 @@ The existing skipped bootstrap integration tests reference CLI flags and helper 
 
 ---
 
-### Story H.h: v2.0.3 Activate Core Bootstrap Tests [Planned]
+### Story I.b: Activate Core Bootstrap Tests [Planned]
 
 Activate the main `TestBootstrapPlaceholder` class tests that can run when micromamba is NOT pre-installed.
 
@@ -1400,7 +1406,7 @@ Activate the main `TestBootstrapPlaceholder` class tests that can run when micro
 
 ---
 
-### Story H.i: v2.0.4 Activate Bootstrap Error Handling Tests [Planned]
+### Story I.c: Activate Bootstrap Error Handling Tests [Planned]
 
 Activate failure-path tests.
 
@@ -1412,7 +1418,7 @@ Activate failure-path tests.
 
 ---
 
-### Story H.j: v2.0.5 Activate Bootstrap Configuration Tests [Planned]
+### Story I.d: Activate Bootstrap Configuration Tests [Planned]
 
 Activate config-driven bootstrap tests.
 
@@ -1423,7 +1429,7 @@ Activate config-driven bootstrap tests.
 
 ---
 
-### Story H.k: v2.0.6 Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
+### Story I.e: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
 
 Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
@@ -1433,7 +1439,7 @@ Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
 ---
 
-### Story H.l: v2.0.7 Add Bootstrap CI Job [Planned]
+### Story I.f: Add Bootstrap CI Job [Planned]
 
 Create a new GitHub Actions job that tests bootstrap without pre-installed micromamba — so the download and install paths are tested in automation.
 
@@ -1445,7 +1451,7 @@ Create a new GitHub Actions job that tests bootstrap without pre-installed micro
 
 ---
 
-### Story H.m: v2.0.8 Bootstrap Download Verification [Planned]
+### Story I.g: v2.0.8 Bootstrap Download Verification [Planned]
 
 Evaluate whether the bootstrap code verifies downloaded binaries and add verification if missing.
 
@@ -1460,23 +1466,23 @@ Evaluate whether the bootstrap code verifies downloaded binaries and add verific
 
 ## Future
 
-### Story I.?: Out of scope (from Story H.e)
+### Story J.?: Out of scope (from Story H.e)
 
 - Retrofitting `pyve init` / `pyve purge` / other surviving commands to the new UX — covered by H.f.
 - Removing (as opposed to deprecating) old flags — Future (Phase I).
 - `pyve check --fix` auto-remediation — Future.
 
-### Story I.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
+### Story J.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After H.c / H.e ship `pyve check`, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred out of Phase H to keep the v2.0 scope focused on the diagnostic / status surface design — we want real usage data on the new `check` before deciding which fixes to automate and with what safety gates.
 
-### Story I.?: Remove Deprecated Flags Introduced as Warnings in H.e [Planned]
+### Story J.?: Remove Deprecated Flags Introduced as Warnings in H.e [Planned]
 
 H.e ships with deprecation *warnings* (not hard errors) on renamed flags / subcommands — likely `--update` flag, `testenv --init` / `--purge` flags, `python-version` (if renamed). After a sustained warning window across multiple minor releases, drop the old flags entirely. Almost certainly a major version bump (v3.0) depending on timing.
 
 Not in Phase H because: the v2.0 breaking changes are already substantial; shipping hard-removes in the same release as renames denies users any migration window.
 
-### Story I.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
+### Story J.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
 
 **Why.** macOS ships `/bin/bash` at 3.2.57. Every pyve release must source and execute cleanly there, but the repeated failure mode through Phase H (H.e.7a fixed `declare -A`; H.e.9h fixed `mapfile`) shows that bash 4+ features slip in whenever a contributor's dev shell is a newer bash from brew / asdf / nix. CI catches each instance, but only after a broken release reaches at least one user. A proactive audit + lint rule would shrink the failure mode.
 
