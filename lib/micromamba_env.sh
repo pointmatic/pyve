@@ -367,18 +367,31 @@ validate_lock_file_status() {
         return 1
     fi
     
-    # Case 3: Only conda-lock.yml exists (error - missing source file)
+    # Case 3: Only conda-lock.yml exists — missing source file.
+    # Always print an actionable error; `--strict` adds wording escalation,
+    # it does not gate whether to print at all. (H.f.6 silent-exit fix.)
     if [[ "$has_env_yml" == false ]] && [[ "$has_lock_yml" == true ]]; then
+        log_error "environment.yml missing but conda-lock.yml exists"
+        log_error "A lock file without its source environment file is invalid."
+        log_error "Restore environment.yml (git restore / revert) or regenerate the pair:"
+        log_error "  rm conda-lock.yml  # then hand-author or scaffold environment.yml"
+        log_error "Or switch backends:"
+        log_error "  pyve init --backend venv"
         if [[ "$strict_mode" == true ]]; then
-            log_error "environment.yml missing but conda-lock.yml exists (strict mode)"
-            log_error "Lock file without source environment file is invalid"
+            log_error "(strict mode: no auto-recovery)"
         fi
         return 1
     fi
-    
-    # Case 4: Neither file exists (error)
+
+    # Case 4: Neither file exists — fresh directory.
+    # Always print an actionable error. (H.f.6 silent-exit fix.)
+    log_error "Neither 'environment.yml' nor 'conda-lock.yml' found in the current directory."
+    log_error "'pyve init --backend micromamba' requires an existing conda environment file."
+    log_error "Create one first — see: docs/site/getting-started.md"
+    log_error "Or use the venv backend:"
+    log_error "  pyve init --backend venv"
     if [[ "$strict_mode" == true ]]; then
-        log_error "Both environment.yml and conda-lock.yml missing (strict mode)"
+        log_error "(strict mode: no auto-scaffolding)"
     fi
     return 1
 }

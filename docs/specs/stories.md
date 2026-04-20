@@ -1256,7 +1256,7 @@ Final sub-story of the H.f umbrella. Ships the unified-UX retrofit as v2.0.1.
 
 ---
 
-### Story H.f.6: Bug fix — 'pyve init --backend micromamba' fails silently when 'environment.yml' is absent [Planned]
+### Story H.f.6: Bug fix — 'pyve init --backend micromamba' fails silently when 'environment.yml' is absent [Done]
 
 Same class of error-UX gap that H.f.4 sweeps for, but pre-filed here because it was caught on 2026-04-20 by a user reproducing a clean-directory init. Keep this sub-story scoped to the silent-exit fix — do **not** bundle in the larger "auto-scaffold `environment.yml`" feature (that's H.f.7, a deliberate behavior change).
 
@@ -1291,22 +1291,23 @@ return 1
 
 **Tasks**
 
-- [ ] **Red:** Add 2 failing tests to `tests/unit/test_init.bats` (or create if absent):
-  - `init --backend micromamba in empty dir exits 1 with actionable error` — asserts stderr contains `"environment.yml"` and `"pyve init --backend venv"`.
-  - `init --backend micromamba with only conda-lock.yml exits 1 with actionable error` — same assertion, Case 3 variant.
-- [ ] **Green:** Replace the silent `return 1` in Cases 3 and 4 of `validate_lock_file_status()` ([lib/micromamba_env.sh:370-383](../../lib/micromamba_env.sh#L370-L383)) with unconditional actionable-error emission. Keep strict-mode wording as an elaboration, not a gate on whether to print at all.
-- [ ] **Verify:** Reproduce the original user case (`mkdir /tmp/foo && cd /tmp/foo && pyve init --backend micromamba --python-version 3.12.13`) and confirm the new error renders with exit 1.
-- [ ] **Audit sibling functions:** grep `lib/micromamba_env.sh` and `lib/micromamba_core.sh` for other `if [[ strict_mode == true ]]; then log_error …; fi; return 1` patterns. Anything matching that shape is a latent silent-exit waiting to be hit; either fix in this story or file a follow-up.
-- [ ] **Full suite green:** `bats tests/unit/*.bats` — no regressions.
+- [x] **Red:** Added 2 failing tests to [tests/unit/test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) (the existing library-level test seam — preferred over a new `test_init.bats` because `validate_lock_file_status` is the library function under test, and init-level end-to-end would have required a working micromamba install):
+  - `Case 3 (only conda-lock.yml) emits actionable error in non-strict mode` — asserts output contains `"environment.yml"` and `"pyve init --backend venv"`.
+  - `Case 4 (neither file) emits actionable error in non-strict mode` — same assertion, reproducing the 2026-04-20 user-visible silent-exit case.
+- [x] **Green:** Replaced the silent `return 1` in Cases 3 and 4 of `validate_lock_file_status()` at [lib/micromamba_env.sh:370-395](../../lib/micromamba_env.sh#L370-L395) with unconditional actionable-error emission. `log_error` (now emitting the unified `✘` glyph per H.f.4) names the missing file(s), suggests a recovery path (git restore / manual authoring), and offers the venv fallback. Strict mode stays as an elaboration line ("strict mode: no auto-recovery" / "no auto-scaffolding"), not a gate on whether to print.
+- [x] **Verify:** Reproduced `mkdir /tmp/foo && cd /tmp/foo && pyve init --backend micromamba --python-version 3.12.13`. Output is now the header box + 5 actionable `✘` lines + exit 1. No more silent exit. Field-side note: the reproduction under `</dev/null` happened to pass the `check_micromamba_available` stage because `bootstrap_micromamba_interactive` silently defaulted choice 1 (install to project sandbox) instead of aborting — that's a separate silent-default UX bug in `bootstrap_micromamba_interactive`, not in H.f.6 scope. Filed here for awareness; not fixed.
+- [x] **Audit sibling functions:** grepped `strict_mode.*== true` across `lib/micromamba_env.sh` and `lib/micromamba_core.sh`. Only two other sites — both Case 1 (stale lock) inside `validate_lock_file_status`, which uses `warn_stale_lock_file` + `is_interactive` and does **not** exhibit the silent-return-1 shape. No other offenders.
+- [x] **Full suite green:** 642 / 642 passing (2 new, 640 prior).
 
 **Deliverables**
 
-- Case 3 + Case 4 error emission in [lib/micromamba_env.sh](../../lib/micromamba_env.sh).
-- 2 new tests in [tests/unit/test_init.bats](../../tests/unit/test_init.bats).
+- Case 3 + Case 4 error emission in [lib/micromamba_env.sh:370-395](../../lib/micromamba_env.sh#L370-L395).
+- 2 new tests in [tests/unit/test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) (added to the library-level test seam rather than a new `test_init.bats`).
 
 **Out of scope**
 
 - Auto-scaffolding `environment.yml` — that's H.f.7.
+- `bootstrap_micromamba_interactive` silently defaulting to choice 1 under piped stdin — noted during verification; separate silent-default bug, not in scope.
 - Wider error-path sweep — that's H.f.4 (this story is the single offender we know about from field report; H.f.4 will catch any others).
 
 ---
