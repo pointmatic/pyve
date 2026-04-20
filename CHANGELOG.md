@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-04-20
+
+Feature bump: `pyve init --backend micromamba` in a fresh directory now scaffolds a starter `environment.yml` and proceeds, instead of requiring the user to hand-author one before the first run. Ships alongside the H.f.6 silent-exit fix for the same code path.
+
+### Added
+
+- **Starter `environment.yml` scaffold** on `pyve init --backend micromamba` when the current directory has neither `environment.yml` nor `conda-lock.yml`. The scaffold pins `python=<--python-version>` on `conda-forge` and adds `pip`; the user edits to add real dependencies, then runs `pyve lock`. See `docs/specs/features.md` FR-10a for the full contract. Name resolution: `--env-name` wins; otherwise the sanitized directory basename. Does **not** scaffold under `--strict`, does **not** overwrite an existing `environment.yml`, does **not** scaffold when `conda-lock.yml` exists without `environment.yml` (that's an inconsistent-state error). (H.f.7.)
+- **`scaffold_starter_environment_yml()`** helper in [lib/micromamba_env.sh](lib/micromamba_env.sh). Library-level, testable, single responsibility. Called from `init()` before `check_micromamba_available` so scaffolding is cheap and deterministic and happens before the expensive bootstrap dance.
+- **Auto `PYVE_NO_LOCK=1`** inside init when scaffolding fires, so `validate_lock_file_status()` takes its existing `--no-lock` bypass and the first successful init doesn't insist on a lock that can't yet exist.
+
+### Fixed
+
+- **`pyve init --backend micromamba` in an empty directory no longer exits silently.** The two silent-return-1 branches in `validate_lock_file_status()` (Cases 3 and 4 — "only conda-lock.yml" and "neither file present") now emit actionable errors unconditionally, naming the missing file(s), pointing at the scaffolding path (or the `pyve init --backend venv` fallback), and elaborating when `--strict` is set. Pre-fix, a fresh-shell repro produced exit 1 with zero stdout/stderr — indistinguishable from a shell-integration bug. (H.f.6, field-caught 2026-04-20.)
+
+### Changed
+
+- **`docs/site/getting-started.md`** — the "Using Micromamba Backend" section now documents the scaffold-then-proceed flow as the primary path. The old "hand-author `environment.yml` first, then `conda-lock`, then `pyve init`" sequence moves to an "already have an `environment.yml`?" sub-section.
+
+### Developer notes
+
+- 8 new bats tests in [tests/unit/test_scaffold_environment_yml.bats](tests/unit/test_scaffold_environment_yml.bats) — 6 library-level (helper contract) + 2 integration-lite (init wiring). Plus 2 new tests in [tests/unit/test_lock_validation.bats](tests/unit/test_lock_validation.bats) for the H.f.6 error-content assertions. Test suite now 650 / 650 passing.
+- Side finding during H.f.6 verification: `bootstrap_micromamba_interactive` silently defaults to "install to project sandbox" under piped `</dev/null` (EOF + while-loop + empty-choice-defaults-to-1 → unexpected download). Not fixed in this release. Documented in H.f.6's out-of-scope list.
+
 ## [2.0.1] - 2026-04-20
 
 Unified UX retrofit across every top-level pyve command. Output from `pyve init`, `pyve purge`, `pyve testenv`, and `pyve python set` now looks and feels like the sibling `gitbetter` tool — rounded-box header, consistent phase banners, `▸` / `⚠` / `✘` / `✔` glyph palette, `▸`-prefixed info lines for per-artifact outcomes, and a closing "All done" footer on success. No behavior changes — this is a cosmetic retrofit plus one new convenience flag.

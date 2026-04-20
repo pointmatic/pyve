@@ -203,32 +203,40 @@ python --version
 
 ### Using Micromamba Backend
 
-For projects with conda dependencies:
+For projects with conda dependencies, the fastest path is to let `pyve init` scaffold a starter `environment.yml` for you:
 
 ```bash
-# 1. Create environment.yml
-cat > environment.yml << EOF
-name: myproject
-channels:
-  - conda-forge
-dependencies:
-  - python=3.11
-  - numpy
-  - pandas
-EOF
+# 1. In a fresh directory, just run init with the micromamba backend.
+#    Pyve scaffolds a minimal environment.yml (python + pip, conda-forge)
+#    and creates the micromamba environment in one step.
+mkdir myproject && cd myproject
+pyve init --backend micromamba --python-version 3.12.13
 
-# 2. Generate conda-lock.yml (required before pyve init)
-conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
-conda-lock -f environment.yml -p linux-64     # Linux
+# 2. Edit the scaffolded environment.yml to add your real dependencies.
+#    The default scaffold pins only python=<version> and pip.
+$EDITOR environment.yml
 
-# 3. Initialize (lock file ensures reproducibility)
-pyve init --backend micromamba
+# 3. Generate conda-lock.yml once you're happy with environment.yml.
+pyve lock
 
-# 4. Install additional conda packages
-micromamba install scipy -c conda-forge
+# 4. Install any additional conda packages (or run `pyve lock` again).
+micromamba install -c conda-forge scipy
 ```
 
-> **Important:** `pyve init` requires `conda-lock.yml`. For the initial setup before the file exists, use `pyve init --no-lock`.
+**Scaffolding contract.** Pyve only scaffolds when **both** `environment.yml` and `conda-lock.yml` are absent — a clear signal that this is a fresh project. It never overwrites an existing `environment.yml`. Under `--strict`, scaffolding is disabled (hand-authored files only).
+
+**Already have an `environment.yml`?** Skip the scaffold — `pyve init` will use your file as-is:
+
+```bash
+# Existing project with environment.yml (but no conda-lock.yml yet):
+pyve init --backend micromamba --no-lock   # proceed without a lock for now
+pyve lock                                   # generate the lock file when ready
+
+# Existing project with both files:
+pyve init --backend micromamba             # uses the lock file for reproducibility
+```
+
+> **Note:** By default, `pyve init --backend micromamba` requires `conda-lock.yml` to exist alongside `environment.yml` for reproducibility. When the scaffolding path runs (fresh project, both files absent), `--no-lock` is auto-applied for the remainder of that init so the command can complete. For an existing project with `environment.yml` but no lock, pass `--no-lock` explicitly.
 
 ### Cleaning Up
 

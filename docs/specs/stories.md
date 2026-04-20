@@ -1312,7 +1312,7 @@ return 1
 
 ---
 
-### Story H.f.7: Feature — 'pyve init --backend micromamba' scaffolds a starter 'environment.yml' [Planned]
+### Story H.f.7: Feature — 'pyve init --backend micromamba' scaffolds a starter 'environment.yml' [Done]
 
 Depends on H.f.6 (actionable error must land first, so users on older pyve see a pointer rather than silence; H.f.7 then replaces that error-only path with a scaffold-and-proceed path for the narrow "fresh project" case).
 
@@ -1345,33 +1345,33 @@ Then proceed with normal micromamba bootstrap. The user sees the unified-UX head
 
 **Tasks**
 
-- [ ] **Red:** Add 4 failing tests to `tests/unit/test_init.bats`:
-  - `init --backend micromamba in empty dir with --python-version scaffolds environment.yml and proceeds` — asserts file exists, contains `python=<ver>`, init completes with exit 0.
-  - `scaffolded environment.yml uses sanitized dir basename as name` — creates a dir like `my-project`, asserts `name: my-project` (or sanitized equivalent).
-  - `--env-name <name> overrides the sanitized basename in the scaffold` — explicit flag wins.
-  - `--strict disables scaffolding (empty dir + --strict still errors per H.f.6)` — regression guard for the strict-mode carve-out.
-- [ ] **Green:** Add a `scaffold_starter_environment_yml()` helper to [lib/micromamba_env.sh](../../lib/micromamba_env.sh). Wire it into `validate_lock_file_status()`'s Case 4 branch (or lift that decision up into `init()` so `validate_lock_file_status()` stays pure — pick whichever keeps test seams clean).
-- [ ] **Green:** Update the fail-path wording in H.f.6 so Case 4 error only fires when scaffolding is disabled (`--strict`, or `--no-lock` without `--python-version`, etc.). The H.f.6 error remains the correct outcome for every non-scaffolded case.
-- [ ] **Spec:** Document the scaffolding contract in `docs/specs/features.md` — when it triggers, when it doesn't, the exact generated content, the channel+name rationale.
-- [ ] **Spec:** Document the scaffold template shape in `docs/specs/tech-spec.md` so downstream work (e.g., `pyve init --template <name>` if ever proposed) has a starting point.
-- [ ] **Docs:** Update `docs/site/getting-started.md` — the "create environment.yml first" section becomes "pyve init scaffolds one for you; edit to add dependencies".
-- [ ] **CHANGELOG:** New entry under the next release — feature bump (not patch) because it changes init's failure-to-success boundary.
-- [ ] **Full suite green:** `bats tests/unit/*.bats` — no regressions. New tests count toward feature coverage.
+- [x] **Red:** Added 8 failing tests to [tests/unit/test_scaffold_environment_yml.bats](../../tests/unit/test_scaffold_environment_yml.bats) (library-level test seam chosen over `test_init.bats` because the helper is library-level and init end-to-end requires a working micromamba):
+  - 6 library tests: scaffolding in an empty dir, `--env-name` override, `--strict` disables, no-overwrite of existing env.yml, refuses when conda-lock.yml exists (Case 3), generated-file key order.
+  - 2 integration-lite tests: `init --backend micromamba` in empty dir scaffolds and avoids the H.f.6 error path (stub `.pyve/bin/micromamba` so `check_micromamba_available` passes without a real install); `init --backend micromamba --strict` does **not** scaffold and hits the H.f.6 Case 4 error.
+- [x] **Green:** Added `scaffold_starter_environment_yml(python_version, env_name_flag, strict_mode)` to [lib/micromamba_env.sh:407-460](../../lib/micromamba_env.sh#L407-L460). Wired it into `init()` at [pyve.sh:803-813](../../pyve.sh#L803-L813) **before** `check_micromamba_available` so scaffolding is cheap and deterministic, and happens before the expensive bootstrap. On scaffold, auto-export `PYVE_NO_LOCK=1` so `validate_lock_file_status()` takes its existing `--no-lock` bypass instead of erroring on the non-existent lock file. Chose init-level wiring over shoving logic into `validate_lock_file_status` so the validator stays pure and bats-testable at the library level.
+- [x] **Green:** Inspected the H.f.6 Case 4 fail-path wording. Current text is clear enough — non-strict Case 4 is now unreachable via init (scaffolding always fires); strict Case 4 elaborates "(strict mode: no auto-scaffolding)", which hints at the behavior difference. No wording change needed.
+- [x] **Spec:** Added FR-10a "Starter `environment.yml` Scaffold" to [docs/specs/features.md](../features.md) — trigger conditions, generated content, channel + name rationale, non-goals, lock-file interaction, out-of-scope (`.tool-versions` awareness deferred).
+- [x] **Spec:** Added `scaffold_starter_environment_yml` row to the `lib/micromamba_env.sh` function table in [docs/specs/tech-spec.md](../tech-spec.md).
+- [x] **Docs:** Rewrote the "Using Micromamba Backend" section in [docs/site/getting-started.md](../../docs/site/getting-started.md) — scaffold-then-proceed is now the primary path; the old hand-author-then-lock flow moves to an "already have an `environment.yml`?" sub-section.
+- [x] **CHANGELOG:** Added `## [2.1.0] - 2026-04-20` entry covering both H.f.6 and H.f.7 (paired release — H.f.6 is the silent-exit bug fix for the same code path H.f.7 reshapes into a success flow).
+- [x] **Version bump:** `VERSION="2.0.1"` → `"2.1.0"` at [pyve.sh:32](../../pyve.sh#L32) (minor bump — new feature changes init's failure-to-success boundary). Matching assertion updated in [tests/unit/test_cli_dispatch.bats:202](../../tests/unit/test_cli_dispatch.bats#L202).
+- [x] **Full suite green:** 650 / 650 passing (8 new H.f.7 tests, 2 new H.f.6 tests already landed, 640 prior).
 
 **Deliverables**
 
-- `scaffold_starter_environment_yml()` helper in [lib/micromamba_env.sh](../../lib/micromamba_env.sh).
-- Wiring in [pyve.sh](../../pyve.sh) `init()` (or refactor of the Case 4 branch — whichever keeps `validate_lock_file_status` pure).
-- 4 new tests in [tests/unit/test_init.bats](../../tests/unit/test_init.bats).
-- Spec updates in [docs/specs/features.md](../../docs/specs/features.md), [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md).
+- `scaffold_starter_environment_yml()` helper in [lib/micromamba_env.sh:407-460](../../lib/micromamba_env.sh#L407-L460).
+- Wiring in [pyve.sh:803-813](../../pyve.sh#L803-L813) `init()` — scaffold call + auto-`PYVE_NO_LOCK`.
+- New [tests/unit/test_scaffold_environment_yml.bats](../../tests/unit/test_scaffold_environment_yml.bats) (8 tests).
+- Spec updates in [docs/specs/features.md](../features.md), [docs/specs/tech-spec.md](../tech-spec.md).
 - User-facing docs update in [docs/site/getting-started.md](../../docs/site/getting-started.md).
-- `CHANGELOG.md` entry.
+- `[2.1.0] - 2026-04-20` entry in [CHANGELOG.md](../../CHANGELOG.md).
+- Version bump to 2.1.0 in [pyve.sh](../../pyve.sh) and [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats).
 
-**Open questions (resolve before red phase)**
+**Open questions — resolved**
 
-- **Default Python version when `--python-version` is omitted.** Currently `DEFAULT_PYTHON_VERSION` is baked into pyve; should the scaffolded `environment.yml` pin to that same version, or to whatever `.tool-versions` / `.python-version` points at? Decision affects reproducibility in projects that later add asdf pinning.
-- **Should scaffolding require `--python-version` explicitly?** Argument for: prevents surprise pins on `DEFAULT_PYTHON_VERSION` changes across pyve upgrades. Argument against: matches the ergonomics of `pyve init --backend venv` which silently uses the default. Recommend matching venv's ergonomics (silent default) but log the chosen version in the header banner so it's visible.
-- **Interaction with `pyve lock`.** After scaffolding, the lock-file preflight still fires. Either (a) H.f.7 also runs `pyve lock` inline as part of init, or (b) init completes without a lock and a subsequent `pyve lock` generates one. Option (b) is lower-complexity and matches how `pyve init --backend venv` doesn't auto-generate `requirements.txt`.
+- **Default Python version when `--python-version` is omitted** → use `$python_version` as resolved by init (flag or `DEFAULT_PYTHON_VERSION`). `.tool-versions` / `.python-version` introspection is deferred to a future story — consistent with venv's current behavior.
+- **Should scaffolding require `--python-version` explicitly?** → No. Match venv's silent-default ergonomics. The chosen version is visible in the scaffold-notice info line (`▸ Scaffolded starter environment.yml (python=<ver>)`).
+- **Interaction with `pyve lock`** → Option (b): init completes without a lock; user runs `pyve lock` separately. Lower-complexity, matches venv's "no auto-generated `requirements.txt`" ergonomic. Auto-`PYVE_NO_LOCK=1` on scaffold makes `validate_lock_file_status()` cooperate.
 
 ---
 

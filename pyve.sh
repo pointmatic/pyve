@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.0.1"
+VERSION="2.1.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -781,6 +781,21 @@ init() {
     
     # Check if micromamba backend is selected and handle bootstrap
     if [[ "$backend" == "micromamba" ]]; then
+        # H.f.7: if the directory has neither `environment.yml` nor
+        # `conda-lock.yml`, and strict-mode is off, scaffold a starter
+        # `environment.yml` before the (expensive) bootstrap step.
+        # Doing this early means the user-visible error surface in a
+        # clean directory is "scaffolded and proceeded" instead of the
+        # H.f.6 "missing environment.yml" hard-error path.
+        if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
+            info "Scaffolded starter environment.yml (python=$python_version)"
+            info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
+            # No conda-lock.yml yet (we just generated the source file).
+            # Take validate_lock_file_status's existing bypass so init
+            # proceeds without insisting on a lock that can't yet exist.
+            export PYVE_NO_LOCK=1
+        fi
+
         # Check if micromamba is available
         if ! check_micromamba_available; then
             # Micromamba not found - offer bootstrap
