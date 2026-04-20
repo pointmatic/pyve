@@ -65,12 +65,6 @@ run_pyve() {
     [[ "$output" == *"DISPATCH:purge"* ]]
 }
 
-@test "dispatch: 'pyve validate' routes to the validate handler" {
-    PYVE_DISPATCH_TRACE=1 run_pyve validate
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"DISPATCH:validate"* ]]
-}
-
 @test "dispatch: 'pyve python-version 3.12.0' routes to the python-version handler" {
     PYVE_DISPATCH_TRACE=1 run_pyve python-version 3.12.0
     [ "$status" -eq 0 ]
@@ -142,7 +136,7 @@ run_pyve() {
     run_pyve --validate
     [ "$status" -ne 0 ]
     [[ "$output" == *"'pyve --validate' is no longer supported"* ]]
-    [[ "$output" == *"pyve validate"* ]]
+    [[ "$output" == *"pyve check"* ]]
 }
 
 @test "legacy: 'pyve --install' prints migration error and exits non-zero" {
@@ -159,11 +153,56 @@ run_pyve() {
     [[ "$output" == *"pyve self uninstall"* ]]
 }
 
-@test "legacy: 'pyve --python-version 3.12.0' prints migration error and exits non-zero" {
+@test "legacy: 'pyve --python-version 3.12.0' prints migration error pointing at v2.0-canonical form" {
     run_pyve --python-version 3.12.0
     [ "$status" -ne 0 ]
     [[ "$output" == *"'pyve --python-version' is no longer supported"* ]]
-    [[ "$output" == *"pyve python-version"* ]]
+    [[ "$output" == *"pyve python set"* ]]
+}
+
+#============================================================
+# Legacy flag catches added in H.e.9 (v2.0.0)
+#============================================================
+
+@test "legacy: 'pyve --update' prints migration error and exits non-zero" {
+    run_pyve --update
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"'pyve --update' is no longer supported"* ]]
+    [[ "$output" == *"pyve update"* ]]
+}
+
+@test "legacy: 'pyve --doctor' prints migration error and exits non-zero" {
+    run_pyve --doctor
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"'pyve --doctor' is no longer supported"* ]]
+    [[ "$output" == *"pyve check"* ]]
+}
+
+@test "legacy: 'pyve --status' prints migration error and exits non-zero" {
+    run_pyve --status
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"'pyve --status' is no longer supported"* ]]
+    [[ "$output" == *"pyve status"* ]]
+}
+
+@test "legacy: 'pyve init --update' prints migration error and does NOT proceed (H.e.9)" {
+    run_pyve init --update
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"'pyve init --update' is no longer supported"* ]]
+    [[ "$output" == *"pyve update"* ]]
+    # init must not proceed — no .pyve/ or .venv left behind in this fresh temp dir.
+    [ ! -d .pyve ]
+    [ ! -d .venv ]
+}
+
+#============================================================
+# Version — v2.0.0 bump (H.e.9)
+#============================================================
+
+@test "version: 'pyve --version' reports 2.0.0" {
+    run_pyve --version
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"2.0.0"* ]]
 }
 
 #============================================================

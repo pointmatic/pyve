@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="1.16.1"
+VERSION="2.0.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -111,6 +111,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/ui.sh" ]]; then
+    # shellcheck source=lib/ui.sh
+    source "$SCRIPT_DIR/lib/ui.sh"
+else
+    printf "ERROR: Cannot find lib/ui.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Help and Information Commands
 #============================================================
@@ -137,8 +145,10 @@ COMMANDS:
                               See `pyve update --help` for all options
     purge [<dir>]             Remove all Python environment artifacts
                               See `pyve purge --help` for all options
-    python-version <ver>      Set Python version without creating an environment
-                              Format: #.#.# (e.g., 3.13.7)
+    python set <ver>          Pin the project's Python version (format: #.#.#)
+    python show               Show the currently pinned Python version
+                              See `pyve python --help` for details
+                              (Legacy: `pyve python-version <ver>` still accepted)
     lock [--check]            Generate or verify conda-lock.yml (micromamba only)
                               --check: mtime-only verification (no conda-lock needed)
 
@@ -147,13 +157,20 @@ COMMANDS:
                               For CI/CD, Docker, and --no-direnv setups
     test [pytest args...]     Run pytest via the dev/test runner environment
     testenv <subcommand>      Manage the dev/test runner environment
-                              Subcommands: --init | --install [-r <req>] | --purge | run <cmd>
+                              Subcommands: init | install [-r <req>] | purge | run <cmd>
+                              (Legacy flag forms --init / --install / --purge still accepted)
                               See `pyve testenv --help` for details
 
   Diagnostics:
-    doctor                    Check environment health and show diagnostics
+    check                     Diagnose environment problems and suggest fixes
+                              Exit codes: 0 (pass), 1 (errors), 2 (warnings)
+                              See `pyve check --help` for details
+    status                    Read-only snapshot of current project state
+                              (backend, python, integrations). Never exits non-zero.
+                              See `pyve status --help` for details
+    doctor                    Legacy diagnostics (superseded by `pyve check`)
                               Reports backend, Python version, packages, and status
-    validate                  Validate Pyve installation and configuration
+    validate                  Legacy CI gate (superseded by `pyve check`)
                               Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
   Self management:
@@ -553,8 +570,11 @@ init() {
                 shift
                 ;;
             --update)
-                PYVE_REINIT_MODE="update"
-                shift
+                # Removed in v2.0 (H.e.9). Hard error — semantics of
+                # `pyve update` are broader than v1.x's narrow
+                # config-bump, so delegation would surprise scripted
+                # callers. See phase-H-cli-refactor-design.md §5 D3.
+                legacy_flag_error "init --update" "update"
                 ;;
             --force)
                 PYVE_REINIT_MODE="force"
@@ -593,8 +613,13 @@ init() {
                 shift
                 ;;
             -*)
-                log_error "Unknown option: $1"
-                exit 1
+                unknown_flag_error "init" "$1" \
+                    --python-version --backend --auto-bootstrap --bootstrap-to \
+                    --strict --no-lock --env-name --no-direnv --auto-install-deps \
+                    --no-install-deps --local-env --force --allow-synced-dir \
+                    --project-guide --no-project-guide \
+                    --project-guide-completion --no-project-guide-completion \
+                    --help
                 ;;
             *)
                 venv_dir="$1"
@@ -613,62 +638,10 @@ init() {
         local existing_version
         existing_version="$(read_config_value "pyve_version")"
         
-        # Handle re-initialization based on mode
-        if [[ "${PYVE_REINIT_MODE:-}" == "update" ]]; then
-            # Safe update mode
-            log_info "Updating existing Pyve installation..."
-            
-            # Check for conflicts
-            if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
-                log_error "Cannot update in-place: Backend change detected"
-                log_error "  Current: $existing_backend"
-                log_error "  Requested: $backend_flag"
-                echo ""
-                log_error "Backend changes require a clean re-initialization."
-                log_error "Run: pyve init --force"
-                exit 1
-            fi
-            
-            # Perform safe update
-            if ! update_config_version; then
-                log_error "Failed to update configuration (config may be corrupted)"
-                exit 1
-            fi
-            log_info "✓ Configuration updated"
-            if [[ -n "$existing_version" ]]; then
-                log_info "  Version: $existing_version → $VERSION"
-            else
-                log_info "  Version: (not recorded) → $VERSION"
-            fi
-            log_info "  Backend: $existing_backend (unchanged)"
-            echo ""
-            log_info "Project updated to Pyve v$VERSION"
-
-            # If the environment directory is missing (e.g. freshly cloned repo where
-            # .venv is gitignored), fall through to create it rather than returning.
-            local _update_env_missing=false
-            if [[ "$existing_backend" == "venv" ]]; then
-                local _update_venv_dir
-                _update_venv_dir="$(read_config_value "venv.directory")"
-                _update_venv_dir="${_update_venv_dir:-$DEFAULT_VENV_DIR}"
-                if [[ ! -d "$_update_venv_dir" ]]; then
-                    log_info "Environment directory '$_update_venv_dir' not found — creating it now..."
-                    _update_env_missing=true
-                fi
-            elif [[ "$existing_backend" == "micromamba" ]]; then
-                local _update_env_name
-                _update_env_name="$(read_config_value "micromamba.env_name")"
-                if [[ -n "$_update_env_name" ]] && [[ ! -d ".pyve/envs/$_update_env_name" ]]; then
-                    log_info "Environment '.pyve/envs/$_update_env_name' not found — creating it now..."
-                    _update_env_missing=true
-                fi
-            fi
-            if [[ "$_update_env_missing" == false ]]; then
-                return 0
-            fi
-            # Fall through to environment creation below.
-
-        elif [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
+        # Handle re-initialization based on mode.
+        # (PYVE_REINIT_MODE="update" path removed in v2.0 / H.e.9 —
+        # `pyve update` is the new entry point.)
+        if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
             log_warning "Force re-initialization: This will purge the existing environment"
             log_warning "  Current backend: $existing_backend"
@@ -1195,9 +1168,8 @@ purge() {
                 keep_testenv=true
                 shift
                 ;;
-            -* )
-                log_error "Unknown option: $1"
-                exit 1
+            -*)
+                unknown_flag_error "purge" "$1" --keep-testenv --help
                 ;;
             *)
                 venv_dir="$1"
@@ -1347,15 +1319,36 @@ testenv_command() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            # New subcommand grammar (H.d §4.4 D5) — silent.
+            init)
+                action="init"
+                shift
+                ;;
+            install)
+                action="install"
+                shift
+                ;;
+            purge)
+                action="purge"
+                shift
+                ;;
+            # Legacy flag forms — delegate-with-warning (H.e.7).
+            # Removed in v3.0 per H.d §5 D5.
             --init)
+                deprecation_warn "testenv --init" \
+                    "pyve testenv --init" "pyve testenv init"
                 action="init"
                 shift
                 ;;
             --install)
+                deprecation_warn "testenv --install" \
+                    "pyve testenv --install" "pyve testenv install"
                 action="install"
                 shift
                 ;;
             --purge)
+                deprecation_warn "testenv --purge" \
+                    "pyve testenv --purge" "pyve testenv purge"
                 action="purge"
                 shift
                 ;;
@@ -1377,10 +1370,15 @@ testenv_command() {
 pyve testenv - Manage a dedicated dev/test runner environment
 
 Usage:
-  pyve testenv --init
-  pyve testenv --install [-r requirements-dev.txt]
-  pyve testenv --purge
+  pyve testenv init
+  pyve testenv install [-r requirements-dev.txt]
+  pyve testenv purge
   pyve testenv run <command> [args...]
+
+Legacy flag forms (accepted in v1.x; deprecated in v2.0, removed in v3.0):
+  pyve testenv --init         (use: pyve testenv init)
+  pyve testenv --install      (use: pyve testenv install)
+  pyve testenv --purge        (use: pyve testenv purge)
 
 Notes:
   - Uses: .pyve/testenv/venv
@@ -1389,8 +1387,13 @@ Notes:
 EOF
                 exit 0
                 ;;
+            -*)
+                unknown_flag_error "testenv" "$1" \
+                    --init --install --purge --requirements -r --help
+                ;;
             *)
-                log_error "Unknown testenv option: $1"
+                log_error "Unknown testenv argument: $1"
+                log_error "Usage: pyve testenv <init|install|purge|run> [options]"
                 exit 1
                 ;;
         esac
@@ -1524,39 +1527,98 @@ purge_gitignore() {
 
 set_python_version_only() {
     if [[ $# -lt 1 ]]; then
-        log_error "--python-version requires a version argument"
-        log_error "Usage: pyve python-version <version>"
-        log_error "Example: pyve python-version 3.13.7"
+        log_error "pyve python set requires a version argument"
+        log_error "Usage: pyve python set <version>"
+        log_error "Example: pyve python set 3.13.7"
         exit 1
     fi
-    
+
     local version="$1"
-    
+
     if ! validate_python_version "$version"; then
         exit 1
     fi
-    
+
     printf "\nSetting Python version to %s...\n" "$version"
-    
+
     # Source shell profiles to find version managers
     source_shell_profiles
-    
+
     # Detect version manager
     if ! detect_version_manager; then
         exit 1
     fi
-    
+
     # Ensure version is installed
     if ! ensure_python_version_installed "$version"; then
         exit 1
     fi
-    
+
     # Set local version
     set_local_python_version "$version"
-    
+
     local version_file
     version_file="$(get_version_file_name)"
     log_success "Set Python $version in $version_file"
+}
+
+# `pyve python show` — read the current Python version pin from the
+# standard sources (Story H.e.6 / H.d D1). Pure read-only; never
+# installs or modifies anything.
+show_python_version() {
+    local version="" source=""
+    if [[ -f ".tool-versions" ]]; then
+        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
+        source=".tool-versions"
+    elif [[ -f ".python-version" ]]; then
+        version="$(cat .python-version 2>/dev/null | head -1)"
+        source=".python-version"
+    else
+        version="$(read_config_value "python.version" 2>/dev/null || true)"
+        source=".pyve/config"
+    fi
+
+    if [[ -z "$version" ]]; then
+        printf "No Python version pinned in this project.\n"
+        printf "  (not pinned — use 'pyve python set <version>' to pin one)\n"
+        return 0
+    fi
+    printf "Python %s (from %s)\n" "$version" "$source"
+}
+
+# Nested-subcommand dispatcher for `pyve python <action> [args]`.
+# Story H.e.6: new grammar alongside the legacy `pyve python-version`
+# command (which continues to work in v1.x).
+python_command() {
+    if [[ $# -lt 1 ]]; then
+        log_error "pyve python requires a subcommand"
+        log_error "Usage: pyve python set <version>"
+        log_error "       pyve python show"
+        log_error "See: pyve python --help"
+        exit 1
+    fi
+
+    local sub="$1"
+    shift
+
+    case "$sub" in
+        set)
+            set_python_version_only "$@"
+            ;;
+        show)
+            if [[ $# -gt 0 ]]; then
+                log_error "pyve python show takes no arguments (got: $1)"
+                exit 1
+            fi
+            show_python_version
+            ;;
+        *)
+            log_error "Unknown python subcommand: $sub"
+            log_error "Usage: pyve python set <version>"
+            log_error "       pyve python show"
+            exit 1
+            ;;
+    esac
 }
 
 #============================================================
@@ -1618,6 +1680,13 @@ install_self() {
         cp "$source_dir/lib/"*.sh "$TARGET_BIN_DIR/lib/"
         log_success "Installed lib/ helpers"
     fi
+
+    # Copy shell-completion scripts (H.e.9c)
+    if [[ -d "$source_dir/lib/completion" ]]; then
+        mkdir -p "$TARGET_BIN_DIR/lib/completion"
+        cp "$source_dir/lib/completion/"* "$TARGET_BIN_DIR/lib/completion/" 2>/dev/null || true
+        log_success "Installed lib/completion/ (shell completion)"
+    fi
     
     # Save source directory for future reinstalls
     mkdir -p "$(dirname "$SOURCE_DIR_FILE")"
@@ -1644,6 +1713,15 @@ install_self() {
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
     printf "  source ~/.zshrc     # or ~/.bashrc\n"
+
+    # Shell-completion activation hint (H.e.9c)
+    if [[ -d "$TARGET_BIN_DIR/lib/completion" ]]; then
+        printf "\nTo enable tab completion, add one of these to your shell rc:\n"
+        printf "  # bash:\n"
+        printf "  source %s/lib/completion/pyve.bash\n" "$TARGET_BIN_DIR"
+        printf "  # zsh (place _pyve on \$fpath, then compinit):\n"
+        printf "  fpath=(%s/lib/completion \$fpath) && autoload -U compinit && compinit\n" "$TARGET_BIN_DIR"
+    fi
 }
 
 install_update_path() {
@@ -1970,240 +2048,567 @@ run_command() {
 }
 
 #============================================================
-# Doctor Command
+# Status Command (Story H.e.4)
 #============================================================
 
-doctor_command() {
-    printf "Pyve Environment Diagnostics\n"
-    printf "=============================\n\n"
-    
-    # Detect install source
-    local install_source
-    install_source="$(detect_install_source)"
-    printf "✓ Pyve: v%s (%s: %s)\n" "$VERSION" "$install_source" "$SCRIPT_DIR"
-    
-    # Check version compatibility
-    if config_file_exists; then
-        validate_pyve_version
-    fi
-    
-    local backend=""
-    local venv_dir="$DEFAULT_VENV_DIR"
-    local env_path=""
-    local env_name=""
+# `pyve status` — read-only state dashboard. Never has a non-zero
+# exit code based on findings (that's `pyve check`'s job). Three
+# sections: Project / Environment / Integrations.
+#
+# Spec: docs/specs/phase-H-check-status-design.md §4.
+status_command() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -*)
+                unknown_flag_error "status" "$1" --help
+                ;;
+            *)
+                log_error "pyve status takes no positional arguments (got: $1)"
+                log_error "See: pyve status --help"
+                exit 1
+                ;;
+        esac
+    done
 
-    # If a project config exists, prefer its venv directory for venv detection.
-    if config_file_exists; then
-        local configured_venv_dir
-        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        if [[ -n "$configured_venv_dir" ]]; then
-            venv_dir="$configured_venv_dir"
-        fi
-    fi
-    
-    # Detect active backend
-    # Check for micromamba environment first
-    if [[ -d ".pyve/envs" ]]; then
-        local env_dirs=(.pyve/envs/*)
-        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
-            backend="micromamba"
-            env_path="${env_dirs[0]}"
-            env_name="$(basename "$env_path")"
-        fi
-    fi
-    
-    # Check for venv if micromamba not found
-    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
-        backend="venv"
-        env_path="$venv_dir"
-    fi
-    
-    # Check if no environment found
-    if [[ -z "$backend" ]]; then
-        printf "✗ No environment found\n"
-        printf "  Run 'pyve init' to create an environment\n"
-        exit 1
-    fi
-    
-    # Report backend
-    printf "✓ Backend: %s\n" "$backend"
-    
-    # Backend-specific checks
-    if [[ "$backend" == "micromamba" ]]; then
-        # Check micromamba binary
-        if check_micromamba_available; then
-            local mm_path
-            mm_path="$(get_micromamba_path)"
-            local mm_version
-            mm_version="$(get_micromamba_version)"
-            local mm_location
-            mm_location="$(get_micromamba_location)"
-            printf "✓ Micromamba: %s (%s) v%s\n" "$mm_path" "$mm_location" "$mm_version"
-        else
-            printf "✗ Micromamba: not found\n"
-            if [[ -f ".pyve/bin/micromamba" ]] && [[ ! -x ".pyve/bin/micromamba" ]]; then
-                printf "  Found at: %s (not executable)\n" "$(pwd)/.pyve/bin/micromamba"
-                printf "  Fix with: chmod +x .pyve/bin/micromamba\n"
-            elif [[ -f "$HOME/.pyve/bin/micromamba" ]] && [[ ! -x "$HOME/.pyve/bin/micromamba" ]]; then
-                printf "  Found at: %s (not executable)\n" "$HOME/.pyve/bin/micromamba"
-                printf "  Fix with: chmod +x $HOME/.pyve/bin/micromamba\n"
-            else
-                printf "  Checked: .pyve/bin/micromamba\n"
-                printf "  Checked: $HOME/.pyve/bin/micromamba\n"
-                printf "  Checked: micromamba on PATH\n"
-            fi
-        fi
-        
-        # Check environment
-        if [[ -d "$env_path" ]]; then
-            printf "✓ Environment: %s\n" "$env_path"
-            printf "  Name: %s\n" "$env_name"
-        else
-            printf "✗ Environment: not found\n"
-        fi
-        
-        # Check Python in environment
-        if [[ -f "$env_path/bin/python" ]]; then
-            local py_version
-            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "✓ Python: %s\n" "$py_version"
-        else
-            printf "⚠ Python: not found in environment\n"
-        fi
-        
-        # Check environment file
-        local env_file
-        env_file="$(detect_environment_file 2>/dev/null)" || true
-        if [[ -n "$env_file" ]]; then
-            printf "✓ Environment file: %s\n" "$env_file"
-            
-            # Check lock file status if environment.yml exists
-            if [[ "$env_file" == "environment.yml" ]] || [[ -f "environment.yml" ]]; then
-                if [[ -f "conda-lock.yml" ]]; then
-                    if is_lock_file_stale; then
-                        printf "⚠ Lock file: conda-lock.yml (stale)\n"
-                        local env_mtime
-                        local lock_mtime
-                        env_mtime="$(get_file_mtime_formatted "environment.yml")"
-                        lock_mtime="$(get_file_mtime_formatted "conda-lock.yml")"
-                        printf "  environment.yml: %s\n" "$env_mtime"
-                        printf "  conda-lock.yml:  %s\n" "$lock_mtime"
-                    else
-                        printf "✓ Lock file: conda-lock.yml (up to date)\n"
-                    fi
-                else
-                    printf "⚠ Lock file: missing\n"
-                    printf "  Generate with: conda-lock -f environment.yml\n"
-                fi
-            fi
-        else
-            printf "⚠ Environment file: not found\n"
-        fi
-        
-        # Count packages
-        if [[ -d "$env_path/conda-meta" ]]; then
-            local pkg_count
-            pkg_count=$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ')
-            printf "  Packages: %s installed\n" "$pkg_count"
-        fi
+    # Title + divider. BOLD for the title, DIM for the rule — per H.c §4.4.
+    printf "\n%sPyve project status%s\n" "${BOLD}" "${RESET}"
+    printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
 
-        # Check for duplicate dist-info, cloud sync collision artifacts, and native lib conflicts
-        doctor_check_duplicate_dist_info "$env_path"
-        doctor_check_collision_artifacts "$env_path"
-        doctor_check_native_lib_conflicts "$env_path"
-
-    elif [[ "$backend" == "venv" ]]; then
-        # Check venv directory
-        if [[ -d "$env_path" ]]; then
-            printf "✓ Environment: %s\n" "$env_path"
-        else
-            printf "✗ Environment: not found\n"
-        fi
-        
-        # Check Python in venv
-        if [[ -f "$env_path/bin/python" ]]; then
-            local py_version
-            py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "✓ Python: %s\n" "$py_version"
-        else
-            printf "✗ Python: not found in venv\n"
-        fi
-
-        # Check venv path consistency (detect relocated projects)
-        doctor_check_venv_path "$env_path"
-
-        # Check Python version file
-        if [[ -f ".tool-versions" ]]; then
-            local version_manager="asdf"
-            local py_ver
-            py_ver="$(grep "^python " .tool-versions | awk '{print $2}')"
-            printf "✓ Version file: .tool-versions (asdf)\n"
-            printf "  Python: %s\n" "$py_ver"
-        elif [[ -f ".python-version" ]]; then
-            local version_manager="pyenv"
-            local py_ver
-            py_ver="$(cat .python-version)"
-            printf "✓ Version file: .python-version (pyenv)\n"
-            printf "  Python: %s\n" "$py_ver"
-        else
-            printf "⚠ Version file: not found\n"
-        fi
-        
-        # Count packages in venv
-        if [[ -d "$env_path/lib" ]]; then
-            local site_packages
-            site_packages=$(find "$env_path/lib" -type d -name "site-packages" 2>/dev/null | head -1)
-            if [[ -n "$site_packages" ]]; then
-                local pkg_count
-                pkg_count=$(find "$site_packages" -maxdepth 1 -name "*.dist-info" 2>/dev/null | wc -l | tr -d ' ')
-                printf "  Packages: %s installed\n" "$pkg_count"
-            fi
-        fi
+    if ! config_file_exists; then
+        # Non-project fallback. Don't treat it as an error; status reports
+        # reality, and "not a pyve project" is a valid reality.
+        _status_row "Not a pyve-managed project" ""
+        printf "  %sRun 'pyve init' to initialize.%s\n\n" "${DIM}" "${RESET}"
+        return 0
     fi
-    
-    # Check direnv
-    if [[ -f ".envrc" ]]; then
-        printf "✓ Direnv: .envrc configured\n"
+
+    _status_section_project
+    _status_section_environment
+    _status_section_integrations
+
+    return 0
+}
+
+# Print one key/value row with a 17-char label column (matches the widest
+# label used — "environment.yml:") so every section aligns.
+_status_row() {
+    local label="$1"
+    local value="$2"
+    printf "  %-17s %s\n" "${label}" "${value}"
+}
+
+_status_header() {
+    printf "%s%s%s\n" "${BOLD}" "$1" "${RESET}"
+}
+
+_status_section_project() {
+    _status_header "Project"
+    _status_row "Path:" "$(pwd -P)"
+
+    local backend
+    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    if [[ -n "$backend" ]]; then
+        _status_row "Backend:" "$backend"
     else
-        printf "⚠ Direnv: .envrc not found\n"
-        printf "  Use 'pyve run' to execute commands\n"
+        _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
-    
-    # Check .env file
+
+    local recorded_version
+    recorded_version="$(read_config_value "pyve_version" 2>/dev/null || true)"
+    if [[ -z "$recorded_version" ]]; then
+        _status_row "Pyve config:" "${DIM}version not recorded${RESET}"
+    else
+        case "$(compare_versions "$recorded_version" "$VERSION")" in
+            equal)
+                _status_row "Pyve config:" "v${recorded_version} (current)"
+                ;;
+            less)
+                _status_row "Pyve config:" "v${recorded_version} (current: v${VERSION})"
+                ;;
+            greater)
+                _status_row "Pyve config:" "v${recorded_version} (newer than pyve v${VERSION})"
+                ;;
+        esac
+    fi
+
+    _status_row "Python:" "$(_status_configured_python)"
+    printf "\n"
+}
+
+# Detect the configured Python version source. Returns a human-readable
+# string like "3.14.4 (.tool-versions via asdf)" or "(not pinned)".
+_status_configured_python() {
+    local version="" source=""
+    if [[ -f ".tool-versions" ]]; then
+        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
+        source=".tool-versions via asdf"
+    elif [[ -f ".python-version" ]]; then
+        version="$(cat .python-version 2>/dev/null)"
+        source=".python-version via pyenv"
+    else
+        version="$(read_config_value "python.version" 2>/dev/null || true)"
+        source=".pyve/config"
+    fi
+    if [[ -z "$version" ]]; then
+        printf "%snot pinned%s" "${DIM}" "${RESET}"
+    else
+        printf "%s (%s)" "${version}" "${source}"
+    fi
+}
+
+_status_section_environment() {
+    _status_header "Environment"
+
+    local backend
+    backend="$(read_config_value "backend" 2>/dev/null || true)"
+
+    if [[ "$backend" == "micromamba" ]]; then
+        _status_env_micromamba
+    elif [[ "$backend" == "venv" ]]; then
+        _status_env_venv
+    else
+        _status_row "Path:" "${DIM}backend not configured${RESET}"
+    fi
+
+    printf "\n"
+}
+
+_status_env_venv() {
+    local venv_dir
+    venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
+    venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+
+    if [[ ! -d "$venv_dir" ]]; then
+        _status_row "Path:" "${venv_dir} (${DIM}missing${RESET})"
+        return 0
+    fi
+    _status_row "Path:" "$venv_dir"
+
+    if [[ -x "$venv_dir/bin/python" ]]; then
+        local py_version
+        py_version="$("$venv_dir/bin/python" --version 2>&1 | awk '{print $2}')"
+        _status_row "Python:" "${py_version:-unknown}"
+    else
+        _status_row "Python:" "${DIM}not found${RESET}"
+    fi
+
+    _status_row "Packages:" "$(_status_venv_package_count "$venv_dir")"
+
+    # distutils shim: check for the sitecustomize.py marker under
+    # $venv_dir/lib/python*/site-packages/ (Python 3.12+ install).
+    # Guard: `find` on a nonexistent .venv/lib exits non-zero, which
+    # would kill the script under `set -euo pipefail` — trailing
+    # `|| true` absorbs it.
+    if [[ -d "$venv_dir/lib" ]]; then
+        local sitecustomize
+        sitecustomize="$(find "$venv_dir/lib" -maxdepth 3 -name "sitecustomize.py" 2>/dev/null | head -1 || true)"
+        if [[ -n "$sitecustomize" ]] && grep -qF "$PYVE_DISTUTILS_SHIM_MARKER" "$sitecustomize" 2>/dev/null; then
+            _status_row "distutils shim:" "installed"
+        else
+            _status_row "distutils shim:" "${DIM}not installed${RESET}"
+        fi
+    fi
+}
+
+_status_venv_package_count() {
+    local venv_dir="$1"
+    local site_packages count
+    # Same `find`-pipefail guard as above.
+    if [[ ! -d "$venv_dir/lib" ]]; then
+        printf "%sunknown%s" "${DIM}" "${RESET}"
+        return 0
+    fi
+    site_packages="$(find "$venv_dir/lib" -type d -name "site-packages" 2>/dev/null | head -1 || true)"
+    if [[ -z "$site_packages" ]]; then
+        printf "%sunknown%s" "${DIM}" "${RESET}"
+        return 0
+    fi
+    count="$(find "$site_packages" -maxdepth 1 -name "*.dist-info" 2>/dev/null | wc -l | tr -d ' ' || true)"
+    printf "%s installed" "${count:-0}"
+}
+
+_status_env_micromamba() {
+    local env_name env_path
+    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+    if [[ -z "$env_name" ]]; then
+        _status_row "Name:" "${DIM}not configured${RESET}"
+        return 0
+    fi
+    env_path=".pyve/envs/$env_name"
+
+    _status_row "Name:" "$env_name"
+
+    if [[ ! -d "$env_path" ]]; then
+        _status_row "Path:" "${env_path} (${DIM}missing${RESET})"
+        return 0
+    fi
+    _status_row "Path:" "$env_path"
+
+    if [[ -x "$env_path/bin/python" ]]; then
+        local py_version
+        py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
+        _status_row "Python:" "${py_version:-unknown}"
+    fi
+
+    if [[ -d "$env_path/conda-meta" ]]; then
+        local count
+        count="$(find "$env_path/conda-meta" -name "*.json" 2>/dev/null | wc -l | tr -d ' ' || true)"
+        _status_row "Packages:" "${count:-0} installed"
+    fi
+
+    if [[ -f "environment.yml" ]]; then
+        _status_row "environment.yml:" "present"
+    else
+        _status_row "environment.yml:" "${DIM}missing${RESET}"
+    fi
+
+    if [[ -f "conda-lock.yml" ]]; then
+        if is_lock_file_stale 2>/dev/null; then
+            _status_row "conda-lock.yml:" "${DIM}stale${RESET}"
+        else
+            _status_row "conda-lock.yml:" "up to date"
+        fi
+    else
+        _status_row "conda-lock.yml:" "${DIM}missing${RESET}"
+    fi
+}
+
+_status_section_integrations() {
+    _status_header "Integrations"
+
+    if [[ -f ".envrc" ]]; then
+        _status_row "direnv:" ".envrc present"
+    else
+        _status_row "direnv:" "${DIM}.envrc missing${RESET}"
+    fi
+
     if [[ -f ".env" ]]; then
         if is_file_empty ".env"; then
-            printf "✓ Environment file: .env (empty)\n"
+            _status_row ".env:" "present (empty)"
         else
-            printf "✓ Environment file: .env (configured)\n"
+            _status_row ".env:" "present"
         fi
     else
-        printf "⚠ Environment file: .env not found\n"
+        _status_row ".env:" "${DIM}missing${RESET}"
     fi
 
-    # Dev/test runner environment (non-invasive diagnostics)
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
-    if [[ -d "$testenv_venv" ]]; then
-        printf "✓ Test runner: %s\n" "$testenv_venv"
-        if [[ -x "$testenv_venv/bin/python" ]]; then
-            local test_py_version
-            test_py_version="$("$testenv_venv/bin/python" --version 2>&1 | awk '{print $2}')"
-            printf "  Test runner Python: %s\n" "$test_py_version"
-            if "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1; then
-                printf "  ✓ pytest: installed\n"
-            else
-                printf "  ⚠ pytest: missing\n"
-                printf "    Install with: pyve test (interactive) or pyve testenv --install -r requirements-dev.txt\n"
-            fi
+    # project-guide: look for the binary in the project environment.
+    local backend env_path pg_info
+    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    env_path=""
+    if [[ "$backend" == "venv" ]]; then
+        local venv_dir
+        venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
+        env_path="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+    elif [[ "$backend" == "micromamba" ]]; then
+        local env_name
+        env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+        [[ -n "$env_name" ]] && env_path=".pyve/envs/$env_name"
+    fi
+    if [[ -n "$env_path" ]] && [[ -x "$env_path/bin/project-guide" ]]; then
+        pg_info="$("$env_path/bin/project-guide" --version 2>/dev/null | head -1 | awk '{print $NF}')"
+        if [[ -n "$pg_info" ]]; then
+            _status_row "project-guide:" "installed (v${pg_info})"
         else
-            printf "  ⚠ Test runner Python: not found\n"
+            _status_row "project-guide:" "installed"
         fi
     else
-        printf "⚠ Test runner: not found\n"
-        printf "  Create with: pyve testenv --init (or run: pyve test)\n"
+        _status_row "project-guide:" "${DIM}not installed${RESET}"
     fi
-    
+
+    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
+    if [[ -d "$testenv_venv" ]]; then
+        if [[ -x "$testenv_venv/bin/python" ]] && \
+           "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
+            _status_row "testenv:" "present, pytest installed"
+        elif [[ -x "$testenv_venv/bin/python" ]]; then
+            _status_row "testenv:" "present, pytest ${DIM}not installed${RESET}"
+        else
+            _status_row "testenv:" "present (${DIM}broken${RESET})"
+        fi
+    else
+        _status_row "testenv:" "${DIM}not present${RESET}"
+    fi
+
     printf "\n"
+}
+
+#============================================================
+# Check Command (Story H.e.3)
+#============================================================
+
+# `pyve check` — read-only diagnostics. Replaces the semantic of
+# `pyve validate` (structured 0/1/2 exit codes for CI) and most
+# of `pyve doctor` (per-problem findings with one actionable
+# next-step). State reporting is H.e.4 (`pyve status`), not here.
+#
+# Spec: docs/specs/phase-H-check-status-design.md §3.
+#
+# Severity ladder: info (no effect) → pass (✓) → warn (⚠, exit 2)
+# → error (✗, exit 1). Escalation is one-way: an error later in
+# the run cannot be downgraded; a warning cannot downgrade an
+# error.
+check_command() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -*)
+                unknown_flag_error "check" "$1" --help
+                ;;
+            *)
+                log_error "pyve check takes no positional arguments (got: $1)"
+                log_error "See: pyve check --help"
+                exit 1
+                ;;
+        esac
+    done
+
+    local errors=0
+    local warnings=0
+    local passed=0
+    local exit_code=0
+
+    _check_pass() {
+        printf "✓ %s\n" "$1"
+        passed=$((passed + 1))
+    }
+    _check_warn() {
+        printf "⚠ %s\n" "$1"
+        [[ -n "${2:-}" ]] && printf "  %s\n" "$2"
+        warnings=$((warnings + 1))
+        if (( exit_code != 1 )); then
+            exit_code=2
+        fi
+    }
+    _check_fail() {
+        printf "✗ %s\n" "$1"
+        [[ -n "${2:-}" ]] && printf "  %s\n" "$2"
+        errors=$((errors + 1))
+        exit_code=1
+    }
+
+    printf "Pyve Environment Check\n"
+    printf "======================\n\n"
+
+    # --- Check 1: .pyve/config present ------------------------------------
+    if ! config_file_exists; then
+        _check_fail "Configuration: .pyve/config missing" "→ Run: pyve init"
+        _check_summary_and_exit
+    fi
+    _check_pass "Configuration: .pyve/config"
+
+    # --- Check 3: backend configured --------------------------------------
+    # (Check 2 slots below — runs after we know the backend so we can
+    # point the user at either `pyve update` or `pyve init --force` as
+    # appropriate.)
+    local backend
+    backend="$(read_config_value "backend")"
+    if [[ -z "$backend" ]]; then
+        _check_fail "Backend: not configured in .pyve/config" \
+            "→ Run: pyve init --backend venv|micromamba"
+        _check_summary_and_exit
+    fi
+    _check_pass "Backend: $backend"
+
+    # --- Check 2: pyve_version drift --------------------------------------
+    local recorded_version
+    recorded_version="$(read_config_value "pyve_version")"
+    if [[ -z "$recorded_version" ]]; then
+        _check_warn "Pyve version: not recorded (legacy project)" \
+            "→ Run: pyve update"
+    else
+        case "$(compare_versions "$recorded_version" "$VERSION")" in
+            equal)
+                _check_pass "Pyve version: $recorded_version (current)"
+                ;;
+            less)
+                _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
+                    "→ Run: pyve update"
+                ;;
+            greater)
+                _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
+                    "→ Upgrade pyve or re-initialize the project"
+                ;;
+        esac
+    fi
+
+    # --- Backend-specific checks ------------------------------------------
+    local env_path=""
+    if [[ "$backend" == "venv" ]]; then
+        local venv_dir
+        venv_dir="$(read_config_value "venv.directory")"
+        venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+        env_path="$venv_dir"
+        _check_venv_backend "$env_path"
+    elif [[ "$backend" == "micromamba" ]]; then
+        local env_name
+        env_name="$(read_config_value "micromamba.env_name")"
+        if [[ -n "$env_name" ]]; then
+            env_path=".pyve/envs/$env_name"
+        fi
+        _check_micromamba_backend "$env_path" "$env_name"
+    else
+        _check_fail "Backend: unknown value '$backend'" \
+            "→ Run: pyve init --backend venv|micromamba"
+    fi
+
+    # --- Common integration checks ----------------------------------------
+    # Check 9: .envrc
+    if [[ -f ".envrc" ]]; then
+        _check_pass "direnv: .envrc present"
+    else
+        _check_warn ".envrc: missing" "→ Run: pyve init --force"
+    fi
+
+    # Check 10: .env
+    if [[ -f ".env" ]]; then
+        _check_pass ".env: present"
+    else
+        _check_warn ".env: missing" "→ Run: touch .env"
+    fi
+
+    # Check 16: testenv (conditional — only warn if exists but broken)
+    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
+    if [[ -d "$testenv_venv" ]]; then
+        if [[ -x "$testenv_venv/bin/python" ]] && \
+           "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
+            _check_pass "testenv: pytest installed"
+        else
+            _check_warn "testenv: present but pytest not installed" \
+                "→ Run: pyve test"
+        fi
+    fi
+
+    _check_summary_and_exit
+}
+
+# Per-backend helpers. These escalate via the outer _check_* closures and
+# consult the outer-scoped env_path.
+
+_check_venv_backend() {
+    local venv_dir="$1"
+
+    # Check 5: venv directory + python executable.
+    if [[ ! -d "$venv_dir" ]]; then
+        _check_fail "Environment: $venv_dir (missing)" "→ Run: pyve init --force"
+        return 0
+    fi
+    if [[ ! -x "$venv_dir/bin/python" ]]; then
+        _check_fail "Environment: $venv_dir/bin/python (missing or not executable)" \
+            "→ Run: pyve init --force"
+        return 0
+    fi
+    _check_pass "Environment: $venv_dir"
+
+    # Python version (informational for now; full version-match gate
+    # against .tool-versions / .python-version is deferred to a
+    # follow-up H.e.3 polish).
+    local py_version
+    py_version="$("$venv_dir/bin/python" --version 2>&1 | awk '{print $2}')"
+    if [[ -n "$py_version" ]]; then
+        _check_pass "Python: $py_version"
+    fi
+
+    # Check 7: venv path mismatch (relocated project).
+    local path_output
+    path_output="$(doctor_check_venv_path "$venv_dir")"
+    if [[ -n "$path_output" ]]; then
+        _check_fail "Environment: venv path mismatch (project may have been relocated)" \
+            "→ Run: pyve init --force"
+    fi
+
+    # Check 13: duplicate dist-info.
+    local dup_output
+    dup_output="$(doctor_check_duplicate_dist_info "$venv_dir")"
+    if [[ "$dup_output" == *"Duplicate dist-info detected"* ]]; then
+        _check_fail "Environment: duplicate dist-info directories detected" \
+            "→ Run: pyve init --force"
+    fi
+
+    # Check 14: cloud sync collision artifacts.
+    local collision_output
+    collision_output="$(doctor_check_collision_artifacts "$venv_dir")"
+    if [[ "$collision_output" == *"Cloud sync collision artifacts detected"* ]]; then
+        _check_fail "Environment: cloud sync collision artifacts detected" \
+            "→ Move the project outside a cloud-synced directory, then: pyve init --force"
+    fi
+}
+
+_check_micromamba_backend() {
+    local env_path="$1"
+    local env_name="$2"
+
+    # Check 4: micromamba binary available.
+    if ! check_micromamba_available; then
+        _check_fail "Backend: micromamba binary not found" \
+            "→ Run: pyve init   (triggers bootstrap)"
+        return 0
+    fi
+    _check_pass "Micromamba: available"
+
+    # Check: environment.yml present.
+    if [[ ! -f "environment.yml" ]]; then
+        _check_fail "environment.yml: missing" \
+            "→ Run: pyve init --backend micromamba"
+        return 0
+    fi
+    _check_pass "environment.yml: present"
+
+    # Check 11 / 12: conda-lock.yml present and fresh.
+    if [[ ! -f "conda-lock.yml" ]]; then
+        _check_warn "conda-lock.yml: missing" "→ Run: pyve lock"
+    elif is_lock_file_stale; then
+        _check_warn "conda-lock.yml: stale (older than environment.yml)" \
+            "→ Run: pyve lock"
+    else
+        _check_pass "conda-lock.yml: up to date"
+    fi
+
+    # Check 5: environment directory exists.
+    if [[ -z "$env_path" ]] || [[ ! -d "$env_path" ]]; then
+        _check_fail "Environment: $env_path (missing)" "→ Run: pyve init --force"
+        return 0
+    fi
+    if [[ ! -x "$env_path/bin/python" ]]; then
+        _check_fail "Environment: $env_path/bin/python (missing or not executable)" \
+            "→ Run: pyve init --force"
+        return 0
+    fi
+    _check_pass "Environment: $env_path"
+
+    # Python version (informational).
+    local py_version
+    py_version="$("$env_path/bin/python" --version 2>&1 | awk '{print $2}')"
+    if [[ -n "$py_version" ]]; then
+        _check_pass "Python: $py_version"
+    fi
+
+    # Check 13 / 14 / 15 reuse the existing helpers.
+    local dup_output
+    dup_output="$(doctor_check_duplicate_dist_info "$env_path")"
+    if [[ "$dup_output" == *"Duplicate dist-info detected"* ]]; then
+        _check_fail "Environment: duplicate dist-info directories detected" \
+            "→ Run: pyve init --force"
+    fi
+
+    local collision_output
+    collision_output="$(doctor_check_collision_artifacts "$env_path")"
+    if [[ "$collision_output" == *"Cloud sync collision artifacts detected"* ]]; then
+        _check_fail "Environment: cloud sync collision artifacts detected" \
+            "→ Move the project outside a cloud-synced directory, then: pyve init --force"
+    fi
+
+    local native_output
+    native_output="$(doctor_check_native_lib_conflicts "$env_path")"
+    if [[ "$native_output" == *"Potential native library conflict"* ]]; then
+        _check_warn "Environment: potential pip/conda native library conflict" \
+            "→ Add the missing OpenMP package to environment.yml, then: pyve lock"
+    fi
+}
+
+_check_summary_and_exit() {
+    printf "\n"
+    printf "%d passed, %d warnings, %d errors\n" "$passed" "$warnings" "$errors"
+    exit "$exit_code"
 }
 
 #============================================================
@@ -2228,9 +2633,7 @@ update_command() {
                 shift
                 ;;
             -*)
-                log_error "Unknown option: $1"
-                log_error "See: pyve update --help"
-                exit 1
+                unknown_flag_error "update" "$1" --no-project-guide --help
                 ;;
             *)
                 log_error "pyve update takes no positional arguments (got: $1)"
@@ -2338,8 +2741,11 @@ run_lock() {
                 check_mode=true
                 shift
                 ;;
+            -*)
+                unknown_flag_error "lock" "$1" --check --help
+                ;;
             *)
-                log_error "Unknown option: $1"
+                log_error "pyve lock takes no positional arguments (got: $1)"
                 log_error "Usage: pyve lock [--check]"
                 exit 1
                 ;;
@@ -2457,6 +2863,43 @@ legacy_flag_error() {
 }
 
 #------------------------------------------------------------
+# Unknown-flag error with closest-match suggestion (H.e.9d).
+#
+#   unknown_flag_error <subcommand> <bad_flag> <valid_flag1> [<valid_flag2> ...]
+#
+# Picks the single closest valid flag by Levenshtein distance
+# (via `_edit_distance` in lib/ui.sh). Emits "Did you mean X?"
+# only when distance <= 3; for more distant typos it omits the
+# hint to avoid suggesting an unrelated flag.
+#
+# Every line is an ERROR: line so scripts grepping stderr see
+# a coherent block. Always exits 1.
+#------------------------------------------------------------
+unknown_flag_error() {
+    local subcommand="$1"; shift
+    local bad_flag="$1"; shift
+
+    local best_match=""
+    local best_dist=999
+    local flag dist
+    for flag in "$@"; do
+        dist="$(_edit_distance "$bad_flag" "$flag")"
+        if (( dist < best_dist )); then
+            best_dist=$dist
+            best_match=$flag
+        fi
+    done
+
+    log_error "'pyve $subcommand' does not accept '$bad_flag'."
+    if (( best_dist <= 3 )) && [[ -n "$best_match" ]]; then
+        log_error "  Did you mean: '$best_match'?"
+    fi
+    log_error "  Valid flags for 'pyve $subcommand': $*"
+    log_error "  See: pyve $subcommand --help"
+    exit 1
+}
+
+#------------------------------------------------------------
 # Per-subcommand help blocks (Story G.b.2 / FR-G4).
 #
 # Each renamed subcommand gets a focused man-page-style help
@@ -2561,6 +3004,63 @@ See `pyve --help` for the full command list.
 EOF
 }
 
+show_status_help() {
+    cat << 'EOF'
+pyve status - Show a snapshot of the current project environment
+
+Usage:
+  pyve status
+
+Description:
+  Prints an at-a-glance summary of how this project is set up:
+  backend, Python version, environment location, package count, and
+  integration state (direnv, .env, project-guide, testenv).
+
+  pyve status is read-only and never produces a non-zero exit code
+  based on findings — if something looks wrong, use 'pyve check'.
+
+Output respects NO_COLOR=1 (https://no-color.org) — set it to strip
+ANSI escapes without changing the layout.
+
+See also:
+  pyve check             Diagnose problems and suggest fixes
+  pyve --help            Full command list
+EOF
+}
+
+show_check_help() {
+    cat << 'EOF'
+pyve check - Diagnose environment problems and suggest fixes
+
+Usage:
+  pyve check
+
+Description:
+  Runs a set of read-only diagnostics against the current project and
+  reports findings. Every failure includes exactly one command that
+  will move the project toward a working state — no chains, no
+  references to other commands.
+
+  For a read-only snapshot of current state (no diagnostics), use
+  'pyve status' instead (coming in a later release).
+
+Exit codes:
+  0    All checks passed.
+  1    One or more errors — environment is broken for 'pyve run' / 'pyve test'.
+  2    Warnings only — environment works but is drifting.
+
+Notes:
+  - pyve check is safe to run in CI (no side effects, stable exit codes).
+  - pyve check does not auto-remediate. For the auto-fix story, see
+    the future 'pyve check --fix' (tracked in stories.md Phase I).
+
+See also:
+  pyve doctor            Legacy diagnostics (superseded by 'pyve check')
+  pyve validate          Legacy CI gate (superseded by 'pyve check')
+  pyve --help            Full command list
+EOF
+}
+
 show_update_help() {
     cat << 'EOF'
 pyve update - Non-destructive upgrade: refresh managed files and config
@@ -2597,21 +3097,25 @@ See also:
 EOF
 }
 
-show_validate_help() {
+show_python_help() {
     cat << 'EOF'
-pyve validate - Validate Pyve installation and configuration
+pyve python - Manage the project's Python version pin
 
 Usage:
-  pyve validate
+  pyve python set <version>
+  pyve python show
 
-Description:
-  Checks version compatibility, .pyve/config structure, backend setup,
-  and environment health. Useful as a pre-build gate in CI.
+Subcommands:
+  set <version>     Pin the project's Python version (format: #.#.#)
+                    Writes to .tool-versions (asdf) or .python-version (pyenv)
+  show              Print the currently pinned Python version
 
-Exit codes:
-  0    All validations passed
-  1    Errors found (e.g., missing venv, invalid backend)
-  2    Warnings only (e.g., version mismatch)
+Examples:
+  pyve python set 3.13.7
+  pyve python show
+
+Legacy command (accepted in v1.x; deprecated in v2.0, removed in v3.0):
+  pyve python-version <version>    (use: pyve python set <version>)
 
 See `pyve --help` for the full command list.
 EOF
@@ -2620,6 +3124,9 @@ EOF
 show_python_version_help() {
     cat << 'EOF'
 pyve python-version - Set Python version without creating an environment
+
+  LEGACY — accepted in v1.x; deprecated in v2.0, removed in v3.0.
+  Use `pyve python set <version>` instead.
 
 Usage:
   pyve python-version <version>
@@ -2772,16 +3279,28 @@ main() {
             legacy_flag_error "--purge" "purge"
             ;;
         --validate)
-            legacy_flag_error "--validate" "validate"
+            legacy_flag_error "--validate" "check"
             ;;
         --python-version)
-            legacy_flag_error "--python-version" "python-version <ver>"
+            legacy_flag_error "--python-version" "python set <ver>"
             ;;
         --install)
             legacy_flag_error "--install" "self install"
             ;;
         --uninstall)
             legacy_flag_error "--uninstall" "self uninstall"
+            ;;
+        # Added in v2.0 (H.e.9) — top-level flag forms catch
+        # users who instinctively reach for a flag when the
+        # corresponding subcommand is the actual shape.
+        --update)
+            legacy_flag_error "--update" "update"
+            ;;
+        --doctor)
+            legacy_flag_error "--doctor" "check"
+            ;;
+        --status)
+            legacy_flag_error "--status" "status"
             ;;
         # Short aliases removed in v1.11.0 (Decision D1)
         -i)
@@ -2817,17 +3336,8 @@ main() {
             purge "$@"
             ;;
         validate)
-            shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_validate_help
-                exit 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:validate %s\n' "$*"
-                exit 0
-            fi
-            run_full_validation
-            exit $?
+            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
+            legacy_flag_error "validate" "check"
             ;;
         update)
             shift
@@ -2851,7 +3361,23 @@ main() {
                 printf 'DISPATCH:python-version %s\n' "$*"
                 exit 0
             fi
+            # Legacy command — delegate-with-warning (H.e.7).
+            # Removed in v3.0 per H.d §5 D3.
+            deprecation_warn "python-version" \
+                "pyve python-version" "pyve python set"
             set_python_version_only "$@"
+            ;;
+        python)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_python_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:python %s\n' "$*"
+                exit 0
+            fi
+            python_command "$@"
             ;;
         self)
             shift
@@ -2876,7 +3402,32 @@ main() {
             run_lock "$@"
             ;;
         doctor)
-            doctor_command
+            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
+            legacy_flag_error "doctor" "check"
+            ;;
+        check)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_check_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:check %s\n' "$*"
+                exit 0
+            fi
+            check_command "$@"
+            ;;
+        status)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_status_help
+                exit 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:status %s\n' "$*"
+                exit 0
+            fi
+            status_command "$@"
             ;;
 
         *)

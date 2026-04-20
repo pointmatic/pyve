@@ -300,8 +300,8 @@ def test_venv_init_creates_directory(pyve, test_project):
     assert (test_project / '.venv' / 'bin' / 'python').exists()
 
 @pytest.mark.parametrize('backend', ['venv', 'micromamba'])
-def test_doctor_works_for_both_backends(pyve, test_project, backend):
-    """Test doctor works for both backends"""
+def test_check_runs_for_both_backends(pyve, test_project, backend):
+    """Test `pyve check` runs cleanly for both backends"""
     if backend == 'micromamba':
         (test_project / 'environment.yml').write_text("""
 name: test
@@ -311,10 +311,13 @@ dependencies:
         pyve.init(backend=backend, auto_bootstrap=True)
     else:
         pyve.init(backend=backend)
-    
-    result = pyve.doctor()
-    assert result.returncode == 0
-    assert f'Backend: {backend}' in result.stdout
+
+    # `check` exit codes: 0 = all pass, 1 = errors, 2 = warnings only.
+    # An init'd project typically has warnings (e.g., missing .env),
+    # so accept 0 or 2; anything else means check itself is broken.
+    result = pyve.run("check", check=False)
+    assert result.returncode in (0, 2)
+    assert "Pyve Environment Check" in result.stdout
 ```
 
 **Key points:**

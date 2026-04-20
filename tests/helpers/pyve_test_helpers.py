@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -296,20 +296,7 @@ class PyveRunner:
                 args.extend([flag, str(value)])
         
         return self.run(*args, **subprocess_opts)
-    
-    def doctor(self, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
-        """
-        Run pyve doctor.
-        
-        Args:
-            check: If True, raise CalledProcessError on non-zero exit (default: True)
-            **kwargs: Additional arguments passed to run()
-        
-        Returns:
-            CompletedProcess instance
-        """
-        return self.run('doctor', check=check, **kwargs)
-    
+
     def run_cmd(self, *cmd_args: str, **kwargs) -> subprocess.CompletedProcess:
         """
         Run pyve run <cmd>.

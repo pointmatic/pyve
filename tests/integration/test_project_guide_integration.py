@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -467,17 +467,17 @@ class TestRealInstall:
         assert result1.returncode == 0, f"first pyve init failed: {result1.stderr}"
         assert _project_guide_importable(test_project)
 
-        # Second run — idempotent no-op on the install step
+        # Second run — lightweight `pyve update` (H.e.9a: replaces the
+        # v1 `init --update` path that was removed in v2.0).
         t2 = time.time()
-        result2 = pyve.run("init", "--update", timeout=60)
+        result2 = pyve.run("update", timeout=60)
         t3 = time.time()
         second_duration = t3 - t2
-        assert result2.returncode == 0, f"second pyve init failed: {result2.stderr}"
-        # NOTE: --update mode skips the post-init hook entirely per G.c design.
-        # What we're actually validating with this test is that the helper
-        # idempotency path (when it IS called via --force or fresh init) doesn't
-        # re-pip-install. For a stricter test we'd need to call the helper
-        # directly; this one at least asserts --update is fast.
+        assert result2.returncode == 0, f"pyve update failed: {result2.stderr}"
+        # `pyve update` refreshes managed files + project-guide scaffolding but
+        # never rebuilds the venv. What we validate here is that the second
+        # run is substantially faster than the first (real init), proving the
+        # idempotency path doesn't re-pip-install.
         assert second_duration < first_duration, (
             f"second run ({second_duration:.1f}s) should be faster than "
             f"first ({first_duration:.1f}s)"

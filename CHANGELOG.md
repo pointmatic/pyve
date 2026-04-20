@@ -5,6 +5,322 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-04-19
+
+Phase H's CLI-unification arc lands. This release rewires the top-level command surface for consistency (one grammar, not two), cuts `doctor` and `validate` in favor of `check` + `status`, and locks in a deliberate deprecation path for every rename introduced during H.e.
+
+See [docs/site/migration.md](docs/site/migration.md) for a tactical upgrade guide; see [docs/specs/phase-H-cli-refactor-design.md](docs/specs/phase-H-cli-refactor-design.md) and [docs/specs/phase-H-check-status-design.md](docs/specs/phase-H-check-status-design.md) for the design rationale.
+
+### BREAKING CHANGES
+
+- **`pyve doctor` removed.** Replaced by `pyve check` (diagnostics, 0/1/2 CI-safe exit codes) and `pyve status` (read-only state dashboard). Typing `pyve doctor` now prints a migration error and exits 1. (H.e.8a, superseding H.e.8's delegate-with-warning.)
+- **`pyve validate` removed.** Also replaced by `pyve check`. Typing `pyve validate` prints a migration error and exits 1. (H.e.8a.)
+- **`pyve init --update` removed.** Replaced by the new top-level `pyve update` subcommand (shipped in v1.16.0). Migration is deliberate — `pyve update` has broader semantics (config bump + managed-files refresh + project-guide refresh) than the old flag's narrow config-version bump; silent delegation would surprise scripted callers. (H.e.9.)
+- **New legacy-flag catches added** for flag-form invocations that never existed but that users might instinctively reach for: `pyve --update`, `pyve --doctor`, `pyve --status` each error with a migration message pointing at the correct subcommand. (H.e.9.)
+
+### Added
+
+- **`pyve update`** — non-destructive upgrade path (v1.16.0, H.e.2): refresh `.pyve/config` version, managed files (`.gitignore`, `.vscode/settings.json`), and `project-guide` scaffolding. Never rebuilds the venv — use `pyve init --force` for that.
+- **`pyve check`** — diagnostics + remediation (v1.17.0, H.e.3): 20 checks with 0/1/2 CI-safe exit codes.
+- **`pyve status`** — state dashboard (v1.18.0, H.e.4): sectioned read-only view of the project environment.
+- **`pyve testenv init | install | purge`** — nested subcommand grammar for testenv (v1.19.0, H.e.5). Flag forms (`--init` / `--install` / `--purge`) still work with a deprecation warning (see below).
+- **`pyve python set <ver>` / `pyve python show`** — nested subcommand grammar for the Python-version pin (v1.20.0, H.e.6). Legacy `pyve python-version <ver>` still works with a deprecation warning.
+
+### Deprecated (still works in v2.x; removed in v3.0)
+
+The following forms continue to work in v2.x but emit a one-shot deprecation warning to stderr on first use. Scripts that invoke them in a loop stay readable — warnings fire once per invocation, not once per call.
+
+- `pyve testenv --init` → use `pyve testenv init` (H.e.7).
+- `pyve testenv --install [-r <file>]` → use `pyve testenv install [-r <file>]` (H.e.7).
+- `pyve testenv --purge` → use `pyve testenv purge` (H.e.7).
+- `pyve python-version <ver>` → use `pyve python set <ver>` (H.e.7).
+
+### Migration table
+
+| v1.x form | v2.0 form | v2.0 behavior |
+|---|---|---|
+| `pyve doctor` | `pyve check` | Hard error, exit 1 |
+| `pyve validate` | `pyve check` | Hard error, exit 1 |
+| `pyve init --update` | `pyve update` | Hard error, exit 1 |
+| `pyve --update` | `pyve update` | Hard error, exit 1 |
+| `pyve --doctor` | `pyve check` | Hard error, exit 1 |
+| `pyve --status` | `pyve status` | Hard error, exit 1 |
+| `pyve testenv --init` | `pyve testenv init` | Works + deprecation warning |
+| `pyve testenv --install` | `pyve testenv install` | Works + deprecation warning |
+| `pyve testenv --purge` | `pyve testenv purge` | Works + deprecation warning |
+| `pyve python-version <ver>` | `pyve python set <ver>` | Works + deprecation warning |
+
+### Changed
+
+- `VERSION` bumped to `2.0.0` in [pyve.sh](pyve.sh).
+- Dead code removed: `doctor_command()`, `show_validate_help()`, `run_full_validation()` / `_escalate()`, and the `PYVE_REINIT_MODE="update"` branch inside `init()` — all rendered unreachable by the above changes (H.e.8a, H.e.9).
+
+### Internal
+
+- New `lib/ui.sh` module (v1.15.0, H.e.1) with colors, symbols, rounded-corner boxes, and shared prompt helpers. Ported from `gitbetter` verbatim; enhanced with `NO_COLOR=1` support.
+- `deprecation_warn()` helper in [lib/ui.sh](lib/ui.sh): once-per-invocation-per-key stderr warning. bash-3.2-safe (H.e.7a).
+- `legacy_flag_error()` catch list extended to 9 entries in [pyve.sh](pyve.sh).
+
+## [1.20.0] - 2026-04-18
+
+### Added — `pyve python set <ver>` and `pyve python show` (Story H.e.6)
+
+Adds the `python` nested subcommand namespace, ratifying H.d Decision D1 in [docs/specs/phase-H-cli-refactor-design.md §4.2](docs/specs/phase-H-cli-refactor-design.md). Two subcommands in this release:
+
+- **`pyve python set <version>`** — identical semantics to `pyve python-version <version>`: pins the project's Python via asdf / pyenv (writes `.tool-versions` or `.python-version`).
+- **`pyve python show`** — NEW capability: reads the currently pinned Python version and prints it along with its source (`.tool-versions` / `.python-version` / `.pyve/config`). Returns "not pinned" message when no pin is set. Read-only; never installs or modifies anything.
+
+**Why the nested grammar (D1 rationale):**
+
+- `python-version` was the only hyphenated top-level subcommand in pyve — inconsistent with `init`, `purge`, `lock`, etc.
+- Renaming directly to `python` would collide with the name of the underlying tool (`pyve python` — is that "pyve's python subcommand" or "run python via pyve"?). Nesting with an action verb (`set` / `show`) disambiguates.
+- Leaves room for future `pyve python list` / `pyve python available` without another rename.
+
+**Deprecation schedule (per H.d §5, D1):**
+
+- **v1.x (this release):** Both `pyve python set <ver>` and `pyve python-version <ver>` work. No warnings.
+- **v2.0:** `python-version` delegates to `python set` with a deprecation warning.
+- **v3.0:** `python-version` removed (hard error via `legacy_flag_error`).
+
+### Added — `show_python_help()` + top-level `--help` entries
+
+- New `show_python_help()` function documents the `set` / `show` subcommands and calls out the legacy `python-version` form with its v3.0 removal timeline.
+- `pyve --help` now lists `python set <ver>` and `python show` under the Environment section, with a note that the legacy `python-version` form is still accepted.
+
+### Tests
+
+- **`tests/unit/test_python_command.bats` — 16 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - `PYVE_DISPATCH_TRACE` emits `DISPATCH:python <args>`.
+  - `pyve python` with no subcommand exits 1 actionably.
+  - Unknown subcommand exits 1 actionably.
+  - `python set` without a version exits 1 with usage guidance.
+  - `python set` with invalid version formats (`3.13.7.1`, `abc`) exits 1.
+  - `python show` on a fresh directory reports "not pinned" and exits 0.
+  - `python show` reads `.tool-versions` / `.python-version` correctly.
+  - `python show` prefers `.tool-versions` over `.python-version` (same precedence as `pyve init`).
+  - Legacy `pyve python-version` still validates args and still has `--help`.
+  - Top-level `pyve --help` references the new grammar.
+- All 550 Bats unit tests pass (534 prior + 16 new).
+
+### Changed — `set_python_version_only()` error messages
+
+The function is still invoked by the legacy `python-version` dispatch path AND the new `python set` path. Error messages now point at `pyve python set <version>` as the usage example. The legacy `pyve python-version <version>` path still works — only the error text guides new users toward the new grammar.
+
+### Unchanged in this release
+
+- `pyve python-version <ver>` — still works end-to-end in v1.x.
+- All asdf / pyenv integration logic (`detect_version_manager`, `ensure_python_version_installed`, `set_local_python_version`). This sub-story is a rename + addition, not a rewrite.
+
+---
+
+## [1.19.0] - 2026-04-18
+
+### Added — `pyve testenv init | install | purge` subcommand grammar (Story H.e.5)
+
+Normalizes the `testenv` sub-surface to match top-level pyve grammar (`pyve init`, `pyve purge`, etc.). Implements H.d Decision D5 from [docs/specs/phase-H-cli-refactor-design.md §4.4](docs/specs/phase-H-cli-refactor-design.md).
+
+Before this release, `testenv` used two grammars:
+
+```
+pyve testenv --init / --install / --purge    (flag form; inconsistent with top-level)
+pyve testenv run <cmd>                        (subcommand form)
+```
+
+Now both forms are accepted; the new subcommand form is the preferred grammar going forward:
+
+```
+pyve testenv init
+pyve testenv install [-r requirements-dev.txt]
+pyve testenv purge
+pyve testenv run <cmd> [args...]
+```
+
+**Deprecation schedule** (per H.d §5):
+
+- **v1.x (this release):** Both forms accepted. No warnings. Scripts that use the flag form keep working unchanged.
+- **v2.0 (coming):** Flag forms emit a deprecation warning and delegate to the new form.
+- **v3.0:** Flag forms removed (hard error).
+
+### Changed — `pyve testenv --help` and top-level `pyve --help`
+
+- `pyve testenv --help` usage block now shows the new subcommand grammar as primary. The flag forms are listed under a "Legacy flag forms" subsection with the v3.0 removal timeline.
+- `pyve --help` testenv line updated from `--init | --install [-r <req>] | --purge | run <cmd>` to `init | install [-r <req>] | purge | run <cmd>` with a note that the old flag forms are still accepted.
+
+### Tests
+
+- **`tests/unit/test_testenv_grammar.bats` — 13 new tests** covering:
+  - Each new subcommand form (`init`, `install`, `purge`) routes to the correct action.
+  - Each legacy flag form (`--init`, `--install`, `--purge`) still routes to the same action.
+  - `init` and `--init` reach the identical code path (equivalence check).
+  - `install -r <req>` syntax remains accepted.
+  - `--help` documents both grammars.
+  - `--help` notes the legacy status of the flag forms.
+  - Unknown subcommand / unknown flag both exit 1 with actionable errors.
+  - Top-level `pyve --help` lists the new subcommand grammar.
+- All 534 Bats unit tests pass (521 prior + 13 new).
+
+The tests verify argument **parsing** by asserting on each action's distinctive banner line, so they do not depend on a working `python` / `python -m venv` at test time. Actual testenv-creation paths are covered by the existing integration tests in `tests/integration/test_testenv.py`.
+
+### Unchanged in this release
+
+- `pyve testenv run <cmd>` — already correct subcommand grammar; no change.
+- The `-r` / `--requirements` flag still takes a file argument exactly as before.
+- No deprecation warnings on the flag forms yet — that's v2.0's job per H.d §5.
+
+---
+
+## [1.18.0] - 2026-04-18
+
+### Added — `pyve status` subcommand (Story H.e.4)
+
+Read-only state dashboard. Implements the spec in [docs/specs/phase-H-check-status-design.md §4](docs/specs/phase-H-check-status-design.md). Pairs with `pyve check` (diagnostics + suggested fixes) — `status` reports what is, `check` reports what's wrong.
+
+**Usage:**
+
+```
+pyve status
+```
+
+**Contract (per H.c §4.2):**
+
+- Always exits `0` based on findings. An "environment is broken" reading is `pyve check`'s job, not `status`'s.
+- `1` only for pyve-internal errors (unknown flag, positional arg — same conventions as `update` / `check`).
+- Never prompts. Safe under `</dev/null`. Safe in CI.
+
+**Output layout (sectioned, per H.c §4.3):**
+
+```
+Pyve project status
+───────────────────
+
+Project
+  Path:             <absolute project path>
+  Backend:          venv | micromamba | not configured
+  Pyve config:      v<recorded> (current | current: v<running> | newer than pyve v<running>)
+  Python:           <version> (.tool-versions via asdf | .python-version via pyenv | .pyve/config | not pinned)
+
+Environment
+  # venv backend:
+  Path:             <venv dir> [(missing)]
+  Python:           <version from bin/python --version>
+  Packages:         <N> installed
+  distutils shim:   installed | not installed           (Python 3.12+ venv only)
+
+  # micromamba backend:
+  Name:             <env_name>
+  Path:             .pyve/envs/<env_name> [(missing)]
+  Python:           <version>
+  Packages:         <N> installed                       (from conda-meta/)
+  environment.yml:  present | missing
+  conda-lock.yml:   up to date | stale | missing
+
+Integrations
+  direnv:           .envrc present | .envrc missing
+  .env:             present | present (empty) | missing
+  project-guide:    installed (v<ver>) | installed | not installed
+  testenv:          present, pytest installed | present, pytest not installed | not present
+```
+
+Non-project fallback: when `.pyve/config` is absent, `pyve status` prints the title, a "Not a pyve-managed project" marker, and exits `0`. Users who run `pyve status` in the wrong directory get a friendly answer, not a red error.
+
+**Rendering:** uses the `lib/ui.sh` color/style constants (`BOLD`, `DIM`, `RESET`) — first `pyve.sh`-level adopter of the module shipped in v1.15.0. Respects `NO_COLOR=1` (https://no-color.org): output contains zero ANSI escape sequences, layout unchanged.
+
+### Added — `show_status_help()` + top-level `--help` entry
+
+- `show_status_help()` with the read-only contract, output description, and cross-references to `check` and `--help`.
+- `pyve --help` lists `status` under Diagnostics, directly beneath `check`.
+- `PYVE_DISPATCH_TRACE=1 pyve status` emits `DISPATCH:status <args>`.
+
+### Changed — `pyve.sh` now sources `lib/ui.sh` at startup
+
+The main script now sources `lib/ui.sh` alongside the other lib modules at the top of the file. `status_command` is the first consumer; `update` and `check` migrate in a later adoption pass (tracked under the H.f retrofit scope).
+
+### Tests
+
+- **`tests/unit/test_status.bats` — 25 new tests** covering:
+  - `--help` / `-h` output, read-only-contract wording, and top-level help integration.
+  - Exit-code discipline: always `0` for missing config, missing venv, missing backend; `1` only on unknown flag / positional arg.
+  - Non-project fallback message.
+  - Title + three section headers (Project / Environment / Integrations).
+  - Project section: backend name, recorded pyve version, version drift, "(current)" marker.
+  - Environment section (venv backend): `.venv` path, "(missing)" marker when absent, Python version extraction from `bin/python`.
+  - Integrations section: `.envrc` / `.env` / testenv presence reporting.
+  - Non-prompting invariant (runs cleanly with `</dev/null`).
+  - `NO_COLOR=1` → no ANSI escape sequences in output.
+  - `PYVE_DISPATCH_TRACE` integration.
+- All 521 Bats unit tests pass (496 prior + 25 new).
+
+### Fixed — `set -euo pipefail` interaction with `find` pipelines
+
+`find`'s non-zero exit when the search root is missing, combined with `pipefail`, made several `status` helpers kill the script on a just-init'd venv (no `lib/` dir yet). Fixed the helpers (`_status_env_venv`, `_status_venv_package_count`, `_status_env_micromamba`) by guarding with `[[ -d ... ]]` checks and `|| true` on the pipeline output. No regressions in `pyve doctor`; this bug could only surface through `status`.
+
+---
+
+## [1.17.0] - 2026-04-18
+
+### Added — `pyve check` subcommand (Story H.e.3)
+
+New read-only diagnostic command. Implements the spec in [docs/specs/phase-H-check-status-design.md §3](docs/specs/phase-H-check-status-design.md) and unifies the roles of `pyve doctor` (health diagnostics) and `pyve validate` (CI exit-code gate).
+
+**Usage:**
+
+```
+pyve check
+```
+
+**Exit codes (same contract as `pyve validate`):**
+
+| Code | Meaning |
+|---|---|
+| `0` | All checks passed. |
+| `1` | One or more errors — environment is broken for `pyve run` / `pyve test`. |
+| `2` | Warnings only — environment works but is drifting. Errors never downgraded by subsequent warnings. |
+
+**Diagnostic surface (implemented in v1.17.0):**
+
+- Configuration: `.pyve/config` present and parseable.
+- Pyve version: drift from running `pyve` version (via `compare_versions` — points at `pyve update`).
+- Backend: configured in `.pyve/config`; unknown backend value flagged.
+- venv backend: environment directory + `bin/python` exist; venv path mismatch (relocated project) detection via `doctor_check_venv_path`; duplicate `dist-info` detection; cloud-sync collision artifact detection.
+- micromamba backend: `micromamba` binary available; `environment.yml` present; `conda-lock.yml` present + freshness via `is_lock_file_stale`; environment directory + `bin/python` exist; duplicate `dist-info`, cloud-sync artifact, native-library conflict detection via the existing `doctor_check_*` helpers.
+- Integrations: `.envrc` present; `.env` present.
+- testenv: if present, warn when `pytest` not installed (conditional — absent testenv is not a warning; `pyve test` bootstraps on demand).
+
+Every failure emits exactly one actionable command (no chains, no cross-references to other diagnostic commands — per H.c §3.1).
+
+**Deferred to a follow-up polish pass:**
+
+- Full **active-vs-configured Python version mismatch** gate (H.c Check 6). The venv and micromamba paths already surface `bin/python --version`; the explicit comparison against `.tool-versions` / `.python-version` / config lives in a follow-up.
+- Post-init **distutils shim** verification for Python 3.12+ (H.c Check 8). Needs a new `is_distutils_shim_installed` helper.
+- `pyve check --fix` auto-remediation (H.c C2 — deferred to Phase I; [docs/specs/stories.md](docs/specs/stories.md) "Future" section).
+
+### Added — `show_check_help()` + top-level `--help` entry
+
+- New `show_check_help()` with the usage contract, exit-code semantics, and cross-references to `doctor` / `validate` / `--help`.
+- Top-level `pyve --help` now lists `check` under "Diagnostics". `doctor` and `validate` re-labeled as "Legacy (superseded by `pyve check`)" — actual delegation / deprecation warnings on those old commands land in v2.0 per H.d §5.
+- `PYVE_DISPATCH_TRACE=1 pyve check` emits `DISPATCH:check <args>` for dispatcher debugging.
+
+### Tests
+
+- **`tests/unit/test_check.bats` — 17 new tests** covering:
+  - `--help` / `-h` output and top-level help integration.
+  - Exit-code semantics: 0 (happy path), 1 (errors: missing `.pyve/config`, missing backend, missing venv, missing `bin/python`), 2 (warnings: pyve_version drift, missing `.env`, missing `.envrc`).
+  - Escalation invariant: an error status is never downgraded by a subsequent warning.
+  - Summary footer format.
+  - Actionable-message discipline: failure output contains at least one executable command.
+  - micromamba-specific path: missing `environment.yml` flagged as error.
+  - Unknown-flag handling.
+  - Dispatcher integration (`PYVE_DISPATCH_TRACE`).
+- All 496 Bats unit tests pass (479 prior + 17 new).
+
+### Unchanged in this release
+
+- `pyve doctor` and `pyve validate` still work exactly as before. Delegation-with-warning is planned for v2.0 per the H.d deprecation plan.
+- No code was removed. `check` is additive; the pre-existing `doctor_check_*` helpers in `lib/utils.sh` are reused in place (they serve both `doctor_command` and `check_command`).
+
+---
+
 ## [1.16.1] - 2026-04-18
 
 ### Fixed — `.pyve/envs/` not ignored on venv-init'd projects (Story H.e.2a)

@@ -78,11 +78,9 @@ pyve/
 │   │   ├── test_auto_detection.py
 │   │   ├── test_bootstrap.py
 │   │   ├── test_cross_platform.py
-│   │   ├── test_doctor.py
 │   │   ├── test_reinit.py
 │   │   ├── test_run_command.py
-│   │   ├── test_testenv.py
-│   │   └── test_validate.py
+│   │   └── test_testenv.py
 │   ├── helpers/
 │   │   ├── test_helper.bash         # Bats helper (setup, teardown, assertions, sources all lib modules)
 │   │   └── pyve_test_helpers.py     # pytest helper (PyveRunner, temp project scaffolding)
@@ -112,19 +110,19 @@ pyve/
 
 ### `pyve.sh` — Main Entry Point
 
-The main script handles CLI argument parsing, sources all library modules, and dispatches to the appropriate command handler. All top-level command logic (init, purge, install, uninstall, run, doctor, test, etc.) lives here.
+The main script handles CLI argument parsing, sources all library modules, and dispatches to the appropriate command handler. Top-level command logic (`init`, `purge`, `lock`, `run`, `test`, `testenv`, `check`, `status`, `update`, `python`, `self`) lives here, along with the dispatcher's legacy-flag-catch arms.
 
 **Key globals:**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VERSION` | `"1.1.3"` | Current Pyve version |
+| `VERSION` | `"2.0.0"` | Current Pyve version |
 | `DEFAULT_PYTHON_VERSION` | `"3.14.3"` | Default Python version for new environments |
 | `DEFAULT_VENV_DIR` | `".venv"` | Default venv directory name |
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
 | `TESTENV_DIR_NAME` | `"testenv"` | Dev/test runner environment directory |
 
-**Library sourcing order:** `utils.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`
+**Library sourcing order:** `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and `deprecation_warn` / `delegation_warn`-style helpers.
 
 Each library guards against direct execution and is designed to be sourced only.
 
@@ -154,10 +152,10 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `is_file_empty` | `(filename)` → 0/1 | Returns 0 if file is empty or missing |
 | `check_cloud_sync_path` | `()` | Hard fail if `$PWD` is inside a known cloud-synced directory; bypassed by `PYVE_ALLOW_SYNCED_DIR=1` |
 | `write_vscode_settings` | `(env_name)` | Write `.vscode/settings.json` with interpreter path and IDE isolation settings; skips if exists unless `PYVE_REINIT_MODE=force` |
-| `doctor_check_duplicate_dist_info` | `(env_path)` | Scan `site-packages` for duplicate `.dist-info` dirs; reports conflicting versions with mtimes |
-| `doctor_check_collision_artifacts` | `(env_path)` | Scan environment tree for files/dirs with ` 2` suffix (iCloud Drive collision artifacts) |
-| `doctor_check_native_lib_conflicts` | `(env_path)` | Detect conda/pip OpenMP conflicts: pip-bundled libs (torch/tf/jax) + conda-linked libs (numpy/scipy) + missing `libomp.dylib`/`libgomp.so` |
-| `doctor_check_venv_path` | `(env_path)` | Detect relocated venv: compare `pyvenv.cfg` creation path against actual venv location; warn with remediation if mismatched |
+| `doctor_check_duplicate_dist_info` | `(env_path)` | Scan `site-packages` for duplicate `.dist-info` dirs; reports conflicting versions with mtimes. (Name retained for backport continuity; reused by `check_command` in v2.0.) |
+| `doctor_check_collision_artifacts` | `(env_path)` | Scan environment tree for files/dirs with ` 2` suffix (iCloud Drive collision artifacts). Reused by `check_command`. |
+| `doctor_check_native_lib_conflicts` | `(env_path)` | Detect conda/pip OpenMP conflicts: pip-bundled libs (torch/tf/jax) + conda-linked libs (numpy/scipy) + missing `libomp.dylib`/`libgomp.so`. Reused by `check_command`. |
+| `doctor_check_venv_path` | `(env_path)` | Detect relocated venv: compare `pyvenv.cfg` creation path against actual venv location; warn with remediation if mismatched. Reused by `check_command`. |
 
 **`.gitignore` template structure:**
 ```
@@ -291,9 +289,10 @@ Version comparison, installation validation, and config file management.
 | `validate_installation_structure` | `()` → 0/1 | Check `.pyve/` directory and config |
 | `validate_venv_structure` | `()` → 0/1 | Check venv directory exists |
 | `validate_micromamba_structure` | `()` → 0/1 | Check environment.yml and env directory |
-| `run_full_validation` | `()` → exit code | Full validation report (0=pass, 1=errors, 2=warnings) |
 | `write_config_with_version` | `()` | Create `.pyve/config` with current version |
 | `update_config_version` | `()` | Update version in existing config |
+
+**Note:** `run_full_validation()` was removed in v2.0 (Story H.e.8a) along with the `pyve validate` command. Its 0/1/2 exit-code semantics live on in `check_command` (see [phase-H-check-status-design.md §3.2](phase-H-check-status-design.md)).
 
 ---
 
@@ -303,12 +302,12 @@ Standalone module providing the shared terminal UX primitives used across every 
 
 Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmatic/gitbetter) project — the module contains **no pyve-specific identifiers** (no `pyve_`-prefixed names, no references to backends, `.pyve/config`, or any other pyve concept). Pyve-specific logic lives in the command scripts that call the helpers, not in the helpers themselves. The color palette and symbol set are synchronized with `gitbetter`'s `tech-spec.md` "Shared Constants & Helpers" section; changes to either side require a coordinated update.
 
-**Module contents** (baseline — final signatures settle in H.e):
+**Module contents** (final v2.0 surface):
 
 | Item | Signature | Description |
 |------|-----------|-------------|
-| Color constants | `R` `G` `Y` `B` `C` `M` `DIM` `BOLD` `RESET` | ANSI color codes |
-| Symbols | `CHECK` `CROSS` `ARROW` `WARN` | Pre-colorized status glyphs (`✓` `✗` `▸` `⚠`) |
+| Color constants | `R` `G` `Y` `B` `C` `M` `DIM` `BOLD` `RESET` | ANSI color codes; empty under `NO_COLOR=1` |
+| Symbols | `CHECK` `CROSS` `ARROW` `WARN` | Pre-colorized status glyphs (`✓` `✗` `▸` `⚠`); plain glyphs under `NO_COLOR=1` |
 | `banner` | `(title)` | Section banner in blue + bold |
 | `info` | `(msg)` | Dimmed cyan-arrow line |
 | `success` | `(msg)` | Green-check line |
@@ -318,12 +317,19 @@ Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmati
 | `ask_yn` | `(prompt)` → 0/1 | `[y/N]` prompt, default no |
 | `divider` | `()` | Dimmed horizontal rule |
 | `run_cmd` | `(cmd args…)` | Echoes `$ cmd args…` dimmed, then executes; propagates exit code |
-| `render_header` | `(title)` | Rounded-box cyan + bold header |
-| `render_footer` | `()` | Rounded-box green + bold "✓ All done." footer |
+| `header_box` | `(title)` | Rounded-box cyan + bold header |
+| `footer_box` | `()` | Rounded-box green + bold "✓ All done." footer |
+| `_rename_seen` | `(key)` → 0/1 | Internal: once-per-invocation guard keyed by `<key>`; shared state across the two rename helpers below. bash-3.2 safe (colon-delimited flat string, not `declare -A`). |
+| `deprecation_warn` | `(key, old_form, new_form)` | Single-shot stderr warning for a rename where the old form still runs its own code — user is advised to switch. Prepends `⚠`. (H.e.7.) |
+| `_edit_distance` | `(s1, s2)` → int | Levenshtein distance on stdout. Consumer: `unknown_flag_error()` in `pyve.sh`. bash-3.2-safe flat-array DP. (H.e.9d.) |
 
 **Sourcing.** `pyve.sh` sources `lib/ui.sh` alongside the other `lib/*.sh` modules so UI helpers are available before any command dispatcher runs.
 
-**Delegation from existing `log_*` functions.** The legacy `log_info` / `log_warning` / `log_error` / `log_success` helpers in `utils.sh` are deprecated at v2.0 in favor of `info` / `warn` / `fail` / `success` from `lib/ui.sh`. Removal follows the project's deprecate-in-minor, remove-in-major policy (see the "Deprecation Policy" section in `docs/project-guide/developer/best-practices-guide.md`).
+**bash-3.2 compatibility guard.** `lib/ui.sh` must source cleanly under macOS's system `/bin/bash` (3.2.57). Specifically: no `declare -A` (associative arrays are bash 4+), no `${var^^}` / `${var,,}` case operators, no `readarray`. Locked in by the H.e.7a regression tests at [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) ("source contains no 'declare -A'" + `/bin/bash` sourcing test).
+
+**Backport-discipline guard.** The module contains no pyve-specific identifiers — enforced by a grep test in `test_ui.bats`. Rename-announcement keys passed by callers must be colon-free (delimiter invariant) — also enforced by a grep test.
+
+**Delegation from existing `log_*` functions.** The legacy `log_info` / `log_warning` / `log_error` / `log_success` helpers in `utils.sh` remain in use through v2.x; their replacement by `info` / `warn` / `fail` / `success` from `lib/ui.sh` is tracked in H.f's retrofit work, not completed in H.e.
 
 ---
 
@@ -363,27 +369,35 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 
 ## CLI Design
 
-As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). The legacy flag-style top-level commands (`--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall`) have been **removed**, and the `-i` / `-p` short aliases are **dropped** (Decision D1). Universal flags (`--help`, `--version`, `--config`) remain as flags per CLI convention.
+As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). The v2.0 cut (Phase H, Stories H.e.1 through H.e.9) completed the CLI-unification arc: every verb now has one canonical subcommand form; legacy flag forms either delegate-with-warning (testenv flags, `python-version`) or error out (`doctor`, `validate`, `init --update`). Universal flags (`--help`, `--version`, `--config`) remain as flags per CLI convention.
 
-### Commands
+### Commands (v2.0 surface)
 
 | Command | Description |
 |---------|-------------|
 | `pyve init [dir]` | Initialize Python virtual environment |
 | `pyve purge [dir]` | Remove all Python environment artifacts |
-| `pyve python-version <ver>` | Set Python version without creating an environment |
-| `pyve validate` | Validate Pyve installation structure and version compatibility |
 | `pyve lock [--check]` | Generate/update `conda-lock.yml` for current platform (micromamba only) |
 | `pyve run <cmd> [args]` | Execute command in project environment |
-| `pyve doctor` | Environment diagnostics |
 | `pyve test [args]` | Run pytest in dev/test environment |
-| `pyve testenv --init` | Initialize dev/test environment |
-| `pyve testenv --install [-r]` | Install dev/test dependencies |
-| `pyve testenv --purge` | Remove dev/test environment |
+| `pyve testenv init` | Initialize dev/test environment |
+| `pyve testenv install [-r <file>]` | Install dev/test dependencies |
+| `pyve testenv purge` | Remove dev/test environment |
 | `pyve testenv run <cmd>` | Execute command in dev/test environment |
+| `pyve check` | Diagnose environment problems (CI-safe 0/1/2 exit codes) |
+| `pyve status` | Read-only project-state dashboard (always exit 0) |
+| `pyve update` | Non-destructive upgrade: refresh config + managed files + project-guide; never rebuilds the venv |
+| `pyve python set <ver>` | Pin the project Python version |
+| `pyve python show` | Print the currently pinned Python version + its source |
 | `pyve self install` | Install pyve to `~/.local/bin` |
 | `pyve self uninstall` | Remove pyve from `~/.local/bin` |
 | `pyve self` | Show `self` namespace help (no subcommand → namespace help only) |
+
+**Check vs. status — invariant.** `check` and `status` are intentionally disjoint: `check` surfaces problems with severity-bearing exit codes (0/1/2) and emits one actionable remediation per failure; `status` is a read-only snapshot with always-zero exit (unless pyve itself errors). Each command's `--help` text mirrors this invariant verbatim — the help output is the user-facing contract. If a diagnostic would surface "something looks wrong", it belongs in `check`; if the answer is "what is this project?", it belongs in `status`. See [phase-H-check-status-design.md §2](phase-H-check-status-design.md) for the canonical statement.
+
+**Removed subcommands.** `pyve doctor` and `pyve validate` were hard-removed in v2.0 (Story H.e.8a); typing either produces a migration error pointing at `pyve check`.
+
+**Deprecated subcommand forms (work in v2.x, removed in v3.0).** `pyve testenv --init|--install|--purge` → use the `testenv init|install|purge` subcommand forms; `pyve python-version <ver>` → use `pyve python set <ver>`. Both paths emit a one-shot stderr deprecation warning on first use and delegate to the new form.
 
 ### Universal Flags
 
@@ -400,14 +414,19 @@ Every renamed subcommand responds to `--help` / `-h` with a focused, man-page-st
 ```
 pyve init --help
 pyve purge --help
-pyve validate --help
-pyve python-version --help
+pyve check --help
+pyve status --help
+pyve update --help
+pyve python --help
+pyve python set --help
 pyve self --help
 pyve self install --help
 pyve self uninstall --help
+pyve testenv --help
+pyve lock --help
 ```
 
-The `--help` intercept fires **before** the real handler runs, so help is always fast and side-effect-free. `pyve --help` is reorganized into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*.
+The `--help` intercept fires **before** the real handler runs, so help is always fast and side-effect-free. `pyve --help` is reorganized into four categories: *Environment*, *Execution*, *Diagnostics*, *Self management*. Legacy `pyve doctor --help` / `pyve validate --help` error out like any other attempt to invoke the removed commands.
 
 ### `self` Namespace
 
@@ -428,7 +447,6 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--local-env` | `pyve init` | Copy `~/.local/.env` template |
 | `--no-direnv` | `pyve init` | Skip `.envrc` creation |
 | `--force` | `pyve init` | Purge and re-initialize |
-| `--update` | `pyve init` | Update in-place |
 | `--auto-bootstrap` | `pyve init` | Auto-install micromamba |
 | `--bootstrap-to <loc>` | `pyve init` | Bootstrap location (project/user) |
 | `--strict` | `pyve init` | Enforce lock file validation |
@@ -501,16 +519,28 @@ For step 2, the orchestrator branches on `.project-guide.yml` presence (v1.14.0+
 
 ### Legacy-Flag Error Catch (v1.11.0+, Decision D3 — kept forever)
 
-When a user invokes a removed legacy flag form (`pyve --init`, `pyve --purge`, `pyve --validate`, `pyve --python-version`, `pyve --install`, `pyve --uninstall`, or the `-i` / `-p` short aliases), the dispatcher in `main()` catches it and prints a precise migration error, then exits non-zero:
+When a user invokes a removed legacy flag or subcommand form, the dispatcher in `main()` catches it and prints a precise migration error, then exits non-zero:
 
 ```
 ERROR: 'pyve --init' is no longer supported. Use 'pyve init' instead.
 ERROR: See: pyve --help
 ```
 
-**Why kept forever:** Three lines of code, great error message, zero cost. Users coming from old README snippets, blog posts, third-party tutorials, and LLM training data will hit it for years and get a precise hint instead of an opaque "unknown command" error. Implemented via `legacy_flag_error()` helper in `pyve.sh`, called from the top-level dispatcher `case` block before any subcommand dispatch runs.
+**Catches as of v2.0:**
 
-**No compat shim, no silent translation.** Silent translation hides the rename from users and builds long-term tech debt.
+| Tier | Added | Catches | Target |
+|---|---|---|---|
+| Flag forms | v1.11.0 (G.b.1) | `--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall` | `init`, `purge`, `check`, `python set <ver>`, `self install`, `self uninstall` |
+| Short aliases | v1.11.0 (D1) | `-i`, `-p` | `init`, `purge` |
+| Subcommand forms | v2.0 (H.e.8a) | `doctor`, `validate` | `check` |
+| v2.0 flag forms | v2.0 (H.e.9) | `--update`, `--doctor`, `--status` | `update`, `check`, `status` |
+| `init --update` | v2.0 (H.e.9) | `init --update` | `update` (the separate subcommand) |
+
+**Why kept forever:** Three lines of code per catch, great error message, zero cost. Users coming from old README snippets, blog posts, third-party tutorials, and LLM training data will hit them for years and get a precise hint instead of an opaque "unknown command" error. Implemented via `legacy_flag_error()` helper in `pyve.sh`, called from the top-level dispatcher `case` block before any subcommand dispatch runs.
+
+**Unknown-flag closest-match (H.e.9d).** Distinct from the legacy-flag catches: when a user typos a flag *within* a valid subcommand (`pyve init --forse`), `unknown_flag_error()` in `pyve.sh` suggests the closest valid flag via `_edit_distance()` in `lib/ui.sh`. Suggestion fires only when edit distance ≤ 3; beyond that the error lists the valid-flag set without a "did you mean" line to avoid unrelated hints.
+
+**No compat shim, no silent translation (except for H.e.7 deprecations).** `testenv --init|--install|--purge` and `python-version <ver>` delegate with a one-shot stderr warning through v2.x; hard removal in v3.0. Everything else in the legacy-flag catch list is an immediate error — silent translation would hide the rename from users and build long-term tech debt.
 
 ### Platform Portability
 
@@ -574,7 +604,6 @@ White-box tests that source individual `lib/*.sh` modules and test functions dir
 | `test_backend_detect.bats` | `lib/backend_detect.sh` | — |
 | `test_config_parse.bats` | `lib/utils.sh` (config) | — |
 | `test_distutils_shim.bats` | `lib/distutils_shim.sh` | — |
-| `test_doctor.bats` | `lib/utils.sh` (doctor checks) | — |
 | `test_env_naming.bats` | `lib/micromamba_env.sh` | — |
 | `test_lock_validation.bats` | `lib/micromamba_env.sh` | — |
 | `test_micromamba_bootstrap.bats` | `lib/micromamba_bootstrap.sh` | — |

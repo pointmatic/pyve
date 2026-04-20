@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -64,24 +64,6 @@ class TestNewSubcommandRouting:
         result = pyve.run("purge", "--keep-testenv", input="y\n")
         assert result.returncode == 0
         assert (pyve.cwd / ".pyve" / "testenv").exists()
-
-    @pytest.mark.venv
-    def test_validate_subcommand_runs(self, pyve, project_builder):
-        """`pyve validate` executes the validation report."""
-        pyve.init(backend="venv")
-        result = pyve.run("validate", check=False)
-        # validate exits 0 on pass, 1 on errors, 2 on warnings — all acceptable
-        # here; we only assert the dispatcher reached the handler.
-        assert result.returncode in (0, 1, 2)
-        combined = (result.stdout or "") + (result.stderr or "")
-        assert "validation" in combined.lower() or "backend" in combined.lower()
-
-    def test_validate_subcommand_no_project(self, pyve, test_project):
-        """`pyve validate` on an uninitialized project reports a clean failure."""
-        result = pyve.run("validate", check=False)
-        assert result.returncode == 1
-        combined = (result.stdout or "") + (result.stderr or "")
-        assert "not configured" in combined or "missing" in combined.lower()
 
     def test_python_version_subcommand_sets_version(self, pyve, test_project):
         """`pyve python-version <ver>` writes a .python-version file."""

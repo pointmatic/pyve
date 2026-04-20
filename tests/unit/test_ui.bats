@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
 # Unit tests for lib/ui.sh — shared UI helpers ported from the
@@ -240,6 +240,160 @@ setup() {
     [[ "$output" == *"╭"* ]]
     [[ "$output" == *"╯"* ]]
     [[ "$output" == *"All done."* ]]
+}
+
+#============================================================
+# deprecation_warn — once-per-invocation stderr warning helper
+#   deprecation_warn <key> <old_form> <new_form>
+# See: docs/specs/phase-H-cli-refactor-design.md §5 guardrails.
+#============================================================
+
+@test "ui.sh: deprecation_warn writes to stderr (stdout stays empty)" {
+    # Discard stderr — stdout should be empty.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>/dev/null"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "ui.sh: deprecation_warn message contains both old_form and new_form literal strings" {
+    # Swap fds: stdout → /dev/null, capture stderr as bats output.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve testenv --init"* ]]
+    [[ "$output" == *"pyve testenv init"* ]]
+}
+
+@test "ui.sh: deprecation_warn message does NOT reference --help" {
+    # Per design guardrail: warnings include the exact replacement command,
+    # NOT a --help reference.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--help"* ]]
+}
+
+@test "ui.sh: deprecation_warn prepends the WARN glyph" {
+    run bash -c "NO_COLOR=1; source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"⚠"* ]]
+}
+
+@test "ui.sh: deprecation_warn prints once per key within a single invocation" {
+    # Two calls with the same key — only ONE warning line should appear.
+    run bash -c "source '$UI_PATH'; deprecation_warn k1 'old' 'new'; deprecation_warn k1 'old' 'new' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    # Count occurrences of 'old is deprecated' (or whatever text) — expect 1.
+    local count
+    count=$(printf '%s\n' "$output" | grep -c "old" || true)
+    [ "$count" -eq 1 ]
+}
+
+@test "ui.sh: deprecation_warn prints each distinct key once" {
+    # Two calls with different keys — both should warn.
+    run bash -c "source '$UI_PATH'; { deprecation_warn ka 'oldA' 'newA'; deprecation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+@test "ui.sh: deprecation_warn under NO_COLOR=1 emits no ANSI escape sequences" {
+    run bash -c "export NO_COLOR=1; source '$UI_PATH'; deprecation_warn k1 'pyve testenv --init' 'pyve testenv init' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    ! printf '%s' "$output" | grep -q $'\033'
+    [[ "$output" == *"pyve testenv --init"* ]]
+}
+
+#============================================================
+# bash 3.2 compatibility (H.e.7a regression guard)
+#   macOS /bin/bash is 3.2.57; pyve.sh uses `set -euo pipefail`
+#   and sources lib/ui.sh, so any bash 4+ construct at source
+#   time aborts every pyve invocation.
+#============================================================
+
+@test "ui.sh: sources cleanly under /bin/bash (bash 3.2 compatibility)" {
+    # Capture stderr only; swap fds so stdout is dropped.
+    run /bin/bash -c "source '$UI_PATH' 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "ui.sh: deprecation_warn distinct-keys correctness under /bin/bash" {
+    # Under bash 3.2 with the broken `declare -A` + `[$key]` lookup,
+    # non-integer keys arithmetic-evaluate to index 0 — distinct
+    # string keys collapse, so only the FIRST call warns. This test
+    # catches that regression explicitly.
+    run /bin/bash -c "source '$UI_PATH'; { deprecation_warn ka 'oldA' 'newA'; deprecation_warn kb 'oldB' 'newB'; } 2>&1 >/dev/null"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"oldA"* ]]
+    [[ "$output" == *"oldB"* ]]
+}
+
+@test "ui.sh: source contains no 'declare -A' (bash 3.2 invariant)" {
+    # Associative arrays are bash 4+. macOS /bin/bash is 3.2.
+    run grep -E '^\s*declare\s+-A\b' "$UI_PATH"
+    [ "$status" -eq 1 ]  # grep returns 1 when no match — that's what we want
+}
+
+@test "deprecation_warn: no call site in pyve.sh passes a key containing ':'" {
+    # The once-per-invocation guard uses ':' as its delimiter in
+    # the flat string; any key containing ':' would break the
+    # lookup. Rule: keys stay colon-free forever.
+    local pyve_script="$PYVE_ROOT/pyve.sh"
+    run grep -nE 'deprecation_warn[[:space:]]+"[^"]*:' "$pyve_script"
+    [ "$status" -eq 1 ]  # no match → rule holds
+}
+
+#============================================================
+# _edit_distance — Levenshtein helper (H.e.9d)
+#============================================================
+
+@test "_edit_distance: identical strings return 0" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abc'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "0" ]
+}
+
+@test "_edit_distance: empty-to-non-empty equals the non-empty length" {
+    run bash -c "source '$UI_PATH'; _edit_distance '' 'abc'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
+@test "_edit_distance: single substitution = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abd'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: single insertion = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'abcd'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: single deletion = 1" {
+    run bash -c "source '$UI_PATH'; _edit_distance 'abc' 'ab'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "1" ]
+}
+
+@test "_edit_distance: --purge vs --force = 3" {
+    # p≠f, u≠o, r=r, g≠c, e=e → 3 substitutions.
+    run bash -c "source '$UI_PATH'; _edit_distance '--purge' '--force'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
+}
+
+@test "_edit_distance: distant strings exceed the suggestion threshold" {
+    # --xyz vs --backend → should be >3 so callers skip the "did you mean" hint.
+    run bash -c "source '$UI_PATH'; _edit_distance '--xyz' '--backend'"
+    [ "$status" -eq 0 ]
+    (( output > 3 ))
+}
+
+@test "_edit_distance: works under /bin/bash (bash 3.2)" {
+    run /bin/bash -c "source '$UI_PATH'; _edit_distance '--purge' '--force'"
+    [ "$status" -eq 0 ]
+    [ "$output" = "3" ]
 }
 
 #============================================================

@@ -2,25 +2,17 @@
 
 Complete reference for all Pyve commands, options, and workflows.
 
-!!! note "Migration from flag-style CLI (pre-v1.11)"
-    Pyve v1.11.0 migrated the top-level CLI from flags to subcommands. If you
-    are coming from an older README, blog post, or LLM snippet, the following
-    forms have been **removed**:
+!!! note "Upgrading from v1.x to v2.0"
+    v2.0 completes the CLI-unification arc. See [migration.md](migration.md) for a tactical upgrade guide. Quick summary:
 
-    | Old (removed) | New |
-    |---|---|
-    | `pyve --init [dir]` | `pyve init [dir]` |
-    | `pyve --purge [dir]` | `pyve purge [dir]` |
-    | `pyve --validate` | `pyve validate` |
-    | `pyve --python-version <ver>` | `pyve python-version <ver>` |
-    | `pyve --install` | `pyve self install` |
-    | `pyve --uninstall` | `pyve self uninstall` |
+    - `pyve doctor` → `pyve check` (diagnostics with 0/1/2 CI-safe exit codes)
+    - `pyve validate` → `pyve check` (same semantics; folded together)
+    - `pyve init --update` → `pyve update` (a dedicated subcommand; broader semantics)
+    - `pyve python-version <ver>` → `pyve python set <ver>` (delegate-with-warning through v2.x; hard removal in v3.0)
+    - `pyve testenv --init|--install|--purge` → `pyve testenv init|install|purge` (delegate-with-warning through v2.x)
+    - New: `pyve status` — read-only project-state dashboard
 
-    Invoking a removed flag form prints a precise migration error and exits
-    non-zero. The universal flags `--help` / `--version` / `--config` are
-    unchanged, and all modifier flags (`--backend`, `--force`, `--update`,
-    `--no-direnv`, `--no-lock`, `--allow-synced-dir`, `--env-name`, etc.) keep
-    their names and continue to attach to the renamed subcommands.
+    The legacy-flag catches (`pyve --init`, `pyve --purge`, etc.) remain — typing one prints a precise migration error pointing at the current subcommand.
 
 ## Command Overview
 
@@ -45,7 +37,9 @@ Organized into four categories (same as `pyve --help`):
 |---------|-------------|
 | `init [<dir>]` | Initialize a Python virtual environment (auto-detects backend) |
 | `purge [<dir>]` | Remove all Python environment artifacts |
-| `python-version <ver>` | Set Python version without creating an environment |
+| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds the venv) |
+| `python set <ver>` | Pin the project Python version |
+| `python show` | Print the currently pinned Python version + source |
 | `lock [--check]` | Generate or verify `conda-lock.yml` (micromamba only) |
 
 #### Execution
@@ -54,14 +48,14 @@ Organized into four categories (same as `pyve --help`):
 |---------|-------------|
 | `run <command> [args...]` | Run a command inside the project environment |
 | `test [pytest args...]` | Run pytest via the dev/test runner environment |
-| `testenv <subcommand>` | Manage the dev/test runner environment |
+| `testenv init\|install\|purge\|run` | Manage the dev/test runner environment |
 
 #### Diagnostics
 
 | Command | Description |
 |---------|-------------|
-| `doctor` | Check environment health and show diagnostics |
-| `validate` | Validate Pyve installation and configuration |
+| `check` | Diagnose environment problems with CI-safe 0/1/2 exit codes |
+| `status` | Read-only project-state dashboard (always exit 0) |
 
 #### Self management
 
@@ -112,8 +106,8 @@ pyve init [<dir>] [options]
 - `--auto-install-deps`: Automatically install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
 - `--no-install-deps`: Skip dependency installation prompt (for CI/CD)
 - `--local-env`: Copy `~/.local/.env` template into the project
-- `--update`: Safely update an existing installation (preserves backend)
 - `--force`: Purge and re-initialize environment (destructive)
+    - For **non-destructive** refresh (config bump + managed files + project-guide without touching the venv), use `pyve update` instead of `pyve init --force`.
 - `--allow-synced-dir`: Bypass the cloud-synced directory safety check (see below)
 
 **`project-guide` integration options** (three-step post-init hook):
@@ -220,9 +214,7 @@ as an opt-out post-init hook:
 but completion → **skip** (editing user rc files in CI is surprising; opt in
 via `PYVE_PROJECT_GUIDE_COMPLETION=1` or `--project-guide-completion`).
 
-**`pyve init --update` does NOT run the hook** — preserves the minimal-touch
-promise of update mode. Users who want to refresh project-guide on update run
-`pyve init --force`.
+**`pyve update` runs step 2 (project-guide refresh) independently** of the full three-step hook. The v2.0 `pyve update` subcommand refreshes `project-guide update --no-input` but does not install/upgrade the project-guide package itself (step 1) and does not touch shell completion (step 3). Users who want a full three-step run should use `pyve init --force`.
 
 **Interactive Prompts:**
 
@@ -309,14 +301,15 @@ pyve purge custom_venv
 
 ---
 
-### `python-version <ver>`
+### `python set <ver>` / `python show`
 
-Set the Python version for the project without creating an environment.
+Manage the project Python-version pin without creating an environment.
 
 **Usage:**
 
 ```bash
-pyve python-version <version>
+pyve python set <version>    # Pin a version (writes .tool-versions or .python-version)
+pyve python show             # Print the current pin + its source
 ```
 
 **Arguments:**
@@ -325,21 +318,30 @@ pyve python-version <version>
 
 **Description:**
 
-Writes the version to `.python-version` (asdf/pyenv format) so subsequent
-`pyve init` invocations pick it up. Does not create or modify any virtual
-environment.
+`pyve python set <ver>` writes the version to `.tool-versions` (asdf) or
+`.python-version` (pyenv) so subsequent `pyve init` invocations pick it up.
+Does not create or modify any virtual environment.
+
+`pyve python show` reads the currently pinned version from `.tool-versions` →
+`.python-version` → `.pyve/config` (first match wins) and prints it along
+with its source. Read-only; never installs or modifies anything.
 
 **Examples:**
 
 ```bash
 # Pin the project to Python 3.13.7
-pyve python-version 3.13.7
+pyve python set 3.13.7
+
+# Confirm what pyve will use
+pyve python show
+# → Python 3.13.7 (from .tool-versions)
 ```
 
-**Notes:**
+**Legacy form (deprecated; removed in v3.0).**
 
-- Useful when you want to set the Python version up front without committing to an environment backend
-- Read by asdf and pyenv as well as `pyve init`
+`pyve python-version <ver>` still works in v2.x — it emits a one-shot stderr
+deprecation warning and delegates to `pyve python set <ver>`. Update your
+scripts at your leisure; they will fail after v3.0.
 
 ---
 
@@ -529,25 +531,25 @@ is omitted — see below).
 **Usage:**
 
 ```bash
-pyve testenv --init                                 # Create the environment
-pyve testenv --install [-r requirements-dev.txt]    # Install dependencies
-pyve testenv --purge                                # Remove the environment
+pyve testenv init                                   # Create the environment
+pyve testenv install [-r requirements-dev.txt]      # Install dependencies
+pyve testenv purge                                  # Remove the environment
 pyve testenv run <command> [args...]                # Run a command in the testenv
 ```
 
 **Subcommands:**
 
-- `--init`: Creates `.pyve/testenv/venv` using the system Python.
-- `--install [-r <file>]`: Installs packages into the testenv. Without `-r`, installs pytest only. With `-r <file>`, installs from the given requirements file.
-- `--purge`: Removes the testenv entirely.
+- `init`: Creates `.pyve/testenv/venv` using the system Python.
+- `install [-r <file>]`: Installs packages into the testenv. Without `-r`, installs pytest only. With `-r <file>`, installs from the given requirements file.
+- `purge`: Removes the testenv entirely.
 - `run <command> [args...]`: Executes a command inside the testenv by prepending its `bin/` to `PATH`. If the command binary exists in the testenv, it is executed directly; otherwise the command is run with the testenv's `bin/` on `PATH`.
 
 **Examples:**
 
 ```bash
 # Set up dev tools
-pyve testenv --init
-pyve testenv --install -r requirements-dev.txt
+pyve testenv init
+pyve testenv install -r requirements-dev.txt
 
 # Run dev tools from the testenv
 pyve testenv run ruff check .
@@ -558,112 +560,152 @@ pyve testenv run black --check .
 pyve testenv run python -m pytest -v
 
 # Tear down the testenv
-pyve testenv --purge
+pyve testenv purge
 ```
 
 **Notes:**
 
 - The testenv survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes it
-- Use `pyve testenv --purge` to remove it explicitly
 - `pyve test` is a convenience shortcut that runs pytest inside the testenv with auto-install support
 - Exit code matches the executed command's exit code
 
+**Legacy flag forms (deprecated; removed in v3.0).**
+
+`pyve testenv --init`, `pyve testenv --install`, and `pyve testenv --purge` still work in v2.x — each emits a one-shot stderr deprecation warning and delegates to the subcommand form shown above. Update your scripts when convenient.
+
 ---
 
-### `doctor`
+### `check`
 
-Display comprehensive environment diagnostics.
+Diagnose environment problems and suggest one actionable remediation per failure. Replaces the v1.x `pyve doctor` (diagnostics) and `pyve validate` (CI-safe exit codes) commands.
 
 **Usage:**
 
 ```bash
-pyve doctor
-```
-
-**Output includes:**
-
-- Pyve version and installation source (homebrew/installed/source)
-- Active Python version and location
-- Virtual environment backend (venv/micromamba) and path
-- Direnv status and configuration
-- Environment variables
-- **Micromamba only:** Duplicate `.dist-info` directories in `site-packages` (indicates corrupted or conflicting installs)
-- **Micromamba only:** Files/directories with ` 2` suffix (iCloud Drive collision artifacts from concurrent sync)
-- **Micromamba only:** conda/pip native library conflicts — pip-bundled packages (torch, tensorflow, jax) coexisting with conda-linked packages (numpy, scipy) when the required shared OpenMP library is missing
-- **venv only:** Relocated project detection — if the project directory was moved after venv creation, `pyvenv.cfg`'s creation path will no longer match; doctor warns with a `pyve init --force` remediation
-
-**Example output:**
-
-```
-Pyve Environment Diagnostics
-=============================
-
-✓ Pyve: v1.13.0 (homebrew: /opt/homebrew/Cellar/pyve/1.13.0/libexec)
-✓ Python: 3.13.7 (/Users/user/.asdf/installs/python/3.13.7/bin/python)
-✓ Backend: venv
-✓ Virtual Environment: /Users/user/project/.venv
-✓ Direnv: active (.envrc present and allowed)
-
-Environment Variables:
-  VIRTUAL_ENV=/Users/user/project/.venv
-  PYVE_BACKEND=venv
-```
-
-**Use cases:**
-
-- Verify environment setup
-- Debug activation issues
-- Check Python version and backend
-- Confirm direnv configuration
-
----
-
-### `validate`
-
-Validate Pyve installation and configuration.
-
-**Usage:**
-
-```bash
-pyve validate
+pyve check
 ```
 
 **What it checks:**
 
-- Pyve version recorded in `.pyve/config` (matches, older, newer, or missing)
-- Backend configuration is present and supported
-- Virtual environment exists and is valid
-- Python version matches `.python-version`
-- Direnv setup (if installed)
-- Required files are present
+- `.pyve/config` presence and parseability
+- Backend configured and implementation available (micromamba binary, when applicable)
+- Environment path exists and has `bin/python`
+- Python version matches the pinned source-of-truth (`.tool-versions` / `.python-version` / config)
+- Venv path sanity (warns if project was relocated after creation)
+- `distutils_shim` status on Python 3.12+
+- `.envrc` / `.env` presence
+- `conda-lock.yml` presence and freshness (micromamba only)
+- Duplicate `.dist-info` directories in `site-packages` (micromamba only)
+- iCloud-Drive collision artifacts (macOS, micromamba only)
+- conda/pip native-library conflicts (micromamba only)
+- testenv status (if the project uses `pyve test`)
+
+**Exit codes:**
+
+- `0` — all checks passed
+- `1` — one or more errors (environment is broken for `pyve run` / `pyve test`)
+- `2` — warnings only (environment works but is drifting)
+
+Safe for CI use.
 
 **Example output:**
 
 ```
-Pyve Installation Validation
-==============================
+Pyve Environment Check
+======================
 
-✓ Pyve version: 1.13.0 (current)
+✓ Configuration: .pyve/config
 ✓ Backend: venv
-✓ Virtual environment: .venv (exists)
-✓ Configuration: valid
-✓ Python version: 3.13.7
-✓ direnv integration: .env (exists)
+✗ Virtual environment: .venv (missing)
+  → Run: pyve init --force
+⚠ .env: missing
+  → touch .env
 
-All validations passed.
+1 error, 1 warning, 2 passed
 ```
+
+Every failure points at exactly one command — no chains, no cross-references.
+
+**Legacy forms removed in v2.0.** `pyve doctor` and `pyve validate` now error out with a migration message pointing at `pyve check`. Update CI scripts that grep for "Pyve Installation Validation" to match `Pyve Environment Check` or use `pyve status` for state snapshots.
+
+---
+
+### `status`
+
+Read-only project-state dashboard. Companion to `pyve check`: state here, diagnostics there.
+
+**Usage:**
+
+```bash
+pyve status
+```
+
+**Output sections:**
+
+- **Project** — path, backend, config version, configured Python
+- **Environment** — path, Python, package count, backend-specific rows (distutils shim for venv; environment.yml + lock status for micromamba)
+- **Integrations** — direnv, `.env`, project-guide, testenv
+
+**Exit code:** always `0` unless pyve itself errors (e.g., unreadable config). Never signals problems via non-zero exit — for that contract use `pyve check`.
+
+**Example output:**
+
+```
+Pyve project status
+───────────────────
+
+Project
+  Path:           /Users/foo/Developer/bar
+  Backend:        venv
+  Pyve config:    v2.0.0 (current)
+  Python:         3.14.4 (.tool-versions via asdf)
+
+Environment
+  Path:           .venv
+  Python:         3.14.4
+  Packages:       127 installed
+  distutils shim: installed (Python 3.12+)
+
+Integrations
+  direnv:         .envrc present
+  .env:           present
+  project-guide:  installed (v2.4.1)
+  testenv:        present, pytest installed
+```
+
+---
+
+### `update`
+
+Non-destructive upgrade path. Refreshes `.pyve/config`, managed files, and `project-guide` scaffolding without rebuilding the environment.
+
+**Usage:**
+
+```bash
+pyve update [--no-project-guide]
+```
+
+**What it does:**
+
+1. Rewrites `.pyve/config`'s `pyve_version` to the running pyve's `VERSION`.
+2. Refreshes the Pyve-managed sections of `.gitignore`.
+3. Refreshes `.vscode/settings.json` (only if it already exists — never creates one on update).
+4. Refreshes `.pyve/` layout (bootstraps scaffolding if missing).
+5. Runs `project-guide update --no-input` (unless `--no-project-guide` or an auto-skip condition applies).
+
+**What it does NOT do:**
+
+- Never rebuilds the venv / micromamba environment — use `pyve init --force` for that.
+- Never creates a `.env` or `.envrc` that doesn't exist — those are user state.
+- Never re-prompts for backend. The backend recorded in `.pyve/config` is preserved.
+- Never prompts interactively.
 
 **Exit codes:**
 
-- `0`: All validations passed
-- `1`: One or more errors (blocking)
-- `2`: Warnings only (non-blocking)
+- `0` — success (including no-op when already at current version)
+- `1` — failure (unwritable config, corrupt YAML, etc.)
 
-**Use cases:**
-
-- Pre-commit hooks
-- CI/CD validation
-- Debugging environment issues
+**v1.x migration.** `pyve update` replaces the v1.x `pyve init --update` flag (removed in v2.0). The new semantics are broader: the old flag only bumped `pyve_version`; `pyve update` also refreshes managed files + `project-guide` scaffolding. Typing `pyve init --update` in v2.0 produces a migration error pointing at `pyve update`.
 
 ---
 
@@ -787,7 +829,11 @@ pyve --help
 # Per-command help
 pyve init --help
 pyve purge --help
-pyve validate --help
+pyve check --help
+pyve status --help
+pyve update --help
+pyve python --help
+pyve lock --help
 pyve testenv --help
 pyve self install --help
 pyve self uninstall --help
@@ -930,8 +976,11 @@ pip freeze > requirements.txt
 # Run tests
 pyve test
 
-# Check environment
-pyve doctor
+# Check environment health (CI-safe 0/1/2 exit codes)
+pyve check
+
+# Or: read-only state snapshot
+pyve status
 ```
 
 ### Starting a New Project
@@ -960,14 +1009,14 @@ git commit -m "Initial commit"
 
 ```bash
 # Current: venv backend
-pyve doctor  # Shows: Backend: venv
+pyve status  # Shows: Backend: venv
 
 # Switch to micromamba
 pyve purge
 pyve init --backend micromamba
 
 # Verify
-pyve doctor  # Shows: Backend: micromamba
+pyve status  # Shows: Backend: micromamba
 ```
 
 ### CI/CD Integration
@@ -984,8 +1033,8 @@ pyve init --auto-install-deps --no-direnv
 export CI=1  # Automatically detected by Pyve
 pyve init
 
-# Validate setup
-pyve validate
+# Validate setup (CI-safe 0/1/2 exit codes)
+pyve check
 
 # Run tests
 pyve test --cov=mypackage --cov-report=xml
@@ -1007,8 +1056,8 @@ When `CI` environment variable is set or `--auto-install-deps` is used:
 Always commit `.python-version` to ensure consistent Python versions across environments:
 
 ```bash
-pyve python-version 3.13.7
-git add .python-version
+pyve python set 3.13.7
+git add .tool-versions  # or .python-version, depending on your version manager
 ```
 
 ### Leverage Direnv
@@ -1033,8 +1082,10 @@ pip freeze > requirements.txt
 
 ### Regular Validation
 
-Run `pyve doctor` regularly to catch configuration issues early; run
-`pyve validate` in CI or pre-commit to catch installation drift.
+Run `pyve check` regularly to catch environment drift. Its 0/1/2 exit-code
+contract is CI-safe: exit 0 on pass, 1 on broken environment, 2 on
+warnings-only. For a read-only state snapshot (e.g., in dev-container
+greetings or shell prompts), use `pyve status` — always exit 0.
 
 ### Backend Selection
 

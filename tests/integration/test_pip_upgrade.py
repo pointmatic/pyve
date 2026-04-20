@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
 """
 Integration tests for pip auto-upgrade during initialization.
 
-Tests that pyve init and pyve init --update automatically upgrade pip
-to the latest version for both venv and micromamba backends.
+Tests that `pyve init` automatically upgrades pip to the latest
+version for both venv and micromamba backends.
 """
 
 import pytest
@@ -50,23 +50,6 @@ class TestPipUpgradeVenv:
         # This is a reasonable baseline for "upgraded" pip
         assert major >= 23, f"pip version {pip_version} seems outdated"
     
-    @pytest.mark.venv
-    def test_update_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve init --update upgrades pip."""
-        project_builder.create_requirements(['requests==2.31.0'])
-        
-        # Initial setup
-        pyve.init(backend='venv')
-        
-        # Run update
-        result = pyve.run('init', '--update', '--no-direnv')
-        assert result.returncode == 0
-        
-        # Verify pip is upgraded
-        result = pyve.run_cmd('python', '-m', 'pip', '--version')
-        assert result.returncode == 0
-        assert 'pip' in result.stdout
-
 
 @pytest.mark.micromamba
 @pytest.mark.requires_micromamba
@@ -98,21 +81,3 @@ class TestPipUpgradeMicromamba:
         # Pip should be reasonably recent
         assert major >= 23, f"pip version {pip_version} seems outdated"
     
-    def test_update_upgrades_pip(self, pyve, project_builder):
-        """Test that pyve init --update upgrades pip with micromamba."""
-        project_builder.create_environment_yml(
-            name='test-env',
-            dependencies=['python=3.11', 'requests']
-        )
-        
-        # Initial setup
-        pyve.init(backend='micromamba')
-        
-        # Run update
-        result = pyve.run('init', '--update', '--no-direnv')
-        assert result.returncode == 0
-        
-        # Verify pip is present and working
-        result = pyve.run_cmd('python', '-m', 'pip', '--version')
-        assert result.returncode == 0
-        assert 'pip' in result.stdout

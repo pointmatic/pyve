@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -68,19 +68,6 @@ class TestMicromambaWorkflow:
         
         # Should handle lock file (may succeed or need actual lock file)
         assert result.returncode in [0, 1]
-    
-    def test_doctor_shows_micromamba_status(self, pyve, project_builder):
-        """Test that doctor command shows micromamba status."""
-        project_builder.create_environment_yml(
-            name='test-env',
-            dependencies=['python=3.11']
-        )
-        pyve.init(backend='micromamba')
-        
-        result = pyve.doctor()
-        
-        assert result.returncode == 0
-        assert 'micromamba' in result.stdout.lower()
     
     def test_run_executes_in_environment(self, pyve, project_builder):
         """Test that pyve run executes commands in micromamba environment."""
@@ -259,13 +246,6 @@ class TestMicromambaEdgeCases:
         
         # Should fail or warn
         assert result.returncode != 0 or 'not initialized' in result.stderr.lower()
-    
-    def test_doctor_without_init(self, pyve):
-        """Test doctor command without initialization."""
-        result = pyve.doctor(check=False)
-        
-        # Should succeed but show not initialized
-        assert 'not initialized' in result.stdout.lower() or result.returncode != 0
     
     def test_purge_without_init(self, pyve):
         """Test --purge without initialization."""

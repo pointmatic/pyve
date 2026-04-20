@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic (https://www.pointmatic.com)
+# Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,74 +15,14 @@
 """
 Integration tests for pyve smart re-initialization.
 
-Tests re-initialization scenarios including --update flag, --force flag,
-interactive prompts, and conflict detection.
+Tests re-initialization scenarios including --force flag, interactive
+prompts, and conflict detection.
 """
 
 import os
 import pytest
 from pathlib import Path
 from pyve_test_helpers import get_pyve_version
-
-
-class TestReinitUpdate:
-    """Test pyve init --update (safe update mode)."""
-    
-    def test_update_preserves_venv(self, pyve, project_builder):
-        """Test that --update preserves existing venv."""
-        # Initialize first
-        pyve.init()
-        
-        venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
-        venv_marker.write_text("test marker")
-        
-        result = pyve.run("init", "--update")
-        
-        assert result.returncode == 0
-        assert "Updating existing Pyve installation" in result.stdout
-        assert "Configuration updated" in result.stdout
-        assert venv_marker.exists()
-    
-    def test_update_updates_version(self, pyve, project_builder):
-        """Test that --update updates version in config."""
-        # Get current version from pyve.sh
-        current_version = get_pyve_version(pyve.script_path)
-        old_version = "0.8.7"
-        
-        # Initialize first
-        pyve.init()
-        
-        # Manually set config to old version
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        config_content = config_content.replace(f'pyve_version: "{current_version}"', f'pyve_version: "{old_version}"')
-        config_path.write_text(config_content)
-        
-        result = pyve.run("init", "--update")
-        
-        assert result.returncode == 0
-        assert old_version in result.stdout
-        assert current_version in result.stdout
-    
-    def test_update_rejects_backend_change(self, pyve, project_builder):
-        """Test that --update rejects backend changes."""
-        # Initialize with venv first
-        pyve.init()
-        
-        result = pyve.run("init", "--backend", "micromamba", "--update", check=False)
-        
-        assert result.returncode == 1
-        assert "Cannot update in-place" in result.stderr or "Backend change detected" in result.stderr
-    
-    def test_update_allows_same_backend(self, pyve, project_builder):
-        """Test that --update allows same backend."""
-        # Initialize with venv first
-        pyve.init()
-        
-        result = pyve.run("init", "--backend", "venv", "--update")
-        
-        assert result.returncode == 0
-        assert "Configuration updated" in result.stdout
 
 
 class TestReinitForce:
@@ -218,20 +158,6 @@ class TestConflictDetection:
 class TestLegacyProjects:
     """Test re-initialization of legacy projects without version field."""
     
-    def test_update_legacy_project(self, pyve, project_builder):
-        """Test updating legacy project without version field."""
-        project_builder.create_pyve_config(backend="venv", include_version=False)
-        project_builder.create_venv()
-        
-        result = pyve.run("init", "--update")
-        
-        assert result.returncode == 0
-        assert "Configuration updated" in result.stdout
-        
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        assert "pyve_version" in config_content
-    
     def test_interactive_legacy_project(self, pyve, project_builder):
         """Test interactive mode on legacy project."""
         project_builder.create_pyve_config(backend="venv", include_version=False)
@@ -282,18 +208,6 @@ class TestConfigCreation:
 class TestEdgeCases:
     """Test edge cases in re-initialization."""
     
-    def test_update_with_corrupted_config(self, pyve, project_builder):
-        """Test update with corrupted config file."""
-        project_builder.project_dir.joinpath(".pyve").mkdir(exist_ok=True)
-        project_builder.project_dir.joinpath(".pyve/config").write_text("invalid: yaml: content:")
-        
-        result = pyve.run("init", "--update", check=False)
-        
-        # In CI mode, corrupted config might be handled gracefully
-        # In non-CI mode, should fail with error
-        if os.environ.get('CI') != 'true':
-            assert result.returncode != 0
-    
     def test_force_with_missing_venv(self, pyve, project_builder):
         """Test force re-init when venv is missing."""
         project_builder.create_pyve_config(backend="venv")
@@ -302,39 +216,14 @@ class TestEdgeCases:
         
         assert result.returncode == 0
     
-    def test_update_preserves_custom_venv_dir(self, pyve, project_builder):
-        """Test that update preserves custom venv directory."""
-        project_builder.create_pyve_config(backend="venv", venv_dir="custom_venv")
-        project_builder.create_venv(venv_dir="custom_venv")
-        
-        result = pyve.run("init", "--update")
-        
-        assert result.returncode == 0
-        
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        assert "custom_venv" in config_content
-
 
 class TestReinitUpdateMissingEnv:
-    """Test that update-in-place creates the environment when it is missing (clone scenario).
+    """Test that interactive option 1 creates the environment when it is missing (clone scenario).
 
     When a project is cloned from GitHub, .pyve/config exists (committed) but .venv does
-    not (gitignored).  Both the --update flag path and interactive option 1 must detect the
-    missing environment directory and create it instead of silently returning success.
+    not (gitignored).  Interactive option 1 must detect the missing environment directory
+    and create it instead of silently returning success.
     """
-
-    def test_update_flag_creates_missing_venv(self, pyve, project_builder):
-        """--update should create .venv when config exists but .venv does not."""
-        # Simulate a freshly cloned project: config present, venv absent.
-        project_builder.create_pyve_config(backend="venv")
-        project_builder.create_pyproject_toml("test-project")
-        # Deliberately do NOT call project_builder.create_venv()
-
-        result = pyve.run("init", "--update")
-
-        assert result.returncode == 0
-        assert (project_builder.project_dir / ".venv").is_dir()
 
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
     def test_interactive_option1_creates_missing_venv(self, pyve, project_builder):

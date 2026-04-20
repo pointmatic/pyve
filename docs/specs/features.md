@@ -18,7 +18,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 4. Manage Python versions through existing version managers (asdf or pyenv), including auto-installation of requested versions.
 5. Cleanly remove all Pyve-created artifacts via `pyve purge`, preserving user data (non-empty `.env` files, user code, Git repository).
 6. Execute commands inside the project environment without manual activation via `pyve run <command>`.
-7. Provide environment health diagnostics via `pyve doctor`.
+7. Provide environment diagnostics (`pyve check`, 0/1/2 CI-safe exit codes) and a read-only state dashboard (`pyve status`).
 8. Install and uninstall the Pyve script itself to/from `~/.local/bin` via `pyve self install` / `pyve self uninstall`.
 
 ### Operational Requirements
@@ -26,7 +26,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 1. **Error handling** — Check for prerequisites (asdf/pyenv, direnv, micromamba) before operations and provide actionable error messages when dependencies are missing.
 2. **Conflict detection** — Detect existing environments, version manager files, and direnv configuration before initialization. Skip with informational messages rather than overwriting.
 3. **Idempotency** — Running `pyve init` on an already-initialized project offers update-in-place or force re-initialization, rather than failing or silently overwriting.
-4. **Smart re-initialization** — `--update` preserves the existing environment and updates configuration; `--force` purges and re-creates from scratch.
+4. **Smart re-initialization** — `pyve update` (non-destructive: refreshes managed files + `project-guide` + `.pyve/config` version) and `pyve init --force` (destructive: purges and re-creates the environment from scratch). The v1.x `pyve init --update` flag was removed in v2.0 in favor of the dedicated `pyve update` subcommand.
 5. **Logging** — Provide clear success (✓), warning (⚠), and error (✗) indicators for all operations.
 
 ### Quality Requirements
@@ -40,7 +40,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 
 1. **CLI tool** — Invoked as `pyve` (after install) or `./pyve.sh` (direct execution).
 2. **Short flags** — Universal flags have short forms (`-h`, `-v`, `-c`). Top-level subcommand short aliases (`-i`, `-p`) were removed in v1.11.0 (Decision D1 — subcommands are already short; users who want fewer keystrokes can write a shell alias).
-3. **Interactive and non-interactive modes** — Interactive prompts for re-initialization choices and micromamba bootstrap; non-interactive flags (`--force`, `--update`, `--auto-bootstrap`, `--no-direnv`) for CI/CD.
+3. **Interactive and non-interactive modes** — Interactive prompts for re-initialization choices and micromamba bootstrap; non-interactive flags (`--force`, `--auto-bootstrap`, `--no-direnv`) and the `pyve update` subcommand for CI/CD.
 4. **direnv integration** — For interactive use, environments auto-activate/deactivate on directory entry/exit. For CI/CD, `pyve run` provides explicit execution without direnv.
 
 ### Non-Goals
@@ -59,10 +59,14 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 ### Required
 
 - **Subcommand or universal flag** — One of:
-  - Subcommands: `init`, `purge`, `python-version`, `validate`, `lock`, `doctor`, `run`, `test`, `testenv`, `self install`, `self uninstall`.
+  - Subcommands: `init`, `purge`, `lock`, `run`, `test`, `testenv init|install|purge|run`, `check`, `status`, `update`, `python set|show`, `self install|uninstall`.
   - Universal flags (CLI convention): `--help` / `-h`, `--version` / `-v`, `--config` / `-c`.
 
-  As of v1.11.0 (Story G.b.1), the legacy flag-style top-level commands (`--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall`) have been **removed**. Invoking a removed flag form prints a precise migration error and exits non-zero (Decision D3 — kept forever).
+  **Legacy-flag catches (kept forever per Decision D3).** Invoking any of the removed flag or subcommand forms prints a precise migration error and exits non-zero. Active catches:
+  - v1.11.0 (Story G.b.1): `--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall`, `-i`, `-p`.
+  - v2.0 (Story H.e.9): `--update`, `--doctor`, `--status` (top-level flag forms); `init --update` (narrow config bump — use `pyve update` instead).
+  - v2.0 (Story H.e.8a): `pyve doctor` and `pyve validate` subcommands — both redirected at `pyve check`.
+  - Deprecation warnings (still work in v2.x; removed in v3.0): `pyve testenv --init|--install|--purge` (use `pyve testenv init|install|purge`); `pyve python-version <ver>` (use `pyve python set <ver>`).
 
 ### Optional
 
@@ -72,20 +76,20 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `--python-version <ver>` | Python version in `#.#.#` format | `--python-version 3.12.0` |
 | `<venv_dir>` | Custom venv directory name | `pyve init my_venv` |
 | `--env-name <name>` | Micromamba environment name | `--env-name myproject-dev` |
-| `--local-env` | Copy `~/.local/.env` template to project `.env` | `--init --local-env` |
-| `--no-direnv` | Skip `.envrc` creation | `--init --no-direnv` |
-| `--force` | Force re-initialization (purge + init) | `--init --force` |
-| `--update` | Update existing installation in-place | `--init --update` |
-| `--auto-bootstrap` | Auto-install micromamba without prompting | `--init --auto-bootstrap` |
-| `--bootstrap-to <loc>` | Bootstrap location (`project` or `user`) | `--bootstrap-to project` |
-| `--strict` | Enforce lock file validation | `--init --strict` |
-| `--no-lock` | Bypass missing `conda-lock.yml` hard error (not recommended) | `--init --no-lock` |
-| `--allow-synced-dir` | Bypass cloud-synced directory check | `--init --allow-synced-dir` |
-| `--keep-testenv` | Preserve dev/test runner environment during purge | `--purge --keep-testenv` |
-| `--project-guide` | Force project-guide install + init + completion (overrides auto-skip) | `--init --project-guide` |
-| `--no-project-guide` | Skip the entire project-guide hook | `--init --no-project-guide` |
-| `--project-guide-completion` | Force shell completion wiring (no prompt) | `--init --project-guide-completion` |
-| `--no-project-guide-completion` | Skip shell completion wiring (no prompt) | `--init --no-project-guide-completion` |
+| `--local-env` | Copy `~/.local/.env` template to project `.env` | `pyve init --local-env` |
+| `--no-direnv` | Skip `.envrc` creation | `pyve init --no-direnv` |
+| `--force` | Force re-initialization (purge + init) | `pyve init --force` |
+| `--auto-bootstrap` | Auto-install micromamba without prompting | `pyve init --auto-bootstrap` |
+| `--bootstrap-to <loc>` | Bootstrap location (`project` or `user`) | `pyve init --bootstrap-to project` |
+| `--strict` | Enforce lock file validation | `pyve init --strict` |
+| `--no-lock` | Bypass missing `conda-lock.yml` hard error (not recommended) | `pyve init --no-lock` |
+| `--allow-synced-dir` | Bypass cloud-synced directory check | `pyve init --allow-synced-dir` |
+| `--keep-testenv` | Preserve dev/test runner environment during purge | `pyve purge --keep-testenv` |
+| `--project-guide` | Force project-guide install + init + completion (overrides auto-skip) | `pyve init --project-guide` |
+| `--no-project-guide` | Skip the entire project-guide hook | `pyve init --no-project-guide` or `pyve update --no-project-guide` |
+| `--project-guide-completion` | Force shell completion wiring (no prompt) | `pyve init --project-guide-completion` |
+| `--no-project-guide-completion` | Skip shell completion wiring (no prompt) | `pyve init --no-project-guide-completion` |
+| `--check` | (lock) verify lock file freshness without regenerating | `pyve lock --check` |
 
 ### Project Files (Auto-Detection)
 
@@ -149,8 +153,8 @@ Initialize a complete Python development environment in the current directory.
 - Rebuild `.gitignore` from template, preserving user entries.
 - Create `.pyve/config` for version and backend tracking.
 - **Micromamba only**: Generate `.vscode/settings.json` pointing at `.pyve/envs/<name>/bin/python` with `python.terminal.activateEnvironment: false` and `python.condaPath: ""` to prevent IDE interference. Skips if file already exists (use `--force` to overwrite). Adds `.vscode/settings.json` to `.gitignore`.
-- **Edge cases**: Existing environment detected → offer update/force/cancel. Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
-- **Post-init project-guide hook (FR-16)**: After environment creation and pip-deps install, runs the three-step project-guide hook (install, `project-guide init --no-input`, shell completion). Skipped in `--update` mode. Auto-skipped if `project-guide` is already declared as a project dep.
+- **Edge cases**: Existing environment detected → offer update/force/cancel (where "update" now delegates to the separate `pyve update` subcommand, not an `init --update` flag). Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
+- **Post-init project-guide hook (FR-16)**: After environment creation and pip-deps install, runs the three-step project-guide hook (install, `project-guide init --no-input`, shell completion). Auto-skipped if `project-guide` is already declared as a project dep. `pyve update` refreshes the project-guide scaffolding independently of any `init` invocation.
 
 ### FR-2: Environment Purge (`pyve purge`)
 
@@ -173,15 +177,14 @@ Remove all Pyve-created artifacts from the current directory.
 
 - **Edge cases**: No environment found → informational message, no error. `--keep-testenv` preserves the dev/test runner environment.
 
-### FR-3: Python Version Management (`pyve python-version`)
+### FR-3: Python Version Management (`pyve python set` / `pyve python show`)
 
-Set the local Python version without creating a virtual environment.
+Manage the project Python-version pin without creating a virtual environment.
 
-- Set version via asdf or pyenv.
-- Auto-install if version not present.
-- Refresh shims after change.
-- No venv or direnv changes.
+- **`pyve python set <ver>`** — set the local Python version via asdf or pyenv (writes `.tool-versions` or `.python-version`). Auto-installs the requested version if not present. Refreshes shims after change. No venv or direnv changes.
+- **`pyve python show`** — read the currently pinned version from `.tool-versions` → `.python-version` → `.pyve/config` (first match wins) and print it along with its source. Pure read; never installs or modifies anything.
 - **Edge cases**: Invalid version format (`#.#.#` required). Version not available for installation.
+- **Legacy form**: `pyve python-version <ver>` still works in v2.x with a deprecation warning and delegates to `pyve python set <ver>`. Removed in v3.0.
 
 ### FR-4: Command Execution (`pyve run`)
 
@@ -193,29 +196,24 @@ Execute a command inside the project environment without manual activation.
 - Propagate the command's exit code.
 - **Edge cases**: No environment found → error with suggestion to run `pyve init`. Command not found → exit code 127.
 
-### FR-5: Environment Diagnostics (`pyve doctor`)
+### FR-5: Environment Diagnostics (`pyve check`)
 
-Display environment health and configuration status.
+Diagnose environment problems and suggest one actionable remediation per failure. Merged (in v2.0 / Stories H.c + H.e.3 + H.e.8a) the semantics of v1.x's `pyve doctor` (diagnostics) and `pyve validate` (CI-safe 0/1/2 exit codes) into a single command. See [docs/specs/phase-H-check-status-design.md](phase-H-check-status-design.md) for the full diagnostic surface.
 
-- Report backend type, environment location, Python version.
-- Report micromamba binary location and version (if applicable).
-- Report lock file status (up to date, stale, missing).
-- Report direnv and `.env` status.
-- **Micromamba only:** Scan `site-packages` for duplicate `.dist-info` directories and report conflicting versions with their mtimes.
-- **Micromamba only:** Scan environment tree for files/directories with ` 2` suffix (iCloud Drive collision artifacts).
-- **Micromamba only:** Detect potential conda/pip native library conflicts — when pip-bundled packages (torch, tensorflow, jax) coexist with conda-linked packages (numpy, scipy, scikit-learn) and the required shared OpenMP library (`libomp.dylib` on macOS, `libgomp.so` on Linux) is absent.
-- **Venv only:** Detect relocated projects by comparing `pyvenv.cfg` creation path against the current project directory; warn with remediation if mismatched.
-- Use status indicators: ✓ (success), ⚠ (warning), ✗ (error).
+- ~20 checks covering: `.pyve/config` presence/parseability, backend configured, environment + `bin/python` present, Python version agreement, venv path sanity (relocation), `distutils_shim` status on 3.12+, direnv + `.env` presence, lock file presence/staleness (micromamba), duplicate `dist-info`, cloud-sync collision artifacts, native-library conflicts, testenv status.
+- **Exit codes:** 0 (all pass) / 1 (errors — environment broken for `pyve run` / `pyve test`) / 2 (warnings only — drifting but working). Safe for CI gating.
+- **Actionable messages:** every failure points at exactly one remediation command — no chains, no cross-references.
+- **Status indicators:** ✓ (pass), ⚠ (warning), ✗ (error), plain text (info).
+- **Legacy-forms:** `pyve doctor` and `pyve validate` were hard-removed in v2.0 (Story H.e.8a). Typing them now errors with a migration message pointing at `pyve check`.
 
-### FR-6: Installation Validation (`pyve validate`)
+### FR-5a: Project State Dashboard (`pyve status`)
 
-Validate Pyve installation structure and version compatibility.
+Read-only "what is this project?" snapshot. Companion to `pyve check`: state (this command) vs. diagnostics (check).
 
-- Check Pyve version compatibility with project.
-- Verify installation structure (`.pyve/` directory, config file).
-- Verify environment existence and backend configuration.
-- Check Python version availability.
-- Exit codes: 0 (pass), 1 (errors), 2 (warnings only).
+- Sectioned layout: **Project** (path, backend, config version, Python), **Environment** (path, Python, package count, backend-specific rows), **Integrations** (direnv, `.env`, project-guide, testenv).
+- **Exit code:** always 0 unless pyve itself errors (e.g., unreadable config). Never signals problems via non-zero exit — use `pyve check` for that contract.
+- No remediation text. No "Run X to fix Y" lines. State observation only.
+- See [phase-H-check-status-design.md §4](phase-H-check-status-design.md) for the full section inventory.
 
 ### FR-7: Script Installation (`pyve self install`) and Uninstallation (`pyve self uninstall`)
 
@@ -262,9 +260,9 @@ Provide an isolated test environment separate from the project environment.
 
 Handle `pyve init` on already-initialized projects.
 
-- Detect existing installation and offer: update in-place, purge and re-initialize, or cancel.
-- `--update`: preserve environment, update config, reject backend changes.
-- `--force`: purge and re-create, allow backend changes, prompt for confirmation.
+- Detect existing installation and offer: `pyve update` (non-destructive refresh), `pyve init --force` (purge + re-initialize), or cancel. In v2.0 (Story H.e.9) the separate `pyve update` subcommand replaced the v1.x `init --update` flag.
+- `pyve update`: preserve environment; refresh managed files + `.pyve/config` version + `project-guide` scaffolding. Never rebuilds the venv, never prompts, never changes the backend. See [FR-15a](#fr-15a-non-destructive-upgrade-pyve-update).
+- `pyve init --force`: purge and re-create, allow backend changes, prompt for confirmation.
 
 ### FR-14: Cloud-Synced Directory Detection
 
@@ -288,7 +286,7 @@ On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent Tensor
 
 Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github.io/project-guide/) into `pyve init` so the LLM-assisted workflow is available from the first command. Runs after the existing pip-deps prompt, as the final step of `pyve init` before the success summary.
 
-**Three-step hook** (fresh init or `--force`; **not** `--update`):
+**Three-step hook** (fresh init or `--force`; `pyve update` invokes step 2 separately, see below):
 
 1. `pip install --upgrade project-guide` — installs (or upgrades) project-guide into the project env. Always uses `--upgrade` so users get the latest. Default upgrade strategy (`only-if-needed`) so transitive deps are not cascaded.
 2. **Scaffold or refresh managed artifacts**, branching on `.project-guide.yml` presence:
@@ -312,7 +310,7 @@ Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github
 
 **Auto-skip safety mechanism.** If `project-guide` is already declared as a dependency in `pyproject.toml`, `requirements.txt`, or `environment.yml`, pyve auto-skips the entire hook with an informative message. The user's pin wins; pyve refuses to manage what the user already manages, avoiding a version conflict at the next `pip install -e .`. The explicit `--project-guide` flag overrides this auto-skip.
 
-**`--update` does not run the hook.** `pyve init --update` is a config-only metadata bump and must not touch the environment or run network operations. Users who want a fresh project-guide on update run `pyve init --force` instead.
+**`pyve update` runs step 2 (and only step 2).** `pyve update` is the v2.0 non-destructive upgrade path (H.e.2). It refreshes `.pyve/config`, managed files, and runs `project-guide update --no-input` — but does NOT install/upgrade `project-guide` itself (step 1) and does NOT touch shell completion (step 3). `--no-project-guide` skips step 2. Users who want a full fresh install path (all three steps) run `pyve init --force`. The v1.x `init --update` flag was removed in v2.0 (H.e.9).
 
 **CI default asymmetry — install vs. completion.** Non-interactive mode (`CI=1` or `PYVE_FORCE_YES=1`) defaults the install flow to **install** (matches the interactive default of Y), but defaults the completion flow to **skip**. Editing user rc files in unattended environments is the kind of surprise pyve avoids; explicit opt-in via `PYVE_PROJECT_GUIDE_COMPLETION=1` or `--project-guide-completion` is required.
 
@@ -327,6 +325,22 @@ Opinionated, opt-out hook that wires [`project-guide`](https://pointmatic.github
 **Removal.** `pyve self uninstall` removes the completion sentinel block from both `~/.zshrc` and `~/.bashrc` (covering users who switched shells). The block's sentinel comments make this safe and idempotent.
 
 **Purge.** `pyve purge` does **not** touch the rendered `.project-guide.yml` or `docs/project-guide/` artifacts. They live alongside the project's source and survive purge for the same reason `pyproject.toml` does.
+
+### FR-15a: Non-Destructive Upgrade (`pyve update`)
+
+Non-destructive project-level upgrade path introduced in v2.0 (Story H.e.2). Refreshes configuration and managed files without rebuilding the environment. Complements `pyve init --force` (which destroys + rebuilds).
+
+- Rewrites `.pyve/config`'s `pyve_version` to the running pyve's `VERSION`.
+- Refreshes Pyve-managed sections of `.gitignore` via the same idempotent writer used by `init`.
+- Refreshes `.vscode/settings.json` only if it already exists (never creates one on update).
+- Refreshes `.pyve/` layout (bootstraps scaffolding paths if missing — e.g. testenv roots).
+- Runs `project-guide update --no-input` (step 2 of FR-16's hook) unless `--no-project-guide` or an auto-skip condition applies.
+- **Never** rebuilds the venv / micromamba environment — use `pyve init --force` for that.
+- **Never** creates a `.env` or `.envrc` that does not exist — those are user state.
+- **Never** re-prompts for backend. The backend recorded in `.pyve/config` is preserved.
+- **Never** prompts interactively. Designed for CI and one-command upgrades; all gating via flags and env vars that already exist for `pyve init` (`PYVE_NO_PROJECT_GUIDE`, etc.).
+- **Exit codes**: `0` on success (including no-op when already at current version); `1` on failure (unwritable config, corrupt YAML, etc.).
+- **Replaces** the v1.x `pyve init --update` flag, which was removed in v2.0 (Story H.e.9) to force a deliberate migration — the new semantics are broader than the narrow config-bump the flag provided.
 
 ### FR-15: conda-lock Wrapper (`pyve lock`)
 
@@ -406,7 +420,7 @@ venv:
 ## Testing Requirements
 
 - **Unit tests** (Bats): White-box testing of shell functions in `lib/*.sh`.
-- **Integration tests** (pytest): Black-box testing of full `pyve` workflows (init, purge, run, doctor) across both backends.
+- **Integration tests** (pytest): Black-box testing of full `pyve` workflows (init, purge, run, check, status, update) across both backends.
 - **Platform coverage**: macOS and Linux (Ubuntu) via CI matrix.
 - **Python version matrix**: Integration tests run against Python 3.12 and 3.14 (added in v1.14.2 per Story H.b.i). The matrix was narrowed from 3.10/3.11/3.12 to 3.12 only in v1.12.0, then re-broadened to 3.12 + 3.14 in v1.14.2 — see CHANGELOG. Pyve's `DEFAULT_PYTHON_VERSION` is 3.14.4 (set in `pyve.sh`). CI re-uses `actions/setup-python`'s pre-built binary as pyenv's version directory via a symlink shim in the workflow, avoiding pyenv's ~10–15 min source build. Auto-pin in `PyveRunner.run()` pins each job to the runner's matrix Python.
 
@@ -434,7 +448,7 @@ venv:
 1. `pyve init` creates a fully functional Python environment (venv or micromamba) in one command on both macOS and Linux.
 2. `pyve purge` cleanly removes all Pyve artifacts without data loss.
 3. `pyve run <command>` executes commands in the correct environment without manual activation.
-4. `pyve doctor` accurately reports environment health.
+4. `pyve check` accurately reports environment problems with CI-safe 0/1/2 exit codes; `pyve status` provides a read-only state snapshot.
 5. All operations are idempotent — running them multiple times produces the same result.
 6. CI/CD workflows work without interactive prompts using `--no-direnv`, `--auto-bootstrap`, and `--strict`.
 7. Unit and integration tests pass on macOS and Linux across the Python version matrix.

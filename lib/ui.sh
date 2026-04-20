@@ -1,4 +1,4 @@
-# Copyright (c) 2025 Pointmatic, (https://www.pointmatic.com)
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 # Variables below are part of this library's public API — they
@@ -75,6 +75,73 @@ divider() { echo -e "  ${DIM}─────────────────
 run_cmd() {
     echo -e "  ${DIM}\$ $*${RESET}"
     "$@"
+}
+
+# ── Deprecation warning (once per invocation per key) ───────
+# Emits a single warning to stderr, formatted like warn() for
+# visual continuity. Subsequent calls with the same <key> in
+# the same process are suppressed — scripts that invoke a
+# deprecated form in a loop stay readable.
+#
+# Usage: deprecation_warn <key> <old_form> <new_form>
+#
+# The guard uses a colon-delimited flat string (not `declare
+# -A`) so lib/ui.sh works under macOS's system bash 3.2.
+# Keys must not contain ':' — locked by an invariant test in
+# tests/unit/test_ui.bats.
+__DEPRECATION_WARNED_KEYS=""
+
+_rename_seen() {
+    local key="$1"
+    case ":${__DEPRECATION_WARNED_KEYS}:" in
+        *":${key}:"*) return 0 ;;
+    esac
+    __DEPRECATION_WARNED_KEYS="${__DEPRECATION_WARNED_KEYS}:${key}"
+    return 1
+}
+
+deprecation_warn() {
+    local key="$1" old_form="$2" new_form="$3"
+    _rename_seen "$key" && return 0
+    echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
+}
+
+# ── Edit distance (Levenshtein, bash-3.2 safe) ──────────────
+# Returns the Levenshtein distance between two strings on
+# stdout. Used by callers to pick a "did you mean?" suggestion
+# for typo'd flags or subcommands.
+#
+# Implementation uses a flat 1-D array to simulate a 2-D DP
+# table so it stays compatible with macOS's system bash 3.2
+# (no associative arrays required).
+_edit_distance() {
+    local s1="$1" s2="$2"
+    local m=${#s1} n=${#s2}
+    local i j cost del ins sub min
+    local -a d
+
+    local stride=$((n + 1))
+    for ((i = 0; i <= m; i++)); do d[i * stride]=$i; done
+    for ((j = 0; j <= n; j++)); do d[j]=$j; done
+
+    for ((i = 1; i <= m; i++)); do
+        for ((j = 1; j <= n; j++)); do
+            if [[ "${s1:i-1:1}" == "${s2:j-1:1}" ]]; then
+                cost=0
+            else
+                cost=1
+            fi
+            del=$(( d[(i - 1) * stride + j] + 1 ))
+            ins=$(( d[i * stride + (j - 1)] + 1 ))
+            sub=$(( d[(i - 1) * stride + (j - 1)] + cost ))
+            min=$del
+            (( ins < min )) && min=$ins
+            (( sub < min )) && min=$sub
+            d[i * stride + j]=$min
+        done
+    done
+
+    echo "${d[m * stride + n]}"
 }
 
 # ── Rounded-corner boxes ─────────────────────────────────────
