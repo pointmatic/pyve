@@ -1,8 +1,15 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
+# shellcheck disable=SC2207
+# SC2207: word-split + glob in `COMPREPLY=( $(compgen ...) )` is the
+# portable bash-3.2 shape for completion. `mapfile` would be cleaner
+# but requires bash 4+, which macOS /bin/bash (3.2.57) doesn't have.
+# All $words values passed to compgen are local flag-name strings we
+# control — no user input, no globbing risk.
 #
-# Bash completion for pyve (v2.0 surface, Story H.e.9c).
+# Bash completion for pyve (v2.0 surface, Story H.e.9c; bash 3.2
+# compatibility lock-in via H.e.9h).
 #
 # To enable: source this file from your ~/.bashrc or equivalent:
 #   source ~/.local/bin/lib/completion/pyve.bash
@@ -41,9 +48,9 @@ _pyve() {
     # Position 1: top-level subcommand or top-level flag.
     if [[ $cword -eq 1 ]]; then
         if [[ "$cur" == -* ]]; then
-            mapfile -t COMPREPLY < <(compgen -W "$top_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$top_flags" -- "$cur") )
         else
-            mapfile -t COMPREPLY < <(compgen -W "$top_subcommands $top_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$top_subcommands $top_flags" -- "$cur") )
         fi
         return 0
     fi
@@ -55,28 +62,28 @@ _pyve() {
         init)
             # Value completion for a couple of high-value flags.
             case "$prev" in
-                --backend) mapfile -t COMPREPLY < <(compgen -W "$backends" -- "$cur"); return 0 ;;
+                --backend) COMPREPLY=( $(compgen -W "$backends" -- "$cur") ); return 0 ;;
             esac
-            mapfile -t COMPREPLY < <(compgen -W "$init_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$init_flags" -- "$cur") )
             ;;
         purge)
-            mapfile -t COMPREPLY < <(compgen -W "$purge_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$purge_flags" -- "$cur") )
             ;;
         lock)
-            mapfile -t COMPREPLY < <(compgen -W "$lock_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$lock_flags" -- "$cur") )
             ;;
         update)
-            mapfile -t COMPREPLY < <(compgen -W "$update_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$update_flags" -- "$cur") )
             ;;
         check)
-            mapfile -t COMPREPLY < <(compgen -W "$check_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$check_flags" -- "$cur") )
             ;;
         status)
-            mapfile -t COMPREPLY < <(compgen -W "$status_flags" -- "$cur")
+            COMPREPLY=( $(compgen -W "$status_flags" -- "$cur") )
             ;;
         testenv)
             if [[ $cword -eq 2 ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "init install purge run --help" -- "$cur")
+                COMPREPLY=( $(compgen -W "init install purge run --help" -- "$cur") )
                 return 0
             fi
             local action="${COMP_WORDS[2]}"
@@ -84,36 +91,36 @@ _pyve() {
                 install)
                     case "$prev" in
                         -r|--requirements)
-                            mapfile -t COMPREPLY < <(compgen -f -- "$cur"); return 0 ;;
+                            COMPREPLY=( $(compgen -f -- "$cur") ); return 0 ;;
                     esac
-                    mapfile -t COMPREPLY < <(compgen -W "-r --requirements --help" -- "$cur")
+                    COMPREPLY=( $(compgen -W "-r --requirements --help" -- "$cur") )
                     ;;
                 init|purge)
-                    mapfile -t COMPREPLY < <(compgen -W "--help" -- "$cur")
+                    COMPREPLY=( $(compgen -W "--help" -- "$cur") )
                     ;;
                 run)
                     # Pass-through to the user's command.
-                    mapfile -t COMPREPLY < <(compgen -c -- "$cur")
+                    COMPREPLY=( $(compgen -c -- "$cur") )
                     ;;
             esac
             ;;
         python)
             if [[ $cword -eq 2 ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "set show --help" -- "$cur")
+                COMPREPLY=( $(compgen -W "set show --help" -- "$cur") )
             else
-                mapfile -t COMPREPLY < <(compgen -W "--help" -- "$cur")
+                COMPREPLY=( $(compgen -W "--help" -- "$cur") )
             fi
             ;;
         self)
             if [[ $cword -eq 2 ]]; then
-                mapfile -t COMPREPLY < <(compgen -W "install uninstall --help" -- "$cur")
+                COMPREPLY=( $(compgen -W "install uninstall --help" -- "$cur") )
             else
-                mapfile -t COMPREPLY < <(compgen -W "--help" -- "$cur")
+                COMPREPLY=( $(compgen -W "--help" -- "$cur") )
             fi
             ;;
         run|test)
             # Pass-through: user is providing the command/pytest args.
-            mapfile -t COMPREPLY < <(compgen -c -- "$cur")
+            COMPREPLY=( $(compgen -c -- "$cur") )
             ;;
     esac
 

@@ -18,9 +18,14 @@ setup() {
 
 # Run `_pyve` with a simulated command line and return COMPREPLY joined by spaces.
 # Usage: _complete "pyve init --"  → sets $output to the completion candidates.
+#
+# Critical: sources through `/bin/bash` explicitly (not via PATH).
+# macOS CI's /bin/bash is 3.2.57, which lacks `mapfile`. Sourcing via
+# PATH-resolved `bash` would pick up brew's bash 5.x on dev machines
+# and silently mask bash-3.2 regressions (H.e.9h).
 _complete() {
     local cmdline="$1"
-    run bash -c "
+    run /bin/bash -c "
         source '$COMPLETION_PATH'
         # Split cmdline into COMP_WORDS; empty trailing arg if cmdline ends with space.
         read -ra COMP_WORDS <<< '$cmdline'
@@ -179,7 +184,18 @@ _complete() {
 # ShellCheck clean on the completion file itself
 #============================================================
 
-@test "completion: lib/completion/pyve.bash sources cleanly under bash" {
-    run bash -c "source '$COMPLETION_PATH'"
+@test "completion: lib/completion/pyve.bash sources cleanly under /bin/bash" {
+    # Must source cleanly under macOS system bash 3.2. Locks in the
+    # bash-3.2 compatibility regression guard added in H.e.9h.
+    run /bin/bash -c "source '$COMPLETION_PATH' 2>&1 >/dev/null"
     [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "completion: pyve.bash contains no 'mapfile' calls (bash 3.2 invariant)" {
+    # `mapfile` is a bash 4+ builtin. macOS /bin/bash is 3.2.57.
+    # Locks in the H.e.9h fix: COMPREPLY=( $(compgen …) ) is the
+    # portable shape.
+    run grep -nE '^\s*mapfile\b' "$COMPLETION_PATH"
+    [ "$status" -eq 1 ]  # no match → rule holds
 }

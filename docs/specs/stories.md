@@ -935,6 +935,39 @@ User-facing documentation hygiene. [usage.md](../../docs/site/usage.md) is the "
 
 ---
 
+### Story H.e.9h: Bug fix — bash 3.2 compatibility in `lib/completion/pyve.bash` [Done]
+
+Test-only + minimal-code bug fix, same class as H.e.7a. H.e.9c's `lib/completion/pyve.bash` used `mapfile -t COMPREPLY < <(compgen -W ... -- "$cur")` at 19 call sites. `mapfile` is a bash 4+ builtin; macOS ships `/bin/bash` at 3.2.57, which fails with:
+
+```
+lib/completion/pyve.bash: line 46: mapfile: command not found
+```
+
+Silent failure mode: `COMPREPLY` stays empty, so positive assertions (`[[ output == *"init"* ]]`) fail while negative assertions (`[[ output != *"doctor"* ]]`) pass coincidentally. CI surfaced 9 of 15 completion tests failing on macOS runners.
+
+**Why tests didn't catch it locally.** `test_completion_bash.bats` called `run bash -c "source ..."` — `bash` resolves through PATH, which on dev machines picks up brew's bash 5.x (where `mapfile` works). The H.e.7a regression pattern (source via `/bin/bash` explicitly) was not mirrored into `test_completion_bash.bats`. Locked in by H.e.9h.
+
+**Fix.** Replace every `mapfile -t COMPREPLY < <(compgen -W "$words" -- "$cur")` with the bash-3.2-safe shape `COMPREPLY=( $(compgen -W "$words" -- "$cur") )`. Same treatment for `compgen -f` and `compgen -c` call sites (file / command completion).
+
+Adds `# shellcheck disable=SC2207` to the file header because the portable shape triggers SC2207 (word-splitting + glob on compgen output) — unavoidable at bash 3.2, and all `$words` values are local flag-name strings we control (no user input, no glob risk).
+
+**Tasks**
+
+- [x] **Audit:** Reproduced the `mapfile: command not found` error locally via `/bin/bash -c 'source lib/completion/pyve.bash; _pyve'`. Confirmed 19 `mapfile -t COMPREPLY < <(compgen ...)` call sites.
+- [x] **Green:** Replaced every `mapfile -t COMPREPLY < <(compgen ...)` with `COMPREPLY=( $(compgen ...) )` at all 19 call sites. Added `# shellcheck disable=SC2207` + explanatory comment at file header.
+- [x] **Test harness fix:** Rewrote the `_complete` helper in [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats) to invoke `/bin/bash -c` explicitly (mirroring the H.e.7a pattern in `test_ui.bats`). The existing 15 tests now also serve as bash-3.2 regression guards — no new @test blocks needed for the behavioral coverage.
+- [x] **Regression invariant:** Added 2 new tests to `test_completion_bash.bats`:
+  - `sources cleanly under /bin/bash` — explicit `/bin/bash -c 'source ...'` with exit 0 + empty-stderr assertion.
+  - `contains no 'mapfile' calls (bash 3.2 invariant)` — grep-based invariant that locks the rule for future contributors.
+- [x] **Full suite green:** `bats tests/unit/*.bats` → **613 / 613** pass (612 baseline + 1 new mapfile-invariant test). All 15 behavioral completion tests plus the 1 sourcing-under-bash-3.2 test plus the 1 no-mapfile invariant now run under `/bin/bash`.
+- [x] **Lint:** `shellcheck lib/completion/pyve.bash` → exit 0.
+
+**Scope-out:** broader audit of `lib/*.sh` and other `lib/completion/*` for bash 4+ constructs. If a future CI run surfaces another instance, spin up H.e.9i. Nothing currently pending.
+
+**Deliverables:** 19 `mapfile` → `COMPREPLY=( $(compgen ...) )` swaps in [lib/completion/pyve.bash](../../lib/completion/pyve.bash) + header lint-disable comment; `_complete` test harness rewritten to use `/bin/bash` in [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats); 2 new regression tests (sourcing + grep invariant).
+
+---
+
 ### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (may split per command) [Planned]
 
 Apply the `lib/ui.sh` pattern (introduced in H.e's first sub-story) to every pyve command that H.e did not rewrite. Goal: every pyve command looks and feels like the `gitbetter` commands — rounded-box header, consistent banners, confirmation prompts, dimmed command echo, outcome proof, rounded-box footer.
@@ -1131,5 +1164,32 @@ After H.c / H.e ship `pyve check`, evaluate adding `--fix` for common auto-remed
 H.e ships with deprecation *warnings* (not hard errors) on renamed flags / subcommands — likely `--update` flag, `testenv --init` / `--purge` flags, `python-version` (if renamed). After a sustained warning window across multiple minor releases, drop the old flags entirely. Almost certainly a major version bump (v3.0) depending on timing.
 
 Not in Phase H because: the v2.0 breaking changes are already substantial; shipping hard-removes in the same release as renames denies users any migration window.
+
+### Story I.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
+
+**Why.** macOS ships `/bin/bash` at 3.2.57. Every pyve release must source and execute cleanly there, but the repeated failure mode through Phase H (H.e.7a fixed `declare -A`; H.e.9h fixed `mapfile`) shows that bash 4+ features slip in whenever a contributor's dev shell is a newer bash from brew / asdf / nix. CI catches each instance, but only after a broken release reaches at least one user. A proactive audit + lint rule would shrink the failure mode.
+
+**Scope (in):**
+
+- **Full-repo scan** for bash 4+ constructs across `pyve.sh`, `lib/*.sh`, `lib/completion/*`, and any `tests/unit/*.bats` helpers. Target constructs:
+  - Associative arrays: `declare -A`, `local -A`, and `typeset -A`.
+  - `mapfile` / `readarray` builtins.
+  - Case-modification parameter expansions: `${var^}`, `${var^^}`, `${var,}`, `${var,,}`.
+  - `${var@…}` transformation operators (bash 4.4+).
+  - `BASH_REMATCH` usage inside `[[ =~ ]]` when the regex relies on bash 4+ behavior.
+  - `declare -n` namerefs (bash 4.3+).
+  - `coproc` with named coprocs.
+  - `**` globstar (requires `shopt -s globstar`, bash 4+).
+- **Shared grep-invariant test** in a new `tests/unit/test_bash32_compat.bats`. Single file that greps the entire source tree for the constructs above and fails on any match. Each construct gets one `@test` block with a clear name (`"bash 3.2: no 'mapfile' calls in shell sources"`). Future contributors adding `mapfile` trip the invariant locally before CI.
+- **Optional:** a `Makefile` target `make check-bash32` that sources every `lib/*.sh` under `/bin/bash` and reports any that fail. Complements the grep invariants with an "actually works" smoke.
+
+**Scope (out):**
+
+- Rewriting things that don't actually fail under bash 3.2 but use bash-4+-preferred idioms. Stay with the conservative "catch the true portability breaks; don't chase style".
+- Adding a bash-3.2 matrix job to CI. macOS runners already use `/bin/bash` (3.2), so the existing CI job catches these once surfaced. The grep invariants catch them pre-commit.
+
+**When to run this.** Not urgent; next time a bash-3.2 regression surfaces, or before the next major cut (v3.0). Earlier is better — each incident costs a CI cycle + a follow-up PR.
+
+**Prior art:** H.e.7a (declare -A), H.e.9h (mapfile). Both fixes included individual grep invariants in their relevant test files; this story consolidates those + preempts the rest.
 
 ---
