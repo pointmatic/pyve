@@ -997,11 +997,19 @@ Aborted with 3 warnings in strict mode!
 
 ---
 
-### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (may split per command) [Planned]
+### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (umbrella — split into H.f.1, H.f.2, …) [In progress]
 
 Apply the `lib/ui.sh` pattern (introduced in H.e's first sub-story) to every pyve command that H.e did not rewrite. Goal: every pyve command looks and feels like the `gitbetter` commands — rounded-box header, consistent banners, confirmation prompts, dimmed command echo, outcome proof, rounded-box footer.
 
-**Watch for complexity — split per command if this grows beyond a single focused change.** Likely split candidates: `pyve init`, `pyve purge`, `pyve testenv run` (if not rewritten in H.e), `pyve python-version` (or its successor). If split, subsequent phase letters shift.
+Split per command (decided 2026-04-19). The version bump (v2.0.1), CHANGELOG entry, and visual-regression captures land in the final sub-story (H.f.5); intermediate sub-stories ship unversioned UX retrofits.
+
+**Sub-stories**
+
+- H.f.1 — Retrofit `pyve init`
+- H.f.2 — Retrofit `pyve purge`
+- H.f.3 — Retrofit legacy `testenv` and `python-version` subcommands not rewritten in H.e
+- H.f.4 — Error path consistency sweep + NO_COLOR audit across all commands
+- H.f.5 — v2.0.1 release wrap: visual captures, spec updates, CHANGELOG, version bump
 
 **Commands to retrofit (in scope):**
 
@@ -1090,6 +1098,125 @@ Once `lib/ui.sh` stabilizes, sync refinements back to `gitbetter` (where the ori
 
 - Pip output suppression beyond a single `--quiet` decision (richer streaming progress UI is Future).
 - Rich / curses-style TUI — not happening. ANSI only.
+
+---
+
+### Story H.f.1: Retrofit `pyve init` to Unified UX [Done]
+
+Adopt `lib/ui.sh` helpers throughout `init()` in [pyve.sh:481](../../pyve.sh#L481) and the routines it calls. This is the largest and most user-visible retrofit; the baseline ugly output is captured in the H.f umbrella above.
+
+**Tasks**
+
+- [x] Audit every `echo` / `printf` call inside `init()` and the helpers it invokes (purge sub-flow, environment build, gitignore writers, project-guide install prompt). Map each to a `lib/ui.sh` helper (`banner`, `info`, `success`, `warn`, `fail`, `confirm`, `ask_yn`, `divider`, `run_cmd`, `header_box`, `footer_box`); flag any output that needs a new helper.
+- [x] Add any missing helpers to `lib/ui.sh`. (No additions needed — the existing palette covered every retrofit site.)
+- [x] Wrap the run with `header_box "pyve init"` at entry and `footer_box` on success (both venv and micromamba terminal paths, plus the "update-in-place no env rebuild" early return).
+- [x] Use `banner` for phase boundaries (Purge, Rebuild, Initializing Python environment, Initializing micromamba environment). Use `success` for per-artifact outcomes.
+- [x] Replace the `Proceed? [y/N]` raw-printf prompt with `ask_yn` in the `--force` path. Interactive re-init 1/2/3 menu kept as raw printf (numbered choice, not yes/no).
+- [x] Wrap the `python -m venv` invocation with `run_cmd` so the dimmed `$ cmd` echo is consistent. (`pip install` / `direnv allow` wrapping deferred — `pip install` lives in `prompt_install_pip_dependencies` which is cross-command territory for H.f.4; `direnv allow` is run by the user, not by init.)
+- [x] Write failing bats tests in `tests/unit/test_init_ui.bats` — 3 tests: header at entry, NO_COLOR=1 no escapes on entry path, `--force` prompt migrated off raw `Proceed? [y/N]:`. Footer / phase banners / per-artifact success glyphs are verified visually (see H.f.5 capture step).
+- [x] Run the full unit suite — 616 / 616 passing.
+- [x] Run shellcheck on `pyve.sh` — zero new warnings (SC1091 info-level sourced-file notices unchanged from baseline).
+
+**Deliverables**
+
+- Updated `init()` and its callees in [pyve.sh](../../pyve.sh) (`init_python_version`, `init_venv`, `init_direnv_venv`, `init_direnv_micromamba`, `init_dotenv`, `init_gitignore`).
+- New [tests/unit/test_init_ui.bats](../../tests/unit/test_init_ui.bats) (3 tests).
+- No new helpers needed in [lib/ui.sh](../../lib/ui.sh).
+
+**Out of scope (deferred)**
+
+- `pyve purge` standalone retrofit (H.f.2).
+- Error-path consistency sweep — `log_error` / `log_warning` from sub-validators (e.g., `validate_backend`) still emit the old `ERROR:` / `WARNING:` prefix. That's H.f.4.
+- `prompt_install_pip_dependencies` and `run_project_guide_hooks` (both in `lib/utils.sh`) keep old-style output. Those are shared across multiple commands — retrofit lives in H.f.4.
+- Visual regression captures and CHANGELOG (H.f.5).
+
+---
+
+### Story H.f.2: Retrofit `pyve purge` to Unified UX [Planned]
+
+Adopt `lib/ui.sh` helpers throughout `purge()` in [pyve.sh:1159](../../pyve.sh#L1159).
+
+**Tasks**
+
+- [ ] Audit every `echo` / `printf` call inside `purge()` and helpers it invokes. Map each to a `lib/ui.sh` helper.
+- [ ] Wrap with `header_box "pyve purge"` / `footer_box`.
+- [ ] Use `ask_yn` for the destructive confirmation prompt.
+- [ ] Use `success` for per-artifact removal lines, `warn` for skipped/missing artifacts.
+- [ ] Write failing bats tests in `tests/unit/test_purge_ui.bats` covering: header/footer, confirmation prompt format, per-artifact output, abort path (user answers no), `NO_COLOR=1` cleanliness.
+- [ ] Implement minimally to pass; refactor when green.
+- [ ] Run the full unit suite — no regressions.
+- [ ] Run shellcheck — zero new warnings.
+
+**Deliverables**
+
+- Updated `purge()` in [pyve.sh](../../pyve.sh).
+- New `tests/unit/test_purge_ui.bats`.
+
+---
+
+### Story H.f.3: Retrofit Legacy `testenv` and `python-version` Subcommands [Planned]
+
+Apply the unified UX to the legacy command surface that H.e didn't rewrite — specifically the deprecated forms still emitted via `deprecation_warn` (e.g., `pyve testenv --install`, `pyve python-version`) and any non-rewritten subcommand bodies in `testenv_command()` ([pyve.sh:1316](../../pyve.sh#L1316)) and `python_command()` ([pyve.sh:1592](../../pyve.sh#L1592)).
+
+**Tasks**
+
+- [ ] Audit `testenv_command()` and `python_command()` for raw `echo`/`printf` calls (the new H.e subcommand bodies should already be tidy; focus on legacy paths and shared helpers).
+- [ ] Apply `header_box` / `footer_box` per top-level invocation; `banner` per phase; `run_cmd` around external invocations.
+- [ ] Confirm deprecation warnings still render via the existing `deprecation_warn` helper (do not double-wrap them in `warn`).
+- [ ] Add bats tests in `tests/unit/test_testenv_ui.bats` and `tests/unit/test_python_ui.bats` covering header/footer, phase banners, and `NO_COLOR=1` cleanliness for at least one representative subcommand each.
+- [ ] Run the full unit suite — no regressions.
+- [ ] Run shellcheck — zero new warnings.
+
+**Deliverables**
+
+- Updated `testenv_command()` and `python_command()` (and any helpers they call) in [pyve.sh](../../pyve.sh).
+- New `tests/unit/test_testenv_ui.bats`, `tests/unit/test_python_ui.bats`.
+
+---
+
+### Story H.f.4: Error Path Consistency Sweep + NO_COLOR Audit [Planned]
+
+Cross-cutting cleanup once H.f.1 – H.f.3 land. Walks every error exit in `pyve.sh` and ensures the format matches the unified contract: red ✗ prefix via `fail`, single actionable next-step line.
+
+**Tasks**
+
+- [ ] Grep `pyve.sh` and `lib/*.sh` for raw `>&2` writes, bare `exit 1` after a printed error, and any `ERROR:` / `FATAL:` prefixes that pre-date `lib/ui.sh`. Replace with `fail` calls (or add a new helper if a pattern repeats — keep `lib/ui.sh` backport-clean).
+- [ ] Verify each error message is actionable (names the offending input + the next step the user should take). Re-word terse errors.
+- [ ] Run every top-level command with `NO_COLOR=1` and confirm zero ANSI escape codes leak through. Capture stdout+stderr per command into a temp scratch and grep for `\033` / `\x1b`.
+- [ ] Decide pip/pyenv/mamba subprocess output policy: `--quiet` with our own progress line vs. full pass-through. Document the decision in `docs/specs/features.md` under the unified UX contract section (added in H.f.5).
+- [ ] Add bats tests in `tests/unit/test_error_ui.bats` that assert: error messages exit non-zero, render with `${CROSS}`, and produce no escape codes under `NO_COLOR=1`.
+- [ ] Run the full unit suite — no regressions.
+- [ ] Run shellcheck — zero new warnings.
+
+**Deliverables**
+
+- Error-path replacements across [pyve.sh](../../pyve.sh) and [lib/](../../lib/).
+- New `tests/unit/test_error_ui.bats`.
+
+---
+
+### Story H.f.5: v2.0.1 Release Wrap — Captures, Specs, CHANGELOG, Version Bump [Planned]
+
+Final sub-story of the H.f umbrella. Ships the unified-UX retrofit as v2.0.1.
+
+**Tasks**
+
+- [ ] Capture before/after terminal recordings of each retrofitted command's output. Save to `docs/specs/ux-retrofit-before-after/`. (Before-shots come from git history pre-H.f.1; after-shots come from current `main`.)
+- [ ] Update `docs/specs/features.md` — document the unified UX contract (palette, symbols, prompt conventions) and reference `lib/ui.sh`. Include the pip-output-policy decision from H.f.4.
+- [ ] Update `docs/specs/tech-spec.md` — document `lib/ui.sh` helper signatures.
+- [ ] Update `docs/site/usage.md` — refresh any screenshots that show old output.
+- [ ] Backport-sync note: append a section to `docs/specs/tech-spec.md` (or the H.f.5 deliverables list) listing any `lib/ui.sh` enhancements added during H.f.1 – H.f.4 that should be pushed back to `gitbetter`'s `lib/ui.sh`.
+- [ ] Bump version: `pyve.sh` `PYVE_VERSION`, any other manifest pinning the version. Confirm with `pyve --version`.
+- [ ] Add `## [2.0.1] – 2026-MM-DD` entry to `CHANGELOG.md` summarising the unified-UX retrofit (link to H.f.1 – H.f.4).
+- [ ] Mark H.f umbrella `[Done]` after this sub-story.
+- [ ] Run the full test suite once more — no regressions.
+
+**Deliverables**
+
+- `docs/specs/ux-retrofit-before-after/` with captures.
+- Updated `docs/specs/features.md`, `docs/specs/tech-spec.md`, `docs/site/usage.md`.
+- v2.0.1 entry in `CHANGELOG.md`.
+- Version bump in `pyve.sh`.
 
 ---
 
