@@ -234,15 +234,15 @@ ensure_testenv_exists() {
         testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
         current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
-            log_warning "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
+            warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
             rm -rf "$testenv_venv"
         fi
     fi
 
     if [[ ! -d "$testenv_venv" ]]; then
-        log_info "Creating dev/test runner environment in '$testenv_venv'..."
-        python -m venv "$testenv_venv"
-        log_success "Created dev/test runner environment"
+        info "Creating dev/test runner environment in '$testenv_venv'..."
+        run_cmd python -m venv "$testenv_venv"
+        success "Created dev/test runner environment"
     fi
 }
 
@@ -262,13 +262,13 @@ install_pytest_into_testenv() {
         requirements_file="requirements-dev.txt"
     fi
 
-    log_info "Installing pytest into dev/test runner environment..."
+    info "Installing pytest into dev/test runner environment..."
     if [[ -n "$requirements_file" ]]; then
-        "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+        run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
     else
-        "$testenv_venv/bin/python" -m pip install pytest
+        run_cmd "$testenv_venv/bin/python" -m pip install pytest
     fi
-    log_success "pytest installed"
+    success "pytest installed"
 }
 
 show_version() {
@@ -1391,12 +1391,41 @@ EOF
 
     if [[ -z "$action" ]]; then
         log_error "No testenv action provided"
-        log_error "Use: pyve testenv --init | --install | --purge | run <command>"
+        log_error "Use: pyve testenv <init|install|purge|run <command>>"
         exit 1
     fi
 
     local testenv_root=".pyve/$TESTENV_DIR_NAME"
     local testenv_venv="$testenv_root/venv"
+
+    # `run` exec's into the target command, so the header/footer wrapper
+    # would never close. Emit a minimal header before exec and let the
+    # called command own the rest of the terminal.
+    if [[ "$action" == "run" ]]; then
+        if [[ $# -lt 1 ]]; then
+            log_error "No command provided"
+            log_error "Usage: pyve testenv run <command> [args...]"
+            log_error "Example: pyve testenv run ruff check ."
+            exit 1
+        fi
+        if [[ ! -x "$testenv_venv/bin/python" ]]; then
+            log_error "Dev/test runner environment not initialized"
+            log_error "Run: pyve testenv init"
+            exit 1
+        fi
+        local cmd="$1"
+        shift
+        local testenv_bin="$testenv_venv/bin"
+        local cmd_path="$testenv_bin/$cmd"
+        if [[ -x "$cmd_path" ]]; then
+            exec "$cmd_path" "$@"
+        fi
+        export VIRTUAL_ENV="$PWD/$testenv_venv"
+        export PATH="$testenv_bin:$PATH"
+        exec "$cmd" "$@"
+    fi
+
+    header_box "pyve testenv"
 
     case "$action" in
         init)
@@ -1405,48 +1434,27 @@ EOF
         install)
             if [[ ! -x "$testenv_venv/bin/python" ]]; then
                 log_error "Dev/test runner environment not initialized"
-                log_error "Run: pyve testenv --init"
+                log_error "Run: pyve testenv init"
                 exit 1
             fi
-            log_info "Installing dev/test dependencies into '$testenv_venv'..."
+            info "Installing dev/test dependencies into '$testenv_venv'..."
             if [[ -n "$requirements_file" ]]; then
                 if [[ ! -f "$requirements_file" ]]; then
                     log_error "Requirements file not found: $requirements_file"
                     exit 1
                 fi
-                "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+                run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
             else
-                "$testenv_venv/bin/python" -m pip install pytest
+                run_cmd "$testenv_venv/bin/python" -m pip install pytest
             fi
-            log_success "Dev/test dependencies installed"
+            success "Dev/test dependencies installed"
             ;;
         purge)
             purge_testenv_dir
             ;;
-        run)
-            if [[ $# -lt 1 ]]; then
-                log_error "No command provided"
-                log_error "Usage: pyve testenv run <command> [args...]"
-                log_error "Example: pyve testenv run ruff check ."
-                exit 1
-            fi
-            if [[ ! -x "$testenv_venv/bin/python" ]]; then
-                log_error "Dev/test runner environment not initialized"
-                log_error "Run: pyve testenv --init"
-                exit 1
-            fi
-            local cmd="$1"
-            shift
-            local testenv_bin="$testenv_venv/bin"
-            local cmd_path="$testenv_bin/$cmd"
-            if [[ -x "$cmd_path" ]]; then
-                exec "$cmd_path" "$@"
-            fi
-            export VIRTUAL_ENV="$PWD/$testenv_venv"
-            export PATH="$testenv_bin:$PATH"
-            exec "$cmd" "$@"
-            ;;
     esac
+
+    footer_box
 }
 
 test_command() {
@@ -1525,11 +1533,13 @@ set_python_version_only() {
 
     local version="$1"
 
+    header_box "pyve python set"
+
     if ! validate_python_version "$version"; then
         exit 1
     fi
 
-    printf "\nSetting Python version to %s...\n" "$version"
+    banner "Setting Python version to $version"
 
     # Source shell profiles to find version managers
     source_shell_profiles
@@ -1549,7 +1559,8 @@ set_python_version_only() {
 
     local version_file
     version_file="$(get_version_file_name)"
-    log_success "Set Python $version in $version_file"
+    success "Set Python $version in $version_file"
+    footer_box
 }
 
 # `pyve python show` — read the current Python version pin from the
