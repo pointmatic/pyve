@@ -196,13 +196,14 @@ run_pyve() {
 }
 
 #============================================================
-# Version — v2.0.0 bump (H.e.9)
+# Version — v2.1.0 (H.f.7 starter env.yml scaffold feature;
+# v2.0.1 was the H.f.5 release wrap)
 #============================================================
 
-@test "version: 'pyve --version' reports 2.0.0" {
+@test "version: 'pyve --version' reports 2.1.0" {
     run_pyve --version
     [ "$status" -eq 0 ]
-    [[ "$output" == *"2.0.0"* ]]
+    [[ "$output" == *"2.1.0"* ]]
 }
 
 #============================================================

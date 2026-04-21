@@ -28,20 +28,26 @@ fi
 # Logging Functions
 #============================================================
 
+# Logging helpers emit the unified UX palette from lib/ui.sh
+# (▸ / ⚠ / ✘ / ✔ glyphs, two-space indent, stderr vs. stdout
+# routing preserved). When ui.sh is not sourced — for example in
+# tests that load lib/utils.sh standalone — the ${VAR:-fallback}
+# pattern uses plain glyphs without ANSI wrappers.
+
 log_info() {
-    printf "INFO: %s\n" "$1"
+    printf "  %s %s\n" "${ARROW:-▸}" "$1"
 }
 
 log_warning() {
-    printf "WARNING: %s\n" "$1" >&2
+    printf "  %s %s\n" "${WARN:-⚠}" "$1" >&2
 }
 
 log_error() {
-    printf "ERROR: %s\n" "$1" >&2
+    printf "  %s %s\n" "${CROSS:-✘}" "$1" >&2
 }
 
 log_success() {
-    printf "✓ %s\n" "$1"
+    printf "  %s %s\n" "${CHECK:-✔}" "$1"
 }
 
 #============================================================

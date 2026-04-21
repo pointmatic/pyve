@@ -225,11 +225,27 @@ class TestMicromambaEdgeCases:
     """Test micromamba backend edge cases and error handling."""
     
     def test_init_without_environment_yml(self, pyve):
-        """Test --init without environment.yml."""
+        """Test --init without environment.yml — H.f.7 scaffold-then-proceed contract.
+
+        In a directory with neither environment.yml nor conda-lock.yml,
+        `pyve init --backend micromamba` now scaffolds a minimal
+        environment.yml (python + pip on conda-forge) and proceeds with
+        env creation instead of erroring out. Pre-H.f.7 behavior was:
+        fail with an actionable error naming environment.yml (the
+        H.f.6 silent-exit fix). Post-H.f.7: success with scaffolded
+        environment.yml visible in the project directory.
+        """
         result = pyve.init(backend='micromamba', check=False)
-        
-        # Should fail or create minimal environment
-        assert result.returncode != 0 or 'environment.yml' in result.stderr.lower()
+
+        # Post-H.f.7: init succeeds and scaffolds environment.yml.
+        assert result.returncode == 0
+        env_yml = pyve.cwd / 'environment.yml'
+        assert env_yml.exists(), 'pyve init did not scaffold environment.yml'
+        content = env_yml.read_text()
+        assert 'channels:' in content
+        assert 'conda-forge' in content
+        assert 'python=' in content
+        assert '- pip' in content
     
     def test_init_with_invalid_environment_yml(self, pyve):
         """Test --init with invalid environment.yml."""

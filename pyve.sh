@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.0.0"
+VERSION="2.1.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -168,10 +168,6 @@ COMMANDS:
     status                    Read-only snapshot of current project state
                               (backend, python, integrations). Never exits non-zero.
                               See `pyve status --help` for details
-    doctor                    Legacy diagnostics (superseded by `pyve check`)
-                              Reports backend, Python version, packages, and status
-    validate                  Legacy CI gate (superseded by `pyve check`)
-                              Exit codes: 0 (pass), 1 (errors), 2 (warnings)
 
   Self management:
     self install              Install pyve to ~/.local/bin
@@ -192,16 +188,18 @@ EXAMPLES:
     pyve init --no-direnv                # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
-    pyve testenv --init                  # Create dev/test runner environment
-    pyve testenv --install -r requirements-dev.txt  # Install dev/test deps
+    pyve testenv init                    # Create dev/test runner environment
+    pyve testenv install -r requirements-dev.txt  # Install dev/test deps
     pyve testenv run ruff check .        # Run dev tools from testenv
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)
-    pyve doctor                          # Check environment health
-    pyve validate                        # Validate installation and config
-    pyve purge                           # Remove environment
-    pyve python-version 3.13.7           # Set Python version only
+    pyve check                           # Diagnose environment problems
+    pyve status                          # Read-only snapshot of project state
+    pyve purge                           # Remove environment (prompts for confirmation)
+    pyve purge --yes                     # Remove environment without prompting
+    pyve python set 3.13.7               # Set the project's Python version
+    pyve python show                     # Show the currently pinned Python version
     pyve self install                    # Install pyve to ~/.local/bin
 
 REQUIREMENTS:
@@ -234,15 +232,15 @@ ensure_testenv_exists() {
         testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
         current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
-            log_warning "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
+            warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
             rm -rf "$testenv_venv"
         fi
     fi
 
     if [[ ! -d "$testenv_venv" ]]; then
-        log_info "Creating dev/test runner environment in '$testenv_venv'..."
-        python -m venv "$testenv_venv"
-        log_success "Created dev/test runner environment"
+        info "Creating dev/test runner environment in '$testenv_venv'..."
+        run_cmd python -m venv "$testenv_venv"
+        success "Created dev/test runner environment"
     fi
 }
 
@@ -262,13 +260,13 @@ install_pytest_into_testenv() {
         requirements_file="requirements-dev.txt"
     fi
 
-    log_info "Installing pytest into dev/test runner environment..."
+    info "Installing pytest into dev/test runner environment..."
     if [[ -n "$requirements_file" ]]; then
-        "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+        run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
     else
-        "$testenv_venv/bin/python" -m pip install pytest
+        run_cmd "$testenv_venv/bin/python" -m pip install pytest
     fi
-    log_success "pytest installed"
+    success "pytest installed"
 }
 
 show_version() {
@@ -627,7 +625,9 @@ init() {
                 ;;
         esac
     done
-    
+
+    header_box "pyve init"
+
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
 
@@ -643,8 +643,7 @@ init() {
         # `pyve update` is the new entry point.)
         if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
-            log_warning "Force re-initialization: This will purge the existing environment"
-            log_warning "  Current backend: $existing_backend"
+            warn "Force re-initialization: this will purge the existing environment ($existing_backend)"
 
             # Run pre-flight checks BEFORE purging so the environment is still intact
             # if the user decides to abort or a check fails.
@@ -655,8 +654,7 @@ init() {
             preflight_backend="$(get_backend_priority "$backend_flag" "true")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
                 if ! validate_lock_file_status "$strict_mode"; then
-                    log_error "Pre-flight check failed — no changes made"
-                    exit 1
+                    fail "Pre-flight check failed — no changes made"
                 fi
                 lock_preflight_done=true
             fi
@@ -664,17 +662,13 @@ init() {
             # Prompt for confirmation (skip in CI or if PYVE_FORCE_YES is set).
             # Show a summary of what will happen so the user can make an informed choice.
             if [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
-                echo ""
                 if [[ "$preflight_backend" != "$existing_backend" ]]; then
-                    printf "  ⚠ Backend change: %s → %s\n" "$existing_backend" "$preflight_backend"
+                    warn "Backend change: $existing_backend → $preflight_backend"
                 fi
-                printf "  Purge:   existing %s environment\n" "$existing_backend"
-                printf "  Rebuild: fresh %s environment\n" "$preflight_backend"
-                echo ""
-                printf "Proceed? [y/N]: "
-                read -r response
-                if [[ ! "$response" =~ ^[Yy]$ ]]; then
-                    log_info "Cancelled — no changes made, existing environment preserved"
+                info "Purge:   existing $existing_backend environment"
+                info "Rebuild: fresh $preflight_backend environment"
+                if ! ask_yn "Proceed"; then
+                    info "Cancelled — no changes made, existing environment preserved"
                     exit 0
                 fi
             fi
@@ -684,61 +678,46 @@ init() {
             # (when both environment.yml and pyproject.toml exist)
 
             # Purge existing installation
-            log_info "Purging existing environment..."
-            purge --keep-testenv
-            log_info "✓ Environment purged"
-            echo ""
-            log_info "Proceeding with fresh initialization..."
-            
+            banner "Purging existing environment"
+            purge --keep-testenv --yes
+            success "Environment purged"
+            banner "Rebuilding fresh environment"
+
         else
             # Interactive mode (no flag specified)
-            log_warning "Project already initialized with Pyve"
+            warn "Project already initialized with Pyve"
             if [[ -n "$existing_version" ]]; then
-                log_warning "  Recorded version: $existing_version"
+                info "Recorded version: $existing_version"
             fi
-            log_warning "  Current version: $VERSION"
-            log_warning "  Backend: $existing_backend"
-            echo ""
-            # Also print version info to stdout so it appears alongside the interactive prompt.
-            # (Warnings are emitted to stderr, but the prompt UX should be visible in stdout.)
-            if [[ -n "$existing_version" ]]; then
-                printf "Recorded version: %s\n" "$existing_version"
-            fi
-            printf "Current version: %s\n" "$VERSION"
-            printf "What would you like to do?\n"
-            printf "  1. Update in-place (preserves environment, updates config)\n"
-            printf "  2. Purge and re-initialize (clean slate)\n"
-            printf "  3. Cancel\n"
-            echo ""
-            printf "Choose [1/2/3]: "
+            info "Current version:  $VERSION"
+            info "Backend:          $existing_backend"
+            printf "\n  What would you like to do?\n"
+            printf "    1. Update in-place (preserves environment, updates config)\n"
+            printf "    2. Purge and re-initialize (clean slate)\n"
+            printf "    3. Cancel\n\n"
+            printf "  %sChoose [1/2/3]:%s " "${Y}" "${RESET}"
             read -r choice
-            
+
             case "$choice" in
                 1)
                     # Check for conflicts before updating
                     if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
-                        log_error "Cannot update in-place: Backend change detected"
-                        log_error "  Current: $existing_backend"
-                        log_error "  Requested: $backend_flag"
-                        echo ""
-                        log_error "Use option 2 to purge and re-initialize with new backend"
-                        exit 1
+                        warn "Cannot update in-place: backend change detected ($existing_backend → $backend_flag)"
+                        fail "Use option 2 to purge and re-initialize with new backend"
                     fi
-                    
+
                     # Perform safe update
                     if ! update_config_version; then
-                        log_error "Failed to update configuration (config may be corrupted)"
-                        exit 1
+                        fail "Failed to update configuration (config may be corrupted)"
                     fi
-                    log_info "✓ Configuration updated"
+                    success "Configuration updated"
                     if [[ -n "$existing_version" ]]; then
-                        log_info "  Version: $existing_version → $VERSION"
+                        info "Version: $existing_version → $VERSION"
                     else
-                        log_info "  Version: (not recorded) → $VERSION"
+                        info "Version: (not recorded) → $VERSION"
                     fi
-                    log_info "  Backend: $existing_backend (unchanged)"
-                    echo ""
-                    log_info "Project updated to Pyve v$VERSION"
+                    info "Backend: $existing_backend (unchanged)"
+                    info "Project updated to Pyve v$VERSION"
 
                     # If the environment directory is missing (e.g. freshly cloned repo
                     # where .venv is gitignored), fall through to create it.
@@ -748,37 +727,36 @@ init() {
                         _interactive_venv_dir="$(read_config_value "venv.directory")"
                         _interactive_venv_dir="${_interactive_venv_dir:-$DEFAULT_VENV_DIR}"
                         if [[ ! -d "$_interactive_venv_dir" ]]; then
-                            log_info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
+                            info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
                             _interactive_env_missing=true
                         fi
                     elif [[ "$existing_backend" == "micromamba" ]]; then
                         local _interactive_env_name
                         _interactive_env_name="$(read_config_value "micromamba.env_name")"
                         if [[ -n "$_interactive_env_name" ]] && [[ ! -d ".pyve/envs/$_interactive_env_name" ]]; then
-                            log_info "Environment '.pyve/envs/$_interactive_env_name' not found — creating it now..."
+                            info "Environment '.pyve/envs/$_interactive_env_name' not found — creating it now..."
                             _interactive_env_missing=true
                         fi
                     fi
                     if [[ "$_interactive_env_missing" == false ]]; then
+                        footer_box
                         return 0
                     fi
                     # Fall through to environment creation below.
                     ;;
                 2)
                     # Purge and continue
-                    log_info "Purging existing environment..."
-                    purge --keep-testenv
-                    log_info "✓ Environment purged"
-                    echo ""
-                    log_info "Proceeding with fresh initialization..."
+                    banner "Purging existing environment"
+                    purge --keep-testenv --yes
+                    success "Environment purged"
+                    banner "Rebuilding fresh environment"
                     ;;
                 3)
-                    log_info "Initialization cancelled"
+                    info "Initialization cancelled"
                     exit 0
                     ;;
                 *)
-                    log_error "Invalid choice: $choice"
-                    exit 1
+                    fail "Invalid choice: $choice"
                     ;;
             esac
         fi
@@ -803,6 +781,21 @@ init() {
     
     # Check if micromamba backend is selected and handle bootstrap
     if [[ "$backend" == "micromamba" ]]; then
+        # H.f.7: if the directory has neither `environment.yml` nor
+        # `conda-lock.yml`, and strict-mode is off, scaffold a starter
+        # `environment.yml` before the (expensive) bootstrap step.
+        # Doing this early means the user-visible error surface in a
+        # clean directory is "scaffolded and proceeded" instead of the
+        # H.f.6 "missing environment.yml" hard-error path.
+        if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
+            info "Scaffolded starter environment.yml (python=$python_version)"
+            info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
+            # No conda-lock.yml yet (we just generated the source file).
+            # Take validate_lock_file_status's existing bypass so init
+            # proceeds without insisting on a lock that can't yet exist.
+            export PYVE_NO_LOCK=1
+        fi
+
         # Check if micromamba is available
         if ! check_micromamba_available; then
             # Micromamba not found - offer bootstrap
@@ -840,29 +833,29 @@ init() {
         if ! validate_environment_name "$env_name"; then
             exit 1
         fi
-        log_info "Environment name: $env_name"
-        
+        info "Environment name: $env_name"
+
         # Validate environment file
         if ! validate_environment_file; then
             exit 1
         fi
-        
+
         # Create micromamba environment
-        printf "\nInitializing micromamba environment...\n"
-        printf "  Backend:         micromamba\n"
-        printf "  Environment:     %s\n" "$env_name"
-        
+        banner "Initializing micromamba environment"
+        info "Backend:         micromamba"
+        info "Environment:     $env_name"
+
         local env_file
         env_file="$(detect_environment_file)"
-        printf "  Using file:      %s\n" "$env_file"
-        
+        info "Using file:      $env_file"
+
         if ! create_micromamba_env "$env_name" "$env_file"; then
             exit 1
         fi
-        
+
         # Verify environment
         if ! verify_micromamba_env "$env_name"; then
-            log_warning "Environment created but verification failed"
+            warn "Environment created but verification failed"
         fi
 
         # Apply Python 3.12+ distutils shim if needed
@@ -879,19 +872,19 @@ init() {
         if [[ "$no_direnv" == false ]]; then
             init_direnv_micromamba "$env_name" "$env_path"
         else
-            log_info "Skipping .envrc creation (--no-direnv)"
+            info "Skipping .envrc creation (--no-direnv)"
         fi
-        
+
         # Create .env file
         init_dotenv "$use_local_env"
-        
+
         # Update .gitignore — since H.e.2a the template bakes in every
         # pyve-managed ignore pattern (.pyve/envs, .pyve/testenv, .envrc,
         # .env, .vscode/settings.json), so the micromamba path needs no
         # per-backend dynamic inserts.
         write_gitignore_template
 
-        log_success "Updated .gitignore"
+        success "Updated .gitignore"
 
         # Create .pyve/config with version tracking
         mkdir -p .pyve
@@ -901,13 +894,12 @@ backend: micromamba
 micromamba:
   env_name: $env_name
 EOF
-        log_success "Created .pyve/config"
+        success "Created .pyve/config"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
-        
-        printf "\n✓ Micromamba environment initialized successfully!\n"
-        printf "\nEnvironment location: %s\n" "$env_path"
+
+        info "Environment location: $env_path"
 
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
@@ -916,15 +908,14 @@ EOF
         run_project_guide_hooks "micromamba" "$env_path" \
             "$project_guide_mode" "$project_guide_completion_mode"
 
-        printf "\nNext steps:\n"
         if [[ "$no_direnv" == false ]]; then
-            printf "  Note: Ignore micromamba's 'activate' instructions above — Pyve uses direnv activation (or 'pyve run').\n"
-            printf "  1. Run 'direnv allow' to activate the environment\n"
-            printf "  2. Or use: pyve run <command>\n"
+            info "Note: ignore micromamba's 'activate' instructions above — Pyve uses direnv (or 'pyve run')"
+            info "Next: run 'direnv allow' to activate the environment, or use 'pyve run <command>'"
         else
-            printf "  Use: pyve run <command> to execute in environment\n"
+            info "Use 'pyve run <command>' to execute in environment"
         fi
-        
+        footer_box
+
         return 0
     fi
     
@@ -937,35 +928,35 @@ EOF
         exit 1
     fi
     
-    printf "\nInitializing Python environment...\n"
-    printf "  Backend:        %s\n" "$backend"
-    printf "  Python version: %s\n" "$python_version"
-    printf "  Venv directory: %s\n" "$venv_dir"
-    
+    banner "Initializing Python environment"
+    info "Backend:        $backend"
+    info "Python version: $python_version"
+    info "Venv directory: $venv_dir"
+
     # Source shell profiles to find version managers
     source_shell_profiles
-    
+
     # Detect and validate version manager
     if ! detect_version_manager; then
         exit 1
     fi
-    log_info "Using $VERSION_MANAGER for Python version management"
-    
+    info "Using $VERSION_MANAGER for Python version management"
+
     # Check direnv (only if not using --no-direnv)
     if [[ "$no_direnv" == false ]]; then
         if ! check_direnv_installed; then
             exit 1
         fi
     fi
-    
+
     # Ensure Python version is installed
     if ! ensure_python_version_installed "$python_version"; then
         exit 1
     fi
-    
+
     # Set local Python version
     init_python_version "$python_version"
-    
+
     # Create virtual environment
     init_venv "$venv_dir"
 
@@ -978,15 +969,15 @@ EOF
     if [[ "$no_direnv" == false ]]; then
         init_direnv_venv "$venv_dir"
     else
-        log_info "Skipping .envrc creation (--no-direnv)"
+        info "Skipping .envrc creation (--no-direnv)"
     fi
-    
+
     # Create .env file
     init_dotenv "$use_local_env"
-    
+
     # Update .gitignore
     init_gitignore "$venv_dir"
-    
+
     # Create .pyve/config with version tracking
     mkdir -p .pyve
     cat > .pyve/config << EOF
@@ -997,12 +988,10 @@ venv:
 python:
   version: $python_version
 EOF
-    log_success "Created .pyve/config"
+    success "Created .pyve/config"
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_testenv_exists
-    
-    printf "\n✓ Python environment initialized successfully!\n"
 
     # Absolute venv path — used by both dep install and project-guide hooks
     local _venv_abs
@@ -1016,10 +1005,11 @@ EOF
         "$project_guide_mode" "$project_guide_completion_mode"
 
     if [[ "$no_direnv" == false ]]; then
-        printf "\nNext step: Run 'direnv allow' to activate the environment.\n"
+        info "Next step: run 'direnv allow' to activate the environment"
     else
-        printf "\nUse 'pyve run <command>' to execute commands in the environment.\n"
+        info "Use 'pyve run <command>' to execute commands in the environment"
     fi
+    footer_box
 }
 
 init_python_version() {
@@ -1028,36 +1018,36 @@ init_python_version() {
     version_file="$(get_version_file_name)"
     
     if [[ -f "$version_file" ]]; then
-        log_info "$version_file already exists, skipping"
+        info "$version_file already exists, skipping"
     else
         set_local_python_version "$version"
-        log_success "Created $version_file with Python $version"
+        success "Created $version_file with Python $version"
     fi
 }
 
 init_venv() {
     local venv_dir="$1"
-    
+
     if [[ -d "$venv_dir" ]]; then
-        log_info "Virtual environment '$venv_dir' already exists, skipping"
+        info "Virtual environment '$venv_dir' already exists, skipping"
     else
-        log_info "Creating virtual environment in '$venv_dir'..."
-        python -m venv "$venv_dir"
-        log_success "Created virtual environment"
+        info "Creating virtual environment in '$venv_dir'..."
+        run_cmd python -m venv "$venv_dir"
+        success "Created virtual environment"
     fi
 }
 
 init_direnv_venv() {
     local venv_dir="$1"
     local envrc_file=".envrc"
-    
+
     if [[ -f "$envrc_file" ]]; then
-        log_info ".envrc already exists, skipping"
+        info ".envrc already exists, skipping"
     else
         # Get project name for prompt
         local project_name
         project_name="$(basename "$(pwd)")"
-        
+
         # Create .envrc with dynamic path resolution and prompt
         cat > "$envrc_file" << EOF
 # pyve-managed direnv configuration
@@ -1076,7 +1066,7 @@ if [[ -f ".env" ]]; then
     dotenv
 fi
 EOF
-        log_success "Created .envrc"
+        success "Created .envrc"
     fi
 }
 
@@ -1084,9 +1074,9 @@ init_direnv_micromamba() {
     local env_name="$1"
     local env_path="$2"
     local envrc_file=".envrc"
-    
+
     if [[ -f "$envrc_file" ]]; then
-        log_info ".envrc already exists, skipping"
+        info ".envrc already exists, skipping"
     else
         # Create .envrc for micromamba with prompt
         cat > "$envrc_file" << EOF
@@ -1110,30 +1100,30 @@ if [[ -f ".env" ]]; then
     dotenv
 fi
 EOF
-        log_success "Created .envrc"
+        success "Created .envrc"
     fi
 }
 
 init_dotenv() {
     local use_local_env="$1"
-    
+
     if [[ -f "$ENV_FILE_NAME" ]]; then
-        log_info "$ENV_FILE_NAME already exists, skipping"
+        info "$ENV_FILE_NAME already exists, skipping"
         return
     fi
-    
+
     if [[ "$use_local_env" == true ]] && [[ -f "$LOCAL_ENV_FILE" ]]; then
         cp "$LOCAL_ENV_FILE" "$ENV_FILE_NAME"
-        log_success "Copied $LOCAL_ENV_FILE to $ENV_FILE_NAME"
+        success "Copied $LOCAL_ENV_FILE to $ENV_FILE_NAME"
     else
         touch "$ENV_FILE_NAME"
         if [[ "$use_local_env" == true ]]; then
-            log_warning "$LOCAL_ENV_FILE not found, created empty $ENV_FILE_NAME"
+            warn "$LOCAL_ENV_FILE not found, created empty $ENV_FILE_NAME"
         else
-            log_success "Created empty $ENV_FILE_NAME"
+            success "Created empty $ENV_FILE_NAME"
         fi
     fi
-    
+
     # Set secure permissions
     chmod 600 "$ENV_FILE_NAME"
 }
@@ -1149,7 +1139,7 @@ init_gitignore() {
     write_gitignore_template
     insert_pattern_in_gitignore_section "$venv_dir" "$section"
 
-    log_success "Updated .gitignore"
+    success "Updated .gitignore"
 }
 
 #============================================================
@@ -1160,7 +1150,8 @@ purge() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local keep_testenv=false
     local venv_dir_explicit=false
-    
+    local skip_confirm=false
+
     # Parse arguments
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1168,8 +1159,12 @@ purge() {
                 keep_testenv=true
                 shift
                 ;;
+            --yes|-y)
+                skip_confirm=true
+                shift
+                ;;
             -*)
-                unknown_flag_error "purge" "$1" --keep-testenv --help
+                unknown_flag_error "purge" "$1" --keep-testenv --yes --help
                 ;;
             *)
                 venv_dir="$1"
@@ -1178,13 +1173,23 @@ purge() {
                 ;;
         esac
     done
-    
-    printf "\nPurging Python environment artifacts...\n"
-    
+
+    header_box "pyve purge"
+
+    # Destructive-confirmation prompt. Skipped when:
+    #   --yes / -y passed (e.g., by `init --force`), CI=1, or PYVE_FORCE_YES=1.
+    if [[ "$skip_confirm" != true ]] && [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        warn "This will remove pyve-managed environment artifacts from the current project."
+        if ! ask_yn "Proceed"; then
+            info "Aborted — no changes made"
+            exit 0
+        fi
+    fi
+
     # Source shell profiles to detect version manager
     source_shell_profiles
     detect_version_manager 2>/dev/null || true
-    
+
     # Remove version file
     purge_version_file
 
@@ -1197,59 +1202,59 @@ purge() {
             venv_dir="$configured_venv_dir"
         fi
     fi
-    
+
     # Remove virtual environment
     purge_venv "$venv_dir"
-    
+
     # Remove .pyve directory (config and micromamba envs)
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
             if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
                 rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
                 find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
-                log_success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
+                success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
             else
                 rm -rf ".pyve"
-                log_success "Removed .pyve directory (config and micromamba environments)"
+                success "Removed .pyve directory (config and micromamba environments)"
             fi
         fi
     else
         purge_pyve_dir
         purge_testenv_dir
     fi
-    
+
     # Remove .envrc
     purge_envrc
-    
+
     # Remove .env (only if empty - v0.6.0 smart purge)
     purge_dotenv
-    
+
     # Clean .gitignore
     purge_gitignore "$venv_dir"
-    
-    printf "\n✓ Python environment artifacts removed.\n"
+
+    footer_box
 }
 
 purge_version_file() {
     local version_file
-    
+
     # Try to remove both possible version files
     for version_file in ".tool-versions" ".python-version"; do
         if [[ -f "$version_file" ]]; then
             rm -f "$version_file"
-            log_success "Removed $version_file"
+            success "Removed $version_file"
         fi
     done
 }
 
 purge_venv() {
     local venv_dir="$1"
-    
+
     if [[ -d "$venv_dir" ]]; then
         rm -rf "$venv_dir"
-        log_success "Removed $venv_dir"
+        success "Removed $venv_dir"
     else
-        log_info "No virtual environment found at '$venv_dir'"
+        info "No virtual environment found at '$venv_dir'"
     fi
 }
 
@@ -1260,52 +1265,50 @@ purge_pyve_dir() {
             # Try to remove micromamba environment(s) properly first
             local micromamba_path
             micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-            
+
             if [[ -n "$micromamba_path" ]] && [[ -x "$micromamba_path" ]]; then
                 # Get environment name from config if it exists
                 local env_name
                 if config_file_exists; then
                     env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
                 fi
-                
+
                 # If we have an env name, try to remove it
                 if [[ -n "$env_name" ]]; then
-                    log_info "Removing micromamba environment '$env_name'..."
+                    info "Removing micromamba environment '$env_name'..."
                     if "$micromamba_path" env remove -n "$env_name" -y 2>/dev/null; then
-                        log_success "Removed micromamba environment '$env_name'"
+                        success "Removed micromamba environment '$env_name'"
                     else
                         # If named removal fails, try prefix-based removal
-                        log_info "Named removal failed, trying prefix-based removal..."
+                        info "Named removal failed, trying prefix-based removal..."
                         "$micromamba_path" env remove -p ".pyve/envs/$env_name" -y 2>/dev/null || true
                     fi
                 else
                     # No env name in config, try to find and remove any environments in .pyve/envs
                     for env_dir in .pyve/envs/*; do
                         if [[ -d "$env_dir" ]]; then
-                            local env_basename
-                            env_basename="$(basename "$env_dir")"
-                            log_info "Removing micromamba environment at '$env_dir'..."
+                            info "Removing micromamba environment at '$env_dir'..."
                             "$micromamba_path" env remove -p "$env_dir" -y 2>/dev/null || true
                         fi
                     done
                 fi
             else
-                log_info "Micromamba not found, will force-remove .pyve directory"
+                info "Micromamba not found, will force-remove .pyve directory"
             fi
         fi
-        
+
         # Now remove the .pyve directory
         rm -rf ".pyve"
-        log_success "Removed .pyve directory (config and micromamba environments)"
+        success "Removed .pyve directory (config and micromamba environments)"
     fi
 }
 
 purge_testenv_dir() {
     if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
         rm -rf ".pyve/$TESTENV_DIR_NAME"
-        log_success "Removed .pyve/$TESTENV_DIR_NAME"
+        success "Removed .pyve/$TESTENV_DIR_NAME"
     else
-        log_info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
     fi
 }
 
@@ -1401,12 +1404,41 @@ EOF
 
     if [[ -z "$action" ]]; then
         log_error "No testenv action provided"
-        log_error "Use: pyve testenv --init | --install | --purge | run <command>"
+        log_error "Use: pyve testenv <init|install|purge|run <command>>"
         exit 1
     fi
 
     local testenv_root=".pyve/$TESTENV_DIR_NAME"
     local testenv_venv="$testenv_root/venv"
+
+    # `run` exec's into the target command, so the header/footer wrapper
+    # would never close. Emit a minimal header before exec and let the
+    # called command own the rest of the terminal.
+    if [[ "$action" == "run" ]]; then
+        if [[ $# -lt 1 ]]; then
+            log_error "No command provided"
+            log_error "Usage: pyve testenv run <command> [args...]"
+            log_error "Example: pyve testenv run ruff check ."
+            exit 1
+        fi
+        if [[ ! -x "$testenv_venv/bin/python" ]]; then
+            log_error "Dev/test runner environment not initialized"
+            log_error "Run: pyve testenv init"
+            exit 1
+        fi
+        local cmd="$1"
+        shift
+        local testenv_bin="$testenv_venv/bin"
+        local cmd_path="$testenv_bin/$cmd"
+        if [[ -x "$cmd_path" ]]; then
+            exec "$cmd_path" "$@"
+        fi
+        export VIRTUAL_ENV="$PWD/$testenv_venv"
+        export PATH="$testenv_bin:$PATH"
+        exec "$cmd" "$@"
+    fi
+
+    header_box "pyve testenv"
 
     case "$action" in
         init)
@@ -1415,48 +1447,27 @@ EOF
         install)
             if [[ ! -x "$testenv_venv/bin/python" ]]; then
                 log_error "Dev/test runner environment not initialized"
-                log_error "Run: pyve testenv --init"
+                log_error "Run: pyve testenv init"
                 exit 1
             fi
-            log_info "Installing dev/test dependencies into '$testenv_venv'..."
+            info "Installing dev/test dependencies into '$testenv_venv'..."
             if [[ -n "$requirements_file" ]]; then
                 if [[ ! -f "$requirements_file" ]]; then
                     log_error "Requirements file not found: $requirements_file"
                     exit 1
                 fi
-                "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
+                run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
             else
-                "$testenv_venv/bin/python" -m pip install pytest
+                run_cmd "$testenv_venv/bin/python" -m pip install pytest
             fi
-            log_success "Dev/test dependencies installed"
+            success "Dev/test dependencies installed"
             ;;
         purge)
             purge_testenv_dir
             ;;
-        run)
-            if [[ $# -lt 1 ]]; then
-                log_error "No command provided"
-                log_error "Usage: pyve testenv run <command> [args...]"
-                log_error "Example: pyve testenv run ruff check ."
-                exit 1
-            fi
-            if [[ ! -x "$testenv_venv/bin/python" ]]; then
-                log_error "Dev/test runner environment not initialized"
-                log_error "Run: pyve testenv --init"
-                exit 1
-            fi
-            local cmd="$1"
-            shift
-            local testenv_bin="$testenv_venv/bin"
-            local cmd_path="$testenv_bin/$cmd"
-            if [[ -x "$cmd_path" ]]; then
-                exec "$cmd_path" "$@"
-            fi
-            export VIRTUAL_ENV="$PWD/$testenv_venv"
-            export PATH="$testenv_bin:$PATH"
-            exec "$cmd" "$@"
-            ;;
     esac
+
+    footer_box
 }
 
 test_command() {
@@ -1495,7 +1506,7 @@ test_command() {
 purge_envrc() {
     if [[ -f ".envrc" ]]; then
         rm -f ".envrc"
-        log_success "Removed .envrc"
+        success "Removed .envrc"
     fi
 }
 
@@ -1503,21 +1514,21 @@ purge_dotenv() {
     if [[ -f "$ENV_FILE_NAME" ]]; then
         if is_file_empty "$ENV_FILE_NAME"; then
             rm -f "$ENV_FILE_NAME"
-            log_success "Removed $ENV_FILE_NAME (was empty)"
+            success "Removed $ENV_FILE_NAME (was empty)"
         else
-            log_warning "$ENV_FILE_NAME preserved (contains data). Delete manually if desired."
+            warn "$ENV_FILE_NAME preserved (contains data). Delete manually if desired."
         fi
     fi
 }
 
 purge_gitignore() {
     local venv_dir="$1"
-    
+
     if [[ -f ".gitignore" ]]; then
         remove_pattern_from_gitignore "$venv_dir"
         remove_pattern_from_gitignore "$ENV_FILE_NAME"
         remove_pattern_from_gitignore ".envrc"
-        log_success "Cleaned .gitignore"
+        success "Cleaned .gitignore"
     fi
 }
 
@@ -1535,11 +1546,13 @@ set_python_version_only() {
 
     local version="$1"
 
+    header_box "pyve python set"
+
     if ! validate_python_version "$version"; then
         exit 1
     fi
 
-    printf "\nSetting Python version to %s...\n" "$version"
+    banner "Setting Python version to $version"
 
     # Source shell profiles to find version managers
     source_shell_profiles
@@ -1559,7 +1572,8 @@ set_python_version_only() {
 
     local version_file
     version_file="$(get_version_file_name)"
-    log_success "Set Python $version in $version_file"
+    success "Set Python $version in $version_file"
+    footer_box
 }
 
 # `pyve python show` — read the current Python version pin from the
@@ -2994,9 +3008,12 @@ Arguments:
 
 Options:
   --keep-testenv              Preserve .pyve/testenv (the dev/test runner env)
+  --yes, -y                   Skip the destructive-confirmation prompt.
+                              Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
 
 Examples:
-  pyve purge                               # Remove .pyve and the venv
+  pyve purge                               # Remove .pyve and the venv (prompts)
+  pyve purge --yes                         # Remove without the prompt
   pyve purge --keep-testenv                # Preserve the testenv across purge
   pyve purge custom_venv                   # Remove a custom-named venv
 

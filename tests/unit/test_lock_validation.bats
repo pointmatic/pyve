@@ -202,6 +202,34 @@ teardown() {
 }
 
 #============================================================
+# H.f.6 — actionable error content for Cases 3 and 4
+#
+# These cases historically returned 1 silently in non-strict mode,
+# producing a bare `exit 1` from the caller in pyve.sh with zero
+# output — indistinguishable from a shell-integration bug. The fix:
+# emit an actionable error unconditionally, name the missing file(s),
+# and point at the venv fallback.
+#============================================================
+
+@test "validate_lock_file_status: Case 3 (only conda-lock.yml) emits actionable error in non-strict mode" {
+    touch conda-lock.yml
+
+    run validate_lock_file_status "false"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"environment.yml"* ]]
+    [[ "$output" == *"pyve init --backend venv"* ]]
+}
+
+@test "validate_lock_file_status: Case 4 (neither file) emits actionable error in non-strict mode" {
+    # Clean dir (no environment.yml, no conda-lock.yml) — reproduces
+    # the 2026-04-20 user-visible silent-exit bug.
+    run validate_lock_file_status "false"
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"environment.yml"* ]]
+    [[ "$output" == *"pyve init --backend venv"* ]]
+}
+
+#============================================================
 # Edge cases
 #============================================================
 

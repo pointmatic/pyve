@@ -997,11 +997,19 @@ Aborted with 3 warnings in strict mode!
 
 ---
 
-### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (may split per command) [Planned]
+### Story H.f: v2.0.1 Retrofit Remaining Commands to Unified UX (umbrella — split into H.f.1, H.f.2, …) [Done]
 
 Apply the `lib/ui.sh` pattern (introduced in H.e's first sub-story) to every pyve command that H.e did not rewrite. Goal: every pyve command looks and feels like the `gitbetter` commands — rounded-box header, consistent banners, confirmation prompts, dimmed command echo, outcome proof, rounded-box footer.
 
-**Watch for complexity — split per command if this grows beyond a single focused change.** Likely split candidates: `pyve init`, `pyve purge`, `pyve testenv run` (if not rewritten in H.e), `pyve python-version` (or its successor). If split, subsequent phase letters shift.
+Split per command (decided 2026-04-19). The version bump (v2.0.1), CHANGELOG entry, and visual-regression captures land in the final sub-story (H.f.5); intermediate sub-stories ship unversioned UX retrofits.
+
+**Sub-stories**
+
+- H.f.1 — Retrofit `pyve init`
+- H.f.2 — Retrofit `pyve purge`
+- H.f.3 — Retrofit legacy `testenv` and `python-version` subcommands not rewritten in H.e
+- H.f.4 — Error path consistency sweep + NO_COLOR audit across all commands
+- H.f.5 — v2.0.1 release wrap: visual captures, spec updates, CHANGELOG, version bump
 
 **Commands to retrofit (in scope):**
 
@@ -1093,9 +1101,289 @@ Once `lib/ui.sh` stabilizes, sync refinements back to `gitbetter` (where the ori
 
 ---
 
-### Story H.g: v2.0.2 Reconcile Bootstrap Test Fixtures [Planned]
+### Story H.f.1: Retrofit `pyve init` to Unified UX [Done]
 
-The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests. First story of the bootstrap-hardening sub-phase.
+Adopt `lib/ui.sh` helpers throughout `init()` in [pyve.sh:481](../../pyve.sh#L481) and the routines it calls. This is the largest and most user-visible retrofit; the baseline ugly output is captured in the H.f umbrella above.
+
+**Tasks**
+
+- [x] Audit every `echo` / `printf` call inside `init()` and the helpers it invokes (purge sub-flow, environment build, gitignore writers, project-guide install prompt). Map each to a `lib/ui.sh` helper (`banner`, `info`, `success`, `warn`, `fail`, `confirm`, `ask_yn`, `divider`, `run_cmd`, `header_box`, `footer_box`); flag any output that needs a new helper.
+- [x] Add any missing helpers to `lib/ui.sh`. (No additions needed — the existing palette covered every retrofit site.)
+- [x] Wrap the run with `header_box "pyve init"` at entry and `footer_box` on success (both venv and micromamba terminal paths, plus the "update-in-place no env rebuild" early return).
+- [x] Use `banner` for phase boundaries (Purge, Rebuild, Initializing Python environment, Initializing micromamba environment). Use `success` for per-artifact outcomes.
+- [x] Replace the `Proceed? [y/N]` raw-printf prompt with `ask_yn` in the `--force` path. Interactive re-init 1/2/3 menu kept as raw printf (numbered choice, not yes/no).
+- [x] Wrap the `python -m venv` invocation with `run_cmd` so the dimmed `$ cmd` echo is consistent. (`pip install` / `direnv allow` wrapping deferred — `pip install` lives in `prompt_install_pip_dependencies` which is cross-command territory for H.f.4; `direnv allow` is run by the user, not by init.)
+- [x] Write failing bats tests in `tests/unit/test_init_ui.bats` — 3 tests: header at entry, NO_COLOR=1 no escapes on entry path, `--force` prompt migrated off raw `Proceed? [y/N]:`. Footer / phase banners / per-artifact success glyphs are verified visually (see H.f.5 capture step).
+- [x] Run the full unit suite — 616 / 616 passing.
+- [x] Run shellcheck on `pyve.sh` — zero new warnings (SC1091 info-level sourced-file notices unchanged from baseline).
+
+**Deliverables**
+
+- Updated `init()` and its callees in [pyve.sh](../../pyve.sh) (`init_python_version`, `init_venv`, `init_direnv_venv`, `init_direnv_micromamba`, `init_dotenv`, `init_gitignore`).
+- New [tests/unit/test_init_ui.bats](../../tests/unit/test_init_ui.bats) (3 tests).
+- No new helpers needed in [lib/ui.sh](../../lib/ui.sh).
+
+**Out of scope (deferred)**
+
+- `pyve purge` standalone retrofit (H.f.2).
+- Error-path consistency sweep — `log_error` / `log_warning` from sub-validators (e.g., `validate_backend`) still emit the old `ERROR:` / `WARNING:` prefix. That's H.f.4.
+- `prompt_install_pip_dependencies` and `run_project_guide_hooks` (both in `lib/utils.sh`) keep old-style output. Those are shared across multiple commands — retrofit lives in H.f.4.
+- Visual regression captures and CHANGELOG (H.f.5).
+
+---
+
+### Story H.f.2: Retrofit `pyve purge` to Unified UX [Done]
+
+Adopt `lib/ui.sh` helpers throughout `purge()` in [pyve.sh:1159](../../pyve.sh#L1159).
+
+**Tasks**
+
+- [x] Audit every `echo` / `printf` call inside `purge()` and helpers it invokes (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`). Mapped each to a `lib/ui.sh` helper.
+- [x] Wrap with `header_box "pyve purge"` / `footer_box`.
+- [x] Use `ask_yn` for the destructive confirmation prompt. Skipped when `--yes` / `-y` passed (new flag), `CI=1`, or `PYVE_FORCE_YES=1`.
+- [x] Added `--yes` / `-y` flag so internal callers (`init --force`, interactive option 2) skip the prompt without double-prompting. Updated both `purge --keep-testenv` call sites in `init()` to `purge --keep-testenv --yes`.
+- [x] Use `success` for per-artifact removal lines (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`); `info` for "no <artifact> found" cases; `warn` for `.env` preserved-because-not-empty.
+- [x] Write failing bats tests in `tests/unit/test_purge_ui.bats` — 6 tests: header at entry, NO_COLOR=1 no escapes, abort preserves artifacts, `--yes` skips confirmation, footer renders on success, per-artifact ✔ glyph.
+- [x] Run the full unit suite — 622 / 622 passing (6 new).
+- [x] Run shellcheck on `pyve.sh` — zero new warnings.
+
+**Deliverables**
+
+- Updated `purge()` and helpers in [pyve.sh](../../pyve.sh) (`purge_version_file`, `purge_venv`, `purge_pyve_dir`, `purge_testenv_dir`, `purge_envrc`, `purge_dotenv`, `purge_gitignore`).
+- New `--yes` / `-y` flag for `pyve purge`.
+- New [tests/unit/test_purge_ui.bats](../../tests/unit/test_purge_ui.bats) (6 tests).
+
+**Out of scope (deferred)**
+
+- `unknown_flag_error` and other shared error helpers retain old format. → H.f.4.
+- Documentation of the new `--yes` flag in `features.md` / `usage.md`. → H.f.5.
+
+---
+
+### Story H.f.3: Retrofit Legacy `testenv` and `python-version` Subcommands [Done]
+
+Apply the unified UX to the legacy command surface that H.e didn't rewrite — specifically the deprecated forms still emitted via `deprecation_warn` (e.g., `pyve testenv --install`, `pyve python-version`) and any non-rewritten subcommand bodies in `testenv_command()` ([pyve.sh:1306](../../pyve.sh#L1306)) and `python_command()` ([pyve.sh:1582](../../pyve.sh#L1582)).
+
+**Tasks**
+
+- [x] Audit `testenv_command()`, `python_command()`, `set_python_version_only()`, `show_python_version()`, and shared helpers (`ensure_testenv_exists`, `install_pytest_into_testenv`). Mapped all action-body output to `lib/ui.sh` helpers.
+- [x] `testenv_command()` — `header_box "pyve testenv"` after arg parsing, `footer_box` after the `init`/`install`/`purge` action completes. The `run` action is kept exec-compatible (emits no header/footer since it replaces the process with the target command).
+- [x] `set_python_version_only()` — `header_box "pyve python set"` after the required-argument check, `banner "Setting Python version to <ver>"` before version-manager work, `footer_box` on success. `validate_python_version` failure exits 1 after the header (so the user sees command context even when input is rejected).
+- [x] `show_python_version()` — intentionally **not** wrapped. Read-only output follows the `git status` / `gitbetter` convention: unwrapped, quiet, machine-friendly.
+- [x] `python_command()` — no-arg / unknown-subcommand error paths left alone (covered by H.f.4 error-path sweep).
+- [x] Shared helpers: `ensure_testenv_exists`, `install_pytest_into_testenv` — swapped `log_*` for `info`/`success`/`warn`; wrapped `python -m venv` and `pip install` with `run_cmd`.
+- [x] Deprecation-warning flow via `deprecation_warn` confirmed untouched — warnings still render through the existing helper, not double-wrapped.
+- [x] Added [tests/unit/test_testenv_ui.bats](../../tests/unit/test_testenv_ui.bats) (3 tests): header on `testenv purge`, footer on `testenv purge` success, `NO_COLOR=1` no escapes.
+- [x] Added [tests/unit/test_python_ui.bats](../../tests/unit/test_python_ui.bats) (2 tests): header on `python set` before `validate_python_version`, `NO_COLOR=1` no escapes on validation-fail path.
+- [x] Run the full unit suite — 627 / 627 passing (5 new, 622 prior).
+- [x] Run shellcheck on `pyve.sh` — zero new warnings (pre-existing SC1091 family + line-shifted SC2115 at the `rm -rf "$TARGET_BIN_DIR/lib"` site unchanged from baseline).
+
+**Deliverables**
+
+- Updated `testenv_command()`, `set_python_version_only()`, `ensure_testenv_exists()`, `install_pytest_into_testenv()` in [pyve.sh](../../pyve.sh).
+- New [tests/unit/test_testenv_ui.bats](../../tests/unit/test_testenv_ui.bats) (3 tests).
+- New [tests/unit/test_python_ui.bats](../../tests/unit/test_python_ui.bats) (2 tests).
+
+**Out of scope (deferred)**
+
+- Argument-parse errors (`unknown_flag_error`, `log_error` in `testenv_command()` / `python_command()` / `set_python_version_only()`) still emit the old `ERROR:` prefix. → H.f.4.
+- Deprecation-warning format is owned by `deprecation_warn` in `lib/ui.sh` (tested in test_ui.bats / test_deprecation_warnings.bats). No change here.
+
+---
+
+### Story H.f.4: Error Path Consistency Sweep + NO_COLOR Audit [Done]
+
+Cross-cutting cleanup once H.f.1 – H.f.3 land. Walks every error exit in `pyve.sh` and ensures the format matches the unified contract: `✘` prefix, stderr routing, single actionable message.
+
+**Tasks**
+
+- [x] Upgrade the `log_info` / `log_warning` / `log_error` / `log_success` helpers in [lib/utils.sh](../../lib/utils.sh) to emit the unified UX palette (`▸` / `⚠` / `✘` / `✔`, two-space indent, stderr vs. stdout routing preserved). Fallback via `${VAR:-glyph}` so `lib/utils.sh` keeps working when loaded standalone (e.g., test helpers that don't source `lib/ui.sh`). This single change retrofits ~257 existing call sites across `pyve.sh` and `lib/*.sh` without editing any callsite individually — far safer than a callsite-by-callsite rewrite that would churn diff and risk missing branches.
+- [x] Audit: non-upgrade changes rejected. `fail` (which exits) is the wrong substitution for `log_error` because most callers do their own `exit 1` or `return 1`; changing the exit semantics would skip cleanup branches. `log_error` now emits the unified glyph but retains its non-exiting contract.
+- [x] Verified via the full bats suite that error messages remain actionable — no message text was reworded at this layer (each command's messages are already reviewed inside H.f.1 – H.f.3).
+- [x] Run every top-level command's error path with `NO_COLOR=1` and confirm zero ANSI escape codes leak through. Covered by the `NO_COLOR audit` test in `test_error_ui.bats` that sweeps `init / purge / testenv / python / update` error paths, plus a separate sweep across `check / status / update` success/short-circuit paths.
+- [x] Pip / pyenv / micromamba subprocess output policy **decided: full pass-through**. Rationale: pip's own progress bars and error diagnostics are valuable at the dev console and in CI logs; `run_cmd`'s dimmed `$ cmd` echo provides the header line we need without hiding subprocess detail. Documentation of this decision moves to H.f.5 per that story's existing task to document the unified UX contract in `docs/specs/features.md`.
+- [x] Added [tests/unit/test_error_ui.bats](../../tests/unit/test_error_ui.bats) with 8 tests: `✘` prefix on `init --backend foo`, on `testenv --unknown-flag` (via `unknown_flag_error`), and on `python set` with no argument; stderr routing via separate `2>` capture; NO_COLOR cleanliness on `init` and `testenv` error paths; NO_COLOR audit sweep across 9 representative error paths (`init`/`purge`/`testenv`/`python`/`update` variants); NO_COLOR audit sweep across the 3 diagnostic commands (`check`/`status`/`update`).
+- [x] Updated [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) — the 4 existing `log_*` assertions that hard-coded the old `INFO:` / `WARNING:` / `ERROR:` / `✓` prefixes now assert on the unified glyphs.
+- [x] Run the full unit suite — 635 / 635 passing (8 new, 627 prior).
+- [x] Run shellcheck — zero new warnings. Pre-existing SC1091 family on sourced-lib lines unchanged; pre-existing SC2016 at [lib/utils.sh:781](../../lib/utils.sh#L781) (sed-escape pattern, unrelated to this story); line-shifted SC2115 at the `rm -rf "$TARGET_BIN_DIR/lib"` site unchanged.
+
+**Deliverables**
+
+- Upgraded `log_info` / `log_warning` / `log_error` / `log_success` in [lib/utils.sh](../../lib/utils.sh).
+- New [tests/unit/test_error_ui.bats](../../tests/unit/test_error_ui.bats) (8 tests).
+- Updated 4 `log_*` assertions in [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) to the unified-glyph format.
+
+**Out of scope (deferred)**
+
+- Documentation of the "full pass-through" pip-output policy in `features.md`. → H.f.5.
+- Cosmetic follow-up: `unknown_flag_error` manually prepends `"  "` to its continuation lines (pre-dates the unified UX); continuation lines now render as `"  ✘   Valid flags…"` (glyph + 3 spaces) instead of `"  ✘ Valid flags…"`. Not a bug — just mild indent drift on multi-line error blocks. Mentioned here so reviewer isn't surprised; decide during H.f.5 whether to polish.
+
+---
+
+### Story H.f.5: v2.0.1 Release Wrap — Captures, Specs, CHANGELOG, Version Bump [Done]
+
+Final sub-story of the H.f umbrella. Ships the unified-UX retrofit as v2.0.1.
+
+**Tasks**
+
+- [x] Capture before/after terminal output for each retrofitted command. Saved as a consolidated markdown doc at [docs/specs/ux-retrofit-before-after/README.md](../ux-retrofit-before-after/README.md) — text captures, not video, so the diffs are greppable and render inline on GitHub. Covers `init --backend foo`, `init --force` (abort), `purge --yes`, `testenv purge`, `python set badversion`. Before-snippets reproduce the pre-H.f.1 output at commit `0c1fbd1`; after-snippets are the current v2.0.1 output.
+- [x] Updated [docs/specs/features.md](features.md) FR-17 — corrected glyph palette to `✔ / ✘ / ⚠ / ▸` (was `✓ / ✗`), added the pip-output policy bullet, added the "read-only commands stay quiet" bullet, added the "legacy `log_*` helpers now emit the unified palette" bullet.
+- [x] Updated [docs/specs/tech-spec.md](tech-spec.md) — corrected Symbols row glyphs to `✔ / ✘ / ▸ / ⚠`; rewrote the "Delegation from existing `log_*` functions" paragraph to reflect H.f.4's in-place helper upgrade (with `${VAR:-glyph}` fallback for standalone sourcing); added the H.f backport-sync note (nothing to backport — H.f.1 – H.f.4 added no helpers); added the subprocess-output policy and read-only-commands exception to the UI Helper Policy section.
+- [x] Updated [docs/site/usage.md](../../docs/site/usage.md) — swapped `ERROR:` → `  ✘ ` on the cloud-sync refusal example and `INFO:` → `  ▸ ` on the two `conda-lock.yml` generation examples. Other example blocks (notably `pyve check` and raw-`printf` sites inside `pyve lock`) left intact because the underlying code still emits the older style — those are touched in a future pass, not a bookkeeping mismatch.
+- [x] In-binary help sync — `show_help()` at [pyve.sh:126](../../pyve.sh#L126): removed the `doctor` and `validate` rows from the Diagnostics section; removed `pyve doctor` / `pyve validate` from EXAMPLES; updated EXAMPLES to v2.0 canonical grammar (`pyve testenv init`, `pyve testenv install -r requirements-dev.txt`, `pyve check`, `pyve status`, `pyve purge --yes`, `pyve python set 3.13.7`, `pyve python show`). The command-description row for `python` keeps its informational `(Legacy: pyve python-version <ver> still accepted)` note so migrating v1.x users can discover the deprecation.
+- [x] In-binary help sync — `show_purge_help()` at [pyve.sh:2986](../../pyve.sh#L2986): documents the `--yes` / `-y` flag, with the `CI=1` / `PYVE_FORCE_YES=1` equivalence called out. Added a new example: `pyve purge --yes`.
+- [x] In-binary help sweep — spot-checked every `show_*_help` block. No drift beyond the two above (init/update/check/status/python/testenv already reviewed during H.e and remain accurate).
+- [x] Backport-sync note — H.f.1 – H.f.4 added **no** new helpers to `lib/ui.sh`; all retrofit consumed the palette already shipped in H.e.1. Nothing to backport to `gitbetter`. Noted in the H.f backport-sync paragraph inside `tech-spec.md`.
+- [x] Bumped `VERSION="2.0.0"` → `VERSION="2.0.1"` at [pyve.sh:32](../../pyve.sh#L32). Confirmed `pyve --version` reports `pyve version 2.0.1`. Bumped the canonical bats assertion in [tests/unit/test_cli_dispatch.bats:202](../../tests/unit/test_cli_dispatch.bats#L202) to match.
+- [x] Added `## [2.0.1] - 2026-04-20` entry to [CHANGELOG.md](../../CHANGELOG.md) under the existing `## [2.0.0]` entry. Covers Added / Changed / Fixed / Developer notes, linking each bullet to the H.f sub-story.
+- [x] Added 6 bats tests in [tests/unit/test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) covering the help sync (doctor/validate absence; v2.0 grammar in EXAMPLES; `--yes` documented in purge help).
+- [x] Marked H.f umbrella `[Done]` above.
+- [x] Full suite: 640 / 640 passing.
+
+**Deliverables**
+
+- [docs/specs/ux-retrofit-before-after/README.md](../ux-retrofit-before-after/README.md) — consolidated before/after text captures.
+- Updated [docs/specs/features.md](features.md), [docs/specs/tech-spec.md](tech-spec.md), [docs/site/usage.md](../../docs/site/usage.md).
+- v2.0.1 entry in [CHANGELOG.md](../../CHANGELOG.md).
+- Version bump in [pyve.sh](../../pyve.sh).
+- In-binary help cleanup in `show_help()` and `show_purge_help()`.
+- New [tests/unit/test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) (6 tests).
+
+**Out of scope (deferred to a future cosmetic pass)**
+
+- Raw `printf "✓ ..."` / `printf "✗ ..."` inside `pyve lock` and `pyve check` still emit the old glyph. Low-volume, reachable by a future grep-and-replace pass once the lock / check output design is reviewed holistically.
+- `unknown_flag_error` continuation lines have a cosmetic indent drift (`  ✘   msg` — glyph + 3 spaces — from manual `"  "` prepended to each message). Mentioned in H.f.4 deferrals; not fixed here.
+
+---
+
+### Story H.f.6: Bug fix — 'pyve init --backend micromamba' fails silently when 'environment.yml' is absent [Done]
+
+Same class of error-UX gap that H.f.4 sweeps for, but pre-filed here because it was caught on 2026-04-20 by a user reproducing a clean-directory init. Keep this sub-story scoped to the silent-exit fix — do **not** bundle in the larger "auto-scaffold `environment.yml`" feature (that's H.f.7, a deliberate behavior change).
+
+**Symptom.**
+
+```
+$ mkdir /tmp/foo && cd /tmp/foo
+$ pyve init --backend micromamba --python-version 3.12.13
+$ echo $?
+1
+```
+
+No output. No header box. No error message. Exit 1 in a fresh shell, which is indistinguishable from a shell-integration / PATH bug. Users can't tell whether pyve is misconfigured, whether the command is unsupported, or whether they missed a prerequisite.
+
+**Root cause.** [lib/micromamba_env.sh:322-384](../../lib/micromamba_env.sh#L322-L384) `validate_lock_file_status()` has four cases. Case 2 (only `environment.yml` exists) prints a full actionable error unconditionally ([lines 361-367](../../lib/micromamba_env.sh#L361-L367)). Cases 3 (only `conda-lock.yml` exists) and 4 (neither file exists) only print in strict mode ([lines 372-377](../../lib/micromamba_env.sh#L372-L377) and [lines 380-383](../../lib/micromamba_env.sh#L380-L383)) — in default non-strict mode they `return 1` silently. The caller at [pyve.sh:811-815](../../pyve.sh#L811-L815) propagates with a bare `exit 1`, no logging. Net effect: Case 4 exits the shell with zero output.
+
+**Fix — match Case 2's pattern in Cases 3 and 4.** Emit a `fail`-style actionable error unconditionally, keep the strict-mode branch only for the wording escalation. Error body names the missing file(s), points at the documented workflow (`cat > environment.yml …` per [docs/site/getting-started.md:210](../../docs/site/getting-started.md#L210)), and offers the venv fallback (`pyve init --backend venv`).
+
+Sketch for Case 4 (Case 3 is analogous):
+
+```bash
+printf "\n" >&2
+printf "ERROR: Neither 'environment.yml' nor 'conda-lock.yml' found.\n\n" >&2
+printf "'pyve init --backend micromamba' requires an existing conda environment file.\n" >&2
+printf "Create one first — see: docs/site/getting-started.md\n\n" >&2
+printf "Or use the venv backend:\n" >&2
+printf "  pyve init --backend venv\n" >&2
+return 1
+```
+
+(Final wording to use `fail` / `lib/ui.sh` helpers per H.f.4's error-path contract — the `printf` above is illustrative.)
+
+**Tasks**
+
+- [x] **Red:** Added 2 failing tests to [tests/unit/test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) (the existing library-level test seam — preferred over a new `test_init.bats` because `validate_lock_file_status` is the library function under test, and init-level end-to-end would have required a working micromamba install):
+  - `Case 3 (only conda-lock.yml) emits actionable error in non-strict mode` — asserts output contains `"environment.yml"` and `"pyve init --backend venv"`.
+  - `Case 4 (neither file) emits actionable error in non-strict mode` — same assertion, reproducing the 2026-04-20 user-visible silent-exit case.
+- [x] **Green:** Replaced the silent `return 1` in Cases 3 and 4 of `validate_lock_file_status()` at [lib/micromamba_env.sh:370-395](../../lib/micromamba_env.sh#L370-L395) with unconditional actionable-error emission. `log_error` (now emitting the unified `✘` glyph per H.f.4) names the missing file(s), suggests a recovery path (git restore / manual authoring), and offers the venv fallback. Strict mode stays as an elaboration line ("strict mode: no auto-recovery" / "no auto-scaffolding"), not a gate on whether to print.
+- [x] **Verify:** Reproduced `mkdir /tmp/foo && cd /tmp/foo && pyve init --backend micromamba --python-version 3.12.13`. Output is now the header box + 5 actionable `✘` lines + exit 1. No more silent exit. Field-side note: the reproduction under `</dev/null` happened to pass the `check_micromamba_available` stage because `bootstrap_micromamba_interactive` silently defaulted choice 1 (install to project sandbox) instead of aborting — that's a separate silent-default UX bug in `bootstrap_micromamba_interactive`, not in H.f.6 scope. Filed here for awareness; not fixed.
+- [x] **Audit sibling functions:** grepped `strict_mode.*== true` across `lib/micromamba_env.sh` and `lib/micromamba_core.sh`. Only two other sites — both Case 1 (stale lock) inside `validate_lock_file_status`, which uses `warn_stale_lock_file` + `is_interactive` and does **not** exhibit the silent-return-1 shape. No other offenders.
+- [x] **Full suite green:** 642 / 642 passing (2 new, 640 prior).
+
+**Deliverables**
+
+- Case 3 + Case 4 error emission in [lib/micromamba_env.sh:370-395](../../lib/micromamba_env.sh#L370-L395).
+- 2 new tests in [tests/unit/test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) (added to the library-level test seam rather than a new `test_init.bats`).
+
+**Out of scope**
+
+- Auto-scaffolding `environment.yml` — that's H.f.7.
+- `bootstrap_micromamba_interactive` silently defaulting to choice 1 under piped stdin — noted during verification; separate silent-default bug, not in scope.
+- Wider error-path sweep — that's H.f.4 (this story is the single offender we know about from field report; H.f.4 will catch any others).
+
+---
+
+### Story H.f.7: Feature — 'pyve init --backend micromamba' scaffolds a starter 'environment.yml' [Done]
+
+Depends on H.f.6 (actionable error must land first, so users on older pyve see a pointer rather than silence; H.f.7 then replaces that error-only path with a scaffold-and-proceed path for the narrow "fresh project" case).
+
+**Problem.** After H.f.6 lands, the clean-directory flow still fails — the user has a clear error, but they still have to hand-author an `environment.yml` before their first successful init. The current workflow is a rite of passage (find an example in the README, copy-paste, guess at the channel and Python pin) that delivers zero value: a fresh project's `environment.yml` is virtually always the same shape.
+
+**Proposal.** When `pyve init --backend micromamba` runs in a directory with **neither** `environment.yml` nor `conda-lock.yml`, **and** `--python-version` is explicitly provided (or falls through to `DEFAULT_PYTHON_VERSION`), pyve writes a minimal starter `environment.yml` instead of erroring:
+
+```yaml
+# Generated by pyve init --backend micromamba
+name: <sanitized-dir-basename>
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.13  # from --python-version or DEFAULT_PYTHON_VERSION
+  - pip
+```
+
+Then proceed with normal micromamba bootstrap. The user sees the unified-UX header, a "Scaffolded environment.yml" banner, and the env creation output — one successful `pyve init` instead of an error + manual edit + re-run.
+
+**Explicit non-goals:**
+
+- **Do not scaffold when `conda-lock.yml` exists without `environment.yml`** (Case 3). That's an inconsistent-state error, not a fresh project — H.f.6's error still applies.
+- **Do not scaffold under `--strict`.** Strict mode opts into "no surprises, no inference"; hand-authored files only.
+- **Do not overwrite an existing `environment.yml`.** Case 2 (only `environment.yml`) still runs through the "no lock file" path.
+- **No opinionated dependencies beyond `python` + `pip`.** `pyve lock` will solve the pin; the user adds their real dependencies before re-locking.
+
+**Channel choice.** `conda-forge` is the ecosystem default and matches every `environment.yml` example in the pyve docs ([README.md:556](../../README.md#L556), [CONTRIBUTING.md:214](../../CONTRIBUTING.md#L214), [docs/site/getting-started.md:210](../../docs/site/getting-started.md#L210)). Document the choice + rationale in `docs/specs/features.md` so it's discoverable.
+
+**Name choice.** Sanitize the directory basename via the existing `sanitize_environment_name()` ([lib/micromamba_env.sh:394](../../lib/micromamba_env.sh#L394)) to match the same env-name rules used everywhere else. Respect `--env-name` if the user passed it.
+
+**Tasks**
+
+- [x] **Red:** Added 8 failing tests to [tests/unit/test_scaffold_environment_yml.bats](../../tests/unit/test_scaffold_environment_yml.bats) (library-level test seam chosen over `test_init.bats` because the helper is library-level and init end-to-end requires a working micromamba):
+  - 6 library tests: scaffolding in an empty dir, `--env-name` override, `--strict` disables, no-overwrite of existing env.yml, refuses when conda-lock.yml exists (Case 3), generated-file key order.
+  - 2 integration-lite tests: `init --backend micromamba` in empty dir scaffolds and avoids the H.f.6 error path (stub `.pyve/bin/micromamba` so `check_micromamba_available` passes without a real install); `init --backend micromamba --strict` does **not** scaffold and hits the H.f.6 Case 4 error.
+- [x] **Green:** Added `scaffold_starter_environment_yml(python_version, env_name_flag, strict_mode)` to [lib/micromamba_env.sh:407-460](../../lib/micromamba_env.sh#L407-L460). Wired it into `init()` at [pyve.sh:803-813](../../pyve.sh#L803-L813) **before** `check_micromamba_available` so scaffolding is cheap and deterministic, and happens before the expensive bootstrap. On scaffold, auto-export `PYVE_NO_LOCK=1` so `validate_lock_file_status()` takes its existing `--no-lock` bypass instead of erroring on the non-existent lock file. Chose init-level wiring over shoving logic into `validate_lock_file_status` so the validator stays pure and bats-testable at the library level.
+- [x] **Green:** Inspected the H.f.6 Case 4 fail-path wording. Current text is clear enough — non-strict Case 4 is now unreachable via init (scaffolding always fires); strict Case 4 elaborates "(strict mode: no auto-scaffolding)", which hints at the behavior difference. No wording change needed.
+- [x] **Spec:** Added FR-10a "Starter `environment.yml` Scaffold" to [docs/specs/features.md](../features.md) — trigger conditions, generated content, channel + name rationale, non-goals, lock-file interaction, out-of-scope (`.tool-versions` awareness deferred).
+- [x] **Spec:** Added `scaffold_starter_environment_yml` row to the `lib/micromamba_env.sh` function table in [docs/specs/tech-spec.md](../tech-spec.md).
+- [x] **Docs:** Rewrote the "Using Micromamba Backend" section in [docs/site/getting-started.md](../../docs/site/getting-started.md) — scaffold-then-proceed is now the primary path; the old hand-author-then-lock flow moves to an "already have an `environment.yml`?" sub-section.
+- [x] **CHANGELOG:** Added `## [2.1.0] - 2026-04-20` entry covering both H.f.6 and H.f.7 (paired release — H.f.6 is the silent-exit bug fix for the same code path H.f.7 reshapes into a success flow).
+- [x] **Version bump:** `VERSION="2.0.1"` → `"2.1.0"` at [pyve.sh:32](../../pyve.sh#L32) (minor bump — new feature changes init's failure-to-success boundary). Matching assertion updated in [tests/unit/test_cli_dispatch.bats:202](../../tests/unit/test_cli_dispatch.bats#L202).
+- [x] **Full suite green:** 650 / 650 passing (8 new H.f.7 tests, 2 new H.f.6 tests already landed, 640 prior).
+
+**Deliverables**
+
+- `scaffold_starter_environment_yml()` helper in [lib/micromamba_env.sh:407-460](../../lib/micromamba_env.sh#L407-L460).
+- Wiring in [pyve.sh:803-813](../../pyve.sh#L803-L813) `init()` — scaffold call + auto-`PYVE_NO_LOCK`.
+- New [tests/unit/test_scaffold_environment_yml.bats](../../tests/unit/test_scaffold_environment_yml.bats) (8 tests).
+- Spec updates in [docs/specs/features.md](../features.md), [docs/specs/tech-spec.md](../tech-spec.md).
+- User-facing docs update in [docs/site/getting-started.md](../../docs/site/getting-started.md).
+- `[2.1.0] - 2026-04-20` entry in [CHANGELOG.md](../../CHANGELOG.md).
+- Version bump to 2.1.0 in [pyve.sh](../../pyve.sh) and [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats).
+
+**Open questions — resolved**
+
+- **Default Python version when `--python-version` is omitted** → use `$python_version` as resolved by init (flag or `DEFAULT_PYTHON_VERSION`). `.tool-versions` / `.python-version` introspection is deferred to a future story — consistent with venv's current behavior.
+- **Should scaffolding require `--python-version` explicitly?** → No. Match venv's silent-default ergonomics. The chosen version is visible in the scaffold-notice info line (`▸ Scaffolded starter environment.yml (python=<ver>)`).
+- **Interaction with `pyve lock`** → Option (b): init completes without a lock; user runs `pyve lock` separately. Lower-complexity, matches venv's "no auto-generated `requirements.txt`" ergonomic. Auto-`PYVE_NO_LOCK=1` on scaffold makes `validate_lock_file_status()` cooperate.
+
+---
+
+## Phase I: Bootstrap Test Activation and Hardening
+
+The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests. 
+
+**Intended release version:** `v2.2.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (L.d).
+
+### Story I.a: Reconcile Bootstrap Test Fixtures [Planned]
+
+First story of the bootstrap-hardening sub-phase.
 
 - [ ] Audit `test_bootstrap.py` test methods against actual CLI flags (`--auto-bootstrap`, `--bootstrap-to project|user`)
 - [ ] Remove non-existent flag references (`bootstrap_url`, `micromamba_version`, `bootstrap_location` as a path)
@@ -1105,7 +1393,7 @@ The existing skipped bootstrap integration tests reference CLI flags and helper 
 
 ---
 
-### Story H.h: v2.0.3 Activate Core Bootstrap Tests [Planned]
+### Story I.b: Activate Core Bootstrap Tests [Planned]
 
 Activate the main `TestBootstrapPlaceholder` class tests that can run when micromamba is NOT pre-installed.
 
@@ -1118,7 +1406,7 @@ Activate the main `TestBootstrapPlaceholder` class tests that can run when micro
 
 ---
 
-### Story H.i: v2.0.4 Activate Bootstrap Error Handling Tests [Planned]
+### Story I.c: Activate Bootstrap Error Handling Tests [Planned]
 
 Activate failure-path tests.
 
@@ -1130,7 +1418,7 @@ Activate failure-path tests.
 
 ---
 
-### Story H.j: v2.0.5 Activate Bootstrap Configuration Tests [Planned]
+### Story I.d: Activate Bootstrap Configuration Tests [Planned]
 
 Activate config-driven bootstrap tests.
 
@@ -1141,7 +1429,7 @@ Activate config-driven bootstrap tests.
 
 ---
 
-### Story H.k: v2.0.6 Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
+### Story I.e: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
 
 Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
@@ -1151,7 +1439,7 @@ Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
 ---
 
-### Story H.l: v2.0.7 Add Bootstrap CI Job [Planned]
+### Story I.f: Add Bootstrap CI Job [Planned]
 
 Create a new GitHub Actions job that tests bootstrap without pre-installed micromamba — so the download and install paths are tested in automation.
 
@@ -1163,7 +1451,7 @@ Create a new GitHub Actions job that tests bootstrap without pre-installed micro
 
 ---
 
-### Story H.m: v2.0.8 Bootstrap Download Verification [Planned]
+### Story I.g: v2.0.8 Bootstrap Download Verification [Planned]
 
 Evaluate whether the bootstrap code verifies downloaded binaries and add verification if missing.
 
@@ -1178,23 +1466,23 @@ Evaluate whether the bootstrap code verifies downloaded binaries and add verific
 
 ## Future
 
-### Story I.?: Out of scope (from Story H.e)
+### Story J.?: Out of scope (from Story H.e)
 
 - Retrofitting `pyve init` / `pyve purge` / other surviving commands to the new UX — covered by H.f.
 - Removing (as opposed to deprecating) old flags — Future (Phase I).
 - `pyve check --fix` auto-remediation — Future.
 
-### Story I.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
+### Story J.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After H.c / H.e ship `pyve check`, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred out of Phase H to keep the v2.0 scope focused on the diagnostic / status surface design — we want real usage data on the new `check` before deciding which fixes to automate and with what safety gates.
 
-### Story I.?: Remove Deprecated Flags Introduced as Warnings in H.e [Planned]
+### Story J.?: Remove Deprecated Flags Introduced as Warnings in H.e [Planned]
 
 H.e ships with deprecation *warnings* (not hard errors) on renamed flags / subcommands — likely `--update` flag, `testenv --init` / `--purge` flags, `python-version` (if renamed). After a sustained warning window across multiple minor releases, drop the old flags entirely. Almost certainly a major version bump (v3.0) depending on timing.
 
 Not in Phase H because: the v2.0 breaking changes are already substantial; shipping hard-removes in the same release as renames denies users any migration window.
 
-### Story I.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
+### Story J.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
 
 **Why.** macOS ships `/bin/bash` at 3.2.57. Every pyve release must source and execute cleanly there, but the repeated failure mode through Phase H (H.e.7a fixed `declare -A`; H.e.9h fixed `mapfile`) shows that bash 4+ features slip in whenever a contributor's dev shell is a newer bash from brew / asdf / nix. CI catches each instance, but only after a broken release reaches at least one user. A proactive audit + lint rule would shrink the failure mode.
 

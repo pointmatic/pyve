@@ -171,7 +171,7 @@ library. The failure is silent and delayed — often not detected until hours
 later during a `git commit` or test run.
 
 ```
-ERROR: Project is inside a cloud-synced directory.
+  ✘ Project is inside a cloud-synced directory.
 
   Path:      /Users/you/Documents/myproject
   Sync root: /Users/you/Documents (iCloud Drive)
@@ -381,7 +381,7 @@ pyve lock --check   # verify conda-lock.yml is current (exit 0) or stale/missing
 **Example output (file updated):**
 
 ```
-INFO: Generating conda-lock.yml for osx-arm64...
+  ▸ Generating conda-lock.yml for osx-arm64...
 
 ✓ conda-lock.yml updated for osx-arm64.
 
@@ -395,7 +395,7 @@ lock file, rebuilding is optional.
 **Example output (already up to date):**
 
 ```
-INFO: Generating conda-lock.yml for osx-arm64...
+  ▸ Generating conda-lock.yml for osx-arm64...
 
 ✓ conda-lock.yml is already up to date for osx-arm64. No changes made.
 ```
