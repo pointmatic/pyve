@@ -16,73 +16,135 @@
 Integration tests for micromamba bootstrap functionality.
 
 Tests automatic micromamba installation and bootstrap process.
-Note: Most tests are skipped as bootstrap is planned for future versions.
+Bootstrap is implemented; the ``@pytest.mark.skip`` markers are scheduled
+to be removed incrementally in Phase I (Stories I.b through I.g).
 """
+
+import os
+import shutil
 
 import pytest
 from pathlib import Path
 
 
+@pytest.fixture
+def bootstrap_isolation(monkeypatch, tmp_path):
+    """
+    Isolate $HOME and scrub micromamba from $PATH so bootstrap resolution is
+    deterministic.
+
+    Returns the isolated $HOME path. After this fixture runs,
+    ``check_micromamba_available`` in pyve.sh will resolve in this order:
+    project sandbox (empty in each tmp test project) → user sandbox under the
+    fake $HOME (empty) → system PATH (scrubbed). That lets tests assert
+    exactly what bootstrap did, regardless of what the developer has installed.
+    """
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setenv("HOME", str(fake_home))
+
+    while True:
+        found = shutil.which("micromamba")
+        if not found:
+            break
+        bin_dir = os.path.dirname(found)
+        current = os.environ.get("PATH", "")
+        new = ":".join(p for p in current.split(":") if p != bin_dir)
+        monkeypatch.setenv("PATH", new)
+
+    return fake_home
+
+
 @pytest.mark.micromamba
 class TestBootstrapPlaceholder:
-    """Placeholder tests for micromamba bootstrap functionality."""
-    
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_auto_bootstrap_when_not_installed(self, pyve, project_builder):
-        """Test automatic bootstrap when micromamba not found."""
+    """Core auto-bootstrap tests (activated in Story I.b)."""
+
+    def test_auto_bootstrap_when_not_installed(self, pyve, project_builder, bootstrap_isolation):
+        """Auto-bootstrap fires when micromamba is not available on any resolution path."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
-        
-        # This would test auto-bootstrap if micromamba not found
-        result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
-        assert result.returncode == 0
-    
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_to_project_sandbox(self, pyve, project_builder):
-        """Test bootstrap installs to project .pyve/bin/micromamba."""
+
+        # Full init may fail downstream (env-creation downloads python=3.11
+        # and can be slow / flaky). This test's scope is the bootstrap step
+        # itself — that the auto-bootstrap banner fired and installed the
+        # micromamba binary into the user sandbox (the default target).
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            bootstrap_to='user',
+            check=False,
+        )
+
+        assert 'Auto-bootstrapping micromamba' in result.stdout
+        assert (bootstrap_isolation / '.pyve' / 'bin' / 'micromamba').exists()
+
+    def test_bootstrap_to_project_sandbox(self, pyve, project_builder, bootstrap_isolation):
+        """--bootstrap-to project installs micromamba into <cwd>/.pyve/bin/micromamba."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
-        
-        result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
-        assert result.returncode == 0
-        # Should install to project sandbox
+
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            bootstrap_to='project',
+            check=False,
+        )
+
+        assert 'Auto-bootstrapping micromamba to project' in result.stdout
         assert (pyve.cwd / '.pyve' / 'bin' / 'micromamba').exists()
-    
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_to_user_sandbox(self, pyve, project_builder):
-        """Test bootstrap can install to user ~/.pyve/bin/micromamba."""
+
+    def test_bootstrap_to_user_sandbox(self, pyve, project_builder, bootstrap_isolation):
+        """--bootstrap-to user installs micromamba into $HOME/.pyve/bin/micromamba."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
-        
-        result = pyve.init(backend='micromamba', auto_bootstrap=True, user_install=True)
-        
-        assert result.returncode == 0
-        # Should install to user sandbox
-        user_micromamba = Path.home() / '.pyve' / 'bin' / 'micromamba'
+
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            bootstrap_to='user',
+            check=False,
+        )
+
+        assert 'Auto-bootstrapping micromamba to user' in result.stdout
+        user_micromamba = bootstrap_isolation / '.pyve' / 'bin' / 'micromamba'
         assert user_micromamba.exists()
-    
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_skips_if_already_installed(self, pyve, project_builder):
-        """Test bootstrap skips if micromamba already available."""
+
+    def test_bootstrap_skips_if_already_installed(self, pyve, project_builder, bootstrap_isolation):
+        """Pre-existing micromamba in the project sandbox skips the bootstrap step silently."""
+        # Plant a shim satisfying get_micromamba_path's `-x` + `--version` checks.
+        shim_dir = pyve.cwd / '.pyve' / 'bin'
+        shim_dir.mkdir(parents=True)
+        shim = shim_dir / 'micromamba'
+        shim.write_text(
+            '#!/usr/bin/env bash\n'
+            '[ "$1" = "--version" ] && echo "1.5.3"\n'
+            'exit 0\n'
+        )
+        shim.chmod(0o755)
+
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
-        
-        # If micromamba already installed, should skip bootstrap
-        result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
-        assert result.returncode == 0
-        assert 'already installed' in result.stdout.lower() or 'skip' in result.stdout.lower()
-    
+
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            check=False,
+        )
+
+        # Silent-skip is the documented behavior: no "Auto-bootstrapping" or
+        # "Downloading micromamba" banner fires when check_micromamba_available
+        # returns true before the bootstrap gate.
+        assert 'Auto-bootstrapping micromamba' not in result.stdout
+        assert 'Downloading micromamba' not in result.stdout
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_version_selection(self, pyve, project_builder):
         """Test bootstrap can install specific micromamba version."""
@@ -90,15 +152,11 @@ class TestBootstrapPlaceholder:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
-        result = pyve.init(
-            backend='micromamba',
-            auto_bootstrap=True,
-            micromamba_version='1.5.3'
-        )
-        
+
+        result = pyve.init(backend='micromamba', auto_bootstrap=True)
+
         assert result.returncode == 0
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_download_verification(self, pyve, project_builder):
         """Test bootstrap verifies downloaded binary."""
@@ -106,13 +164,13 @@ class TestBootstrapPlaceholder:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
+
         assert result.returncode == 0
         # Should verify checksum or signature
         assert 'verified' in result.stdout.lower() or 'checksum' in result.stdout.lower()
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_platform_detection(self, pyve, project_builder):
         """Test bootstrap detects correct platform."""
@@ -120,12 +178,12 @@ class TestBootstrapPlaceholder:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
+
         assert result.returncode == 0
         # Should detect macOS, Linux, etc.
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_failure_handling(self, pyve, project_builder):
         """Test bootstrap handles download failures gracefully."""
@@ -133,15 +191,12 @@ class TestBootstrapPlaceholder:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
-        # Simulate network failure or invalid URL
-        result = pyve.init(
-            backend='micromamba',
-            auto_bootstrap=True,
-            bootstrap_url='https://invalid.url/micromamba',
-            check=False
-        )
-        
+
+        # Simulate network failure (test will be activated in Story I.c once
+        # a failure-injection mechanism is chosen; no CLI --bootstrap-url flag
+        # exists to point at an invalid host directly).
+        result = pyve.init(backend='micromamba', auto_bootstrap=True, check=False)
+
         # Should fail gracefully with helpful message
         assert result.returncode != 0
         assert 'download' in result.stderr.lower() or 'failed' in result.stderr.lower()
@@ -150,7 +205,7 @@ class TestBootstrapPlaceholder:
 @pytest.mark.micromamba
 class TestBootstrapConfiguration:
     """Test bootstrap configuration options."""
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_respects_config_file(self, pyve, project_builder):
         """Test bootstrap respects .pyve/config settings."""
@@ -158,7 +213,7 @@ class TestBootstrapConfiguration:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         # Create config with bootstrap settings
         config_content = """backend: micromamba
 micromamba:
@@ -168,11 +223,11 @@ micromamba:
         config_path = pyve.cwd / '.pyve' / 'config'
         config_path.parent.mkdir(exist_ok=True)
         config_path.write_text(config_content)
-        
+
         result = pyve.init()
-        
+
         assert result.returncode == 0
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_cli_overrides_config(self, pyve, project_builder):
         """Test CLI flags override config file for bootstrap."""
@@ -180,23 +235,23 @@ micromamba:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         # Config says no bootstrap
         project_builder.create_config(
             backend='micromamba',
             micromamba={'auto_bootstrap': False}
         )
-        
+
         # But CLI says yes
         result = pyve.init(auto_bootstrap=True)
-        
+
         assert result.returncode == 0
 
 
 @pytest.mark.micromamba
 class TestBootstrapEdgeCases:
     """Test edge cases for bootstrap functionality."""
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_with_insufficient_permissions(self, pyve, project_builder):
         """Test bootstrap handles permission errors."""
@@ -204,19 +259,22 @@ class TestBootstrapEdgeCases:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
-        # Try to bootstrap to location without permissions
+
+        # Try to bootstrap to location without permissions. The actual CLI
+        # only exposes `--bootstrap-to project|user`; Story I.c will decide
+        # how to simulate a permission-denied path (e.g. chmod a user-sandbox
+        # ancestor read-only before invoking bootstrap).
         result = pyve.init(
             backend='micromamba',
             auto_bootstrap=True,
-            bootstrap_location='/root/.pyve/bin',
-            check=False
+            bootstrap_to='user',
+            check=False,
         )
-        
+
         # Should fail gracefully
         assert result.returncode != 0
         assert 'permission' in result.stderr.lower()
-    
+
     @pytest.mark.skip(reason="Bootstrap not yet implemented")
     def test_bootstrap_cleanup_on_failure(self, pyve, project_builder):
         """Test bootstrap cleans up partial downloads on failure."""
@@ -224,14 +282,14 @@ class TestBootstrapEdgeCases:
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         # Simulate failure during download
         result = pyve.init(
             backend='micromamba',
             auto_bootstrap=True,
             check=False
         )
-        
+
         # Should not leave partial files
         bootstrap_dir = pyve.cwd / '.pyve' / 'bin'
         if bootstrap_dir.exists():
@@ -242,25 +300,25 @@ class TestBootstrapEdgeCases:
 
 class TestBootstrapDocumentation:
     """Tests to ensure bootstrap is properly documented."""
-    
+
     def test_bootstrap_flag_in_help(self, pyve):
         """Test that --auto-bootstrap flag appears in help."""
         result = pyve.run('--help', check=False)
-        
+
         # Help should mention bootstrap (when implemented)
         # For now, just verify help works
         assert result.returncode in [0, 1]
-    
+
     def test_bootstrap_error_message_helpful(self, pyve, project_builder):
         """Test that error message suggests bootstrap when micromamba not found."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11']
         )
-        
+
         # Try to init without micromamba (if not installed)
         result = pyve.init(backend='micromamba', check=False)
-        
+
         # Error message should be helpful (may succeed if micromamba installed)
         if result.returncode != 0:
             # Should suggest installation or bootstrap

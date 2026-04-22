@@ -556,6 +556,7 @@ version = "{version}"
         self,
         pyve_script: Optional[Path] = None,
         env_name: Optional[str] = None,
+        **kwargs,
     ) -> subprocess.CompletedProcess:
         """
         Initialize a micromamba project by running pyve init --backend micromamba.
@@ -563,6 +564,8 @@ version = "{version}"
         Args:
             pyve_script: Path to pyve.sh (auto-detected if None)
             env_name: Environment name
+            **kwargs: Additional flags forwarded to ``PyveRunner.init`` (e.g.
+                ``auto_bootstrap=True``, ``bootstrap_to="project"``).
 
         Returns:
             CompletedProcess instance
@@ -571,7 +574,6 @@ version = "{version}"
             pyve_script = Path(__file__).parent.parent.parent / "pyve.sh"
 
         runner = PyveRunner(pyve_script, self.base_path)
-        kwargs = {}
         if env_name:
             kwargs["env_name"] = env_name
         return runner.init(backend="micromamba", **kwargs)
