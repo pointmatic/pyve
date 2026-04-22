@@ -55,6 +55,28 @@ def bootstrap_isolation(monkeypatch, tmp_path):
     return fake_home
 
 
+@pytest.fixture
+def failing_curl(bootstrap_isolation, monkeypatch, tmp_path):
+    """
+    Prepend a PATH shim that makes ``curl`` exit 1.
+
+    ``bootstrap_install_micromamba`` is the only pyve.sh caller of curl
+    (grepped across pyve.sh and lib/*.sh), so this only affects bootstrap
+    downloads. Returns the shim directory.
+    """
+    shim_dir = tmp_path / "shim_bin"
+    shim_dir.mkdir()
+    curl_shim = shim_dir / "curl"
+    curl_shim.write_text(
+        '#!/usr/bin/env bash\n'
+        'echo "curl: (simulated) download failed" >&2\n'
+        'exit 1\n'
+    )
+    curl_shim.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{shim_dir}:{os.environ.get('PATH', '')}")
+    return shim_dir
+
+
 @pytest.mark.micromamba
 class TestBootstrapPlaceholder:
     """Core auto-bootstrap tests (activated in Story I.b)."""
@@ -171,34 +193,59 @@ class TestBootstrapPlaceholder:
         # Should verify checksum or signature
         assert 'verified' in result.stdout.lower() or 'checksum' in result.stdout.lower()
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_platform_detection(self, pyve, project_builder):
-        """Test bootstrap detects correct platform."""
+    def test_bootstrap_platform_detection(self, pyve, project_builder, failing_curl):
+        """Bootstrap selects the download URL matching the current OS + architecture."""
+        import platform as _platform
+
+        system = _platform.system()
+        machine = _platform.machine()
+        if system == "Darwin":
+            expected = "osx-arm64" if machine in ("arm64", "aarch64") else "osx-64"
+        elif system == "Linux":
+            if machine == "x86_64":
+                expected = "linux-64"
+            elif machine in ("aarch64", "arm64"):
+                expected = "linux-aarch64"
+            elif machine == "ppc64le":
+                expected = "linux-ppc64le"
+            else:
+                pytest.skip(f"Unsupported Linux architecture: {machine}")
+        else:
+            pytest.skip(f"Unsupported OS: {system}")
+
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
 
-        result = pyve.init(backend='micromamba', auto_bootstrap=True)
+        # failing_curl sabotages the download, but the "Downloading micromamba
+        # from: <url>" log_info line fires *before* curl runs, so the URL is
+        # captured in stdout even though bootstrap exits 1.
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            bootstrap_to='user',
+            check=False,
+        )
 
-        assert result.returncode == 0
-        # Should detect macOS, Linux, etc.
+        assert f"/{expected}/" in result.stdout
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_failure_handling(self, pyve, project_builder):
-        """Test bootstrap handles download failures gracefully."""
+    def test_bootstrap_failure_handling(self, pyve, project_builder, failing_curl):
+        """Bootstrap exits non-zero and surfaces a download failure message when curl fails."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
 
-        # Simulate network failure (test will be activated in Story I.c once
-        # a failure-injection mechanism is chosen; no CLI --bootstrap-url flag
-        # exists to point at an invalid host directly).
-        result = pyve.init(backend='micromamba', auto_bootstrap=True, check=False)
+        result = pyve.init(
+            backend='micromamba',
+            auto_bootstrap=True,
+            bootstrap_to='user',
+            check=False,
+        )
 
-        # Should fail gracefully with helpful message
         assert result.returncode != 0
+        # log_error emits "Failed to download micromamba" to stderr.
         assert 'download' in result.stderr.lower() or 'failed' in result.stderr.lower()
 
 
@@ -250,52 +297,58 @@ micromamba:
 
 @pytest.mark.micromamba
 class TestBootstrapEdgeCases:
-    """Test edge cases for bootstrap functionality."""
+    """Failure-path edge cases for bootstrap (activated in Story I.c)."""
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_with_insufficient_permissions(self, pyve, project_builder):
-        """Test bootstrap handles permission errors."""
+    def test_bootstrap_with_insufficient_permissions(self, pyve, project_builder, bootstrap_isolation):
+        """Bootstrap fails with a permission message when the user sandbox parent is not writable."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
         )
 
-        # Try to bootstrap to location without permissions. The actual CLI
-        # only exposes `--bootstrap-to project|user`; Story I.c will decide
-        # how to simulate a permission-denied path (e.g. chmod a user-sandbox
-        # ancestor read-only before invoking bootstrap).
+        # Pre-create $HOME/.pyve and make it read-only so the mkdir -p for
+        # $HOME/.pyve/bin fails. Scope the chmod narrowly (not to the whole
+        # fake HOME) so unrelated tooling reading from $HOME still works.
+        pyve_dir = bootstrap_isolation / '.pyve'
+        pyve_dir.mkdir()
+        original_mode = pyve_dir.stat().st_mode
+        pyve_dir.chmod(0o555)
+        try:
+            result = pyve.init(
+                backend='micromamba',
+                auto_bootstrap=True,
+                bootstrap_to='user',
+                check=False,
+            )
+        finally:
+            # Restore write permission so pytest can clean up tmp_path.
+            pyve_dir.chmod(original_mode)
+
+        assert result.returncode != 0
+        # mkdir's own "Permission denied" error passes through to stderr in
+        # addition to log_error's "Failed to create directory".
+        assert 'permission' in result.stderr.lower()
+
+    def test_bootstrap_cleanup_on_failure(self, pyve, project_builder, failing_curl):
+        """Bootstrap leaves no half-installed micromamba binary when curl fails."""
+        project_builder.create_environment_yml(
+            name='test-env',
+            dependencies=['python=3.11'],
+        )
+
         result = pyve.init(
             backend='micromamba',
             auto_bootstrap=True,
-            bootstrap_to='user',
+            bootstrap_to='project',
             check=False,
         )
 
-        # Should fail gracefully
         assert result.returncode != 0
-        assert 'permission' in result.stderr.lower()
-
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_cleanup_on_failure(self, pyve, project_builder):
-        """Test bootstrap cleans up partial downloads on failure."""
-        project_builder.create_environment_yml(
-            name='test-env',
-            dependencies=['python=3.11']
-        )
-
-        # Simulate failure during download
-        result = pyve.init(
-            backend='micromamba',
-            auto_bootstrap=True,
-            check=False
-        )
-
-        # Should not leave partial files
-        bootstrap_dir = pyve.cwd / '.pyve' / 'bin'
-        if bootstrap_dir.exists():
-            # Should not have incomplete downloads
-            incomplete_files = list(bootstrap_dir.glob('*.tmp'))
-            assert len(incomplete_files) == 0
+        # The actual cleanup guarantee: no partial binary at the install path.
+        # bootstrap_install_micromamba's tmpfile lives under mktemp (not under
+        # .pyve/bin), and on curl failure it's rm -f'd before returning — the
+        # observable postcondition is simply that no binary was emplaced.
+        assert not (pyve.cwd / '.pyve' / 'bin' / 'micromamba').exists()
 
 
 class TestBootstrapDocumentation:

@@ -1414,15 +1414,16 @@ Activate the main `TestBootstrapPlaceholder` class tests that can run when micro
 
 ---
 
-### Story I.c: Activate Bootstrap Error Handling Tests [Planned]
+### Story I.c: Activate Bootstrap Error Handling Tests [Done]
 
 Activate failure-path tests.
 
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_failure_handling`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_platform_detection`
-- [ ] Remove `@pytest.mark.skip` from `TestBootstrapEdgeCases` class (`test_bootstrap_with_insufficient_permissions`, `test_bootstrap_cleanup_on_failure`)
-- [ ] Fix assertions to match actual error output
-- [ ] Verify: `pytest tests/integration/test_bootstrap.py::TestBootstrapEdgeCases -v` passes
+- [x] **Failure-injection mechanism chosen**: PATH-prepend shim for `curl` ([test_bootstrap.py:58-77](../../tests/integration/test_bootstrap.py#L58-L77), fixture `failing_curl`). `curl` is the only caller of the network in pyve (grepped across `pyve.sh` + `lib/*.sh`: only hit is [lib/micromamba_bootstrap.sh:127](../../lib/micromamba_bootstrap.sh#L127)), so the shim's blast radius is exactly the bootstrap download step. Rejected alternative: env-var based URL override would have required a pyve.sh code change outside I.c's scope.
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_failure_handling` ([test_bootstrap.py:194-207](../../tests/integration/test_bootstrap.py#L194-L207)); uses `failing_curl`, asserts non-zero exit + `'download'`/`'failed'` in stderr (matching `log_error` which writes to `>&2` per [lib/utils.sh:45-47](../../lib/utils.sh#L45-L47)).
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_platform_detection` ([test_bootstrap.py:158-192](../../tests/integration/test_bootstrap.py#L158-L192)); **reshaped assertion**: old test only asserted `returncode == 0`, which verified nothing about platform detection. New test computes the expected platform string (`osx-arm64`, `linux-64`, etc.) from `platform.system()` + `platform.machine()`, then asserts the `Downloading micromamba from: …` URL (emitted by `log_info` *before* curl runs) contains it. `failing_curl` keeps the test fast (<1s) by skipping the real network fetch.
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapEdgeCases::test_bootstrap_with_insufficient_permissions` ([test_bootstrap.py:247-275](../../tests/integration/test_bootstrap.py#L247-L275)); pre-creates `$HOME/.pyve` inside the fake HOME and `chmod 0o555`s it so `mkdir -p $HOME/.pyve/bin` fails with "Permission denied" (mkdir's own stderr passes through alongside `log_error`'s "Failed to create directory"). `try/finally` restores the mode so pytest can tear down tmp_path.
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapEdgeCases::test_bootstrap_cleanup_on_failure` ([test_bootstrap.py:277-295](../../tests/integration/test_bootstrap.py#L277-L295)); **reshaped assertion**: old test globbed `.pyve/bin/*.tmp` which was meaningless (the actual temp file is a `mktemp`-generated path under `/tmp`, not `.pyve/bin`). New assertion verifies the observable guarantee: no half-installed binary at `.pyve/bin/micromamba` after a failed bootstrap.
+- [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapEdgeCases -v` → 2 passed. Bootstrap + helpers full run: 14 passed, 4 skipped (was 10/8 at start of I.c). ~62s total, with the 4 new I.c tests adding <1s combined (all use `failing_curl` or chmod — no network).
 
 ---
 
