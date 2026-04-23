@@ -1538,27 +1538,30 @@ Stories I.b–I.g activated the integration tests that exercise these paths. I.i
 
 ---
 
-### Story I.j: Add `test_env_detect.bats` [Planned]
+### Story I.j: Add 'test_env_detect.bats' [Done]
 
-**Motivation.** `lib/env_detect.sh` (283 raw lines, 101 tracked by kcov) sits at **1.98% coverage** — 99 of 101 executable lines missed. No direct bats file; the venv integration tests that would exercise it mostly bypass the interesting functions because the test helper pre-resolves the Python version via `_auto_pin_python_for_init` ([tests/helpers/pyve_test_helpers.py:200-238](../../tests/helpers/pyve_test_helpers.py#L200-L238)). So `install_python_version` (the ~60-line asdf/pyenv install path), both arms of `check_direnv_installed`, the error branches of `is_python_version_installed` / `is_python_version_available`, and `source_shell_profiles` (with real profile files present) run cold on CI.
+**Motivation.** `lib/env_detect.sh` (283 raw lines, 101 tracked by kcov) sat at **1.98% coverage** — 99 of 101 executable lines missed. No direct bats file; the venv integration tests that would exercise it mostly bypass the interesting functions because the test helper pre-resolves the Python version via `_auto_pin_python_for_init` ([tests/helpers/pyve_test_helpers.py:200-238](../../tests/helpers/pyve_test_helpers.py#L200-L238)). So `install_python_version` (the ~60-line asdf/pyenv install path), both arms of `check_direnv_installed`, the error branches of `is_python_version_installed` / `is_python_version_available`, and `source_shell_profiles` (with real profile files present) ran cold on CI.
 
 **Tasks**
 
-- [ ] Create `tests/unit/test_env_detect.bats` following the existing bats layout (`setup_pyve_env`, `create_test_dir`, `teardown` cleanup; copyright + SPDX header).
-- [ ] Cover the 9 functions in `lib/env_detect.sh`:
-  - [ ] `source_shell_profiles`: no profile files present (early return) + fake `~/.bashrc` / `~/.zshrc` present (sources them without error)
-  - [ ] `detect_version_manager`: four scenarios — asdf only, pyenv only, both, neither (use PATH-shims like `test_micromamba_bootstrap.bats` uses for curl)
-  - [ ] `is_python_version_installed` / `is_python_version_available`: installed + not-installed + not-available-via-manager
-  - [ ] `install_python_version`: error path (no version manager on PATH) + happy-path via asdf/pyenv shim
-  - [ ] `ensure_python_version_installed`: already-installed short-circuit + install-needed
-  - [ ] `set_local_python_version`: success writes `.tool-versions` / `.python-version`
-  - [ ] `get_version_file_name`: returns correct file name for each version manager
-  - [ ] `check_direnv_installed`: direnv present + direnv absent
-- [ ] Use PATH-shims (`$TEST_DIR/bin/asdf`, `$TEST_DIR/bin/pyenv`, `$TEST_DIR/bin/direnv`) so the test doesn't require those tools on the CI runner.
-- [ ] **Expected coverage lift**:
-  - `env_detect.sh`: 2% → ≥ 70%
-  - Overall lib subtotal: 72% → ≥ 76% (cumulative on top of I.i)
-- [ ] Verify: `bats tests/unit/test_env_detect.bats` passes locally; CI `bash-coverage` shows the lift.
+- [x] **Created [tests/unit/test_env_detect.bats](../../tests/unit/test_env_detect.bats)** (333 lines, **33 tests**, all green) with copyright + SPDX header and the standard `setup_pyve_env` / `create_test_dir` / `teardown` pattern. Fake `$HOME` at `$TEST_DIR/home`; PATH scrubbed to `$SHIM_DIR:/usr/bin:/bin` so only opt-in shims resolve.
+- [x] **PATH-shim builders** (`make_asdf_shim`, `make_pyenv_shim`, `make_direnv_shim`): bash scripts at `$TEST_DIR/bin/<tool>` that implement just enough of each tool's CLI to drive the branches under test. Shim behavior is controlled by env vars (e.g., `ASDF_HAS_PYTHON_PLUGIN`, `ASDF_INSTALL_EXIT`, `PYENV_AVAILABLE_VERSIONS`) so a single shim covers success / failure / edge-case scenarios across tests.
+- [x] **All 9 functions in `lib/env_detect.sh` covered** — counts below are `@test` blocks per function:
+  - `source_shell_profiles` (3): no profile files → no-op; `$HOME/.asdf/asdf.sh` present → sourced (marker var set); `$HOME/.pyenv` dir present → `PYENV_ROOT` + PATH updated.
+  - `detect_version_manager` (5): asdf-with-plugin, asdf-without-plugin (falls through, status 1), pyenv-only, neither (status 1 with install hint), both (asdf wins).
+  - `is_python_version_installed` (5): asdf-listed/not-listed, pyenv-listed/not-listed, empty VM → status 1.
+  - `is_python_version_available` (3): asdf advertised / not advertised, pyenv advertised.
+  - `install_python_version` (4): asdf success + failure, pyenv success, empty VM → status 1 with "No version manager available" error.
+  - `ensure_python_version_installed` (3): already-installed short-circuit, unavailable → status 1 with hint, `CI=true` auto-install path.
+  - `set_local_python_version` (5): asdf `set` success, asdf `set`-fails-falls-to-`local`, asdf both fail → status 1, pyenv writes `.python-version`, empty VM → status 1.
+  - `get_version_file_name` (3): asdf → `.tool-versions`, pyenv → `.python-version`, none → empty.
+  - `check_direnv_installed` (2): shim-present → 0, absent → 1 with install hint.
+- [x] **Non-trivial branches exercised**: asdf `set` → fall-back to `local` at [env_detect.sh:225-232](../../lib/env_detect.sh#L225-L232) (this was specifically for asdf 0.18+ removing the `local` subcommand — now covered both ways); CI-auto-install gate at [env_detect.sh:202-209](../../lib/env_detect.sh#L202-L209); `asdf plugin list` without python-plugin warning at [env_detect.sh:76-78](../../lib/env_detect.sh#L76-L78).
+- [x] **Red phase absent** — tests pass on first run because the functions already behave as asserted; this is legacy-code test-adding, not red/green-of-new-code. Assertion drafting required close reading of the implementation to get the branches right (the `asdf set / local` fallback and the `install --list` vs `install -s` pyenv shape were the two places I double-checked before finalizing the shim).
+- [x] **Verification**:
+  - `bats tests/unit/test_env_detect.bats` → 33 passed, 0 failed (~3s).
+  - Full bats suite: **684 / 684 passing** (was 651 at end of I.i; +33).
+  - **Expected coverage lift** on next CI run: `env_detect.sh` 2% → ≥ 70%; lib subtotal 72% → ≥ 76% (cumulative with I.i's expected lift).
 
 ---
 
