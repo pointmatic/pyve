@@ -64,3 +64,13 @@ EOF
     assert_status_equals 0
     assert_output_contains "2.5.0"
 }
+
+@test "bootstrap_install_micromamba: tar extraction uses format auto-detect (no -xzf)" {
+    # Real micromamba tarballs from micro.mamba.pm are bzip2-compressed.
+    # tar -xzf forces gzip decompression; GNU tar (Linux) errors on bz2 input,
+    # BSD tar (macOS) auto-detects anyway — the bug only surfaces on Linux.
+    # Lock the invariant statically so the extraction command always uses
+    # format auto-detect (plain -xf) and works on every supported platform.
+    # See Story I.e and lib/micromamba_bootstrap.sh history for context.
+    ! grep -qE '\btar[[:space:]]+-[a-zA-Z]*z[a-zA-Z]*f?\b' "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
+}

@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-04-22
+
+Phase I release: bootstrap test activation and hardening. Ten previously-skipped pytest tests around `pyve init --backend micromamba --auto-bootstrap` (stale since v0.8.4 — "Bootstrap not yet implemented") are now live and pinning real behavior. One user-facing bug (bzip2 extraction on Linux) was surfaced and fixed during test activation, and a new CI job exercises the bootstrap-and-download path on every PR.
+
+### Fixed
+
+- **Bootstrap tarball extraction now works on Linux.** `bootstrap_install_micromamba` was extracting with `tar -xzf`, which forces gzip decompression. Real micromamba tarballs served from `micro.mamba.pm` are **bzip2**-compressed (`file` output: `bzip2 compressed data, block size = 900k`); GNU tar (Linux CI runners, every Linux user) errored out, and the existing `2>/dev/null` swallowed the error — bootstrap silently returned 1 and the binary never landed. macOS's BSD tar auto-detects the format regardless of the `-z` flag, which is why the bug had remained invisible on dev machines. Changed to plain `tar -xf` (auto-detect via magic bytes, supported by GNU tar since 1.15 in 2010). Any Linux user running `pyve init --backend micromamba --auto-bootstrap` was hitting this. (Story I.e.)
+
+### Added
+
+- **New CI job `integration-tests-bootstrap`** (Story I.g) runs on `ubuntu-latest` + `macos-latest` with no pre-installed micromamba, so the bootstrap-and-download path is exercised for real on every PR. Both OSes are required — the I.e tar-extraction bug only surfaces on GNU tar; dropping macOS would let a `-xzf` regression slip back in silently.
+- **`bootstrap_isolation` and `failing_curl` pytest fixtures** in [tests/integration/test_bootstrap.py](tests/integration/test_bootstrap.py). `bootstrap_isolation` points `$HOME` at a fresh tmp dir and iteratively scrubs any directory containing a `micromamba` binary from `$PATH`, so `get_micromamba_path` resolves deterministically regardless of host setup. `failing_curl` layers a PATH-shim that makes `curl` exit 1, short-circuiting the real network download for failure-path tests (kept them ~0.5s combined instead of 15-30s).
+- **`ProjectBuilder.init_micromamba()` now accepts `**kwargs`** ([tests/helpers/pyve_test_helpers.py:555-579](tests/helpers/pyve_test_helpers.py#L555-L579)) so tests can invoke `project_builder.init_micromamba(auto_bootstrap=True, bootstrap_to='project')` without bypassing the helper. (Story I.a.)
+- **Grep-invariant bats test** in [tests/unit/test_micromamba_bootstrap.bats](tests/unit/test_micromamba_bootstrap.bats) locking the "no `tar -...z...f`" invariant that the Story I.e fix depends on. Catches any future revert to the buggy flag combination on every bats run.
+
+### Changed
+
+- **Integration test coverage**: 10 previously-skipped bootstrap tests activated. 4 tests (Story I.b) exercise the real bootstrap-and-download path using `bootstrap_isolation`. 4 tests (Story I.c) cover failure paths (network failure, platform detection, insufficient permissions, cleanup on failure) using `failing_curl` + targeted chmod. 2 tests (Story I.d) pin the "config-file bootstrap keys are not read" invariant as negative tests — bootstrap is strictly CLI-driven via `--auto-bootstrap` and `--bootstrap-to <project|user>`; no `.pyve/config` keys are parsed, and `pyve init --force` purges the existing config before continuing anyway. 1 test (Story I.f) pins the "bootstrap is a no-op" happy path when micromamba is already available. 2 tests remain skipped, pending Future stories K (SHA256 verification, version pinning).
+- **Stale skip reasons refreshed**: the two remaining skips in `test_bootstrap.py` now reference the specific Future stories they depend on, not the long-outdated "Bootstrap not yet implemented" from v0.8.4.
+
+### Developer notes
+
+- **Bootstrap verification is transport-only**, not cryptographic. The Story I.h audit confirmed `bootstrap_install_micromamba` trusts the downloaded binary if it (1) arrives non-empty over HTTPS to `micro.mamba.pm`, (2) extracts cleanly, (3) executes and reports a version. SHA256 verification and version pinning are tracked as Future work — see the two new `Story K.?` entries in [docs/specs/stories.md](docs/specs/stories.md). With version pinning in place, SHA256 via a hardcoded-table approach becomes much more tractable; both stories compose cleanly.
+- **Test suite state**: bats now 651 / 651 passing (was 650; +1 for the I.e grep-invariant). Bootstrap + helpers integration: 16 passed, 2 skipped (was 2 passed, 12 skipped at start of Phase I). The new CI bootstrap job is the first automation exercising the real network download path.
+- **Scope pivot recorded in Story I.d**: the two `TestBootstrapConfiguration` tests were originally written assuming pyve would parse bootstrap-related keys from `.pyve/config`. pyve never did, and `--force` purges the config anyway. Instead of implementing config-keyed bootstrap (a new feature outside Phase I scope) or deleting the test skeleton, both tests were reshaped as negative-invariant tests that pin the CLI-only contract. If config-keyed bootstrap is ever added, invert those tests back to positive assertions and wire a new `read_config_value` call into the bootstrap decision point at [pyve.sh:799-814](pyve.sh#L799-L814).
+- **Scope pivot recorded in Story I.h**: the original I.h task list expected cryptographic verification + version pinning to land with v2.2.0. Neither is a one-line change (hash-table maintenance burden, GitHub API rate limits, new CLI flag + URL plumbing + tests). Both deferred to Future K stories so v2.2.0 can ship focused on "bootstrap tests are real and CI catches regressions."
+
+### Migration notes
+
+No breaking changes. `pyve --version` reports `2.2.0`. No CLI surface changes, no config-file-format changes. The `tar -xzf` → `tar -xf` fix is a silent improvement for Linux users; macOS behavior is unchanged.
+
 ## [2.1.0] - 2026-04-20
 
 Feature bump: `pyve init --backend micromamba` in a fresh directory now scaffolds a starter `environment.yml` and proceeds, instead of requiring the user to hand-author one before the first run. Ships alongside the H.f.6 silent-exit fix for the same code path.

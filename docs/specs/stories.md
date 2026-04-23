@@ -1381,132 +1381,288 @@ The existing skipped bootstrap integration tests reference CLI flags and helper 
 
 **Intended release version:** `v2.2.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (L.d).
 
-### Story I.a: Reconcile Bootstrap Test Fixtures [Planned]
+### Story I.a: Reconcile Bootstrap Test Fixtures [Done]
 
 First story of the bootstrap-hardening sub-phase.
 
-- [ ] Audit `test_bootstrap.py` test methods against actual CLI flags (`--auto-bootstrap`, `--bootstrap-to project|user`)
-- [ ] Remove non-existent flag references (`bootstrap_url`, `micromamba_version`, `bootstrap_location` as a path)
-- [ ] Add `init_micromamba()` helper method to `ProjectBuilder` in `tests/helpers/pyve_test_helpers.py`
-- [ ] Verify `project_builder.create_environment_yml()` works correctly with bootstrap tests
-- [ ] No skip removal yet — just fix the test code so it's ready
+- [x] **Audit** of [tests/integration/test_bootstrap.py](../../tests/integration/test_bootstrap.py) vs [pyve.sh:521-537](../../pyve.sh#L521-L537): confirmed real bootstrap flags are `--auto-bootstrap` and `--bootstrap-to <project|user>`. Non-existent flags surfaced in kwargs: `user_install`, `micromamba_version`, `bootstrap_url`, `bootstrap_location`. No config-file keys for auto-bootstrap/bootstrap-to exist — bootstrap is CLI-only (I.d's config tests will need a separate reconciliation).
+- [x] **Remove non-existent flag references**:
+  - `test_bootstrap_to_user_sandbox`: `user_install=True` → `bootstrap_to='user'` ([test_bootstrap.py:65](../../tests/integration/test_bootstrap.py#L65))
+  - `test_bootstrap_version_selection`: dropped `micromamba_version='1.5.3'` ([test_bootstrap.py:94](../../tests/integration/test_bootstrap.py#L94))
+  - `test_bootstrap_failure_handling`: dropped `bootstrap_url=...`, added note that I.c will choose the failure-injection mechanism ([test_bootstrap.py:138-140](../../tests/integration/test_bootstrap.py#L138-L140))
+  - `test_bootstrap_with_insufficient_permissions`: dropped `bootstrap_location='/root/...'`, swapped to `bootstrap_to='user'` with a note for I.c on how to simulate permission denial ([test_bootstrap.py:209-214](../../tests/integration/test_bootstrap.py#L209-L214))
+- [x] **`init_micromamba()` helper** was already present at [pyve_test_helpers.py:555](../../tests/helpers/pyve_test_helpers.py#L555); enhanced with `**kwargs` passthrough so bootstrap tests can invoke `project_builder.init_micromamba(auto_bootstrap=True, bootstrap_to='project')` in later stories.
+- [x] **`create_environment_yml()` verification**: added two new tests in [tests/integration/test_helpers.py](../../tests/integration/test_helpers.py) asserting the default structure (name / conda-forge channel / dependencies) and custom-channel form.
+- [x] **TDD cycle**: [tests/integration/test_helpers.py](../../tests/integration/test_helpers.py) new file with 4 tests; 2 started red (helper rejected bootstrap kwargs → `TypeError`), 2 started green (create_environment_yml verification). After the `**kwargs` change all 4 pass.
+- [x] **Skip markers preserved** — per story scope. Stale module docstring updated ([test_bootstrap.py:15-21](../../tests/integration/test_bootstrap.py#L15-L21)) to reflect that bootstrap is implemented and the skips are scheduled for removal in I.b–I.g.
+- [x] **Full suite green for bootstrap + helpers**: 6 passed, 12 skipped (no change from baseline skip count). Pre-existing failures in `test_auto_detection.py` / `test_reinit.py` reproduced at baseline (stashed-changes check) — not introduced by I.a.
 
 ---
 
-### Story I.b: Activate Core Bootstrap Tests [Planned]
+### Story I.b: Activate Core Bootstrap Tests [Done]
 
 Activate the main `TestBootstrapPlaceholder` class tests that can run when micromamba is NOT pre-installed.
 
-- [ ] Remove `@pytest.mark.skip` from `test_auto_bootstrap_when_not_installed`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_to_project_sandbox`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_to_user_sandbox`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_skips_if_already_installed`
-- [ ] Fix assertions to match actual bootstrap output messages
-- [ ] Verify: `pytest tests/integration/test_bootstrap.py::TestBootstrapPlaceholder -v -m micromamba` passes locally with micromamba available
+- [x] **Test-isolation fixture added**: `bootstrap_isolation` ([test_bootstrap.py:30-55](../../tests/integration/test_bootstrap.py#L30-L55)) points `$HOME` at a fresh tmp dir and iteratively scrubs any `$PATH` entry containing a `micromamba` binary. Without this, `get_micromamba_path` ([lib/micromamba_core.sh:37-60](../../lib/micromamba_core.sh#L37-L60)) would resolve the developer's system install and flip the tests to the "already installed" path non-deterministically.
+- [x] Removed `@pytest.mark.skip` from `test_auto_bootstrap_when_not_installed` ([test_bootstrap.py:61-80](../../tests/integration/test_bootstrap.py#L61-L80)); asserts the `Auto-bootstrapping micromamba` banner appears and the binary lands in `$HOME/.pyve/bin/micromamba` (the `bootstrap_to=user` default).
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_to_project_sandbox` ([test_bootstrap.py:82-96](../../tests/integration/test_bootstrap.py#L82-L96)); **added the missing `bootstrap_to='project'` kwarg** — the original test passed no `bootstrap_to`, so it would have installed to the user sandbox and the project-sandbox assertion would have failed once unskipped.
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_to_user_sandbox` ([test_bootstrap.py:98-114](../../tests/integration/test_bootstrap.py#L98-L114)); assertion now reads the monkeypatched HOME via the `bootstrap_isolation` fixture value.
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_skips_if_already_installed` ([test_bootstrap.py:116-144](../../tests/integration/test_bootstrap.py#L116-L144)); plants a shell shim at `<cwd>/.pyve/bin/micromamba` (satisfies `-x` + `--version`) and asserts the bootstrap banner **does not** appear (silent-skip is the documented behavior — there is no "already installed" message). Uses `check=False` because pyve's subsequent env-creation fails against the shim, which is outside this test's scope.
+- [x] **Assertions narrowed**: tests 1–3 used to assert `result.returncode == 0`, which would have required a successful end-to-end micromamba env creation (real python=3.11 download). Narrowed to verify just the bootstrap step's observable outputs (banner text + binary-on-disk), with `check=False` to let the broader init fail downstream. Story I.b's scope is bootstrap, not env creation.
+- [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapPlaceholder -v -m micromamba` → 4 passed, 4 skipped (~53s). The 4 skips are the I.c / I.g tests. Full bootstrap+helpers run: 10 passed, 8 skipped (was 6/12 at start of I.b).
+- [x] **Note on the 4 remaining `TestBootstrapPlaceholder` skips**: `test_bootstrap_version_selection` and `test_bootstrap_download_verification` are tied to Story I.h (no `--micromamba-version` or checksum-verification flag exists yet). `test_bootstrap_platform_detection` and `test_bootstrap_failure_handling` are in Story I.c's scope.
 
 ---
 
-### Story I.c: Activate Bootstrap Error Handling Tests [Planned]
+### Story I.c: Activate Bootstrap Error Handling Tests [Done]
 
 Activate failure-path tests.
 
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_failure_handling`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_platform_detection`
-- [ ] Remove `@pytest.mark.skip` from `TestBootstrapEdgeCases` class (`test_bootstrap_with_insufficient_permissions`, `test_bootstrap_cleanup_on_failure`)
-- [ ] Fix assertions to match actual error output
-- [ ] Verify: `pytest tests/integration/test_bootstrap.py::TestBootstrapEdgeCases -v` passes
+- [x] **Failure-injection mechanism chosen**: PATH-prepend shim for `curl` ([test_bootstrap.py:58-77](../../tests/integration/test_bootstrap.py#L58-L77), fixture `failing_curl`). `curl` is the only caller of the network in pyve (grepped across `pyve.sh` + `lib/*.sh`: only hit is [lib/micromamba_bootstrap.sh:127](../../lib/micromamba_bootstrap.sh#L127)), so the shim's blast radius is exactly the bootstrap download step. Rejected alternative: env-var based URL override would have required a pyve.sh code change outside I.c's scope.
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_failure_handling` ([test_bootstrap.py:194-207](../../tests/integration/test_bootstrap.py#L194-L207)); uses `failing_curl`, asserts non-zero exit + `'download'`/`'failed'` in stderr (matching `log_error` which writes to `>&2` per [lib/utils.sh:45-47](../../lib/utils.sh#L45-L47)).
+- [x] Removed `@pytest.mark.skip` from `test_bootstrap_platform_detection` ([test_bootstrap.py:158-192](../../tests/integration/test_bootstrap.py#L158-L192)); **reshaped assertion**: old test only asserted `returncode == 0`, which verified nothing about platform detection. New test computes the expected platform string (`osx-arm64`, `linux-64`, etc.) from `platform.system()` + `platform.machine()`, then asserts the `Downloading micromamba from: …` URL (emitted by `log_info` *before* curl runs) contains it. `failing_curl` keeps the test fast (<1s) by skipping the real network fetch.
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapEdgeCases::test_bootstrap_with_insufficient_permissions` ([test_bootstrap.py:247-275](../../tests/integration/test_bootstrap.py#L247-L275)); pre-creates `$HOME/.pyve` inside the fake HOME and `chmod 0o555`s it so `mkdir -p $HOME/.pyve/bin` fails with "Permission denied" (mkdir's own stderr passes through alongside `log_error`'s "Failed to create directory"). `try/finally` restores the mode so pytest can tear down tmp_path.
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapEdgeCases::test_bootstrap_cleanup_on_failure` ([test_bootstrap.py:277-295](../../tests/integration/test_bootstrap.py#L277-L295)); **reshaped assertion**: old test globbed `.pyve/bin/*.tmp` which was meaningless (the actual temp file is a `mktemp`-generated path under `/tmp`, not `.pyve/bin`). New assertion verifies the observable guarantee: no half-installed binary at `.pyve/bin/micromamba` after a failed bootstrap.
+- [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapEdgeCases -v` → 2 passed. Bootstrap + helpers full run: 14 passed, 4 skipped (was 10/8 at start of I.c). ~62s total, with the 4 new I.c tests adding <1s combined (all use `failing_curl` or chmod — no network).
 
 ---
 
-### Story I.d: Activate Bootstrap Configuration Tests [Planned]
+### Story I.d: Activate Bootstrap Configuration Tests [Done]
 
-Activate config-driven bootstrap tests.
+Activate config-driven bootstrap tests. **Scope pivot**: the I.a audit surfaced that pyve.sh has no `read_config_value` call for any bootstrap-related key (only `backend`, `micromamba.env_name`, `venv.directory`, `python.version`, `pyve_version` are parsed). Additionally, `pyve init --force` purges the existing `.pyve/config` before continuing ([pyve.sh:682](../../pyve.sh#L682)), so config-keyed bootstrap is doubly-unreachable. The two tests as originally drafted asserted a feature that doesn't exist. I.d reshapes them as **negative-invariant tests** that pin the "no config-keyed bootstrap" contract.
 
-- [ ] Remove `@pytest.mark.skip` from `TestBootstrapConfiguration` class
-- [ ] Fix `test_bootstrap_respects_config_file` — reconcile config keys with actual `.pyve/config` format
-- [ ] Fix `test_bootstrap_cli_overrides_config` — use actual CLI flags
-- [ ] Verify: `pytest tests/integration/test_bootstrap.py::TestBootstrapConfiguration -v` passes
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapConfiguration` class.
+- [x] **Reshaped** `test_bootstrap_respects_config_file` ([test_bootstrap.py:228-255](../../tests/integration/test_bootstrap.py#L228-L255)): pre-writes `.pyve/config` with `micromamba.auto_bootstrap: true` + `micromamba.bootstrap_location: project`, then runs `pyve init --backend micromamba` WITHOUT `--auto-bootstrap` on CLI. Asserts the `Auto-bootstrapping micromamba` banner does NOT appear — if config keys *were* honored, it would. Stdin `'4\n'` aborts the interactive bootstrap prompt that fires in the CLI-unset path. `PYVE_FORCE_YES=1` bypasses the `--force` confirmation so the subprocess doesn't block on the reinit prompt.
+- [x] **Reshaped** `test_bootstrap_cli_overrides_config` ([test_bootstrap.py:257-278](../../tests/integration/test_bootstrap.py#L257-L278)): pre-writes a config with `micromamba.auto_bootstrap: false` and passes `--auto-bootstrap` on CLI. Since pyve.sh never reads the config key, "override" is vacuously satisfied — the CLI flag is the sole driver. The positive assertion (auto-bootstrap banner appears) documents that the CLI path is unaffected by any config contents. `failing_curl` keeps the test <1s.
+- [x] **Class docstring added** ([test_bootstrap.py:213-227](../../tests/integration/test_bootstrap.py#L213-L227)) explaining the invariant both tests pin: bootstrap is strictly CLI-driven; no `.pyve/config` keys are read; `--force` purges the config anyway.
+- [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapConfiguration -v` → 2 passed (~0.5s). Full bootstrap + helpers: 16 passed, 2 skipped (was 14/4 at start of I.d). The 2 remaining skips are I.h's version/checksum tests.
+- **Follow-up consideration (not in I.d scope)**: if config-keyed bootstrap is ever implemented (e.g., to allow project-pinned `bootstrap_to: project` policy without every invocation needing a CLI flag), these tests should be inverted back into positive assertions and a new config-reader added to the bootstrap decision point in [pyve.sh:799-814](../../pyve.sh#L799-L814).
 
 ---
 
-### Story I.e: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
+### Story I.e: Fix bz2 Tarball Extraction in Bootstrap [Done]
+
+Real micromamba tarballs served from `https://micro.mamba.pm/api/micromamba/<platform>/latest` are **bzip2**-compressed (`file` output: `bzip2 compressed data, block size = 900k`). [lib/micromamba_bootstrap.sh:150](../../lib/micromamba_bootstrap.sh#L150) extracted with `tar -xzf`, which forces gzip decompression.
+
+- **macOS tar** (BSD / libarchive): auto-detects compression regardless of `-z`, so extraction succeeded. All I.b tests green on local macOS.
+- **GNU tar** (Linux CI runners): treats `-z` as "force gzip" and errors out on bzip2 input. `2>/dev/null` swallowed the error; `bootstrap_install_micromamba` returned 1 and the binary never landed at its install path.
+
+Surfaced by CI on the I.c commit: 3 I.b tests (`test_auto_bootstrap_when_not_installed`, `test_bootstrap_to_project_sandbox`, `test_bootstrap_to_user_sandbox`) failed on `ubuntu-latest` because their `.exists()` assertions ran after a silently-failed extraction. The existing bats test at [tests/unit/test_micromamba_bootstrap.bats:34-35](../../tests/unit/test_micromamba_bootstrap.bats#L34-L35) manufactures a `.tar.gz` tarball via `tar -czf`, which is why the bug hadn't been caught pre-I.b: `tar -xzf` on a gzip input works on both platforms.
+
+This was a **user-facing bug**, not a test bug — any real Linux user running `pyve init --backend micromamba --auto-bootstrap` hit it.
+
+**Tasks**
+
+- [x] **Grep-invariant bats test added** at [tests/unit/test_micromamba_bootstrap.bats:68-77](../../tests/unit/test_micromamba_bootstrap.bats#L68-L77): asserts `lib/micromamba_bootstrap.sh` contains no `tar -…z…f` anti-pattern. Chosen over a roundtrip `.tar.bz2` functional test because BSD tar auto-detects on macOS (the buggy command passes locally), so a functional test wouldn't cleanly show red on dev machines. The static invariant catches the regression on any host and serves as future-proofing.
+- [x] **TDD red → green**: new test failed pre-fix (`! grep -qE …` with match found), passed post-fix (no match).
+- [x] **Fix applied** at [lib/micromamba_bootstrap.sh:150](../../lib/micromamba_bootstrap.sh#L150): `tar -xzf` → `tar -xf`. Auto-detect via magic bytes is GNU tar behavior since 1.15 (2010), so every supported distro picks up both gz and bz2 transparently. BSD tar already auto-detects. Added a 4-line comment explaining the why so the next edit doesn't regress.
+- [x] **No regressions**:
+  - Existing `.tar.gz`-based test at [tests/unit/test_micromamba_bootstrap.bats:20-66](../../tests/unit/test_micromamba_bootstrap.bats#L20-L66) still passes (auto-detect covers gzip too).
+  - Full bats suite: **651 passed** (was 650; new test adds 1).
+  - `pyve test tests/integration/test_bootstrap.py::TestBootstrapPlaceholder -v -m micromamba` → 6 passed, 2 skipped (53s). Same state as end-of-I.b; the fix is a no-op on macOS.
+  - Linux CI verification happens on the next push.
+- [x] **No CHANGELOG entry** — per Phase I preamble, the phase ships as a single v2.2.0 entry from Story I.h.
+
+---
+
+### Story I.f: Remove Stale Bootstrap Skip from Micromamba Workflow [Done]
 
 Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
-- [ ] Remove `@pytest.mark.skip` from `test_auto_bootstrap_micromamba` in `test_micromamba_workflow.py`
-- [ ] Fix assertions to match actual behavior
-- [ ] Verify: `pytest tests/integration/test_micromamba_workflow.py::TestMicromambaBootstrap -v` passes
+- [x] Removed `@pytest.mark.skip(reason="Bootstrap not yet implemented in v0.8.4")` from `test_auto_bootstrap_micromamba` at [test_micromamba_workflow.py:327](../../tests/integration/test_micromamba_workflow.py#L327).
+- [x] **Assertion kept** (`returncode == 0`). Intentional scope difference from I.b: `TestMicromambaBootstrap` sits inside `test_micromamba_workflow.py` under the `@pytest.mark.requires_micromamba` marker, meaning the test presupposes a real micromamba is resolvable via `get_micromamba_path` ([lib/micromamba_core.sh:37-60](../../lib/micromamba_core.sh#L37-L60)). With micromamba available, `--auto-bootstrap` is a no-op and init should complete full env creation end-to-end — the happy-path assertion. I.b's tests use `bootstrap_isolation` to force the bootstrap branch; this test is the complementary "bootstrap short-circuits when not needed" case.
+- [x] Updated docstring + inline comment ([test_micromamba_workflow.py:327-341](../../tests/integration/test_micromamba_workflow.py#L327-L341)) to make the scope distinction explicit so a future reader doesn't delete this as an "I.b duplicate".
+- [x] **Verification**: `pyve test tests/integration/test_micromamba_workflow.py::TestMicromambaBootstrap -v` → 1 passed in 12.4s. Locally resolves micromamba via user sandbox (`~/.pyve/bin/micromamba` left over from I.b's sandbox-pollution-free tests — not present; must be from an earlier manual run or pre-existing install). CI micromamba job installs micromamba via `mamba-org/setup-micromamba@v2` ([test.yml:163](../../.github/workflows/test.yml#L163)) and filters with `-m "micromamba or requires_micromamba"` ([test.yml:173](../../.github/workflows/test.yml#L173)), so the test is in-scope and has a real micromamba available there.
+- [x] No CHANGELOG entry — Phase I ships as a single v2.2.0 release (Story I.h).
 
 ---
 
-### Story I.f: Add Bootstrap CI Job [Planned]
+### Story I.g: Add Bootstrap CI Job [Done]
 
 Create a new GitHub Actions job that tests bootstrap without pre-installed micromamba — so the download and install paths are tested in automation.
 
-- [ ] Add `integration-tests-bootstrap` job to `.github/workflows/test.yml`
-- [ ] Job runs on `ubuntu-latest` and `macos-latest` (no `mamba-org/setup-micromamba` action)
-- [ ] Job runs: `pytest tests/integration/test_bootstrap.py -v -m micromamba`
-- [ ] Job requires network access (downloads micromamba binary)
-- [ ] Verify: CI pipeline passes with new job
+- [x] Added `integration-tests-bootstrap` job at [.github/workflows/test.yml:184-231](../../.github/workflows/test.yml#L184-L231).
+- [x] **Matrix**: `ubuntu-latest` + `macos-latest`. Both are required — the I.e tar-extraction bug only surfaces on GNU tar (Linux); macOS BSD tar auto-detects. Dropping macOS would have let the `-xzf` regression slip back in on future edits.
+- [x] **Intentionally no micromamba install step** (contrasted inline with `integration-tests-micromamba`): `bootstrap_isolation` scrubs `$PATH` + fake-HOMEs the test, so even if the runner image had micromamba pre-installed somewhere, `get_micromamba_path` would still resolve empty and trigger the bootstrap download path.
+- [x] **Test command**: `pytest tests/integration/test_bootstrap.py -v -m micromamba` (14 tests: 4 I.b + 4 I.c + 2 I.d + 2 skip-pending-I.h + 2 that were already active). The narrower path filter avoids running the full `test_micromamba_workflow.py` suite (which needs a real micromamba for env creation and is handled by the sibling `integration-tests-micromamba` job).
+- [x] **No pyenv/asdf setup needed**: the micromamba init branch in pyve.sh does not call `validate_python_version` or `ensure_python_version_installed` (those are venv-branch-only; micromamba delegates version handling to conda via `environment.yml`). The helper's `_auto_pin_python_for_init` falls back to `python3 --version` which the `actions/setup-python` step provides — sufficient for pyve's injected `--python-version` flag to be non-empty.
+- [x] **Wired into `test-summary.needs`** ([test.yml:306-322](../../.github/workflows/test.yml#L306-L322)) — bootstrap job failure now fails the summary check, so PRs can block on it.
+- [x] **YAML validated**: `python -c "import yaml; yaml.safe_load(open('.github/workflows/test.yml'))"` parses; all 7 jobs enumerable.
+- [x] **Verification**: CI will run the new job on the next push to `main` / `develop` or PR. This is also the job that validates the Story I.e bz2 fix on Linux — pre-I.e, the 3 I.b download tests would fail here; post-I.e they should pass.
 
 ---
 
-### Story I.g: v2.0.8 Bootstrap Download Verification [Planned]
+### Story I.h: v2.2.0 Phase I Release Wrap [Done]
 
-Evaluate whether the bootstrap code verifies downloaded binaries and add verification if missing.
+Final Phase I story. Audit bootstrap verification, pivot on the cryptographic-verification tasks (deferred to Future — see new K.? stories), ship v2.2.0.
 
-- [ ] Audit `bootstrap_install_micromamba()` for checksum or signature verification
-- [ ] If missing: add SHA256 verification of downloaded micromamba binary
-- [ ] Update `test_bootstrap_download_verification` assertions accordingly
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_download_verification`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_version_selection` (if version pinning is supported)
-- [ ] Verify: bootstrap tests pass with verification enabled
+- [x] **Audit of `bootstrap_install_micromamba`** ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)): bootstrap verification is **transport-only** (`curl -fsSL` + TLS to `micro.mamba.pm`) plus operational sanity checks (non-empty download, tar extraction succeeds, binary is executable, `--version` runs cleanly). No SHA256 verification, no signature check. `micro.mamba.pm` serves a 302-redirect to the latest release and does not expose an adjacent checksum file or hash header.
+- [x] **Scope pivot**: implementing SHA256 verification requires either a hardcoded `(os, arch, version) → sha256` table (every micromamba release would force a pyve release) or an extra round-trip to GitHub's Releases API (with its rate-limits + error paths). Version pinning needs a new `--micromamba-version` CLI flag + URL routing. Both are features, not test activations, and each is ~30-80 lines + tests. Out of Phase I scope.
+- [x] **Deferred to Future Stories**:
+  - **K.?: SHA256 Verification of Bootstrap Download** — see [Future section](#future).
+  - **K.?: Micromamba Version Pinning via `--micromamba-version`** — see [Future section](#future).
+- [x] **Skip reasons refreshed** ([test_bootstrap.py:170-183](../../tests/integration/test_bootstrap.py#L170-L183)): the two remaining skips now name the specific Future stories they depend on, instead of the stale "Bootstrap not yet implemented" reason.
+- [x] **CHANGELOG v2.2.0 entry written** covering all of Phase I: I.a (fixture reconciliation), I.b (core activation), I.c (error-handling activation), I.d (config-invariant negative tests), I.e (bz2 extraction bug fix — **the lone user-facing change**), I.f (workflow test activation), I.g (bootstrap CI job), I.h (release wrap + verification audit). Included a Developer-notes section documenting the transport-only verification posture so security reviewers can see the known gap.
+- [x] **Version bump** `2.1.0` → `2.2.0` at [pyve.sh:32](../../pyve.sh#L32). Matching assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207) updated.
+- [x] **Verification**: 651 / 651 bats pass (new K-pointer skip-reason changes do not affect counts). Bootstrap + helpers: 16 passed, 2 skipped (unchanged from end of I.g — I.h is non-functional except for the version bump and skip-reason refresh).
+
+---
+
+## Phase J: Environment Compatibility & Hardening
+
+Three sub-themes: (1) fix asdf/direnv coexistence so venv-installed CLIs resolve via `.venv/bin` instead of `~/.asdf/shims/`, (2) rip Category A deprecation-warning paths that no longer earn their keep, (3) add grep-invariant tests to catch bash-4+ slips pre-commit. All three are "pyve interoperates cleanly with the realities around it."
+
+See [phase-J-environment-compatibility-plan.md](phase-J-environment-compatibility-plan.md) for full gap analysis, FR definitions, and technical changes. Root-cause analysis for the asdf reshim bug is in [pyve-asdf-reshim-bug-brief.md](pyve-asdf-reshim-bug-brief.md).
+
+**Intended release version:** `v2.3.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (J.f).
+
+---
+
+### Story J.a: Add `is_asdf_active` helper with env-var gate [Planned]
+
+Introduce the single point of truth that downstream stories (J.b, J.c) will call. Includes the `PYVE_NO_ASDF_COMPAT=1` opt-out so all callers short-circuit consistently.
+
+**Tasks**
+
+- [ ] Add `is_asdf_active()` to `lib/env_detect.sh`: returns 0 when `$VERSION_MANAGER == "asdf"` AND `PYVE_NO_ASDF_COMPAT` is unset/empty; returns 1 otherwise
+- [ ] Write Bats unit tests in a new `tests/unit/test_asdf_compat.bats`: asdf-present-and-gate-unset → 0, asdf-absent → 1, `PYVE_NO_ASDF_COMPAT=1` → 1 even when asdf is present
+- [ ] Write failing red tests for J.b (`.envrc` contains `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` when asdf is active) and J.c (`pyve run` exposes the env var to its subprocess when asdf is active) — these stay red until the respective stories green them
+- [ ] Verify: `make test-unit` passes for the helper's own tests; the red tests are the only failures
+
+---
+
+### Story J.b: `.envrc` asdf compatibility guard [Planned]
+
+Implements FR-J1 + FR-J3. Injects `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` into generated `.envrc` when asdf is active, with a sentinel comment for idempotency and an info-line notice.
+
+**Tasks**
+
+- [ ] Update the venv-backend `.envrc` generator in `pyve.sh` (~L1042) to append the asdf compat block via heredoc when `is_asdf_active` returns 0
+- [ ] Update the micromamba-backend `.envrc` generator in `pyve.sh` (~L1076) identically
+- [ ] Use sentinel comment `# Prevent asdf Python plugin from reshimming venv-installed CLIs.` — grep for it on reinit to avoid duplicating the block
+- [ ] Emit info line after the "Created .envrc" success line explaining what was added and the global-`pip install` caveat (use `lib/ui.sh::info`)
+- [ ] Green the `.envrc` red test from J.a
+- [ ] Add reinit idempotency test: run `pyve init` twice, assert the asdf block appears exactly once and the file is byte-identical between runs (md5-style, matches the H.a pattern)
+- [ ] Verify: integration tests pass for both backends on asdf-present and asdf-absent systems
+
+---
+
+### Story J.c: `pyve run` asdf compatibility guard [Planned]
+
+Implements FR-J2. Defense-in-depth for `--no-direnv` users and CI invocations where `.envrc` is not sourced.
+
+**Tasks**
+
+- [ ] Update the `pyve run` dispatcher in `pyve.sh` to prefix subprocess exec with `env ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 …` when `is_asdf_active` returns 0
+- [ ] Applies to both venv and micromamba execution paths
+- [ ] No user-visible output — this is silent defense-in-depth
+- [ ] Green the `pyve run` red test from J.a (assert subprocess environment contains `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` when asdf is active)
+- [ ] Add negative test: `PYVE_NO_ASDF_COMPAT=1` suppresses the injection
+- [ ] Verify: `test_run_command.py` integration tests still pass
+
+---
+
+### Story J.d: Rip Category A deprecation paths [Planned]
+
+Remove the two remaining delegation-with-warning paths shipped in Phase H. Category B (three-line hard-error legacy-flag catches in `legacy_flag_error()`) stays — it costs nothing and gives precise hints for stale docs, blog posts, and LLM-training-data invocations.
+
+**Category A removals (delegation + stderr warn + re-dispatch):**
+
+- `pyve testenv --init|--install|--purge` → was delegating to `pyve testenv init|install|purge`
+- `pyve python-version <ver>` → was delegating to `pyve python set <ver>`
+
+**Tasks**
+
+- [ ] Locate and remove the `pyve testenv --init|--install|--purge` alias-handling + `delegation_warn` call site in `pyve.sh`
+- [ ] Locate and remove the `pyve python-version <ver>` alias-handling + `delegation_warn` call site in `pyve.sh`
+- [ ] Decide: keep `delegation_warn` helper in `lib/ui.sh` if no other caller remains, or remove it — grep to confirm zero call sites
+- [ ] Remove the Bats / pytest tests that verified the deprecation warnings fire correctly
+- [ ] Add one new test per form asserting the old form now errors out via the standard "unknown flag / subcommand" path (not via `delegation_warn`), matching the Category B behavior
+- [ ] Update `features.md` — drop the "Deprecation warnings (still work in v2.x; removed in v3.0)" entry from the legacy-flag table
+- [ ] Update `tech-spec.md` — drop the "Deprecated subcommand forms" paragraph from the CLI Design section
+- [ ] Verify: full test suite passes
+
+---
+
+### Story J.e: bash 3.2 compat invariant test + full-repo audit [Planned]
+
+Preemptive hardening against bash-4+ slips. Two recent Phase H bugs (H.e.7a `declare -A`, H.e.9h `mapfile`) landed only to be caught by CI; a grep-invariant test catches future slips pre-commit.
+
+**Tasks**
+
+- [ ] Create `tests/unit/test_bash32_compat.bats` with one `@test` block per disallowed construct
+- [ ] Construct set: `declare -A`, `typeset -A`, `local -A`, `mapfile`, `readarray`, `${var^^}`, `${var,,}`, `${var^}`, `${var,}`, `${var@…}` (anchored `@[UuLlQqEePpAaKk]`), `declare -n`, `coproc <name>`, `shopt -s globstar`
+- [ ] Each block `grep -rE`s across `pyve.sh`, `lib/*.sh`, `lib/completion/*`; fails on any match; uses self-exclusion so the test file's own patterns don't trip it
+- [ ] Each block's failure message names the bash 3.2-safe alternative (e.g., "use flat colon-delimited string instead of `declare -A`")
+- [ ] Run the full grep set manually against the current tree; fix any surfaced bash-4+ constructs inline within this story
+- [ ] Expected outcome: tree is already clean (H.e.7a + H.e.9h were the known offenders). If it isn't, fix surfaced issues as small tasks within this story, not spun off
+- [ ] **Optional:** add `check-bash32` Makefile target that sources every `lib/*.sh` under `/bin/bash` and reports failures. Not wired into default `make test`
+- [ ] Verify: `make test-unit` passes with the new bats file
+
+---
+
+### Story J.f: v2.3.0 Release Wrap [Planned]
+
+Spec updates, CHANGELOG, and version bump. Runs last so all implementation is visible and spec language matches shipped behavior.
+
+**Tasks**
+
+- [ ] Update `features.md` — add new FR for asdf compat (FR-J? or renumber into the existing scheme); add `PYVE_NO_ASDF_COMPAT` and `PYVE_ASDF_COMPAT` to the Environment Variables table
+- [ ] Update `tech-spec.md` — new subsection under Cross-Cutting Concerns: "asdf/direnv Coexistence (Phase J / v2.3.0)" describing the `.envrc` block, the sentinel-grep idempotency, and the `pyve run` defense-in-depth. Update Testing Strategy to reference `tests/unit/test_bash32_compat.bats`
+- [ ] Update `pyve-asdf-reshim-bug-brief.md` status — mark resolved, add pointer back to Phase J stories
+- [ ] Finalize `CHANGELOG.md` v2.3.0 entry: asdf compat guard (.envrc + pyve run), Category A deprecation removal, bash 3.2 invariant test. Breaking-changes note for Category A removal (even though the userbase is small, the line is worth including for future archaeology)
+- [ ] Bump `VERSION` in `pyve.sh` from `2.2.0` (or whatever I lands at) to `2.3.0`
+- [ ] Verify: CI passes end-to-end; `pyve --version` prints `2.3.0`
 
 ---
 
 ## Future
 
-### Story J.?: Out of scope (from Story H.e)
+### Story K.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
-- Retrofitting `pyve init` / `pyve purge` / other surviving commands to the new UX — covered by H.f.
-- Removing (as opposed to deprecating) old flags — Future (Phase I).
-- `pyve check --fix` auto-remediation — Future.
+After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred to collect real usage data on `pyve check` before deciding which fixes to automate and with what safety gates.
 
-### Story J.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
+---
 
-After H.c / H.e ship `pyve check`, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred out of Phase H to keep the v2.0 scope focused on the diagnostic / status surface design — we want real usage data on the new `check` before deciding which fixes to automate and with what safety gates.
+### Story K.?: SHA256 Verification of Bootstrap Download [Planned]
 
-### Story J.?: Remove Deprecated Flags Introduced as Warnings in H.e [Planned]
+**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
 
-H.e ships with deprecation *warnings* (not hard errors) on renamed flags / subcommands — likely `--update` flag, `testenv --init` / `--purge` flags, `python-version` (if renamed). After a sustained warning window across multiple minor releases, drop the old flags entirely. Almost certainly a major version bump (v3.0) depending on timing.
+**Design sketch** (to be refined when the story is picked up):
 
-Not in Phase H because: the v2.0 breaking changes are already substantial; shipping hard-removes in the same release as renames denies users any migration window.
+- **Hash source**: two realistic options.
+  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
+  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
+- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
+- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
 
-### Story J.?: Preemptive bash 3.2 compatibility audit across `pyve.sh`, `lib/`, and `lib/completion/` [Planned]
+**Tasks**
 
-**Why.** macOS ships `/bin/bash` at 3.2.57. Every pyve release must source and execute cleanly there, but the repeated failure mode through Phase H (H.e.7a fixed `declare -A`; H.e.9h fixed `mapfile`) shows that bash 4+ features slip in whenever a contributor's dev shell is a newer bash from brew / asdf / nix. CI catches each instance, but only after a broken release reaches at least one user. A proactive audit + lint rule would shrink the failure mode.
+- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
+- [ ] Implement verification in `bootstrap_install_micromamba`.
+- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
+- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
+- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
 
-**Scope (in):**
+---
 
-- **Full-repo scan** for bash 4+ constructs across `pyve.sh`, `lib/*.sh`, `lib/completion/*`, and any `tests/unit/*.bats` helpers. Target constructs:
-  - Associative arrays: `declare -A`, `local -A`, and `typeset -A`.
-  - `mapfile` / `readarray` builtins.
-  - Case-modification parameter expansions: `${var^}`, `${var^^}`, `${var,}`, `${var,,}`.
-  - `${var@…}` transformation operators (bash 4.4+).
-  - `BASH_REMATCH` usage inside `[[ =~ ]]` when the regex relies on bash 4+ behavior.
-  - `declare -n` namerefs (bash 4.3+).
-  - `coproc` with named coprocs.
-  - `**` globstar (requires `shopt -s globstar`, bash 4+).
-- **Shared grep-invariant test** in a new `tests/unit/test_bash32_compat.bats`. Single file that greps the entire source tree for the constructs above and fails on any match. Each construct gets one `@test` block with a clear name (`"bash 3.2: no 'mapfile' calls in shell sources"`). Future contributors adding `mapfile` trip the invariant locally before CI.
-- **Optional:** a `Makefile` target `make check-bash32` that sources every `lib/*.sh` under `/bin/bash` and reports any that fail. Complements the grep invariants with an "actually works" smoke.
+### Story K.?: Micromamba Version Pinning via `--micromamba-version` [Planned]
 
-**Scope (out):**
+**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
 
-- Rewriting things that don't actually fail under bash 3.2 but use bash-4+-preferred idioms. Stay with the conservative "catch the true portability breaks; don't chase style".
-- Adding a bash-3.2 matrix job to CI. macOS runners already use `/bin/bash` (3.2), so the existing CI job catches these once surfaced. The grep invariants catch them pre-commit.
+**Design sketch**
 
-**When to run this.** Not urgent; next time a bash-3.2 regression surfaces, or before the next major cut (v3.0). Earlier is better — each incident costs a CI cycle + a follow-up PR.
+- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
+- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
+- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
+- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
 
-**Prior art:** H.e.7a (declare -A), H.e.9h (mapfile). Both fixes included individual grep invariants in their relevant test files; this story consolidates those + preempts the rest.
+**Tasks**
+
+- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
+- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
+- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
+- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
+- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
 
 ---
