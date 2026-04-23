@@ -5,6 +5,38 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-04-23
+
+Coverage-hardening patch for Phase I. After v2.2.0 shipped, Codecov surfaced a `lib/` bash-subtotal of **62.44%** — the I.b–I.g test activations weren't reaching the coverage measurement because the `bash-coverage` CI job only ran kcov against the venv-backend integration tests. This release wires the micromamba integration path into kcov, adds direct bats coverage for two previously-untested libraries, and surfaces one latent dead-branch bug along the way. No user-facing CLI changes.
+
+### Fixed
+
+- **`pyve_write_sitecustomize_shim` idempotency short-circuit was unreachable.** The check at `lib/distutils_shim.sh:89-91` used `[[ "$(cat file)" == "$desired" ]]`, but bash command substitution strips trailing newlines while `$desired` always ends in one — so the "no-op when already current" branch never fired, and the file was rewritten with identical content on every call. Fixed with a `cmp`-based comparison. Observable only as unnecessary mtime churn on repeated `pyve init` runs in Python ≥ 3.12 environments, but a real dead branch in kcov. (Story I.k.)
+
+### Changed
+
+- **`bash-coverage` CI job now exercises the micromamba integration path under kcov** (Story I.i). Previously ran only `pytest -m "venv and not requires_micromamba"`; now runs a second kcov pass over `-m "micromamba or requires_micromamba"` with `mamba-org/setup-micromamba@v2` installed just-in-time between the two passes. kcov auto-merges into `coverage-kcov/kcov-merged/`; the existing Codecov upload step picks up the combined data with no config change needed. The `mamba-org` install is deliberately placed **after** the venv kcov pass to keep micromamba off PATH during the venv run — defense against the asdf/pyenv shim leakage that bit v1.13.2 / v1.13.3.
+- **`bash-coverage` CI job bumped from Python 3.11 → 3.12** to align with `integration-tests-micromamba` (which uses 3.12) and remove the lone 3.11 holdout among the job matrix. Nothing about kcov required 3.11; it was leftover from before the H.b.i modernization of the integration matrix.
+
+### Added
+
+- **[tests/unit/test_env_detect.bats](tests/unit/test_env_detect.bats)** (Story I.j) — new file, 33 tests covering all 9 functions in `lib/env_detect.sh` (baseline: **1.98%** coverage, 99 / 101 tracked lines missed). Uses PATH-shim builders for `asdf`, `pyenv`, and `direnv` so the test doesn't require those tools on the CI runner; shim behavior is parameterized by env vars (`ASDF_INSTALL_EXIT`, `PYENV_AVAILABLE_VERSIONS`, etc.) so a single shim serves multiple tests. Specifically exercises the asdf 0.18+ `set`→`local` fallback, the `CI=true` auto-install gate, and the `asdf plugin list` no-python-plugin warning.
+- **[tests/unit/test_distutils_shim_coverage.bats](tests/unit/test_distutils_shim_coverage.bats)** (Story I.k) — new file, 17 tests covering the functions and branches the existing `test_distutils_shim.bats` leaves uncovered. Includes the first coverage for `pyve_install_distutils_shim_for_micromamba_prefix` (44-line function, wholly untested before), `pyve_distutils_shim_probe` (4 log-output branches), `pyve_get_site_packages_dir`, and `pyve_ensure_venv_packaging_prereqs`.
+- **`prompt_yes_no` tests in [test_utils.bats](tests/unit/test_utils.bats)** (Story I.k) — 6 tests covering all three arms of the input loop (y / n / re-prompt-on-invalid). `prompt_yes_no` was previously wholly untested despite being called from `lib/env_detect.sh` and `lib/utils.sh` itself.
+
+### Developer notes
+
+- **Coverage baseline vs. target** (per Codecov, `bash` flag, `lib/` subtotal):
+  - v2.2.0 (post-Phase-I-primary): **62.44%** (996 / 1595 tracked)
+  - v2.2.1 target: **≥ 80%**
+  - v2.2.1 realistic estimate: **~78%** — the `utils.sh` per-function targeting is necessarily less surgical than for `env_detect.sh` / `distutils_shim.sh` without Codecov's per-line view. If the actual CI number comes in under 80%, a follow-up targeting `utils.sh`'s big multi-branch functions (`prompt_install_pip_dependencies` at 155 lines; the `prompt_install_project_guide*` family) will be filed as a K-class story.
+- **`utils.sh` dead-code audit finding** (Story I.k): zero unused functions. All 36 functions in `utils.sh` are called from at least one of `pyve.sh`, `lib/*.sh`, or `tests/` — the three that show 0 `pyve.sh` references (`prompt_yes_no`, `gitignore_has_pattern`, `append_pattern_to_gitignore`) are used from other `lib/` files. The 32% gap in `utils.sh` comes from uncovered branches within called functions, not dead helpers.
+- **Test suite state**: bats **707 / 707 passing** (was 651 at start of v2.2.1 work; +56 = 33 env_detect + 17 distutils_shim_coverage + 6 prompt_yes_no). Integration bootstrap + helpers: 16 passed, 2 skipped (unchanged).
+
+### Migration notes
+
+No breaking changes. `pyve --version` reports `2.2.1`. No CLI surface changes, no config-file-format changes, no behavior changes visible to users (the `distutils_shim.sh` idempotency fix only affects mtime on repeat `pyve init` runs — content is unchanged).
+
 ## [2.2.0] - 2026-04-22
 
 Phase I release: bootstrap test activation and hardening. Ten previously-skipped pytest tests around `pyve init --backend micromamba --auto-bootstrap` (stale since v0.8.4 — "Bootstrap not yet implemented") are now live and pinning real behavior. One user-facing bug (bzip2 extraction on Linux) was surfaced and fixed during test activation, and a new CI job exercises the bootstrap-and-download path on every PR.
