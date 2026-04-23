@@ -884,8 +884,44 @@ EOF
 
 @test "is_file_empty: returns 0 for file with only newline" {
     echo "" > file.txt
-    
+
     # File has a newline, so it's not empty (has 1 byte)
     run is_file_empty "file.txt"
     [ "$status" -eq 1 ]
+}
+
+#============================================================
+# prompt_yes_no — three-arm input loop (Story I.k coverage)
+#============================================================
+
+@test "prompt_yes_no: returns 0 for 'y'" {
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< "y"
+    [ "$status" -eq 0 ]
+}
+
+@test "prompt_yes_no: returns 0 for 'yes'" {
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< "yes"
+    [ "$status" -eq 0 ]
+}
+
+@test "prompt_yes_no: returns 0 for uppercase 'YES'" {
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< "YES"
+    [ "$status" -eq 0 ]
+}
+
+@test "prompt_yes_no: returns 1 for 'n'" {
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< "n"
+    [ "$status" -eq 1 ]
+}
+
+@test "prompt_yes_no: returns 1 for 'no'" {
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< "no"
+    [ "$status" -eq 1 ]
+}
+
+@test "prompt_yes_no: re-prompts on invalid input, then accepts 'y'" {
+    # Two invalid answers then 'y' — exercises the loop's default arm.
+    run bash -c "source '$PYVE_ROOT/lib/utils.sh' && prompt_yes_no 'Q?'" <<< $'maybe\nmaaaybe\ny'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Please answer yes or no"* ]]
 }

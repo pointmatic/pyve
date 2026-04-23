@@ -85,8 +85,11 @@ import setuptools  # noqa: F401
             return 0
         fi
 
-        # Update in-place if different
-        if [[ "$(cat "$sitecustomize_path")" == "$desired" ]]; then
+        # Update in-place if different. Use cmp rather than $(cat ...) ==
+        # $desired because command substitution strips trailing newlines on
+        # the file side, which made this short-circuit unreachable whenever
+        # $desired ended in a newline (i.e., always). See Story I.k.
+        if printf "%s" "$desired" | cmp -s - "$sitecustomize_path"; then
             return 0
         fi
     fi

@@ -236,10 +236,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
       
-      - name: Set up Python 3.11
+      - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
-          python-version: '3.11'
+          python-version: '3.12'
       
       - name: Install dependencies
         run: |
@@ -288,9 +288,36 @@ jobs:
           export PYENV_ROOT="$HOME/.pyenv"
           export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
           export PYVE_KCOV_OUTDIR="$(pwd)/coverage-kcov"
-          
+
           pytest tests/integration/ -v -m "venv and not requires_micromamba"
-      
+
+      - name: Install micromamba
+        # Installed here (not earlier) so the venv-only kcov pass above does
+        # not accidentally resolve micromamba via PATH. The micromamba
+        # integration tests use `bootstrap_isolation` to scrub PATH when they
+        # need to exercise the bootstrap/download path, so a pre-installed
+        # micromamba doesn't interfere with those tests.
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          micromamba-version: 'latest'
+          environment-name: test-env
+          create-args: >-
+            python=3.12
+
+      - name: Run micromamba integration tests under kcov
+        # Second kcov pass for the micromamba backend. Writes into the same
+        # PYVE_KCOV_OUTDIR as the venv pass; kcov auto-merges all pyve.sh
+        # invocations into coverage-kcov/kcov-merged. Targets the big
+        # uncovered surfaces surfaced on Codecov after v2.2.0:
+        # lib/micromamba_bootstrap.sh (~30% baseline), lib/micromamba_env.sh
+        # (~57% baseline), and the micromamba branch of pyve.sh.
+        run: |
+          export PYENV_ROOT="$HOME/.pyenv"
+          export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
+          export PYVE_KCOV_OUTDIR="$(pwd)/coverage-kcov"
+
+          pytest tests/integration/ -v -m "micromamba or requires_micromamba"
+
       - name: Upload Bash coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
