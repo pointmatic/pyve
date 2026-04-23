@@ -147,7 +147,11 @@ bootstrap_install_micromamba() {
     }
     
     log_info "Extracting micromamba binary..."
-    if ! tar -xzf "$temp_file" -C "$temp_dir" 2>/dev/null; then
+    # Use format auto-detect (plain -xf) so the same command handles both
+    # gzip and bzip2 tarballs. Real micromamba downloads from micro.mamba.pm
+    # are bzip2-compressed; -xzf forces gzip and fails under GNU tar on
+    # Linux. BSD tar auto-detects regardless. See Story I.e.
+    if ! tar -xf "$temp_file" -C "$temp_dir" 2>/dev/null; then
         log_error "Failed to extract micromamba tarball"
         rm -f "$temp_file"
         rm -rf "$temp_dir"

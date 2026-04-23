@@ -1410,7 +1410,7 @@ Activate the main `TestBootstrapPlaceholder` class tests that can run when micro
 - [x] Removed `@pytest.mark.skip` from `test_bootstrap_skips_if_already_installed` ([test_bootstrap.py:116-144](../../tests/integration/test_bootstrap.py#L116-L144)); plants a shell shim at `<cwd>/.pyve/bin/micromamba` (satisfies `-x` + `--version`) and asserts the bootstrap banner **does not** appear (silent-skip is the documented behavior — there is no "already installed" message). Uses `check=False` because pyve's subsequent env-creation fails against the shim, which is outside this test's scope.
 - [x] **Assertions narrowed**: tests 1–3 used to assert `result.returncode == 0`, which would have required a successful end-to-end micromamba env creation (real python=3.11 download). Narrowed to verify just the bootstrap step's observable outputs (banner text + binary-on-disk), with `check=False` to let the broader init fail downstream. Story I.b's scope is bootstrap, not env creation.
 - [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapPlaceholder -v -m micromamba` → 4 passed, 4 skipped (~53s). The 4 skips are the I.c / I.g tests. Full bootstrap+helpers run: 10 passed, 8 skipped (was 6/12 at start of I.b).
-- [x] **Note on the 4 remaining `TestBootstrapPlaceholder` skips**: `test_bootstrap_version_selection` and `test_bootstrap_download_verification` are tied to Story I.g (no `--micromamba-version` or checksum-verification flag exists yet). `test_bootstrap_platform_detection` and `test_bootstrap_failure_handling` are in Story I.c's scope.
+- [x] **Note on the 4 remaining `TestBootstrapPlaceholder` skips**: `test_bootstrap_version_selection` and `test_bootstrap_download_verification` are tied to Story I.h (no `--micromamba-version` or checksum-verification flag exists yet). `test_bootstrap_platform_detection` and `test_bootstrap_failure_handling` are in Story I.c's scope.
 
 ---
 
@@ -1427,18 +1427,45 @@ Activate failure-path tests.
 
 ---
 
-### Story I.d: Activate Bootstrap Configuration Tests [Planned]
+### Story I.d: Activate Bootstrap Configuration Tests [Done]
 
-Activate config-driven bootstrap tests.
+Activate config-driven bootstrap tests. **Scope pivot**: the I.a audit surfaced that pyve.sh has no `read_config_value` call for any bootstrap-related key (only `backend`, `micromamba.env_name`, `venv.directory`, `python.version`, `pyve_version` are parsed). Additionally, `pyve init --force` purges the existing `.pyve/config` before continuing ([pyve.sh:682](../../pyve.sh#L682)), so config-keyed bootstrap is doubly-unreachable. The two tests as originally drafted asserted a feature that doesn't exist. I.d reshapes them as **negative-invariant tests** that pin the "no config-keyed bootstrap" contract.
 
-- [ ] Remove `@pytest.mark.skip` from `TestBootstrapConfiguration` class
-- [ ] Fix `test_bootstrap_respects_config_file` — reconcile config keys with actual `.pyve/config` format
-- [ ] Fix `test_bootstrap_cli_overrides_config` — use actual CLI flags
-- [ ] Verify: `pytest tests/integration/test_bootstrap.py::TestBootstrapConfiguration -v` passes
+- [x] Removed `@pytest.mark.skip` from `TestBootstrapConfiguration` class.
+- [x] **Reshaped** `test_bootstrap_respects_config_file` ([test_bootstrap.py:228-255](../../tests/integration/test_bootstrap.py#L228-L255)): pre-writes `.pyve/config` with `micromamba.auto_bootstrap: true` + `micromamba.bootstrap_location: project`, then runs `pyve init --backend micromamba` WITHOUT `--auto-bootstrap` on CLI. Asserts the `Auto-bootstrapping micromamba` banner does NOT appear — if config keys *were* honored, it would. Stdin `'4\n'` aborts the interactive bootstrap prompt that fires in the CLI-unset path. `PYVE_FORCE_YES=1` bypasses the `--force` confirmation so the subprocess doesn't block on the reinit prompt.
+- [x] **Reshaped** `test_bootstrap_cli_overrides_config` ([test_bootstrap.py:257-278](../../tests/integration/test_bootstrap.py#L257-L278)): pre-writes a config with `micromamba.auto_bootstrap: false` and passes `--auto-bootstrap` on CLI. Since pyve.sh never reads the config key, "override" is vacuously satisfied — the CLI flag is the sole driver. The positive assertion (auto-bootstrap banner appears) documents that the CLI path is unaffected by any config contents. `failing_curl` keeps the test <1s.
+- [x] **Class docstring added** ([test_bootstrap.py:213-227](../../tests/integration/test_bootstrap.py#L213-L227)) explaining the invariant both tests pin: bootstrap is strictly CLI-driven; no `.pyve/config` keys are read; `--force` purges the config anyway.
+- [x] **Verification**: `pyve test tests/integration/test_bootstrap.py::TestBootstrapConfiguration -v` → 2 passed (~0.5s). Full bootstrap + helpers: 16 passed, 2 skipped (was 14/4 at start of I.d). The 2 remaining skips are I.h's version/checksum tests.
+- **Follow-up consideration (not in I.d scope)**: if config-keyed bootstrap is ever implemented (e.g., to allow project-pinned `bootstrap_to: project` policy without every invocation needing a CLI flag), these tests should be inverted back into positive assertions and a new config-reader added to the bootstrap decision point in [pyve.sh:799-814](../../pyve.sh#L799-L814).
 
 ---
 
-### Story I.e: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
+### Story I.e: Fix bz2 Tarball Extraction in Bootstrap [Done]
+
+Real micromamba tarballs served from `https://micro.mamba.pm/api/micromamba/<platform>/latest` are **bzip2**-compressed (`file` output: `bzip2 compressed data, block size = 900k`). [lib/micromamba_bootstrap.sh:150](../../lib/micromamba_bootstrap.sh#L150) extracted with `tar -xzf`, which forces gzip decompression.
+
+- **macOS tar** (BSD / libarchive): auto-detects compression regardless of `-z`, so extraction succeeded. All I.b tests green on local macOS.
+- **GNU tar** (Linux CI runners): treats `-z` as "force gzip" and errors out on bzip2 input. `2>/dev/null` swallowed the error; `bootstrap_install_micromamba` returned 1 and the binary never landed at its install path.
+
+Surfaced by CI on the I.c commit: 3 I.b tests (`test_auto_bootstrap_when_not_installed`, `test_bootstrap_to_project_sandbox`, `test_bootstrap_to_user_sandbox`) failed on `ubuntu-latest` because their `.exists()` assertions ran after a silently-failed extraction. The existing bats test at [tests/unit/test_micromamba_bootstrap.bats:34-35](../../tests/unit/test_micromamba_bootstrap.bats#L34-L35) manufactures a `.tar.gz` tarball via `tar -czf`, which is why the bug hadn't been caught pre-I.b: `tar -xzf` on a gzip input works on both platforms.
+
+This was a **user-facing bug**, not a test bug — any real Linux user running `pyve init --backend micromamba --auto-bootstrap` hit it.
+
+**Tasks**
+
+- [x] **Grep-invariant bats test added** at [tests/unit/test_micromamba_bootstrap.bats:68-77](../../tests/unit/test_micromamba_bootstrap.bats#L68-L77): asserts `lib/micromamba_bootstrap.sh` contains no `tar -…z…f` anti-pattern. Chosen over a roundtrip `.tar.bz2` functional test because BSD tar auto-detects on macOS (the buggy command passes locally), so a functional test wouldn't cleanly show red on dev machines. The static invariant catches the regression on any host and serves as future-proofing.
+- [x] **TDD red → green**: new test failed pre-fix (`! grep -qE …` with match found), passed post-fix (no match).
+- [x] **Fix applied** at [lib/micromamba_bootstrap.sh:150](../../lib/micromamba_bootstrap.sh#L150): `tar -xzf` → `tar -xf`. Auto-detect via magic bytes is GNU tar behavior since 1.15 (2010), so every supported distro picks up both gz and bz2 transparently. BSD tar already auto-detects. Added a 4-line comment explaining the why so the next edit doesn't regress.
+- [x] **No regressions**:
+  - Existing `.tar.gz`-based test at [tests/unit/test_micromamba_bootstrap.bats:20-66](../../tests/unit/test_micromamba_bootstrap.bats#L20-L66) still passes (auto-detect covers gzip too).
+  - Full bats suite: **651 passed** (was 650; new test adds 1).
+  - `pyve test tests/integration/test_bootstrap.py::TestBootstrapPlaceholder -v -m micromamba` → 6 passed, 2 skipped (53s). Same state as end-of-I.b; the fix is a no-op on macOS.
+  - Linux CI verification happens on the next push.
+- [x] **No CHANGELOG entry** — per Phase I preamble, the phase ships as a single v2.2.0 entry from Story I.h.
+
+---
+
+### Story I.f: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
 
 Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
@@ -1448,7 +1475,7 @@ Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
 ---
 
-### Story I.f: Add Bootstrap CI Job [Planned]
+### Story I.g: Add Bootstrap CI Job [Planned]
 
 Create a new GitHub Actions job that tests bootstrap without pre-installed micromamba — so the download and install paths are tested in automation.
 
@@ -1460,7 +1487,7 @@ Create a new GitHub Actions job that tests bootstrap without pre-installed micro
 
 ---
 
-### Story I.g: v2.2.0 Bootstrap Download Verification [Planned]
+### Story I.h: v2.2.0 Bootstrap Download Verification [Planned]
 
 Evaluate whether the bootstrap code verifies downloaded binaries and add verification if missing.
 

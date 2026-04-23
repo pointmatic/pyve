@@ -251,48 +251,72 @@ class TestBootstrapPlaceholder:
 
 @pytest.mark.micromamba
 class TestBootstrapConfiguration:
-    """Test bootstrap configuration options."""
+    """
+    Bootstrap configuration-precedence tests (activated in Story I.d).
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_respects_config_file(self, pyve, project_builder):
-        """Test bootstrap respects .pyve/config settings."""
+    **Invariant under test**: pyve.sh has no ``read_config_value`` call for
+    any bootstrap-related key. Only ``backend``, ``micromamba.env_name``,
+    ``venv.directory``, ``python.version``, and ``pyve_version`` are parsed
+    out of ``.pyve/config`` (grepped across pyve.sh + lib/*.sh). Bootstrap
+    is strictly CLI-driven via ``--auto-bootstrap`` and ``--bootstrap-to``.
+
+    ``pyve init --force`` also purges the existing ``.pyve/config`` before
+    continuing (pyve.sh:682), so even if bootstrap keys *were* parsed,
+    they could not survive a forced re-init. The tests below record both
+    halves of the invariant: a config-only trigger does nothing (negative
+    case) and a CLI flag always drives bootstrap regardless of config
+    contents (positive case).
+    """
+
+    def test_bootstrap_respects_config_file(self, pyve, project_builder, bootstrap_isolation, monkeypatch):
+        """Config-only ``micromamba.auto_bootstrap: true`` must NOT fire auto-bootstrap."""
+        # Bypass the --force confirmation prompt so the subprocess doesn't
+        # block on stdin before reaching the bootstrap branch.
+        monkeypatch.setenv("PYVE_FORCE_YES", "1")
+
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
+        )
+        config_dir = pyve.cwd / '.pyve'
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / 'config').write_text(
+            'backend: micromamba\n'
+            'micromamba:\n'
+            '  auto_bootstrap: true\n'
+            '  bootstrap_location: project\n'
         )
 
-        # Create config with bootstrap settings
-        config_content = """backend: micromamba
-micromamba:
-  auto_bootstrap: true
-  bootstrap_location: project
-"""
-        config_path = pyve.cwd / '.pyve' / 'config'
-        config_path.parent.mkdir(exist_ok=True)
-        config_path.write_text(config_content)
+        # No --auto-bootstrap on CLI. Without it, pyve falls into the
+        # interactive bootstrap prompt (micromamba is absent); '4\n' chooses
+        # "Abort and install manually".
+        result = pyve.init(backend='micromamba', input='4\n', check=False)
 
-        result = pyve.init()
+        # The auto-bootstrap banner comes from bootstrap_micromamba_auto,
+        # which is only reached when --auto-bootstrap is true.
+        assert 'Auto-bootstrapping micromamba' not in result.stdout
 
-        assert result.returncode == 0
+    def test_bootstrap_cli_overrides_config(self, pyve, project_builder, failing_curl, monkeypatch):
+        """CLI ``--auto-bootstrap`` drives bootstrap even when config "says" otherwise."""
+        monkeypatch.setenv("PYVE_FORCE_YES", "1")
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
-    def test_bootstrap_cli_overrides_config(self, pyve, project_builder):
-        """Test CLI flags override config file for bootstrap."""
         project_builder.create_environment_yml(
             name='test-env',
-            dependencies=['python=3.11']
+            dependencies=['python=3.11'],
+        )
+        config_dir = pyve.cwd / '.pyve'
+        config_dir.mkdir(exist_ok=True)
+        (config_dir / 'config').write_text(
+            'backend: micromamba\n'
+            'micromamba:\n'
+            '  auto_bootstrap: false\n'
         )
 
-        # Config says no bootstrap
-        project_builder.create_config(
-            backend='micromamba',
-            micromamba={'auto_bootstrap': False}
-        )
+        # failing_curl short-circuits the real download so the test is fast
+        # and deterministic; we only need to prove bootstrap was reached.
+        result = pyve.init(backend='micromamba', auto_bootstrap=True, check=False)
 
-        # But CLI says yes
-        result = pyve.init(auto_bootstrap=True)
-
-        assert result.returncode == 0
+        assert 'Auto-bootstrapping micromamba' in result.stdout
 
 
 @pytest.mark.micromamba
