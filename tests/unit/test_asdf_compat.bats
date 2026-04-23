@@ -18,6 +18,10 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
+    # setup_pyve_env does not source lib/ui.sh (which provides info() /
+    # success() used by init_direnv_venv / init_direnv_micromamba). Source
+    # it locally so the generator functions can run under bats.
+    source "$PYVE_ROOT/lib/ui.sh"
     create_test_dir
 
     # Each test starts with a neutral environment. Individual tests opt
@@ -73,31 +77,122 @@ teardown() {
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Placeholder tests for Story J.b — .envrc asdf compat guard
+# Story J.b — .envrc asdf compat guard
 # ────────────────────────────────────────────────────────────────────
-# These assert the .envrc generator injects ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-# (with the sentinel comment for idempotency) when is_asdf_active returns 0.
-# Story J.b implements the generator change and removes the skip markers.
 
-@test "J.b placeholder: venv-backend .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf active" {
-    skip "Pending Story J.b: .envrc asdf compatibility guard"
-    # When J.b unskips this, the expected shape is:
-    #   - Invoke the venv-backend .envrc generator (pyve.sh ~L1042)
-    #   - grep for the sentinel comment: "# Prevent asdf Python plugin from reshimming venv-installed CLIs."
-    #   - grep for: export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-    #   - Both must appear exactly once (idempotency check: run generator twice, block stays once)
+# Extract a function definition from pyve.sh and eval it into the current
+# shell. Pyve.sh can't be directly sourced in tests because its final line
+# is `main "$@"` which would run the CLI dispatcher. The generators
+# init_direnv_venv / init_direnv_micromamba are cleanly formatted (single-
+# line header, closing brace at column 0), so an awk range extract works.
+source_pyve_fn() {
+    local fn="$1"
+    local body
+    body="$(awk -v fn="$fn" '
+        $0 ~ "^" fn "\\(\\)[[:space:]]*\\{" { inside = 1 }
+        inside { print }
+        inside && /^\}$/ { exit }
+    ' "$PYVE_ROOT/pyve.sh")"
+    eval "$body"
 }
 
-@test "J.b placeholder: micromamba-backend .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf active" {
-    skip "Pending Story J.b: .envrc asdf compatibility guard"
-    # Parallel to the venv test but drives the micromamba-backend .envrc
-    # generator at pyve.sh ~L1076.
+@test "J.b: venv .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
+    source_pyve_fn init_direnv_venv
+    VERSION_MANAGER="asdf"
+
+    run init_direnv_venv ".venv"
+    [ "$status" -eq 0 ]
+
+    assert_file_exists ".envrc"
+    assert_file_contains ".envrc" "Prevent asdf Python plugin from reshimming"
+    assert_file_contains ".envrc" "export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1"
 }
 
-@test "J.b placeholder: .envrc omits the compat block when is_asdf_active returns 1" {
-    skip "Pending Story J.b: .envrc asdf compatibility guard"
-    # Negative case: VERSION_MANAGER != "asdf" OR PYVE_NO_ASDF_COMPAT=1
-    # → no sentinel, no export line.
+@test "J.b: micromamba .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
+    source_pyve_fn init_direnv_micromamba
+    VERSION_MANAGER="asdf"
+
+    run init_direnv_micromamba "test-env" "$TEST_DIR/envs/test-env"
+    [ "$status" -eq 0 ]
+
+    assert_file_exists ".envrc"
+    assert_file_contains ".envrc" "Prevent asdf Python plugin from reshimming"
+    assert_file_contains ".envrc" "export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1"
+}
+
+@test "J.b: venv .envrc omits the compat block when asdf is not active (VERSION_MANAGER=pyenv)" {
+    source_pyve_fn init_direnv_venv
+    VERSION_MANAGER="pyenv"
+
+    run init_direnv_venv ".venv"
+    [ "$status" -eq 0 ]
+
+    assert_file_exists ".envrc"
+    if grep -qF "ASDF_PYTHON_PLUGIN_DISABLE_RESHIM" ".envrc"; then
+        echo "Expected .envrc to omit asdf guard when VERSION_MANAGER=pyenv" >&2
+        cat .envrc >&2
+        return 1
+    fi
+}
+
+@test "J.b: venv .envrc omits the compat block when PYVE_NO_ASDF_COMPAT=1" {
+    source_pyve_fn init_direnv_venv
+    VERSION_MANAGER="asdf"
+    PYVE_NO_ASDF_COMPAT=1
+
+    run init_direnv_venv ".venv"
+    [ "$status" -eq 0 ]
+
+    assert_file_exists ".envrc"
+    if grep -qF "ASDF_PYTHON_PLUGIN_DISABLE_RESHIM" ".envrc"; then
+        echo "Expected .envrc to omit asdf guard when PYVE_NO_ASDF_COMPAT=1" >&2
+        cat .envrc >&2
+        return 1
+    fi
+}
+
+@test "J.b: reinit is idempotent — asdf guard appears exactly once (byte-identical file)" {
+    # H.a pattern: run the generator twice with the same inputs and asdf
+    # active; the file must be byte-identical between runs (md5 match) and
+    # the sentinel comment must appear exactly once.
+    source_pyve_fn init_direnv_venv
+    VERSION_MANAGER="asdf"
+
+    init_direnv_venv ".venv"
+    local md5_first
+    md5_first="$(md5 -q .envrc 2>/dev/null || md5sum .envrc | awk '{print $1}')"
+
+    init_direnv_venv ".venv"
+    local md5_second
+    md5_second="$(md5 -q .envrc 2>/dev/null || md5sum .envrc | awk '{print $1}')"
+
+    [ "$md5_first" = "$md5_second" ]
+
+    # Sentinel appears exactly once.
+    local sentinel_count
+    sentinel_count="$(grep -cF "Prevent asdf Python plugin from reshimming" .envrc)"
+    [ "$sentinel_count" -eq 1 ]
+}
+
+@test "J.b: guard migrates onto a pre-existing .envrc that lacks the sentinel" {
+    # Upgrade-path coverage: user has an .envrc from pyve < v2.3.0 (no
+    # asdf guard). On the next `pyve init`, the generator should append
+    # the guard to the existing file without touching its other content.
+    source_pyve_fn init_direnv_venv
+    VERSION_MANAGER="asdf"
+
+    cat > .envrc << 'EOF'
+# pyve-managed direnv configuration (legacy, no asdf guard)
+VENV_DIR=".venv"
+if [[ -d "$VENV_DIR" ]]; then source "$VENV_DIR/bin/activate"; fi
+EOF
+
+    init_direnv_venv ".venv"
+
+    assert_file_contains ".envrc" "Prevent asdf Python plugin from reshimming"
+    assert_file_contains ".envrc" "export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1"
+    # Original content preserved.
+    assert_file_contains ".envrc" "legacy, no asdf guard"
 }
 
 # ────────────────────────────────────────────────────────────────────

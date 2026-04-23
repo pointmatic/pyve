@@ -1068,6 +1068,21 @@ fi
 EOF
         success "Created .envrc"
     fi
+
+    # Story J.b: append asdf reshim guard when asdf is the active version
+    # manager, unless the user opted out via PYVE_NO_ASDF_COMPAT. Sentinel
+    # grep prevents duplication on re-init. Runs for both fresh and
+    # pre-existing .envrc so the guard also migrates onto files created
+    # by pyve < v2.3.0.
+    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
+        cat >> "$envrc_file" << 'EOF'
+
+# Prevent asdf Python plugin from reshimming venv-installed CLIs.
+# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
+export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+EOF
+        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
+    fi
 }
 
 init_direnv_micromamba() {
@@ -1101,6 +1116,19 @@ if [[ -f ".env" ]]; then
 fi
 EOF
         success "Created .envrc"
+    fi
+
+    # Story J.b: see init_direnv_venv for rationale. Kept as a copy rather
+    # than extracted to a helper because the two generators are already
+    # parallel in structure, and the guard block itself is three lines.
+    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
+        cat >> "$envrc_file" << 'EOF'
+
+# Prevent asdf Python plugin from reshimming venv-installed CLIs.
+# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
+export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+EOF
+        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
     fi
 }
 
