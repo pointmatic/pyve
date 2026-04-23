@@ -1477,15 +1477,18 @@ Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
 ---
 
-### Story I.g: Add Bootstrap CI Job [Planned]
+### Story I.g: Add Bootstrap CI Job [Done]
 
 Create a new GitHub Actions job that tests bootstrap without pre-installed micromamba — so the download and install paths are tested in automation.
 
-- [ ] Add `integration-tests-bootstrap` job to `.github/workflows/test.yml`
-- [ ] Job runs on `ubuntu-latest` and `macos-latest` (no `mamba-org/setup-micromamba` action)
-- [ ] Job runs: `pytest tests/integration/test_bootstrap.py -v -m micromamba`
-- [ ] Job requires network access (downloads micromamba binary)
-- [ ] Verify: CI pipeline passes with new job
+- [x] Added `integration-tests-bootstrap` job at [.github/workflows/test.yml:184-231](../../.github/workflows/test.yml#L184-L231).
+- [x] **Matrix**: `ubuntu-latest` + `macos-latest`. Both are required — the I.e tar-extraction bug only surfaces on GNU tar (Linux); macOS BSD tar auto-detects. Dropping macOS would have let the `-xzf` regression slip back in on future edits.
+- [x] **Intentionally no micromamba install step** (contrasted inline with `integration-tests-micromamba`): `bootstrap_isolation` scrubs `$PATH` + fake-HOMEs the test, so even if the runner image had micromamba pre-installed somewhere, `get_micromamba_path` would still resolve empty and trigger the bootstrap download path.
+- [x] **Test command**: `pytest tests/integration/test_bootstrap.py -v -m micromamba` (14 tests: 4 I.b + 4 I.c + 2 I.d + 2 skip-pending-I.h + 2 that were already active). The narrower path filter avoids running the full `test_micromamba_workflow.py` suite (which needs a real micromamba for env creation and is handled by the sibling `integration-tests-micromamba` job).
+- [x] **No pyenv/asdf setup needed**: the micromamba init branch in pyve.sh does not call `validate_python_version` or `ensure_python_version_installed` (those are venv-branch-only; micromamba delegates version handling to conda via `environment.yml`). The helper's `_auto_pin_python_for_init` falls back to `python3 --version` which the `actions/setup-python` step provides — sufficient for pyve's injected `--python-version` flag to be non-empty.
+- [x] **Wired into `test-summary.needs`** ([test.yml:306-322](../../.github/workflows/test.yml#L306-L322)) — bootstrap job failure now fails the summary check, so PRs can block on it.
+- [x] **YAML validated**: `python -c "import yaml; yaml.safe_load(open('.github/workflows/test.yml'))"` parses; all 7 jobs enumerable.
+- [x] **Verification**: CI will run the new job on the next push to `main` / `develop` or PR. This is also the job that validates the Story I.e bz2 fix on Linux — pre-I.e, the 3 I.b download tests would fail here; post-I.e they should pass.
 
 ---
 
