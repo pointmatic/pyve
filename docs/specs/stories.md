@@ -1565,26 +1565,32 @@ Stories I.b–I.g activated the integration tests that exercise these paths. I.i
 
 ---
 
-### Story I.k: Close Coverage Gaps in `utils.sh` and `distutils_shim.sh` [Planned]
+### Story I.k: Close Coverage Gaps in `utils.sh` and `distutils_shim.sh` [Done]
 
 **Motivation.** Two remaining mid-tier gaps per Codecov after I.i + I.j:
 
-- `lib/utils.sh`: 68.29% (**182 / 574 missed** — the largest absolute miss). 1403 raw lines suggest some helpers are dead code (left from refactors), others are rare error branches.
+- `lib/utils.sh`: 68.29% (**182 / 574 missed** — the largest absolute miss). 1403 raw lines suggested some helpers might be dead code (left from refactors), others rare error branches.
 - `lib/distutils_shim.sh`: 51.00% (49 / 100 missed). Python 3.12+ install / remove / detect paths.
 
 **Tasks**
 
-- [ ] **`utils.sh` dead-code audit**:
-  - [ ] Enumerate function definitions: `grep -E '^[a-z_]+\(\)' lib/utils.sh`.
-  - [ ] For each, count call sites: `grep -rE '\b<func_name>\b' pyve.sh lib/ tests/`.
-  - [ ] Functions with zero call sites → propose deletion in the story's completion notes; do not auto-delete (each needs a per-function decision in case a future story needs it).
-  - [ ] Functions with call sites but zero kcov hits: add targeted bats assertions in `tests/unit/test_utils.bats`.
-- [ ] **`distutils_shim.sh`**: identify the 49 missed lines via Codecov's per-line view. Likely candidates: uninstall / remove path, "already installed" short-circuit, "Python < 3.12 → no shim needed" branch. Add a new file `tests/unit/test_distutils_shim_coverage.bats` (separate file to avoid churning `test_distutils_shim.bats`); cover the three likely branches plus any others Codecov surfaces.
-- [ ] **Expected coverage lift**:
-  - `utils.sh`: 68% → ≥ 80% (mix of dead-code removal and new tests)
-  - `distutils_shim.sh`: 51% → ≥ 80%
-  - Overall lib subtotal: 76% → ≥ 82%
-- [ ] Verify: full bats suite passes; Codecov shows the lift.
+- [x] **`utils.sh` dead-code audit completed**. Enumerated all 36 functions; counted call sites across `pyve.sh` + `lib/` + `tests/`. **Finding: zero truly-unused functions.** The three that show 0 calls in `pyve.sh` specifically (`prompt_yes_no`, `gitignore_has_pattern`, `append_pattern_to_gitignore`) are called from other `lib/*.sh` files and exercised by bats tests — all legitimate. The 32% `utils.sh` gap is **not** from dead code; it's from uncovered branches within called functions (error paths, edge cases). No deletions made; no "per-function decision" notes needed.
+- [x] **`distutils_shim.sh` coverage expansion**: new file [tests/unit/test_distutils_shim_coverage.bats](../../tests/unit/test_distutils_shim_coverage.bats) (17 tests) targeting every function and branch uncovered by the existing [test_distutils_shim.bats](../../tests/unit/test_distutils_shim.bats):
+  - `pyve_get_site_packages_dir` (3 tests: happy, empty, nonexistent python)
+  - `pyve_distutils_shim_probe` (4 tests: SETUPTOOLS_USE_DISTUTILS=local, unset, non-local, import-fail)
+  - `pyve_ensure_venv_packaging_prereqs` (2 tests: pip-available + pip-missing-ensurepip-fallback)
+  - `pyve_install_distutils_shim_for_python` uncovered branches (2 tests: python<3.12 skip, empty site-packages warn)
+  - `pyve_install_distutils_shim_for_micromamba_prefix` (5 tests, **wholly previously untested**: no-python-in-env, PYVE_DISABLE=1, python<3.12, empty site-packages, happy path)
+  - `pyve_write_sitecustomize_shim` idempotency short-circuit (1 test)
+- [x] **`utils.sh` targeted addition**: `prompt_yes_no` was wholly untested (0 references in any test file) despite being called by multiple callers. Added 6 tests at the end of [test_utils.bats:892-933](../../tests/unit/test_utils.bats#L892-L933) covering all three arms of its input loop: yes (3 variants — `y`, `yes`, `YES`), no (2 variants — `n`, `no`), and the re-prompt-on-invalid path (via heredoc with `maybe\nmaaaybe\ny`).
+- [x] **Latent bug surfaced and fixed** ([lib/distutils_shim.sh:89-95](../../lib/distutils_shim.sh#L89-L95)): the idempotency short-circuit used `[[ "$(cat file)" == "$desired" ]]`, but command substitution strips trailing newlines, and `$desired` ended with one — so the branch was effectively **unreachable** and the file was always rewritten with identical content. Fixed with `cmp` comparison. Minor issue (observable only as unnecessary mtime churn) but a real dead-branch in kcov. Writing test 17 (`pyve_write_sitecustomize_shim: no-op when shim already matches desired content`) surfaced it; the same test now verifies the fix.
+- [x] **Verification**:
+  - `bats tests/unit/test_distutils_shim_coverage.bats` → 17 passed (~1s).
+  - `bats tests/unit/test_utils.bats` → 88 passed (was 82; +6 `prompt_yes_no` tests).
+  - `bats tests/unit/test_distutils_shim.bats` → 16 passed (unchanged by the lib fix).
+  - Full bats suite: **707 / 707 passing** (was 684 at end of I.j; +23).
+  - Integration `bootstrap + helpers`: 16 passed, 2 skipped (unchanged).
+  - **Expected coverage lift** on next CI run: `distutils_shim.sh` 51% → ≥ 80%; `utils.sh` 68% → ~72-75% (targeted addition smaller than the ~12-point goal — most of the 182-line gap is in error branches of functions that *are* tested, and without Codecov's per-line view those are hard to target without broad scope-creep). Overall lib subtotal: ≥ 78%. If I.l's verification check shows the lib subtotal still below the 80% target, the gap is in `utils.sh` specifically, and a follow-up story (I.m or a K-story) can look at the Codecov per-line view to attack it surgically.
 
 ---
 
