@@ -1377,9 +1377,11 @@ Then proceed with normal micromamba bootstrap. The user sees the unified-UX head
 
 ## Phase I: Bootstrap Test Activation and Hardening
 
-The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests. 
+The existing skipped bootstrap integration tests reference CLI flags and helper methods that don't match the actual implementation. Fix the test scaffolding before activating tests.
 
-**Intended release version:** `v2.2.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (L.d).
+**Primary release:** `v2.2.0` — shipped 2026-04-22 (commit `b19f3c2`) bundling Stories I.a–I.h. Version bump landed in I.h.
+
+**Coverage-hardening extension:** Stories I.i–I.l address the bash-coverage gaps surfaced on Codecov after v2.2.0 shipped — the I.b–I.g activation effort nearly doubled micromamba integration-test coverage, but the `bash-coverage` CI job only ran kcov against `-m "venv and not requires_micromamba"`, so the new tests did not feed the coverage numbers. Intended release for the extension: `v2.2.1` (patch — test-infrastructure and internal-cleanup changes, no user-visible behavior unless I.k surfaces incidental bugs). Codecov baseline at end of v2.2.0 — `lib/` subtotal **62.44%** (996 / 1595 tracked lines); the extension targets **≥ 80%** lib subtotal.
 
 ### Story I.a: Reconcile Bootstrap Test Fixtures [Done]
 
@@ -1505,6 +1507,95 @@ Final Phase I story. Audit bootstrap verification, pivot on the cryptographic-ve
 - [x] **CHANGELOG v2.2.0 entry written** covering all of Phase I: I.a (fixture reconciliation), I.b (core activation), I.c (error-handling activation), I.d (config-invariant negative tests), I.e (bz2 extraction bug fix — **the lone user-facing change**), I.f (workflow test activation), I.g (bootstrap CI job), I.h (release wrap + verification audit). Included a Developer-notes section documenting the transport-only verification posture so security reviewers can see the known gap.
 - [x] **Version bump** `2.1.0` → `2.2.0` at [pyve.sh:32](../../pyve.sh#L32). Matching assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207) updated.
 - [x] **Verification**: 651 / 651 bats pass (new K-pointer skip-reason changes do not affect counts). Bootstrap + helpers: 16 passed, 2 skipped (unchanged from end of I.g — I.h is non-functional except for the version bump and skip-reason refresh).
+
+---
+
+### Story I.i: Extend 'bash-coverage' CI to Micromamba Integration Tests [Done]
+
+**Motivation.** The `bash-coverage` job ([.github/workflows/test.yml:230-262](../../.github/workflows/test.yml#L230-L262)) ran `pytest -m "venv and not requires_micromamba"` under kcov — every micromamba-backend integration test was excluded from the coverage numbers. That was the single biggest structural gap in the bash report. Codecov baseline confirmed (after v2.2.0):
+
+| File | Coverage | Missed | Gap driver |
+|---|---|---|---|
+| `lib/micromamba_bootstrap.sh` | 29.71% | 97 / 138 | Activation tests not under kcov |
+| `lib/micromamba_env.sh` | 57.05% | 137 / 319 | Activation tests not under kcov |
+| Micromamba branch of `pyve.sh` (~lines 780-900) | (not broken out) | ~100 | Activation tests not under kcov |
+
+Stories I.b–I.g activated the integration tests that exercise these paths. I.i wires them into the coverage measurement so the activation effort reflects in the numbers.
+
+**Tasks**
+
+- [x] **Second kcov pytest pass added** at [.github/workflows/test.yml:295-308](../../.github/workflows/test.yml#L295-L308): `pytest tests/integration/ -v -m "micromamba or requires_micromamba"` with the same `PYVE_KCOV_OUTDIR=$(pwd)/coverage-kcov` — kcov auto-merges each pyve.sh invocation's data under `coverage-kcov/<hash>/` and regenerates `coverage-kcov/kcov-merged/`, so the Codecov upload step picks up the combined numbers without change.
+- [x] **`mamba-org/setup-micromamba@v2` step added** at [.github/workflows/test.yml:281-293](../../.github/workflows/test.yml#L281-L293), deliberately placed **between** the venv kcov pass and the new micromamba pass. Reasoning: installing earlier would put `micromamba` on PATH during the venv kcov pass, and although the venv tests don't exercise micromamba code paths by design, shim-leakage through asdf/pyenv (see the v1.13.2 / v1.13.3 regressions in the Fixed history) has bitten this project before. Installing just-in-time is cheap and rules out the leak.
+- [x] **Codecov upload left unchanged** ([.github/workflows/test.yml:310-317](../../.github/workflows/test.yml#L310-L317)). It already globs `coverage-kcov/kcov-merged/cobertura.xml` which now contains merged data from both kcov pytest passes + the bats unit pass.
+- [x] **Step-order validated**: `python -c "import yaml; …"` parses; 13 steps in the `bash-coverage` job, new steps slotted at positions 10-11 (Install micromamba → Run micromamba integration tests under kcov) between the existing venv kcov pass and the Codecov upload.
+- [x] **`bootstrap_isolation` interaction confirmed safe**: the fixture scrubs any PATH entry containing `micromamba` by iterating `shutil.which("micromamba")` — the CI-level `mamba-org/setup-micromamba` install gets scrubbed on a per-test basis, so the I.b download-path tests still exercise the real bootstrap. Tests that don't use the fixture (e.g. `TestMicromambaWorkflow`, `TestMicromambaBootstrap::test_auto_bootstrap_micromamba`) see the pre-installed micromamba — which is the point.
+- [x] **Expected coverage lift** (to be confirmed on next CI run on Codecov):
+  - `lib/micromamba_bootstrap.sh`: 30% → ≥ 75%
+  - `lib/micromamba_env.sh`: 57% → ≥ 80%
+  - `pyve.sh` micromamba branch: many previously-red lines become green
+  - Overall `lib/` subtotal: 62% → ≥ 72%
+- [x] **Verification**: CI `bash-coverage` job runs green on the next push to `main` / on the PR that lands this. Delta is readable on Codecov's Files tab (compare to the v2.2.0 baseline at commit `b19f3c2`). If the actual lift is smaller than the estimate, I.j and I.k may need to expand scope to still hit the overall `lib/` ≥ 80% target by I.l.
+
+---
+
+### Story I.j: Add `test_env_detect.bats` [Planned]
+
+**Motivation.** `lib/env_detect.sh` (283 raw lines, 101 tracked by kcov) sits at **1.98% coverage** — 99 of 101 executable lines missed. No direct bats file; the venv integration tests that would exercise it mostly bypass the interesting functions because the test helper pre-resolves the Python version via `_auto_pin_python_for_init` ([tests/helpers/pyve_test_helpers.py:200-238](../../tests/helpers/pyve_test_helpers.py#L200-L238)). So `install_python_version` (the ~60-line asdf/pyenv install path), both arms of `check_direnv_installed`, the error branches of `is_python_version_installed` / `is_python_version_available`, and `source_shell_profiles` (with real profile files present) run cold on CI.
+
+**Tasks**
+
+- [ ] Create `tests/unit/test_env_detect.bats` following the existing bats layout (`setup_pyve_env`, `create_test_dir`, `teardown` cleanup; copyright + SPDX header).
+- [ ] Cover the 9 functions in `lib/env_detect.sh`:
+  - [ ] `source_shell_profiles`: no profile files present (early return) + fake `~/.bashrc` / `~/.zshrc` present (sources them without error)
+  - [ ] `detect_version_manager`: four scenarios — asdf only, pyenv only, both, neither (use PATH-shims like `test_micromamba_bootstrap.bats` uses for curl)
+  - [ ] `is_python_version_installed` / `is_python_version_available`: installed + not-installed + not-available-via-manager
+  - [ ] `install_python_version`: error path (no version manager on PATH) + happy-path via asdf/pyenv shim
+  - [ ] `ensure_python_version_installed`: already-installed short-circuit + install-needed
+  - [ ] `set_local_python_version`: success writes `.tool-versions` / `.python-version`
+  - [ ] `get_version_file_name`: returns correct file name for each version manager
+  - [ ] `check_direnv_installed`: direnv present + direnv absent
+- [ ] Use PATH-shims (`$TEST_DIR/bin/asdf`, `$TEST_DIR/bin/pyenv`, `$TEST_DIR/bin/direnv`) so the test doesn't require those tools on the CI runner.
+- [ ] **Expected coverage lift**:
+  - `env_detect.sh`: 2% → ≥ 70%
+  - Overall lib subtotal: 72% → ≥ 76% (cumulative on top of I.i)
+- [ ] Verify: `bats tests/unit/test_env_detect.bats` passes locally; CI `bash-coverage` shows the lift.
+
+---
+
+### Story I.k: Close Coverage Gaps in `utils.sh` and `distutils_shim.sh` [Planned]
+
+**Motivation.** Two remaining mid-tier gaps per Codecov after I.i + I.j:
+
+- `lib/utils.sh`: 68.29% (**182 / 574 missed** — the largest absolute miss). 1403 raw lines suggest some helpers are dead code (left from refactors), others are rare error branches.
+- `lib/distutils_shim.sh`: 51.00% (49 / 100 missed). Python 3.12+ install / remove / detect paths.
+
+**Tasks**
+
+- [ ] **`utils.sh` dead-code audit**:
+  - [ ] Enumerate function definitions: `grep -E '^[a-z_]+\(\)' lib/utils.sh`.
+  - [ ] For each, count call sites: `grep -rE '\b<func_name>\b' pyve.sh lib/ tests/`.
+  - [ ] Functions with zero call sites → propose deletion in the story's completion notes; do not auto-delete (each needs a per-function decision in case a future story needs it).
+  - [ ] Functions with call sites but zero kcov hits: add targeted bats assertions in `tests/unit/test_utils.bats`.
+- [ ] **`distutils_shim.sh`**: identify the 49 missed lines via Codecov's per-line view. Likely candidates: uninstall / remove path, "already installed" short-circuit, "Python < 3.12 → no shim needed" branch. Add a new file `tests/unit/test_distutils_shim_coverage.bats` (separate file to avoid churning `test_distutils_shim.bats`); cover the three likely branches plus any others Codecov surfaces.
+- [ ] **Expected coverage lift**:
+  - `utils.sh`: 68% → ≥ 80% (mix of dead-code removal and new tests)
+  - `distutils_shim.sh`: 51% → ≥ 80%
+  - Overall lib subtotal: 76% → ≥ 82%
+- [ ] Verify: full bats suite passes; Codecov shows the lift.
+
+---
+
+### Story I.l: v2.2.1 Coverage Hardening Release Wrap [Planned]
+
+Version bump, CHANGELOG, target-check.
+
+**Tasks**
+
+- [ ] Bump `VERSION` in [pyve.sh:32](../../pyve.sh#L32) from `2.2.0` to `2.2.1`.
+- [ ] Update the assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207).
+- [ ] Add `## [2.2.1] - <date>` entry to [CHANGELOG.md](../../CHANGELOG.md). Expected sections: `### Changed` (CI coverage now captures micromamba integration; new `test_env_detect.bats`; additional `distutils_shim.sh` coverage), `### Developer notes` (coverage numbers before / after; any dead code removed from `utils.sh`). `### Fixed` only if I.k's audit surfaces real bugs; `### Migration notes` noting no breaking changes.
+- [ ] **Verification target**: `lib/` bash-subtotal coverage on Codecov **≥ 80%** after v2.2.1 ships. If short, record the gap in the CHANGELOG Developer notes and propose an I-extension follow-up (or a K-class story if gaps require new features to address).
+- [ ] Verify: `pyve --version` reports `2.2.1`; full bats + integration green; Codecov shows `lib/` subtotal ≥ 80% with expected per-file improvements.
 
 ---
 
