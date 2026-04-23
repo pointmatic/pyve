@@ -1492,17 +1492,19 @@ Create a new GitHub Actions job that tests bootstrap without pre-installed micro
 
 ---
 
-### Story I.h: v2.2.0 Bootstrap Download Verification [Planned]
+### Story I.h: v2.2.0 Phase I Release Wrap [Done]
 
-Evaluate whether the bootstrap code verifies downloaded binaries and add verification if missing.
+Final Phase I story. Audit bootstrap verification, pivot on the cryptographic-verification tasks (deferred to Future — see new K.? stories), ship v2.2.0.
 
-- [ ] Audit `bootstrap_install_micromamba()` for checksum or signature verification
-- [ ] If missing: add SHA256 verification of downloaded micromamba binary
-- [ ] Update `test_bootstrap_download_verification` assertions accordingly
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_download_verification`
-- [ ] Remove `@pytest.mark.skip` from `test_bootstrap_version_selection` (if version pinning is supported)
-- [ ] Verify: bootstrap tests pass with verification enabled
-- [ ] Bump version to v2.2.0
+- [x] **Audit of `bootstrap_install_micromamba`** ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)): bootstrap verification is **transport-only** (`curl -fsSL` + TLS to `micro.mamba.pm`) plus operational sanity checks (non-empty download, tar extraction succeeds, binary is executable, `--version` runs cleanly). No SHA256 verification, no signature check. `micro.mamba.pm` serves a 302-redirect to the latest release and does not expose an adjacent checksum file or hash header.
+- [x] **Scope pivot**: implementing SHA256 verification requires either a hardcoded `(os, arch, version) → sha256` table (every micromamba release would force a pyve release) or an extra round-trip to GitHub's Releases API (with its rate-limits + error paths). Version pinning needs a new `--micromamba-version` CLI flag + URL routing. Both are features, not test activations, and each is ~30-80 lines + tests. Out of Phase I scope.
+- [x] **Deferred to Future Stories**:
+  - **K.?: SHA256 Verification of Bootstrap Download** — see [Future section](#future).
+  - **K.?: Micromamba Version Pinning via `--micromamba-version`** — see [Future section](#future).
+- [x] **Skip reasons refreshed** ([test_bootstrap.py:170-183](../../tests/integration/test_bootstrap.py#L170-L183)): the two remaining skips now name the specific Future stories they depend on, instead of the stale "Bootstrap not yet implemented" reason.
+- [x] **CHANGELOG v2.2.0 entry written** covering all of Phase I: I.a (fixture reconciliation), I.b (core activation), I.c (error-handling activation), I.d (config-invariant negative tests), I.e (bz2 extraction bug fix — **the lone user-facing change**), I.f (workflow test activation), I.g (bootstrap CI job), I.h (release wrap + verification audit). Included a Developer-notes section documenting the transport-only verification posture so security reviewers can see the known gap.
+- [x] **Version bump** `2.1.0` → `2.2.0` at [pyve.sh:32](../../pyve.sh#L32). Matching assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207) updated.
+- [x] **Verification**: 651 / 651 bats pass (new K-pointer skip-reason changes do not affect counts). Bootstrap + helpers: 16 passed, 2 skipped (unchanged from end of I.g — I.h is non-functional except for the version bump and skip-reason refresh).
 
 ---
 
@@ -1619,5 +1621,48 @@ Spec updates, CHANGELOG, and version bump. Runs last so all implementation is vi
 ### Story K.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred to collect real usage data on `pyve check` before deciding which fixes to automate and with what safety gates.
+
+---
+
+### Story K.?: SHA256 Verification of Bootstrap Download [Planned]
+
+**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
+
+**Design sketch** (to be refined when the story is picked up):
+
+- **Hash source**: two realistic options.
+  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
+  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
+- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
+- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
+
+**Tasks**
+
+- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
+- [ ] Implement verification in `bootstrap_install_micromamba`.
+- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
+- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
+- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
+
+---
+
+### Story K.?: Micromamba Version Pinning via `--micromamba-version` [Planned]
+
+**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
+
+**Design sketch**
+
+- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
+- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
+- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
+- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
+
+**Tasks**
+
+- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
+- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
+- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
+- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
+- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
 
 ---

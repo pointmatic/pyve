@@ -167,7 +167,7 @@ class TestBootstrapPlaceholder:
         assert 'Auto-bootstrapping micromamba' not in result.stdout
         assert 'Downloading micromamba' not in result.stdout
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
+    @pytest.mark.skip(reason="Pending future Story K: micromamba version pinning (--micromamba-version flag)")
     def test_bootstrap_version_selection(self, pyve, project_builder):
         """Test bootstrap can install specific micromamba version."""
         project_builder.create_environment_yml(
@@ -179,7 +179,7 @@ class TestBootstrapPlaceholder:
 
         assert result.returncode == 0
 
-    @pytest.mark.skip(reason="Bootstrap not yet implemented")
+    @pytest.mark.skip(reason="Pending future Story K: SHA256 verification of bootstrap download (I.h audit: transport-only today)")
     def test_bootstrap_download_verification(self, pyve, project_builder):
         """Test bootstrap verifies downloaded binary."""
         project_builder.create_environment_yml(
