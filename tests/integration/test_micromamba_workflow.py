@@ -324,16 +324,19 @@ class TestMicromambaEdgeCases:
 class TestMicromambaBootstrap:
     """Test micromamba bootstrap functionality."""
     
-    @pytest.mark.skip(reason="Bootstrap not yet implemented in v0.8.4")
     def test_auto_bootstrap_micromamba(self, pyve, project_builder):
-        """Test automatic micromamba bootstrap."""
+        """Test that --auto-bootstrap is a no-op end-to-end path when micromamba is already available."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11']
         )
-        
-        # This would test auto-bootstrap if micromamba not found
-        # Skipped for now as bootstrap is planned for later version
+
+        # Class is marked @pytest.mark.requires_micromamba: tests in here
+        # assume micromamba is resolvable via get_micromamba_path (project
+        # sandbox → user sandbox → system PATH). With a real micromamba
+        # available, --auto-bootstrap short-circuits the install step and
+        # init proceeds to full environment creation. The returncode==0
+        # assertion verifies the full workflow.
         result = pyve.init(backend='micromamba', auto_bootstrap=True)
-        
+
         assert result.returncode == 0

@@ -1465,13 +1465,15 @@ This was a **user-facing bug**, not a test bug — any real Linux user running `
 
 ---
 
-### Story I.f: Remove Stale Bootstrap Skip from Micromamba Workflow [Planned]
+### Story I.f: Remove Stale Bootstrap Skip from Micromamba Workflow [Done]
 
 Activate the single skipped bootstrap test in `test_micromamba_workflow.py`.
 
-- [ ] Remove `@pytest.mark.skip` from `test_auto_bootstrap_micromamba` in `test_micromamba_workflow.py`
-- [ ] Fix assertions to match actual behavior
-- [ ] Verify: `pytest tests/integration/test_micromamba_workflow.py::TestMicromambaBootstrap -v` passes
+- [x] Removed `@pytest.mark.skip(reason="Bootstrap not yet implemented in v0.8.4")` from `test_auto_bootstrap_micromamba` at [test_micromamba_workflow.py:327](../../tests/integration/test_micromamba_workflow.py#L327).
+- [x] **Assertion kept** (`returncode == 0`). Intentional scope difference from I.b: `TestMicromambaBootstrap` sits inside `test_micromamba_workflow.py` under the `@pytest.mark.requires_micromamba` marker, meaning the test presupposes a real micromamba is resolvable via `get_micromamba_path` ([lib/micromamba_core.sh:37-60](../../lib/micromamba_core.sh#L37-L60)). With micromamba available, `--auto-bootstrap` is a no-op and init should complete full env creation end-to-end — the happy-path assertion. I.b's tests use `bootstrap_isolation` to force the bootstrap branch; this test is the complementary "bootstrap short-circuits when not needed" case.
+- [x] Updated docstring + inline comment ([test_micromamba_workflow.py:327-341](../../tests/integration/test_micromamba_workflow.py#L327-L341)) to make the scope distinction explicit so a future reader doesn't delete this as an "I.b duplicate".
+- [x] **Verification**: `pyve test tests/integration/test_micromamba_workflow.py::TestMicromambaBootstrap -v` → 1 passed in 12.4s. Locally resolves micromamba via user sandbox (`~/.pyve/bin/micromamba` left over from I.b's sandbox-pollution-free tests — not present; must be from an earlier manual run or pre-existing install). CI micromamba job installs micromamba via `mamba-org/setup-micromamba@v2` ([test.yml:163](../../.github/workflows/test.yml#L163)) and filters with `-m "micromamba or requires_micromamba"` ([test.yml:173](../../.github/workflows/test.yml#L173)), so the test is in-scope and has a real micromamba available there.
+- [x] No CHANGELOG entry — Phase I ships as a single v2.2.0 release (Story I.h).
 
 ---
 
