@@ -202,10 +202,16 @@ run_pyve() {
 # v2.0.1 was the H.f.5 release wrap)
 #============================================================
 
-@test "version: 'pyve --version' reports 2.3.0" {
+@test "version: 'pyve --version' reports the VERSION constant from pyve.sh" {
+    # Read the canonical version straight from pyve.sh so this test
+    # doesn't need hand-editing on every version bump.
+    local expected
+    expected="$(grep -E '^VERSION="[^"]+"' "$PYVE_BIN" | sed -E 's/^VERSION="([^"]+)".*/\1/')"
+    [ -n "$expected" ]
+
     run_pyve --version
     [ "$status" -eq 0 ]
-    [[ "$output" == *"2.3.0"* ]]
+    [[ "$output" == *"$expected"* ]]
 }
 
 #============================================================
