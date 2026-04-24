@@ -196,21 +196,59 @@ EOF
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Placeholder tests for Story J.c — pyve run asdf compat guard
+# Story J.c — pyve run asdf compat guard
 # ────────────────────────────────────────────────────────────────────
-# These assert that `pyve run <cmd>` exposes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-# to the subprocess when is_asdf_active returns 0. Story J.c wraps the
-# dispatcher with `env ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 …`.
 
-@test "J.c placeholder: pyve run subprocess environment includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf active" {
-    skip "Pending Story J.c: pyve run asdf compatibility guard"
-    # When J.c unskips this, the expected shape is:
-    #   - Arrange: is_asdf_active returns 0 (mock VERSION_MANAGER=asdf)
-    #   - Run: pyve run env | grep ASDF_PYTHON_PLUGIN_DISABLE_RESHIM
-    #   - Assert: subprocess sees ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+# Helper: set up a minimal venv-backend project and plant a fake binary
+# that dumps ASDF_PYTHON_PLUGIN_DISABLE_RESHIM. pyve.sh's run_command
+# exec()s the binary, replacing the subshell — bats captures its stdout.
+setup_pyve_run_venv_fixture() {
+    DEFAULT_VENV_DIR=".venv"
+    mkdir -p .venv/bin
+    cat > .venv/bin/envdump << 'EOF'
+#!/usr/bin/env bash
+printf 'ASDF_GUARD=%s\n' "${ASDF_PYTHON_PLUGIN_DISABLE_RESHIM-UNSET}"
+EOF
+    chmod +x .venv/bin/envdump
+
+    # source_shell_profiles + detect_version_manager run silently inside
+    # run_command; stub them to avoid probing real asdf/pyenv on the host.
+    # Individual tests set VERSION_MANAGER to control is_asdf_active's read.
+    source_shell_profiles() { :; }
+    detect_version_manager() { :; }
 }
 
-@test "J.c placeholder: PYVE_NO_ASDF_COMPAT=1 suppresses the pyve run env injection" {
-    skip "Pending Story J.c: pyve run asdf compatibility guard"
-    # Negative case: gate env var set → dispatcher must not inject the compat var.
+@test "J.c: pyve run exports ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
+    source_pyve_fn run_command
+    setup_pyve_run_venv_fixture
+
+    VERSION_MANAGER="asdf"
+    unset PYVE_NO_ASDF_COMPAT
+
+    run run_command envdump
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ASDF_GUARD=1"* ]]
+}
+
+@test "J.c: PYVE_NO_ASDF_COMPAT=1 suppresses the guard even when asdf is active" {
+    source_pyve_fn run_command
+    setup_pyve_run_venv_fixture
+
+    VERSION_MANAGER="asdf"
+    PYVE_NO_ASDF_COMPAT=1
+
+    run run_command envdump
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ASDF_GUARD=UNSET"* ]]
+}
+
+@test "J.c: pyve run does not export the guard when asdf is not active (VERSION_MANAGER=pyenv)" {
+    source_pyve_fn run_command
+    setup_pyve_run_venv_fixture
+
+    VERSION_MANAGER="pyenv"
+
+    run run_command envdump
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"ASDF_GUARD=UNSET"* ]]
 }

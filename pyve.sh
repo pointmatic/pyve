@@ -2046,7 +2046,20 @@ run_command() {
         log_error "Run 'pyve init' to create an environment first"
         exit 1
     fi
-    
+
+    # Story J.c: defense-in-depth asdf reshim guard. The .envrc block
+    # added in J.b covers the direnv-allow path; this covers `pyve run`
+    # used with --no-direnv, or in CI where .envrc is never sourced.
+    # Probe the version manager silently — real setup errors would have
+    # surfaced during `pyve init`, and noise on every `pyve run` would
+    # be unpleasant. Export (vs `env VAR=...` prefix) because exec
+    # replaces the shell anyway, so parent-env pollution is moot.
+    source_shell_profiles >/dev/null 2>&1 || true
+    detect_version_manager >/dev/null 2>&1 || true
+    if is_asdf_active; then
+        export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+    fi
+
     # Execute command based on backend
     if [[ "$backend" == "venv" ]]; then
         # Venv backend: prefer venv bin, but allow system commands too

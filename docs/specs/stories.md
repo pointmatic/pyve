@@ -1661,18 +1661,23 @@ Implements FR-J1 + FR-J3. Injects `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` into gen
 
 ---
 
-### Story J.c: `pyve run` asdf compatibility guard [Planned]
+### Story J.c: 'pyve run' asdf compatibility guard [Done]
 
 Implements FR-J2. Defense-in-depth for `--no-direnv` users and CI invocations where `.envrc` is not sourced.
 
 **Tasks**
 
-- [ ] Update the `pyve run` dispatcher in `pyve.sh` to prefix subprocess exec with `env ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 …` when `is_asdf_active` returns 0
-- [ ] Applies to both venv and micromamba execution paths
-- [ ] No user-visible output — this is silent defense-in-depth
-- [ ] Green the `pyve run` red test from J.a (assert subprocess environment contains `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` when asdf is active)
-- [ ] Add negative test: `PYVE_NO_ASDF_COMPAT=1` suppresses the injection
-- [ ] Verify: `test_run_command.py` integration tests still pass
+- [x] **`run_command` dispatcher updated** at [pyve.sh:2050-2062](../../pyve.sh#L2050-L2062). Probes the version manager silently (redirected stderr so `pyve run` doesn't emit warnings on every call when no manager is installed — real setup errors surface during `pyve init`), then `export`s the guard env var when `is_asdf_active` returns 0. Applies to all three exec sites (venv-bin, venv-PATH-fallback, micromamba) without touching them individually.
+- [x] **`export` vs `env VAR=... prefix` decision**: the task text called for `env`-prefix, but `export` is semantically equivalent since the subsequent `exec` replaces the shell — parent-env pollution is moot. `export` keeps each exec site's line count unchanged (vs. adding an `if/else` around each of the three sites). Recorded as a deliberate deviation from the task text's literal phrasing.
+- [x] **`source_shell_profiles` call added** at the guard site — required because `run_command` doesn't otherwise initialize the version manager (`VERSION_MANAGER` would be empty, and `is_asdf_active` would always return 1 without it). Silently probes; doesn't emit.
+- [x] **Applies to both backends**: `export` fires before all exec sites regardless of backend. For micromamba, the env var flows through `micromamba run -p <env> <cmd> <args>` to the child process via standard env inheritance.
+- [x] **Silent defense-in-depth**: no new user-facing output. The `info` line in J.b fires once at init time; `pyve run` adds nothing additional per invocation.
+- [x] **3 J.c tests added** at [test_asdf_compat.bats:219-267](../../tests/unit/test_asdf_compat.bats#L219-L267): positive (asdf active → `ASDF_GUARD=1`), negative (`PYVE_NO_ASDF_COMPAT=1` → unset), pyenv (not-asdf → unset). Technique: plant a fake `envdump` binary in `.venv/bin` that `printf`s the env var value; stub `source_shell_profiles` and `detect_version_manager` to isolate from host state; each test sets `VERSION_MANAGER` explicitly. `pyve run envdump` exec-replaces the subshell spawned by bats's `run`, producing output that bats captures for assertion.
+- [x] **Micromamba test scope note**: the 3 tests exercise the venv path only. The micromamba path uses `exec "$micromamba_path" run -p "$env_path" "$@"` — env-var propagation through `micromamba run` is a micromamba-level contract, not a pyve-level one. Integration tests in `test_run_command.py` already exercise the full `pyve run` micromamba path; re-creating that in bats would require a real micromamba binary. The `export` in pyve.sh is sufficient — if micromamba ever strips the env var, that's a micromamba bug, not a pyve one.
+- [x] **Verification**:
+  - `bats tests/unit/test_asdf_compat.bats` → 15 tests, all active, all green.
+  - Full bats suite: **722 / 722 passing** (was 721 at end of J.b; +3 new active tests replace 2 skipped placeholders = net +1 line count).
+  - Integration `test_run_command.py`: **26 passed** (~2m 24s) — no regression from the `source_shell_profiles + detect_version_manager + is_asdf_active + export` block.
 
 ---
 
