@@ -1711,20 +1711,21 @@ Remove the two remaining delegation-with-warning paths shipped in Phase H. Categ
 
 ---
 
-### Story J.e: bash 3.2 compat invariant test + full-repo audit [Planned]
+### Story J.e: bash 3.2 compat invariant test + full-repo audit [Done]
 
 Preemptive hardening against bash-4+ slips. Two recent Phase H bugs (H.e.7a `declare -A`, H.e.9h `mapfile`) landed only to be caught by CI; a grep-invariant test catches future slips pre-commit.
 
 **Tasks**
 
-- [ ] Create `tests/unit/test_bash32_compat.bats` with one `@test` block per disallowed construct
-- [ ] Construct set: `declare -A`, `typeset -A`, `local -A`, `mapfile`, `readarray`, `${var^^}`, `${var,,}`, `${var^}`, `${var,}`, `${var@…}` (anchored `@[UuLlQqEePpAaKk]`), `declare -n`, `coproc <name>`, `shopt -s globstar`
-- [ ] Each block `grep -rE`s across `pyve.sh`, `lib/*.sh`, `lib/completion/*`; fails on any match; uses self-exclusion so the test file's own patterns don't trip it
-- [ ] Each block's failure message names the bash 3.2-safe alternative (e.g., "use flat colon-delimited string instead of `declare -A`")
-- [ ] Run the full grep set manually against the current tree; fix any surfaced bash-4+ constructs inline within this story
-- [ ] Expected outcome: tree is already clean (H.e.7a + H.e.9h were the known offenders). If it isn't, fix surfaced issues as small tasks within this story, not spun off
-- [ ] **Optional:** add `check-bash32` Makefile target that sources every `lib/*.sh` under `/bin/bash` and reports failures. Not wired into default `make test`
-- [ ] Verify: `make test-unit` passes with the new bats file
+- [x] **Created [tests/unit/test_bash32_compat.bats](../../tests/unit/test_bash32_compat.bats)** with **10 `@test` blocks** covering all constructs in the task's set (the four case-mod expansions consolidated into one regex since the fix is the same for all of them).
+- [x] **Full construct coverage**: `declare -A`, `typeset -A`, `local -A`, `mapfile`, `readarray`, case-mod `${var^^}` / `${var,,}` / `${var^}` / `${var,}`, `${var@[UuLlQqEePpAaKk]}` @-transform, `declare -n` nameref, `coproc NAME` (named only — anonymous form is bash 3.2-safe), `shopt -s globstar`.
+- [x] **Scope**: `pyve.sh`, `lib/*.sh`, `lib/completion/pyve.bash`. Deliberately excludes `lib/completion/_pyve` (zsh completion script — `typeset -A` is idiomatic zsh, and the file opens with `#compdef pyve`).
+- [x] **Comment-line handling**: shared `_grep_non_comment` helper strips pure-comment matches via `grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'` so explanatory comments (e.g., [lib/completion/pyve.bash:6](../../lib/completion/pyve.bash#L6) documenting why `mapfile` isn't used) don't trip the invariant. Limitation: inline trailing comments like `foo # mentions mapfile` would still match — acceptable since no pyve code has those currently and the fix is trivial if needed.
+- [x] **Failure-message guidance**: each `@test` calls `_fail_with_matches` with a specific bash-3.2-safe alternative named (e.g. `"'while IFS= read -r line; do … done < file'"` for `mapfile`, `"a flat colon-delimited string"` for `declare -A`). Match lines are dumped to stderr so the offender is visible without needing to re-run grep.
+- [x] **Manual full-repo audit**: ran each grep directly. Tree is clean — only two hits surfaced, both known non-issues: (1) the comment on `lib/completion/pyve.bash:6` (filtered by `_grep_non_comment`), (2) `typeset -A opt_args` in `lib/completion/_pyve` (excluded from scope as zsh). No fixes needed inline.
+- [x] **Sanity check**: planted 5 bash-4 violations inside a never-called function in `lib/utils.sh` (`if false; then … fi` block so syntax is parsed but never executed, avoiding source-time failures). Bats correctly reported 5 `not ok` (declare -A, typeset -A, mapfile, case-mod, declare -n); the other 5 tests correctly reported `ok`. Reverted lib/utils.sh; all 10 tests back to green. Confirms the tests aren't trivially-passing.
+- [ ] **Optional Makefile target skipped**. The grep invariants cover the main failure mode (slip-at-write-time). A `check-bash32` target that sources every lib file under `/bin/bash` would add runtime-level protection but was marked optional; if a future bash-4+ construct slips past the grep (e.g., via inline trailing comment), CI's `unit-tests` job already catches it on macOS runners which use `/bin/bash`.
+- [x] **Verification**: `bats tests/unit/test_bash32_compat.bats` → 10 passed. Full bats suite: **712 / 712 passing** (was 702 at end of J.d; +10).
 
 ---
 
