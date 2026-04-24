@@ -139,10 +139,12 @@ teardown() {
     [[ "$output" == *"Invalid"* ]] || [[ "$output" == *"format"* ]]
 }
 
-@test "python-version: legacy command --help still works" {
+@test "python-version: legacy command no longer routable (Story J.d)" {
+    # Pre-v2.3.0 the `python-version)` case arm delegated to `python set`.
+    # Story J.d ripped the alias; --help (and any other invocation) now
+    # hit the dispatcher's unknown-command arm.
     run "$PYVE_SCRIPT" python-version --help
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"pyve python-version"* ]]
+    [ "$status" -ne 0 ]
 }
 
 #============================================================

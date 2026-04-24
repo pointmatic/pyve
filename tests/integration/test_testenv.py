@@ -27,7 +27,7 @@ class TestTestenvRun:
         project_builder.create_requirements([])
         pyve.init(backend='venv')
         # Ensure testenv exists
-        pyve.run('testenv', '--init')
+        pyve.run('testenv', 'init')
 
         result = pyve.run('testenv', 'run', check=False)
         assert result.returncode == 1
@@ -56,7 +56,7 @@ class TestTestenvRun:
         """testenv run python --version succeeds."""
         project_builder.create_requirements([])
         pyve.init(backend='venv')
-        pyve.run('testenv', '--init')
+        pyve.run('testenv', 'init')
 
         result = pyve.run('testenv', 'run', 'python', '--version')
         assert result.returncode == 0
@@ -67,7 +67,7 @@ class TestTestenvRun:
         """testenv run propagates non-zero exit code from command."""
         project_builder.create_requirements([])
         pyve.init(backend='venv')
-        pyve.run('testenv', '--init')
+        pyve.run('testenv', 'init')
 
         result = pyve.run('testenv', 'run', 'python', '-c', 'import sys; sys.exit(42)', check=False)
         assert result.returncode == 42
@@ -127,7 +127,7 @@ def test_testenv_rebuilt_when_python_version_stale(pyve, project_builder):
     assert 'version = 9.9.9' in pyvenv_cfg.read_text()
 
     # Running testenv --init should detect the version mismatch and rebuild.
-    result = pyve.run('testenv', '--init')
+    result = pyve.run('testenv', 'init')
     assert result.returncode == 0
 
     # After rebuild, pyvenv.cfg must no longer report 9.9.9.

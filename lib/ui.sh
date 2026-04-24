@@ -77,35 +77,6 @@ run_cmd() {
     "$@"
 }
 
-# ── Deprecation warning (once per invocation per key) ───────
-# Emits a single warning to stderr, formatted like warn() for
-# visual continuity. Subsequent calls with the same <key> in
-# the same process are suppressed — scripts that invoke a
-# deprecated form in a loop stay readable.
-#
-# Usage: deprecation_warn <key> <old_form> <new_form>
-#
-# The guard uses a colon-delimited flat string (not `declare
-# -A`) so lib/ui.sh works under macOS's system bash 3.2.
-# Keys must not contain ':' — locked by an invariant test in
-# tests/unit/test_ui.bats.
-__DEPRECATION_WARNED_KEYS=""
-
-_rename_seen() {
-    local key="$1"
-    case ":${__DEPRECATION_WARNED_KEYS}:" in
-        *":${key}:"*) return 0 ;;
-    esac
-    __DEPRECATION_WARNED_KEYS="${__DEPRECATION_WARNED_KEYS}:${key}"
-    return 1
-}
-
-deprecation_warn() {
-    local key="$1" old_form="$2" new_form="$3"
-    _rename_seen "$key" && return 0
-    echo -e "  ${WARN} '${old_form}' is deprecated. Use '${new_form}' instead." >&2
-}
-
 # ── Edit distance (Levenshtein, bash-3.2 safe) ──────────────
 # Returns the Levenshtein distance between two strings on
 # stdout. Used by callers to pick a "did you mean?" suggestion

@@ -122,7 +122,7 @@ The main script handles CLI argument parsing, sources all library modules, and d
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
 | `TESTENV_DIR_NAME` | `"testenv"` | Dev/test runner environment directory |
 
-**Library sourcing order:** `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and `deprecation_warn` / `delegation_warn`-style helpers.
+**Library sourcing order:** `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and banner helpers. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern below for the remaining hard-error form.)
 
 Each library guards against direct execution and is designed to be sourced only.
 
@@ -320,15 +320,13 @@ Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmati
 | `run_cmd` | `(cmd args…)` | Echoes `$ cmd args…` dimmed, then executes; propagates exit code |
 | `header_box` | `(title)` | Rounded-box cyan + bold header |
 | `footer_box` | `()` | Rounded-box green + bold "✓ All done." footer |
-| `_rename_seen` | `(key)` → 0/1 | Internal: once-per-invocation guard keyed by `<key>`; shared state across the two rename helpers below. bash-3.2 safe (colon-delimited flat string, not `declare -A`). |
-| `deprecation_warn` | `(key, old_form, new_form)` | Single-shot stderr warning for a rename where the old form still runs its own code — user is advised to switch. Prepends `⚠`. (H.e.7.) |
 | `_edit_distance` | `(s1, s2)` → int | Levenshtein distance on stdout. Consumer: `unknown_flag_error()` in `pyve.sh`. bash-3.2-safe flat-array DP. (H.e.9d.) |
 
 **Sourcing.** `pyve.sh` sources `lib/ui.sh` alongside the other `lib/*.sh` modules so UI helpers are available before any command dispatcher runs.
 
 **bash-3.2 compatibility guard.** `lib/ui.sh` must source cleanly under macOS's system `/bin/bash` (3.2.57). Specifically: no `declare -A` (associative arrays are bash 4+), no `${var^^}` / `${var,,}` case operators, no `readarray`. Locked in by the H.e.7a regression tests at [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) ("source contains no 'declare -A'" + `/bin/bash` sourcing test).
 
-**Backport-discipline guard.** The module contains no pyve-specific identifiers — enforced by a grep test in `test_ui.bats`. Rename-announcement keys passed by callers must be colon-free (delimiter invariant) — also enforced by a grep test.
+**Backport-discipline guard.** The module contains no pyve-specific identifiers — enforced by a grep test in `test_ui.bats`. (The colon-free rename-key invariant retired in Story J.d alongside `deprecation_warn`.)
 
 **Delegation from existing `log_*` functions.** As of H.f.4, the `log_info` / `log_warning` / `log_error` / `log_success` helpers in `lib/utils.sh` emit the unified glyph palette (`▸` / `⚠` / `✘` / `✔`, two-space indent, stderr vs. stdout routing preserved). They do **not** currently delegate by calling `info` / `warn` / `fail` / `success` directly — `log_error` keeps its non-exiting contract (calling `fail` would change exit semantics for ~87 callers), and bats tests that source `lib/utils.sh` standalone (without `lib/ui.sh`) still need to work via `${CHECK:-✔}` / `${WARN:-⚠}` / `${CROSS:-✘}` / `${ARROW:-▸}` fallbacks. Future refactor (v3.x): collapse `log_*` to thin aliases once the non-exiting-error pattern is named and exported from `lib/ui.sh`.
 
@@ -372,7 +370,7 @@ Parsed by `read_config_value()` using simple `grep`/`sed` — not a full YAML pa
 
 ## CLI Design
 
-As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). The v2.0 cut (Phase H, Stories H.e.1 through H.e.9) completed the CLI-unification arc: every verb now has one canonical subcommand form; legacy flag forms either delegate-with-warning (testenv flags, `python-version`) or error out (`doctor`, `validate`, `init --update`). Universal flags (`--help`, `--version`, `--config`) remain as flags per CLI convention.
+As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`, `cargo`, `kubectl`, `gh`). The v2.0 cut (Phase H, Stories H.e.1 through H.e.9) completed the CLI-unification arc: every verb now has one canonical subcommand form; legacy flag forms error out via `legacy_flag_error` (hard error + targeted hint). Story J.d (v2.3.0) ripped the two remaining delegation-with-warning paths (`testenv --init|--install|--purge`, `python-version <ver>`); they now fall through to the standard unknown-flag / unknown-command paths. Universal flags (`--help`, `--version`, `--config`) remain as flags per CLI convention.
 
 ### Commands (v2.0 surface)
 
@@ -398,9 +396,7 @@ As of v1.11.0 (Story G.b.1 / FR-G1), Pyve uses a subcommand-style CLI consistent
 
 **Check vs. status — invariant.** `check` and `status` are intentionally disjoint: `check` surfaces problems with severity-bearing exit codes (0/1/2) and emits one actionable remediation per failure; `status` is a read-only snapshot with always-zero exit (unless pyve itself errors). Each command's `--help` text mirrors this invariant verbatim — the help output is the user-facing contract. If a diagnostic would surface "something looks wrong", it belongs in `check`; if the answer is "what is this project?", it belongs in `status`. See [phase-H-check-status-design.md §2](phase-H-check-status-design.md) for the canonical statement.
 
-**Removed subcommands.** `pyve doctor` and `pyve validate` were hard-removed in v2.0 (Story H.e.8a); typing either produces a migration error pointing at `pyve check`.
-
-**Deprecated subcommand forms (work in v2.x, removed in v3.0).** `pyve testenv --init|--install|--purge` → use the `testenv init|install|purge` subcommand forms; `pyve python-version <ver>` → use `pyve python set <ver>`. Both paths emit a one-shot stderr deprecation warning on first use and delegate to the new form.
+**Removed subcommands.** `pyve doctor` and `pyve validate` were hard-removed in v2.0 (Story H.e.8a); typing either produces a migration error pointing at `pyve check`. `pyve testenv --init|--install|--purge` and `pyve python-version <ver>` were hard-removed in v2.3.0 (Story J.d); they fall through to the standard unknown-flag / unknown-command paths.
 
 ### Universal Flags
 
@@ -543,7 +539,7 @@ ERROR: See: pyve --help
 
 **Unknown-flag closest-match (H.e.9d).** Distinct from the legacy-flag catches: when a user typos a flag *within* a valid subcommand (`pyve init --forse`), `unknown_flag_error()` in `pyve.sh` suggests the closest valid flag via `_edit_distance()` in `lib/ui.sh`. Suggestion fires only when edit distance ≤ 3; beyond that the error lists the valid-flag set without a "did you mean" line to avoid unrelated hints.
 
-**No compat shim, no silent translation (except for H.e.7 deprecations).** `testenv --init|--install|--purge` and `python-version <ver>` delegate with a one-shot stderr warning through v2.x; hard removal in v3.0. Everything else in the legacy-flag catch list is an immediate error — silent translation would hide the rename from users and build long-term tech debt.
+**No compat shim, no silent translation.** The legacy-flag catch list is always an immediate error — silent translation would hide the rename from users and build long-term tech debt. (The Category A delegate-with-warning paths — `testenv --init|--install|--purge`, `python-version <ver>` — shipped in Phase H were removed in Story J.d / v2.3.0.)
 
 ### Platform Portability
 

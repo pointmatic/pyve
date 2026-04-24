@@ -1681,7 +1681,7 @@ Implements FR-J2. Defense-in-depth for `--no-direnv` users and CI invocations wh
 
 ---
 
-### Story J.d: Rip Category A deprecation paths [Planned]
+### Story J.d: Rip out Category A deprecation paths [Done]
 
 Remove the two remaining delegation-with-warning paths shipped in Phase H. Category B (three-line hard-error legacy-flag catches in `legacy_flag_error()`) stays — it costs nothing and gives precise hints for stale docs, blog posts, and LLM-training-data invocations.
 
@@ -1692,14 +1692,22 @@ Remove the two remaining delegation-with-warning paths shipped in Phase H. Categ
 
 **Tasks**
 
-- [ ] Locate and remove the `pyve testenv --init|--install|--purge` alias-handling + `delegation_warn` call site in `pyve.sh`
-- [ ] Locate and remove the `pyve python-version <ver>` alias-handling + `delegation_warn` call site in `pyve.sh`
-- [ ] Decide: keep `delegation_warn` helper in `lib/ui.sh` if no other caller remains, or remove it — grep to confirm zero call sites
-- [ ] Remove the Bats / pytest tests that verified the deprecation warnings fire correctly
-- [ ] Add one new test per form asserting the old form now errors out via the standard "unknown flag / subcommand" path (not via `delegation_warn`), matching the Category B behavior
-- [ ] Update `features.md` — drop the "Deprecation warnings (still work in v2.x; removed in v3.0)" entry from the legacy-flag table
-- [ ] Update `tech-spec.md` — drop the "Deprecated subcommand forms" paragraph from the CLI Design section
-- [ ] Verify: full test suite passes
+- [x] **Testenv Category A stanzas removed** from `pyve.sh`. The three `deprecation_warn` case arms (pre-edit lines 1366-1385) now fall through to the existing `-*)` arm which calls `unknown_flag_error`. Updated the unknown_flag_error valid-flag list (dropped `--init --install --purge`) and pruned the "Legacy flag forms" block from `pyve testenv --help`. Two in-code help strings referencing `pyve testenv --install -r <req>` updated to `pyve testenv install -r <req>`.
+- [x] **`python-version` case arm removed** from the main dispatcher (pre-edit lines 3412-3427). `pyve python-version <ver>` now falls through to the dispatcher's `*)` arm ("Unknown command"). The dead `show_python_version_help` function removed alongside it, and the top-level `pyve --help` section dropped its "(Legacy: `pyve python-version <ver>` still accepted)" note.
+- [x] **`deprecation_warn` + `_rename_seen` + `__DEPRECATION_WARNED_KEYS` removed from `lib/ui.sh`**. Post-removal grep confirmed zero remaining callers. Removed the supporting machinery (colon-delimited flat-string guard) in one edit; the `bash 3.2 sources cleanly` test at [tests/unit/test_ui.bats:312](../../tests/unit/test_ui.bats#L312) still covers the module's portability.
+- [x] **Bats test cleanup**:
+  - [tests/unit/test_deprecation_warnings.bats](../../tests/unit/test_deprecation_warnings.bats) — entire file rewritten. Removed all "warning fires correctly" tests; added 4 hard-error regression tests (one per legacy form) + 1 positive regression for the new `pyve python set` form. File kept under original name for git history.
+  - [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — dropped 8 tests covering the `deprecation_warn` helper (incl. the once-per-key-guard, distinct-keys correctness, NO_COLOR test, and the pyve.sh-grep invariant for colon-free keys). Kept the bash-3.2 sourcing and `declare -A` invariant.
+  - [tests/unit/test_testenv_grammar.bats](../../tests/unit/test_testenv_grammar.bats) — replaced the 3 "routes to the same action" Category A tests + the equivalence test with a single negative regression asserting `pyve testenv --init` now exits non-zero without firing the `_init_banner`.
+  - [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats), [tests/unit/test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats), [tests/unit/test_python_command.bats](../../tests/unit/test_python_command.bats) — flipped the "routes to python-version handler" / "--help still works" tests into rejection assertions.
+- [x] **Integration-test fixture updates**: `pyve.run('testenv', '--init')` invocations in [tests/integration/test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py), [tests/integration/test_testenv.py](../../tests/integration/test_testenv.py), [tests/integration/test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py) rewritten to `pyve.run('testenv', 'init')`. Also flipped `TestNewSubcommandRouting::test_python_version_subcommand_sets_version` into a rejection test (renamed to `test_python_version_subcommand_is_rejected`).
+- [x] **`features.md` updated**: the "Deprecation warnings (still work in v2.x; removed in v3.0)" row in the legacy-flag table was replaced with a v2.3.0 row documenting the J.d hard-removal. Inline "Legacy form" note in the `pyve python` section also updated. Stale `pyve testenv --init` reference in the testenv section rewritten to the new form.
+- [x] **`tech-spec.md` updated**: dropped the `deprecation_warn` / `_rename_seen` rows from the lib/ui.sh function table; removed the "Deprecated subcommand forms (work in v2.x, removed in v3.0)" paragraph; updated the CLI Design intro blurb and the "No compat shim, no silent translation" paragraph to reflect that J.d is the endpoint.
+- [x] **Verification**:
+  - Full bats suite: **702 / 702 passing** (down from 722 at end of J.c — net -20 reflects the removal of `deprecation_warn`'s tests (-8) + the reshaping of 12 tests that dropped 2 routing tests per Category A entry).
+  - Integration `test_testenv.py`: 5 of 6 pass; the one failure (`test_testenv_survives_force_reinit`) is a 120s subprocess timeout unrelated to J.d (same pre-existing `pyve init --force` prompt-blocking issue documented in I.a's pre-existing-failures list).
+  - Integration `test_subcommand_cli.py`: 4 pre-existing failures surfaced (parametrize-data bugs in `TestLegacyFlagCatch` — tests expect `"pyve validate"` / `"pyve python-version"` as the new-form hint, but pyve.sh has always said `"pyve check"` / `"pyve python set <ver>"`). Verified pre-existing via `git stash` baseline. Out of J.d scope; worth filing as a test-data cleanup follow-up.
+  - `test_run_command.py`: 26 pass (no regression from J.c's work).
 
 ---
 

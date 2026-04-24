@@ -66,7 +66,7 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
   - v1.11.0 (Story G.b.1): `--init`, `--purge`, `--validate`, `--python-version`, `--install`, `--uninstall`, `-i`, `-p`.
   - v2.0 (Story H.e.9): `--update`, `--doctor`, `--status` (top-level flag forms); `init --update` (narrow config bump — use `pyve update` instead).
   - v2.0 (Story H.e.8a): `pyve doctor` and `pyve validate` subcommands — both redirected at `pyve check`.
-  - Deprecation warnings (still work in v2.x; removed in v3.0): `pyve testenv --init|--install|--purge` (use `pyve testenv init|install|purge`); `pyve python-version <ver>` (use `pyve python set <ver>`).
+  - v2.3.0 (Story J.d): `pyve testenv --init|--install|--purge` and `pyve python-version <ver>` — pre-v2.3.0 these delegated-with-warning to the new forms; now they fall through to the standard unknown-flag / unknown-command paths.
 
 ### Optional
 
@@ -184,7 +184,7 @@ Manage the project Python-version pin without creating a virtual environment.
 - **`pyve python set <ver>`** — set the local Python version via asdf or pyenv (writes `.tool-versions` or `.python-version`). Auto-installs the requested version if not present. Refreshes shims after change. No venv or direnv changes.
 - **`pyve python show`** — read the currently pinned version from `.tool-versions` → `.python-version` → `.pyve/config` (first match wins) and print it along with its source. Pure read; never installs or modifies anything.
 - **Edge cases**: Invalid version format (`#.#.#` required). Version not available for installation.
-- **Legacy form**: `pyve python-version <ver>` still works in v2.x with a deprecation warning and delegates to `pyve python set <ver>`. Removed in v3.0.
+- **Legacy form**: `pyve python-version <ver>` was removed in v2.3.0 (Story J.d); now falls through to the dispatcher's unknown-command path. Use `pyve python set <ver>` instead.
 
 ### FR-4: Command Execution (`pyve run`)
 
@@ -290,7 +290,7 @@ Provide an isolated test environment separate from the project environment.
 
 - Test environment located at `.pyve/testenv/venv/`.
 - `pyve test` runs pytest in the test environment; prompts to install pytest if missing (interactive) or exits with instructions (non-interactive).
-- `pyve testenv --init` and `pyve testenv --install` for explicit management.
+- `pyve testenv init` and `pyve testenv install` for explicit management.
 - `pyve testenv run <command>` executes any command inside the test environment (ruff, mypy, black, etc.).
 - Survives `pyve init --force` (separate from project environment).
 

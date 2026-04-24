@@ -3,18 +3,19 @@
 # Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for deprecation warnings on renamed `pyve` subcommands
-# and flag forms (Story H.e.7).
+# Story J.d (v2.3.0) ripped the Category A delegation-with-warning paths
+# shipped in Phase H. The four legacy forms that used to delegate to the
+# new form with a stderr warning now error out via the standard
+# unknown-flag / unknown-command paths:
 #
-# Renames covered here:
-#   pyve testenv --init         → pyve testenv init         (H.e.5)
-#   pyve testenv --install      → pyve testenv install      (H.e.5)
-#   pyve testenv --purge        → pyve testenv purge        (H.e.5)
-#   pyve python-version <ver>   → pyve python set <ver>     (H.e.6)
+#   pyve testenv --init         → unknown_flag_error ("does not accept '--init'")
+#   pyve testenv --install      → unknown_flag_error
+#   pyve testenv --purge        → unknown_flag_error
+#   pyve python-version <ver>   → dispatcher's "Unknown command" *) arm
 #
-# Spec: docs/specs/phase-H-cli-refactor-design.md §5 D3, D5
-# (delegate-with-warning; stderr-only; exact replacement command;
-# no --help reference).
+# These tests document the new behavior: non-zero exit, no "deprecated"
+# substring, no re-dispatch to the new-form handler. File kept under its
+# original name for git history; original contents rewritten for J.d.
 
 bats_require_minimum_version 1.5.0
 
@@ -31,106 +32,60 @@ teardown() {
 }
 
 #============================================================
-# `pyve testenv --init` — deprecation warning
+# Legacy testenv flag forms — now rejected
 #============================================================
 
-@test "deprecation: 'pyve testenv --init' emits warning on stderr" {
-    # Swap fds: stdout → /dev/null, capture stderr as bats output.
-    run bash -c "'$PYVE_SCRIPT' testenv --init 2>&1 >/dev/null"
-    [[ "$output" == *"pyve testenv --init"* ]]
-    [[ "$output" == *"pyve testenv init"* ]]
-    [[ "$output" == *"deprecated"* ]]
+@test "J.d: 'pyve testenv --init' exits non-zero and does not delegate" {
+    run bash -c "'$PYVE_SCRIPT' testenv --init 2>&1"
+    [ "$status" -ne 0 ]
+    # The old delegate-with-warning path fired the warning AND executed
+    # the new-form action. Neither happens now.
+    [[ "$output" != *"deprecated"* ]]
+    [[ "$output" != *"Creating dev/test runner environment"* ]]
+    # Standard unknown-flag error fires instead.
+    [[ "$output" == *"--init"* ]]
 }
 
-@test "deprecation: 'pyve testenv --init' warning does NOT appear on stdout" {
-    # Discard stderr — stdout should not contain the warning.
-    run bash -c "'$PYVE_SCRIPT' testenv --init 2>/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
+@test "J.d: 'pyve testenv --install' exits non-zero and does not delegate" {
+    run bash -c "'$PYVE_SCRIPT' testenv --install 2>&1"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"deprecated"* ]]
+    [[ "$output" == *"--install"* ]]
 }
 
-@test "deprecation: 'pyve testenv --init' warning does NOT reference --help" {
-    run bash -c "'$PYVE_SCRIPT' testenv --init 2>&1 >/dev/null"
-    [[ "$output" != *"--help"* ]]
-}
-
-#============================================================
-# `pyve testenv --install` — deprecation warning
-#============================================================
-
-@test "deprecation: 'pyve testenv --install' emits warning on stderr" {
-    run bash -c "'$PYVE_SCRIPT' testenv --install 2>&1 >/dev/null"
-    [[ "$output" == *"pyve testenv --install"* ]]
-    [[ "$output" == *"pyve testenv install"* ]]
-    [[ "$output" == *"deprecated"* ]]
-}
-
-#============================================================
-# `pyve testenv --purge` — deprecation warning
-#============================================================
-
-@test "deprecation: 'pyve testenv --purge' emits warning on stderr" {
-    run bash -c "'$PYVE_SCRIPT' testenv --purge 2>&1 >/dev/null"
-    [[ "$output" == *"pyve testenv --purge"* ]]
-    [[ "$output" == *"pyve testenv purge"* ]]
-    [[ "$output" == *"deprecated"* ]]
+@test "J.d: 'pyve testenv --purge' exits non-zero and does not delegate" {
+    run bash -c "'$PYVE_SCRIPT' testenv --purge 2>&1"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"deprecated"* ]]
+    # Does NOT reach the "No dev/test runner environment found" message
+    # that the old delegate path produced.
+    [[ "$output" != *"No dev/test runner environment found"* ]]
+    [[ "$output" == *"--purge"* ]]
 }
 
 #============================================================
-# `pyve python-version <ver>` — deprecation warning
+# Legacy python-version subcommand — now rejected
 #============================================================
 
-@test "deprecation: 'pyve python-version <ver>' emits warning on stderr" {
-    # Use an invalid-format version — the command exits 1 from
-    # validate_python_version, but the deprecation_warn should fire
-    # BEFORE validation.
-    run bash -c "'$PYVE_SCRIPT' python-version abc 2>&1 >/dev/null"
-    [[ "$output" == *"pyve python-version"* ]]
-    [[ "$output" == *"pyve python set"* ]]
-    [[ "$output" == *"deprecated"* ]]
-}
-
-@test "deprecation: 'pyve python-version <ver>' warning does NOT appear on stdout" {
-    run bash -c "'$PYVE_SCRIPT' python-version abc 2>/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
+@test "J.d: 'pyve python-version <ver>' exits non-zero and does not delegate" {
+    run bash -c "'$PYVE_SCRIPT' python-version 3.13.7 2>&1"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"deprecated"* ]]
+    # Dispatcher's *) arm says "Unknown command: python-version"
+    [[ "$output" == *"python-version"* ]]
+    [[ "$output" == *"Unknown command"* ]] || [[ "$output" == *"unknown"* ]]
 }
 
 #============================================================
-# New forms — stay silent (no deprecation warning)
+# New forms — regression guard for the dispatcher routing
 #============================================================
 
-@test "deprecation: 'pyve testenv init' (new form) does NOT emit deprecation warning" {
-    run bash -c "'$PYVE_SCRIPT' testenv init 2>&1 >/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
-}
-
-@test "deprecation: 'pyve testenv install' (new form) does NOT emit deprecation warning" {
-    run bash -c "'$PYVE_SCRIPT' testenv install 2>&1 >/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
-}
-
-@test "deprecation: 'pyve testenv purge' (new form) does NOT emit deprecation warning" {
-    run bash -c "'$PYVE_SCRIPT' testenv purge 2>&1 >/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
-}
-
-@test "deprecation: 'pyve python set <ver>' (new form) does NOT emit deprecation warning" {
-    run bash -c "'$PYVE_SCRIPT' python set abc 2>&1 >/dev/null"
-    [[ "$output" != *"is deprecated"* ]]
-}
-
-#============================================================
-# Delegation — legacy forms still reach the same action
-#
-# The equivalence tests in test_testenv_grammar.bats and
-# test_python_command.bats already cover this at the routing
-# level. The test below is a smoke check that adding the
-# warning didn't accidentally break the dispatch path.
-#============================================================
-
-@test "deprecation: 'pyve testenv --purge' still reaches purge action (exit 0, no-op path)" {
-    # No testenv exists — purge should print its "not found" info
-    # message on stdout and exit 0. Warning on stderr is separate.
-    run bash -c "'$PYVE_SCRIPT' testenv --purge 2>/dev/null"
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"No dev/test runner environment found"* ]]
+@test "J.d: new-form 'pyve python set <ver>' is routed (not unknown-command)" {
+    # python set is the replacement for python-version. Use an invalid
+    # version format so validate_python_version exits fast — but the
+    # dispatcher's "Unknown command" / "does not accept" paths must not
+    # fire. Integration suites cover the happy-path routing.
+    run bash -c "'$PYVE_SCRIPT' python set abc 2>&1"
+    [[ "$output" != *"Unknown command"* ]]
+    [[ "$output" != *"does not accept"* ]]
 }
