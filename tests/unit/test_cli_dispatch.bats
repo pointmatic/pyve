@@ -202,10 +202,10 @@ run_pyve() {
 # v2.0.1 was the H.f.5 release wrap)
 #============================================================
 
-@test "version: 'pyve --version' reports 2.2.1" {
+@test "version: 'pyve --version' reports 2.3.0" {
     run_pyve --version
     [ "$status" -eq 0 ]
-    [[ "$output" == *"2.2.1"* ]]
+    [[ "$output" == *"2.3.0"* ]]
 }
 
 #============================================================

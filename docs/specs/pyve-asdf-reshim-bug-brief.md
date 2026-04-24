@@ -1,5 +1,7 @@
 # Bug: asdf shim hash poisoning after `pip install` in Pyve-managed venvs
 
+> **Status: Resolved in v2.3.0 (Phase J).** `is_asdf_active()` in `lib/env_detect.sh` plus the `.envrc` guard (Story J.b) and `pyve run` guard (Story J.c) inject `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` at both layers when asdf is the active version manager. Opt out with `PYVE_NO_ASDF_COMPAT=1`. See [features.md FR-18](features.md) + [tech-spec.md "asdf/direnv Coexistence"](tech-spec.md) + Stories J.a / J.b / J.c in [stories.md](stories.md). The original mitigation plan below is preserved as the design rationale.
+
 ## Summary
 
 When a user runs `pip install <new-cli>` inside a Pyve-activated virtualenv on a system that also uses asdf (with asdf's shell integration loaded), the newly installed CLI can resolve to an asdf shim instead of the venv's binary on the very next invocation — even though `PATH` is correctly ordered with `.venv/bin` first.

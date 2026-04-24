@@ -407,6 +407,19 @@ All pyve commands share a unified terminal output pattern delivered via `lib/ui.
 
 Phase H introduces the module (H.e first sub-story, `lib/ui.sh`) and sweeps the remaining commands to adopt it (H.f). See `stories.md` for story detail and `tech-spec.md` for the delegation contract and implementation policy.
 
+### FR-18: asdf/direnv Coexistence (Phase J / v2.3.0)
+
+When pyve is run under asdf-managed Python, venv-installed CLIs resolve through `~/.asdf/shims/` instead of `.venv/bin/` because asdf's Python plugin reshims on `direnv allow`. The resolution order is correct from asdf's perspective but wrong for pyve's user expectations (`$(which pytest)` should point inside the project's `.venv`, not into the global asdf layer). Root cause and repro in [pyve-asdf-reshim-bug-brief.md](pyve-asdf-reshim-bug-brief.md).
+
+Pyve sets `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` at two layers, only when `$VERSION_MANAGER == "asdf"` and the opt-out (`PYVE_NO_ASDF_COMPAT=1`) is not set:
+
+- **`.envrc` layer (Story J.b)**: the generator in `init_direnv_venv` / `init_direnv_micromamba` appends a sentinel-commented block (`# Prevent asdf Python plugin from reshimming venv-installed CLIs.`) plus `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` to the fresh `.envrc`. Sentinel-grep prevents duplication on re-init; the same pattern migrates the block onto pre-v2.3.0 `.envrc` files that lack it. An info line after "Created .envrc" mentions the added guard and the global-pip-install caveat.
+- **`pyve run` layer (Story J.c)**: the dispatcher `export`s `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` before each exec site. Defense-in-depth for `--no-direnv` users and CI invocations where `.envrc` is never sourced. Silent — no info line per invocation.
+
+Skipped under `--no-direnv` for the `.envrc` block (no `.envrc` is created); `pyve run` guard still fires since it's independent of direnv. `PYVE_NO_ASDF_COMPAT=1` suppresses both layers; the `PYVE_ASDF_COMPAT=1` counterpart is reserved for symmetry but has no distinct behavior beyond "the default" (asdf guard active when asdf detected).
+
+No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergonomics; a flag would commit to a long-term surface for a narrow defense-in-depth feature.
+
 ---
 
 ## Configuration
@@ -433,6 +446,8 @@ Phase H introduces the module (H.e first sub-story, `lib/ui.sh`) and sweeps the 
 | `PYVE_NO_PROJECT_GUIDE` | Set to `1` to skip the project-guide hook (same as `--no-project-guide`) |
 | `PYVE_PROJECT_GUIDE_COMPLETION` | Set to `1` to force shell completion wiring (same as `--project-guide-completion`) |
 | `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Set to `1` to skip shell completion wiring (same as `--no-project-guide-completion`) |
+| `PYVE_NO_ASDF_COMPAT` | Set to `1` to suppress the asdf reshim guard in both `.envrc` and `pyve run` (FR-18). Use when you install CLIs globally via `pip install --user` and want asdf's default reshim behavior. |
+| `PYVE_ASDF_COMPAT` | Reserved for symmetry with `PYVE_NO_ASDF_COMPAT`; no distinct behavior — asdf guard is active by default when asdf is detected (FR-18). |
 | `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)

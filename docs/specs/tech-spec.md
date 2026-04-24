@@ -541,6 +541,17 @@ ERROR: See: pyve --help
 
 **No compat shim, no silent translation.** The legacy-flag catch list is always an immediate error — silent translation would hide the rename from users and build long-term tech debt. (The Category A delegate-with-warning paths — `testenv --init|--install|--purge`, `python-version <ver>` — shipped in Phase H were removed in Story J.d / v2.3.0.)
 
+### asdf/direnv Coexistence (Phase J / v2.3.0)
+
+Implements FR-18. When pyve is run under asdf-managed Python, asdf's Python plugin reshims on `direnv allow`, so venv-installed CLIs resolve through `~/.asdf/shims/` instead of `.venv/bin/`. See [pyve-asdf-reshim-bug-brief.md](pyve-asdf-reshim-bug-brief.md) for the original repro and root-cause analysis. The fix sets `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` at two layers:
+
+- **`.envrc` block** (`init_direnv_venv` / `init_direnv_micromamba` in [pyve.sh](../../pyve.sh)): appends a three-line heredoc — sentinel comment `# Prevent asdf Python plugin from reshimming venv-installed CLIs.`, an override note referring to `PYVE_NO_ASDF_COMPAT=1`, and `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1`. Guarded by `is_asdf_active && ! grep -qF <sentinel> "$envrc_file"` so (a) the block only fires when asdf is the active version manager and the user hasn't opted out, and (b) re-appending is impossible. Also fires on pre-existing `.envrc` files from pyve < v2.3.0, so the guard migrates onto legacy installs without `pyve init --force`.
+- **`pyve run` wrapper** (`run_command` in [pyve.sh](../../pyve.sh)): probes the version manager silently (`source_shell_profiles >/dev/null 2>&1 || true; detect_version_manager >/dev/null 2>&1 || true`), then `export`s `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` once before the three backend-specific exec sites (venv-bin, venv-PATH-fallback, micromamba). Silent defense-in-depth — no info line per invocation.
+
+**Helper.** `is_asdf_active()` in [lib/env_detect.sh](../../lib/env_detect.sh) is the single source of truth. Returns 0 iff `$VERSION_MANAGER == "asdf"` AND `PYVE_NO_ASDF_COMPAT` is unset/empty. Both call sites (`.envrc` generator + `pyve run`) use the same helper so the opt-out is consistent.
+
+**Opt-out rationale.** `PYVE_NO_ASDF_COMPAT=1` exists for users who run pyve under asdf but install CLIs globally via `pip install --user`; those CLIs legitimately need asdf's default reshim. The env-var form is intentional — a CLI flag would commit to a permanent surface for a narrow defense-in-depth feature. `PYVE_ASDF_COMPAT=1` is reserved for symmetry but has no distinct behavior (the default state when asdf is detected).
+
 ### Platform Portability
 
 - **macOS vs Linux `sed`**: All `sed` operations use portable shell loops with temp files instead of `sed -i` (which has incompatible syntax between BSD and GNU). See v1.1.2/v1.1.3 for history.
@@ -610,6 +621,10 @@ White-box tests that source individual `lib/*.sh` modules and test functions dir
 | `test_micromamba_core.bats` | `lib/micromamba_core.sh` | — |
 | `test_reinit.bats` | `lib/version.sh` | — |
 | `test_version.bats` | `lib/version.sh` | — |
+| `test_env_detect.bats` | `lib/env_detect.sh` (Story I.j) | 33 |
+| `test_distutils_shim_coverage.bats` | `lib/distutils_shim.sh` coverage gap-filler (Story I.k) | 17 |
+| `test_asdf_compat.bats` | `is_asdf_active` + `.envrc` guard + `pyve run` guard (Phase J) | 15 |
+| `test_bash32_compat.bats` | Grep-invariant over `pyve.sh` + `lib/*.sh` + `lib/completion/pyve.bash` — fails on any bash-4+ construct (declare/typeset/local `-A`, mapfile/readarray, case-mod/@-transform parameter expansions, `declare -n`, named `coproc`, `shopt -s globstar`). Scope excludes `lib/completion/_pyve` (zsh). Story J.e. | 10 |
 
 ### Integration Tests (pytest)
 

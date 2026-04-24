@@ -1729,18 +1729,22 @@ Preemptive hardening against bash-4+ slips. Two recent Phase H bugs (H.e.7a `dec
 
 ---
 
-### Story J.f: v2.3.0 Release Wrap [Planned]
+### Story J.f: v2.3.0 Release Wrap [Done]
 
 Spec updates, CHANGELOG, and version bump. Runs last so all implementation is visible and spec language matches shipped behavior.
 
 **Tasks**
 
-- [ ] Update `features.md` — add new FR for asdf compat (FR-J? or renumber into the existing scheme); add `PYVE_NO_ASDF_COMPAT` and `PYVE_ASDF_COMPAT` to the Environment Variables table
-- [ ] Update `tech-spec.md` — new subsection under Cross-Cutting Concerns: "asdf/direnv Coexistence (Phase J / v2.3.0)" describing the `.envrc` block, the sentinel-grep idempotency, and the `pyve run` defense-in-depth. Update Testing Strategy to reference `tests/unit/test_bash32_compat.bats`
-- [ ] Update `pyve-asdf-reshim-bug-brief.md` status — mark resolved, add pointer back to Phase J stories
-- [ ] Finalize `CHANGELOG.md` v2.3.0 entry: asdf compat guard (.envrc + pyve run), Category A deprecation removal, bash 3.2 invariant test. Breaking-changes note for Category A removal (even though the userbase is small, the line is worth including for future archaeology)
-- [ ] Bump `VERSION` in `pyve.sh` from `2.2.0` (or whatever I lands at) to `2.3.0`
-- [ ] Verify: CI passes end-to-end; `pyve --version` prints `2.3.0`
+- [x] **`features.md` updated**: added [**FR-18**: asdf/direnv Coexistence (Phase J / v2.3.0)](../features.md) consolidating the phase-J plan's FR-J1 / FR-J2 / FR-J3 into a single sequential entry (matches features.md's numeric FR convention; FR-J phase-scoped naming stayed in the plan doc). Added `PYVE_NO_ASDF_COMPAT` and `PYVE_ASDF_COMPAT` rows to the Environment Variables table.
+- [x] **`tech-spec.md` updated**: new **"asdf/direnv Coexistence (Phase J / v2.3.0)"** subsection under Cross-Cutting Concerns describing the two-layer injection (`.envrc` generator + `pyve run` dispatcher), the sentinel-grep idempotency pattern, the `is_asdf_active` helper as single source of truth, and the opt-out rationale. Testing-Strategy table now lists `test_env_detect.bats` (33), `test_distutils_shim_coverage.bats` (17), `test_asdf_compat.bats` (15), `test_bash32_compat.bats` (10).
+- [x] **`pyve-asdf-reshim-bug-brief.md` marked resolved**: added a status banner at the top pointing at FR-18 + tech-spec subsection + Stories J.a/J.b/J.c. Original design rationale preserved below as historical context.
+- [x] **`CHANGELOG.md` v2.3.0 entry finalized** ([CHANGELOG.md:8-56](../../CHANGELOG.md#L8-L56)): sections populated — `Added` (asdf guard, PYVE_NO_ASDF_COMPAT, is_asdf_active helper, bash 3.2 invariant test), `Removed (breaking)` (four legacy forms + deprecation_warn helper with explicit upgrade-impact note), `Changed` (.envrc generator, pyve run dispatcher, ui.sh slimmed, testing-strategy table), `Fixed` (asdf reshim root-fix), `Developer notes` (test count delta, design-decision pointers, pre-existing test-data bugs surfaced), `Migration notes` (four-line before/after example for the removed forms).
+- [x] **VERSION bumped** `2.2.1` → `2.3.0` at [pyve.sh:32](../../pyve.sh#L32). Matching assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207) updated.
+- [x] **Verification**:
+  - `pyve --version` → `pyve version 2.3.0`.
+  - Full bats suite: **712 / 712 passing**.
+  - Integration suites: no regressions from J.a–J.e (verified incrementally as each story landed; J.d exposed 4 pre-existing test-data bugs in `test_subcommand_cli.py::TestLegacyFlagCatch` parametrize, confirmed via `git stash` baseline — out of Phase J scope).
+  - CI verification pending the next push — the `integration-tests-bootstrap` job from Story I.g will re-run on the v2.3.0 tag.
 
 ---
 
