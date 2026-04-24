@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.1] - 2026-04-24
+
+Bugfix release (Story K.a.1). `pyve init --force --backend micromamba --python-version <ver>` on a project with an existing venv config but no `environment.yml` hard-errored with `"Neither 'environment.yml' nor 'conda-lock.yml' found"` — even though the same invocation without `--force` (on a fresh directory) succeeds by scaffolding a starter `environment.yml`. Root cause: the `--force` pre-flight at [pyve.sh:654](pyve.sh#L654) duplicated `validate_lock_file_status` from the main micromamba branch but omitted the `scaffold_starter_environment_yml` call that precedes it; on a directory with neither file, validation's Case 4 fires before scaffolding gets a chance. Fix: invoke `scaffold_starter_environment_yml` before `validate_lock_file_status` in the `--force` pre-flight, mirroring the main-flow ordering. Regression test in [tests/integration/test_force_backend_detection.py](tests/integration/test_force_backend_detection.py).
+
 ## [2.3.0] - 2026-04-23
 
 Phase J release: environment compatibility & hardening. Three sub-themes: (1) fix the asdf-reshim bug that made venv-installed CLIs resolve via `~/.asdf/shims/` instead of `.venv/bin/` on direnv-allow; (2) rip the remaining Category A delegate-with-warning paths from Phase H; (3) add a grep-invariant test that catches bash-4+ constructs before they reach CI. All three are "pyve interoperates cleanly with the realities around it."

@@ -251,6 +251,39 @@ class TestForceBackendDetection:
         config_path = project_builder.project_dir / ".pyve" / "config"
         config_content = config_path.read_text()
         assert "backend: venv" in config_content
-        
+
         venv_dir = project_builder.project_dir / ".venv"
         assert venv_dir.exists()
+
+    def test_force_switch_venv_to_micromamba_without_environment_yml(self, pyve, project_builder):
+        """
+        Regression: --force switching venv→micromamba in a directory with no
+        environment.yml must scaffold a starter environment.yml during the
+        pre-flight (matching the non-force flow at pyve.sh:789) instead of
+        hard-erroring with "Neither 'environment.yml' nor 'conda-lock.yml'".
+
+        The non-force path (`pyve init --backend micromamba` on a fresh dir)
+        already scaffolds environment.yml before lock validation. The --force
+        pre-flight duplicated the lock validation but forgot the scaffold step,
+        so it failed on directories that the non-force path handles fine.
+        """
+        # Initialize with venv backend → writes .pyve/config with backend: venv.
+        result = pyve.run("init", "--backend", "venv")
+        assert result.returncode == 0
+        assert not (project_builder.project_dir / "environment.yml").exists()
+
+        # Force-switch to micromamba without authoring environment.yml first.
+        # The pre-flight is what fails in the bug; we don't need micromamba to
+        # be available to prove the regression — the scaffold step runs before
+        # the bootstrap attempt, so environment.yml should be on disk either
+        # way if the pre-flight ran scaffold.
+        result = pyve.run(
+            "init", "--force", "--backend", "micromamba",
+            "--auto-bootstrap", input="y\n",
+        )
+
+        combined = (result.stdout or "") + (result.stderr or "")
+        assert "Neither 'environment.yml' nor 'conda-lock.yml'" not in combined, \
+            f"Pre-flight rejected fresh dir; scaffold did not run in --force path.\n{combined}"
+        assert (project_builder.project_dir / "environment.yml").exists(), \
+            "Expected environment.yml to be scaffolded by --force pre-flight"

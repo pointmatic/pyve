@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.3.0"
+VERSION="2.3.1"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -652,6 +652,16 @@ init() {
             # backend and must not prevent re-detection from project files.
             preflight_backend="$(get_backend_priority "$backend_flag" "true")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
+                # Mirror the non-force flow (see the main micromamba branch below):
+                # scaffold a starter environment.yml on a fresh dir BEFORE lock
+                # validation, otherwise validate_lock_file_status's "neither file"
+                # case fires and aborts the switch on projects that the non-force
+                # path handles fine.
+                if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
+                    info "Scaffolded starter environment.yml (python=$python_version)"
+                    info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
+                    export PYVE_NO_LOCK=1
+                fi
                 if ! validate_lock_file_status "$strict_mode"; then
                     fail "Pre-flight check failed — no changes made"
                 fi

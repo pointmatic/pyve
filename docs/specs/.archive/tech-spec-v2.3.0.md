@@ -49,29 +49,16 @@ This document defines **how** Pyve is built — architecture, module layout, dep
 
 ```
 pyve/
-├── pyve.sh                          # Thin entry point — globals, sourcing, top-level dispatcher, legacy/unknown flag catches, main()
+├── pyve.sh                          # Main entry point — CLI parsing, orchestration, all top-level commands
 ├── lib/
 │   ├── utils.sh                     # Logging, prompts, .gitignore management, config parsing, validation
-│   ├── ui.sh                        # Unified UX helpers (colors, symbols, prompts, run_cmd, banners) — backportable to gitbetter
-│   ├── env_detect.sh                # Shell profile sourcing, version manager detection (asdf/pyenv), is_asdf_active gate, direnv check
+│   ├── env_detect.sh                # Shell profile sourcing, version manager detection (asdf/pyenv), direnv check
 │   ├── backend_detect.sh            # Backend auto-detection from project files, backend validation
 │   ├── micromamba_core.sh           # Micromamba binary detection, version, location
 │   ├── micromamba_env.sh            # Environment file parsing, naming, creation, lock file validation
 │   ├── micromamba_bootstrap.sh      # Micromamba download and installation (interactive + auto)
-│   ├── distutils_shim.sh            # Python 3.12+ distutils compatibility shim (sitecustomize.py)
-│   ├── version.sh                   # Version comparison, installation validation, config writing
-│   └── commands/                    # One file per top-level command; each defines a function with the same name as the file
-│       ├── init.sh                  # init() — full project initialization (both backends)
-│       ├── purge.sh                 # purge() — removal of pyve artifacts
-│       ├── update.sh                # update() — non-destructive upgrade (config + managed files + project-guide)
-│       ├── check.sh                 # check() — diagnostics with 0/1/2 exit codes
-│       ├── status.sh                # status() — read-only project state dashboard
-│       ├── lock.sh                  # lock() — conda-lock wrapper (micromamba only)
-│       ├── run.sh                   # run() — execute command in project environment
-│       ├── test.sh                  # test() — pytest in dev/test environment
-│       ├── testenv.sh               # testenv() dispatcher + testenv_init/install/purge/run
-│       ├── python.sh                # python() dispatcher + python_set/python_show
-│       └── self.sh                  # self() dispatcher + self_install/self_uninstall
+│   ├── distutils_shim.sh           # Python 3.12+ distutils compatibility shim (sitecustomize.py)
+│   └── version.sh                   # Version comparison, installation validation, config writing
 ├── tests/
 │   ├── unit/                        # Bats unit tests (white-box, one file per lib module)
 │   │   ├── test_utils.bats
@@ -121,59 +108,23 @@ pyve/
 
 ## Key Component Design
 
-### `pyve.sh` — Thin Entry Point
+### `pyve.sh` — Main Entry Point
 
-`pyve.sh` is a small, focused dispatcher (~200–300 lines target). It owns process-wide concerns and command routing; it does **not** own command implementations. Top-level command logic lives in `lib/commands/<name>.sh` (see next subsection).
-
-**What lives in `pyve.sh`:**
-
-- Shebang, copyright/SPDX header, `set -euo pipefail`.
-- Process-wide globals (see table below).
-- The library sourcing block (helpers first, then commands).
-- Universal flag handling: `--help` / `-h`, `--version` / `-v`, `--config` / `-c`.
-- The top-level `case`-block dispatcher that maps a subcommand name to its `lib/commands/*.sh` function.
-- `legacy_flag_error()` — the Category B hard-error catcher for renamed/removed flags and subcommands. Three lines per catch arm; emits a precise migration error and exits non-zero.
-- `unknown_flag_error()` — closest-match suggestion for typos within a valid subcommand (uses `_edit_distance()` from `lib/ui.sh`).
-- `main()` — entry point that drives universal-flag handling, legacy/unknown-flag catches, and dispatcher invocation in that order.
-
-**What does NOT live in `pyve.sh`:**
-
-- Command implementations (`init`, `purge`, `update`, `check`, `status`, `lock`, `run`, `test`, `testenv`, `python`, `self`) — these live in `lib/commands/<name>.sh`.
-- Cross-command helpers (`.gitignore` writing, config parsing, backend detection, etc.) — these live in their existing `lib/<helper>.sh` modules.
+The main script handles CLI argument parsing, sources all library modules, and dispatches to the appropriate command handler. Top-level command logic (`init`, `purge`, `lock`, `run`, `test`, `testenv`, `check`, `status`, `update`, `python`, `self`) lives here, along with the dispatcher's legacy-flag-catch arms.
 
 **Key globals:**
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VERSION` | `"2.3.1"` | Current Pyve version |
+| `VERSION` | `"2.0.0"` | Current Pyve version |
 | `DEFAULT_PYTHON_VERSION` | `"3.14.3"` | Default Python version for new environments |
 | `DEFAULT_VENV_DIR` | `".venv"` | Default venv directory name |
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
 | `TESTENV_DIR_NAME` | `"testenv"` | Dev/test runner environment directory |
 
-**Library sourcing order (helpers first, then commands).** Helpers: `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and banner helpers. Commands are sourced after all helpers, in alphabetical order: `commands/check.sh` → `commands/init.sh` → `commands/lock.sh` → `commands/purge.sh` → `commands/python.sh` → `commands/run.sh` → `commands/self.sh` → `commands/status.sh` → `commands/test.sh` → `commands/testenv.sh` → `commands/update.sh`. Sourcing is **explicit**, not glob-based, so dependency ordering is auditable. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern above for the remaining hard-error form.)
+**Library sourcing order:** `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and banner helpers. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern below for the remaining hard-error form.)
 
-Each library and command file guards against direct execution and is designed to be sourced only.
-
----
-
-### `lib/commands/<name>.sh` — Command Implementations
-
-One file per top-level command. Each file owns the implementation of its command and follows a uniform contract.
-
-**File-to-function contract:**
-
-- `lib/commands/<name>.sh` defines a top-level function named `<name>` that takes the subcommand's positional + flag arguments. The dispatcher in `pyve.sh` calls it with `"$@"` after stripping the subcommand token.
-- **Namespace commands** (`testenv`, `python`, `self`) define the namespace dispatcher *and* the leaf functions in the same file. Leaf functions use the `<namespace>_<leaf>` naming convention:
-  - `lib/commands/testenv.sh` → `testenv()`, `testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`
-  - `lib/commands/python.sh` → `python()`, `python_set()`, `python_show()`
-  - `lib/commands/self.sh` → `self()`, `self_install()`, `self_uninstall()`
-- **Command-private helpers** stay inside the command file with a `_<command>_` prefix (e.g., `_init_write_envrc()`, `_check_run_diagnostics()`). They are not callable from other commands.
-- **Cross-command helpers** (used by two or more commands) live in their existing `lib/<helper>.sh` home — they do NOT migrate into `lib/commands/`. Examples: `write_gitignore_template()` in `lib/utils.sh`, `is_asdf_active()` in `lib/env_detect.sh`, `get_backend_priority()` in `lib/backend_detect.sh`, `header_box()` in `lib/ui.sh`.
-
-**Direct-execution guard.** Each command file ends (or begins) with the same guard the helper modules use, so a stray `bash lib/commands/init.sh` exits non-zero rather than running unsourced.
-
-**Per-command function tables** are documented in this section as the extraction phase progresses — each story that extracts a command appends its function-signature table here, mirroring the `lib/utils.sh` / `lib/ui.sh` pattern.
+Each library guards against direct execution and is designed to be sourced only.
 
 ---
 
@@ -293,7 +244,7 @@ Environment file parsing, naming resolution, environment creation, and lock file
 | `create_micromamba_env` | `(env_name, env_file?)` → 0/1 | Create environment from file |
 | `verify_micromamba_env` | `(env_name)` → 0/1 | Verify environment is functional |
 | `is_interactive` | `()` → 0/1 | Detect interactive vs CI/batch mode |
-| `run_lock` | `()` | Wrapper for `conda-lock`: backend guard, prerequisite check, platform detection, output filtering, rebuild guidance. Currently in `pyve.sh`; moves to `lib/commands/lock.sh` as part of the command-module extraction phase. |
+| `run_lock` | `()` | Wrapper for `conda-lock`: backend guard, prerequisite check, platform detection, output filtering, rebuild guidance. Lives in `pyve.sh`. |
 
 ---
 
@@ -533,7 +484,7 @@ command -v project-guide >/dev/null 2>&1 && \
 The opening sentinel comment (`# >>> project-guide completion (added by pyve) >>>`) is the source of truth for idempotent insertion and removal:
 
 - **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the eval block via an unquoted heredoc (a doubled `\\` followed by a real newline produces a proper shell line continuation in the output — see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead). Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
-- **SDKMan-aware insertion** (`insert_text_before_sdkman_marker_or_append` in `lib/utils.sh`, v1.13.1+, Story G.e): if the SDKMan end-of-file marker `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present in the rc file, the new block is inserted *immediately above* it via awk so SDKMan retains its required last-position. Otherwise the block is appended to the end. Always emits a leading blank line before the inserted block (unless the file is empty in the SDKMan-absent case), which gives `remove_project_guide_completion` a stable preceding-blank to consume and guarantees byte-identical add → remove round-trips. The same helper is used by `install_prompt_hook` (currently in `pyve.sh`; moves alongside `init`/project-guide integration during the command-module extraction phase) so the prompt hook and the completion block share one SDKMan-aware code path.
+- **SDKMan-aware insertion** (`insert_text_before_sdkman_marker_or_append` in `lib/utils.sh`, v1.13.1+, Story G.e): if the SDKMan end-of-file marker `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present in the rc file, the new block is inserted *immediately above* it via awk so SDKMan retains its required last-position. Otherwise the block is appended to the end. Always emits a leading blank line before the inserted block (unless the file is empty in the SDKMan-absent case), which gives `remove_project_guide_completion` a stable preceding-blank to consume and guarantees byte-identical add → remove round-trips. The same helper is used by `install_prompt_hook` in `pyve.sh` so the prompt hook and the completion block share one SDKMan-aware code path.
 - **Removal** (`remove_project_guide_completion` in `lib/utils.sh`): removes only the sentinel-bracketed block plus one immediately-preceding blank line (so add → remove round-trips cleanly). Awk-based, BSD/GNU compatible.
 - **Detection** (`is_project_guide_completion_present` in `lib/utils.sh`): a single `grep -qF` against the opening sentinel.
 
@@ -559,9 +510,9 @@ The following helpers in `lib/utils.sh` implement the three-step project-guide h
 | `is_project_guide_completion_present(rc_path)` | Detects the sentinel block. |
 | `add_project_guide_completion(rc_path, shell)` | Step 3: builds the sentinel-bracketed block via heredoc and delegates insertion to `insert_text_before_sdkman_marker_or_append`. Idempotent. Creates rc file if missing. |
 | `remove_project_guide_completion(rc_path)` | Removes the sentinel block. Safe no-op if absent. |
-| `insert_text_before_sdkman_marker_or_append(rc_path, content)` | (v1.13.1+, Story G.e) Shared SDKMan-aware rc-file insertion. If `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present, inserts `content` immediately above it; otherwise appends. Always emits a leading blank line for round-trip symmetry with `remove_project_guide_completion`. Used by both `add_project_guide_completion` and `install_prompt_hook` (the latter currently in `pyve.sh`; moves with the `init` extraction). |
+| `insert_text_before_sdkman_marker_or_append(rc_path, content)` | (v1.13.1+, Story G.e) Shared SDKMan-aware rc-file insertion. If `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present, inserts `content` immediately above it; otherwise appends. Always emits a leading blank line for round-trip symmetry with `remove_project_guide_completion`. Used by both `add_project_guide_completion` and `install_prompt_hook` in `pyve.sh`. |
 
-The orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` (currently in `pyve.sh`; moves to `lib/commands/init.sh` as a private `_init_run_project_guide_hooks` during the extraction phase, since `init()` is its only caller) calls these in priority order. Tri-state mode arguments (`""` / `"yes"` / `"no"`) come from CLI flag parsing in `init()`. The auto-skip safety mechanism fires between explicit flag overrides and the prompt/CI default path.
+The orchestrator `run_project_guide_hooks(backend, env_path, pg_mode, comp_mode)` in `pyve.sh` calls these in priority order. Tri-state mode arguments (`""` / `"yes"` / `"no"`) come from CLI flag parsing in `init()`. The auto-skip safety mechanism fires between explicit flag overrides and the prompt/CI default path.
 
 For step 2, the orchestrator branches on `.project-guide.yml` presence (v1.14.0+, Story G.h): when present, it calls `run_project_guide_update_in_env` (reinit refresh); when absent, it calls `run_project_guide_init_in_env` (first-time scaffold). Pyve never auto-runs `project-guide init --force` — that is destructive (wipes config state, no backups) and must remain user-initiated.
 
@@ -650,27 +601,13 @@ Once `lib/ui.sh` lands (H.e first sub-story), every user-facing output line in p
 
 **Backport discipline.** When modifying `lib/ui.sh`, preserve the "no pyve identifiers" invariant. If a helper needs something pyve-specific (e.g. a path into `.pyve/`), that logic goes in the calling command, not in the helper. Any signature or palette change requires a coordinated update to `gitbetter`'s copy of the module.
 
-### Command Module Extraction Pattern
-
-When extracting a top-level command from `pyve.sh` into `lib/commands/<name>.sh`, every extraction story follows the same five-step pattern. This is the contract for keeping `pyve.sh`'s decomposition safe.
-
-1. **Inventory functionality.** List the command's responsibilities (what it does), the cross-command helpers it calls (which `lib/*.sh` functions), and any process-wide state it touches (env vars, globals, files in `.pyve/`).
-2. **Audit existing test coverage.** Enumerate every integration test (pytest) and unit test (bats) that exercises the command. Note which behaviors from step 1 are *not* covered.
-3. **Backfill characterization tests** against the current (pre-refactor) `pyve.sh`. These should pass immediately — they pin existing behavior, not aspirational behavior. If a backfill test is unexpectedly red, you have found a latent bug; carve it off into its own fix story before continuing the extraction.
-4. **Extract** the command function (and any command-private helpers) to `lib/commands/<name>.sh`. Update the dispatcher in `pyve.sh` to source the new file and route to the extracted function. No behavior change.
-5. **Re-run the full test suite.** Must be green with zero diff in observable behavior. Any user-visible change is a regression and blocks the story.
-
-**Why this pattern matters.** The refactor's only safety net is test coverage of pre-refactor behavior. Coverage gaps discovered *after* the move can no longer distinguish "this never worked" from "the move broke it." Steps 2–3 close the gap before step 4 disturbs anything.
-
-**Per-extraction-story structure.** Each story in the extraction phase carries the same task-list scaffolding: an inventory section, a coverage-audit table, a backfill-tests subtask, the extraction subtask, and a green-suite verification subtask. Boilerplate, but the discipline is the point.
-
 ---
 
 ## Testing Strategy
 
 ### Unit Tests (Bats)
 
-White-box tests that source individual `lib/*.sh` modules and test functions directly. Command modules in `lib/commands/` are sourced and tested the same way (one `test_<command>.bats` per command file is permitted but not required — many commands are exercised end-to-end by integration tests, and a separate Bats file is justified only when there is command-private logic worth white-box testing in isolation).
+White-box tests that source individual `lib/*.sh` modules and test functions directly.
 
 | Test File | Module Under Test | Test Count |
 |-----------|-------------------|------------|

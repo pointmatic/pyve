@@ -30,9 +30,6 @@ build/
 
 coverage-kcov/
 
-# Project
-.archive/
-
 # project-guide
 docs/project-guide/**/*.bak.*
 
