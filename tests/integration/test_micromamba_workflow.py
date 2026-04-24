@@ -143,7 +143,7 @@ class TestMicromambaWorkflow:
         pyve.init(backend='micromamba')
         
         # Create testenv
-        pyve.run('testenv', '--init')
+        pyve.run('testenv', 'init')
 
         # Verify both exist
         assert (pyve.cwd / '.pyve' / 'envs').exists()

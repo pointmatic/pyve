@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.2.1"
+VERSION="2.3.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -148,7 +148,6 @@ COMMANDS:
     python set <ver>          Pin the project's Python version (format: #.#.#)
     python show               Show the currently pinned Python version
                               See `pyve python --help` for details
-                              (Legacy: `pyve python-version <ver>` still accepted)
     lock [--check]            Generate or verify conda-lock.yml (micromamba only)
                               --check: mtime-only verification (no conda-lock needed)
 
@@ -1068,6 +1067,21 @@ fi
 EOF
         success "Created .envrc"
     fi
+
+    # Story J.b: append asdf reshim guard when asdf is the active version
+    # manager, unless the user opted out via PYVE_NO_ASDF_COMPAT. Sentinel
+    # grep prevents duplication on re-init. Runs for both fresh and
+    # pre-existing .envrc so the guard also migrates onto files created
+    # by pyve < v2.3.0.
+    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
+        cat >> "$envrc_file" << 'EOF'
+
+# Prevent asdf Python plugin from reshimming venv-installed CLIs.
+# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
+export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+EOF
+        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
+    fi
 }
 
 init_direnv_micromamba() {
@@ -1101,6 +1115,19 @@ if [[ -f ".env" ]]; then
 fi
 EOF
         success "Created .envrc"
+    fi
+
+    # Story J.b: see init_direnv_venv for rationale. Kept as a copy rather
+    # than extracted to a helper because the two generators are already
+    # parallel in structure, and the guard block itself is three lines.
+    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
+        cat >> "$envrc_file" << 'EOF'
+
+# Prevent asdf Python plugin from reshimming venv-installed CLIs.
+# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
+export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+EOF
+        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
     fi
 }
 
@@ -1335,26 +1362,10 @@ testenv_command() {
                 action="purge"
                 shift
                 ;;
-            # Legacy flag forms — delegate-with-warning (H.e.7).
-            # Removed in v3.0 per H.d §5 D5.
-            --init)
-                deprecation_warn "testenv --init" \
-                    "pyve testenv --init" "pyve testenv init"
-                action="init"
-                shift
-                ;;
-            --install)
-                deprecation_warn "testenv --install" \
-                    "pyve testenv --install" "pyve testenv install"
-                action="install"
-                shift
-                ;;
-            --purge)
-                deprecation_warn "testenv --purge" \
-                    "pyve testenv --purge" "pyve testenv purge"
-                action="purge"
-                shift
-                ;;
+            # Story J.d (v2.3.0): Category A legacy flag forms
+            # (`testenv --init|--install|--purge`) removed. Falls through
+            # to the `-*)` arm below, which produces the standard
+            # unknown-flag error.
             -r|--requirements)
                 if [[ -z "${2:-}" ]]; then
                     log_error "$1 requires a file path"
@@ -1378,11 +1389,6 @@ Usage:
   pyve testenv purge
   pyve testenv run <command> [args...]
 
-Legacy flag forms (accepted in v1.x; deprecated in v2.0, removed in v3.0):
-  pyve testenv --init         (use: pyve testenv init)
-  pyve testenv --install      (use: pyve testenv install)
-  pyve testenv --purge        (use: pyve testenv purge)
-
 Notes:
   - Uses: .pyve/testenv/venv
   - This environment is preserved across `pyve init --force` and `pyve purge`.
@@ -1392,7 +1398,7 @@ EOF
                 ;;
             -*)
                 unknown_flag_error "testenv" "$1" \
-                    --init --install --purge --requirements -r --help
+                    --requirements -r --help
                 ;;
             *)
                 log_error "Unknown testenv argument: $1"
@@ -1489,12 +1495,12 @@ test_command() {
                 if [[ "$response" =~ ^[Yy]$ ]]; then
                     install_pytest_into_testenv "$testenv_venv"
                 else
-                    log_info "Install skipped. You can install with: pyve testenv --install -r requirements-dev.txt"
+                    log_info "Install skipped. You can install with: pyve testenv install -r requirements-dev.txt"
                     exit 1
                 fi
             else
                 log_error "pytest is not installed in the dev/test runner environment."
-                log_error "Run: pyve testenv --install -r requirements-dev.txt"
+                log_error "Run: pyve testenv install -r requirements-dev.txt"
                 exit 1
             fi
         fi
@@ -1601,8 +1607,8 @@ show_python_version() {
 }
 
 # Nested-subcommand dispatcher for `pyve python <action> [args]`.
-# Story H.e.6: new grammar alongside the legacy `pyve python-version`
-# command (which continues to work in v1.x).
+# Story H.e.6 introduced this grammar; the legacy `pyve python-version`
+# command that preceded it was removed in Story J.d (v2.3.0).
 python_command() {
     if [[ $# -lt 1 ]]; then
         log_error "pyve python requires a subcommand"
@@ -2018,7 +2024,20 @@ run_command() {
         log_error "Run 'pyve init' to create an environment first"
         exit 1
     fi
-    
+
+    # Story J.c: defense-in-depth asdf reshim guard. The .envrc block
+    # added in J.b covers the direnv-allow path; this covers `pyve run`
+    # used with --no-direnv, or in CI where .envrc is never sourced.
+    # Probe the version manager silently — real setup errors would have
+    # surfaced during `pyve init`, and noise on every `pyve run` would
+    # be unpleasant. Export (vs `env VAR=...` prefix) because exec
+    # replaces the shell anyway, so parent-env pollution is moot.
+    source_shell_profiles >/dev/null 2>&1 || true
+    detect_version_manager >/dev/null 2>&1 || true
+    if is_asdf_active; then
+        export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+    fi
+
     # Execute command based on backend
     if [[ "$backend" == "venv" ]]; then
         # Venv backend: prefer venv bin, but allow system commands too
@@ -3131,34 +3150,6 @@ Examples:
   pyve python set 3.13.7
   pyve python show
 
-Legacy command (accepted in v1.x; deprecated in v2.0, removed in v3.0):
-  pyve python-version <version>    (use: pyve python set <version>)
-
-See `pyve --help` for the full command list.
-EOF
-}
-
-show_python_version_help() {
-    cat << 'EOF'
-pyve python-version - Set Python version without creating an environment
-
-  LEGACY — accepted in v1.x; deprecated in v2.0, removed in v3.0.
-  Use `pyve python set <version>` instead.
-
-Usage:
-  pyve python-version <version>
-
-Arguments:
-  <version>                   Python version in #.#.# form (e.g., 3.13.7)
-
-Description:
-  Writes the version to .python-version (asdf/pyenv format) so
-  subsequent `pyve init` invocations pick it up. Does not create
-  or modify any virtual environment.
-
-Examples:
-  pyve python-version 3.13.7
-
 See `pyve --help` for the full command list.
 EOF
 }
@@ -3367,22 +3358,6 @@ main() {
                 exit 0
             fi
             update_command "$@"
-            ;;
-        python-version)
-            shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_python_version_help
-                exit 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:python-version %s\n' "$*"
-                exit 0
-            fi
-            # Legacy command — delegate-with-warning (H.e.7).
-            # Removed in v3.0 per H.d §5 D3.
-            deprecation_warn "python-version" \
-                "pyve python-version" "pyve python set"
-            set_python_version_only "$@"
             ;;
         python)
             shift

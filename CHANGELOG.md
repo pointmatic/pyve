@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-04-23
+
+Phase J release: environment compatibility & hardening. Three sub-themes: (1) fix the asdf-reshim bug that made venv-installed CLIs resolve via `~/.asdf/shims/` instead of `.venv/bin/` on direnv-allow; (2) rip the remaining Category A delegate-with-warning paths from Phase H; (3) add a grep-invariant test that catches bash-4+ constructs before they reach CI. All three are "pyve interoperates cleanly with the realities around it."
+
+### Added
+
+- **asdf/direnv coexistence guard** (FR-18, Stories J.a–J.c). When pyve detects asdf as the active version manager, it sets `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` at two layers — the generated `.envrc` (venv + micromamba backends, sentinel-grep idempotent, migrates onto pre-v2.3.0 files) and the `pyve run` dispatcher (silent defense-in-depth for `--no-direnv` / CI). Root cause documented in [docs/specs/pyve-asdf-reshim-bug-brief.md](docs/specs/pyve-asdf-reshim-bug-brief.md), now marked resolved.
+- **`PYVE_NO_ASDF_COMPAT` environment variable**. Set to `1` to suppress the asdf reshim guard at both layers. Intended for users who install CLIs globally via `pip install --user` and want asdf's default reshim behavior. `PYVE_ASDF_COMPAT` is reserved for symmetry (no distinct behavior — the default state when asdf is detected).
+- **`is_asdf_active()` helper** in [lib/env_detect.sh](lib/env_detect.sh). Single source of truth for the asdf-compat check; both the `.envrc` generator and the `pyve run` dispatcher call it so the opt-out is consistent.
+- **bash 3.2 grep-invariant test** at [tests/unit/test_bash32_compat.bats](tests/unit/test_bash32_compat.bats) (Story J.e) — 10 `@test` blocks covering `declare/typeset/local -A`, `mapfile`, `readarray`, case-mod parameter expansions (`${var^^}` family), `${var@[UuLlQqEePpAaKk]}` transform ops, `declare -n` namerefs, named `coproc`, and `shopt -s globstar`. Each block names the bash-3.2-safe alternative in its failure message. Scope excludes `lib/completion/_pyve` (zsh). H.e.7a (`declare -A`) and H.e.9h (`mapfile`) would have been caught by this preemptively.
+
+### Removed (breaking)
+
+- **`pyve testenv --init|--install|--purge` legacy flag forms** (Story J.d). Phase H shipped these as delegate-with-warning paths (the handler would emit a stderr deprecation warning then run the new-form action). v2.3.0 rips the alias-handlers entirely; the forms now fall through to the `unknown_flag_error` path. Use `pyve testenv init|install|purge` instead.
+- **`pyve python-version <ver>` legacy subcommand** (Story J.d). Was a delegate-with-warning to `pyve python set <ver>`. Now hits the dispatcher's "Unknown command" arm. Use `pyve python set <ver>` instead.
+- **`deprecation_warn` helper** in [lib/ui.sh](lib/ui.sh) plus the supporting `_rename_seen` once-per-key guard and `__DEPRECATION_WARNED_KEYS` state. Zero callers remain after J.d. The Category B `legacy_flag_error` pattern (hard error with targeted hint — e.g. `pyve --validate` → "Use 'pyve check' instead") stays; it's three lines per flag and keeps stale-docs / blog-post / LLM-training invocations helpful.
+
+**Upgrade impact**: low. The removed forms stopped being the canonical spelling in v2.0 (a year ago in project time); the deprecation warning nudged users toward the new forms for a full major-version cycle. If a script still invokes the old forms, it now exits non-zero with a generic unknown-flag / unknown-command message instead of a targeted deprecation-warning-then-succeed. Fix is a one-line sed substitution in the invoking script.
+
+### Changed
+
+- **`.envrc` generator** ([pyve.sh:1071-1086](pyve.sh#L1071-L1086), [pyve.sh:1120-1133](pyve.sh#L1120-L1133)). New sentinel-guarded block runs both on fresh-creation and pre-existing-file paths, so the guard migrates onto `.envrc` files produced by pyve < v2.3.0 without requiring `--force`. One info line fires when the block is appended ("Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)").
+- **`pyve run` dispatcher** ([pyve.sh:2050-2062](pyve.sh#L2050-L2062)). Silently probes the version manager before the backend branches so `is_asdf_active` has input, then `export`s the guard var once before all three exec sites. Silent — no output per invocation.
+- **`lib/ui.sh` slimmed down** — 30 lines of `deprecation_warn` + `_rename_seen` + `__DEPRECATION_WARNED_KEYS` removed. The module is now focused on the unified palette + banner helpers + edit-distance helper.
+- **Testing Strategy section of `tech-spec.md`** updated with the four new bats files from Phases I and J (`test_env_detect.bats`, `test_distutils_shim_coverage.bats`, `test_asdf_compat.bats`, `test_bash32_compat.bats`).
+
+### Fixed
+
+- **`.envrc` asdf reshim bug root-fix**. Pre-v2.3.0, running `pip install <new-cli>` inside a pyve venv on an asdf system could leave the CLI resolvable only through `~/.asdf/shims/<new-cli>` (which dispatched through asdf instead of executing the venv binary). The new `.envrc` guard prevents the asdf Python plugin from reshimming on every direnv-allow, so venv binaries stay reachable directly. Full repro + root-cause in [docs/specs/pyve-asdf-reshim-bug-brief.md](docs/specs/pyve-asdf-reshim-bug-brief.md).
+
+### Developer notes
+
+- **Test suite**: bats **712 / 712 passing** (was 707 at end of v2.2.1; +10 from J.e, +15 from J.a/b/c, -15 from J.d's test cleanup — net +10). Integration tests unchanged in count; `pyve.run('testenv', '--init')` invocations rewritten to `'init'` across three integration files.
+- **Design decisions recorded in Story J.c notes**: `export` chosen over `env VAR=... <cmd>` prefix for the `pyve run` guard (simpler — one export before the branch vs. per-exec wrapping; exec replaces the shell so parent-env pollution is moot). Opt-out is env-var-only (no CLI flag) per FR-18 scope discipline — a flag commits to a permanent surface for a narrow defense-in-depth feature.
+- **Design decision recorded in Story J.d notes**: removed alias-handlers fall through to the generic `unknown_flag_error` / `Unknown command` paths rather than being converted to Category B `legacy_flag_error` entries. Tradeoff documented — the generic message is less targeted, but "remove the alias-handling" was the task's literal instruction. If users hit it in practice, a one-line `legacy_flag_error` stanza per form can be added back without re-introducing the deprecation-warning machinery.
+- **Pre-existing test-data bugs surfaced during J.d verification**: `test_subcommand_cli.py::TestLegacyFlagCatch` parametrize entries for `--validate` and `--python-version` assert `"pyve validate"` / `"pyve python-version"` as the migration-hint text, but `pyve.sh` has always output `"pyve check"` / `"pyve python set <ver>"` via `legacy_flag_error`. Confirmed pre-existing via `git stash` baseline. Filed as a follow-up test-data cleanup story outside J scope.
+
+### Migration notes
+
+Breaking: the four removed legacy forms (`pyve testenv --init`, `--install`, `--purge`, and `pyve python-version <ver>`) now exit non-zero instead of delegate-with-warning. If a script or CI job calls any of them, swap to the new form:
+
+```sh
+# Before (v2.2.x)
+pyve testenv --init
+pyve testenv --install -r requirements-dev.txt
+pyve testenv --purge
+pyve python-version 3.13.7
+
+# After (v2.3.0+)
+pyve testenv init
+pyve testenv install -r requirements-dev.txt
+pyve testenv purge
+pyve python set 3.13.7
+```
+
+No config-file format changes. `pyve --version` reports `2.3.0`. `.envrc` files generated by pyve < v2.3.0 gain the asdf guard on the next `pyve init` (sentinel-grep ensures no duplication).
+
 ## [2.2.1] - 2026-04-23
 
 Coverage-hardening patch for Phase I. After v2.2.0 shipped, Codecov surfaced a `lib/` bash-subtotal of **62.44%** — the I.b–I.g test activations weren't reaching the coverage measurement because the `bash-coverage` CI job only ran kcov against the venv-backend integration tests. This release wires the micromamba integration path into kcov, adds direct bats coverage for two previously-untested libraries, and surfaces one latent dead-branch bug along the way. No user-facing CLI changes.

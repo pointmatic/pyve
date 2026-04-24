@@ -61,45 +61,22 @@ _install_banner_absent='Dev/test runner environment not initialized'
 }
 
 #============================================================
-# Legacy flag grammar — routes to the same action (v1.x: no warning)
+# Category A legacy flag grammar — no longer routable (Story J.d)
+#
+# The former "routes to the same action" and equivalence tests tested
+# behavior that shipped in v1.x and was carried forward with a stderr
+# deprecation warning in v2.0. Story J.d (v2.3.0) removed the handlers;
+# `pyve testenv --init|--install|--purge` now fall through to the
+# `-*)` unknown-flag arm and exit non-zero.
+# See tests/unit/test_deprecation_warnings.bats for the rejection
+# assertions. Kept a single negative-regression here so this file's
+# grammar coverage stays complete.
 #============================================================
 
-@test "testenv: 'pyve testenv --init' routes to the init action" {
+@test "testenv: 'pyve testenv --init' is no longer routable (rejected, non-zero exit)" {
     run "$PYVE_SCRIPT" testenv --init
-    [[ "$output" == *"$_init_banner"* ]]
-}
-
-@test "testenv: 'pyve testenv --purge' routes to the purge action" {
-    run "$PYVE_SCRIPT" testenv --purge
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"$_purge_banner_absent"* ]]
-}
-
-@test "testenv: 'pyve testenv --install' routes to the install action" {
-    run "$PYVE_SCRIPT" testenv --install
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"$_install_banner_absent"* ]]
-}
-
-#============================================================
-# Equivalence — old and new grammar produce the same signal
-#============================================================
-
-@test "testenv: 'init' and '--init' reach the same action" {
-    run "$PYVE_SCRIPT" testenv init
-    local new_form_saw_banner=0
-    [[ "$output" == *"$_init_banner"* ]] && new_form_saw_banner=1
-
-    # Banner only fires on fresh venv creation; reset so the second
-    # invocation exercises the same code path.
-    rm -rf .pyve/testenv
-
-    run "$PYVE_SCRIPT" testenv --init
-    local old_form_saw_banner=0
-    [[ "$output" == *"$_init_banner"* ]] && old_form_saw_banner=1
-
-    [ "$new_form_saw_banner" -eq 1 ]
-    [ "$old_form_saw_banner" -eq 1 ]
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"$_init_banner"* ]]
 }
 
 #============================================================
@@ -125,11 +102,14 @@ _install_banner_absent='Dev/test runner environment not initialized'
     [[ "$output" == *"testenv purge"* ]]
 }
 
-@test "testenv: --help notes legacy flag forms are still accepted" {
+@test "testenv: --help no longer mentions the Category A legacy flag forms (Story J.d)" {
+    # Pre-v2.3.0 `pyve testenv --help` listed `--init|--install|--purge`
+    # under a "Legacy flag forms" header. Story J.d removed the handlers;
+    # the help text was pruned to match.
     run "$PYVE_SCRIPT" testenv --help
     [ "$status" -eq 0 ]
-    # Look for either the "Legacy" header or the flag names.
-    [[ "$output" == *"Legacy"* ]] || [[ "$output" == *"--init"* ]]
+    [[ "$output" != *"Legacy flag forms"* ]]
+    [[ "$output" != *"pyve testenv --init"* ]]
 }
 
 #============================================================

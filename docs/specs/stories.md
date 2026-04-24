@@ -1622,51 +1622,66 @@ See [phase-J-environment-compatibility-plan.md](phase-J-environment-compatibilit
 
 ---
 
-### Story J.a: Add `is_asdf_active` helper with env-var gate [Planned]
+### Story J.a: Add 'is_asdf_active' helper with env-var gate [Done]
 
 Introduce the single point of truth that downstream stories (J.b, J.c) will call. Includes the `PYVE_NO_ASDF_COMPAT=1` opt-out so all callers short-circuit consistently.
 
 **Tasks**
 
-- [ ] Add `is_asdf_active()` to `lib/env_detect.sh`: returns 0 when `$VERSION_MANAGER == "asdf"` AND `PYVE_NO_ASDF_COMPAT` is unset/empty; returns 1 otherwise
-- [ ] Write Bats unit tests in a new `tests/unit/test_asdf_compat.bats`: asdf-present-and-gate-unset → 0, asdf-absent → 1, `PYVE_NO_ASDF_COMPAT=1` → 1 even when asdf is present
-- [ ] Write failing red tests for J.b (`.envrc` contains `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` when asdf is active) and J.c (`pyve run` exposes the env var to its subprocess when asdf is active) — these stay red until the respective stories green them
-- [ ] Verify: `make test-unit` passes for the helper's own tests; the red tests are the only failures
+- [x] **`is_asdf_active()` added** at [lib/env_detect.sh:265-285](../../lib/env_detect.sh#L265-L285) under a new "asdf/direnv Coexistence (Phase J)" section. Returns 0 iff `$VERSION_MANAGER == "asdf"` AND `PYVE_NO_ASDF_COMPAT` is unset/empty; returns 1 otherwise. Includes an explanatory docstring covering downstream callers (J.b `.envrc` generator, J.c `pyve run` dispatcher) and the opt-out rationale (users who `pip install --user` globally and legitimately need asdf reshim).
+- [x] **New bats file [tests/unit/test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats)** with **6 active tests** for the helper contract: asdf-active no-gate → 0, pyenv → 1, empty VM → 1, `PYVE_NO_ASDF_COMPAT=1` → 1 (active suppressed), `PYVE_NO_ASDF_COMPAT=""` → 0 (empty is not "set"), `PYVE_NO_ASDF_COMPAT=yes` → 1 (any non-empty value suppresses).
+- [x] **J.b / J.c placeholder tests scaffolded (5 total) with `skip`** pointing at the respective stories — same pattern as the Phase I bootstrap-test activation flow. Each placeholder includes an implementation-shape comment so J.b / J.c can drop the `skip` and fill the body without re-designing the test. Placeholders: `.envrc venv / micromamba / negative-case` for J.b; `pyve run subprocess env / gate suppresses` for J.c.
+- [x] **Test implementation vs. story text nuance**: the story text called for "failing red tests for J.b / J.c — these stay red until the respective stories green them." Interpreted as: tests scaffolded so J.b / J.c can green them. Used `skip` with a reason rather than actively-failing tests to keep CI green in the interim, matching the project's existing pattern (bootstrap test skips for I.b-I.g, K-pointer skips in I.h). If the original author wants actively-failing-expected-to-stay-red tests in CI, happy to flip them, but this approach keeps the `bash-coverage` and `unit-tests` jobs green end-to-end.
+- [x] **Red → Green**: ran the new bats file pre-impl — 6 tests failed with `command not found` (correct red state); 5 placeholders skipped. Added `is_asdf_active()` → all 6 active tests pass; 5 placeholders still correctly skipped.
+- [x] **Verification**:
+  - `bats tests/unit/test_asdf_compat.bats` → 11 tests, 6 active + 5 skipped (with pointer reasons).
+  - `bats tests/unit/test_env_detect.bats` → 33 passed (no regression — `is_asdf_active` added to a new section without touching existing functions).
+  - Full bats suite: **718 / 718 passing** (was 707 at end of I.l; +11).
 
 ---
 
-### Story J.b: `.envrc` asdf compatibility guard [Planned]
+### Story J.b: '.envrc' asdf compatibility guard [Done]
 
 Implements FR-J1 + FR-J3. Injects `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` into generated `.envrc` when asdf is active, with a sentinel comment for idempotency and an info-line notice.
 
 **Tasks**
 
-- [ ] Update the venv-backend `.envrc` generator in `pyve.sh` (~L1042) to append the asdf compat block via heredoc when `is_asdf_active` returns 0
-- [ ] Update the micromamba-backend `.envrc` generator in `pyve.sh` (~L1076) identically
-- [ ] Use sentinel comment `# Prevent asdf Python plugin from reshimming venv-installed CLIs.` — grep for it on reinit to avoid duplicating the block
-- [ ] Emit info line after the "Created .envrc" success line explaining what was added and the global-`pip install` caveat (use `lib/ui.sh::info`)
-- [ ] Green the `.envrc` red test from J.a
-- [ ] Add reinit idempotency test: run `pyve init` twice, assert the asdf block appears exactly once and the file is byte-identical between runs (md5-style, matches the H.a pattern)
-- [ ] Verify: integration tests pass for both backends on asdf-present and asdf-absent systems
+- [x] **Venv-backend `.envrc` generator updated** at [pyve.sh:1071-1086](../../pyve.sh#L1071-L1086). Appends the asdf compat block via heredoc guarded by `is_asdf_active && ! grep -qF <sentinel>`. Applies to both fresh-creation and pre-existing `.envrc` so the guard migrates onto files produced by pyve < v2.3.0.
+- [x] **Micromamba-backend `.envrc` generator updated identically** at [pyve.sh:1120-1133](../../pyve.sh#L1120-L1133). Kept as a copy rather than extracted to a helper — the two generators are already parallel in structure and the block is three executable lines.
+- [x] **Sentinel comment**: `# Prevent asdf Python plugin from reshimming venv-installed CLIs.` (followed by an explanation line and the export). Sentinel grep at the top of the guard prevents duplication across re-init.
+- [x] **Info line**: `info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"` fires only when the block is actually appended (sentinel-grep would skip the info on no-op re-append too).
+- [x] **J.a placeholder tests greened** in [tests/unit/test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats) — dropped the 3 `skip` markers and filled in bodies: venv/micromamba positive (+2), asdf-not-active negative, PYVE_NO_ASDF_COMPAT=1 negative. Uses a new helper `source_pyve_fn` that awk-extracts the function body from pyve.sh and evals it — avoids sourcing pyve.sh (whose trailing `main "$@"` would run CLI dispatch).
+- [x] **H.a-pattern idempotency test added** ([test_asdf_compat.bats:173-194](../../tests/unit/test_asdf_compat.bats#L173-L194)): runs `init_direnv_venv` twice with asdf active, asserts byte-identical file (`md5` / `md5sum` cross-platform) and that the sentinel appears exactly once.
+- [x] **Upgrade-path test added** ([test_asdf_compat.bats:196-216](../../tests/unit/test_asdf_compat.bats#L196-L216)): pre-creates an `.envrc` without the sentinel (simulating pyve < v2.3.0 output), runs the generator, asserts the guard is appended while legacy content is preserved.
+- [x] **Test-infrastructure note**: added local `source "$PYVE_ROOT/lib/ui.sh"` to `setup()` because `setup_pyve_env` in [tests/helpers/test_helper.bash:8-20](../../tests/helpers/test_helper.bash#L8-L20) sources most lib files but not `ui.sh` (where `info()` / `success()` live, both called by the generators). Scoped to this file to avoid a cross-suite diff.
+- [x] **Verification**:
+  - `bats tests/unit/test_asdf_compat.bats` → 14 tests: 12 active + 2 J.c placeholders skipped. All active tests pass.
+  - Full bats suite: **721 / 721 passing** (was 718 at end of J.a; +3 new J.b tests beyond the 3 un-skipped placeholders).
+  - Integration `test_bootstrap.py + test_helpers.py + test_venv_workflow.py`: 35 passed, 2 skipped. The venv workflow integration tests exercise `init_direnv_venv` through `pyve init`; on this (asdf-active) machine the generated `.envrc` files now include the guard, and no existing assertions break because no integration test inspects `.envrc` contents (only `.gitignore` mentions of `.envrc`).
 
 ---
 
-### Story J.c: `pyve run` asdf compatibility guard [Planned]
+### Story J.c: 'pyve run' asdf compatibility guard [Done]
 
 Implements FR-J2. Defense-in-depth for `--no-direnv` users and CI invocations where `.envrc` is not sourced.
 
 **Tasks**
 
-- [ ] Update the `pyve run` dispatcher in `pyve.sh` to prefix subprocess exec with `env ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 …` when `is_asdf_active` returns 0
-- [ ] Applies to both venv and micromamba execution paths
-- [ ] No user-visible output — this is silent defense-in-depth
-- [ ] Green the `pyve run` red test from J.a (assert subprocess environment contains `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` when asdf is active)
-- [ ] Add negative test: `PYVE_NO_ASDF_COMPAT=1` suppresses the injection
-- [ ] Verify: `test_run_command.py` integration tests still pass
+- [x] **`run_command` dispatcher updated** at [pyve.sh:2050-2062](../../pyve.sh#L2050-L2062). Probes the version manager silently (redirected stderr so `pyve run` doesn't emit warnings on every call when no manager is installed — real setup errors surface during `pyve init`), then `export`s the guard env var when `is_asdf_active` returns 0. Applies to all three exec sites (venv-bin, venv-PATH-fallback, micromamba) without touching them individually.
+- [x] **`export` vs `env VAR=... prefix` decision**: the task text called for `env`-prefix, but `export` is semantically equivalent since the subsequent `exec` replaces the shell — parent-env pollution is moot. `export` keeps each exec site's line count unchanged (vs. adding an `if/else` around each of the three sites). Recorded as a deliberate deviation from the task text's literal phrasing.
+- [x] **`source_shell_profiles` call added** at the guard site — required because `run_command` doesn't otherwise initialize the version manager (`VERSION_MANAGER` would be empty, and `is_asdf_active` would always return 1 without it). Silently probes; doesn't emit.
+- [x] **Applies to both backends**: `export` fires before all exec sites regardless of backend. For micromamba, the env var flows through `micromamba run -p <env> <cmd> <args>` to the child process via standard env inheritance.
+- [x] **Silent defense-in-depth**: no new user-facing output. The `info` line in J.b fires once at init time; `pyve run` adds nothing additional per invocation.
+- [x] **3 J.c tests added** at [test_asdf_compat.bats:219-267](../../tests/unit/test_asdf_compat.bats#L219-L267): positive (asdf active → `ASDF_GUARD=1`), negative (`PYVE_NO_ASDF_COMPAT=1` → unset), pyenv (not-asdf → unset). Technique: plant a fake `envdump` binary in `.venv/bin` that `printf`s the env var value; stub `source_shell_profiles` and `detect_version_manager` to isolate from host state; each test sets `VERSION_MANAGER` explicitly. `pyve run envdump` exec-replaces the subshell spawned by bats's `run`, producing output that bats captures for assertion.
+- [x] **Micromamba test scope note**: the 3 tests exercise the venv path only. The micromamba path uses `exec "$micromamba_path" run -p "$env_path" "$@"` — env-var propagation through `micromamba run` is a micromamba-level contract, not a pyve-level one. Integration tests in `test_run_command.py` already exercise the full `pyve run` micromamba path; re-creating that in bats would require a real micromamba binary. The `export` in pyve.sh is sufficient — if micromamba ever strips the env var, that's a micromamba bug, not a pyve one.
+- [x] **Verification**:
+  - `bats tests/unit/test_asdf_compat.bats` → 15 tests, all active, all green.
+  - Full bats suite: **722 / 722 passing** (was 721 at end of J.b; +3 new active tests replace 2 skipped placeholders = net +1 line count).
+  - Integration `test_run_command.py`: **26 passed** (~2m 24s) — no regression from the `source_shell_profiles + detect_version_manager + is_asdf_active + export` block.
 
 ---
 
-### Story J.d: Rip Category A deprecation paths [Planned]
+### Story J.d: Rip out Category A deprecation paths [Done]
 
 Remove the two remaining delegation-with-warning paths shipped in Phase H. Category B (three-line hard-error legacy-flag catches in `legacy_flag_error()`) stays — it costs nothing and gives precise hints for stale docs, blog posts, and LLM-training-data invocations.
 
@@ -1677,46 +1692,59 @@ Remove the two remaining delegation-with-warning paths shipped in Phase H. Categ
 
 **Tasks**
 
-- [ ] Locate and remove the `pyve testenv --init|--install|--purge` alias-handling + `delegation_warn` call site in `pyve.sh`
-- [ ] Locate and remove the `pyve python-version <ver>` alias-handling + `delegation_warn` call site in `pyve.sh`
-- [ ] Decide: keep `delegation_warn` helper in `lib/ui.sh` if no other caller remains, or remove it — grep to confirm zero call sites
-- [ ] Remove the Bats / pytest tests that verified the deprecation warnings fire correctly
-- [ ] Add one new test per form asserting the old form now errors out via the standard "unknown flag / subcommand" path (not via `delegation_warn`), matching the Category B behavior
-- [ ] Update `features.md` — drop the "Deprecation warnings (still work in v2.x; removed in v3.0)" entry from the legacy-flag table
-- [ ] Update `tech-spec.md` — drop the "Deprecated subcommand forms" paragraph from the CLI Design section
-- [ ] Verify: full test suite passes
+- [x] **Testenv Category A stanzas removed** from `pyve.sh`. The three `deprecation_warn` case arms (pre-edit lines 1366-1385) now fall through to the existing `-*)` arm which calls `unknown_flag_error`. Updated the unknown_flag_error valid-flag list (dropped `--init --install --purge`) and pruned the "Legacy flag forms" block from `pyve testenv --help`. Two in-code help strings referencing `pyve testenv --install -r <req>` updated to `pyve testenv install -r <req>`.
+- [x] **`python-version` case arm removed** from the main dispatcher (pre-edit lines 3412-3427). `pyve python-version <ver>` now falls through to the dispatcher's `*)` arm ("Unknown command"). The dead `show_python_version_help` function removed alongside it, and the top-level `pyve --help` section dropped its "(Legacy: `pyve python-version <ver>` still accepted)" note.
+- [x] **`deprecation_warn` + `_rename_seen` + `__DEPRECATION_WARNED_KEYS` removed from `lib/ui.sh`**. Post-removal grep confirmed zero remaining callers. Removed the supporting machinery (colon-delimited flat-string guard) in one edit; the `bash 3.2 sources cleanly` test at [tests/unit/test_ui.bats:312](../../tests/unit/test_ui.bats#L312) still covers the module's portability.
+- [x] **Bats test cleanup**:
+  - [tests/unit/test_deprecation_warnings.bats](../../tests/unit/test_deprecation_warnings.bats) — entire file rewritten. Removed all "warning fires correctly" tests; added 4 hard-error regression tests (one per legacy form) + 1 positive regression for the new `pyve python set` form. File kept under original name for git history.
+  - [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) — dropped 8 tests covering the `deprecation_warn` helper (incl. the once-per-key-guard, distinct-keys correctness, NO_COLOR test, and the pyve.sh-grep invariant for colon-free keys). Kept the bash-3.2 sourcing and `declare -A` invariant.
+  - [tests/unit/test_testenv_grammar.bats](../../tests/unit/test_testenv_grammar.bats) — replaced the 3 "routes to the same action" Category A tests + the equivalence test with a single negative regression asserting `pyve testenv --init` now exits non-zero without firing the `_init_banner`.
+  - [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats), [tests/unit/test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats), [tests/unit/test_python_command.bats](../../tests/unit/test_python_command.bats) — flipped the "routes to python-version handler" / "--help still works" tests into rejection assertions.
+- [x] **Integration-test fixture updates**: `pyve.run('testenv', '--init')` invocations in [tests/integration/test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py), [tests/integration/test_testenv.py](../../tests/integration/test_testenv.py), [tests/integration/test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py) rewritten to `pyve.run('testenv', 'init')`. Also flipped `TestNewSubcommandRouting::test_python_version_subcommand_sets_version` into a rejection test (renamed to `test_python_version_subcommand_is_rejected`).
+- [x] **`features.md` updated**: the "Deprecation warnings (still work in v2.x; removed in v3.0)" row in the legacy-flag table was replaced with a v2.3.0 row documenting the J.d hard-removal. Inline "Legacy form" note in the `pyve python` section also updated. Stale `pyve testenv --init` reference in the testenv section rewritten to the new form.
+- [x] **`tech-spec.md` updated**: dropped the `deprecation_warn` / `_rename_seen` rows from the lib/ui.sh function table; removed the "Deprecated subcommand forms (work in v2.x, removed in v3.0)" paragraph; updated the CLI Design intro blurb and the "No compat shim, no silent translation" paragraph to reflect that J.d is the endpoint.
+- [x] **Verification**:
+  - Full bats suite: **702 / 702 passing** (down from 722 at end of J.c — net -20 reflects the removal of `deprecation_warn`'s tests (-8) + the reshaping of 12 tests that dropped 2 routing tests per Category A entry).
+  - Integration `test_testenv.py`: 5 of 6 pass; the one failure (`test_testenv_survives_force_reinit`) is a 120s subprocess timeout unrelated to J.d (same pre-existing `pyve init --force` prompt-blocking issue documented in I.a's pre-existing-failures list).
+  - Integration `test_subcommand_cli.py`: 4 pre-existing failures surfaced (parametrize-data bugs in `TestLegacyFlagCatch` — tests expect `"pyve validate"` / `"pyve python-version"` as the new-form hint, but pyve.sh has always said `"pyve check"` / `"pyve python set <ver>"`). Verified pre-existing via `git stash` baseline. Out of J.d scope; worth filing as a test-data cleanup follow-up.
+  - `test_run_command.py`: 26 pass (no regression from J.c's work).
 
 ---
 
-### Story J.e: bash 3.2 compat invariant test + full-repo audit [Planned]
+### Story J.e: bash 3.2 compat invariant test + full-repo audit [Done]
 
 Preemptive hardening against bash-4+ slips. Two recent Phase H bugs (H.e.7a `declare -A`, H.e.9h `mapfile`) landed only to be caught by CI; a grep-invariant test catches future slips pre-commit.
 
 **Tasks**
 
-- [ ] Create `tests/unit/test_bash32_compat.bats` with one `@test` block per disallowed construct
-- [ ] Construct set: `declare -A`, `typeset -A`, `local -A`, `mapfile`, `readarray`, `${var^^}`, `${var,,}`, `${var^}`, `${var,}`, `${var@…}` (anchored `@[UuLlQqEePpAaKk]`), `declare -n`, `coproc <name>`, `shopt -s globstar`
-- [ ] Each block `grep -rE`s across `pyve.sh`, `lib/*.sh`, `lib/completion/*`; fails on any match; uses self-exclusion so the test file's own patterns don't trip it
-- [ ] Each block's failure message names the bash 3.2-safe alternative (e.g., "use flat colon-delimited string instead of `declare -A`")
-- [ ] Run the full grep set manually against the current tree; fix any surfaced bash-4+ constructs inline within this story
-- [ ] Expected outcome: tree is already clean (H.e.7a + H.e.9h were the known offenders). If it isn't, fix surfaced issues as small tasks within this story, not spun off
-- [ ] **Optional:** add `check-bash32` Makefile target that sources every `lib/*.sh` under `/bin/bash` and reports failures. Not wired into default `make test`
-- [ ] Verify: `make test-unit` passes with the new bats file
+- [x] **Created [tests/unit/test_bash32_compat.bats](../../tests/unit/test_bash32_compat.bats)** with **10 `@test` blocks** covering all constructs in the task's set (the four case-mod expansions consolidated into one regex since the fix is the same for all of them).
+- [x] **Full construct coverage**: `declare -A`, `typeset -A`, `local -A`, `mapfile`, `readarray`, case-mod `${var^^}` / `${var,,}` / `${var^}` / `${var,}`, `${var@[UuLlQqEePpAaKk]}` @-transform, `declare -n` nameref, `coproc NAME` (named only — anonymous form is bash 3.2-safe), `shopt -s globstar`.
+- [x] **Scope**: `pyve.sh`, `lib/*.sh`, `lib/completion/pyve.bash`. Deliberately excludes `lib/completion/_pyve` (zsh completion script — `typeset -A` is idiomatic zsh, and the file opens with `#compdef pyve`).
+- [x] **Comment-line handling**: shared `_grep_non_comment` helper strips pure-comment matches via `grep -vE '^[^:]+:[0-9]+:[[:space:]]*#'` so explanatory comments (e.g., [lib/completion/pyve.bash:6](../../lib/completion/pyve.bash#L6) documenting why `mapfile` isn't used) don't trip the invariant. Limitation: inline trailing comments like `foo # mentions mapfile` would still match — acceptable since no pyve code has those currently and the fix is trivial if needed.
+- [x] **Failure-message guidance**: each `@test` calls `_fail_with_matches` with a specific bash-3.2-safe alternative named (e.g. `"'while IFS= read -r line; do … done < file'"` for `mapfile`, `"a flat colon-delimited string"` for `declare -A`). Match lines are dumped to stderr so the offender is visible without needing to re-run grep.
+- [x] **Manual full-repo audit**: ran each grep directly. Tree is clean — only two hits surfaced, both known non-issues: (1) the comment on `lib/completion/pyve.bash:6` (filtered by `_grep_non_comment`), (2) `typeset -A opt_args` in `lib/completion/_pyve` (excluded from scope as zsh). No fixes needed inline.
+- [x] **Sanity check**: planted 5 bash-4 violations inside a never-called function in `lib/utils.sh` (`if false; then … fi` block so syntax is parsed but never executed, avoiding source-time failures). Bats correctly reported 5 `not ok` (declare -A, typeset -A, mapfile, case-mod, declare -n); the other 5 tests correctly reported `ok`. Reverted lib/utils.sh; all 10 tests back to green. Confirms the tests aren't trivially-passing.
+- [ ] **Optional Makefile target skipped**. The grep invariants cover the main failure mode (slip-at-write-time). A `check-bash32` target that sources every lib file under `/bin/bash` would add runtime-level protection but was marked optional; if a future bash-4+ construct slips past the grep (e.g., via inline trailing comment), CI's `unit-tests` job already catches it on macOS runners which use `/bin/bash`.
+- [x] **Verification**: `bats tests/unit/test_bash32_compat.bats` → 10 passed. Full bats suite: **712 / 712 passing** (was 702 at end of J.d; +10).
 
 ---
 
-### Story J.f: v2.3.0 Release Wrap [Planned]
+### Story J.f: v2.3.0 Release Wrap [Done]
 
 Spec updates, CHANGELOG, and version bump. Runs last so all implementation is visible and spec language matches shipped behavior.
 
 **Tasks**
 
-- [ ] Update `features.md` — add new FR for asdf compat (FR-J? or renumber into the existing scheme); add `PYVE_NO_ASDF_COMPAT` and `PYVE_ASDF_COMPAT` to the Environment Variables table
-- [ ] Update `tech-spec.md` — new subsection under Cross-Cutting Concerns: "asdf/direnv Coexistence (Phase J / v2.3.0)" describing the `.envrc` block, the sentinel-grep idempotency, and the `pyve run` defense-in-depth. Update Testing Strategy to reference `tests/unit/test_bash32_compat.bats`
-- [ ] Update `pyve-asdf-reshim-bug-brief.md` status — mark resolved, add pointer back to Phase J stories
-- [ ] Finalize `CHANGELOG.md` v2.3.0 entry: asdf compat guard (.envrc + pyve run), Category A deprecation removal, bash 3.2 invariant test. Breaking-changes note for Category A removal (even though the userbase is small, the line is worth including for future archaeology)
-- [ ] Bump `VERSION` in `pyve.sh` from `2.2.0` (or whatever I lands at) to `2.3.0`
-- [ ] Verify: CI passes end-to-end; `pyve --version` prints `2.3.0`
+- [x] **`features.md` updated**: added [**FR-18**: asdf/direnv Coexistence (Phase J / v2.3.0)](../features.md) consolidating the phase-J plan's FR-J1 / FR-J2 / FR-J3 into a single sequential entry (matches features.md's numeric FR convention; FR-J phase-scoped naming stayed in the plan doc). Added `PYVE_NO_ASDF_COMPAT` and `PYVE_ASDF_COMPAT` rows to the Environment Variables table.
+- [x] **`tech-spec.md` updated**: new **"asdf/direnv Coexistence (Phase J / v2.3.0)"** subsection under Cross-Cutting Concerns describing the two-layer injection (`.envrc` generator + `pyve run` dispatcher), the sentinel-grep idempotency pattern, the `is_asdf_active` helper as single source of truth, and the opt-out rationale. Testing-Strategy table now lists `test_env_detect.bats` (33), `test_distutils_shim_coverage.bats` (17), `test_asdf_compat.bats` (15), `test_bash32_compat.bats` (10).
+- [x] **`pyve-asdf-reshim-bug-brief.md` marked resolved**: added a status banner at the top pointing at FR-18 + tech-spec subsection + Stories J.a/J.b/J.c. Original design rationale preserved below as historical context.
+- [x] **`CHANGELOG.md` v2.3.0 entry finalized** ([CHANGELOG.md:8-56](../../CHANGELOG.md#L8-L56)): sections populated — `Added` (asdf guard, PYVE_NO_ASDF_COMPAT, is_asdf_active helper, bash 3.2 invariant test), `Removed (breaking)` (four legacy forms + deprecation_warn helper with explicit upgrade-impact note), `Changed` (.envrc generator, pyve run dispatcher, ui.sh slimmed, testing-strategy table), `Fixed` (asdf reshim root-fix), `Developer notes` (test count delta, design-decision pointers, pre-existing test-data bugs surfaced), `Migration notes` (four-line before/after example for the removed forms).
+- [x] **VERSION bumped** `2.2.1` → `2.3.0` at [pyve.sh:32](../../pyve.sh#L32). Matching assertion at [tests/unit/test_cli_dispatch.bats:203-207](../../tests/unit/test_cli_dispatch.bats#L203-L207) updated.
+- [x] **Verification**:
+  - `pyve --version` → `pyve version 2.3.0`.
+  - Full bats suite: **712 / 712 passing**.
+  - Integration suites: no regressions from J.a–J.e (verified incrementally as each story landed; J.d exposed 4 pre-existing test-data bugs in `test_subcommand_cli.py::TestLegacyFlagCatch` parametrize, confirmed via `git stash` baseline — out of Phase J scope).
+  - CI verification pending the next push — the `integration-tests-bootstrap` job from Story I.g will re-run on the v2.3.0 tag.
 
 ---
 

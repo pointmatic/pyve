@@ -65,10 +65,12 @@ run_pyve() {
     [[ "$output" == *"DISPATCH:purge"* ]]
 }
 
-@test "dispatch: 'pyve python-version 3.12.0' routes to the python-version handler" {
-    PYVE_DISPATCH_TRACE=1 run_pyve python-version 3.12.0
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"DISPATCH:python-version"* ]]
+@test "dispatch: 'pyve python-version 3.12.0' is no longer a routable subcommand (Story J.d)" {
+    # Pre-v2.3.0 this case arm delegated-with-warning to `python set`.
+    # Story J.d ripped the alias; the dispatcher's *) arm now errors out.
+    run_pyve python-version 3.12.0
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"Unknown command"* ]] || [[ "$output" == *"unknown"* ]]
 }
 
 @test "dispatch: 'pyve self install' routes to the install_self handler" {
@@ -200,10 +202,10 @@ run_pyve() {
 # v2.0.1 was the H.f.5 release wrap)
 #============================================================
 
-@test "version: 'pyve --version' reports 2.2.1" {
+@test "version: 'pyve --version' reports 2.3.0" {
     run_pyve --version
     [ "$status" -eq 0 ]
-    [[ "$output" == *"2.2.1"* ]]
+    [[ "$output" == *"2.3.0"* ]]
 }
 
 #============================================================

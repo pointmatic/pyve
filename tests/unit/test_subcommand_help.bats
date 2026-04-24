@@ -64,17 +64,13 @@ run_pyve() {
     [[ "$output" == *"pyve purge - Remove"* ]]
 }
 
-@test "help: 'pyve python-version --help' prints python-version help and exits 0" {
+@test "help: 'pyve python-version --help' is no longer a routable subcommand (Story J.d)" {
+    # Pre-v2.3.0 `python-version)` had its own help block via
+    # show_python_version_help. Story J.d removed the handler and the
+    # help function; the dispatcher's *) arm now catches it.
     run_pyve python-version --help
-    [ "$status" -eq 0 ]
-    [ -n "$output" ]
-    [[ "$output" == *"pyve python-version - Set Python version"* ]]
-}
-
-@test "help: 'pyve python-version -h' is equivalent to --help" {
-    run_pyve python-version -h
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"pyve python-version - Set Python version"* ]]
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"pyve python-version - Set Python version"* ]]
 }
 
 @test "help: 'pyve self --help' prints self namespace help and exits 0" {

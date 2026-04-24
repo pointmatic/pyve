@@ -262,6 +262,30 @@ get_version_file_name() {
 }
 
 #============================================================
+# asdf/direnv Coexistence (Phase J)
+#============================================================
+
+# Returns 0 when pyve should apply asdf-reshim-avoidance measures.
+# True when `detect_version_manager` resolved to "asdf" AND the user has
+# not opted out via PYVE_NO_ASDF_COMPAT. Downstream callers:
+#   - Story J.b: .envrc generator injects ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+#   - Story J.c: `pyve run` dispatcher exports the same var to subprocesses
+#
+# The opt-out exists because some users run pyve under asdf but install
+# CLIs globally via `pip install --user`, and those CLIs legitimately
+# need asdf's reshim. PYVE_NO_ASDF_COMPAT=1 keeps the default asdf
+# behavior intact for that case.
+is_asdf_active() {
+    if [[ "$VERSION_MANAGER" != "asdf" ]]; then
+        return 1
+    fi
+    if [[ -n "${PYVE_NO_ASDF_COMPAT:-}" ]]; then
+        return 1
+    fi
+    return 0
+}
+
+#============================================================
 # Direnv Detection
 #============================================================
 

@@ -58,21 +58,22 @@ class TestNewSubcommandRouting:
     def test_purge_with_keep_testenv_flag(self, pyve, project_builder):
         """`pyve purge --keep-testenv` preserves the dev/test runner env."""
         pyve.init(backend="venv")
-        pyve.run("testenv", "--init")
+        pyve.run("testenv", "init")
         assert (pyve.cwd / ".pyve" / "testenv").exists()
 
         result = pyve.run("purge", "--keep-testenv", input="y\n")
         assert result.returncode == 0
         assert (pyve.cwd / ".pyve" / "testenv").exists()
 
-    def test_python_version_subcommand_sets_version(self, pyve, test_project):
-        """`pyve python-version <ver>` writes a .python-version file."""
+    def test_python_version_subcommand_is_rejected(self, pyve, test_project):
+        """`pyve python-version <ver>` is no longer a routable subcommand (Story J.d)."""
+        # Pre-v2.3.0 this case arm delegated-with-warning to `python set`.
+        # Story J.d ripped the alias; the dispatcher's *) arm now catches it.
+        # Users are steered at `pyve python set <ver>` via --help.
         result = pyve.run("python-version", "3.13.7", check=False)
-        # The handler may succeed (writes .python-version) or fail if pyenv/asdf
-        # are unavailable. Either way, the dispatcher must reach the handler —
-        # an "unknown command" exit would mean dispatch broke.
+        assert result.returncode != 0
         combined = (result.stdout or "") + (result.stderr or "")
-        assert "Unknown command" not in combined
+        assert "Unknown command" in combined
 
 
 class TestSelfNamespace:
