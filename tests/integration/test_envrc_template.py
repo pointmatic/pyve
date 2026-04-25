@@ -25,7 +25,11 @@ from pathlib import Path
 def venv_envrc_project(tmp_path_factory):
     """One-shot ``pyve init --backend venv`` with direnv enabled. Returns
     the .envrc text plus the project directory for project-dir-independence
-    assertions."""
+    assertions. Skipped when direnv is not on PATH — pyve init aborts in
+    that case (the .envrc generation only runs under the direnv path)."""
+    if not shutil.which('direnv'):
+        pytest.skip('direnv not installed on this runner')
+
     from pyve_test_helpers import PyveRunner, ProjectBuilder
 
     pyve_script_path = Path(__file__).parent.parent.parent / 'pyve.sh'
@@ -97,6 +101,8 @@ class TestMicromambaEnvrcTemplate:
     def test_envrc_uses_path_add_and_conda_prefix(self, pyve, project_builder):
         if not shutil.which('micromamba'):
             pytest.skip('micromamba not installed on this runner')
+        if not shutil.which('direnv'):
+            pytest.skip('direnv not installed on this runner')
 
         project_builder.create_environment_yml(
             name='test-env',
