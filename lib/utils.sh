@@ -1384,6 +1384,75 @@ detect_install_source() {
 }
 
 #============================================================
+# Uniform .envrc Template (v2.3.2)
+#============================================================
+
+# write_envrc_template <rel_bin_dir> <sentinel_var> <rel_env_root>
+#                      <backend_name> <env_name>
+#
+# Emits the uniform `.envrc` template shared by every backend. Paths are
+# written relative to the project directory so the generated file remains
+# project-dir-independent — `PATH_add` resolves relative entries against
+# `.envrc`'s directory at runtime, and `$PWD` in the sentinel export
+# expands to that same directory when direnv sources the file.
+#
+# Skips the write when `.envrc` already exists (leaving user customizations
+# intact) but always tops up the asdf reshim guard when `is_asdf_active`.
+write_envrc_template() {
+    local rel_bin_dir="$1"
+    local sentinel_var="$2"
+    local rel_env_root="$3"
+    local backend_name="$4"
+    local env_name="$5"
+    local envrc_file=".envrc"
+
+    # Absolute inputs are passed through as-is (callers in pyve.sh pass
+    # relative; bats tests occasionally pass absolute). Relative inputs
+    # are prefixed with $PWD at runtime so direnv resolves against the
+    # .envrc dir rather than the outer shell's cwd.
+    local env_root_expr
+    if [[ "$rel_env_root" == /* ]]; then
+        env_root_expr="$rel_env_root"
+    else
+        env_root_expr="\$PWD/$rel_env_root"
+    fi
+
+    if [[ -f "$envrc_file" ]]; then
+        info ".envrc already exists, skipping"
+    else
+        cat > "$envrc_file" << EOF
+# pyve-managed direnv configuration
+# Uniform template — all backends share this shape (v2.3.2).
+
+PATH_add "$rel_bin_dir"
+export $sentinel_var="$env_root_expr"
+export PYVE_BACKEND="$backend_name"
+export PYVE_ENV_NAME="$env_name"
+export PYVE_PROMPT_PREFIX="($backend_name:$env_name) "
+
+if [[ -f ".env" ]]; then
+    dotenv
+fi
+EOF
+        success "Created .envrc"
+    fi
+
+    # Asdf reshim guard (Story J.b): append when asdf is the active version
+    # manager, unless the sentinel is already present. Applies to freshly
+    # generated and pre-existing .envrc alike, so the guard migrates onto
+    # files created by pyve < v2.3.0.
+    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
+        cat >> "$envrc_file" << 'EOF'
+
+# Prevent asdf Python plugin from reshimming venv-installed CLIs.
+# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
+export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+EOF
+        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
+    fi
+}
+
+#============================================================
 # File Utilities
 #============================================================
 

@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-04-24
+
+Bugfix release (Story K.a.2). After `pyve init --force --backend micromamba` on a previously-venv project, `project-guide` shell completion (and any other completion whose rc-file guard uses `command -v`) silently stopped working. Venv-backed projects were unaffected.
+
+**Root cause**: the micromamba `.envrc` generator wrote a **relative** `ENV_PATH=".pyve/envs/<name>"` then did `export PATH="$ENV_PATH/bin:$PATH"`. Relative entries on `PATH` resolve against the caller's cwd, not the project directory. At `.zshrc` time the shell's cwd is `$HOME`, so the relative entry resolved to `$HOME/.pyve/envs/<name>/bin` — which does not exist. The `command -v project-guide` guard in rc-file completion blocks failed and completion never registered. The venv backend sidestepped this by `source`-ing Python's `activate` script, which bakes an absolute `VIRTUAL_ENV` into PATH.
+
+**Design** — uniform `.envrc` template across backends. Rather than fix micromamba in isolation, both backends now converge on a single four-line shape so the class of bug cannot recur and future backends (uv, poetry, conda) inherit the symmetry:
+
+```bash
+PATH_add "<rel_bin_dir>"                          # direnv stdlib: resolves relative → absolute
+export <BACKEND_SENTINEL>="$PWD/<rel_env_root>"   # VIRTUAL_ENV (venv) or CONDA_PREFIX (conda-like)
+export PYVE_BACKEND="<backend_name>"
+export PYVE_ENV_NAME="<env_name>"
+export PYVE_PROMPT_PREFIX="(<backend_name>:<env_name>) "
+```
+
+`PATH_add` is direnv's canonical primitive for "add a directory to PATH, accept it may be relative to `.envrc`, export the absolute form." Backend-native sentinels (`VIRTUAL_ENV` / `CONDA_PREFIX`) are set explicitly instead of inherited from an activate script, so tools that probe these env vars (pip, poetry, IDEs) keep working. The generated file is project-directory independent — `$PWD` expands at direnv-source time.
+
+### Added
+
+- **`write_envrc_template` helper** in [lib/utils.sh](lib/utils.sh). One shared emitter for the uniform template; `init_direnv_venv` and `init_direnv_micromamba` in [pyve.sh](pyve.sh) are now thin wrappers. Adding a new backend means calling the helper with five args — no new activation machinery.
+- **Bats unit tests** at [tests/unit/test_envrc_template.bats](tests/unit/test_envrc_template.bats) (15 tests): template shape, `PATH_add` vs hand-rolled `export PATH=`, backend-native sentinel with `$PWD` prefix, no `source activate`, idempotency, pre-existing `.envrc` preservation, asdf guard composition, project-dir independence.
+- **Integration tests** at [tests/integration/test_envrc_template.py](tests/integration/test_envrc_template.py) (6 venv tests + 1 micromamba, module-scoped init fixture): asserts the generated `.envrc` for both backends conforms to the uniform template.
+
+### Changed
+
+- **`init_direnv_venv` and `init_direnv_micromamba`** in [pyve.sh](pyve.sh) are now three-line wrappers around `write_envrc_template`. Zero behavior change for the asdf reshim guard (Story J.b) — the guard still appends via the same sentinel-grep idempotency pattern and still migrates onto pre-existing `.envrc` files.
+- **`PYVE_ENV_PATH`** is no longer exported by the micromamba `.envrc`. Unreferenced anywhere in the codebase or tests; the uniform template uses `CONDA_PREFIX` as the canonical sentinel instead.
+
+### Upgrade impact
+
+Low. Re-run `pyve init --force` (or delete `.envrc` and re-run `pyve init`) to regenerate `.envrc` under the new template; `direnv allow` picks it up on the next `cd`. Projects still on v2.3.1 `.envrc` files keep working — they just don't benefit from the fix. The asdf reshim guard migrates onto pre-existing files automatically (Story J.b behavior, preserved).
+
 ## [2.3.1] - 2026-04-24
 
 Bugfix release (Story K.a.1). `pyve init --force --backend micromamba --python-version <ver>` on a project with an existing venv config but no `environment.yml` hard-errored with `"Neither 'environment.yml' nor 'conda-lock.yml' found"` — even though the same invocation without `--force` (on a fresh directory) succeeds by scaffolding a starter `environment.yml`. Root cause: the `--force` pre-flight at [pyve.sh:654](pyve.sh#L654) duplicated `validate_lock_file_status` from the main micromamba branch but omitted the `scaffold_starter_environment_yml` call that precedes it; on a directory with neither file, validation's Case 4 fires before scaffolding gets a chance. Fix: invoke `scaffold_starter_environment_yml` before `validate_lock_file_status` in the `--force` pre-flight, mirroring the main-flow ordering. Regression test in [tests/integration/test_force_backend_detection.py](tests/integration/test_force_backend_detection.py).

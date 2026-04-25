@@ -145,7 +145,7 @@ pyve/
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VERSION` | `"2.3.1"` | Current Pyve version |
+| `VERSION` | `"2.3.2"` | Current Pyve version |
 | `DEFAULT_PYTHON_VERSION` | `"3.14.3"` | Default Python version for new environments |
 | `DEFAULT_VENV_DIR` | `".venv"` | Default venv directory name |
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
@@ -194,6 +194,7 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `insert_pattern_in_gitignore_section` | `(pattern, section_comment)` | Insert pattern after section comment; falls back to append |
 | `remove_pattern_from_gitignore` | `(pattern)` | Remove exact line match from `.gitignore` |
 | `write_gitignore_template` | `()` | Rebuild Pyve-managed template section, preserving user entries |
+| `write_envrc_template` | `(rel_bin_dir, sentinel_var, rel_env_root, backend_name, env_name)` | Emit the uniform v2.3.2 `.envrc` template shared by every backend (v2.3.2 / Story K.a.2). Skips the write when `.envrc` already exists; always tops up the asdf reshim guard when `is_asdf_active`. See "Uniform `.envrc` template" under Cross-Cutting Concerns. |
 | `read_config_value` | `(key)` → string | Read value from `.pyve/config` (supports dotted keys) |
 | `config_file_exists` | `()` → 0/1 | Check if `.pyve/config` exists |
 | `validate_venv_dir_name` | `(dirname)` → 0/1 | Reject empty, reserved names, invalid characters |
@@ -590,11 +591,31 @@ ERROR: See: pyve --help
 
 **No compat shim, no silent translation.** The legacy-flag catch list is always an immediate error — silent translation would hide the rename from users and build long-term tech debt. (The Category A delegate-with-warning paths — `testenv --init|--install|--purge`, `python-version <ver>` — shipped in Phase H were removed in Story J.d / v2.3.0.)
 
+### Uniform `.envrc` template (v2.3.2 / Story K.a.2)
+
+Every backend emits the same four-line shape via `write_envrc_template` in [lib/utils.sh](../../lib/utils.sh). `init_direnv_venv` and `init_direnv_micromamba` in [pyve.sh](../../pyve.sh) are thin wrappers that just fill in backend-specific arguments.
+
+```bash
+PATH_add "<rel_bin_dir>"                      # direnv stdlib: resolves relative → absolute
+export <BACKEND_SENTINEL>="$PWD/<rel_env_root>"  # VIRTUAL_ENV (venv) or CONDA_PREFIX (conda-like)
+export PYVE_BACKEND="<backend_name>"
+export PYVE_ENV_NAME="<env_name>"
+export PYVE_PROMPT_PREFIX="(<backend_name>:<env_name>) "
+```
+
+**Key properties.**
+
+- **`PATH_add` is the only path-mutating primitive.** Hand-rolled `export PATH="$ENV_PATH/bin:$PATH"` is forbidden — relative entries stay relative in PATH, which resolves against the caller's cwd and silently breaks rc-file completion guards like `command -v project-guide` when the shell starts outside the project directory (the v2.3.2 bug).
+- **Project-directory independence.** Relative paths are written literally in the file; `$PWD` in the sentinel export expands when direnv sources the `.envrc`, yielding the correct absolute path regardless of what the outer shell's cwd was at startup.
+- **Backend-native sentinel** (`VIRTUAL_ENV` for venv/pip-derived backends, `CONDA_PREFIX` for micromamba/conda-like backends) is set explicitly instead of by `source`-ing an activate script. Tools that probe these env vars (pip, poetry, IDEs) continue to work.
+- **Future backends** (uv, poetry) plug in by filling in `<rel_bin_dir> <sentinel_var> <rel_env_root> <backend_name> <env_name>` — no new activation machinery needed.
+- Applies only to the direnv path. `--no-direnv` generates no `.envrc` and is unaffected.
+
 ### asdf/direnv Coexistence (Phase J / v2.3.0)
 
 Implements FR-18. When pyve is run under asdf-managed Python, asdf's Python plugin reshims on `direnv allow`, so venv-installed CLIs resolve through `~/.asdf/shims/` instead of `.venv/bin/`. See [pyve-asdf-reshim-bug-brief.md](pyve-asdf-reshim-bug-brief.md) for the original repro and root-cause analysis. The fix sets `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` at two layers:
 
-- **`.envrc` block** (`init_direnv_venv` / `init_direnv_micromamba` in [pyve.sh](../../pyve.sh)): appends a three-line heredoc — sentinel comment `# Prevent asdf Python plugin from reshimming venv-installed CLIs.`, an override note referring to `PYVE_NO_ASDF_COMPAT=1`, and `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1`. Guarded by `is_asdf_active && ! grep -qF <sentinel> "$envrc_file"` so (a) the block only fires when asdf is the active version manager and the user hasn't opted out, and (b) re-appending is impossible. Also fires on pre-existing `.envrc` files from pyve < v2.3.0, so the guard migrates onto legacy installs without `pyve init --force`.
+- **`.envrc` block** (emitted by `write_envrc_template` in [lib/utils.sh](../../lib/utils.sh), invoked from `init_direnv_venv` / `init_direnv_micromamba` in [pyve.sh](../../pyve.sh)): appends a three-line heredoc — sentinel comment `# Prevent asdf Python plugin from reshimming venv-installed CLIs.`, an override note referring to `PYVE_NO_ASDF_COMPAT=1`, and `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1`. Guarded by `is_asdf_active && ! grep -qF <sentinel> "$envrc_file"` so (a) the block only fires when asdf is the active version manager and the user hasn't opted out, and (b) re-appending is impossible. Also fires on pre-existing `.envrc` files from pyve < v2.3.0, so the guard migrates onto legacy installs without `pyve init --force`.
 - **`pyve run` wrapper** (`run_command` in [pyve.sh](../../pyve.sh)): probes the version manager silently (`source_shell_profiles >/dev/null 2>&1 || true; detect_version_manager >/dev/null 2>&1 || true`), then `export`s `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` once before the three backend-specific exec sites (venv-bin, venv-PATH-fallback, micromamba). Silent defense-in-depth — no info line per invocation.
 
 **Helper.** `is_asdf_active()` in [lib/env_detect.sh](../../lib/env_detect.sh) is the single source of truth. Returns 0 iff `$VERSION_MANAGER == "asdf"` AND `PYVE_NO_ASDF_COMPAT` is unset/empty. Both call sites (`.envrc` generator + `pyve run`) use the same helper so the opt-out is consistent.

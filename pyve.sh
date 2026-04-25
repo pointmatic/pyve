@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.3.1"
+VERSION="2.3.2"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -1048,97 +1048,17 @@ init_venv() {
 
 init_direnv_venv() {
     local venv_dir="$1"
-    local envrc_file=".envrc"
+    local project_name
+    project_name="$(basename "$(pwd)")"
 
-    if [[ -f "$envrc_file" ]]; then
-        info ".envrc already exists, skipping"
-    else
-        # Get project name for prompt
-        local project_name
-        project_name="$(basename "$(pwd)")"
-
-        # Create .envrc with dynamic path resolution and prompt
-        cat > "$envrc_file" << EOF
-# pyve-managed direnv configuration
-# Activates Python virtual environment and loads .env
-
-VENV_DIR="$venv_dir"
-
-if [[ -d "\$VENV_DIR" ]]; then
-    source "\$VENV_DIR/bin/activate"
-    export PYVE_BACKEND="venv"
-    export PYVE_ENV_NAME="$project_name"
-    export PYVE_PROMPT_PREFIX="(venv:$project_name) "
-fi
-
-if [[ -f ".env" ]]; then
-    dotenv
-fi
-EOF
-        success "Created .envrc"
-    fi
-
-    # Story J.b: append asdf reshim guard when asdf is the active version
-    # manager, unless the user opted out via PYVE_NO_ASDF_COMPAT. Sentinel
-    # grep prevents duplication on re-init. Runs for both fresh and
-    # pre-existing .envrc so the guard also migrates onto files created
-    # by pyve < v2.3.0.
-    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
-        cat >> "$envrc_file" << 'EOF'
-
-# Prevent asdf Python plugin from reshimming venv-installed CLIs.
-# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
-export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-EOF
-        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
-    fi
+    write_envrc_template "$venv_dir/bin" "VIRTUAL_ENV" "$venv_dir" "venv" "$project_name"
 }
 
 init_direnv_micromamba() {
     local env_name="$1"
     local env_path="$2"
-    local envrc_file=".envrc"
 
-    if [[ -f "$envrc_file" ]]; then
-        info ".envrc already exists, skipping"
-    else
-        # Create .envrc for micromamba with prompt
-        cat > "$envrc_file" << EOF
-# pyve-managed direnv configuration
-# Activates micromamba environment and loads .env
-
-ENV_NAME="$env_name"
-ENV_PATH="$env_path"
-
-# Activate micromamba environment
-if [[ -d "\$ENV_PATH" ]]; then
-    # Add environment bin to PATH
-    export PATH="\$ENV_PATH/bin:\$PATH"
-    export PYVE_BACKEND="micromamba"
-    export PYVE_ENV_NAME="\$ENV_NAME"
-    export PYVE_ENV_PATH="\$ENV_PATH"
-    export PYVE_PROMPT_PREFIX="(micromamba:\$ENV_NAME) "
-fi
-
-if [[ -f ".env" ]]; then
-    dotenv
-fi
-EOF
-        success "Created .envrc"
-    fi
-
-    # Story J.b: see init_direnv_venv for rationale. Kept as a copy rather
-    # than extracted to a helper because the two generators are already
-    # parallel in structure, and the guard block itself is three lines.
-    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
-        cat >> "$envrc_file" << 'EOF'
-
-# Prevent asdf Python plugin from reshimming venv-installed CLIs.
-# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
-export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-EOF
-        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
-    fi
+    write_envrc_template "$env_path/bin" "CONDA_PREFIX" "$env_path" "micromamba" "$env_name"
 }
 
 init_dotenv() {

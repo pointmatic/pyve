@@ -249,7 +249,7 @@ pyve init --backend venv         # Force venv (skip prompt)
 | **Binary Dependencies** | Limited (via wheels) | Excellent (conda packages) |
 | **Environment File** | `requirements.txt`, `pyproject.toml` | `environment.yml`, `conda-lock.yml` |
 | **Lock Files** | `requirements.txt` (pip-tools) | `conda-lock.yml` |
-| **Activation** | `source .venv/bin/activate` | `micromamba activate` or `pyve run` |
+| **Activation** | `direnv` (uniform `.envrc` template) or `pyve run` | `direnv` (uniform `.envrc` template) or `pyve run` |
 | **Speed** | Fast (pip) | Fast (micromamba is faster than conda) |
 | **Disk Space** | Smaller | Larger (includes compiled binaries) |
 | **Cross-Platform** | Python-only packages | Full cross-platform support |
