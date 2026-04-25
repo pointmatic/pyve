@@ -895,13 +895,24 @@ Specifies the Python version for the project.
 
 ### `.envrc`
 
-Direnv configuration for automatic environment activation.
+Direnv configuration for automatic environment activation. Since v2.3.2 every backend shares the same four-line template — only the bin directory, sentinel variable, env root, backend label, and env name differ.
 
 ```bash
-# Pyve-managed direnv configuration
-source_env_if_exists .env
-layout python
+# pyve-managed direnv configuration
+# Uniform template — all backends share this shape (v2.3.2).
+
+PATH_add ".venv/bin"
+export VIRTUAL_ENV="$PWD/.venv"
+export PYVE_BACKEND="venv"
+export PYVE_ENV_NAME="myproj"
+export PYVE_PROMPT_PREFIX="(venv:myproj) "
+
+if [[ -f ".env" ]]; then
+    dotenv
+fi
 ```
+
+For the micromamba backend, `PATH_add` points at `.pyve/envs/<env>/bin` and the sentinel becomes `CONDA_PREFIX`. The file is project-directory independent: `PATH_add` resolves relative paths at runtime, and `$PWD` in the sentinel export expands when direnv sources the file.
 
 - Created by `pyve init` if direnv is installed (skipped with `--no-direnv`)
 - Automatically activates the virtual environment on `cd`

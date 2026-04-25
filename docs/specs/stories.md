@@ -36,7 +36,73 @@ See [phase-k-break-the-pyve-monolith-plan.md](phase-k-break-the-pyve-monolith-pl
 - [x] Verify full bats suite (712 tests) and pytest integration suite still pass (5 pre-existing failures confirmed unrelated — tracked separately)
 - [x] Bump version to 2.3.1
 
-### Story K.a.2: Command coverage audit [Planned]
+### Story K.a.2: v2.3.2 Bugfix — Uniform '.envrc' template across backends [Done]
+
+**Bug**: after `pyve init --force --backend micromamba` on a previously-venv project, `project-guide` shell completion (and any other completion whose rc-file guard uses `command -v`) silently stops working. Venv-backed projects are unaffected.
+
+**Root cause**: the micromamba `.envrc` generator at [pyve.sh:1106-1126](../../pyve.sh#L1106-L1126) writes a **relative** `ENV_PATH` into `.envrc`:
+
+```bash
+ENV_PATH=".pyve/envs/<name>"
+export PATH="$ENV_PATH/bin:$PATH"
+```
+
+Relative entries on `PATH` resolve against the shell's current `cwd`, not the project directory. `.zshrc` runs before direnv enters the project dir, so at startup `cwd=$HOME` and the relative entry resolves to `$HOME/.pyve/envs/<name>/bin` — which does not exist. The `command -v project-guide` guard in rc-file completion blocks fails, completion never registers. The venv backend sidesteps this by `source`-ing Python's `activate` script, which bakes an absolute `VIRTUAL_ENV` into `PATH`.
+
+**Design — uniform `.envrc` template**: rather than fix micromamba in isolation, converge both backends on a single four-line shape so the class of bug cannot recur and future backends (uv, poetry, conda) inherit the symmetry:
+
+```bash
+PATH_add "<absolute-bin-dir>"            # direnv stdlib: resolves relative → absolute
+export <BACKEND_SENTINEL>="<absolute-env-root>"   # VIRTUAL_ENV for venv, CONDA_PREFIX for conda-like
+export PYVE_BACKEND="<name>"
+export PYVE_ENV_NAME="<name>"
+```
+
+Key properties of the template:
+
+- **`PATH_add`** is direnv's canonical primitive for "add a directory to PATH, accept that it may be relative to `.envrc`, export the absolute form." First-class stdlib, not a workaround.
+- **Backend-native sentinel** (`VIRTUAL_ENV` / `CONDA_PREFIX`) is set explicitly rather than inherited by `source`-ing an activate script. Tools that probe these env vars (pip, poetry, IDEs) continue to work.
+- **Deactivation** is delegated to direnv itself — it restores PATH on leaving the project dir. The `deactivate` shell function that `source activate` defines is a non-goal; CI/Docker uses `pyve run` or ephemeral shells, so nothing calls `deactivate` anyway.
+- **Future backends** (uv, poetry) plug in the same four-line template; no new activation machinery.
+
+Applies only to the direnv path. `--no-direnv` generates no `.envrc` and is unaffected.
+
+**Tasks — implementation**
+
+- [x] Introduce a shared helper (`write_envrc_template` in `lib/utils.sh`) that takes `<rel_bin_dir> <sentinel_var> <rel_env_root> <backend_name> <env_name>` and emits the four-line template plus the existing `.env` `dotenv` block and the asdf reshim guard (Story J.b) when `is_asdf_active`.
+- [x] Rewrite `init_direnv_venv` to call the helper with `VIRTUAL_ENV` and the relative venv bin dir. Drop the `source "$VENV_DIR/bin/activate"` line.
+- [x] Rewrite `init_direnv_micromamba` to call the helper with `CONDA_PREFIX` and the relative micromamba env bin dir. Resolution of the absolute env path does not depend on `$(pwd)` at generation time — `PATH_add` resolves relative paths at direnv-source time and the sentinel uses literal `$PWD` for runtime expansion.
+- [x] Confirm `PYVE_PROMPT_PREFIX` still works under the new template (set in the helper, parameterised by backend + env_name).
+
+**Tasks — tests**
+
+- [x] Add bats unit tests for the new helper in [tests/unit/test_envrc_template.bats](../../tests/unit/test_envrc_template.bats) (15 tests): fixed output shape, no hand-rolled `export PATH=`, correct sentinel per backend, asdf guard appended when active, idempotency, pre-existing file preservation, project-dir independence.
+- [x] Add integration tests in [tests/integration/test_envrc_template.py](../../tests/integration/test_envrc_template.py) asserting the generated `.envrc` contains `PATH_add` and no relative PATH literals for both `--backend venv` (6 tests) and `--backend micromamba` (1 test, skipped when micromamba unavailable).
+- [x] Regression coverage for the original bug is provided by the integration test `test_envrc_is_project_dir_independent` (no absolute project-dir path baked into `.envrc`) plus the unit tests asserting `PATH_add` is the only path-mutating primitive. The full `bash -l` rc-file simulation was evaluated and judged unnecessary given the direct assertions on the file shape.
+- [x] Full bats suite and pytest integration suite verified — no regressions introduced (2 pre-existing `run_command` bats failures and 4 pre-existing/environmental pytest failures documented separately).
+
+**Tasks — documentation**
+
+- [x] **[docs/specs/tech-spec.md](../../docs/specs/tech-spec.md)** — added "Uniform `.envrc` template (v2.3.2 / Story K.a.2)" subsection under Cross-Cutting Concerns; added `write_envrc_template` row to the `lib/utils.sh` function table; updated asdf/direnv Coexistence subsection to point at the new helper.
+- [x] **[docs/site/usage.md](../../docs/site/usage.md)** — replaced the stale `layout python` example with the real v2.3.2 template.
+- [x] **[docs/site/backends.md](../../docs/site/backends.md)** — updated venv "How it Works" step 4 and micromamba step 5 to reference the uniform `.envrc` template.
+- [x] **[README.md](../../README.md)** — Backend Comparison table "Activation" row now reads "`direnv` (uniform `.envrc` template) or `pyve run`" for both backends.
+- [x] **[docs/specs/project-essentials.md](../../docs/specs/project-essentials.md)** — appended "Uniform `.envrc` template — all backends share one activation shape" section with the four-line contract and the "adding a new backend" guidance.
+
+**Tasks — release**
+
+- [x] Bumped `VERSION` in [pyve.sh](../../pyve.sh) to `2.3.2`.
+- [x] Updated the VERSION row in [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md).
+- [x] Added a v2.3.2 entry to [CHANGELOG.md](../../CHANGELOG.md) — "Bug" + "Design" + affected-file summary, matching the K.a.1 entry shape.
+
+**Non-goals for this story**
+
+- Adding uv / poetry backends. The uniform template *enables* them but this story ships only venv + micromamba.
+- Replacing `.envrc` with any non-direnv activation mechanism for `--no-direnv` flows. Under `--no-direnv`, `pyve run` continues to be the canonical activation path; no `.envrc` is generated at all.
+
+---
+
+### Story K.a.3: Command coverage audit [Planned]
 
 Produce `docs/specs/phase-K-command-coverage-audit.md` mapping every command's behaviors to existing test coverage and identifying backfill targets. No code changes. Inputs to all subsequent K stories.
 

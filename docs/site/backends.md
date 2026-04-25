@@ -35,7 +35,7 @@ Pyve supports two virtual environment backends: **venv** (Python's built-in) and
 1. Creates `.venv/` directory in project root
 2. Copies Python interpreter and pip
 3. Isolates site-packages from system Python
-4. Activates via `source .venv/bin/activate`
+4. Activates via `direnv` using Pyve's uniform `.envrc` template (see tech-spec.md), or via `pyve run` when direnv is unavailable
 
 ### venv Example
 
@@ -93,7 +93,7 @@ pytest==7.4.3
 2. Uses content-addressable storage (hash-based)
 3. Installs packages from conda-forge
 4. Solves dependencies across all packages
-5. Activates via micromamba shell hooks
+5. Activates via `direnv` using Pyve's uniform `.envrc` template (see tech-spec.md), or via `pyve run` when direnv is unavailable
 
 ### micromamba Example
 
