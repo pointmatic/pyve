@@ -193,6 +193,18 @@ No private helpers — `lock` is self-contained and calls only cross-command hel
 
 **Renamed from `run_lock`** in K.c so the function name matches the dispatcher arm and the per-command file name. No external callers — only the dispatcher referenced the old name.
 
+#### `lib/commands/python.sh` (Story K.d — v2.4.0)
+
+First namespace extraction. Single-file convention per project-essentials F-9: dispatcher + leaves all live in `lib/commands/python.sh`.
+
+| Function | Signature | Description |
+|---|---|---|
+| `python` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `set`, `show`. Empty arg or unknown sub-command exits 1 with an actionable usage message. The `--help` intercept happens in `pyve.sh`'s case dispatcher (calls `show_python_help`); this function never sees `--help`. |
+| `python_set` | `(<version>)` | Pin the Python version via the active version manager. Validates format (`X.Y.Z`); detects asdf/pyenv via `detect_version_manager`; ensures the version is installed (may invoke an asdf/pyenv install); writes to `.tool-versions` (asdf) or `.python-version` (pyenv) via `set_local_python_version`. Header/footer-boxed UI. |
+| `python_show` | `()` | Read-only. Resolves the pinned version from (in priority order) `.tool-versions`, `.python-version`, `.pyve/config:python.version`. Prints `Python <ver> (from <source>)` or a "not pinned" message. Never installs or modifies anything. The `python show <extra-args>` rejection happens in the dispatcher, not here. |
+
+**Renamed from `set_python_version_only` / `show_python_version` / `python_command`** in K.d so leaf names follow the `<namespace>_<leaf>` convention and the dispatcher matches the file/dispatch-arm name. No external callers — only the dispatcher and one another inside the namespace.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities

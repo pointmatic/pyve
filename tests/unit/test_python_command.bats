@@ -129,6 +129,25 @@ teardown() {
     [[ "$output" != *"3.12.10"* ]]
 }
 
+@test "python: 'python show' falls back to .pyve/config when no version files" {
+    # Story K.d backfill (K.a.3 audit gap 2). show_python_version's third
+    # branch reads python.version from .pyve/config when neither
+    # .tool-versions nor .python-version exists.
+    create_pyve_config "backend: venv" "python:" "  version: 3.11.9"
+    run "$PYVE_SCRIPT" python show
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.11.9"* ]]
+    [[ "$output" == *".pyve/config"* ]]
+}
+
+@test "python: 'python show' rejects extra positional arguments" {
+    # Story K.d backfill (K.a.3 audit gap 3). The `python show <extra>`
+    # path emits an actionable error and exits 1.
+    run "$PYVE_SCRIPT" python show oops
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"takes no arguments"* ]] || [[ "$output" == *"oops"* ]]
+}
+
 #============================================================
 # Backward compatibility — old `pyve python-version <ver>` still works
 #============================================================

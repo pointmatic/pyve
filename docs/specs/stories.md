@@ -149,18 +149,18 @@ Small, isolated command. Absorbs the existing `run_lock` helper from `pyve.sh` (
 
 ---
 
-### Story K.d: Extract `python` namespace [Planned]
+### Story K.d: Extract 'python' namespace [Done]
 
 First namespace extraction. Smallest namespace — `set` + `show` only. Proves the namespace single-file convention from project-essentials.
 
 **Tasks**
 
-- [ ] **Inventory:** namespace dispatcher + leaves (`python_set`, `python_show`); responsibilities of each
-- [ ] **Coverage audit (story-local):** quote K.a's `python` section
-- [ ] **Backfill characterization tests** for both leaves (set with valid version, set with invalid format, show with `.tool-versions`, show with `.python-version`, show with neither)
-- [ ] **Extract** `python()` dispatcher + `python_set()` + `python_show()` to a single `lib/commands/python.sh` (per project-essentials: namespace commands are single files)
-- [ ] **Verify green** including help-text byte-identical for `pyve python --help`, `pyve python set --help`, `pyve python show --help`
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** namespace dispatcher + leaves (`python_set`, `python_show`); responsibilities of each
+- [x] **Coverage audit (story-local):** quote K.a's `python` section
+- [x] **Backfill characterization tests** for both leaves (set with valid version, set with invalid format, show with `.tool-versions`, show with `.python-version`, show with neither) — *added 2 hermetic backfills (`show` falls back to `.pyve/config`; `show` rejects extra args). Audit gap 1 (`python set` happy-path side-effect) deferred: not hermetic without a stubbed/probed version manager — better suited to an integration test alongside K.l.*
+- [x] **Extract** `python()` dispatcher + `python_set()` + `python_show()` to a single `lib/commands/python.sh` (per project-essentials: namespace commands are single files)
+- [x] **Verify green** including help-text byte-identical for `pyve python --help`, `pyve python set --help`, `pyve python show --help`
+- [x] Append function-signature table to tech-spec.md
 
 ---
 
