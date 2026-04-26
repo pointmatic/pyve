@@ -102,34 +102,35 @@ Applies only to the direnv path. `--no-direnv` generates no `.envrc` and is unaf
 
 ---
 
-### Story K.a.3: Command coverage audit [Planned]
+### Story K.a.3: Command coverage audit [Done]
 
 Produce `docs/specs/phase-K-command-coverage-audit.md` mapping every command's behaviors to existing test coverage and identifying backfill targets. No code changes. Inputs to all subsequent K stories.
 
 **Tasks**
 
-- [ ] Create `docs/specs/phase-K-command-coverage-audit.md` with one section per command: `init`, `purge`, `update`, `check`, `status`, `lock`, `run`, `test`, `testenv`, `python`, `self`
-- [ ] For each command, document: inputs (positional + flags + env vars), outputs (stdout, stderr, exit codes, files created/modified), side effects (`.pyve/`, `.gitignore`, `.envrc`, rc files, etc.), cross-command helpers it calls (which `lib/<topic>.sh` functions)
-- [ ] For each command, list every integration test (pytest) that exercises it and every unit test (Bats) that touches its helpers; note coverage gaps
-- [ ] Identify backfill targets: behaviors that need new characterization tests *before* extraction can proceed safely. Be conservative — gaps are easier to spot now than after the move
-- [ ] Note pre-existing coverage anomalies (tests that depend on `pyve.sh` line numbers, internal function names, etc.) — these become extraction-blockers if not handled
-- [ ] Surface any cross-command coupling discovered during the audit (e.g., `init` calls a function that also gets called from `update`); these inform the `lib/<topic>.sh` vs command-private placement decisions in K.b–K.l
-- [ ] Present the audit document for review before K.b starts
+- [x] Create `docs/specs/phase-K-command-coverage-audit.md` with one section per command: `init`, `purge`, `update`, `check`, `status`, `lock`, `run`, `test`, `testenv`, `python`, `self`
+- [x] For each command, document: inputs (positional + flags + env vars), outputs (stdout, stderr, exit codes, files created/modified), side effects (`.pyve/`, `.gitignore`, `.envrc`, rc files, etc.), cross-command helpers it calls (which `lib/<topic>.sh` functions)
+- [x] For each command, list every integration test (pytest) that exercises it and every unit test (Bats) that touches its helpers; note coverage gaps
+- [x] Identify backfill targets: behaviors that need new characterization tests *before* extraction can proceed safely. Be conservative — gaps are easier to spot now than after the move
+- [x] Note pre-existing coverage anomalies (tests that depend on `pyve.sh` line numbers, internal function names, etc.) — these become extraction-blockers if not handled
+- [x] Surface any cross-command coupling discovered during the audit (e.g., `init` calls a function that also gets called from `update`); these inform the `lib/<topic>.sh` vs command-private placement decisions in K.b–K.l
+- [x] Present the audit document for review before K.b starts
 
 ---
 
-### Story K.b: Extract `run` [Planned]
+### Story K.b: Extract 'run' [Done]
 
 First extraction. Smallest, simplest command — proves the dispatcher contract in actual code. Establishes the per-command extraction pattern that K.c–K.l will follow.
 
 **Tasks**
 
-- [ ] **Inventory:** document `run`'s responsibilities (venv vs micromamba dispatch; arg pass-through; exit-code propagation; asdf compat env-var injection per FR-J2); list cross-command helpers it calls
-- [ ] **Coverage audit (story-local):** quote K.a's `run` section; note any new gaps surfaced by closer inspection
-- [ ] **Backfill characterization tests** against current `pyve.sh` (should pass immediately); commit before extraction
-- [ ] **Extract** `run()` to `lib/commands/run.sh` with the file-header license block; add direct-execution guard; add `source lib/commands/run.sh` line in `pyve.sh`'s sourcing block (alphabetical position); update the dispatcher's `run` arm to call the extracted function
-- [ ] **Verify green:** full Bats + pytest suite passes on macOS + Linux; CLI surface byte-identical (spot-check `pyve run python --version` and `pyve --no-direnv run env | grep ASDF` if asdf is present)
-- [ ] Append `lib/commands/run.sh` function-signature table to tech-spec.md's `lib/commands/<name>.sh` section
+- [x] **Inventory:** document `run`'s responsibilities (venv vs micromamba dispatch; arg pass-through; exit-code propagation; asdf compat env-var injection per FR-J2); list cross-command helpers it calls
+- [x] **Coverage audit (story-local):** quote K.a's `run` section; note any new gaps surfaced by closer inspection
+- [x] **Backfill characterization tests** against current `pyve.sh` (should pass immediately); commit before extraction — *audit found no gaps; existing 26 pytest + 3 J.c bats tests are sufficient characterization.*
+- [x] **Extract** `run()` to `lib/commands/run.sh` with the file-header license block; add direct-execution guard; add `source lib/commands/run.sh` line in `pyve.sh`'s sourcing block (alphabetical position); update the dispatcher's `run` arm to call the extracted function
+- [x] **Verify green:** full Bats + pytest suite passes on macOS + Linux; CLI surface byte-identical (spot-check `pyve run python --version` and `pyve --no-direnv run env | grep ASDF` if asdf is present)
+- [x] Append `lib/commands/run.sh` function-signature table to tech-spec.md's `lib/commands/<name>.sh` section
+- [x] **Cross-cutting prep (per K.a.3 audit findings F-1, F-2, F-3):** `install_self` now also copies `lib/commands/*.sh`; `tests/unit/test_bash32_compat.bats` SOURCES array now includes `lib/commands/*.sh`; `tests/unit/test_asdf_compat.bats` `source_pyve_fn` helper now takes an optional file-path arg, with the J.c `run_command` callsites updated to point at `lib/commands/run.sh`. These three changes land with K.b so K.c–K.l inherit a working pattern.
 
 ---
 

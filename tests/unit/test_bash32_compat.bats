@@ -28,6 +28,15 @@ setup() {
     SOURCES=("$PYVE_ROOT/pyve.sh"
              "$PYVE_ROOT/lib"/*.sh
              "$PYVE_ROOT/lib/completion/pyve.bash")
+    # Phase K: include per-command modules. Guard against the empty-glob
+    # case (lib/commands/*.sh expanding to a literal pattern when the
+    # directory is empty or absent) so the SOURCES array stays clean.
+    if [[ -d "$PYVE_ROOT/lib/commands" ]]; then
+        local cmd_file
+        for cmd_file in "$PYVE_ROOT/lib/commands"/*.sh; do
+            [[ -f "$cmd_file" ]] && SOURCES+=("$cmd_file")
+        done
+    fi
 }
 
 # Run grep across in-scope sources, then drop pure-comment lines
