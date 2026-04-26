@@ -120,6 +120,34 @@ else
 fi
 
 #============================================================
+# Source per-command modules (Phase K — alphabetical)
+#============================================================
+
+if [[ -f "$SCRIPT_DIR/lib/commands/lock.sh" ]]; then
+    # shellcheck source=lib/commands/lock.sh
+    source "$SCRIPT_DIR/lib/commands/lock.sh"
+else
+    printf "ERROR: Cannot find lib/commands/lock.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/commands/python.sh" ]]; then
+    # shellcheck source=lib/commands/python.sh
+    source "$SCRIPT_DIR/lib/commands/python.sh"
+else
+    printf "ERROR: Cannot find lib/commands/python.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/commands/run.sh" ]]; then
+    # shellcheck source=lib/commands/run.sh
+    source "$SCRIPT_DIR/lib/commands/run.sh"
+else
+    printf "ERROR: Cannot find lib/commands/run.sh\n" >&2
+    exit 1
+fi
+
+#============================================================
 # Help and Information Commands
 #============================================================
 
@@ -1469,109 +1497,6 @@ purge_gitignore() {
 }
 
 #============================================================
-# Python Version Command
-#============================================================
-
-set_python_version_only() {
-    if [[ $# -lt 1 ]]; then
-        log_error "pyve python set requires a version argument"
-        log_error "Usage: pyve python set <version>"
-        log_error "Example: pyve python set 3.13.7"
-        exit 1
-    fi
-
-    local version="$1"
-
-    header_box "pyve python set"
-
-    if ! validate_python_version "$version"; then
-        exit 1
-    fi
-
-    banner "Setting Python version to $version"
-
-    # Source shell profiles to find version managers
-    source_shell_profiles
-
-    # Detect version manager
-    if ! detect_version_manager; then
-        exit 1
-    fi
-
-    # Ensure version is installed
-    if ! ensure_python_version_installed "$version"; then
-        exit 1
-    fi
-
-    # Set local version
-    set_local_python_version "$version"
-
-    local version_file
-    version_file="$(get_version_file_name)"
-    success "Set Python $version in $version_file"
-    footer_box
-}
-
-# `pyve python show` — read the current Python version pin from the
-# standard sources (Story H.e.6 / H.d D1). Pure read-only; never
-# installs or modifies anything.
-show_python_version() {
-    local version="" source=""
-    if [[ -f ".tool-versions" ]]; then
-        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
-        source=".tool-versions"
-    elif [[ -f ".python-version" ]]; then
-        version="$(cat .python-version 2>/dev/null | head -1)"
-        source=".python-version"
-    else
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source=".pyve/config"
-    fi
-
-    if [[ -z "$version" ]]; then
-        printf "No Python version pinned in this project.\n"
-        printf "  (not pinned — use 'pyve python set <version>' to pin one)\n"
-        return 0
-    fi
-    printf "Python %s (from %s)\n" "$version" "$source"
-}
-
-# Nested-subcommand dispatcher for `pyve python <action> [args]`.
-# Story H.e.6 introduced this grammar; the legacy `pyve python-version`
-# command that preceded it was removed in Story J.d (v2.3.0).
-python_command() {
-    if [[ $# -lt 1 ]]; then
-        log_error "pyve python requires a subcommand"
-        log_error "Usage: pyve python set <version>"
-        log_error "       pyve python show"
-        log_error "See: pyve python --help"
-        exit 1
-    fi
-
-    local sub="$1"
-    shift
-
-    case "$sub" in
-        set)
-            set_python_version_only "$@"
-            ;;
-        show)
-            if [[ $# -gt 0 ]]; then
-                log_error "pyve python show takes no arguments (got: $1)"
-                exit 1
-            fi
-            show_python_version
-            ;;
-        *)
-            log_error "Unknown python subcommand: $sub"
-            log_error "Usage: pyve python set <version>"
-            log_error "       pyve python show"
-            exit 1
-            ;;
-    esac
-}
-
-#============================================================
 # Install Command
 #============================================================
 
@@ -1629,6 +1554,15 @@ install_self() {
         mkdir -p "$TARGET_BIN_DIR/lib"
         cp "$source_dir/lib/"*.sh "$TARGET_BIN_DIR/lib/"
         log_success "Installed lib/ helpers"
+    fi
+
+    # Copy per-command modules (Phase K extraction phase). The lib/*.sh
+    # glob above is non-recursive, so this directory needs its own copy
+    # step. Guard so older installs without lib/commands/ remain a no-op.
+    if [[ -d "$source_dir/lib/commands" ]]; then
+        mkdir -p "$TARGET_BIN_DIR/lib/commands"
+        cp "$source_dir/lib/commands/"*.sh "$TARGET_BIN_DIR/lib/commands/"
+        log_success "Installed lib/commands/ (per-command modules)"
     fi
 
     # Copy shell-completion scripts (H.e.9c)
@@ -1915,98 +1849,6 @@ uninstall_prompt_hook() {
     if [[ -f "$PROMPT_HOOK_FILE" ]]; then
         rm -f "$PROMPT_HOOK_FILE"
         log_success "Removed $PROMPT_HOOK_FILE"
-    fi
-}
-
-#============================================================
-# Run Command
-#============================================================
-
-run_command() {
-    if [[ $# -lt 1 ]]; then
-        log_error "No command provided to run"
-        log_error "Usage: pyve run <command> [args...]"
-        log_error "Example: pyve run python --version"
-        exit 1
-    fi
-    
-    # Detect active backend by checking what exists
-    local backend=""
-    local venv_dir="$DEFAULT_VENV_DIR"
-    
-    # Check for micromamba environment first
-    if [[ -d ".pyve/envs" ]]; then
-        # Find the first environment directory
-        local env_dirs=(.pyve/envs/*)
-        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
-            backend="micromamba"
-        fi
-    fi
-    
-    # Check for venv if micromamba not found
-    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
-        backend="venv"
-    fi
-    
-    # Error if no environment found
-    if [[ -z "$backend" ]]; then
-        log_error "No Python environment found"
-        log_error "Run 'pyve init' to create an environment first"
-        exit 1
-    fi
-
-    # Story J.c: defense-in-depth asdf reshim guard. The .envrc block
-    # added in J.b covers the direnv-allow path; this covers `pyve run`
-    # used with --no-direnv, or in CI where .envrc is never sourced.
-    # Probe the version manager silently — real setup errors would have
-    # surfaced during `pyve init`, and noise on every `pyve run` would
-    # be unpleasant. Export (vs `env VAR=...` prefix) because exec
-    # replaces the shell anyway, so parent-env pollution is moot.
-    source_shell_profiles >/dev/null 2>&1 || true
-    detect_version_manager >/dev/null 2>&1 || true
-    if is_asdf_active; then
-        export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-    fi
-
-    # Execute command based on backend
-    if [[ "$backend" == "venv" ]]; then
-        # Venv backend: prefer venv bin, but allow system commands too
-        local cmd="$1"
-        shift
-
-        local venv_bin="$venv_dir/bin"
-        local cmd_path="$venv_bin/$cmd"
-
-        if [[ -x "$cmd_path" ]]; then
-            exec "$cmd_path" "$@"
-        fi
-
-        export VIRTUAL_ENV="$PWD/$venv_dir"
-        export PATH="$venv_bin:$PATH"
-        exec "$cmd" "$@"
-        
-    elif [[ "$backend" == "micromamba" ]]; then
-        # Micromamba backend: use micromamba run
-        
-        # Get micromamba path
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path)"
-        if [[ -z "$micromamba_path" ]]; then
-            log_error "Micromamba not found"
-            exit 1
-        fi
-        
-        # Find environment directory
-        local env_dirs=(.pyve/envs/*)
-        local env_path="${env_dirs[0]}"
-        
-        if [[ ! -d "$env_path" ]]; then
-            log_error "Micromamba environment not found"
-            exit 1
-        fi
-        
-        # Execute command using micromamba run
-        exec "$micromamba_path" run -p "$env_path" "$@"
     fi
 }
 
@@ -2689,121 +2531,6 @@ update_command() {
 }
 
 #============================================================
-# Lock Command
-#============================================================
-
-# Run conda-lock for the current platform, handling output filtering and
-# actionable next-step messaging.
-run_lock() {
-    local check_mode=false
-
-    # Parse flags
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --check)
-                check_mode=true
-                shift
-                ;;
-            -*)
-                unknown_flag_error "lock" "$1" --check --help
-                ;;
-            *)
-                log_error "pyve lock takes no positional arguments (got: $1)"
-                log_error "Usage: pyve lock [--check]"
-                exit 1
-                ;;
-        esac
-    done
-
-    # --check: mtime comparison only, no conda-lock invocation
-    if [[ "$check_mode" == "true" ]]; then
-        if [[ ! -f "environment.yml" ]]; then
-            log_error "environment.yml not found."
-            exit 1
-        fi
-        if [[ ! -f "conda-lock.yml" ]]; then
-            printf "✗ conda-lock.yml not found. Run: pyve lock\n" >&2
-            exit 1
-        fi
-        if is_lock_file_stale; then
-            printf "✗ conda-lock.yml is stale — environment.yml has been modified since the lock was generated. Run: pyve lock\n" >&2
-            exit 1
-        fi
-        printf "✓ conda-lock.yml is up to date.\n"
-        return 0
-    fi
-
-    local platform
-
-    # Guard 1: venv backend projects do not use conda-lock
-    if config_file_exists; then
-        local config_backend
-        config_backend="$(read_config_value "backend")"
-        if [[ "$config_backend" == "venv" ]]; then
-            log_error "pyve lock is for micromamba projects only."
-            log_error "This project uses the venv backend. conda-lock.yml is not used by venv."
-            exit 1
-        fi
-    fi
-
-    # Guard 2: environment.yml must exist
-    if [[ ! -f "environment.yml" ]]; then
-        log_error "environment.yml not found. pyve lock requires a conda environment file."
-        log_error "Initialize with: pyve init --backend micromamba"
-        exit 1
-    fi
-
-    # Guard 3: conda-lock must be on PATH
-    if ! command -v conda-lock >/dev/null 2>&1; then
-        log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
-        exit 1
-    fi
-
-    platform="$(get_conda_platform)"
-
-    log_info "Generating conda-lock.yml for ${platform}..."
-    printf "\n"
-
-    # Run conda-lock, capturing combined output
-    local output
-    local exit_code
-    output="$(conda-lock -f environment.yml -p "$platform" 2>&1)"
-    exit_code=$?
-
-    if [[ $exit_code -ne 0 ]]; then
-        # Pass through conda-lock's error output unmodified
-        printf "%s\n" "$output" >&2
-        exit $exit_code
-    fi
-
-    # Filter out the misleading "conda-lock install" post-run message that suggests
-    # a non-Pyve workflow. All other output (solver progress, packages) is kept.
-    local filtered_output
-    filtered_output="$(printf "%s\n" "$output" | grep -v "conda-lock install\|Install lock using")"
-    if [[ -n "$filtered_output" ]]; then
-        printf "%s\n" "$filtered_output"
-        printf "\n"
-    fi
-
-    # Detect "already up to date" case: conda-lock emits "spec hash already locked"
-    # when the environment spec hasn't changed since the last run.
-    # Checked after printing so any warnings in the output are still visible.
-    if printf "%s" "$output" | grep -qi "already locked\|spec hash already locked"; then
-        printf "✓ conda-lock.yml is already up to date for %s. No changes made.\n" "$platform"
-        exit 0
-    fi
-
-    printf "✓ conda-lock.yml updated for %s.\n" "$platform"
-    printf "\n"
-    printf "To rebuild the environment from the new lock file:\n"
-    printf "  pyve init --force\n"
-    printf "\n"
-    printf "If the environment is already initialized and you only need to commit the\n"
-    printf "updated lock file, rebuilding is optional.\n"
-}
-
-#============================================================
 # Main Entry Point
 #============================================================
 
@@ -3299,7 +3026,7 @@ main() {
                 printf 'DISPATCH:python %s\n' "$*"
                 exit 0
             fi
-            python_command "$@"
+            python "$@"
             ;;
         self)
             shift
@@ -3321,7 +3048,7 @@ main() {
             ;;
         lock)
             shift
-            run_lock "$@"
+            lock "$@"
             ;;
         doctor)
             # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.

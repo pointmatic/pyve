@@ -175,6 +175,36 @@ One file per top-level command. Each file owns the implementation of its command
 
 **Per-command function tables** are documented in this section as the extraction phase progresses — each story that extracts a command appends its function-signature table here, mirroring the `lib/utils.sh` / `lib/ui.sh` pattern.
 
+#### `lib/commands/run.sh` (Story K.b — v2.4.0)
+
+| Function | Signature | Description |
+|---|---|---|
+| `run_command` | `(<command> [args...])` | Execute the target command inside the active project environment. Auto-detects backend by probing `.pyve/envs/*` (micromamba) then `$DEFAULT_VENV_DIR` (venv); errors out if neither exists. Pass-through args via `exec` (preserves exit codes). Story J.c: when `is_asdf_active`, exports `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` before exec to prevent asdf reshim under `--no-direnv` / CI. Venv backend prefers `<venv>/bin/<cmd>` and falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<venv>/bin` to `PATH`. Micromamba backend uses `micromamba run -p <env_path>`. |
+
+No private helpers — `run_command` is self-contained and calls only cross-command helpers (`source_shell_profiles`, `detect_version_manager`, `is_asdf_active`, `get_micromamba_path`, `log_error`).
+
+#### `lib/commands/lock.sh` (Story K.c — v2.4.0)
+
+| Function | Signature | Description |
+|---|---|---|
+| `lock` | `([--check])` | Generate or verify `conda-lock.yml` (micromamba projects only). Default mode: invoke `conda-lock -f environment.yml -p <platform>`, filter the misleading "conda-lock install" post-run message, detect "spec hash already locked" → "already up to date" output, otherwise emit success + `pyve init --force` rebuild hint. `--check` mode: pure mtime comparison via `is_lock_file_stale`, never invokes `conda-lock`, suitable as a CI gate. Three guards run before `conda-lock`: (1) refuses venv backend, (2) requires `environment.yml`, (3) requires `conda-lock` on `$PATH`. |
+
+No private helpers — `lock` is self-contained and calls only cross-command helpers (`config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `is_lock_file_stale`, `get_conda_platform`).
+
+**Renamed from `run_lock`** in K.c so the function name matches the dispatcher arm and the per-command file name. No external callers — only the dispatcher referenced the old name.
+
+#### `lib/commands/python.sh` (Story K.d — v2.4.0)
+
+First namespace extraction. Single-file convention per project-essentials F-9: dispatcher + leaves all live in `lib/commands/python.sh`.
+
+| Function | Signature | Description |
+|---|---|---|
+| `python` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `set`, `show`. Empty arg or unknown sub-command exits 1 with an actionable usage message. The `--help` intercept happens in `pyve.sh`'s case dispatcher (calls `show_python_help`); this function never sees `--help`. |
+| `python_set` | `(<version>)` | Pin the Python version via the active version manager. Validates format (`X.Y.Z`); detects asdf/pyenv via `detect_version_manager`; ensures the version is installed (may invoke an asdf/pyenv install); writes to `.tool-versions` (asdf) or `.python-version` (pyenv) via `set_local_python_version`. Header/footer-boxed UI. |
+| `python_show` | `()` | Read-only. Resolves the pinned version from (in priority order) `.tool-versions`, `.python-version`, `.pyve/config:python.version`. Prints `Python <ver> (from <source>)` or a "not pinned" message. Never installs or modifies anything. The `python show <extra-args>` rejection happens in the dispatcher, not here. |
+
+**Renamed from `set_python_version_only` / `show_python_version` / `python_command`** in K.d so leaf names follow the `<namespace>_<leaf>` convention and the dispatcher matches the file/dispatch-arm name. No external callers — only the dispatcher and one another inside the namespace.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities
@@ -294,7 +324,6 @@ Environment file parsing, naming resolution, environment creation, and lock file
 | `create_micromamba_env` | `(env_name, env_file?)` → 0/1 | Create environment from file |
 | `verify_micromamba_env` | `(env_name)` → 0/1 | Verify environment is functional |
 | `is_interactive` | `()` → 0/1 | Detect interactive vs CI/batch mode |
-| `run_lock` | `()` | Wrapper for `conda-lock`: backend guard, prerequisite check, platform detection, output filtering, rebuild guidance. Currently in `pyve.sh`; moves to `lib/commands/lock.sh` as part of the command-module extraction phase. |
 
 ---
 

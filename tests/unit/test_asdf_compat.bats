@@ -80,19 +80,26 @@ teardown() {
 # Story J.b — .envrc asdf compat guard
 # ────────────────────────────────────────────────────────────────────
 
-# Extract a function definition from pyve.sh and eval it into the current
-# shell. Pyve.sh can't be directly sourced in tests because its final line
-# is `main "$@"` which would run the CLI dispatcher. The generators
-# init_direnv_venv / init_direnv_micromamba are cleanly formatted (single-
-# line header, closing brace at column 0), so an awk range extract works.
+# Extract a function definition from a shell file and eval it into the
+# current shell. Pyve.sh can't be directly sourced in tests because its
+# final line is `main "$@"` which would run the CLI dispatcher. The
+# extracted functions are cleanly formatted (single-line header, closing
+# brace at column 0), so an awk range extract works.
+#
+# Phase K extracted top-level commands into lib/commands/<name>.sh, so
+# the source file is now a parameter (defaults to pyve.sh for the
+# helpers that still live there, e.g. init_direnv_venv).
+#
+# Usage: source_pyve_fn <function_name> [<file>]
 source_pyve_fn() {
     local fn="$1"
+    local file="${2:-$PYVE_ROOT/pyve.sh}"
     local body
     body="$(awk -v fn="$fn" '
         $0 ~ "^" fn "\\(\\)[[:space:]]*\\{" { inside = 1 }
         inside { print }
         inside && /^\}$/ { exit }
-    ' "$PYVE_ROOT/pyve.sh")"
+    ' "$file")"
     eval "$body"
 }
 
@@ -219,7 +226,7 @@ EOF
 }
 
 @test "J.c: pyve run exports ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
-    source_pyve_fn run_command
+    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="asdf"
@@ -231,7 +238,7 @@ EOF
 }
 
 @test "J.c: PYVE_NO_ASDF_COMPAT=1 suppresses the guard even when asdf is active" {
-    source_pyve_fn run_command
+    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="asdf"
@@ -243,7 +250,7 @@ EOF
 }
 
 @test "J.c: pyve run does not export the guard when asdf is not active (VERSION_MANAGER=pyenv)" {
-    source_pyve_fn run_command
+    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="pyenv"
