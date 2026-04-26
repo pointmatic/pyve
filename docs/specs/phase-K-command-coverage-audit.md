@@ -195,6 +195,29 @@ is init-private** and moves with K.l as `_init_run_project_guide_hooks`. The
 matching `run_project_guide_update_in_env` (called from both `init` *and*
 `update_command`) already lives in `lib/utils.sh` and stays there.
 
+### F-11. Function-name collision rule (added during K.d, post-incident)
+
+**Source:** discovered when the K.d rename `python_command` → `python` shipped a CI-breaking regression: bash function names take precedence over external binaries, so a function `python()` in `lib/commands/python.sh` shadowed the `python` interpreter at every internal callsite (`python -m venv`, `python -c '...'`). All 729 Bats unit tests passed (they spawn pyve.sh as a subprocess, so the function table doesn't survive); only the pytest integration `test_cross_platform.py` cases caught it because they exercise the full `pyve init --backend venv` flow.
+
+**Rule:** when naming a top-level command function in `lib/commands/<name>.sh`, the function name must not collide with (a) an external binary that pyve invokes internally, or (b) a bash builtin/keyword.
+
+**Forbidden names for the remaining K stories:**
+
+- **`python`** (binary; used at [pyve.sh:268](../../pyve.sh#L268), [pyve.sh:277](../../pyve.sh#L277), [pyve.sh:1080](../../pyve.sh#L1080)). The K.d dispatcher stays `python_command`. K.d's earlier "rename to `python`" recommendation has been **rolled back** — see updated K.d section below and the project-essentials entry "Function-name collision rule".
+- **`test`** (bash builtin; would shadow even though pyve currently uses `[[ ... ]]` exclusively — the trap is set for any future contributor adding `test -f foo`). **K.f keeps `test_command`** as the function name, NOT `test`. Updates the K.f extraction plan accordingly.
+
+**Safe (verified):** `lock` (K.c), `self` / `self_install` / `self_uninstall` (K.e), `run_command` (K.b — no rename). None are bash builtins or external binaries we invoke.
+
+**How to apply (forward, K.f–K.l):** before any rename, run:
+
+```bash
+grep -nE '(\$\(|\`|^|\s|;|\|\|?)<name>\s' pyve.sh lib/*.sh lib/commands/*.sh
+```
+
+Any non-comment hit means do **not** rename — keep the `_command` suffix. The dispatcher arm calling `<name>_command` is fine; only the function name itself is the hazard.
+
+**Stories.md correction list update:** the audit's original recommendation that all leaf functions adopt the `<namespace>_<leaf>` form is **partially rolled back**. Namespace dispatchers (`python`, `test`) keep `_command` suffix when they would collide; leaves (`python_set`, `python_show`, `self_install`, `self_uninstall`, etc.) are unaffected because compound names don't collide.
+
 ---
 
 ## Per-command audit

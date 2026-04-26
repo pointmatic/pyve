@@ -73,13 +73,13 @@ run_pyve() {
     [[ "$output" == *"Unknown command"* ]] || [[ "$output" == *"unknown"* ]]
 }
 
-@test "dispatch: 'pyve self install' routes to the install_self handler" {
+@test "dispatch: 'pyve self install' routes to the self_install handler" {
     PYVE_DISPATCH_TRACE=1 run_pyve self install
     [ "$status" -eq 0 ]
     [[ "$output" == *"DISPATCH:self-install"* ]]
 }
 
-@test "dispatch: 'pyve self uninstall' routes to the uninstall_self handler" {
+@test "dispatch: 'pyve self uninstall' routes to the self_uninstall handler" {
     PYVE_DISPATCH_TRACE=1 run_pyve self uninstall
     [ "$status" -eq 0 ]
     [[ "$output" == *"DISPATCH:self-uninstall"* ]]

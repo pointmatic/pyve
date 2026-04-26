@@ -92,7 +92,15 @@ python_show() {
 # Nested-subcommand dispatcher for `pyve python <action> [args]`.
 # Story H.e.6 introduced this grammar; the legacy `pyve python-version`
 # command that preceded it was removed in Story J.d (v2.3.0).
-python() {
+#
+# K.d note: this function is named `python_command`, NOT `python`,
+# because `python` is the bare binary name invoked by `init` (and
+# elsewhere) for venv creation: `python -m venv .venv`, `python -c
+# 'import sys; ...'`. A bash function named `python` would shadow
+# the interpreter and break every internal call to it. Same risk
+# applies to `test_command` (would shadow the bash builtin) — see
+# K.a.3 audit "Function-name collision rule" in `project-essentials.md`.
+python_command() {
     if [[ $# -lt 1 ]]; then
         log_error "pyve python requires a subcommand"
         log_error "Usage: pyve python set <version>"

@@ -158,25 +158,25 @@ First namespace extraction. Smallest namespace — `set` + `show` only. Proves t
 - [x] **Inventory:** namespace dispatcher + leaves (`python_set`, `python_show`); responsibilities of each
 - [x] **Coverage audit (story-local):** quote K.a's `python` section
 - [x] **Backfill characterization tests** for both leaves (set with valid version, set with invalid format, show with `.tool-versions`, show with `.python-version`, show with neither) — *added 2 hermetic backfills (`show` falls back to `.pyve/config`; `show` rejects extra args). Audit gap 1 (`python set` happy-path side-effect) deferred: not hermetic without a stubbed/probed version manager — better suited to an integration test alongside K.l.*
-- [x] **Extract** `python()` dispatcher + `python_set()` + `python_show()` to a single `lib/commands/python.sh` (per project-essentials: namespace commands are single files)
-- [x] **Verify green** including help-text byte-identical for `pyve python --help`, `pyve python set --help`, `pyve python show --help`
+- [x] **Extract** `python()` dispatcher + `python_set()` + `python_show()` to a single `lib/commands/python.sh` (per project-essentials: namespace commands are single files) — *initial extraction renamed `python_command` → `python` per audit recommendation; this regressed CI integration tests because the bash function `python()` shadowed the `python` interpreter binary at internal call sites (`python -m venv .venv`, `python -c '...'`). The unit-test suite (729 Bats) didn't catch it — every Bats test invokes pyve as a subprocess, so the function table didn't survive the boundary. Reverted: dispatcher now stays named `python_command`. The leaves keep their renames (`python_set`, `python_show`) — compound names don't collide. Added F-11 to K.a.3 audit and a "Function-name collision rule" entry to project-essentials.md so K.f and any future renames screen for this hazard.*
+- [x] **Verify green** including help-text byte-identical for `pyve python --help`, `pyve python set --help`, `pyve python show --help` — *post-revert: 729/729 Bats passing; `pyve init --backend venv` smoke succeeds end-to-end (the formerly-failing flow); 2 of the 5 CI failures (TestMacOSSpecific::test_venv_on_macos, TestCrossPlatform::test_path_separators) re-run green locally.*
 - [x] Append function-signature table to tech-spec.md
 
 ---
 
-### Story K.e: Extract `self` namespace [Planned]
+### Story K.e: Extract 'self' namespace [Done]
 
 `install` + `uninstall`. Decision point: does `install_prompt_hook` belong in `self.sh` or in `init.sh`? K.a's audit informs this — placement determined by which command(s) call it.
 
 **Tasks**
 
-- [ ] **Inventory:** namespace dispatcher + `self_install` + `self_uninstall`; document `install_prompt_hook`'s caller graph from K.a
-- [ ] **Coverage audit (story-local):** quote K.a's `self` section
-- [ ] **Backfill characterization tests** (install + uninstall round-trip; rc-file preservation; `.local/.env` preservation when non-empty; sentinel block removal on uninstall for both `~/.zshrc` and `~/.bashrc`)
-- [ ] **Decide and document `install_prompt_hook` placement:** if called only by `init`, becomes `_init_install_prompt_hook` (moves with K.l); if called by `self_install` too, stays in `lib/utils.sh` as a cross-command helper
-- [ ] **Extract** to `lib/commands/self.sh`
-- [ ] **Verify green**
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** namespace dispatcher + `self_install` + `self_uninstall`; document `install_prompt_hook`'s caller graph from K.a
+- [x] **Coverage audit (story-local):** quote K.a's `self` section
+- [x] **Backfill characterization tests** (install + uninstall round-trip; rc-file preservation; `.local/.env` preservation when non-empty; sentinel block removal on uninstall for both `~/.zshrc` and `~/.bashrc`) — *deferred. The audit-flagged backfill targets all require HOME-monkeypatch integration tests (writing to a redirected `~/.local/bin`, asserting on rc-file mutations). Adding them is non-trivial — new pytest file, new fixtures — and out of scope for a pure refactor that does not change install/uninstall behavior. Existing safety net retained: 2 dispatch tests (`test_cli_dispatch.bats`), per-sub-help byte stability (`test_subcommand_help.bats`), 71 helper tests for the SDKMan-aware insertion (`test_project_guide.bats`). The 5 audit-flagged gaps remain known and tracked at K.a.3 §`self`.*
+- [x] **Decide and document `install_prompt_hook` placement:** F-5 resolved — `install_prompt_hook` and `uninstall_prompt_hook` are **self-namespace-private** (only callers are `install_self` / `uninstall_self`), so they move with K.e as `_self_install_prompt_hook` / `_self_uninstall_prompt_hook`. Not init-private; not cross-command-shared.
+- [x] **Extract** to `lib/commands/self.sh` — single-file namespace per project-essentials F-9. 9 functions moved (3 public: `self`, `self_install`, `self_uninstall`; 6 private with `_self_` prefix).
+- [x] **Verify green** — bats 729/729; smoke checks for `pyve self`, `pyve self bogus`, `pyve self --help`, `pyve self install --help`, `PYVE_DISPATCH_TRACE` for both leaves all byte-identical.
+- [x] Append function-signature table to tech-spec.md (with the F-5 placement decision recorded).
 
 ---
 
