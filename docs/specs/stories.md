@@ -134,18 +134,18 @@ First extraction. Smallest, simplest command — proves the dispatcher contract 
 
 ---
 
-### Story K.c: Extract `lock` [Planned]
+### Story K.c: Extract 'lock' [Done]
 
 Small, isolated command. Absorbs the existing `run_lock` helper from `pyve.sh` (per the tech-spec annotation: "moves to `lib/commands/lock.sh` as part of the command-module extraction phase").
 
 **Tasks**
 
-- [ ] **Inventory:** `lock`'s responsibilities (backend guard, conda-lock prerequisite check, platform detection, output filtering, rebuild guidance); helpers it calls (`get_conda_platform`, etc.)
-- [ ] **Coverage audit (story-local):** quote K.a's `lock` section
-- [ ] **Backfill characterization tests** if needed (existing `test_lock_command.py` may already cover the surface)
-- [ ] **Extract** `lock()` (and the `run_lock` helper, renamed to `lock` itself or kept as `_lock_run_conda_lock` per audit's recommendation) to `lib/commands/lock.sh`
-- [ ] **Verify green** + update tech-spec annotation (drop the "currently in `pyve.sh`" note on `run_lock`'s row)
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** `lock`'s responsibilities (backend guard, conda-lock prerequisite check, platform detection, output filtering, rebuild guidance); helpers it calls (`get_conda_platform`, etc.)
+- [x] **Coverage audit (story-local):** quote K.a's `lock` section
+- [x] **Backfill characterization tests** if needed (existing `test_lock_command.py` may already cover the surface) — *audit found no mandatory backfill; existing 12 pytest + 37 adjacent bats tests are sufficient.*
+- [x] **Extract** `lock()` (and the `run_lock` helper, renamed to `lock` itself or kept as `_lock_run_conda_lock` per audit's recommendation) to `lib/commands/lock.sh` — *function renamed `run_lock` → `lock` per audit recommendation; no external callers, single dispatcher arm updated.*
+- [x] **Verify green** + update tech-spec annotation (drop the "currently in `pyve.sh`" note on `run_lock`'s row)
+- [x] Append function-signature table to tech-spec.md
 
 ---
 
