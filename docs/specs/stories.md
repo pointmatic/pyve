@@ -211,18 +211,18 @@ Largest namespace command — `init` + `install` + `purge` + `run`. After this s
 
 ---
 
-### Story K.h: Extract `status` [Planned]
+### Story K.h: Extract 'status' [Done]
 
 Read-only command, no side effects. Well-bounded section design from `phase-H-check-status-design.md`.
 
 **Tasks**
 
-- [ ] **Inventory:** `status`'s responsibilities (sectioned read-only output: Project / Environment / Integrations); helpers it calls (config readers, package counters, etc.)
-- [ ] **Coverage audit (story-local):** quote K.a's `status` section
-- [ ] **Backfill characterization tests** (each section emits expected rows; always-zero exit code; behavior with missing `.pyve/config`)
-- [ ] **Extract** `status_command()` → `show_status()` to `lib/commands/status.sh` per the project-essentials "Function naming convention" rule (`status` is a noun, not a verb; semantic alignment: `show_status()`)
-- [ ] **Verify green**
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** `status`'s responsibilities (sectioned read-only output: Project / Environment / Integrations); helpers it calls (config readers, package counters, etc.)
+- [x] **Coverage audit (story-local):** quote K.a's `status` section
+- [x] **Backfill characterization tests** (each section emits expected rows; always-zero exit code; behavior with missing `.pyve/config`) — *no backfill needed. Existing `test_status.bats` (25 tests) covers all three sections, the always-zero exit-code contract, the non-project fallback (`.pyve/config` missing), missing-venv, version drift, NO_COLOR, unknown-flag, etc. Audit's gap notes (more direct micromamba branch coverage; stale `conda-lock.yml` rendering specifically tested through `pyve status`) are minor and not extraction-blockers.*
+- [x] **Extract** `status_command()` → `show_status()` to `lib/commands/status.sh` per the project-essentials "Function naming convention" rule (`status` is a noun, not a verb; semantic alignment: `show_status()`) — *moved 10 functions: `show_status` orchestrator + 9 `_status_*` helpers (already prefixed). No private-helper renames; orchestrator-only.*
+- [x] **Verify green** — bats 729/729; smoke checks against the pyve project dir verify byte-identical output across all 3 sections (Project / Environment / Integrations), help text, positional-arg rejection (exit 1), unknown-flag rejection with closest-match suggestion, and `PYVE_DISPATCH_TRACE=1` trace.
+- [x] Append function-signature table to tech-spec.md
 
 ---
 
