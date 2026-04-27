@@ -196,18 +196,18 @@ Small command that delegates to `testenv_run`. Comes before K.g, which means a t
 
 ---
 
-### Story K.g: Extract `testenv` namespace [Planned]
+### Story K.g: Extract 'testenv' namespace [Done]
 
 Largest namespace command — `init` + `install` + `purge` + `run`. After this story, K.f's temporary cross-file call resolves to a clean call into `lib/commands/testenv.sh`.
 
 **Tasks**
 
-- [ ] **Inventory:** dispatcher + four leaves; responsibilities and helper calls for each
-- [ ] **Coverage audit (story-local):** quote K.a's `testenv` section; this is one of the more test-heavy commands so coverage should be strong
-- [ ] **Backfill characterization tests** for any audit-identified gaps
-- [ ] **Extract** dispatcher (`testenv_command()` per the project-essentials "Function naming convention" rule) + four leaves (`testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`) to `lib/commands/testenv.sh`. Per audit F-7 / F-8, also move `purge_testenv_dir` and `ensure_testenv_exists` from `pyve.sh` to `lib/utils.sh` (cross-command shared helpers — `purge` and `test` use them respectively).
-- [ ] **Verify green** including the F-8-corrected expectation: K.f's `test_tests` now calls `ensure_testenv_exists` from `lib/utils.sh` (no longer cross-file into `pyve.sh`); the K.f story's caveat about `testenv_run` is stale (no such function exists).
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** dispatcher + four leaves; responsibilities and helper calls for each
+- [x] **Coverage audit (story-local):** quote K.a's `testenv` section; this is one of the more test-heavy commands so coverage should be strong
+- [x] **Backfill characterization tests** for any audit-identified gaps — *deferred. All 4 audit gaps (`install` without `-r` and without `requirements-dev.txt`, `install -r non-existent`, `run <missing-from-PATH>`, `purge` when absent) require a real testenv (Python via `python -m venv`). Mirrors K.f's deferral. Existing safety net retained: 6 integration tests in `test_testenv.py`, 10 grammar tests in `test_testenv_grammar.bats`, 3 UI tests in `test_testenv_ui.bats`. Smoke-verified manually post-extraction: full lifecycle (init → install → run → purge) green; all 5 error paths byte-identical to pre-extraction.*
+- [x] **Extract** dispatcher (`testenv_command()` per the project-essentials "Function naming convention" rule) + four leaves (`testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`) to `lib/commands/testenv.sh`. Per audit F-7 / F-8, also move `purge_testenv_dir` and `ensure_testenv_exists` (plus its `testenv_paths` dependency) from `pyve.sh` to `lib/utils.sh` (cross-command shared helpers — `purge` / `test` / `init` all use them).
+- [x] **Verify green** including the F-8-corrected expectation: K.f's `test_tests` now calls `ensure_testenv_exists` from `lib/utils.sh` (no longer cross-file into `pyve.sh`); the K.f story's caveat about `testenv_run` is stale (no such function exists). — *bats 729/729; smoke `pyve testenv init` → `pyve testenv install` → `pyve testenv run pytest --version` → `pyve testenv purge` end-to-end green; `testenv install -r non-existent.txt` correctly errors with "Requirements file not found" (audit gap 2 implicitly verified by manual smoke).*
+- [x] Append function-signature table to tech-spec.md
 
 ---
 

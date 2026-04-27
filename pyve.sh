@@ -163,6 +163,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/commands/testenv.sh" ]]; then
+    # shellcheck source=lib/commands/testenv.sh
+    source "$SCRIPT_DIR/lib/commands/testenv.sh"
+else
+    printf "ERROR: Cannot find lib/commands/testenv.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Help and Information Commands
 #============================================================
@@ -249,42 +257,6 @@ REQUIREMENTS:
     - asdf (recommended) or pyenv for Python version management
     - direnv for automatic environment activation
 EOF
-}
-
-testenv_paths() {
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
-    printf "%s\n" "$testenv_root" "$testenv_venv"
-}
-
-ensure_testenv_exists() {
-    local paths
-    local testenv_root
-    local testenv_venv
-    paths="$(testenv_paths)"
-    testenv_root="$(printf "%s" "$paths" | sed -n '1p')"
-    testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
-
-    mkdir -p "$testenv_root"
-
-    # If the testenv exists but was built with a different Python version (e.g.
-    # the project Python was changed after the initial pyve init, then pyve init
-    # --force preserved the old testenv via --keep-testenv), rebuild it.
-    if [[ -d "$testenv_venv" ]] && [[ -f "$testenv_venv/pyvenv.cfg" ]]; then
-        local testenv_ver current_ver
-        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
-        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
-        if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
-            warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
-            rm -rf "$testenv_venv"
-        fi
-    fi
-
-    if [[ ! -d "$testenv_venv" ]]; then
-        info "Creating dev/test runner environment in '$testenv_venv'..."
-        run_cmd python -m venv "$testenv_venv"
-        success "Created dev/test runner environment"
-    fi
 }
 
 show_version() {
@@ -1277,152 +1249,6 @@ purge_pyve_dir() {
         rm -rf ".pyve"
         success "Removed .pyve directory (config and micromamba environments)"
     fi
-}
-
-purge_testenv_dir() {
-    if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
-        rm -rf ".pyve/$TESTENV_DIR_NAME"
-        success "Removed .pyve/$TESTENV_DIR_NAME"
-    else
-        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
-    fi
-}
-
-#============================================================
-# Test Environment Commands
-#============================================================
-
-testenv_command() {
-    local action=""
-    local requirements_file=""
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            # New subcommand grammar (H.d §4.4 D5) — silent.
-            init)
-                action="init"
-                shift
-                ;;
-            install)
-                action="install"
-                shift
-                ;;
-            purge)
-                action="purge"
-                shift
-                ;;
-            # Story J.d (v2.3.0): Category A legacy flag forms
-            # (`testenv --init|--install|--purge`) removed. Falls through
-            # to the `-*)` arm below, which produces the standard
-            # unknown-flag error.
-            -r|--requirements)
-                if [[ -z "${2:-}" ]]; then
-                    log_error "$1 requires a file path"
-                    exit 1
-                fi
-                requirements_file="$2"
-                shift 2
-                ;;
-            run)
-                action="run"
-                shift
-                break  # Remaining args are the command to execute
-                ;;
-            --help|-h)
-                cat << 'EOF'
-pyve testenv - Manage a dedicated dev/test runner environment
-
-Usage:
-  pyve testenv init
-  pyve testenv install [-r requirements-dev.txt]
-  pyve testenv purge
-  pyve testenv run <command> [args...]
-
-Notes:
-  - Uses: .pyve/testenv/venv
-  - This environment is preserved across `pyve init --force` and `pyve purge`.
-  - `run` executes a command inside the dev/test runner environment.
-EOF
-                exit 0
-                ;;
-            -*)
-                unknown_flag_error "testenv" "$1" \
-                    --requirements -r --help
-                ;;
-            *)
-                log_error "Unknown testenv argument: $1"
-                log_error "Usage: pyve testenv <init|install|purge|run> [options]"
-                exit 1
-                ;;
-        esac
-    done
-
-    if [[ -z "$action" ]]; then
-        log_error "No testenv action provided"
-        log_error "Use: pyve testenv <init|install|purge|run <command>>"
-        exit 1
-    fi
-
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
-
-    # `run` exec's into the target command, so the header/footer wrapper
-    # would never close. Emit a minimal header before exec and let the
-    # called command own the rest of the terminal.
-    if [[ "$action" == "run" ]]; then
-        if [[ $# -lt 1 ]]; then
-            log_error "No command provided"
-            log_error "Usage: pyve testenv run <command> [args...]"
-            log_error "Example: pyve testenv run ruff check ."
-            exit 1
-        fi
-        if [[ ! -x "$testenv_venv/bin/python" ]]; then
-            log_error "Dev/test runner environment not initialized"
-            log_error "Run: pyve testenv init"
-            exit 1
-        fi
-        local cmd="$1"
-        shift
-        local testenv_bin="$testenv_venv/bin"
-        local cmd_path="$testenv_bin/$cmd"
-        if [[ -x "$cmd_path" ]]; then
-            exec "$cmd_path" "$@"
-        fi
-        export VIRTUAL_ENV="$PWD/$testenv_venv"
-        export PATH="$testenv_bin:$PATH"
-        exec "$cmd" "$@"
-    fi
-
-    header_box "pyve testenv"
-
-    case "$action" in
-        init)
-            ensure_testenv_exists
-            ;;
-        install)
-            if [[ ! -x "$testenv_venv/bin/python" ]]; then
-                log_error "Dev/test runner environment not initialized"
-                log_error "Run: pyve testenv init"
-                exit 1
-            fi
-            info "Installing dev/test dependencies into '$testenv_venv'..."
-            if [[ -n "$requirements_file" ]]; then
-                if [[ ! -f "$requirements_file" ]]; then
-                    log_error "Requirements file not found: $requirements_file"
-                    exit 1
-                fi
-                run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
-            else
-                run_cmd "$testenv_venv/bin/python" -m pip install pytest
-            fi
-            success "Dev/test dependencies installed"
-            ;;
-        purge)
-            purge_testenv_dir
-            ;;
-    esac
-
-    footer_box
 }
 
 purge_envrc() {

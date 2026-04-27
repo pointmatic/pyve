@@ -1459,14 +1459,76 @@ EOF
 # Usage: is_file_empty "filename"
 is_file_empty() {
     local file="$1"
-    
+
     if [[ ! -f "$file" ]]; then
         return 0  # Doesn't exist, treat as empty
     fi
-    
+
     if [[ ! -s "$file" ]]; then
         return 0  # Exists but empty
     fi
-    
+
     return 1  # Has content
+}
+
+#============================================================
+# Testenv (dev/test runner environment) Utilities
+#
+# Three cross-command helpers — each shared by 2+ of `init`,
+# `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
+# audit F-7 (`purge_testenv_dir` shared with `purge`) and F-8
+# (`testenv_paths` + `ensure_testenv_exists` shared with `init` and
+# `test`). Depend on the `TESTENV_DIR_NAME` global defined in pyve.sh
+# (read at call time, not at sourcing time).
+#============================================================
+
+# Emit two lines: testenv_root, then testenv_venv. Single source of
+# truth for both paths so callers do not hard-code `.pyve/testenv/...`.
+testenv_paths() {
+    local testenv_root=".pyve/$TESTENV_DIR_NAME"
+    local testenv_venv="$testenv_root/venv"
+    printf "%s\n" "$testenv_root" "$testenv_venv"
+}
+
+# Create the testenv if it doesn't exist; rebuild it if its Python
+# version has drifted from the current project Python (mismatched
+# `pyvenv.cfg` version field).
+ensure_testenv_exists() {
+    local paths
+    local testenv_root
+    local testenv_venv
+    paths="$(testenv_paths)"
+    testenv_root="$(printf "%s" "$paths" | sed -n '1p')"
+    testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
+
+    mkdir -p "$testenv_root"
+
+    # If the testenv exists but was built with a different Python version (e.g.
+    # the project Python was changed after the initial pyve init, then pyve init
+    # --force preserved the old testenv via --keep-testenv), rebuild it.
+    if [[ -d "$testenv_venv" ]] && [[ -f "$testenv_venv/pyvenv.cfg" ]]; then
+        local testenv_ver current_ver
+        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
+        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
+        if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
+            warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
+            rm -rf "$testenv_venv"
+        fi
+    fi
+
+    if [[ ! -d "$testenv_venv" ]]; then
+        info "Creating dev/test runner environment in '$testenv_venv'..."
+        run_cmd python -m venv "$testenv_venv"
+        success "Created dev/test runner environment"
+    fi
+}
+
+# Remove the testenv directory (no-op message if absent).
+purge_testenv_dir() {
+    if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
+        rm -rf ".pyve/$TESTENV_DIR_NAME"
+        success "Removed .pyve/$TESTENV_DIR_NAME"
+    else
+        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+    fi
 }

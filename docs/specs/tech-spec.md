@@ -242,6 +242,28 @@ Single-file namespace per project-essentials F-9. Largest extraction so far (~45
 
 **F-8 correction:** the K.f story's "Temporary cross-file call to `testenv_run`" caveat is stale — there is no `testenv_run` function in `pyve.sh`. `test_command` does NOT call `testenv_run`; it calls `ensure_testenv_exists`, the test-private helpers, and ends with `exec ... pytest`. The `testenv` namespace handles its own `run` action inline in the namespace dispatcher (see K.g).
 
+#### `lib/commands/testenv.sh` (Story K.g — v2.4.0)
+
+Largest namespace command — 4 leaves: `init`, `install`, `purge`, `run`. The K.g extraction also refactored the previous inline `case "$action" in` arms into named leaf functions per project-essentials F-9 (one function per sub-command, leaf names follow `<namespace>_<leaf>`).
+
+| Function | Signature | Description |
+|---|---|---|
+| `testenv_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `init`, `install [-r <file>]`, `purge`, `run <cmd> [args...]`. Pre-parses `-r`/`--requirements` and the action token, then calls the matching leaf. The `run` action skips the `header_box`/`footer_box` wrapper because exec replaces the shell — the called command owns the rest of the terminal. `--help` and unknown-flag/unknown-action paths exit before the leaf is reached. |
+| `testenv_init` | `()` | Thin wrapper around `ensure_testenv_exists` (now in `lib/utils.sh`). |
+| `testenv_install` | `(<testenv_venv> <requirements_file?>)` | Pip-install dependencies into the testenv. Without `<requirements_file>`, installs bare `pytest`. With `<requirements_file>`, validates the file exists, then `pip install -r <file>`. Errors with exit 1 if the testenv doesn't exist (caller must `pyve testenv init` first) or the requirements file is missing. |
+| `testenv_purge` | `()` | Thin wrapper around `purge_testenv_dir` (now in `lib/utils.sh`). |
+| `testenv_run` | `(<testenv_venv> [<cmd> args...])` | `exec` a command inside the testenv. Prefers `<testenv_venv>/bin/<cmd>` when present; otherwise falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<testenv_venv>/bin` to `PATH`. Errors with exit 1 if no command is provided or the testenv doesn't exist. |
+
+**F-7 / F-8 helper moves (K.g performs):** `purge_testenv_dir`, `ensure_testenv_exists`, and `testenv_paths` move from `pyve.sh` to `lib/utils.sh` because they are each shared by 2+ commands (per project-essentials cross-command-helper rule):
+
+- `ensure_testenv_exists` — used by `init` (still in pyve.sh), `testenv_init`, and `test_tests` (in `lib/commands/test.sh`).
+- `purge_testenv_dir` — used by `purge` (still in pyve.sh) and `testenv_purge`.
+- `testenv_paths` — only called by `ensure_testenv_exists`; moves alongside it as an implementation dependency.
+
+After K.g, `lib/commands/test.sh::test_tests` no longer makes a cross-file call back into `pyve.sh` — the call to `ensure_testenv_exists` resolves through `lib/utils.sh` (already sourced by `pyve.sh` before the per-command files).
+
+**Function name `testenv_command`** — applies the project-essentials "Function naming convention" rule: namespace dispatchers use `<namespace>_command` because the operand is the sub-command name that follows. No K.e-style `testenv()` rename — the rule was tightened during K.f follow-up.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities
