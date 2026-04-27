@@ -174,18 +174,40 @@ Call graph at HEAD:
   cross-file call to `testenv_run`" caveat is therefore stale and can be
   dropped from that story.**
 
-### F-9. Help-block functions stay in `pyve.sh` for now
+### F-9. Help-block functions — moved to per-command files in K.l (rev. K.l)
 
-The 8 `show_*_help()` functions ([pyve.sh:2879-3143](../../pyve.sh#L2879-L3143)) are
-called only from the dispatcher's `--help` intercepts in `main()` and from
-`self_command()`. They are dispatcher-tier code and live in `pyve.sh` —
-not in the per-command files. This matches the project-essentials rule that
-`pyve.sh` retains "globals, sourcing, universal flags, dispatcher,
-`legacy_flag_error`, `unknown_flag_error`, `main`."
+**Status post-K.l: the per-command help blocks have been moved.** Original audit
+recommendation was "stay in `pyve.sh` for v2.4.0" with K.m re-evaluation. K.l
+brought that re-evaluation forward to honor the K.l acceptance criterion 1
+(`pyve.sh` line count target). 9 help blocks moved to their respective
+`lib/commands/*.sh` files:
 
-Each per-command file gets its own help block move *only if* the help becomes
-substantial enough to merit colocation; for v2.4.0, all 8 stay put. Re-evaluate
-during K.m.
+- `show_init_help` → `lib/commands/init.sh`
+- `show_purge_help` → `lib/commands/purge.sh`
+- `show_status_help` → `lib/commands/status.sh`
+- `show_check_help` → `lib/commands/check.sh`
+- `show_update_help` → `lib/commands/update.sh`
+- `show_python_help` → `lib/commands/python.sh`
+- `show_self_install_help` / `show_self_uninstall_help` / `show_self_help` →
+  `lib/commands/self.sh`
+
+The dispatcher arms in `main()` continue to call these functions by name; bash
+resolves them through the global function table at call time, so the location
+move is transparent.
+
+The three top-level help blocks (`show_help`, `show_version`, `show_config`)
+remain in `pyve.sh` — they describe the CLI as a whole, not any single
+command.
+
+**Why the audit's original guidance was reversed:** at audit time, K.l's
+acceptance criterion 1 ("`pyve.sh` line count in 200–350 range") was assumed
+achievable while keeping help blocks in pyve.sh. K.l discovered that the
+explicit-sourcing rule (project-essentials) forces ~127 lines of source blocks
+alone, plus ~340 lines of header / config / legacy-flag / main dispatcher —
+floor ~470 lines even with everything moved out. Help-block move recovers
+~265 lines, bringing pyve.sh to ~595. **The 200–350 target is structurally
+unachievable at HEAD; K.m needs to revise it** (probably to ~500–650). Tracked
+in the K.l completion notes.
 
 ### F-10. `run_project_guide_hooks` — init-private
 

@@ -216,3 +216,27 @@ _purge_gitignore() {
         success "Cleaned .gitignore"
     fi
 }
+show_purge_help() {
+    cat << 'EOF'
+pyve purge - Remove all Python environment artifacts
+
+Usage:
+  pyve purge [<dir>] [options]
+
+Arguments:
+  <dir>                       Custom venv directory name (default: .venv)
+
+Options:
+  --keep-testenv              Preserve .pyve/testenv (the dev/test runner env)
+  --yes, -y                   Skip the destructive-confirmation prompt.
+                              Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
+
+Examples:
+  pyve purge                               # Remove .pyve and the venv (prompts)
+  pyve purge --yes                         # Remove without the prompt
+  pyve purge --keep-testenv                # Preserve the testenv across purge
+  pyve purge custom_venv                   # Remove a custom-named venv
+
+See `pyve --help` for the full command list.
+EOF
+}

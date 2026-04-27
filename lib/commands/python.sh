@@ -131,3 +131,23 @@ python_command() {
             ;;
     esac
 }
+show_python_help() {
+    cat << 'EOF'
+pyve python - Manage the project's Python version pin
+
+Usage:
+  pyve python set <version>
+  pyve python show
+
+Subcommands:
+  set <version>     Pin the project's Python version (format: #.#.#)
+                    Writes to .tool-versions (asdf) or .python-version (pyenv)
+  show              Print the currently pinned Python version
+
+Examples:
+  pyve python set 3.13.7
+  pyve python show
+
+See `pyve --help` for the full command list.
+EOF
+}

@@ -129,3 +129,38 @@ update_project() {
     log_info "Project updated to Pyve v$VERSION."
     return 0
 }
+show_update_help() {
+    cat << 'EOF'
+pyve update - Non-destructive upgrade: refresh managed files and config
+
+Usage:
+  pyve update [--no-project-guide]
+
+Description:
+  Updates a pyve-managed project to the current pyve version WITHOUT
+  rebuilding the virtual environment. Safe to run on any pyve-managed
+  project; idempotent.
+
+  Refreshes:
+    - pyve_version in .pyve/config
+    - Pyve-managed sections of .gitignore
+    - .vscode/settings.json (only if it already exists)
+    - project-guide scaffolding (via 'project-guide update --no-input')
+
+  Does NOT:
+    - rebuild the virtual environment (use 'pyve init --force' for that)
+    - create .env or .envrc (those are user state)
+    - re-prompt for backend (the recorded backend is preserved)
+
+Options:
+  --no-project-guide          Skip the project-guide refresh step
+
+Exit codes:
+  0    Success (including no-op when already at current version).
+  1    Failure (missing .pyve/config, corrupt config, unwritable files).
+
+See also:
+  pyve init --force          Destroy + rebuild the environment
+  pyve --help                Full command list
+EOF
+}

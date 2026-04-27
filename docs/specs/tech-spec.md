@@ -341,6 +341,40 @@ Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` 
 
 **Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
 
+#### `lib/commands/init.sh` (Story K.l — v2.4.0)
+
+Largest extraction in the phase. The orchestrator (`init_project`, ~545 lines) plus 7 init-private helpers — every single-caller `init_*` and `run_project_guide_hooks` get the `_init_` prefix and move to this file.
+
+| Function | Signature | Description |
+|---|---|---|
+| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), apply distutils shim, configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_testenv_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
+| `_init_python_version` | `(<version>)` | Write `.tool-versions` or `.python-version` (via `set_local_python_version`). No-op if file already exists. |
+| `_init_venv` | `(<venv_dir>)` | `python -m venv <venv_dir>` if directory absent. |
+| `_init_direnv_venv` | `(<venv_dir>)` | Wrapper around `write_envrc_template` with `VIRTUAL_ENV` sentinel. |
+| `_init_direnv_micromamba` | `(<env_name> <env_path>)` | Wrapper around `write_envrc_template` with `CONDA_PREFIX` sentinel. |
+| `_init_dotenv` | `(<use_local_env>)` | Create `.env` (empty or copied from `~/.local/.env` template), `chmod 600`. No-op if `.env` already exists. |
+| `_init_gitignore` | `(<venv_dir>)` | Rebuild `.gitignore`: `write_gitignore_template` followed by `insert_pattern_in_gitignore_section "$venv_dir"`. |
+| `_init_run_project_guide_hooks` | `(<backend> <env_path> <pg_mode> <comp_mode>)` | The three-step project-guide post-init hook: (1) `pip install --upgrade project-guide`, (2) `project-guide init --no-input` OR `project-guide update --no-input` based on `.project-guide.yml` presence, (3) shell-completion wiring in `~/.zshrc` / `~/.bashrc`. Tri-state mode args (empty / "yes" / "no") resolved from `--project-guide` / `--no-project-guide` / `--project-guide-completion` / `--no-project-guide-completion` flags. Auto-skip safety: if `project-guide` is already declared as a project dependency (`pyproject.toml` / `requirements.txt` / `environment.yml`), the hook short-circuits to avoid version conflicts. |
+
+**Function name `init_project` (NOT `init`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve init` operates on the project (creates venv, writes `.pyve/config`, configures direnv, etc.).
+
+**F-3 callsite update (test_asdf_compat.bats):** the J.b/J.c tests use `source_pyve_fn` to extract function bodies for in-process testing. After K.l: callsites pass `"$PYVE_ROOT/lib/commands/init.sh"` (instead of the default pyve.sh) AND the new function names `_init_direnv_venv` / `_init_direnv_micromamba`. The `source_pyve_fn` signature update (added in K.b) made this a clean drop-in.
+
+**F-10 settled** — `run_project_guide_hooks` was init-private (called only twice, both inside `init()`). Moves with K.l as `_init_run_project_guide_hooks`.
+
+**Cross-command callsites resolved at runtime:**
+- `init_project --force` calls `purge_project --keep-testenv --yes` (in `lib/commands/purge.sh`) twice — once in the `--force` pre-flight ([lib/commands/init.sh:706](../../lib/commands/init.sh) area) and once in the interactive option-2 path ([lib/commands/init.sh:774](../../lib/commands/init.sh) area). Bash resolves the call at runtime via the global function table.
+
+**Per-command help block** — `show_init_help` was moved from `pyve.sh` to `lib/commands/init.sh` in K.l, alongside the orchestrator. See the "Help-block move" subsection below for the rationale.
+
+#### Help-block move (K.l — supersedes F-9 v2.4.0 stay-put preference)
+
+K.l moved 9 per-command help blocks (`show_init_help`, `show_purge_help`, `show_status_help`, `show_check_help`, `show_update_help`, `show_python_help`, `show_self_install_help`, `show_self_uninstall_help`, `show_self_help`) from `pyve.sh` into their respective `lib/commands/*.sh` files. The K.a.3 audit's F-9 entry kept them in `pyve.sh` "for v2.4.0" with K.m re-evaluation; K.l honored the K.l acceptance criterion (line count target) by doing the move now.
+
+Reason: each help block is tightly coupled to one command. Co-locating help with the command it documents (a) puts the maintenance burden in the right place, (b) the `pyve <cmd> --help` dispatch arm in `main()` already calls into the per-command function table, so the location is invisible at call time, (c) bumps `pyve.sh` from ~870 → ~595 lines (closer to the K.m target).
+
+The three top-level commands' help blocks (`show_help`, `show_version`, `show_config`) stay in `pyve.sh` — they describe the CLI as a whole, not any single command.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities

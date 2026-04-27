@@ -308,3 +308,35 @@ _check_summary_and_exit() {
     printf "%d passed, %d warnings, %d errors\n" "$passed" "$warnings" "$errors"
     exit "$exit_code"
 }
+show_check_help() {
+    cat << 'EOF'
+pyve check - Diagnose environment problems and suggest fixes
+
+Usage:
+  pyve check
+
+Description:
+  Runs a set of read-only diagnostics against the current project and
+  reports findings. Every failure includes exactly one command that
+  will move the project toward a working state — no chains, no
+  references to other commands.
+
+  For a read-only snapshot of current state (no diagnostics), use
+  'pyve status' instead (coming in a later release).
+
+Exit codes:
+  0    All checks passed.
+  1    One or more errors — environment is broken for 'pyve run' / 'pyve test'.
+  2    Warnings only — environment works but is drifting.
+
+Notes:
+  - pyve check is safe to run in CI (no side effects, stable exit codes).
+  - pyve check does not auto-remediate. For the auto-fix story, see
+    the future 'pyve check --fix' (tracked in stories.md Phase I).
+
+See also:
+  pyve doctor            Legacy diagnostics (superseded by 'pyve check')
+  pyve validate          Legacy CI gate (superseded by 'pyve check')
+  pyve --help            Full command list
+EOF
+}

@@ -302,3 +302,26 @@ _status_section_integrations() {
 
     printf "\n"
 }
+show_status_help() {
+    cat << 'EOF'
+pyve status - Show a snapshot of the current project environment
+
+Usage:
+  pyve status
+
+Description:
+  Prints an at-a-glance summary of how this project is set up:
+  backend, Python version, environment location, package count, and
+  integration state (direnv, .env, project-guide, testenv).
+
+  pyve status is read-only and never produces a non-zero exit code
+  based on findings — if something looks wrong, use 'pyve check'.
+
+Output respects NO_COLOR=1 (https://no-color.org) — set it to strip
+ANSI escapes without changing the layout.
+
+See also:
+  pyve check             Diagnose problems and suggest fixes
+  pyve --help            Full command list
+EOF
+}

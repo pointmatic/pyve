@@ -462,3 +462,54 @@ self_command() {
             ;;
     esac
 }
+show_self_install_help() {
+    cat << 'EOF'
+pyve self install - Install pyve to ~/.local/bin
+
+Usage:
+  pyve self install
+
+Description:
+  Copies the pyve script and lib/ modules to ~/.local/bin and adds
+  ~/.local/bin to PATH (via ~/.zshrc or ~/.bashrc) if not already
+  present. Idempotent — safe to run multiple times.
+
+See also:
+  pyve self uninstall    Remove pyve from ~/.local/bin
+  pyve --help            Full command list
+EOF
+}
+show_self_uninstall_help() {
+    cat << 'EOF'
+pyve self uninstall - Remove pyve from ~/.local/bin
+
+Usage:
+  pyve self uninstall
+
+Description:
+  Removes the pyve script and lib/ modules from ~/.local/bin, plus:
+    - the PATH entry added by the installer (from ~/.zprofile / ~/.bash_profile)
+    - the pyve prompt hook (from ~/.zshrc / ~/.bashrc)
+    - the project-guide shell completion block (from ~/.zshrc / ~/.bashrc),
+      if one was added by `pyve init --project-guide-completion`
+
+  Non-empty ~/.local/.env is preserved (warn, don't delete).
+
+See also:
+  pyve self install      Install pyve to ~/.local/bin
+  pyve --help            Full command list
+EOF
+}
+show_self_help() {
+    cat << 'EOF'
+pyve self - Manage pyve's own installation
+
+Usage: pyve self <subcommand>
+
+Subcommands:
+  pyve self install      Install pyve to ~/.local/bin (and add to PATH if needed)
+  pyve self uninstall    Remove pyve from ~/.local/bin
+
+See `pyve --help` for the full command list.
+EOF
+}
