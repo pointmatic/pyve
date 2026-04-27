@@ -5,6 +5,63 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0] - 2026-04-27
+
+**Phase K — Break the Pyve Monolith.** Pure-refactor release: all 11 top-level commands extracted from `pyve.sh` into per-command modules under `lib/commands/<name>.sh`. `pyve.sh` shrunk from 3,363 lines to **595 lines** (−2,768, ~82% reduction). The user-facing CLI surface is byte-identical to v2.3.2 — every command, flag, env var, exit code, and output line is preserved.
+
+See [docs/specs/phase-k-break-the-pyve-monolith-plan.md](docs/specs/phase-k-break-the-pyve-monolith-plan.md) for the full gap analysis and architectural target, and [docs/specs/phase-K-command-coverage-audit.md](docs/specs/phase-K-command-coverage-audit.md) for the K.a.3 audit findings (F-1 through F-11) that informed each extraction story.
+
+### Added
+
+- **`lib/commands/<name>.sh`** — eleven new per-command modules:
+  - [lib/commands/run.sh](lib/commands/run.sh) (K.b — 108 lines)
+  - [lib/commands/lock.sh](lib/commands/lock.sh) (K.c — 137 lines)
+  - [lib/commands/python.sh](lib/commands/python.sh) (K.d — 153 lines)
+  - [lib/commands/self.sh](lib/commands/self.sh) (K.e — 515 lines)
+  - [lib/commands/test.sh](lib/commands/test.sh) (K.f — 95 lines)
+  - [lib/commands/testenv.sh](lib/commands/testenv.sh) (K.g — 214 lines)
+  - [lib/commands/status.sh](lib/commands/status.sh) (K.h — 327 lines)
+  - [lib/commands/check.sh](lib/commands/check.sh) (K.i — 342 lines)
+  - [lib/commands/update.sh](lib/commands/update.sh) (K.j — 166 lines)
+  - [lib/commands/purge.sh](lib/commands/purge.sh) (K.k — 242 lines)
+  - [lib/commands/init.sh](lib/commands/init.sh) (K.l — 877 lines)
+
+  Each file carries the Apache-2.0 header, a direct-execution guard, the orchestrator function, all command-private helpers (with `_<command>_` prefix per project-essentials F), and the `show_<cmd>_help` block (moved from `pyve.sh` in K.l).
+
+- **Function naming convention** (project-essentials, post-K.f follow-up). Top-level command functions are named `<verb>_<operand>` where the operand describes what the verb operates on, taken from the position immediately after the verb in the user's CLI invocation: `init_project`, `purge_project`, `update_project`, `check_environment`, `show_status`, `lock_environment`, `run_command`, `test_tests`, `python_command`, `self_command`, `testenv_command`. Naturally avoids the F-11 binary/builtin shadowing trap (`python`, `test`).
+
+- **Function-name collision rule** (F-11, project-essentials). Discovered when K.d's initial rename `python_command` → `python` shipped a CI-breaking regression: bash function names take precedence over external binaries, so a function `python()` shadowed the `python` interpreter at every internal call site (`python -m venv`, `python -c`). Rule: never rename a command function to a name that is (a) an external binary pyve invokes internally, or (b) a bash builtin. `python_command` and `test_command` keep their `_command` suffix accordingly.
+
+- **F-7/F-8 helper moves to `lib/utils.sh`** — three shared helpers moved out of `pyve.sh` because they're called from 2+ commands: `testenv_paths`, `ensure_testenv_exists`, `purge_testenv_dir`.
+
+### Changed
+
+- **`pyve.sh` is now a thin dispatcher** (~595 lines). Owns: shebang/license, process-wide globals, library + per-command sourcing block, universal flags (`--help`/`-v`/`-c`), `case`-block dispatcher, `legacy_flag_error` / `unknown_flag_error`, `main()`. Does NOT own: command implementations or per-command help blocks.
+
+- **Per-command help blocks moved** (K.l) — `show_init_help`, `show_purge_help`, `show_status_help`, `show_check_help`, `show_update_help`, `show_python_help`, `show_self_help`, `show_self_install_help`, `show_self_uninstall_help` now live in their respective `lib/commands/*.sh` files. The dispatcher in `pyve.sh` continues to call them by name; bash resolves them through the global function table at call time, so the location move is transparent to users.
+
+- **`pyve self install` glob fix** (K.b — F-1): `cp "$source_dir/lib/"*.sh` is non-recursive; added an explicit `cp "$source_dir/lib/commands/"*.sh` step so installations from a non-Homebrew source pick up the per-command modules.
+
+- **`tests/unit/test_bash32_compat.bats` SOURCES array** (K.b — F-2): now also scans `lib/commands/*.sh` for forbidden bash 4+ constructs (`declare -A`, `mapfile`, etc.).
+
+- **`source_pyve_fn` test helper** (K.b — F-3): now takes an optional second argument (the source file path), defaulting to `$PYVE_ROOT/pyve.sh`. The J.b/J.c asdf-compat tests use it to extract function bodies from `lib/commands/init.sh` (`_init_direnv_venv`, `_init_direnv_micromamba`) and `lib/commands/run.sh` (`run_command`).
+
+- **Architectural target** (tech-spec): `pyve.sh` line-count target revised from 200–300 to ~500–650 in K.m. The original target predated full accounting of the explicit-sourcing rule's structural floor (~470 lines minimum even with all per-command code moved).
+
+### Tests
+
+- Bats unit suite: 727 → 729 tests (+2 hermetic backfills in K.d for `pyve python show` config-fallback and extra-args rejection). All 729 passing.
+- Integration suite: unchanged baseline; same pre-existing failures as v2.3.2 (tracked in stories.md "Fix pre-existing integration test failures").
+- Startup time: `pyve --version` ≈ 10–20ms (well under K.m's 50ms acceptance target; sourcing 19 lib + lib/commands files adds no measurable cost).
+
+### Migration
+
+No user-facing changes. CLI is byte-identical to v2.3.2:
+
+- Every command, flag, exit code, env var, and output line preserved.
+- Existing `.pyve/config` files compatible without modification.
+- Re-running `pyve self install` post-upgrade picks up the new `lib/commands/` directory automatically (F-1 fix in K.b).
+
 ## [2.3.2] - 2026-04-24
 
 Bugfix release (Story K.a.2). After `pyve init --force --backend micromamba` on a previously-venv project, `project-guide` shell completion (and any other completion whose rc-file guard uses `command -v`) silently stopped working. Venv-backed projects were unaffected.
