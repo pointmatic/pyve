@@ -218,6 +218,22 @@ Any non-comment hit means do **not** rename — keep the `_command` suffix. The 
 
 **Stories.md correction list update:** the audit's original recommendation that all leaf functions adopt the `<namespace>_<leaf>` form is **partially rolled back**. Namespace dispatchers (`python`, `test`) keep `_command` suffix when they would collide; leaves (`python_set`, `python_show`, `self_install`, `self_uninstall`, etc.) are unaffected because compound names don't collide.
 
+**Naming convention superseding this audit's "clean name" recommendation (post-K.f):** F-11 is the *floor* (don't shadow a binary or builtin); the *ceiling* is now the project-essentials "Function naming convention: `<verb>_<operand>`" entry. The `<verb>_<operand>` rule is broader than F-11 and supersedes the audit's earlier "rename `run_lock` to `lock`" / "rename `self_command` to `self`" suggestions. Final names for the 11 commands:
+
+| CLI | Function | Story |
+|---|---|---|
+| `pyve init` | `init_project()` | K.l |
+| `pyve purge` | `purge_project()` | K.k |
+| `pyve update` | `update_project()` | K.j |
+| `pyve check` | `check_environment()` | K.i |
+| `pyve status` | `show_status()` | K.h |
+| `pyve lock` | `lock_environment()` | K.c (retro-renamed in K.f follow-up) |
+| `pyve run <cmd>` | `run_command()` | K.b ✓ already aligned |
+| `pyve test [args]` | `test_tests()` | K.f |
+| `pyve python <sub>` | `python_command()` | K.d ✓ already aligned |
+| `pyve self <sub>` | `self_command()` | K.e (retro-renamed in K.f follow-up) |
+| `pyve testenv <sub>` | `testenv_command()` | K.g ✓ already aligned |
+
 ---
 
 ## Per-command audit

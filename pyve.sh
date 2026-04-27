@@ -155,6 +155,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/commands/test.sh" ]]; then
+    # shellcheck source=lib/commands/test.sh
+    source "$SCRIPT_DIR/lib/commands/test.sh"
+else
+    printf "ERROR: Cannot find lib/commands/test.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Help and Information Commands
 #============================================================
@@ -277,31 +285,6 @@ ensure_testenv_exists() {
         run_cmd python -m venv "$testenv_venv"
         success "Created dev/test runner environment"
     fi
-}
-
-testenv_has_pytest() {
-    local testenv_venv="$1"
-    if [[ ! -x "$testenv_venv/bin/python" ]]; then
-        return 1
-    fi
-    "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1
-}
-
-install_pytest_into_testenv() {
-    local testenv_venv="$1"
-    local requirements_file=""
-
-    if [[ -f "requirements-dev.txt" ]]; then
-        requirements_file="requirements-dev.txt"
-    fi
-
-    info "Installing pytest into dev/test runner environment..."
-    if [[ -n "$requirements_file" ]]; then
-        run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
-    else
-        run_cmd "$testenv_venv/bin/python" -m pip install pytest
-    fi
-    success "pytest installed"
 }
 
 show_version() {
@@ -1440,39 +1423,6 @@ EOF
     esac
 
     footer_box
-}
-
-test_command() {
-    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
-    ensure_testenv_exists
-
-    if ! testenv_has_pytest "$testenv_venv"; then
-        local auto_install=false
-        if [[ -n "${CI:-}" ]] || [[ "$PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT" == "1" ]]; then
-            auto_install=true
-        fi
-
-        if [[ "$auto_install" == true ]]; then
-            install_pytest_into_testenv "$testenv_venv"
-        else
-            if [[ -t 0 ]]; then
-                printf "pytest is not installed in the dev/test runner environment. Install now? [y/N]: "
-                read -r response
-                if [[ "$response" =~ ^[Yy]$ ]]; then
-                    install_pytest_into_testenv "$testenv_venv"
-                else
-                    log_info "Install skipped. You can install with: pyve testenv install -r requirements-dev.txt"
-                    exit 1
-                fi
-            else
-                log_error "pytest is not installed in the dev/test runner environment."
-                log_error "Run: pyve testenv install -r requirements-dev.txt"
-                exit 1
-            fi
-        fi
-    fi
-
-    exec "$testenv_venv/bin/python" -m pytest "$@"
 }
 
 purge_envrc() {
@@ -2636,7 +2586,7 @@ main() {
             ;;
         self)
             shift
-            self "$@"
+            self_command "$@"
             ;;
 
         # Unchanged subcommands (already subcommand-form pre-v1.11.0)
@@ -2650,11 +2600,11 @@ main() {
             ;;
         test)
             shift
-            test_command "$@"
+            test_tests "$@"
             ;;
         lock)
             shift
-            lock "$@"
+            lock_environment "$@"
             ;;
         doctor)
             # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.

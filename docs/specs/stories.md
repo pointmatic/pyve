@@ -143,7 +143,7 @@ Small, isolated command. Absorbs the existing `run_lock` helper from `pyve.sh` (
 - [x] **Inventory:** `lock`'s responsibilities (backend guard, conda-lock prerequisite check, platform detection, output filtering, rebuild guidance); helpers it calls (`get_conda_platform`, etc.)
 - [x] **Coverage audit (story-local):** quote K.a's `lock` section
 - [x] **Backfill characterization tests** if needed (existing `test_lock_command.py` may already cover the surface) — *audit found no mandatory backfill; existing 12 pytest + 37 adjacent bats tests are sufficient.*
-- [x] **Extract** `lock()` (and the `run_lock` helper, renamed to `lock` itself or kept as `_lock_run_conda_lock` per audit's recommendation) to `lib/commands/lock.sh` — *function renamed `run_lock` → `lock` per audit recommendation; no external callers, single dispatcher arm updated.*
+- [x] **Extract** `lock()` (and the `run_lock` helper, renamed to `lock` itself or kept as `_lock_run_conda_lock` per audit's recommendation) to `lib/commands/lock.sh` — *function initially renamed `run_lock` → `lock`; subsequently renamed `lock` → `lock_environment` in the K.f follow-up under the project-essentials "Function naming convention: `<verb>_<operand>`" rule (operates on environment dependency graph). The intermediate clean-name choice violated the rule.*
 - [x] **Verify green** + update tech-spec annotation (drop the "currently in `pyve.sh`" note on `run_lock`'s row)
 - [x] Append function-signature table to tech-spec.md
 
@@ -174,25 +174,25 @@ First namespace extraction. Smallest namespace — `set` + `show` only. Proves t
 - [x] **Coverage audit (story-local):** quote K.a's `self` section
 - [x] **Backfill characterization tests** (install + uninstall round-trip; rc-file preservation; `.local/.env` preservation when non-empty; sentinel block removal on uninstall for both `~/.zshrc` and `~/.bashrc`) — *deferred. The audit-flagged backfill targets all require HOME-monkeypatch integration tests (writing to a redirected `~/.local/bin`, asserting on rc-file mutations). Adding them is non-trivial — new pytest file, new fixtures — and out of scope for a pure refactor that does not change install/uninstall behavior. Existing safety net retained: 2 dispatch tests (`test_cli_dispatch.bats`), per-sub-help byte stability (`test_subcommand_help.bats`), 71 helper tests for the SDKMan-aware insertion (`test_project_guide.bats`). The 5 audit-flagged gaps remain known and tracked at K.a.3 §`self`.*
 - [x] **Decide and document `install_prompt_hook` placement:** F-5 resolved — `install_prompt_hook` and `uninstall_prompt_hook` are **self-namespace-private** (only callers are `install_self` / `uninstall_self`), so they move with K.e as `_self_install_prompt_hook` / `_self_uninstall_prompt_hook`. Not init-private; not cross-command-shared.
-- [x] **Extract** to `lib/commands/self.sh` — single-file namespace per project-essentials F-9. 9 functions moved (3 public: `self`, `self_install`, `self_uninstall`; 6 private with `_self_` prefix).
+- [x] **Extract** to `lib/commands/self.sh` — single-file namespace per project-essentials F-9. 9 functions moved (3 public: `self_command` (initially `self`, reverted in K.f follow-up under the "Function naming convention: `<verb>_<operand>`" rule), `self_install`, `self_uninstall`; 6 private with `_self_` prefix).
 - [x] **Verify green** — bats 729/729; smoke checks for `pyve self`, `pyve self bogus`, `pyve self --help`, `pyve self install --help`, `PYVE_DISPATCH_TRACE` for both leaves all byte-identical.
 - [x] Append function-signature table to tech-spec.md (with the F-5 placement decision recorded).
 
 ---
 
-### Story K.f: Extract `test` [Planned]
+### Story K.f: Extract 'test' [Done]
 
 Small command that delegates to `testenv_run`. Comes before K.g, which means a temporary cross-file call (`test` in `lib/commands/test.sh` calls `testenv_run` still in `pyve.sh`); resolves naturally on K.g.
 
 **Tasks**
 
-- [ ] **Inventory:** `test`'s responsibilities (auto-install pytest prompt, delegate to testenv); helpers it calls
-- [ ] **Coverage audit (story-local):** quote K.a's `test` section
-- [ ] **Backfill characterization tests** (pytest-present, pytest-missing-and-prompted, pytest-missing-and-CI, args pass-through, exit-code propagation)
-- [ ] **Extract** `test()` to `lib/commands/test.sh`; the call to `testenv_run` resolves to the in-`pyve.sh` function for now
-- [ ] **Verify green**
-- [ ] Append function-signature table to tech-spec.md
-- [ ] Note in story-completion comment: "Temporary cross-file call to `testenv_run` (still in `pyve.sh`); resolves on K.g."
+- [x] **Inventory:** `test`'s responsibilities (auto-install pytest prompt, delegate to testenv); helpers it calls
+- [x] **Coverage audit (story-local):** quote K.a's `test` section
+- [x] **Backfill characterization tests** (pytest-present, pytest-missing-and-prompted, pytest-missing-and-CI, args pass-through, exit-code propagation) — *deferred. The 5 audit-flagged gaps decompose as: 3 implicitly covered by harness (`PYVE_TEST_AUTO_INSTALL_PYTEST=1` + every integration test running pytest exercises auto-install, args pass-through, exit-code propagation); 2 require pty fixturing (TTY accept/decline) or real Python (non-TTY no-auto-install error path needs `ensure_testenv_exists` to succeed first). Skipping bats backfill mirrors the K.e judgment. Existing safety net: 2 integration tests in `test_testenv.py` invoke `pyve test` directly + the harness implicitly exercises gaps 1/5/6 across the whole suite.*
+- [x] **Extract** `test()` to `lib/commands/test.sh`; the call to `testenv_run` resolves to the in-`pyve.sh` function for now — *function named `test_tests` per the project-essentials "Function naming convention: `<verb>_<operand>`" rule (`pyve test [args]` operates on tests; args explicit or implicit). NOT named `test` (F-11: bash-builtin shadow). The same K.f follow-up that introduced this rule retro-renamed K.c's `lock` → `lock_environment` and reverted K.e's `self()` → `self_command()`. F-8 correction: there is no `testenv_run` function — the K.f story's "temporary cross-file call to `testenv_run`" caveat is stale. `test_tests` calls `ensure_testenv_exists` (still in pyve.sh until K.g; cross-file call resolves at runtime), `_test_has_pytest`, `_test_install_pytest_into_testenv`, then `exec`s pytest. The two helpers move with K.f as `_test_` private.*
+- [x] **Verify green** — bats 729/729 still passing; smoke `pyve init --backend venv` followed by `pyve test -q` against a trivial test file: pytest auto-installed into testenv, test ran, exit 0 with the expected output.
+- [x] Append function-signature table to tech-spec.md (with the F-11 stay-as-`test_command` note and the F-8 stale-caveat correction).
+- [x] Note in story-completion comment: "Temporary cross-file call to `testenv_run` (still in `pyve.sh`); resolves on K.g." — *correction recorded above: the only cross-file call is to `ensure_testenv_exists` (NOT `testenv_run`), and K.g moves that helper to `lib/utils.sh` rather than into `lib/commands/testenv.sh`.*
 
 ---
 
@@ -205,8 +205,8 @@ Largest namespace command — `init` + `install` + `purge` + `run`. After this s
 - [ ] **Inventory:** dispatcher + four leaves; responsibilities and helper calls for each
 - [ ] **Coverage audit (story-local):** quote K.a's `testenv` section; this is one of the more test-heavy commands so coverage should be strong
 - [ ] **Backfill characterization tests** for any audit-identified gaps
-- [ ] **Extract** all four leaves + dispatcher to `lib/commands/testenv.sh`
-- [ ] **Verify green** including K.f's `test` command now calling into `lib/commands/testenv.sh`
+- [ ] **Extract** dispatcher (`testenv_command()` per the project-essentials "Function naming convention" rule) + four leaves (`testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`) to `lib/commands/testenv.sh`. Per audit F-7 / F-8, also move `purge_testenv_dir` and `ensure_testenv_exists` from `pyve.sh` to `lib/utils.sh` (cross-command shared helpers — `purge` and `test` use them respectively).
+- [ ] **Verify green** including the F-8-corrected expectation: K.f's `test_tests` now calls `ensure_testenv_exists` from `lib/utils.sh` (no longer cross-file into `pyve.sh`); the K.f story's caveat about `testenv_run` is stale (no such function exists).
 - [ ] Append function-signature table to tech-spec.md
 
 ---
@@ -220,7 +220,7 @@ Read-only command, no side effects. Well-bounded section design from `phase-H-ch
 - [ ] **Inventory:** `status`'s responsibilities (sectioned read-only output: Project / Environment / Integrations); helpers it calls (config readers, package counters, etc.)
 - [ ] **Coverage audit (story-local):** quote K.a's `status` section
 - [ ] **Backfill characterization tests** (each section emits expected rows; always-zero exit code; behavior with missing `.pyve/config`)
-- [ ] **Extract** `status()` to `lib/commands/status.sh`
+- [ ] **Extract** `status_command()` → `show_status()` to `lib/commands/status.sh` per the project-essentials "Function naming convention" rule (`status` is a noun, not a verb; semantic alignment: `show_status()`)
 - [ ] **Verify green**
 - [ ] Append function-signature table to tech-spec.md
 
@@ -235,7 +235,7 @@ Read-only command, no side effects. Well-bounded section design from `phase-H-ch
 - [ ] **Inventory:** `check`'s responsibilities (run ~20 checks, aggregate severity, emit 0/1/2 exit code); list every `doctor_check_*` helper it calls and confirm they stay in `lib/utils.sh`
 - [ ] **Coverage audit (story-local):** quote K.a's `check` section
 - [ ] **Backfill characterization tests** for any audit-identified gaps; `pyve check` is severity-bearing so exit-code coverage matters
-- [ ] **Extract** `check()` (the orchestrator) to `lib/commands/check.sh`; `doctor_check_*` helpers stay in `lib/utils.sh`
+- [ ] **Extract** `check_command()` → `check_environment()` (the orchestrator) to `lib/commands/check.sh` per the project-essentials "Function naming convention" rule (operand: the project's environment); `doctor_check_*` helpers stay in `lib/utils.sh`
 - [ ] **Verify green** including all three exit-code paths (0 / 1 / 2)
 - [ ] Append function-signature table to tech-spec.md
 
@@ -251,7 +251,7 @@ Non-destructive upgrade. Shares helpers with `init` — careful audit needed to 
 - [ ] **Coverage audit (story-local):** quote K.a's `update` section
 - [ ] **Backfill characterization tests** (no-op-when-already-current, re-running idempotency, `--no-project-guide` skips step 2, never rebuilds venv, never prompts)
 - [ ] **Decide helper placement.** Helpers called *only* by `init` and `update` (not other commands) stay in `lib/utils.sh` per the cross-command-helper rule (two callers = shared). Document each decision in the story
-- [ ] **Extract** `update()` to `lib/commands/update.sh`
+- [ ] **Extract** `update_command()` → `update_project()` to `lib/commands/update.sh` per the project-essentials "Function naming convention" rule (operand: the project; refreshes `.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide — all project-level)
 - [ ] **Verify green**
 - [ ] Append function-signature table to tech-spec.md
 
@@ -266,7 +266,7 @@ Medium complexity. `.gitignore` cleanup logic stays in `lib/utils.sh` (already u
 - [ ] **Inventory:** `purge`'s responsibilities (remove venv / micromamba env, version manager files, `.envrc`, `.env` if empty, `.gitignore` patterns, `.vscode/settings.json`); `--keep-testenv` flag behavior
 - [ ] **Coverage audit (story-local):** quote K.a's `purge` section
 - [ ] **Backfill characterization tests** for any gaps (preserve non-empty `.env`, preserve `conda-lock.yml` for micromamba, `--keep-testenv` preserves testenv)
-- [ ] **Extract** `purge()` to `lib/commands/purge.sh`
+- [ ] **Extract** `purge()` → `purge_project()` to `lib/commands/purge.sh` per the project-essentials "Function naming convention" rule (operand: the project — removes venv, micromamba env, `.envrc`, `.env`, `.pyve/`, etc.)
 - [ ] **Verify green** including the H.a-era idempotency test (byte-identical `.gitignore` after purge-then-reinit)
 - [ ] Append function-signature table to tech-spec.md
 
@@ -281,7 +281,7 @@ The largest extraction. ~300 lines of `init()` + helpers. Last in the order so i
 - [ ] **Inventory:** `init`'s responsibilities (backend detection, version manager setup, venv/micromamba env creation, pip-deps prompt, direnv configuration, `.env` setup, `.gitignore` rebuild, `.pyve/config` write, project-guide hooks, micromamba `.vscode/settings.json`, asdf compat); the long list of helpers it calls; private vs shared classification per K.a
 - [ ] **Coverage audit (story-local):** quote K.a's `init` section; this is the most-tested command (`test_venv_workflow.py`, `test_micromamba_workflow.py`, `test_reinit.py`, `test_pip_upgrade.py`, etc.)
 - [ ] **Backfill characterization tests** for any gaps; confidence here matters most because `init` is the primary user-facing command
-- [ ] **Extract** `init()` + `run_project_guide_hooks` (renamed to `_init_run_project_guide_hooks`) + any other init-private helpers to `lib/commands/init.sh`. Honor K.e's `install_prompt_hook` placement decision
+- [ ] **Extract** `init()` → `init_project()` (per the project-essentials "Function naming convention" rule; operand: the project) + `run_project_guide_hooks` (renamed to `_init_run_project_guide_hooks`) + any other init-private helpers to `lib/commands/init.sh`. Honor K.e's `install_prompt_hook` placement decision
 - [ ] **Verify green** — full suite, both backends, both platforms, both Python matrix versions; spot-check `pyve init --help` byte-identical
 - [ ] Append function-signature table to tech-spec.md
 - [ ] Verify `pyve.sh` line count is in the 200–350 range (acceptance criterion 1)

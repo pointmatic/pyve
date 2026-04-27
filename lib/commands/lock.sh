@@ -22,7 +22,12 @@ fi
 
 # Run conda-lock for the current platform, handling output filtering and
 # actionable next-step messaging.
-lock() {
+#
+# Function-name note: this function is named `lock_environment` per the
+# project-essentials "Function naming convention: verb_<operand>" rule —
+# `pyve lock` operates on the environment's dependency graph (locks
+# `environment.yml` → `conda-lock.yml`).
+lock_environment() {
     local check_mode=false
 
     # Parse flags

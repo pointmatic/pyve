@@ -91,6 +91,52 @@ Every backend's `.envrc` is emitted by `write_envrc_template` in `lib/utils.sh` 
 
 **How to apply:** When adding a new backend (uv, poetry, conda, etc.), do **not** write a new `init_direnv_<backend>` that emits its own template. Add a wrapper like `init_direnv_venv` that calls `write_envrc_template "<rel_bin_dir>" "<sentinel_var>" "<rel_env_root>" "<backend_name>" "<env_name>"` and nothing else. Callers pass paths relative to the project root; the helper handles `$PWD`-prefixing and the asdf compat guard.
 
+### Function naming convention — `<verb>_<operand>` aligned with the CLI
+
+Top-level command functions in `lib/commands/<name>.sh` are named `<verb>_<operand>` where the operand describes what the verb operates on, taken from the position immediately after the verb in the user's CLI invocation. Whether the operand is explicit (named sub-command) or implicit (unnamed args, or no args at all), the function name uses a stable noun for that position.
+
+**Direct commands** (no namespace; user types `pyve <verb> [operand-args]`):
+
+| CLI | Operand | Function | Notes |
+|---|---|---|---|
+| `pyve init [<dir>]` | the project | `init_project()` | Implicit operand: this project |
+| `pyve purge [<dir>]` | the project | `purge_project()` | Implicit operand: this project |
+| `pyve update` | the project | `update_project()` | Refreshes `.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide — all project-level |
+| `pyve check` | the environment | `check_environment()` | Diagnoses venv/python/.envrc health |
+| `pyve status` | (status itself is the noun) | `show_status()` | `status` is a noun, not a verb — semantic alignment trumps spelling alignment here; `..._project` / `..._environment` suffixes are supportive but not mandatory |
+| `pyve lock` | dependencies | `lock_environment()` | Locks the environment's dependency graph (`environment.yml` → `conda-lock.yml`) |
+| `pyve run <cmd>` | a command | `run_command()` | Operand is what the user types as the next CLI token |
+| `pyve test [args]` | tests | `test_tests()` | Args explicitly select tests; no args runs all tests; either way the operand is "tests" |
+
+**Namespace dispatchers** (user types `pyve <namespace> <sub-command>`):
+
+For namespace dispatchers the operand is the *sub-command name* itself, so the convention `<namespace>_command` reads correctly: `pyve <namespace> <command-name>` → `<namespace>_command()`.
+
+| CLI | Function |
+|---|---|
+| `pyve python <sub>` | `python_command()` |
+| `pyve self <sub>` | `self_command()` |
+| `pyve testenv <sub>` | `testenv_command()` |
+
+**Namespace leaves** (the actual handler reached after a namespace dispatch):
+
+Leaves use `<namespace>_<leaf>` where `<leaf>` is the literal sub-command name from the CLI.
+
+| CLI | Function |
+|---|---|
+| `pyve python set` / `pyve python show` | `python_set()` / `python_show()` |
+| `pyve self install` / `pyve self uninstall` | `self_install()` / `self_uninstall()` |
+| `pyve testenv {init\|install\|purge\|run}` | `testenv_init()` / `testenv_install()` / `testenv_purge()` / `testenv_run()` |
+
+**Why:** the rule keeps the function name and the CLI form in 1:1 correspondence, so any reader can derive the function name from the user-facing command and vice versa without consulting a table. It also naturally avoids the F-11 binary/builtin shadow trap (`python`, `test`) — the operand suffix lifts every name into a non-colliding namespace. The earlier "rename to clean name" recommendations in K.a.3 (e.g. `run_lock` → `lock`, `self_command` → `self`) were rolled back because they violated this rule, were inconsistent with each other, and exposed F-11 traps for future maintainers who don't notice the collision.
+
+**How to apply:**
+
+- When extracting a new direct command, name the function `<verb>_<operand>` where `<operand>` is the noun describing what the command operates on. If the operand is absent or genuinely an action-with-no-noun (`status` is the canonical example), prefer the semantically clearest name (`show_status()`) — alignment with the CLI is the goal, not literal spelling.
+- When extracting a namespace, the dispatcher is `<namespace>_command()` and the leaves are `<namespace>_<sub-command>()`. Both are easy to derive.
+- Command-private helpers (only called from inside one command's file) keep the `_<command>_` prefix per the existing project-essentials F: `_init_<helper>`, `_check_<helper>`, etc.
+- For shared helpers (called by ≥2 commands), the convention does not apply — they live in `lib/<topic>.sh` and use whatever name fits the helper's responsibility.
+
 ### Function-name collision rule — never shadow a binary or builtin we use
 
 When naming a top-level command function in `lib/commands/<name>.sh`, the function name must not collide with (a) an external binary that pyve invokes internally, or (b) a bash builtin/keyword. Bash function names take precedence over external commands and most builtins, so a collision silently shadows the original — with the failure surfacing only when that command path runs in CI.

@@ -412,9 +412,15 @@ _self_uninstall_prompt_hook() {
 
 #------------------------------------------------------------
 # Namespace dispatcher: pyve self <subcommand>
+#
+# Function-name note: this function is named `self_command` per the
+# project-essentials "Function naming convention: verb_<operand>"
+# rule — for namespace dispatchers the operand is the sub-command
+# name that follows. The K.e initial clean-name rename to `self()`
+# violated the rule (no operand suffix); reverted in K.f follow-up.
 #------------------------------------------------------------
 
-self() {
+self_command() {
     if [[ $# -eq 0 ]]; then
         show_self_help
         return 0
