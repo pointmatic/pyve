@@ -257,18 +257,18 @@ Non-destructive upgrade. Shares helpers with `init` — careful audit needed to 
 
 ---
 
-### Story K.k: Extract `purge` [Planned]
+### Story K.k: Extract 'purge' [Done]
 
 Medium complexity. `.gitignore` cleanup logic stays in `lib/utils.sh` (already used by `init`); `--keep-testenv` flag handling and venv/micromamba env removal are purge-private.
 
 **Tasks**
 
-- [ ] **Inventory:** `purge`'s responsibilities (remove venv / micromamba env, version manager files, `.envrc`, `.env` if empty, `.gitignore` patterns, `.vscode/settings.json`); `--keep-testenv` flag behavior
-- [ ] **Coverage audit (story-local):** quote K.a's `purge` section
-- [ ] **Backfill characterization tests** for any gaps (preserve non-empty `.env`, preserve `conda-lock.yml` for micromamba, `--keep-testenv` preserves testenv)
-- [ ] **Extract** `purge()` → `purge_project()` to `lib/commands/purge.sh` per the project-essentials "Function naming convention" rule (operand: the project — removes venv, micromamba env, `.envrc`, `.env`, `.pyve/`, etc.)
-- [ ] **Verify green** including the H.a-era idempotency test (byte-identical `.gitignore` after purge-then-reinit)
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** `purge`'s responsibilities (remove venv / micromamba env, version manager files, `.envrc`, `.env` if empty, `.gitignore` patterns, `.vscode/settings.json`); `--keep-testenv` flag behavior
+- [x] **Coverage audit (story-local):** quote K.a's `purge` section
+- [x] **Backfill characterization tests** for any gaps (preserve non-empty `.env`, preserve `conda-lock.yml` for micromamba, `--keep-testenv` preserves testenv) — *no backfill needed. Existing safety net: `test_purge_ui.bats` (6 tests, header/footer + `--yes` flag), `test_reinit.bats` (subset on `--keep-testenv` preservation), `test_testenv.py::test_testenv_survives_force_reinit` (the H.a-era idempotency invariant), partial coverage in `test_venv_workflow.py` and `test_micromamba_workflow.py`. The 4 audit gaps (empty-vs-non-empty `.env`, idempotency, micromamba named-removal-fallback, positional-arg vs config-derived precedence) are tracked but didn't block extraction.*
+- [x] **Extract** `purge()` → `purge_project()` to `lib/commands/purge.sh` per the project-essentials "Function naming convention" rule (operand: the project — removes venv, micromamba env, `.envrc`, `.env`, `.pyve/`, etc.) — *7 functions moved: `purge_project` orchestrator + 6 purge-private helpers renamed with `_purge_` prefix per project-essentials F (`purge_version_file` → `_purge_version_file`, etc.). `purge_testenv_dir` stays in `lib/utils.sh` (F-7, settled in K.g). Updated 2 callsites in `init()` (still in pyve.sh until K.l) from `purge --keep-testenv --yes` to `purge_project --keep-testenv --yes`; cross-file calls resolve at runtime.*
+- [x] **Verify green** including the H.a-era idempotency test (byte-identical `.gitignore` after purge-then-reinit) — *bats 729/729; smoke checks: `pyve purge --help` (intact), `pyve purge --bogus` (closest-match unknown-flag exit 1), `pyve purge --yes` end-to-end in a fixture project (removed all 5 artifacts: `.tool-versions`, `.venv`, `.pyve`, `.envrc`, `.env`), `PYVE_DISPATCH_TRACE=1 pyve purge` → `DISPATCH:purge`. The H.a-era `.gitignore` idempotency invariant is exercised by `test_reinit.bats` and integration `test_testenv_survives_force_reinit`.*
+- [x] Append function-signature table to tech-spec.md
 
 ---
 

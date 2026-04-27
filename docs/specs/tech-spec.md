@@ -318,6 +318,29 @@ Non-destructive upgrade — refreshes managed files (`.pyve/config`, `.gitignore
 
 **No private helpers** — the function is fully self-contained at HEAD and didn't need any helpers when it was inlined in pyve.sh either. The K.j story task to "decide helper placement between init and update" was moot per the K.a.3 audit: there are no `pyve.sh`-internal helpers shared between `init` and `update_project` — every cross-command helper they share already lives in `lib/utils.sh`.
 
+#### `lib/commands/purge.sh` (Story K.k — v2.4.0)
+
+Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` via `--keep-testenv` (used by `init --force` to avoid rebuilding the dev/test runner across re-inits). Orchestrator + 6 purge-private helpers.
+
+| Function | Signature | Description |
+|---|---|---|
+| `purge_project` | `([<dir>] [--keep-testenv] [--yes\|-y])` | Orchestrator. Parses flags, prompts y/N for confirmation (skipped on `--yes`/`-y` / `CI=1` / `PYVE_FORCE_YES=1`), sources shell profiles, and calls each helper in sequence: `_purge_version_file`, `_purge_venv`, `_purge_pyve_dir` + `purge_testenv_dir` (or the `--keep-testenv` branch that preserves `.pyve/testenv`), `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`. The venv directory defaults to `$DEFAULT_VENV_DIR`, but if no positional arg is given AND `.pyve/config` exists, `venv.directory` from config wins. Always exits 0 on success or user-aborted prompt. |
+| `_purge_version_file` | `()` | Remove `.tool-versions` AND `.python-version` if present. |
+| `_purge_venv` | `(<venv_dir>)` | Remove the venv directory; emits an info line if absent. |
+| `_purge_pyve_dir` | `()` | Remove `.pyve/`. If `.pyve/envs/` exists and micromamba is available, attempts a clean `micromamba env remove` first (named, then prefix-based fallback) before the directory `rm -rf`. Safe no-op when `.pyve/` doesn't exist. |
+| `_purge_envrc` | `()` | Remove `.envrc` if present. |
+| `_purge_dotenv` | `()` | v0.6.0 smart purge: removes `$ENV_FILE_NAME` only if empty; otherwise warn-and-preserve (the user's data takes precedence). |
+| `_purge_gitignore` | `(<venv_dir>)` | Strip the three pyve-managed patterns (`<venv_dir>`, `$ENV_FILE_NAME`, `.envrc`) from `.gitignore`. Safe no-op when `.gitignore` doesn't exist. |
+
+**Function name `purge_project` (NOT `purge`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve purge` operates on the project (removes every Pyve-managed artifact across venv/conda env, version manager files, rc files, `.gitignore` sections, `.pyve/` directory).
+
+**Cross-command callsites** (resolved at runtime via global function table):
+- `init` (still in `pyve.sh` until K.l) calls `purge_project --keep-testenv --yes` from its `--force` pre-flight ([pyve.sh:706](../../pyve.sh#L706)) and from the interactive option-2 (purge-and-rebuild) path ([pyve.sh:774](../../pyve.sh#L774)). After K.l these will be standard intra-`lib/commands/` cross-file calls; no edit needed.
+
+**F-7 settled in K.g** — `purge_testenv_dir` already lives in `lib/utils.sh` and is called from both `purge_project` (here) and `testenv_purge` (in `lib/commands/testenv.sh`).
+
+**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
+
 ---
 
 ### `lib/utils.sh` — Core Utilities
