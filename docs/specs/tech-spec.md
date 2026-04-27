@@ -304,6 +304,20 @@ Read-only diagnostics. Severity ladder: `info` (no effect) → `pass` (✓) → 
 
 **`doctor_check_*` helpers stay in `lib/utils.sh`** per the cross-command-helper rule. They're called from `_check_venv_backend` / `_check_micromamba_backend` here, but may grow more callers in future (notably the deferred `pyve check --fix` story).
 
+#### `lib/commands/update.sh` (Story K.j — v2.4.0)
+
+Non-destructive upgrade — refreshes managed files (`.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide scaffolding) without rebuilding the venv or touching user state. Single self-contained function; no private helpers.
+
+| Function | Signature | Description |
+|---|---|---|
+| `update_project` | `([--no-project-guide])` | Five-step refresh: (1) bump `pyve_version` in `.pyve/config` via `update_config_version` (idempotent — writes even when already current); (2) refresh `.gitignore` Pyve-managed sections via `write_gitignore_template`; (3) refresh `.vscode/settings.json` via `write_vscode_settings` (only if it already exists AND backend is micromamba); (4) ensure `.pyve/` exists; (5) refresh project-guide scaffolding via `run_project_guide_update_in_env` (only if `.project-guide.yml` is present and `--no-project-guide` not passed). Errors out with exit 1 if `.pyve/config` is missing or has no `backend` key. Never prompts. Never changes the recorded backend. Never creates `.vscode/settings.json` or `.envrc` or `.env` if absent. |
+
+**Function name `update_project` (NOT `update_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve update` operates on the project (config + .gitignore + .vscode/settings.json + project-guide scaffolding — all project-level concerns).
+
+**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `update_config_version` (lib/utils.sh + lib/version.sh); `write_gitignore_template`, `write_vscode_settings` (lib/utils.sh); `run_project_guide_update_in_env` (lib/utils.sh); `unknown_flag_error`, `log_error`, `log_info`, `log_success`, `log_warning` (lib/utils.sh).
+
+**No private helpers** — the function is fully self-contained at HEAD and didn't need any helpers when it was inlined in pyve.sh either. The K.j story task to "decide helper placement between init and update" was moot per the K.a.3 audit: there are no `pyve.sh`-internal helpers shared between `init` and `update_project` — every cross-command helper they share already lives in `lib/utils.sh`.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities

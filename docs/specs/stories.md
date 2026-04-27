@@ -241,19 +241,19 @@ Read-only command, no side effects. Well-bounded section design from `phase-H-ch
 
 ---
 
-### Story K.j: Extract `update` [Planned]
+### Story K.j: Extract 'update' [Done]
 
 Non-destructive upgrade. Shares helpers with `init` — careful audit needed to decide which helpers move with `init` (K.l), which stay shared in `lib/utils.sh`, which become `update`-private.
 
 **Tasks**
 
-- [ ] **Inventory:** `update`'s responsibilities (rewrite `.pyve/config` `pyve_version`, refresh `.gitignore` template, refresh `.vscode/settings.json` if present, refresh `.pyve/` layout, run project-guide step 2); cross-helper map vs `init`
-- [ ] **Coverage audit (story-local):** quote K.a's `update` section
-- [ ] **Backfill characterization tests** (no-op-when-already-current, re-running idempotency, `--no-project-guide` skips step 2, never rebuilds venv, never prompts)
-- [ ] **Decide helper placement.** Helpers called *only* by `init` and `update` (not other commands) stay in `lib/utils.sh` per the cross-command-helper rule (two callers = shared). Document each decision in the story
-- [ ] **Extract** `update_command()` → `update_project()` to `lib/commands/update.sh` per the project-essentials "Function naming convention" rule (operand: the project; refreshes `.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide — all project-level)
-- [ ] **Verify green**
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** `update`'s responsibilities (rewrite `.pyve/config` `pyve_version`, refresh `.gitignore` template, refresh `.vscode/settings.json` if present, refresh `.pyve/` layout, run project-guide step 2); cross-helper map vs `init`
+- [x] **Coverage audit (story-local):** quote K.a's `update` section
+- [x] **Backfill characterization tests** (no-op-when-already-current, re-running idempotency, `--no-project-guide` skips step 2, never rebuilds venv, never prompts) — *no backfill needed. `test_update.bats` already has 21 tests covering: help, missing-`.pyve/config`, missing-backend, version-bump, no-op-when-current, not-recorded-→-set, `.gitignore` refresh, H.e.2a ignore patterns, backend preservation, never-create-`.venv`/`.env`/`.envrc`/`.vscode`, never-touch-existing-`.venv`/`.env`, non-interactive, `--no-project-guide` skip path, `.project-guide.yml`-absent no-op, unknown-flag, top-level help mention, dispatch trace. All 5 audit-recommended characterization properties already covered.*
+- [x] **Decide helper placement.** Helpers called *only* by `init` and `update` (not other commands) stay in `lib/utils.sh` per the cross-command-helper rule (two callers = shared). Document each decision in the story — *moot per K.a.3 audit: no `pyve.sh`-internal helpers are shared between `init` and `update`. All cross-command helpers already live in `lib/utils.sh` (`update_config_version`, `write_gitignore_template`, `write_vscode_settings`, `run_project_guide_update_in_env`). `update_project` is fully self-contained.*
+- [x] **Extract** `update_command()` → `update_project()` to `lib/commands/update.sh` per the project-essentials "Function naming convention" rule (operand: the project; refreshes `.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide — all project-level)
+- [x] **Verify green** — bats 729/729; smoke checks: `pyve update --help` (intact), `pyve update foo` (positional rejection exit 1), `pyve update --bogus` (closest-match unknown-flag exit 1), `pyve update` in clean dir (missing-`.pyve/config` error exit 1), `PYVE_DISPATCH_TRACE=1 pyve update` → `DISPATCH:update`.
+- [x] Append function-signature table to tech-spec.md
 
 ---
 
