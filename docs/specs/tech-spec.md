@@ -287,6 +287,23 @@ Read-only state dashboard. Three sections (Project / Environment / Integrations)
 
 **Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui.sh) and `PYVE_DISTUTILS_SHIM_MARKER` (defined in lib/distutils_shim.sh).
 
+#### `lib/commands/check.sh` (Story K.i — v2.4.0)
+
+Read-only diagnostics. Severity ladder: `info` (no effect) → `pass` (✓) → `warn` (⚠, exit 2) → `error` (✗, exit 1). Escalation is one-way — an error later in the run cannot be downgraded; a warning cannot downgrade an error. Replaces the legacy `pyve validate` (CI exit-code semantics) and most of the legacy `pyve doctor` (per-problem findings with one actionable next-step).
+
+| Function | Signature | Description |
+|---|---|---|
+| `check_environment` | `()` | Orchestrator. Validates no flags / no positional args, prints title + divider, runs Check 1 (`.pyve/config`), Check 3 (`backend` configured), Check 2 (`pyve_version` drift via `compare_versions`), the per-backend block via `_check_venv_backend` or `_check_micromamba_backend`, then Checks 9/10 (`.envrc`, `.env`) and Check 16 (testenv conditional). Calls `_check_summary_and_exit` to print the count line and exit with the accumulated severity. Defines three nested closures (`_check_pass`, `_check_warn`, `_check_fail`) that bump local counters via dynamic scoping. |
+| `_check_venv_backend` | `(<venv_dir>)` | Venv-backend Checks 5/7/13/14 — directory + `bin/python` exist, Python version, `doctor_check_venv_path` (relocated project), `doctor_check_duplicate_dist_info`, `doctor_check_collision_artifacts`. Calls the three closures from `check_environment`'s scope to escalate findings. |
+| `_check_micromamba_backend` | `(<env_path> <env_name>)` | Micromamba-backend Checks 4/5/11/12/13/14/15 — micromamba binary present, `environment.yml` present, `conda-lock.yml` present + fresh, env directory + Python, dup-dist-info, collision-artifacts, native-lib-conflict warning. Calls the three closures from `check_environment`'s scope. |
+| `_check_summary_and_exit` | `()` | Print the `N passed, N warnings, N errors` count line and `exit "$exit_code"`. Reads the four counter locals from `check_environment` via dynamic scoping. |
+
+**Function name `check_environment` (NOT `check_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve check` operates on the project's environment (venv / micromamba env, .envrc, .env, testenv, lock file).
+
+**Closure pattern preserved.** `check_environment` defines `_check_pass`, `_check_warn`, `_check_fail` inline as nested function definitions. The two per-backend helpers and `_check_summary_and_exit` are top-level in the file (NOT nested inside `check_environment`), but they reference the closures and the four counter locals (`errors`, `warnings`, `passed`, `exit_code`) — bash dynamic scoping resolves these up the call stack at call time. **Do not refactor to file-scope counters** — the structure is intentional and tested by `test_check.bats` exit-code escalation tests. `_check_pass` / `_check_warn` / `_check_fail` are NOT visible to direct invocations of the helpers from outside `check_environment` (they don't exist in the function table until the orchestrator runs).
+
+**`doctor_check_*` helpers stay in `lib/utils.sh`** per the cross-command-helper rule. They're called from `_check_venv_backend` / `_check_micromamba_backend` here, but may grow more callers in future (notably the deferred `pyve check --fix` story).
+
 ---
 
 ### `lib/utils.sh` — Core Utilities

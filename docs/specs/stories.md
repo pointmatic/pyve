@@ -226,18 +226,18 @@ Read-only command, no side effects. Well-bounded section design from `phase-H-ch
 
 ---
 
-### Story K.i: Extract `check` [Planned]
+### Story K.i: Extract 'check' [Done]
 
 ~20 diagnostic checks. Large but well-bounded. Several check helpers (`doctor_check_*` in `lib/utils.sh`) **stay in `lib/utils.sh`** per the cross-command-helper rule — only the `check()` orchestrator and any check-private helpers move.
 
 **Tasks**
 
-- [ ] **Inventory:** `check`'s responsibilities (run ~20 checks, aggregate severity, emit 0/1/2 exit code); list every `doctor_check_*` helper it calls and confirm they stay in `lib/utils.sh`
-- [ ] **Coverage audit (story-local):** quote K.a's `check` section
-- [ ] **Backfill characterization tests** for any audit-identified gaps; `pyve check` is severity-bearing so exit-code coverage matters
-- [ ] **Extract** `check_command()` → `check_environment()` (the orchestrator) to `lib/commands/check.sh` per the project-essentials "Function naming convention" rule (operand: the project's environment); `doctor_check_*` helpers stay in `lib/utils.sh`
-- [ ] **Verify green** including all three exit-code paths (0 / 1 / 2)
-- [ ] Append function-signature table to tech-spec.md
+- [x] **Inventory:** `check`'s responsibilities (run ~20 checks, aggregate severity, emit 0/1/2 exit code); list every `doctor_check_*` helper it calls and confirm they stay in `lib/utils.sh`
+- [x] **Coverage audit (story-local):** quote K.a's `check` section
+- [x] **Backfill characterization tests** for any audit-identified gaps; `pyve check` is severity-bearing so exit-code coverage matters — *no backfill needed. Existing 17 tests in `test_check.bats` cover all three exit-code paths (0/1/2), missing-config / missing-backend / missing-venv / missing-python error paths, version drift, missing-`.env`/`.envrc` warnings, escalation invariant (error not downgraded by later warning), summary footer, actionable-next-step messages, micromamba branch, unknown-flag. The 3 audit gaps (`pyve_version > running` warning, native-lib-conflict warning escalation through `pyve check`, all-pass exit-0 happy path) are minor and not extraction-blockers.*
+- [x] **Extract** `check_command()` → `check_environment()` (the orchestrator) to `lib/commands/check.sh` per the project-essentials "Function naming convention" rule (operand: the project's environment); `doctor_check_*` helpers stay in `lib/utils.sh`
+- [x] **Verify green** including all three exit-code paths (0 / 1 / 2) — *bats 729/729; manual exit-code spot-check: in-pyve-dir `pyve check` returns 2 (warning: `pyve_version` drift); in clean dir `pyve check` returns 1 (missing `.pyve/config`). Closure pattern preserved (`_check_pass`/`_check_warn`/`_check_fail` defined inside `check_environment`; helpers and `_check_summary_and_exit` see counter locals via dynamic scoping at call time). Documented this invariant explicitly in `lib/commands/check.sh`'s file header to prevent future contributors from "fixing" the closure pattern.*
+- [x] Append function-signature table to tech-spec.md
 
 ---
 
