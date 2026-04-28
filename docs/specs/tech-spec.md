@@ -123,14 +123,16 @@ pyve/
 
 ### `pyve.sh` — Thin Entry Point
 
-`pyve.sh` is a small, focused dispatcher (~200–300 lines target). It owns process-wide concerns and command routing; it does **not** own command implementations. Top-level command logic lives in `lib/commands/<name>.sh` (see next subsection).
+`pyve.sh` is the dispatcher and process-wide concern manager (~500–650 lines post-K.l, was ~3,500 pre-K). It owns process-wide concerns and command routing; it does **not** own command implementations. Top-level command logic lives in `lib/commands/<name>.sh` (see next subsection).
+
+The line-count floor is set by the explicit-sourcing rule (project-essentials): 8 lib + 11 lib/commands source blocks at 4 lines each ≈ 95–130 lines. Plus header/license/config (~70), `main()` dispatcher (~230 lines for 11 commands + 9 legacy-flag catches + 3 universal flags), `legacy_flag_error` / `unknown_flag_error` (~50), and the three universal-flag implementation functions (`show_help` / `show_version` / `show_config`, ~150). The original 200–300 target predates the explicit-sourcing rule and was revised in K.m once the structural floor was empirically clear.
 
 **What lives in `pyve.sh`:**
 
 - Shebang, copyright/SPDX header, `set -euo pipefail`.
 - Process-wide globals (see table below).
 - The library sourcing block (helpers first, then commands).
-- Universal flag handling: `--help` / `-h`, `--version` / `-v`, `--config` / `-c`.
+- Universal flag handling: `--help` / `-h`, `--version` / `-v`, `--config` / `-c`. Implementations: `show_help()` (top-level man-page-style help describing all 11 commands and universal flags), `show_version()` (single-line `pyve version X.Y.Z`), `show_config()` (current detected config: VERSION, defaults, configured backend, micromamba availability, env file detection).
 - The top-level `case`-block dispatcher that maps a subcommand name to its `lib/commands/*.sh` function.
 - `legacy_flag_error()` — the Category B hard-error catcher for renamed/removed flags and subcommands. Three lines per catch arm; emits a precise migration error and exits non-zero.
 - `unknown_flag_error()` — closest-match suggestion for typos within a valid subcommand (uses `_edit_distance()` from `lib/ui.sh`).
@@ -145,7 +147,7 @@ pyve/
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VERSION` | `"2.3.2"` | Current Pyve version |
+| `VERSION` | `"2.4.0"` | Current Pyve version |
 | `DEFAULT_PYTHON_VERSION` | `"3.14.3"` | Default Python version for new environments |
 | `DEFAULT_VENV_DIR` | `".venv"` | Default venv directory name |
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
@@ -175,6 +177,206 @@ One file per top-level command. Each file owns the implementation of its command
 
 **Per-command function tables** are documented in this section as the extraction phase progresses — each story that extracts a command appends its function-signature table here, mirroring the `lib/utils.sh` / `lib/ui.sh` pattern.
 
+#### `lib/commands/run.sh` (Story K.b — v2.4.0)
+
+| Function | Signature | Description |
+|---|---|---|
+| `run_command` | `(<command> [args...])` | Execute the target command inside the active project environment. Auto-detects backend by probing `.pyve/envs/*` (micromamba) then `$DEFAULT_VENV_DIR` (venv); errors out if neither exists. Pass-through args via `exec` (preserves exit codes). Story J.c: when `is_asdf_active`, exports `ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` before exec to prevent asdf reshim under `--no-direnv` / CI. Venv backend prefers `<venv>/bin/<cmd>` and falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<venv>/bin` to `PATH`. Micromamba backend uses `micromamba run -p <env_path>`. |
+
+No private helpers — `run_command` is self-contained and calls only cross-command helpers (`source_shell_profiles`, `detect_version_manager`, `is_asdf_active`, `get_micromamba_path`, `log_error`).
+
+#### `lib/commands/lock.sh` (Story K.c — v2.4.0)
+
+| Function | Signature | Description |
+|---|---|---|
+| `lock_environment` | `([--check])` | Generate or verify `conda-lock.yml` (micromamba projects only). Default mode: invoke `conda-lock -f environment.yml -p <platform>`, filter the misleading "conda-lock install" post-run message, detect "spec hash already locked" → "already up to date" output, otherwise emit success + `pyve init --force` rebuild hint. `--check` mode: pure mtime comparison via `is_lock_file_stale`, never invokes `conda-lock`, suitable as a CI gate. Three guards run before `conda-lock`: (1) refuses venv backend, (2) requires `environment.yml`, (3) requires `conda-lock` on `$PATH`. |
+
+No private helpers — `lock_environment` is self-contained and calls only cross-command helpers (`config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `is_lock_file_stale`, `get_conda_platform`).
+
+**Renamed from `run_lock`** in K.c. Final name `lock_environment()` adopted in the K.f follow-up under the project-essentials "Function naming convention: `<verb>_<operand>`" rule — `pyve lock` operates on the environment's dependency graph (`environment.yml` → `conda-lock.yml`). The K.c interim name `lock()` was a rule violation (no operand suffix) and was retired alongside K.e's `self()`. No external callers — only the dispatcher arm referenced the function name.
+
+#### `lib/commands/python.sh` (Story K.d — v2.4.0)
+
+First namespace extraction. Single-file convention per project-essentials F-9: dispatcher + leaves all live in `lib/commands/python.sh`.
+
+| Function | Signature | Description |
+|---|---|---|
+| `python_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `set`, `show`. Empty arg or unknown sub-command exits 1 with an actionable usage message. The `--help` intercept happens in `pyve.sh`'s case dispatcher (calls `show_python_help`); this function never sees `--help`. |
+| `python_set` | `(<version>)` | Pin the Python version via the active version manager. Validates format (`X.Y.Z`); detects asdf/pyenv via `detect_version_manager`; ensures the version is installed (may invoke an asdf/pyenv install); writes to `.tool-versions` (asdf) or `.python-version` (pyenv) via `set_local_python_version`. Header/footer-boxed UI. |
+| `python_show` | `()` | Read-only. Resolves the pinned version from (in priority order) `.tool-versions`, `.python-version`, `.pyve/config:python.version`. Prints `Python <ver> (from <source>)` or a "not pinned" message. Never installs or modifies anything. The `python show <extra-args>` rejection happens in the dispatcher, not here. |
+
+**Renamed from `set_python_version_only` / `show_python_version`** in K.d so leaf names follow the `<namespace>_<leaf>` convention. The dispatcher **stays `python_command`** (NOT renamed to `python`) because `python` is the bare interpreter binary that pyve invokes internally for venv creation (`python -m venv .venv`, `python -c 'import sys; ...'`). A bash function named `python` would shadow the binary at those callsites — discovered the hard way during K.d's first attempt; the revert and the resulting "Function-name collision rule" in `project-essentials.md` are mandatory reading before naming any future top-level dispatcher (notably K.f, where `test_command` similarly stays unchanged to avoid shadowing the bash builtin).
+
+#### `lib/commands/self.sh` (Story K.e — v2.4.0)
+
+Single-file namespace per project-essentials F-9. Largest extraction so far (~458 lines) but every function is self-namespace-private — no cross-command coupling, no helpers move to `lib/utils.sh`. Resolves K.a.3 audit finding F-5: `install_prompt_hook` (and its `uninstall_prompt_hook` sibling) are **self-private**, not init-private; both move with K.e.
+
+| Function | Signature | Description |
+|---|---|---|
+| `self_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `install`, `uninstall`. No-arg invocation prints `show_self_help` and returns 0. Each sub-command honors `--help` (calls the matching help block) and `PYVE_DISPATCH_TRACE` (prints `DISPATCH:self-<sub>` and returns) before delegating to the leaf. Unknown sub-commands exit 1 after printing the namespace help. |
+| `self_install` | `()` | Install pyve to `~/.local/bin`. Homebrew-managed installs short-circuit with brew-specific guidance (exit 0). Reinstall from the installed location re-execs the source pyve.sh to avoid rewriting the running script. Steps: copy `pyve.sh`, `lib/*.sh`, `lib/commands/*.sh` (Phase K), `lib/completion/*`; record `~/.local/.pyve_source`; create `~/.local/bin/pyve` symlink; wire PATH (`_self_install_update_path`); install prompt hook (`_self_install_prompt_hook`); create `~/.local/.env` template (`_self_install_local_env_template`). Idempotent (re-install is safe). |
+| `self_uninstall` | `()` | Reverse of `self_install`. Homebrew-managed installs short-circuit. Removes the symlink, script, `lib/`, the source-dir record file. Preserves a non-empty `~/.local/.env` (warn-and-skip); removes it when empty. Calls `_self_uninstall_prompt_hook`, `_self_uninstall_clean_path`, `_self_uninstall_project_guide_completion` to clean rc files. |
+| `_self_install_update_path` | `()` | Append the `export PATH="$HOME/.local/bin:$PATH" # Added by pyve installer` line to `~/.zprofile` (zsh) or `~/.bash_profile` (bash). No-ops if `~/.local/bin` is already on `$PATH` or the marker comment is already present in the profile. |
+| `_self_install_prompt_hook` | `()` | Write `~/.local/.pyve_prompt.sh` (a zsh/bash-aware prompt customizer that honors `$PYVE_PROMPT_PREFIX`) and source it from `~/.zshrc` (zsh) or `~/.bashrc` (bash) via the SDKMan-aware insertion helper. Idempotent — strips any prior `source` line for the same hook file before re-inserting, so re-installs don't accumulate duplicates. |
+| `_self_install_local_env_template` | `()` | Create an empty `~/.local/.env` with `chmod 600` if it doesn't exist. No-op if the file is already present (preserves user data). |
+| `_self_uninstall_prompt_hook` | `()` | Strip the `source $PROMPT_HOOK_FILE` line from both `~/.zshrc` and `~/.bashrc` (covers users who switched shells post-install) using portable `sed -i` (macOS-vs-Linux dialect via `uname` check). Removes the prompt-hook file itself last. |
+| `_self_uninstall_clean_path` | `()` | Strip the `# Added by pyve installer` PATH line from both `~/.zprofile` and `~/.bash_profile` using portable `sed -i`. |
+| `_self_uninstall_project_guide_completion` | `()` | Remove the project-guide completion sentinel block from both `~/.zshrc` and `~/.bashrc` via the shared `remove_project_guide_completion` helper. Safe no-op when the block is absent. |
+
+**Renames in K.e** (audit-recommended, all callsites internal to the namespace):
+- `install_self` → `self_install`, `uninstall_self` → `self_uninstall` (matches `<namespace>_<leaf>` convention).
+- `self_command` was briefly renamed to `self()` in the K.e initial pass; **reverted back to `self_command()` in the K.f follow-up** under the project-essentials "Function naming convention: `<verb>_<operand>`" rule (namespace dispatchers use `<namespace>_command` because the operand is the sub-command name).
+- 6 private helpers gain the `_self_` prefix per project-essentials F: `install_update_path`, `install_prompt_hook`, `install_local_env_template`, `uninstall_project_guide_completion`, `uninstall_clean_path`, `uninstall_prompt_hook` → `_self_install_*` / `_self_uninstall_*`.
+
+**F-9 update (post-K.l):** the three help blocks (`show_self_help`, `show_self_install_help`, `show_self_uninstall_help`) **moved into this file** during K.l's help-block migration. The dispatcher in `pyve.sh` and `self_command()` here both call them by name; bash resolves them through the global function table at call time. See the `Help-block move` subsection at the end of `lib/commands/<name>.sh` for the K.l rationale.
+
+#### `lib/commands/test.sh` (Story K.f — v2.4.0)
+
+| Function | Signature | Description |
+|---|---|---|
+| `test_tests` | `([pytest args...])` | Run pytest via the dev/test runner environment. Auto-creates the testenv (via `ensure_testenv_exists`) if missing. If pytest isn't yet installed: in CI / `PYVE_TEST_AUTO_INSTALL_PYTEST=1` mode, auto-installs it; on a TTY, prompts y/N (declining exits 1); non-TTY without auto-install, errors with the `pyve testenv install -r requirements-dev.txt` next-step. Finally `exec`s `<testenv>/bin/python -m pytest "$@"` so pytest's exit code propagates verbatim. |
+| `_test_has_pytest` | `(<testenv_venv>)` → 0/1 | Probe whether the testenv at `<testenv_venv>` has pytest installed. Returns 1 if `bin/python` is missing, otherwise 0/1 from `python -c 'import pytest'`. |
+| `_test_install_pytest_into_testenv` | `(<testenv_venv>)` | Pip-install pytest (or `requirements-dev.txt` if present) into the testenv via `<testenv_venv>/bin/python -m pip install ...`. |
+
+**Function name `test_tests` (NOT `test` or `test_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule: `pyve test [args]` operates on tests (whether the args explicitly select a subset or are absent, in which case the implicit operand is "all tests"). This naming also avoids the F-11 `test` shadowing trap (`test` is a bash builtin / `/usr/bin/test`); the K.f initial extraction used `test_command()` (also F-11-safe) but was renamed in the same K.f follow-up that aligned `lock_environment()` and reverted `self_command()`.
+
+**Cross-file call (post-K.g):** `test_tests` calls `ensure_testenv_exists`, which lives in `lib/utils.sh` (moved there by K.g per audit F-8). Bash resolves the call at runtime via the global function table.
+
+**F-8 correction:** the K.f story's "Temporary cross-file call to `testenv_run`" caveat is stale — there is no `testenv_run` function in `pyve.sh`. `test_command` does NOT call `testenv_run`; it calls `ensure_testenv_exists`, the test-private helpers, and ends with `exec ... pytest`. The `testenv` namespace handles its own `run` action inline in the namespace dispatcher (see K.g).
+
+#### `lib/commands/testenv.sh` (Story K.g — v2.4.0)
+
+Largest namespace command — 4 leaves: `init`, `install`, `purge`, `run`. The K.g extraction also refactored the previous inline `case "$action" in` arms into named leaf functions per project-essentials F-9 (one function per sub-command, leaf names follow `<namespace>_<leaf>`).
+
+| Function | Signature | Description |
+|---|---|---|
+| `testenv_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `init`, `install [-r <file>]`, `purge`, `run <cmd> [args...]`. Pre-parses `-r`/`--requirements` and the action token, then calls the matching leaf. The `run` action skips the `header_box`/`footer_box` wrapper because exec replaces the shell — the called command owns the rest of the terminal. `--help` and unknown-flag/unknown-action paths exit before the leaf is reached. |
+| `testenv_init` | `()` | Thin wrapper around `ensure_testenv_exists` (now in `lib/utils.sh`). |
+| `testenv_install` | `(<testenv_venv> <requirements_file?>)` | Pip-install dependencies into the testenv. Without `<requirements_file>`, installs bare `pytest`. With `<requirements_file>`, validates the file exists, then `pip install -r <file>`. Errors with exit 1 if the testenv doesn't exist (caller must `pyve testenv init` first) or the requirements file is missing. |
+| `testenv_purge` | `()` | Thin wrapper around `purge_testenv_dir` (now in `lib/utils.sh`). |
+| `testenv_run` | `(<testenv_venv> [<cmd> args...])` | `exec` a command inside the testenv. Prefers `<testenv_venv>/bin/<cmd>` when present; otherwise falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<testenv_venv>/bin` to `PATH`. Errors with exit 1 if no command is provided or the testenv doesn't exist. |
+
+**F-7 / F-8 helper moves (K.g performs):** `purge_testenv_dir`, `ensure_testenv_exists`, and `testenv_paths` move from `pyve.sh` to `lib/utils.sh` because they are each shared by 2+ commands (per project-essentials cross-command-helper rule):
+
+- `ensure_testenv_exists` — used by `init` (still in pyve.sh), `testenv_init`, and `test_tests` (in `lib/commands/test.sh`).
+- `purge_testenv_dir` — used by `purge` (still in pyve.sh) and `testenv_purge`.
+- `testenv_paths` — only called by `ensure_testenv_exists`; moves alongside it as an implementation dependency.
+
+After K.g, `lib/commands/test.sh::test_tests` no longer makes a cross-file call back into `pyve.sh` — the call to `ensure_testenv_exists` resolves through `lib/utils.sh` (already sourced by `pyve.sh` before the per-command files).
+
+**Function name `testenv_command`** — applies the project-essentials "Function naming convention" rule: namespace dispatchers use `<namespace>_command` because the operand is the sub-command name that follows. No K.e-style `testenv()` rename — the rule was tightened during K.f follow-up.
+
+#### `lib/commands/status.sh` (Story K.h — v2.4.0)
+
+Read-only state dashboard. Three sections (Project / Environment / Integrations) plus a non-project fallback. By contract, never returns a non-zero exit code based on findings — that's `pyve check`'s job; `status` reports reality, where "not a pyve project" is also a valid reality. The orchestrator and 9 status-private helpers all move together.
+
+| Function | Signature | Description |
+|---|---|---|
+| `show_status` | `()` | Orchestrator. Validates no flags / no positional args (errors out otherwise), prints title + divider, then either the non-project fallback or the three sections. Always returns 0 on a valid invocation. |
+| `_status_row` | `(<label> <value>)` | Print one key/value row with a 17-char label column (matches the widest label `environment.yml:`) so all sections align visually. |
+| `_status_header` | `(<text>)` | Print a BOLD section header. |
+| `_status_section_project` | `()` | Project section: path, backend, recorded `pyve_version` (with drift comparison vs. running `$VERSION` via `compare_versions`), and configured Python. |
+| `_status_configured_python` | `()` → string | Resolve and format the configured Python version source — `.tool-versions via asdf`, `.python-version via pyenv`, or `.pyve/config`. Returns `"not pinned"` when none are present. |
+| `_status_section_environment` | `()` | Environment section header + dispatch to `_status_env_venv` or `_status_env_micromamba` based on configured backend. |
+| `_status_env_venv` | `()` | Venv-backend rows: path, Python version, package count (via `_status_venv_package_count`), distutils shim status. |
+| `_status_venv_package_count` | `(<venv_dir>)` → string | Count `*.dist-info` directories under `<venv_dir>/lib/python*/site-packages/`; returns "N installed" or "unknown". `find`-pipefail safe. |
+| `_status_env_micromamba` | `()` | Micromamba-backend rows: name, path, Python, package count via `conda-meta`, `environment.yml` presence, `conda-lock.yml` freshness via `is_lock_file_stale`. |
+| `_status_section_integrations` | `()` | Integrations section: `.envrc` presence, `.env` (with empty/non-empty distinction), `project-guide` (probes `<env>/bin/project-guide --version`), `testenv` (probes `<testenv>/bin/python -c 'import pytest'`). |
+
+**Function name `show_status` (NOT `status_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `status` is a noun, not a verb; the operation is "show the status". Semantic alignment trumps spelling alignment here.
+
+**No private-helper rename** — all 9 helpers already follow the `_status_*` prefix convention from when they were inlined in `pyve.sh` (Story H.e.4). They stay named exactly as-is; only the orchestrator was renamed.
+
+**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui.sh) and `PYVE_DISTUTILS_SHIM_MARKER` (defined in lib/distutils_shim.sh).
+
+#### `lib/commands/check.sh` (Story K.i — v2.4.0)
+
+Read-only diagnostics. Severity ladder: `info` (no effect) → `pass` (✓) → `warn` (⚠, exit 2) → `error` (✗, exit 1). Escalation is one-way — an error later in the run cannot be downgraded; a warning cannot downgrade an error. Replaces the legacy `pyve validate` (CI exit-code semantics) and most of the legacy `pyve doctor` (per-problem findings with one actionable next-step).
+
+| Function | Signature | Description |
+|---|---|---|
+| `check_environment` | `()` | Orchestrator. Validates no flags / no positional args, prints title + divider, runs Check 1 (`.pyve/config`), Check 3 (`backend` configured), Check 2 (`pyve_version` drift via `compare_versions`), the per-backend block via `_check_venv_backend` or `_check_micromamba_backend`, then Checks 9/10 (`.envrc`, `.env`) and Check 16 (testenv conditional). Calls `_check_summary_and_exit` to print the count line and exit with the accumulated severity. Defines three nested closures (`_check_pass`, `_check_warn`, `_check_fail`) that bump local counters via dynamic scoping. |
+| `_check_venv_backend` | `(<venv_dir>)` | Venv-backend Checks 5/7/13/14 — directory + `bin/python` exist, Python version, `doctor_check_venv_path` (relocated project), `doctor_check_duplicate_dist_info`, `doctor_check_collision_artifacts`. Calls the three closures from `check_environment`'s scope to escalate findings. |
+| `_check_micromamba_backend` | `(<env_path> <env_name>)` | Micromamba-backend Checks 4/5/11/12/13/14/15 — micromamba binary present, `environment.yml` present, `conda-lock.yml` present + fresh, env directory + Python, dup-dist-info, collision-artifacts, native-lib-conflict warning. Calls the three closures from `check_environment`'s scope. |
+| `_check_summary_and_exit` | `()` | Print the `N passed, N warnings, N errors` count line and `exit "$exit_code"`. Reads the four counter locals from `check_environment` via dynamic scoping. |
+
+**Function name `check_environment` (NOT `check_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve check` operates on the project's environment (venv / micromamba env, .envrc, .env, testenv, lock file).
+
+**Closure pattern preserved.** `check_environment` defines `_check_pass`, `_check_warn`, `_check_fail` inline as nested function definitions. The two per-backend helpers and `_check_summary_and_exit` are top-level in the file (NOT nested inside `check_environment`), but they reference the closures and the four counter locals (`errors`, `warnings`, `passed`, `exit_code`) — bash dynamic scoping resolves these up the call stack at call time. **Do not refactor to file-scope counters** — the structure is intentional and tested by `test_check.bats` exit-code escalation tests. `_check_pass` / `_check_warn` / `_check_fail` are NOT visible to direct invocations of the helpers from outside `check_environment` (they don't exist in the function table until the orchestrator runs).
+
+**`doctor_check_*` helpers stay in `lib/utils.sh`** per the cross-command-helper rule. They're called from `_check_venv_backend` / `_check_micromamba_backend` here, but may grow more callers in future (notably the deferred `pyve check --fix` story).
+
+#### `lib/commands/update.sh` (Story K.j — v2.4.0)
+
+Non-destructive upgrade — refreshes managed files (`.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide scaffolding) without rebuilding the venv or touching user state. Single self-contained function; no private helpers.
+
+| Function | Signature | Description |
+|---|---|---|
+| `update_project` | `([--no-project-guide])` | Five-step refresh: (1) bump `pyve_version` in `.pyve/config` via `update_config_version` (idempotent — writes even when already current); (2) refresh `.gitignore` Pyve-managed sections via `write_gitignore_template`; (3) refresh `.vscode/settings.json` via `write_vscode_settings` (only if it already exists AND backend is micromamba); (4) ensure `.pyve/` exists; (5) refresh project-guide scaffolding via `run_project_guide_update_in_env` (only if `.project-guide.yml` is present and `--no-project-guide` not passed). Errors out with exit 1 if `.pyve/config` is missing or has no `backend` key. Never prompts. Never changes the recorded backend. Never creates `.vscode/settings.json` or `.envrc` or `.env` if absent. |
+
+**Function name `update_project` (NOT `update_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve update` operates on the project (config + .gitignore + .vscode/settings.json + project-guide scaffolding — all project-level concerns).
+
+**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `update_config_version` (lib/utils.sh + lib/version.sh); `write_gitignore_template`, `write_vscode_settings` (lib/utils.sh); `run_project_guide_update_in_env` (lib/utils.sh); `unknown_flag_error`, `log_error`, `log_info`, `log_success`, `log_warning` (lib/utils.sh).
+
+**No private helpers** — the function is fully self-contained at HEAD and didn't need any helpers when it was inlined in pyve.sh either. The K.j story task to "decide helper placement between init and update" was moot per the K.a.3 audit: there are no `pyve.sh`-internal helpers shared between `init` and `update_project` — every cross-command helper they share already lives in `lib/utils.sh`.
+
+#### `lib/commands/purge.sh` (Story K.k — v2.4.0)
+
+Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` via `--keep-testenv` (used by `init --force` to avoid rebuilding the dev/test runner across re-inits). Orchestrator + 6 purge-private helpers.
+
+| Function | Signature | Description |
+|---|---|---|
+| `purge_project` | `([<dir>] [--keep-testenv] [--yes\|-y])` | Orchestrator. Parses flags, prompts y/N for confirmation (skipped on `--yes`/`-y` / `CI=1` / `PYVE_FORCE_YES=1`), sources shell profiles, and calls each helper in sequence: `_purge_version_file`, `_purge_venv`, `_purge_pyve_dir` + `purge_testenv_dir` (or the `--keep-testenv` branch that preserves `.pyve/testenv`), `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`. The venv directory defaults to `$DEFAULT_VENV_DIR`, but if no positional arg is given AND `.pyve/config` exists, `venv.directory` from config wins. Always exits 0 on success or user-aborted prompt. |
+| `_purge_version_file` | `()` | Remove `.tool-versions` AND `.python-version` if present. |
+| `_purge_venv` | `(<venv_dir>)` | Remove the venv directory; emits an info line if absent. |
+| `_purge_pyve_dir` | `()` | Remove `.pyve/`. If `.pyve/envs/` exists and micromamba is available, attempts a clean `micromamba env remove` first (named, then prefix-based fallback) before the directory `rm -rf`. Safe no-op when `.pyve/` doesn't exist. |
+| `_purge_envrc` | `()` | Remove `.envrc` if present. |
+| `_purge_dotenv` | `()` | v0.6.0 smart purge: removes `$ENV_FILE_NAME` only if empty; otherwise warn-and-preserve (the user's data takes precedence). |
+| `_purge_gitignore` | `(<venv_dir>)` | Strip the three pyve-managed patterns (`<venv_dir>`, `$ENV_FILE_NAME`, `.envrc`) from `.gitignore`. Safe no-op when `.gitignore` doesn't exist. |
+
+**Function name `purge_project` (NOT `purge`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve purge` operates on the project (removes every Pyve-managed artifact across venv/conda env, version manager files, rc files, `.gitignore` sections, `.pyve/` directory).
+
+**Cross-command callsites** (resolved at runtime via global function table):
+- `init_project` (in `lib/commands/init.sh` post-K.l) calls `purge_project --keep-testenv --yes` from its `--force` pre-flight and from the interactive option-2 (purge-and-rebuild) path. Standard intra-`lib/commands/` cross-file call resolved at runtime via the global function table.
+
+**F-7 settled in K.g** — `purge_testenv_dir` already lives in `lib/utils.sh` and is called from both `purge_project` (here) and `testenv_purge` (in `lib/commands/testenv.sh`).
+
+**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
+
+#### `lib/commands/init.sh` (Story K.l — v2.4.0)
+
+Largest extraction in the phase. The orchestrator (`init_project`, ~545 lines) plus 7 init-private helpers — every single-caller `init_*` and `run_project_guide_hooks` get the `_init_` prefix and move to this file.
+
+| Function | Signature | Description |
+|---|---|---|
+| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), apply distutils shim, configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_testenv_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
+| `_init_python_version` | `(<version>)` | Write `.tool-versions` or `.python-version` (via `set_local_python_version`). No-op if file already exists. |
+| `_init_venv` | `(<venv_dir>)` | `python -m venv <venv_dir>` if directory absent. |
+| `_init_direnv_venv` | `(<venv_dir>)` | Wrapper around `write_envrc_template` with `VIRTUAL_ENV` sentinel. |
+| `_init_direnv_micromamba` | `(<env_name> <env_path>)` | Wrapper around `write_envrc_template` with `CONDA_PREFIX` sentinel. |
+| `_init_dotenv` | `(<use_local_env>)` | Create `.env` (empty or copied from `~/.local/.env` template), `chmod 600`. No-op if `.env` already exists. |
+| `_init_gitignore` | `(<venv_dir>)` | Rebuild `.gitignore`: `write_gitignore_template` followed by `insert_pattern_in_gitignore_section "$venv_dir"`. |
+| `_init_run_project_guide_hooks` | `(<backend> <env_path> <pg_mode> <comp_mode>)` | The three-step project-guide post-init hook: (1) `pip install --upgrade project-guide`, (2) `project-guide init --no-input` OR `project-guide update --no-input` based on `.project-guide.yml` presence, (3) shell-completion wiring in `~/.zshrc` / `~/.bashrc`. Tri-state mode args (empty / "yes" / "no") resolved from `--project-guide` / `--no-project-guide` / `--project-guide-completion` / `--no-project-guide-completion` flags. Auto-skip safety: if `project-guide` is already declared as a project dependency (`pyproject.toml` / `requirements.txt` / `environment.yml`), the hook short-circuits to avoid version conflicts. |
+
+**Function name `init_project` (NOT `init`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule. `pyve init` operates on the project (creates venv, writes `.pyve/config`, configures direnv, etc.).
+
+**F-3 callsite update (test_asdf_compat.bats):** the J.b/J.c tests use `source_pyve_fn` to extract function bodies for in-process testing. After K.l: callsites pass `"$PYVE_ROOT/lib/commands/init.sh"` (instead of the default pyve.sh) AND the new function names `_init_direnv_venv` / `_init_direnv_micromamba`. The `source_pyve_fn` signature update (added in K.b) made this a clean drop-in.
+
+**F-10 settled** — `run_project_guide_hooks` was init-private (called only twice, both inside `init()`). Moves with K.l as `_init_run_project_guide_hooks`.
+
+**Cross-command callsites resolved at runtime:**
+- `init_project --force` calls `purge_project --keep-testenv --yes` (in `lib/commands/purge.sh`) twice — once in the `--force` pre-flight ([lib/commands/init.sh:706](../../lib/commands/init.sh) area) and once in the interactive option-2 path ([lib/commands/init.sh:774](../../lib/commands/init.sh) area). Bash resolves the call at runtime via the global function table.
+
+**Per-command help block** — `show_init_help` was moved from `pyve.sh` to `lib/commands/init.sh` in K.l, alongside the orchestrator. See the "Help-block move" subsection below for the rationale.
+
+#### Help-block move (K.l — supersedes F-9 v2.4.0 stay-put preference)
+
+K.l moved 9 per-command help blocks (`show_init_help`, `show_purge_help`, `show_status_help`, `show_check_help`, `show_update_help`, `show_python_help`, `show_self_install_help`, `show_self_uninstall_help`, `show_self_help`) from `pyve.sh` into their respective `lib/commands/*.sh` files. The K.a.3 audit's F-9 entry kept them in `pyve.sh` "for v2.4.0" with K.m re-evaluation; K.l honored the K.l acceptance criterion (line count target) by doing the move now.
+
+Reason: each help block is tightly coupled to one command. Co-locating help with the command it documents (a) puts the maintenance burden in the right place, (b) the `pyve <cmd> --help` dispatch arm in `main()` already calls into the per-command function table, so the location is invisible at call time, (c) bumps `pyve.sh` from ~870 → ~595 lines (closer to the K.m target).
+
+The three top-level commands' help blocks (`show_help`, `show_version`, `show_config`) stay in `pyve.sh` — they describe the CLI as a whole, not any single command.
+
 ---
 
 ### `lib/utils.sh` — Core Utilities
@@ -202,10 +404,10 @@ Logging, user prompts, `.gitignore` management, config file parsing, and input v
 | `is_file_empty` | `(filename)` → 0/1 | Returns 0 if file is empty or missing |
 | `check_cloud_sync_path` | `()` | Hard fail if `$PWD` is inside a known cloud-synced directory; bypassed by `PYVE_ALLOW_SYNCED_DIR=1` |
 | `write_vscode_settings` | `(env_name)` | Write `.vscode/settings.json` with interpreter path and IDE isolation settings; skips if exists unless `PYVE_REINIT_MODE=force` |
-| `doctor_check_duplicate_dist_info` | `(env_path)` | Scan `site-packages` for duplicate `.dist-info` dirs; reports conflicting versions with mtimes. (Name retained for backport continuity; reused by `check_command` in v2.0.) |
-| `doctor_check_collision_artifacts` | `(env_path)` | Scan environment tree for files/dirs with ` 2` suffix (iCloud Drive collision artifacts). Reused by `check_command`. |
-| `doctor_check_native_lib_conflicts` | `(env_path)` | Detect conda/pip OpenMP conflicts: pip-bundled libs (torch/tf/jax) + conda-linked libs (numpy/scipy) + missing `libomp.dylib`/`libgomp.so`. Reused by `check_command`. |
-| `doctor_check_venv_path` | `(env_path)` | Detect relocated venv: compare `pyvenv.cfg` creation path against actual venv location; warn with remediation if mismatched. Reused by `check_command`. |
+| `doctor_check_duplicate_dist_info` | `(env_path)` | Scan `site-packages` for duplicate `.dist-info` dirs; reports conflicting versions with mtimes. (Name retained for backport continuity; reused by `check_environment`.) |
+| `doctor_check_collision_artifacts` | `(env_path)` | Scan environment tree for files/dirs with ` 2` suffix (iCloud Drive collision artifacts). Reused by `check_environment`. |
+| `doctor_check_native_lib_conflicts` | `(env_path)` | Detect conda/pip OpenMP conflicts: pip-bundled libs (torch/tf/jax) + conda-linked libs (numpy/scipy) + missing `libomp.dylib`/`libgomp.so`. Reused by `check_environment`. |
+| `doctor_check_venv_path` | `(env_path)` | Detect relocated venv: compare `pyvenv.cfg` creation path against actual venv location; warn with remediation if mismatched. Reused by `check_environment`. |
 
 **`.gitignore` template structure:**
 ```
@@ -294,7 +496,6 @@ Environment file parsing, naming resolution, environment creation, and lock file
 | `create_micromamba_env` | `(env_name, env_file?)` → 0/1 | Create environment from file |
 | `verify_micromamba_env` | `(env_name)` → 0/1 | Verify environment is functional |
 | `is_interactive` | `()` → 0/1 | Detect interactive vs CI/batch mode |
-| `run_lock` | `()` | Wrapper for `conda-lock`: backend guard, prerequisite check, platform detection, output filtering, rebuild guidance. Currently in `pyve.sh`; moves to `lib/commands/lock.sh` as part of the command-module extraction phase. |
 
 ---
 
