@@ -2,7 +2,7 @@
 
 > Diagnostic surface correctness, project-guide integration smoothness, terminal UX cohesion.
 
-**Intended release version:** TBD per story. L.a is documentation-only (no version bump). Subsequent stories (L.b+) will each carry their own minor / patch bump as they ship; the phase is **not** a single atomic release.
+**Intended release version:** Single minor bump on phase merge to `main` (`v2.5.x` → `v2.6.0`). L.a was documentation-only and shipped no code; subsequent stories (L.b+) land on the phase branch without per-story version bumps and aggregate into one release. Story titles in `stories.md` therefore omit the `vX.Y.Z` suffix throughout Phase L.
 
 **Theme.** Pyve has reached production-tool maturity, and the rough edges that remain are concentrated in three adjacent areas:
 
@@ -10,13 +10,11 @@
 
 2. **`pyve` ↔ `project-guide` integration.** `project-guide` (the sibling project that this codebase uses for its own `docs/project-guide/go.md`) has stabilized, but pyve's integration with it has rough edges across init, update, status, self, and shell-completion files. With `project-guide` no longer in flux, pyve's side of the contract should be tightened. **Cross-repo coordination.** Some Track-2 findings will be cleanest to fix on the project-guide side rather than working around them in pyve (e.g. if project-guide is chatty when invoked from pyve's hook context, the right answer may be a `--quiet` flag in project-guide, not output-suppression in pyve). In those cases L.a produces a small change-request spec for the project-guide repo; the developer ships that change in project-guide separately. The pyve-side L.b+ story that consumes the new behavior may carry a dependency on a specific project-guide minimum version.
 
-3. **Terminal UX.** Pyve is chatty — most acutely during `pyve init --backend micromamba`, where bootstrap, conda solve, env creation, and dependency install each emit verbose subprocess output without a unifying frame. Modern best-of-breed scaffolding tools (`npm create vite@latest`, `npm create svelte@latest`) demonstrate what's achievable: clear multi-step framing, minimal noise on the happy path, interactive selectors for choices, visual progress that doesn't scroll past you. `lib/ui.sh` provides primitives (banner / info / success / warn / fail / confirm / ask_yn / boxes / colors) — but those primitives are the floor, not the ceiling.
+3. **Terminal UX — `sv create`-grade scaffolding experience.** Pyve is chatty — most acutely during `pyve init --backend micromamba`, where bootstrap, conda solve, env creation, and dependency install each emit verbose subprocess output without a unifying frame. The phase's delivery target for the scaffold-shaped commands (`pyve init`, `pyve update`) is the `pnpm dlx sv create` bar: an interactive wizard with arrow-key selectors, smart defaults driven by repo signals (e.g. `environment.yml` → default backend = `micromamba`), quiet-by-default subprocess output with a `--verbose` opt-in, step-counter framing, spinners / progress bars during slow operations, and a numbered "Next steps:" summary at the end. `lib/ui.sh` provides primitives (banner / info / success / warn / fail / confirm / ask_yn / boxes / colors); Phase L grows that into a `lib/ui/` library covering the missing pieces (verbosity gate, quiet-replay-on-failure subprocess wrapper, progress / spinner module, arrow-key selector module).
 
-   **Future-extraction shape.** The CLI UX library is intended to be lifted into its own repository so it can be reused by sibling projects (`gitbetter` and others). Phase L treats `lib/ui/` as the destination shape — a subdirectory whose contents become the package boundary for the eventual extraction. New UX modules (progress, spinners, selectors) land there as siblings; the existing `lib/ui.sh` migrates into the directory at the natural point in the work (likely as `lib/ui/core.sh`). The directory move is **not** pre-emptive churn — it happens inside whichever L.b+ story first needs to add a new UX module. Callers (`lib/commands/*.sh`) then source from `lib/ui/` instead of `lib/ui.sh`. `lib/ui.sh` is **not** precious; the developer has explicitly cleared it for restructuring.
+   **Future-extraction shape.** The CLI UX library is intended to be lifted into its own repository so it can be reused by sibling projects (`gitbetter` and others). Phase L treats `lib/ui/` as the destination shape — a subdirectory whose contents become the package boundary for the eventual extraction. The existing `lib/ui.sh` migrates into the directory as `lib/ui/core.sh` in the dedicated foundation story (L.e); new UX modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh`) land as siblings in their own stories. Callers (`lib/commands/*.sh`) source from `lib/ui/` instead of `lib/ui.sh`. `lib/ui.sh` is **not** precious; the developer has explicitly cleared it for restructuring.
 
-The phase is intentionally **audit-driven**: only one story (L.a) is defined upfront. L.a runs three audit tracks in parallel, producing a single findings document with three sections. Each non-trivial finding is then carved into its own implementation story (L.b, L.c, …) and appended to Phase L in `stories.md`. The phase ends when L.a's findings have all been either resolved by a Phase L story or explicitly deferred back to `## Future`.
-
-There is no pre-committed story count.
+The phase ran an audit-driven discovery pass (Story L.a, completed) and is now in **execution-driven** mode. The audit cataloged findings across three tracks; the implementation slate (L.b through L.l) was committed after the developer chose to ship a `sv create`-grade UX rather than a foundation-only set of fixes. Implementation stories follow a **foundation-first order**: verbosity policy and core UX primitives land before they're rolled out to commands, and the interactive wizard lands after the selector module exists.
 
 ---
 
@@ -64,11 +62,22 @@ There is no pre-committed story count.
 
 ## What This Phase Delivers
 
-- `docs/specs/phase-l-pyve-polish-audit.md` — one combined audit document with three sections (Diagnostic Surface / Project-Guide Integration / Terminal UX). Each finding records: (a) symptom, (b) root cause, (c) proposed fix size (one-liner / small / refactor / new-helper), (d) **fix locus** — pyve-side or upstream (project-guide-side); Tracks 1 and 3 are always pyve-side, Track 2 may be either, (e) suggested follow-up story title (or change-request spec title for upstream findings), (f) — for Track 1 only — whether `pyve check --fix` could automate the remediation later.
-- Zero or more **project-guide change-request specs** at `docs/specs/project-guide-requests/<short-name>.md` — one file per upstream finding from Track 2. Each spec is self-contained (problem, proposed change, motivation, suggested CLI/API shape, compatibility notes) so the developer can drop it into the project-guide repo's planning workflow without further translation.
-- A series of small, independently-shippable implementation stories (L.b, L.c, …) — each fixes one finding (or one tightly-related cluster), with passing tests, a version bump, and a CHANGELOG entry. Stories are added to `stories.md` Phase L after L.a is complete; the audit doc's findings are the source.
-- A new `lib/ui/` directory (likely created during the first L.b+ story that needs a new UX module) that becomes the package boundary for the eventual extracted repo. The migration of `lib/ui.sh` into the directory (e.g. as `lib/ui/core.sh`) and the addition of new modules (`lib/ui/progress.sh`, `lib/ui/select.sh`, etc.) happen inside concrete implementation stories — no pre-emptive reorganization.
-- Updated `features.md` / `tech-spec.md` where audit findings reveal documented-vs-actual drift.
+- `docs/specs/phase-l-pyve-polish-audit.md` — combined audit document, completed in Story L.a (delivered).
+- `docs/specs/project-guide-requests/quiet-non-interactive-embedding.md` — upstream change-request spec from Track 2 (delivered with L.a).
+- A `sv create`-grade scaffold experience for `pyve init` and `pyve update`:
+  - **Interactive wizard** for `pyve init` with no args — arrow-key backend selector with smart default from repo signals (`environment.yml` → `micromamba`, `.python-version` → `venv`); flags act as "skip this question" overrides so `pyve init --backend venv` proceeds non-interactively for that parameter while still prompting for any unspecified ones.
+  - **Quiet-by-default output** with `--verbose` / `PYVE_VERBOSE=1` opt-in restoring the current firehose; subprocess noise (micromamba bootstrap, conda solve, pip install) captured and replayed only on failure.
+  - **Step-counter framing** (`[2/5] Installing micromamba…`) wrapped around macro-steps in init (both backends) and update.
+  - **Spinner / progress** for slow operations (downloads, conda solve).
+  - **End-of-init "Next steps:" summary** as a numbered actionable block.
+- A `lib/ui/` library that grows the existing `lib/ui.sh` primitives into a cohesive set:
+  - `lib/ui/core.sh` — the migrated `lib/ui.sh` (banner, prompts, colors, boxes, edit-distance).
+  - `lib/ui/run.sh` — quiet-replay-on-failure subprocess wrapper.
+  - `lib/ui/progress.sh` — step counter, spinner, progress bar primitives.
+  - `lib/ui/select.sh` — arrow-key single/multi-select prompt.
+  - All modules pyve-agnostic (no pyve paths, no pyve commands) so the eventual lift-out to a separate repo is a clean directory copy.
+- Diagnostic-correctness fixes carried forward from the audit (Tracks 1–2): micromamba Python pin in `pyve status` (T1-01), `pyve check` help / `features.md` FR-5 alignment (T1-02), consume upstream `project-guide --quiet` once shipped (T2-01).
+- Updated `features.md` / `tech-spec.md` for any documented-vs-actual drift surfaced by the work.
 
 ---
 
@@ -76,11 +85,11 @@ There is no pre-committed story count.
 
 **Functional contract** is per-finding and will be specified in each L.b+ story as that story is written. The phase-level contract is shape-only:
 
-- **Backward compatibility.** No command renames, no flag renames, no exit-code changes — except where the audit identifies behavior that is already wrong relative to documented contract.
-- **Quiet by default, verbose by opt-in.** If the audit recommends a noise reduction, the loud output must remain reachable behind a flag (`--verbose`) or env var (`PYVE_VERBOSE=1`) so CI logs and debugging workflows aren't degraded.
-- **Test coverage per fix.** Every fix is accompanied by a unit test that fails before and passes after, demonstrating the bug and pinning the fix. UX changes get string-match tests (e.g. "step counter `[2/5]` appears in init output") at minimum; full-screen-rendering changes may need a Tig/expect-style harness or pragmatic visual review only.
-- **Documentation.** Every fix that changes user-visible output text updates `features.md` if the documented contract is affected.
-- **No new top-level commands**, no new flags, no new env vars unless the audit explicitly identifies a gap that requires one — in which case it becomes a flagged scope expansion, presented to the developer for approval before implementation.
+- **Backward compatibility.** No command renames, no flag renames, no exit-code changes — except where the audit identifies behavior that is already wrong relative to documented contract. `pyve init` becomes interactive when invoked with no args, but every existing flag-driven invocation continues to work non-interactively (flags suppress the corresponding prompt).
+- **Quiet by default, verbose by opt-in.** Subprocess noise from `micromamba`, `conda`, `pip`, and `project-guide` is captured by default and replayed only on failure. `--verbose` flag and `PYVE_VERBOSE=1` env var restore the current firehose for CI logs and debugging workflows.
+- **Test coverage per fix.** Every fix is accompanied by a unit test that fails before and passes after, demonstrating the bug and pinning the fix. UX changes get string-match tests (e.g. "step counter `[2/5]` appears in init output") at minimum; full-screen-rendering changes (selectors, spinners) may need a `read`-shim / expect-style harness or pragmatic visual review only.
+- **Documentation.** Every fix that changes user-visible output text updates `features.md` if the documented contract is affected. The interactive wizard, verbosity policy, and end-of-init summary each carry a `features.md` update as part of their story.
+- **New flags / env vars.** Phase L explicitly adds `--verbose` (top-level flag) and `PYVE_VERBOSE` (env var) — both pre-approved as part of this plan. No further new flags, commands, or env vars without separate developer approval.
 
 The phase is **not** the place to ship `pyve check --fix` (Auto-Remediation). That remains in `## Future` and depends on this phase's output as input.
 
@@ -97,17 +106,16 @@ The phase is **not** the place to ship `pyve check --fix` (Auto-Remediation). Th
 - **Method**: code-walk all three tracks; capture observed behavior vs. expected; tag each finding with fix size and (Track-1) `--fix`-automation potential.
 - **Output**: numbered findings table per track + per-finding short writeups + a "suggested story slate" mapping findings → proposed L.b+ titles, ordered by suggested implementation sequence.
 
-### L.b+ — Implementation stories (defined post-audit)
+### L.b+ — Implementation stories (foundation-first order)
 
-The shape of these stories cannot be pinned before the audit, but the operational pattern is:
+Stories were committed post-audit. The operational pattern:
 
-- Each story scoped to **one** finding (or one tightly-related cluster — e.g. "all label-text typos" may be one polish story).
-- Touched files vary by track:
-  - Track-1 fixes typically touch `lib/commands/status.sh` and/or `lib/commands/check.sh` plus matching bats tests.
-  - Track-2 pyve-side fixes typically touch the project-guide-aware files listed above plus integration tests against a synthetic project-guide-enabled project. **Track-2 upstream findings** do not produce a Phase L implementation story — they produce a change-request spec under `docs/specs/project-guide-requests/`. The pyve-side L.b+ story that *consumes* a shipped upstream change carries an explicit dependency note ("requires project-guide ≥ vX.Y.Z") and a check-or-fail guard if necessary.
-  - Track-3 fixes typically add new modules under `lib/ui/` and ripple into multiple commands. The first Track-3 story to add a module also performs the `lib/ui.sh` → `lib/ui/` migration (and updates every `source` line in `pyve.sh` accordingly per the explicit-sourcing project-essential). Larger Track-3 stories (e.g. "introduce step-counter framing across all init paths") are scoped intentionally narrow at first and may grow to span 2–3 commands.
-- Each story carries an explicit version bump. Most are patch (`v2.5.0` → `v2.5.1`); UX overhauls are minor (`v2.5.x` → `v2.6.0`). Audit will recommend.
-- Stories are independently shippable; the phase has no "ship together" contract.
+- Each story scoped to **one** finding (or one tightly-related cluster). Touched files vary by track:
+  - Track-1 fixes touch `lib/commands/status.sh` and/or `lib/commands/check.sh` plus matching bats tests (L.b, L.c).
+  - Track-2 fix (L.d) touches the project-guide-aware wrappers in `lib/utils.sh` plus integration tests against a synthetic project-guide-enabled project. **Track-2 upstream finding** is captured in `docs/specs/project-guide-requests/quiet-non-interactive-embedding.md` for a separate project-guide release; L.d carries an explicit dependency note ("requires project-guide ≥ vX.Y.Z") and a check-or-fail guard. **If upstream doesn't ship within the phase window, L.d defers to a follow-up patch release** rather than blocking phase merge.
+  - Track-3 work is split into a dedicated foundation pass (L.e: `lib/ui.sh` → `lib/ui/core.sh` migration with no new primitives), three new-module stories (L.g/L.h/L.i), a verbosity-gate story (L.f), then rollout stories (L.j: framing across `init`+`update`; L.k: interactive wizard; L.l: end-of-init summary). Per the explicit-sourcing project-essential, every `source` line in `pyve.sh` is updated when modules move or are added.
+- **No per-story version bumps.** All Phase L work lands on the phase branch; a single `v2.5.x` → `v2.6.0` minor bump ships when the branch merges to `main`. Story titles in `stories.md` therefore omit `vX.Y.Z` throughout.
+- **Foundation-first ordering.** Stories L.e (lib/ui/ migration) → L.f (verbosity gate) → L.g (quiet-replay wrapper) → L.h (progress primitives) → L.i (selector primitive) build the toolkit before any rollout story uses it. L.j/L.k/L.l consume the foundation. L.b/L.c/L.d are independent correctness/integration fixes that can land at any point; L.b should land early so the audit's seed finding is closed.
 
 ### Constraints carried forward
 
@@ -115,12 +123,12 @@ The shape of these stories cannot be pinned before the audit, but the operationa
 - **`lib/ui/` is the extractable boundary.** Modules under `lib/ui/` must not import pyve-specific identifiers (paths like `.pyve/`, command names like `pyve init`, config keys, etc.). The pure-UX primitives (colors, prompts, progress, selectors) stay generic so the eventual lift-out is a clean cut. Pyve-specific glue stays outside `lib/ui/` (in `lib/commands/*.sh` or topic-specific `lib/<topic>.sh` files).
 - **macOS / Linux only**, including bash 3.2 compatibility on macOS — same constraint that pinned the `_edit_distance` 1-D array implementation in `lib/ui.sh`.
 
-### New architectural invariants expected
+### New architectural invariants
 
-Phase L is likely to introduce two new entries to `project-essentials.md`, both appended at the **end** of the phase per plan_phase Step 7 (not per-story):
+Phase L introduces two new entries to `project-essentials.md`, both appended at the **end** of the phase per plan_phase Step 7 (not per-story). Both are now firm — the foundation-first slate guarantees the preconditions hold:
 
 1. **`lib/ui/` is the boundary of the extractable CLI UX library.** Modules under that directory stay pyve-agnostic (no pyve paths, no pyve commands, no pyve config keys) so the eventual lift-out into a standalone repo is a clean directory copy. Pyve-specific glue lives outside `lib/ui/`.
-2. **"Quiet by default, verbose by opt-in"** as a UX policy — pyve commands suppress subprocess noise on the happy path; `--verbose` / `PYVE_VERBOSE=1` opts into the firehose. (Only added if Track 3 actually delivers noise reduction; if findings push verbosity work to Future, this entry is skipped.)
+2. **"Quiet by default, verbose by opt-in"** as a UX policy — pyve commands suppress subprocess noise on the happy path; `--verbose` / `PYVE_VERBOSE=1` opts into the firehose. The single source of truth for the verbosity gate is in `lib/ui/core.sh`; primitives (`info`, `run_cmd`, the new `lib/ui/run.sh` quiet-replay wrapper) honor it without each command re-implementing the check.
 
 ---
 
@@ -134,32 +142,74 @@ The following Future stories are deliberately **not** in Phase L. They remain in
 - **Fix pre-existing integration test failures.** Orthogonal CI hygiene — can ship in any phase.
 - **Specific `pyve status` Python-pinning fix for micromamba projects.** This is the *seed finding* and L.a's Track 1 will surface it. Leaving it in `## Future` rather than pre-committing it as L.b avoids forcing the audit's hand. Promotion happens during or immediately after L.a.
 
-Out of scope for Phase L itself (regardless of what the audit finds):
+Out of scope for Phase L itself:
 
-- **Implementing project-guide change requests.** Phase L produces specs under `docs/specs/project-guide-requests/` for any upstream-located findings; the actual implementation happens in the [project-guide repo](https://pointmatic.github.io/project-guide/) on its own release cycle. Phase L only ships the pyve-side consumption of those changes (and only after the corresponding project-guide release is available).
+- **Implementing project-guide change requests.** Phase L produces specs under `docs/specs/project-guide-requests/` for any upstream-located findings; the actual implementation happens in the [project-guide repo](https://pointmatic.github.io/project-guide/) on its own release cycle. Phase L only ships the pyve-side consumption (L.d) of those changes, and only after the corresponding project-guide release is available.
 - **Major refactors** of `status.sh` or `check.sh` internals beyond what a finding directly requires. If the audit identifies a structural problem requiring a rewrite (e.g. "status output should be data-driven from a config schema"), that becomes its own phase, not an L.* story.
+- **UX rollout to non-scaffold commands.** `pyve lock`, `pyve testenv install`, `pyve purge --force` keep their current output behavior — they are explicitly **not** wrapped in step framing or quiet-replay during Phase L. The `lib/ui/` toolkit is built generically so a future phase can apply the same treatment to one-shot ops if/when the developer wants it; Phase L scopes the rollout to `pyve init` (both backends) and `pyve update`.
 - **New backends** (uv, poetry support). Out-of-band concern.
 - **Output format changes** beyond fixing incorrect labels/values — no JSON output, no `--format` flag, no machine-readable status. If audit findings touch output structure, they're scoped narrowly to fixing the bug, not adding modes.
 - **External UX libraries** (`gum`, `dialog`, `whiptail`, `fzf`). Pure-bash invariant holds.
 - **Actual extraction of `lib/ui/` to a separate repository.** Phase L *prepares* for that extraction (clean boundary, no pyve-isms inside `lib/ui/`) but does not perform it. The extraction itself is a future cross-repo operation outside this phase's scope.
-- **Test infrastructure changes.** Phase L adds tests at the unit-fix level only.
-- **Vite/Svelte-level polish as a contract.** Aspirational direction, not a delivery target. The audit will identify achievable subsets within the pure-bash + bash-3.2-on-macOS envelope.
+- **Test infrastructure changes.** Phase L adds tests at the unit-fix and command-rollout level; no new harnesses (e.g. expect/tig) unless a story directly needs one for selector / spinner verification, in which case it's scoped narrowly.
 
 ---
 
 ## Stories
 
-### L.a — Audit `pyve status`/`pyve check`, project-guide integration, and terminal UX
+Implementation order matches the foundation-first rule from §Technical Changes: foundation primitives (L.e–L.i) land before any rollout (L.j–L.l) consumes them; correctness/integration fixes (L.b–L.d) are independent and slot in early.
 
-The single initially-defined story for Phase L. Acts as the phase's spike: produces the three-section findings document, no code changes, no version bump. Detailed task list will be written into `stories.md` when the phase is committed.
+### L.a — Audit `pyve status` / `pyve check`, project-guide integration, and terminal UX **[Done]**
 
-### L.b, L.c, … — TBD post-audit
+The phase's spike: produced the three-section findings document at `docs/specs/phase-l-pyve-polish-audit.md` and one upstream change-request spec at `docs/specs/project-guide-requests/quiet-non-interactive-embedding.md`. No code changes, no version bump.
 
-Defined as audit findings are catalogued. Appended to Phase L in `stories.md` after L.a completes.
+### L.b — Status: micromamba Python pin from `environment.yml`
+
+Backend-aware `_status_configured_python` — fixes the **T1-01** seed contradiction (Project: `not pinned` vs Environment: `3.12.13`). venv path unchanged. Pure correctness; small bats branch additions.
+
+### L.c — Align check help / `features.md` FR-5 with shipped diagnostics
+
+Stale "pyve status coming…" in `show_check_help`; reconcile FR-5's claimed checks (Python version gate, distutils shim) with what `check.sh` actually runs. Defaults to docs-side trim; spike whether to actually implement the deferred checks.
+
+### L.d (+ upstream) — Consume upstream `project-guide --quiet`
+
+Depends on `quiet-non-interactive-embedding.md` shipping in the project-guide repo. Once available, `lib/utils.sh` wrappers (`run_project_guide_init_in_env`, `run_project_guide_update_in_env`) pass the flag and pin a minimum project-guide version. **If upstream doesn't ship within the phase window, this story defers to a follow-up patch release** rather than blocking phase merge.
+
+### L.e — `lib/ui/` directory establishment + `lib/ui.sh` migration
+
+Foundation story for all subsequent UX work. Move `lib/ui.sh` → `lib/ui/core.sh`, update every `source` line in `pyve.sh` per the explicit-sourcing project-essential, lift the "verbatim sync with gitbetter" comment, refresh callers to source the new path. **No new primitives in this story** — it's pure structural prep.
+
+### L.f — Verbosity policy: `--verbose` / `PYVE_VERBOSE=1`
+
+Add the verbosity gate: a single source of truth (`PYVE_VERBOSE`) settable by `--verbose` flag (parsed in `pyve.sh`) or env, threaded through `lib/ui/core.sh` so primitives (`info`, `run_cmd`, future helpers) honor it. Default: quiet. **No command output changes yet** — this story just lands the gate; rollout happens in L.j.
+
+### L.g — `lib/ui/run.sh`: quiet-replay-on-failure subprocess wrapper
+
+New module wrapping noisy long-running subprocesses (micromamba bootstrap, conda solve, pip install). Captures stdout/stderr to a temp buffer; on success, prints nothing (or one summary line); on failure, replays the full captured output with the failing command echoed. Honors the L.f verbosity gate (when verbose, output streams live). Bash 3.2 compatible.
+
+### L.h — `lib/ui/progress.sh`: step counter, spinner, progress bar
+
+New module providing `step_begin "<n/m> <label>"`, `step_end_ok` / `step_end_fail`, `spinner_start` / `spinner_stop`, and an indeterminate ASCII progress bar for slow ops. Pure `tput` + ANSI; no external deps. Honors the L.f verbosity gate (suppressed under `PYVE_VERBOSE=1` so raw output isn't double-decorated).
+
+### L.i — `lib/ui/select.sh`: arrow-key single/multi-select prompt
+
+New module providing `ui_select <label> <option1> <option2>...` returning the chosen index, with arrow-key navigation, enter-to-confirm, escape-to-cancel. Falls back to numbered prompt when stdin is not a TTY (CI safety).
+
+### L.j — Step-framing rollout: `pyve init` (both backends) + `pyve update`
+
+Wrap macro-steps in `init` and `update` with `lib/ui/progress.sh` step counters and `lib/ui/run.sh` quiet-replay. Subprocess output is silent on the happy path; on failure the captured noise is replayed. After this story, scaffold-shaped commands hit the `sv create`-grade output bar.
+
+### L.k — Interactive `pyve init` wizard (red-carpet experience)
+
+`pyve init` with no args opens a welcome banner, then interactive prompts using `lib/ui/select.sh`: backend (default driven by repo signals — `environment.yml` → `micromamba`, `.python-version` → `venv`), confirmation. Flags act as overrides: `pyve init --backend venv` skips the backend question; any flag-provided parameter skips its corresponding question. Strong repo signals make the happy path "press enter through the defaults."
+
+### L.l — End-of-init "Next steps:" summary
+
+After successful `pyve init`, print a numbered "Next steps:" block (e.g., `1. cd <project>`, `2. direnv allow`, `3. pyve test`) tailored to backend and detected scaffolding. Replaces the current ad-hoc trailing banners with a coherent post-install summary.
 
 ### L.zz — Phase L wrap-up (project-essentials + closure)
 
-Detailed task list lives in [`stories.md`](stories.md). Runs last after every other Phase L obligation is discharged.
+Detailed task list lives in [`stories.md`](stories.md). Runs last, after every other Phase L story is `[Done]` (or L.d explicitly deferred to a follow-up release). This is also when the single `v2.6.0` version bump and consolidated CHANGELOG entry land before merging the phase branch to `main`.
 
 ---
 
@@ -167,14 +217,13 @@ Detailed task list lives in [`stories.md`](stories.md). Runs last after every ot
 
 Phase L is complete when:
 
-1. L.a's audit document exists at `docs/specs/phase-l-pyve-polish-audit.md` with all three sections populated and has been reviewed.
-2. Every non-trivial finding across all three tracks has been resolved in one of:
-   - Implemented as an L.b+ story marked `[Done]` (pyve-side fix), or
-   - Captured as a `docs/specs/project-guide-requests/<short-name>.md` spec for the upstream repo (the implementation lands in project-guide; the pyve-side consumption may be a Phase L story or deferred to Future depending on timing), or
-   - Explicitly deferred back to `## Future` with the developer's confirmation.
-3. The full test suite (bats unit + pytest integration) is green on `main`.
-4. Any documentation drift identified by the audit (`features.md` / `tech-spec.md` mismatch with actual behavior) has been resolved.
-5. If `lib/ui/` was introduced (Track 3 implementation stories), the corresponding `project-essentials.md` entries have been appended.
-6. **Story L.zz completes** — Phase L wraps with `Story L.zz: Phase L wrap-up — project-essentials and phase closure` in [`stories.md`](stories.md). That story performs the mandated `docs/specs/project-essentials.md` hygiene pass once all other Phase L work is `[Done]` or explicitly deferred:
-   - **Capture invariants that emerged during L.b+** that weren't anticipated at planning time. The two anticipated entries (`lib/ui/` boundary, "quiet by default" verbosity policy) are conditional on what shipped — append them iff their preconditions held. Capture any *unanticipated* invariants surfaced by audit findings or implementation work.
-   - **Prune stale items.** Walk every existing entry in `project-essentials.md` and confirm it's still accurate and still relevant. Phase L is polish + UX work that may obsolete or contradict prior invariants (e.g. UX / `lib/ui.sh` narratives that Phase L replaced). Removing or rewriting existing entries is normally `refactor_plan`'s job, but Phase L explicitly opts into a one-shot Phase-end tidy via L.zz — not wholesale file rewrites; substantive structural re-org stays `refactor_plan`.
+1. L.a's audit document exists at `docs/specs/phase-l-pyve-polish-audit.md` with all three sections populated and has been reviewed. **(Done)**
+2. Every implementation story (L.b–L.l) is marked `[Done]` on the phase branch, **except L.d** which may defer to a follow-up patch release if the upstream `project-guide --quiet` change has not shipped within the phase window.
+3. **`pyve init` (both backends) and `pyve update` deliver the `sv create`-grade experience**: interactive wizard for `pyve init` with no args, smart defaults from repo signals, quiet-by-default subprocess output with `--verbose` opt-in, step-counter framing, spinners/progress for slow ops, end-of-init "Next steps:" summary. Manual walkthrough captured (transcript or screen-recording reference) and shared with the developer for sign-off before phase merge.
+4. The full test suite (bats unit + pytest integration) is green on the phase branch.
+5. Any documentation drift identified by the audit or surfaced during L.b–L.l (`features.md` / `tech-spec.md` mismatch with actual behavior) has been resolved.
+6. **`lib/ui/` is established and pyve-agnostic** — modules under it import no pyve-specific identifiers (paths, command names, config keys); `pyve.sh` sources each module explicitly per the project-essential.
+7. **Story L.zz completes** — performs the mandated `docs/specs/project-essentials.md` hygiene pass once L.b–L.l are `[Done]` (or L.d deferred):
+   - **Append two firm invariants** (`lib/ui/` extractable boundary; quiet-by-default verbosity policy with `PYVE_VERBOSE` as single source of truth) plus any unanticipated invariants surfaced during implementation.
+   - **Prune stale items.** Walk every existing entry in `project-essentials.md` and confirm it's still accurate and still relevant. Phase L's UX work may obsolete or contradict prior invariants (e.g. the `lib/ui.sh` "verbatim sync with gitbetter" narrative that Phase L replaces). Removing or rewriting existing entries is normally `refactor_plan`'s job, but Phase L explicitly opts into a one-shot Phase-end tidy via L.zz — not wholesale file rewrites; substantive structural re-org stays `refactor_plan`.
+8. **Single `v2.5.x` → `v2.6.0` minor bump** ships when the phase branch merges to `main`, with one consolidated CHANGELOG entry covering all of L.b–L.l.

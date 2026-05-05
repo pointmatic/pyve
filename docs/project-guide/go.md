@@ -22,7 +22,7 @@ For efficiency, when you change modes, start a new LLM conversation.
 ### For LLMs
 
 **Modes**
-This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused sequence of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for plan_phase.
+This Project-Guide offers a human-in-the-loop workflow for you to follow that can be dynamically reconfigured based on the project `mode`. Each `mode` defines a focused cycle of steps to guide you (the LLM) to help generate artifacts for some facet in the project lifecycle. This document is customized for code_test_first.
 
 **Approval Gate**
 When you have completed the steps, pause for the developer to review, correct, redirect, or ask questions about your work.  
@@ -36,6 +36,7 @@ When you have completed the steps, pause for the developer to review, correct, r
 - After compacting memory, re-read this guide to refresh your context.
 - Before recording a new memory, reflect: is this fact project-specific (belongs in `docs/specs/project-essentials.md`) or cross-project (belongs in LLM memory)? Could it belong in both? If project-specific, add it to `project-essentials.md` instead of or in addition to memory.
 - When creating any new source file, add a copyright notice and license header using the comment syntax for that file type (`#` for Python/YAML/shell, `//` for JS/TS, `<!-- -->` for HTML/Svelte). Check this project's `project-essentials.md` for the specific copyright holder, license, and SPDX identifier to use.
+- **Bundled artifact templates** live at `docs/project-guide/templates/artifacts/` in this project (installed by `project-guide init`, refreshed by `project-guide update`). When a mode step references an artifact template by name (e.g. `concept.md`, `stories.md`, `project-essentials.md`), that is the directory to read from — do not search the filesystem, the Python install location, or `site-packages`.
 
 ---
 
@@ -205,6 +206,16 @@ When naming a top-level command function in `lib/commands/<name>.sh`, the functi
 
 **How to apply:** before renaming a command function in any future Phase K story (or any later refactor), grep for the proposed new name as a bare command in pyve.sh + lib/: `grep -nE '(\$\(|\`|^|\s|;|\|\|?)<name>\s' pyve.sh lib/*.sh lib/commands/*.sh`. If any non-comment line is found, do **not** rename — keep the `_command` suffix (or some other non-colliding form). The dispatcher arm calling `<name>_command` is fine; only the function name itself is the hazard.
 
+### Cross-repo coordination with `project-guide` — request, don't work around
+
+When pyve-side code interacts with `project-guide` (the sibling project at <https://pointmatic.github.io/project-guide/>) and the cleanest fix for a rough edge is upstream of pyve — e.g. `project-guide` is too chatty during a `pyve init` hook and the right answer is a `--quiet` flag in `project-guide` rather than output-suppression in pyve — write a focused change-request spec at `docs/specs/project-guide-requests/<short-name>.md` and ship the change in the `project-guide` repo. The pyve-side story that consumes the new behavior carries an explicit minimum-version dependency on `project-guide` (e.g. "requires project-guide ≥ vX.Y.Z").
+
+Each spec is self-contained: problem statement, proposed change, motivation, suggested CLI/API shape, compatibility notes — droppable into the `project-guide` repo's planning workflow without further translation.
+
+**Why:** working around an upstream rough edge in pyve adds permanent maintenance burden for a temporary problem and hides the issue from `project-guide`'s own maintainers (who may be the same person, but on a different release cadence). A targeted upstream fix removes the rough edge for all consumers, including any future tools built on top of `project-guide`.
+
+**How to apply:** when you find a `project-guide`-integration rough edge (Phase L's Track-2 audit is the canonical example), decide locus first — pyve-side fix or upstream change request. For pyve-side fixes, normal pyve story workflow. For upstream, write the spec under `docs/specs/project-guide-requests/` (create the directory first if it doesn't exist yet), then ship the change in the `project-guide` repo on its own release cycle. The pyve-side L.* (or M.*, N.*, …) story that consumes the change waits until the corresponding `project-guide` release is available, then lands the consumption with a min-version guard if necessary.
+
 
 
 ### Pyve Essentials
@@ -216,9 +227,10 @@ This project uses `pyve` with **two separate environments**. Picking the wrong i
 - **Runtime code (the package itself):** `pyve run python ...` or `pyve run <entry-point> ...`.
 - **Tests:** `pyve test [pytest args]` — **not** `pyve run pytest`. Pytest is not installed in the main `.venv/`; it lives in the dev testenv at `.pyve/testenv/venv/`.
 - **Dev tools (ruff, mypy, pytest):** `pyve testenv run ruff check ...`, `pyve testenv run mypy ...`.
-- **Install dev tools:** `pyve testenv --install -r requirements-dev.txt`. **Do not** run `pip install -e ".[dev]"` into the main venv — that pollutes the runtime environment with test-only dependencies and breaks the two-env isolation.
+- **Initialize the testenv (one-time):** `pyve testenv init` creates `.pyve/testenv/venv/`. Required before `pyve testenv install` or `pyve testenv run` will work — those subcommands do not auto-create the env. See [pyve `testenv` subcommand reference](https://pointmatic.github.io/pyve/usage/#testenv-subcommand).
+- **Install dev tools:** `pyve testenv install -r requirements-dev.txt` (after `pyve testenv init`). **Do not** run `pip install -e ".[dev]"` into the main venv — that pollutes the runtime environment with test-only dependencies and breaks the two-env isolation.
 
-If `pytest` fails with "not found" that is the signal to use `pyve test`, not to `pip install pytest` into the wrong venv.
+If `pytest` fails with "not found" that is the signal to use `pyve test`, not to `pip install pytest` into the wrong venv. If `pyve testenv install` or `pyve testenv run` fails complaining the env doesn't exist, run `pyve testenv init` first.
 
 #### LLM-internal vs. developer-facing invocation
 
@@ -238,7 +250,7 @@ Always use `python`, never `python3`. The `python3` command bypasses `asdf` vers
 
 #### `requirements-dev.txt` story-writing rule
 
-Any story that introduces dev tooling (ruff, mypy, pytest, types-* stubs) **must** include a task to create or update `requirements-dev.txt` so that `pyve testenv --install -r requirements-dev.txt` reproduces the full dev environment in one step. This keeps the dev environment reproducible and prevents "it works on my machine" drift.
+Any story that introduces dev tooling (ruff, mypy, pytest, types-* stubs) **must** include a task to create or update `requirements-dev.txt` so that `pyve testenv init && pyve testenv install -r requirements-dev.txt` reproduces the full dev environment in two commands. This keeps the dev environment reproducible and prevents "it works on my machine" drift.
 
 #### Editable install and testenv dependency management
 
@@ -258,8 +270,9 @@ pythonpath = ["."]   # or ["src"] for src layout
 
 **Testenv editable install (required for CLI projects):**
 ```bash
+pyve testenv init                                # one-time, creates .pyve/testenv/venv/
 pyve testenv run pip install -e .
-pyve testenv --install -r requirements-dev.txt
+pyve testenv install -r requirements-dev.txt
 ```
 Use this when tests invoke CLI entry points (console scripts), because `pythonpath` only handles imports — it does not register entry points.
 
@@ -270,119 +283,71 @@ Use this when tests invoke CLI entry points (console scripts), because `pythonpa
 
 ---
 
-# plan_phase mode (sequence)
+# code_test_first mode (cycle)
 
-> Generate a feature phase prompt, which includes a mini-concept, features, and technical details
-
-
-Generate a combined concept/features/tech-spec document for a new phase in an existing project, then add the phase and stories to `docs/specs/stories.md`.
-
-Use this mode when the developer wants to add a significant new capability to a project that already has an established codebase and spec documents.
-
-## Prerequisites
-
-Before planning a new phase, the following should exist:
-- `docs/specs/concept.md`
-- `docs/specs/features.md`
-- `docs/specs/tech-spec.md`
-- `docs/specs/stories.md`
-
-## Steps
-
-1. Read the existing spec documents to understand the current project state.
-
-   `docs/specs/stories.md` may be in one of two shapes:
-
-   a. **Populated** — contains one or more `## Phase <Letter>:` sections from prior phases. Use the highest existing phase letter as the basis for the next one (see step 5).
-
-   b. **Empty (post-archive)** — `archive_stories` was just run and `stories.md` contains only the header and a `## Future` section, no phases. In this case, look in `docs/specs/.archive/` for files named `stories-vX.Y.Z.md`. Read the one with the highest version and find its highest `## Phase <Letter>:` heading — that is the basis for the next phase letter. Phase letters **continue across the archive boundary**; they do not reset.
-
-   If neither `stories.md` nor `.archive/` contains any phases, this is a fresh project — start at `A`.
-
-2. Gather information from the developer about the new phase:
-   - phase_name: A short name for the phase (e.g., "Mode System", "API Integration")
-   - problem_gap: What capability is missing or what problem this phase solves
-   - new_features: What the phase will add (functional requirements)
-   - technical_approach: How it will be built (architecture changes, new modules, new dependencies)
-   - constraints: Any limitations or compatibility requirements with existing code
-   - scope: What this phase will and won't do
-
-3. Generate a phase plan document at `docs/specs/phase-<letter>-<name>-plan.md` that combines:
-   - **Gap analysis**: What exists vs. what's needed
-   - **Feature requirements**: What the phase adds (mini features.md)
-   - **Technical changes**: New/modified modules, dependencies, config changes (mini tech-spec.md)
-   - **Out of scope**: What's deferred to future phases
-
-4. Present the phase plan to the developer for approval.
-
-5. After approval, add a new phase section and stories to `docs/specs/stories.md`:
-   - **Determine the next phase letter** by applying the algorithm from step 1:
-     - If `stories.md` had existing phases, the next letter is the successor of the highest one (e.g., `K` → `L`).
-     - If `stories.md` was empty but `.archive/` had a `stories-vX.Y.Z.md`, read the latest archived file, find its highest phase letter, and take its successor (e.g., archived Phase `J` → next phase `K`).
-     - If neither had phases, start at `A`.
-   - The successor follows the base-26-no-zero scheme (`Z` → `AA`, `ZZ` → `AAA`). See the Phase and Story ID Scheme below for details.
-   - If `stories.md` was empty, **insert the new phase as the first phase** in the file (after the header and `---`, before any `## Future` section). Otherwise append after the highest existing phase but before `## Future`.
-   - Break the phase into stories following the standard story format.
-   - Include a spike story if the phase introduces a new integration boundary.
-
-6. Present the updated stories to the developer for approval.
-
-7. **After the stories are approved, append any new must-know facts to `project-essentials.md`.** Run this step **once** at the end of phase planning — not per-story.
-
-   First, check whether `docs/specs/project-essentials.md` exists:
-   - **If it does NOT exist**: this is a legacy project that has never had project-essentials captured. Create it fresh from the artifact template at `templates/artifacts/project-essentials.md`, then continue below. Note: this is the same create path as `refactor_plan`, and legacy projects are the highest-value case for a first-time capture.
-   - **If it exists**: read the current content and keep it in mind for the next sub-step.
-
-   Then ask the developer: **"Does this phase introduce any new must-know facts that future LLMs should know? New architecture boundaries, new workflow rules, new gotchas?"** Put these concrete worked examples in front of them — phase planning is specifically about *adding* capability, so the relevant gotchas are usually about interactions between the new and old worlds:
-
-   - **New architecture boundary.** Did the phase introduce a new module, layer, or integration surface that has rules the rest of the codebase doesn't? *Example:* "Phase K adds an `archive` action type. Action handlers live in `project_guide/actions.py`; metadata registration is in `.metadata.yml`; the runtime split is that only `archive` actions fire deterministically via the CLI, while `create`/`modify` are LLM-handled. Don't add new action types without updating both files and the `VALID_ARTIFACT_ACTIONS` constant."
-   - **New workflow rule or CLI contract.** Did the phase add a flag, env var, or error-message format that downstream tooling may depend on? *Example:* "Phase L added `--no-input` with a pinned error-message contract in `tests/test_cli.py::test_require_setting_contract_exit_code_and_message`. Downstream tools (pyve) may cite this message verbatim — do not change it without a coordinated release."
-   - **New hidden coupling between files.** Did the phase introduce a pair of files (or a file and a generated output) that must stay in sync? *Example:* "Phase M wires the render pipeline to `docs/specs/project-essentials.md` via `_header-common.md`'s `{% if project_essentials %}` guard — removing the guard silently breaks every render. Covered by the post-render placeholder validator from M.b."
-   - **New deferred-but-documented item.** Did the phase explicitly defer something to a future phase? That deferral itself may be a must-know fact — future work on adjacent areas may accidentally re-implement what you decided to skip.
-   - **Principle**: if the phase introduced a new *invariant* or *convention* that someone working in this codebase a year from now would waste an hour rediscovering, it belongs in project-essentials. If the phase was a straightforward feature addition with no new invariants, skip this step.
-
-   **Skip if there are none.** Not every phase introduces new must-know facts. A pure feature addition that follows existing conventions does not need new project-essentials content — confirm with the developer and skip.
-
-   If the developer provides new facts, **append** (do not rewrite or reorder) them to `docs/specs/project-essentials.md`. The append-only semantics are deliberate: `plan_phase` runs once per phase and is not the place to refactor existing project-essentials content — that's `refactor_plan`'s Final Step job. Add new `###` subsections under the appropriate category (or create a new category if none fits). Follow the artifact template's heading convention: **do NOT include a top-level `#` heading** (the rendered `go.md` wrapper provides `## Project Essentials`), and use `###` for subsections so they nest correctly.
-
-   Present the updated file to the developer for approval. Show only what was added (since this is an append operation, the diff is minimal).
+> Generate code with a test-first approach
 
 
-**After completing all steps below**, prompt the user to change modes:
+Implement stories using test-driven development (TDD). Write a failing test before writing any implementation code.
 
-```bash
-project-guide mode code_test_first
-```
+**Next Action**
+Restart the cycle of steps. 
 
 ---
 
 
-## Phase and Story ID Scheme
+## Cycle Steps
 
-Phase and story IDs use a base-26 letter scheme with no zero. The same scheme applies to both — single letters first, then two-letter combinations, etc. This keeps IDs short while supporting projects of any size, and lets archive boundaries continue the sequence cleanly.
+For each story:
 
-### Phase letters
+1. **Read** the story's checklist from `docs/specs/stories.md` — always re-fetch from disk with the `Read` tool at the start of each cycle. The developer may have edited the file since you last viewed it (added tasks, reworded scope, marked items done), so do not rely on prior conversation context for its contents.
+2. For each task in the checklist:
+   a. **Write a failing test** that describes the expected behavior
+   b. **Run the test** -- confirm it fails (red)
+   c. **Write the minimal implementation** to make the test pass
+   d. **Run the test** -- confirm it passes (green)
+   e. **Refactor** if needed -- clean up while tests still pass
+   f. **Run full test suite** -- `pyve run pytest` -- no regressions
+3. **Add copyright/license headers** to every new source file
+4. **Run linting** -- fix any issues immediately
+5. **Mark tasks** as `[x]` in `stories.md` and change story suffix to `[Done]`
+6. **Bump version** in package manifest and source (if the story has a version)
+7. **Update CHANGELOG.md** with the version entry
+8. **Present** the completed story concisely: what changed (files + line refs), verification results (test counts, lint status, red-green-refactor summary), and the suggested next story. Do not propose commits, pushes, or bundling options. Do not offer "want me to also…?" follow-ups.
+9. **Wait** for the developer to say "go" before starting the next story
 
-Phases are labeled `A`, `B`, …, `Z`, then `AA`, `AB`, …, `AZ`, `BA`, …, `ZZ`, then `AAA`, …. The scheme is base-26 with no zero — there is no "phase 0" and `B` follows `A` (not `AB`).
+## Red-Green-Refactor
 
-Examples in order: `A`, `B`, …, `Z`, `AA`, `AB`, `AC`, …, `AZ`, `BA`, `BB`, …, `ZZ`, `AAA`, ….
+The TDD cycle:
 
-### Story sub-letters
+1. **Red** -- Write a test that fails. The test defines the desired behavior.
+2. **Green** -- Write the simplest code that makes the test pass. No more.
+3. **Refactor** -- Clean up the code while keeping tests green. Remove duplication, improve naming, simplify logic.
 
-Within a phase, stories use lowercase letters following the same scheme: `A.a`, `A.b`, …, `A.z`, then `A.aa`, `A.ab`, …, `A.az`, `A.ba`, ….
+## Test Writing Guidelines
 
-Examples: `A.a`, `A.b`, …, `A.z`, `A.aa`, `A.ab`, ….
+- **Test behavior, not implementation** -- assert on outputs and side effects, not internal state
+- **One assertion per concept** -- each test should verify one thing
+- **Use descriptive names** -- `test_override_with_nonexistent_guide_errors` not `test_override_3`
+- **Prefer unit tests** -- test individual functions in isolation
+- **Use integration tests sparingly** -- for verifying component interactions
+- **Test edge cases** -- empty inputs, boundary values, error conditions
 
-### Continuing across archive boundaries
+## Test Hierarchy
 
-When `stories.md` is archived (via `archive_stories` mode), the fresh `stories.md` starts empty — but phase letters do **not** reset. To determine the next phase letter:
+| Level | Speed | Scope | Use for |
+|-------|-------|-------|---------|
+| Unit | Fast | Single function | Core logic, edge cases, error paths |
+| Integration | Medium | Multiple components | Verifying wiring, config loading |
+| End-to-end | Slow | Full system | Final validation, smoke tests |
 
-1. Look in `docs/specs/.archive/` for files matching `stories-vX.Y.Z.md`.
-2. If any exist, read the one with the highest version and find the highest phase letter inside it. The next phase letter is the successor in the base-26 sequence (e.g., if the archive's last phase was `K`, the next is `L`; if it was `AZ`, the next is `BA`).
-3. If `.archive/` is missing or empty, start at `A`.
+## When to Switch Modes
 
-Story sub-letters reset within each phase — they do not continue across phases or archive boundaries.
+Switch to **code_direct** when:
+- The story is straightforward and TDD overhead isn't justified
+- The developer requests faster iteration
 
----
-
+Switch to **debug** when:
+- A bug is discovered during implementation
+- Tests are failing unexpectedly and need root cause analysis
 

@@ -1,8 +1,11 @@
 # concept.md — Pyve
 
-> All descriptive language in this document draws from `brand-descriptions.md`, the canonical source of truth for naming, taglines, and marketing phrasing.
+This document defines why the `pyve` project exists. 
+- **Problem space**: problem statement, why, pain points, target users, value criteria
+- **Solution space**: solution statement, goals, scope, constraints
+- **Value mapping**: Pain point to solution mapping
 
-This document defines the high-level **concept** for Pyve — the problem it solves, who it serves, and the shape of its solution. For functional scope and behavior, see `features.md`. For architecture and module design, see `tech-spec.md`. For the implementation plan, see `stories.md`.
+For requirements and behavior (what), see [`features.md`](features.md). For implementation details (how), see [`tech-spec.md`](tech-spec.md). For a breakdown of the implementation plan (step-by-step tasks), see [`stories.md`](stories.md). For project-specific must-know facts (workflow rules, hidden coupling, tool-wrapper conventions that the LLM would otherwise random-walk on), see [`project-essentials.md`](project-essentials.md). For the workflow steps tailored to the current mode (cycle steps, approval gates, conventions), see [`docs/project-guide/go.md`](../project-guide/go.md) — re-read it whenever the mode changes or after context compaction.
 
 ---
 

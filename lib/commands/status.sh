@@ -107,7 +107,24 @@ _status_section_project() {
 
 # Detect the configured Python version source. Returns a human-readable
 # string like "3.14.4 (.tool-versions via asdf)" or "(not pinned)".
+#
+# Backend-aware: micromamba projects pin Python in environment.yml
+# (`python=<spec>`); venv-style backends use .tool-versions /
+# .python-version / .pyve/config. Without the dispatch the Project
+# section falsely reports "not pinned" for a pinned micromamba project,
+# contradicting the Environment section's actual interpreter version
+# (Phase L audit T1-01).
 _status_configured_python() {
+    local backend
+    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    if [[ "$backend" == "micromamba" ]]; then
+        _status_configured_python_micromamba
+    else
+        _status_configured_python_venv
+    fi
+}
+
+_status_configured_python_venv() {
     local version="" source=""
     if [[ -f ".tool-versions" ]]; then
         version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
@@ -124,6 +141,39 @@ _status_configured_python() {
     else
         printf "%s (%s)" "${version}" "${source}"
     fi
+}
+
+_status_configured_python_micromamba() {
+    local version=""
+    if [[ -f "environment.yml" ]]; then
+        version="$(_status_parse_env_yml_python_pin environment.yml)"
+    fi
+    if [[ -z "$version" ]]; then
+        printf "%snot pinned%s" "${DIM}" "${RESET}"
+    else
+        printf "%s (environment.yml)" "${version}"
+    fi
+}
+
+# Extract the python version spec from a conda environment.yml. Matches
+# lines like `- python=3.12`, `- python =3.12.*`, `  - python = 3.12`.
+# Strips a trailing `.*` glob so the displayed pin reads naturally.
+# Returns empty when no python dependency is present.
+_status_parse_env_yml_python_pin() {
+    local file="$1"
+    [[ -f "$file" ]] || return 0
+    local line spec
+    line="$(grep -E '^[[:space:]]*-[[:space:]]*python[[:space:]]*=' "$file" 2>/dev/null | head -1 || true)"
+    [[ -z "$line" ]] && return 0
+    # Take everything after the first '=' and trim whitespace + comments.
+    spec="${line#*=}"
+    spec="${spec%%#*}"
+    # Trim leading/trailing whitespace (bash 3.2 compatible).
+    spec="${spec#"${spec%%[![:space:]]*}"}"
+    spec="${spec%"${spec##*[![:space:]]}"}"
+    # Drop a trailing ".*" glob — common in conda specs but noisy in display.
+    spec="${spec%.\*}"
+    printf "%s" "$spec"
 }
 
 _status_section_environment() {

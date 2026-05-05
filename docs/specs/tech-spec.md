@@ -1,6 +1,8 @@
 # tech_spec.md — Pyve (Bash)
 
-This document defines **how** Pyve is built — architecture, module layout, dependencies, function signatures, and cross-cutting concerns. For requirements and scope, see `features.md`. For the implementation plan, see `stories.md`.
+This document defines **how** the `pyve` project is built -- architecture, module layout, dependencies, data models, API signatures, and cross-cutting concerns.
+
+For requirements and behavior, see [`features.md`](features.md). For the implementation plan, see [`stories.md`](stories.md). For project-specific must-know facts (workflow rules, architecture quirks, hidden coupling), see [`project-essentials.md`](project-essentials.md) — `plan_tech_spec` populates it after this document is approved. For the workflow steps tailored to the current mode (cycle steps, approval gates, conventions), see [`docs/project-guide/go.md`](../project-guide/go.md) — re-read it whenever the mode changes or after context compaction.
 
 ---
 
