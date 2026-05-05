@@ -322,7 +322,7 @@ Description:
   references to other commands.
 
   For a read-only snapshot of current state (no diagnostics), use
-  'pyve status' instead (coming in a later release).
+  'pyve status'.
 
 Exit codes:
   0    All checks passed.
@@ -331,12 +331,11 @@ Exit codes:
 
 Notes:
   - pyve check is safe to run in CI (no side effects, stable exit codes).
-  - pyve check does not auto-remediate. For the auto-fix story, see
-    the future 'pyve check --fix' (tracked in stories.md Phase I).
+  - pyve check does not auto-remediate. An auto-fix mode ('pyve check
+    --fix') is tracked as a Future story in stories.md.
 
 See also:
-  pyve doctor            Legacy diagnostics (superseded by 'pyve check')
-  pyve validate          Legacy CI gate (superseded by 'pyve check')
+  pyve status            Read-only state snapshot (no diagnostics)
   pyve --help            Full command list
 EOF
 }

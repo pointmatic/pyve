@@ -76,9 +76,18 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.c: Align `pyve check` — help, docs, shipped diagnostics [Planned]
+### Story L.c: Align 'pyve check' — help, docs, shipped diagnostics [Done]
 
-**Goal.** Fix stale **`show_check_help`** (**`pyve status`** “coming …”) and reconcile **[features.md](features.md)** FR-5 claims with **[`check.sh`](../../lib/commands/check.sh)** (Python version gate, distutils shim) — **docs-only**, **implement deferred checks**, or **narrow docs** (**[T1-02](phase-l-pyve-polish-audit.md)**).
+**Goal.** Fix stale **`show_check_help`** (**`pyve status`** "coming …") and reconcile **[features.md](features.md)** FR-5 claims with **[`check.sh`](../../lib/commands/check.sh)** (Python version gate, distutils shim) — **docs-only**, **implement deferred checks**, or **narrow docs** (**[T1-02](phase-l-pyve-polish-audit.md)**).
+
+**Resolution.** Docs/help-only narrow path per the audit's recommended starting bundle. Deferred-check implementation (Python version-match gate, `distutils_shim` 3.12+ probe) stays a future story — the H.e design called for them, but they were never shipped, and adding them is a bigger surface than this Phase L correctness pass warrants.
+
+**Tasks**
+
+- [x] `show_check_help`: drop the "(coming in a later release)" parenthetical from the `pyve status` reference (status shipped in v2.0). Replace the misleading `pyve doctor` / `pyve validate` See-also lines (those forms hard-error post-v2.0; advertising them in `pyve check --help` is stale) with a single `pyve status` See-also entry.
+- [x] `show_check_help`: tighten the `--fix` note to point at the existing Future story instead of the now-stale "Phase I" reference.
+- [x] [features.md](features.md) FR-5: narrow the check inventory to match the shipped surface. Drop "Python version agreement" (only informational today), drop "`distutils_shim` status on 3.12+" (never shipped), drop the unsubstantiated "parseability" qualifier, and add an explicit note that the Python version is reported informationally with the version-match gate / distutils shim probe deferred to a follow-up.
+- [x] bats tests: assert `pyve check --help` references `pyve status` without "coming", and does not advertise the removed `pyve doctor` / `pyve validate` forms.
 
 ---
 
