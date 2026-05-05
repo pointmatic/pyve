@@ -252,6 +252,33 @@ setup() {
 #   when Category A deprecation paths were ripped.)
 #============================================================
 
+#============================================================
+# is_verbose() — Story L.f verbosity gate
+#   Single source-of-truth helper for PYVE_VERBOSE. Mirrors the
+#   is_asdf_active() pattern: callers ask the helper, never inline
+#   the env-var check, so opt-in semantics live in one place.
+#============================================================
+
+@test "ui.sh: is_verbose returns 0 when PYVE_VERBOSE=1" {
+    run bash -c "source '$UI_PATH'; PYVE_VERBOSE=1 is_verbose"
+    [ "$status" -eq 0 ]
+}
+
+@test "ui.sh: is_verbose returns non-zero when PYVE_VERBOSE=0" {
+    run bash -c "source '$UI_PATH'; PYVE_VERBOSE=0 is_verbose"
+    [ "$status" -ne 0 ]
+}
+
+@test "ui.sh: is_verbose returns non-zero when PYVE_VERBOSE is unset" {
+    run bash -c "source '$UI_PATH'; unset PYVE_VERBOSE; is_verbose"
+    [ "$status" -ne 0 ]
+}
+
+@test "ui.sh: is_verbose returns non-zero for an empty PYVE_VERBOSE" {
+    run bash -c "source '$UI_PATH'; PYVE_VERBOSE='' is_verbose"
+    [ "$status" -ne 0 ]
+}
+
 @test "ui.sh: sources cleanly under /bin/bash (bash 3.2 compatibility)" {
     # Capture stderr only; swap fds so stdout is dropped.
     run /bin/bash -c "source '$UI_PATH' 2>&1 >/dev/null"
@@ -320,12 +347,31 @@ setup() {
 }
 
 #============================================================
-# Backport-discipline invariant — zero pyve identifiers in ui.sh
+# lib/ui/ library-boundary invariant — pyve-agnostic
+#   Modules under lib/ui/ stay pyve-agnostic so the library is
+#   eventually extractable. The carve-out for Phase L is
+#   PYVE_VERBOSE — the explicit verbosity gate is named after pyve
+#   in this codebase but is the single agreed coupling point.
 #============================================================
 
-@test "ui.sh: source file contains no pyve-specific identifiers" {
-    # Constants, paths, and command names that are specific to pyve.
-    # The module must be backportable to gitbetter verbatim.
-    run grep -E '(PYVE_|pyve\.sh|\.pyve|DEFAULT_VENV_DIR|TESTENV_DIR_NAME)' "$UI_PATH"
+@test "ui.sh: source file contains no pyve-specific paths or command names" {
+    # Pyve paths, config files, command/binary names. Any of these
+    # would tie this module to pyve and break extractability.
+    run grep -E '(pyve\.sh|\.pyve|DEFAULT_VENV_DIR|TESTENV_DIR_NAME)' "$UI_PATH"
     [ "$status" -eq 1 ]  # grep returns 1 when no match — that's what we want
+}
+
+@test "ui.sh: PYVE_VERBOSE is the only PYVE_-prefixed identifier" {
+    # is_verbose() reads PYVE_VERBOSE per the Phase L plan ("PYVE_VERBOSE
+    # is the single source of truth in lib/ui/core.sh"). Any *other*
+    # PYVE_-prefixed identifier signals a leaked pyve concept.
+    run grep -oE 'PYVE_[A-Z_]+' "$UI_PATH"
+    [ "$status" -eq 0 ]
+    # Every match must be PYVE_VERBOSE; no others allowed.
+    while IFS= read -r match; do
+        [[ "$match" == "PYVE_VERBOSE" ]] || {
+            echo "Unexpected PYVE_-prefixed identifier in $UI_PATH: $match" >&2
+            return 1
+        }
+    done <<<"$output"
 }

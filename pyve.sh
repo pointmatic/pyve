@@ -269,6 +269,10 @@ UNIVERSAL FLAGS:
     --help, -h                Show this help message
     --version, -v             Show version
     --config, -c              Show current configuration
+    --verbose                 Stream subprocess output live; suppress quiet
+                              defaults. Equivalent to `PYVE_VERBOSE=1`.
+                              Parsed before the subcommand:
+                              `pyve --verbose init` (not `pyve init --verbose`).
 
 EXAMPLES:
     pyve init                            # Initialize with defaults (auto-detect backend)
@@ -421,6 +425,29 @@ unknown_flag_error() {
 
 
 main() {
+    # Global flags consumed before subcommand dispatch (Story L.f).
+    # `--verbose` is parsed here so every subcommand sees PYVE_VERBOSE=1
+    # without each having to re-implement the flag.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --verbose)
+                export PYVE_VERBOSE=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # The dispatch trace surfaces verbosity state alongside the
+    # resolved handler so tests can assert wiring without adding
+    # any user-visible behavior. Honors PYVE_VERBOSE set via either
+    # `--verbose` (handled above) or directly in the environment.
+    if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+        printf 'VERBOSE:%s\n' "${PYVE_VERBOSE:-0}"
+    fi
+
     # No arguments - show help
     if [[ $# -eq 0 ]]; then
         log_error "No command provided."

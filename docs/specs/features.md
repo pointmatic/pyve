@@ -450,6 +450,7 @@ No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergono
 | `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Set to `1` to skip shell completion wiring (same as `--no-project-guide-completion`) |
 | `PYVE_NO_ASDF_COMPAT` | Set to `1` to suppress the asdf reshim guard in both `.envrc` and `pyve run` (FR-18). Use when you install CLIs globally via `pip install --user` and want asdf's default reshim behavior. |
 | `PYVE_ASDF_COMPAT` | Reserved for symmetry with `PYVE_NO_ASDF_COMPAT`; no distinct behavior — asdf guard is active by default when asdf is detected (FR-18). |
+| `PYVE_VERBOSE` | Set to `1` to stream subprocess output live and suppress quiet-by-default decoration. Equivalent to the global `--verbose` flag (parsed before the subcommand). Single source of truth for the verbosity gate; callers test it via `is_verbose()` in `lib/ui/core.sh`. |
 | `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)

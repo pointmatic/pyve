@@ -121,19 +121,19 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.f: Verbosity policy — `--verbose` / `PYVE_VERBOSE=1` [Planned]
+### Story L.f: Verbosity policy — '--verbose' / 'PYVE_VERBOSE=1' [Done]
 
 **Goal.** Add the verbosity gate as a single source of truth in `lib/ui/core.sh`. Default: quiet. **No command output changes yet** — this story just lands the gate so L.g–L.l can honor it.
 
 **Tasks**
 
-- [ ] Add `PYVE_VERBOSE` as the single source-of-truth env var. Default `0` (quiet). Set to `1` when `--verbose` is parsed or `PYVE_VERBOSE=1` is in the env.
-- [ ] Add `--verbose` flag parsing in `pyve.sh`'s top-level argument parser. Make it a global flag (parsed before subcommand dispatch) so it works on every command.
-- [ ] Add an `is_verbose()` helper in `lib/ui/core.sh` that returns 0 iff `PYVE_VERBOSE=1`. All other call sites use this helper, never inline the env-var check (mirrors the `is_asdf_active()` pattern in project-essentials).
-- [ ] Document `--verbose` in the top-level `--help` block.
-- [ ] Document `PYVE_VERBOSE` in the Environment Variables table in `features.md`.
-- [ ] bats unit test: `is_verbose` returns the expected truthy/falsy values for `PYVE_VERBOSE=0`, `PYVE_VERBOSE=1`, unset.
-- [ ] bats / pytest test: `--verbose` flag sets `PYVE_VERBOSE=1` for the subcommand.
+- [x] `PYVE_VERBOSE` is the single source-of-truth env var. `is_verbose()` in [lib/ui/core.sh](../../lib/ui/core.sh) checks `[[ "${PYVE_VERBOSE:-0}" == "1" ]]`; default behavior (unset / `0` / empty) is quiet.
+- [x] [pyve.sh `main()`](../../pyve.sh) consumes `--verbose` as a global flag in a pre-dispatch loop and exports `PYVE_VERBOSE=1` so subcommands inherit it. Pre-subcommand position only (`pyve --verbose init`); subcommand-trailing form is out of scope.
+- [x] `is_verbose()` is the only allowed call site for the verbosity check. The library-boundary bats invariant now whitelists `PYVE_VERBOSE` as the single Phase-L-sanctioned PYVE_-prefixed identifier in `lib/ui/core.sh` — every other PYVE_-prefixed name is still forbidden.
+- [x] `--verbose` documented in the top-level `--help` UNIVERSAL FLAGS block.
+- [x] `PYVE_VERBOSE` added to the Environment Variables table in [features.md](features.md) with the explicit "single source of truth" / `is_verbose()` guidance.
+- [x] bats unit tests in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats): `is_verbose` returns 0 for `PYVE_VERBOSE=1`, non-zero for `0` / unset / empty.
+- [x] bats integration tests in [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats): `pyve --verbose <cmd>` sets `PYVE_VERBOSE=1` for the subcommand (verified via a new `VERBOSE:0|1` line emitted under `PYVE_DISPATCH_TRACE`); `PYVE_VERBOSE=1` in the env (no flag) does the same; `--help` documents `--verbose`.
 
 ---
 

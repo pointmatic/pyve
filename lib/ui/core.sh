@@ -37,6 +37,14 @@ else
 fi
 
 # ── Helpers ──────────────────────────────────────────────────
+
+# is_verbose — single source-of-truth for the verbosity gate.
+# Returns 0 iff `PYVE_VERBOSE=1` is set in the environment.
+# Callers must use this helper rather than inlining the env-var
+# check, so opt-in semantics live in one place (mirrors the
+# is_asdf_active() pattern).
+is_verbose() { [[ "${PYVE_VERBOSE:-0}" == "1" ]]; }
+
 banner()  { echo -e "\n${B}${BOLD}── $1 ──${RESET}"; }
 info()    { echo -e "  ${ARROW} $1"; }
 success() { echo -e "  ${CHECK} $1"; }
