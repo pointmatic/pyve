@@ -776,6 +776,25 @@ EOF
     grep -qF "init --no-input" "$TEST_DIR/pg-args.log"
 }
 
+# Story L.d — embedded callers also pass --quiet so a successful
+# project-guide init emits no stdout chatter into pyve init's log stream.
+# Requires project-guide >= 2.5.0 (the version that introduced --quiet).
+@test "run_project_guide_init_in_env: passes --quiet to project-guide init" {
+    local fake_venv="$TEST_DIR/fake-venv"
+    mkdir -p "$fake_venv/bin"
+
+    cat > "$fake_venv/bin/project-guide" << EOF
+#!/bin/bash
+echo "\$@" > "$TEST_DIR/pg-args.log"
+exit 0
+EOF
+    chmod +x "$fake_venv/bin/project-guide"
+
+    run run_project_guide_init_in_env "venv" "$fake_venv"
+    [ "$status" -eq 0 ]
+    grep -qF -- "--quiet" "$TEST_DIR/pg-args.log"
+}
+
 @test "run_project_guide_init_in_env: safe no-op when binary missing" {
     local fake_venv="$TEST_DIR/fake-venv"
     mkdir -p "$fake_venv/bin"
@@ -818,6 +837,23 @@ EOF
     [ "$status" -eq 0 ]
     [ -f "$TEST_DIR/pg-update-args.log" ]
     grep -qF "update --no-input" "$TEST_DIR/pg-update-args.log"
+}
+
+# Story L.d — see init counterpart above.
+@test "run_project_guide_update_in_env: passes --quiet to project-guide update" {
+    local fake_venv="$TEST_DIR/fake-venv"
+    mkdir -p "$fake_venv/bin"
+
+    cat > "$fake_venv/bin/project-guide" << EOF
+#!/bin/bash
+echo "\$@" > "$TEST_DIR/pg-update-args.log"
+exit 0
+EOF
+    chmod +x "$fake_venv/bin/project-guide"
+
+    run run_project_guide_update_in_env "venv" "$fake_venv"
+    [ "$status" -eq 0 ]
+    grep -qF -- "--quiet" "$TEST_DIR/pg-update-args.log"
 }
 
 @test "run_project_guide_update_in_env: safe no-op when binary missing" {

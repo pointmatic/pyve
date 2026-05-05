@@ -91,9 +91,18 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.d (`+` upstream): Consumer `--quiet` for embedded `project-guide` [Planned]
+### Story L.d (`+` upstream): Consumer `--quiet` for embedded `project-guide` [Done]
 
 **Goal.** Depends on **[`project-guide-requests/quiet-non-interactive-embedding.md`](project-guide-requests/quiet-non-interactive-embedding.md)** shipping upstream; then **`lib/utils.sh`** wrappers pass **`--quiet`** (or equivalent) once minimum version pinned.
+
+**Resolution.** Upstream `--quiet` shipped in `project-guide` 2.5.0 (currently installed 2.5.8). Both embedded wrappers now pass `--no-input --quiet`; the docstring on `run_project_guide_init_in_env` records the minimum version (`project-guide >= 2.5.0`).
+
+**Tasks**
+
+- [x] [lib/utils.sh](../../lib/utils.sh) — `run_project_guide_init_in_env` passes `--quiet` alongside `--no-input` to suppress per-file progress chatter on success. Docstring updated to record `project-guide >= 2.5.0` minimum (was `>= 2.2.3` for `--no-input` alone).
+- [x] [lib/utils.sh](../../lib/utils.sh) — `run_project_guide_update_in_env` passes `--quiet` alongside `--no-input` for the same reason; the `pyve update` and `pyve init --force` paths benefit from the cleaner output stream.
+- [x] [lib/utils.sh](../../lib/utils.sh) — `log_info` lines no longer hard-code the literal flag string (which would drift the next time we tune the wrapper).
+- [x] bats tests: each wrapper's command line includes `--quiet` (paired with the existing `--no-input` assertions).
 
 ---
 
