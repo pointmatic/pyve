@@ -5,7 +5,7 @@
 #
 # Unit tests for the unified UX retrofit of `pyve purge` (Story H.f.2).
 #
-# Asserts on the output structure produced by lib/ui.sh helpers —
+# Asserts on the output structure produced by lib/ui/core.sh helpers —
 # header_box, ask_yn, info, success, warn, footer_box — and the new
 # `--yes` flag that lets internal callers (e.g., `init --force`) skip
 # the destructive-confirmation prompt without double-prompting.

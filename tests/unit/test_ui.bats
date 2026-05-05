@@ -3,14 +3,15 @@
 # Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for lib/ui.sh — shared UI helpers ported from the
-# sibling `gitbetter` project. The module must have zero
-# pyve-specific dependencies and must be testable in isolation.
+# Unit tests for lib/ui/core.sh — core module of the extractable
+# lib/ui/ library. Modules under lib/ui/ stay pyve-agnostic so the
+# library remains testable in isolation and reusable in sibling
+# tools.
 #
 
 setup() {
     export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
-    export UI_PATH="$PYVE_ROOT/lib/ui.sh"
+    export UI_PATH="$PYVE_ROOT/lib/ui/core.sh"
 }
 
 #============================================================
@@ -245,7 +246,7 @@ setup() {
 #============================================================
 # bash 3.2 compatibility (H.e.7a regression guard)
 #   macOS /bin/bash is 3.2.57; pyve.sh uses `set -euo pipefail`
-#   and sources lib/ui.sh, so any bash 4+ construct at source
+#   and sources lib/ui/core.sh, so any bash 4+ construct at source
 #   time aborts every pyve invocation.
 #   (The former deprecation_warn tests were removed in Story J.d
 #   when Category A deprecation paths were ripped.)

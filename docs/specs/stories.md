@@ -91,7 +91,7 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.d (`+` upstream): Consumer `--quiet` for embedded `project-guide` [Done]
+### Story L.d ('+' upstream): Consumer '--quiet' for embedded 'project-guide' [Done]
 
 **Goal.** Depends on **[`project-guide-requests/quiet-non-interactive-embedding.md`](project-guide-requests/quiet-non-interactive-embedding.md)** shipping upstream; then **`lib/utils.sh`** wrappers pass **`--quiet`** (or equivalent) once minimum version pinned.
 
@@ -106,18 +106,18 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.e: `lib/ui/` directory establishment + `lib/ui.sh` migration [Planned]
+### Story L.e: 'lib/ui/' directory establishment + 'lib/ui.sh' migration [Done]
 
 **Goal.** Foundation for all subsequent UX work. Move `lib/ui.sh` → `lib/ui/core.sh` and update every `source` line in `pyve.sh` per the explicit-sourcing project-essential. **No new primitives in this story** — pure structural prep so L.f–L.l can land siblings.
 
 **Tasks**
 
-- [ ] Create `lib/ui/` directory.
-- [ ] Move `lib/ui.sh` → `lib/ui/core.sh`. Drop the "verbatim sync with gitbetter" header comment per audit **[T3-03](phase-l-pyve-polish-audit.md)**; replace with a brief note that this is the core module of the extractable `lib/ui/` library.
-- [ ] Update `pyve.sh`'s explicit `source` block: replace `source lib/ui.sh` with `source lib/ui/core.sh`. No glob; per the explicit-sourcing project-essential.
-- [ ] Search the tree (`grep -rn 'lib/ui\.sh'`) for any other in-tree caller and update.
-- [ ] Run the full bats + pytest suite; confirm no regressions (this is a rename, not a behavior change).
-- [ ] Update `tech-spec.md` if it references `lib/ui.sh` directly.
+- [x] Create `lib/ui/` directory.
+- [x] Move `lib/ui.sh` → `lib/ui/core.sh` via `git mv` (preserves history). Dropped the "verbatim sync with gitbetter" header comment per audit **[T3-03](phase-l-pyve-polish-audit.md)**; replaced with the `lib/ui/`-library boundary note (modules under it stay pyve-agnostic).
+- [x] Updated `pyve.sh`'s explicit `source` block: `source "$SCRIPT_DIR/lib/ui/core.sh"`.
+- [x] Updated in-tree callers: [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) (`UI_PATH`), [tests/unit/test_envrc_template.bats](../../tests/unit/test_envrc_template.bats), [tests/unit/test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats); refreshed code/docstring comment references in [lib/utils.sh](../../lib/utils.sh), [pyve.sh](../../pyve.sh), and the `*_ui.bats` test headers.
+- [x] Full bats unit suite green (739 / 739).
+- [x] Updated [tech-spec.md](tech-spec.md): file-tree entry, sourcing-order list, cross-command-helpers paragraph, `### lib/ui/core.sh — Unified UI Helpers` section header, sourcing/bash-3.2 paragraphs.
 
 ---
 

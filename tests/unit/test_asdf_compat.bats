@@ -18,10 +18,11 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    # setup_pyve_env does not source lib/ui.sh (which provides info() /
-    # success() used by _init_direnv_venv / _init_direnv_micromamba). Source
-    # it locally so the generator functions can run under bats.
-    source "$PYVE_ROOT/lib/ui.sh"
+    # setup_pyve_env does not source lib/ui/core.sh (which provides
+    # info() / success() used by _init_direnv_venv /
+    # _init_direnv_micromamba). Source it locally so the generator
+    # functions can run under bats.
+    source "$PYVE_ROOT/lib/ui/core.sh"
     create_test_dir
 
     # Each test starts with a neutral environment. Individual tests opt

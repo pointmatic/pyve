@@ -28,11 +28,11 @@ fi
 # Logging Functions
 #============================================================
 
-# Logging helpers emit the unified UX palette from lib/ui.sh
+# Logging helpers emit the unified UX palette from lib/ui/core.sh
 # (▸ / ⚠ / ✘ / ✔ glyphs, two-space indent, stderr vs. stdout
-# routing preserved). When ui.sh is not sourced — for example in
-# tests that load lib/utils.sh standalone — the ${VAR:-fallback}
-# pattern uses plain glyphs without ANSI wrappers.
+# routing preserved). When lib/ui/core.sh is not sourced — for
+# example in tests that load lib/utils.sh standalone — the
+# ${VAR:-fallback} pattern uses plain glyphs without ANSI wrappers.
 
 log_info() {
     printf "  %s %s\n" "${ARROW:-▸}" "$1"

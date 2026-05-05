@@ -111,11 +111,11 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/ui.sh" ]]; then
-    # shellcheck source=lib/ui.sh
-    source "$SCRIPT_DIR/lib/ui.sh"
+if [[ -f "$SCRIPT_DIR/lib/ui/core.sh" ]]; then
+    # shellcheck source=lib/ui/core.sh
+    source "$SCRIPT_DIR/lib/ui/core.sh"
 else
-    printf "ERROR: Cannot find lib/ui.sh\n" >&2
+    printf "ERROR: Cannot find lib/ui/core.sh\n" >&2
     exit 1
 fi
 
@@ -388,7 +388,7 @@ legacy_flag_error() {
 #   unknown_flag_error <subcommand> <bad_flag> <valid_flag1> [<valid_flag2> ...]
 #
 # Picks the single closest valid flag by Levenshtein distance
-# (via `_edit_distance` in lib/ui.sh). Emits "Did you mean X?"
+# (via `_edit_distance` in lib/ui/core.sh). Emits "Did you mean X?"
 # only when distance <= 3; for more distant typos it omits the
 # hint to avoid suggesting an unrelated flag.
 #

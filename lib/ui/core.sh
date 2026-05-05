@@ -3,10 +3,11 @@
 # shellcheck shell=bash
 # Variables below are part of this library's public API — they
 # are consumed by scripts that source this file, so shellcheck
-# cannot see their usage when linting ui.sh on its own.
+# cannot see their usage when linting this module on its own.
 # shellcheck disable=SC2034
 # ──────────────────────────────────────────────────────────────
-#  lib/ui.sh — shared UI helpers, colors, and constants.
+#  lib/ui/core.sh — core module of the extractable lib/ui/
+#  library: shared UI helpers, colors, and constants.
 #
 #  Sourced, not executed. Do not add `set -euo pipefail` here —
 #  the sourcing script sets its own shell options.
@@ -14,10 +15,10 @@
 #  Respects NO_COLOR=1 (https://no-color.org) by emitting plain
 #  text and leaving the symbol variables as unadorned glyphs.
 #
-#  Backport discipline: this module MUST NOT contain any
-#  pyve-specific identifiers, paths, or references. It is
-#  intended to be kept in sync verbatim with the sibling
-#  `gitbetter` project's copy at lib/ui.sh.
+#  Library boundary: every module under lib/ui/ stays
+#  pyve-agnostic — no pyve paths, command names, or config keys.
+#  The directory is the seam along which this UX library can
+#  eventually be extracted for reuse in sibling tools.
 # ──────────────────────────────────────────────────────────────
 
 # ── Colors & Symbols ─────────────────────────────────────────

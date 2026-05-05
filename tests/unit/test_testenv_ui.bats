@@ -5,7 +5,7 @@
 #
 # Unit tests for the unified UX retrofit of `pyve testenv` (Story H.f.3).
 #
-# Asserts on the output structure produced by lib/ui.sh helpers —
+# Asserts on the output structure produced by lib/ui/core.sh helpers —
 # header_box, info, success, footer_box — for the `purge` subcommand
 # (cheapest path to exercise the wrapper without a real Python venv).
 #
