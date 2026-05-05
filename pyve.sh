@@ -119,6 +119,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/ui/run.sh" ]]; then
+    # shellcheck source=lib/ui/run.sh
+    source "$SCRIPT_DIR/lib/ui/run.sh"
+else
+    printf "ERROR: Cannot find lib/ui/run.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================

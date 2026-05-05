@@ -137,18 +137,19 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.g: `lib/ui/run.sh` — quiet-replay-on-failure subprocess wrapper [Planned]
+### Story L.g: 'lib/ui/run.sh' — quiet-replay-on-failure subprocess wrapper [Done]
 
 **Goal.** New module providing `run_quiet <cmd> [args...]` that captures stdout+stderr from long-running noisy subprocesses (micromamba bootstrap, conda solve, pip install) and replays the captured output only on failure. Honors L.f's verbosity gate. **No callers wired up yet** — that happens in L.j.
 
 **Tasks**
 
-- [ ] Create `lib/ui/run.sh` with `run_quiet` (capture to temp buffer, return exit code, replay on non-zero) and a sibling `run_quiet_with_label "<label>" <cmd>...` that prints a one-line success indicator when capture succeeds.
-- [ ] Honor `is_verbose()` from L.f — when verbose, output streams live (no capture) so `--verbose` users see the firehose.
-- [ ] Bash 3.2 compatible — no `mapfile`, no `&>`-style redirection that bash 3.2 lacks.
-- [ ] Add `source lib/ui/run.sh` to `pyve.sh` per explicit-sourcing project-essential.
-- [ ] Keep the module pyve-agnostic — no pyve paths, command names, or config keys (per `lib/ui/` boundary invariant).
-- [ ] bats unit tests: success case prints nothing (or one-line success); failure case replays captured output and propagates exit code; verbose mode streams live.
+- [x] [lib/ui/run.sh](../../lib/ui/run.sh) ships `run_quiet` (capture stdout+stderr to a temp buffer; discard on success, replay on non-zero) and `run_quiet_with_label "<label>" <cmd>...` (success → `success "<label>"`; failure → replay buffer then `✘ <label>` to stderr). `mktemp` failures fall back to live execution rather than dropping the command.
+- [x] Honors `is_verbose()` from L.f — verbose mode streams output live; `run_quiet_with_label` still prints the labeled indicator under verbose so callers keep a consistent rhythm.
+- [x] Bash 3.2 compatible — `mktemp 2>/dev/null`, plain `>file 2>&1` (no `&>`); no `mapfile` / `readarray` / process substitution. Locked in by a regression test that greps for those constructs.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/run.sh"` block (per the explicit-sourcing project-essential — no glob).
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths / command names and that `PYVE_VERBOSE` (referenced via the `is_verbose()` helper) is the only PYVE_-prefixed identifier permitted.
+- [x] 16 bats unit tests in [tests/unit/test_ui_run.bats](../../tests/unit/test_ui_run.bats) covering: existence, quiet-success silence, quiet-failure replay, exit-code propagation, verbose-mode live streaming, labeled success/failure markers, library-boundary invariants, bash 3.2 sourcing.
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/run.sh`; sourcing-order list inserts `ui/run.sh` immediately after `ui/core.sh`.
 
 ---
 
