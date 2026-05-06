@@ -135,6 +135,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/ui/select.sh" ]]; then
+    # shellcheck source=lib/ui/select.sh
+    source "$SCRIPT_DIR/lib/ui/select.sh"
+else
+    printf "ERROR: Cannot find lib/ui/select.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================

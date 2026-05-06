@@ -173,21 +173,21 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.i: `lib/ui/select.sh` — arrow-key single/multi-select prompt [Planned]
+### Story L.i: 'lib/ui/select.sh' — arrow-key single/multi-select prompt [Done]
 
 **Goal.** New module providing arrow-key selectors for the L.k interactive wizard. Falls back to a numbered prompt when stdin is not a TTY (CI safety). **No callers wired up yet** — that happens in L.k.
 
 **Tasks**
 
-- [ ] Create `lib/ui/select.sh` with:
-  - `ui_select <label> <option1> <option2>...` — single-select: arrow-key navigation, enter-to-confirm, escape-to-cancel; returns the chosen option's index on stdout (exit code 0); returns non-zero on cancel.
-  - `ui_multi_select <label> <option1> <option2>...` — multi-select with space-bar to toggle, enter to confirm; returns selected indices.
-  - Optional `--default <n>` arg to pre-highlight a default option (used by L.k for repo-signal-driven defaults).
-- [ ] TTY fallback: when `stdin` is not a TTY (CI), fall back to a numbered prompt (`1) venv, 2) micromamba, [1]:`) so the wizard remains scriptable.
-- [ ] Bash 3.2 compatible — `read -sn1` for arrow-key bytes, parse escape sequences manually.
-- [ ] Add `source lib/ui/select.sh` to `pyve.sh` per explicit-sourcing project-essential.
-- [ ] Keep the module pyve-agnostic.
-- [ ] bats unit tests: piping numeric input through the TTY-fallback path returns the expected index; cancel path returns non-zero; default-highlight is honored.
+- [x] [lib/ui/select.sh](../../lib/ui/select.sh) ships:
+  - `ui_select [--default N] <label> <opt1> [opt2 ...]` — single-select. TTY path: arrow-key navigation (`\x1b[A` / `\x1b[B`), enter to confirm, escape or `q`/`Q` to cancel. Fallback path: numbered prompt with `[default]:` empty-input fallthrough. Returns the chosen 0-based index on stdout, exit 0 on confirm, non-zero on cancel / invalid.
+  - `ui_multi_select [--default N[,N...]] <label> <opt1> [opt2 ...]` — multi-select. TTY path: arrow-key + space to toggle + enter to confirm. Fallback path: comma- or space-separated indices. Returns space-separated 0-based indices on stdout (empty selection allowed; caller decides if it's meaningful).
+- [x] TTY fallback: when stdin is not a TTY, both surfaces drop to a numbered prompt that reads indices from stdin — `bats`-driven unit tests cover this path.
+- [x] Bash 3.2 compatible — `IFS= read -rsn1` raw-byte reads, manual ESC-sequence parsing with a 0.01s timeout for the bracket pair, no `mapfile` / `readarray`. Locked in by a regression test.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/select.sh"` block.
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths/command names and that no `PYVE_*` identifiers appear (the verbosity gate is irrelevant to user prompts; prompt shape doesn't change with `--verbose`).
+- [x] 15 bats unit tests in [tests/unit/test_ui_select.bats](../../tests/unit/test_ui_select.bats) covering: numeric choice → 0-based index, empty input → default fallthrough, `--default` override, out-of-range / non-numeric → non-zero, prompt-text emission, multi-select space- and comma-separated parsing, library-boundary invariants, bash-3.2 sourcing. (TTY arrow-key path is smoke-tested manually; driving raw reads from a sub-shell without a real PTY is impractical — L.k's `expect`-style integration tests will cover the end-to-end flow.)
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/select.sh`; sourcing-order list extended.
 
 ---
 
