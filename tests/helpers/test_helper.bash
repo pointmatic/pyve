@@ -9,7 +9,11 @@ setup_pyve_env() {
     export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
     export SCRIPT_DIR="$PYVE_ROOT"
     
-    # Source all lib modules
+    # Source all lib modules. ui/core.sh + ui/run.sh come first because
+    # utils.sh now calls run_quiet() (Story L.j) for quiet-on-success
+    # subprocess invocation.
+    source "$PYVE_ROOT/lib/ui/core.sh"
+    source "$PYVE_ROOT/lib/ui/run.sh"
     source "$PYVE_ROOT/lib/utils.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"

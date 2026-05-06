@@ -67,42 +67,59 @@ update_project() {
     local previous_version
     previous_version="$(read_config_value "pyve_version")"
 
-    log_info "Updating project configuration to Pyve v$VERSION..."
+    header_box "pyve update v$VERSION"
 
-    # Step 1: bump pyve_version in .pyve/config (idempotent; writes even
-    # when already at current version — simplifies the happy path).
-    if ! update_config_version; then
+    # Step 1/4 — bump pyve_version in .pyve/config (idempotent; writes
+    # even when already at current version, simplifying the happy path).
+    local step1_label
+    if [[ -z "$previous_version" ]]; then
+        step1_label="[1/4] pyve_version: (not recorded) → $VERSION"
+    elif [[ "$previous_version" == "$VERSION" ]]; then
+        step1_label="[1/4] pyve_version: $VERSION (already current)"
+    else
+        step1_label="[1/4] pyve_version: $previous_version → $VERSION"
+    fi
+    step_begin "$step1_label"
+    if ! update_config_version >/dev/null 2>&1; then
+        step_end_fail
         log_error "Failed to update .pyve/config."
         exit 1
     fi
-    if [[ -z "$previous_version" ]]; then
-        log_success "pyve_version: (not recorded) → $VERSION"
-    elif [[ "$previous_version" == "$VERSION" ]]; then
-        log_success "pyve_version: $VERSION (already current)"
-    else
-        log_success "pyve_version: $previous_version → $VERSION"
-    fi
+    step_end_ok
 
-    # Step 2: refresh Pyve-managed sections of .gitignore.
-    write_gitignore_template
-    log_success "Refreshed .gitignore (Pyve-managed sections)"
+    # Step 2/4 — refresh Pyve-managed sections of .gitignore.
+    step_begin "[2/4] Refresh .gitignore (Pyve-managed sections)"
+    write_gitignore_template >/dev/null 2>&1
+    step_end_ok
 
-    # Step 3: refresh .vscode/settings.json IF it already exists. Never
-    # create — that's user opt-in at init time.
+    # Step 3/4 — refresh .vscode/settings.json IF it already exists.
+    # Never create — that's user opt-in at init time.
     if [[ -f ".vscode/settings.json" ]] && [[ "$backend" == "micromamba" ]]; then
         local env_name
         env_name="$(read_config_value "micromamba.env_name")"
         if [[ -n "$env_name" ]]; then
-            PYVE_REINIT_MODE=force write_vscode_settings "$env_name"
+            step_begin "[3/4] Refresh .vscode/settings.json"
+            PYVE_REINIT_MODE=force write_vscode_settings "$env_name" >/dev/null 2>&1
+            step_end_ok
+        else
+            step_begin "[3/4] .vscode/settings.json: micromamba env_name missing — skipped"
+            step_end_ok
         fi
+    elif [[ -f ".vscode/settings.json" ]]; then
+        step_begin "[3/4] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
+        step_end_ok
+    else
+        step_begin "[3/4] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
+        step_end_ok
     fi
 
-    # Step 4: ensure .pyve/ exists (should already, by precondition).
+    # Ensure .pyve/ exists (should already, by precondition).
     mkdir -p .pyve
 
-    # Step 5: refresh project-guide scaffolding if present and allowed.
+    # Step 4/4 — refresh project-guide scaffolding if present and allowed.
     if [[ "$pg_mode" == "no" ]]; then
-        log_info "Skipping project-guide refresh (--no-project-guide)"
+        step_begin "[4/4] project-guide refresh skipped (--no-project-guide)"
+        step_end_ok
     elif [[ -f ".project-guide.yml" ]]; then
         local env_path=""
         if [[ "$backend" == "venv" ]]; then
@@ -118,15 +135,24 @@ update_project() {
             fi
         fi
         if [[ -n "$env_path" ]] && [[ -d "$env_path" ]]; then
-            run_project_guide_update_in_env "$backend" "$env_path"
+            step_begin "[4/4] Refresh project-guide artifacts"
+            if run_quiet run_project_guide_update_in_env "$backend" "$env_path"; then
+                step_end_ok
+            else
+                step_end_fail
+                log_warning "  Run 'project-guide update' manually to retry."
+            fi
         else
-            log_warning "Environment not found; skipping project-guide update."
+            step_begin "[4/4] project-guide: environment not found — skipped"
+            step_end_ok
             log_warning "  (Run 'pyve init --force' to rebuild the environment.)"
         fi
+    else
+        step_begin "[4/4] project-guide: .project-guide.yml absent — skipped"
+        step_end_ok
     fi
 
-    echo ""
-    log_info "Project updated to Pyve v$VERSION."
+    footer_box
     return 0
 }
 show_update_help() {

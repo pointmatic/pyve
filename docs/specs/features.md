@@ -374,7 +374,8 @@ Non-destructive project-level upgrade path introduced in v2.0 (Story H.e.2). Ref
 - Refreshes Pyve-managed sections of `.gitignore` via the same idempotent writer used by `init`.
 - Refreshes `.vscode/settings.json` only if it already exists (never creates one on update).
 - Refreshes `.pyve/` layout (bootstraps scaffolding paths if missing — e.g. testenv roots).
-- Runs `project-guide update --no-input` (step 2 of FR-16's hook) unless `--no-project-guide` or an auto-skip condition applies.
+- Runs `project-guide update --no-input --quiet` (step 2 of FR-16's hook) unless `--no-project-guide` or an auto-skip condition applies. Subprocess output is captured and replayed only on failure; under `--verbose` / `PYVE_VERBOSE=1` it streams live.
+- **Output shape (Phase L, Story L.j)**: a `header_box`-framed run with four labeled steps — `[1/4] pyve_version`, `[2/4] Refresh .gitignore`, `[3/4] .vscode/settings.json` (refreshed when present + micromamba; otherwise reported as skipped), `[4/4] project-guide` (refreshed when `.project-guide.yml` is present and the env is intact; otherwise skipped) — followed by a `footer_box` close. Steps emit `✔` / `✘` markers via `step_end_ok` / `step_end_fail`.
 - **Never** rebuilds the venv / micromamba environment — use `pyve init --force` for that.
 - **Never** creates a `.env` or `.envrc` that does not exist — those are user state.
 - **Never** re-prompts for backend. The backend recorded in `.pyve/config` is preserved.

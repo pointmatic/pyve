@@ -554,7 +554,11 @@ install_project_guide() {
     fi
 
     log_info "Installing/upgrading project-guide into the project environment..."
-    if $pip_cmd install --upgrade project-guide; then
+    # Quiet-by-default subprocess output (Story L.j). Pip's per-package
+    # progress is captured to a buffer; on failure the buffer is replayed
+    # so the user can see what went wrong. PYVE_VERBOSE=1 (or --verbose)
+    # streams output live.
+    if run_quiet $pip_cmd install --upgrade project-guide; then
         log_success "Installed project-guide"
     else
         log_warning "Failed to install project-guide (skip with --no-project-guide)"

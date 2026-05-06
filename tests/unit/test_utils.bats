@@ -8,6 +8,11 @@
 load ../helpers/test_helper
 
 setup() {
+    # Story L.j: setup_pyve_env now sources lib/ui/core.sh before
+    # lib/utils.sh, which means glyph constants pick up ANSI styling
+    # unless NO_COLOR=1 is set. The log_* tests below assert on plain
+    # glyphs, so we strip color here to keep them stable.
+    export NO_COLOR=1
     setup_pyve_env
     create_test_dir
 }

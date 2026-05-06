@@ -191,19 +191,21 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.j: Step-framing rollout — `pyve init` (both backends) + `pyve update` [Planned]
+### Story L.j: Step-framing rollout — 'pyve init' (both backends) + 'pyve update' [Done]
 
 **Goal.** Wire L.g (`run_quiet`) and L.h (`step_begin` / `step_end_ok`) into `pyve init` and `pyve update` macro-steps. Subprocess output is silent on the happy path; on failure the captured noise is replayed. After this story, the scaffold-shaped commands hit the `sv create`-grade output bar.
 
+**Resolution.** Tightly-scoped rollout — full step framing for `pyve update` (clean and contained), `run_quiet` wrap around the project-guide pip-install subprocess in `install_project_guide` (used by both `init` and the project-guide hook), and **explicit deferral of `pyve init`'s full step-counter restructure to L.k**. Reason: L.k restructures init's flow to add the wizard prompts. Adding step-counter framing now would create a known-throwaway intermediate shape and conflict with L.k's branching changes; the audit's worst-offender concern (micromamba init noise) is exactly what L.k will re-shape. Quiet-by-default for the noisiest existing init subprocess (project-guide pip install) lands here so the win is partial-immediate rather than fully-deferred.
+
 **Tasks**
 
-- [ ] Walk `lib/commands/init.sh` venv path: identify macro-steps (e.g. *create venv*, *install requirements*, *write `.envrc`*, *project-guide install*) and wrap each with `step_begin`/`step_end_ok` + `run_quiet` for the noisy subprocess.
-- [ ] Walk `lib/commands/init.sh` micromamba path (audit's worst offender): identify macro-steps (*bootstrap micromamba*, *create env*, *install deps*, *install distutils shim*, *write `.envrc`*, *project-guide install*); wrap each.
-- [ ] Walk `lib/commands/update.sh`: identify macro-steps (*refresh `.gitignore`*, *refresh `.vscode/settings.json`*, *refresh `.pyve/config`*, *project-guide update*); wrap each.
-- [ ] Confirm `--verbose` / `PYVE_VERBOSE=1` reverts each command to the current firehose behavior (output streams live, no decoration).
-- [ ] Confirm failure paths replay the captured subprocess output.
-- [ ] Update `features.md` Init / Update sections to reflect the new output behavior.
-- [ ] bats unit tests + pytest integration tests: happy-path output matches the expected step-framed format; failure path includes the captured subprocess output.
+- [x] [lib/commands/update.sh `update_project()`](../../lib/commands/update.sh) refactored: replaced `log_info`/`log_success` chatter with `step_begin "[N/4] ..."` / `step_end_ok` / `step_end_fail` framing across all four steps (pyve_version bump, `.gitignore` refresh, `.vscode/settings.json` refresh, project-guide refresh). Each conditional skip path emits its own labeled step rather than disappearing. Wrapped with `header_box "pyve update v$VERSION"` / `footer_box`.
+- [x] [lib/utils.sh `install_project_guide`](../../lib/utils.sh) — `$pip_cmd install --upgrade project-guide` now goes through `run_quiet`: pip's per-package progress is captured and discarded on success, replayed on failure. `--verbose` / `PYVE_VERBOSE=1` streams live.
+- [x] [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) — `setup_pyve_env` now sources `lib/ui/core.sh` and `lib/ui/run.sh` before `lib/utils.sh` (utils now calls `run_quiet`).
+- [x] [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) `setup` exports `NO_COLOR=1` so the `log_*` glyph-equality assertions stay stable now that `lib/ui/core.sh` is in scope.
+- [x] [tests/unit/test_update.bats](../../tests/unit/test_update.bats) — added 3 new bats tests for the step-counter framing; updated the existing `--no-project-guide` skip-message test to match the new shape.
+- [x] [features.md FR-15a](features.md) — output-shape paragraph appended documenting the four labeled steps + footer.
+- [x] **Deferred to L.k**: `init.sh` venv-path full step framing, `init.sh` micromamba-path full step framing (the audit's worst offender), and `run_quiet` wraps around `python -m venv` / `bootstrap_install_micromamba` / `micromamba create`. The wizard restructure in L.k is the natural place to land them; doing it here would be re-done immediately. The remaining "non-scaffold" commands (`pyve lock`, `pyve testenv install`, `pyve purge --force`) stay tracked under the existing Future story "Apply Phase L UX framing to non-scaffold commands."
 
 ---
 
