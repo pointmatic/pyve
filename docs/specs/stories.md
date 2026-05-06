@@ -153,22 +153,23 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.h: `lib/ui/progress.sh` — step counter, spinner, progress bar [Planned]
+### Story L.h: 'lib/ui/progress.sh' — step counter, spinner, progress bar [Done]
 
 **Goal.** New module providing the visual progress primitives needed for `sv create`-grade output: step counter framing, spinners for indeterminate ops, progress bars for slow operations with known total. Pure `tput` + ANSI; no external deps. **No callers wired up yet** — that happens in L.j.
 
 **Tasks**
 
-- [ ] Create `lib/ui/progress.sh` with:
-  - `step_begin "<n/m> <label>"` — print step header (e.g. `[2/5] Installing micromamba…`).
-  - `step_end_ok` / `step_end_fail` — close the step with success or failure indicator.
-  - `spinner_start` / `spinner_stop` — start a background spinner for the current step, stop it when done.
-  - An indeterminate ASCII progress bar helper for slow ops where stride information is available (file downloads with `Content-Length`).
-- [ ] Honor `is_verbose()` — under `PYVE_VERBOSE=1`, suppress decoration so raw subprocess output isn't double-decorated.
-- [ ] Bash 3.2 compatible — backgrounded subshell + signal cleanup for the spinner; no process substitution.
-- [ ] Add `source lib/ui/progress.sh` to `pyve.sh` per explicit-sourcing project-essential.
-- [ ] Keep the module pyve-agnostic.
-- [ ] bats unit tests: step counter prints the expected format; `step_end_ok` and `step_end_fail` produce distinguishable output; spinner stops cleanly on signal interrupt.
+- [x] [lib/ui/progress.sh](../../lib/ui/progress.sh) ships:
+  - `step_begin "<label>"` — opens a labeled step (quiet: no trailing newline so a marker can append; verbose: line-per-step shape so subprocess output isn't doubly decorated).
+  - `step_end_ok` / `step_end_fail` — close the step with `✔` / `✘` markers; verbose mode prints `<marker> <label>` on its own line so the outcome stays tied to the label.
+  - `spinner_start` / `spinner_stop` — backgrounded ASCII spinner (`|/-\` frames; multibyte braille frames would break bash 3.2's byte-counting `${var:offset:1}`). No-op when verbose or when stdout is not a TTY. `spinner_stop` is idempotent.
+  - `progress_bar <current> <total> [width=40] [force]` — ASCII fill bar with carriage-return prefix so successive calls overwrite. No-op when verbose, when stdout is not a TTY, or when total ≤ 0; `force` argument bypasses the TTY check for tests.
+- [x] Honors `is_verbose()` from L.f — spinner becomes a no-op; step output switches to a line-per-step shape under `PYVE_VERBOSE=1`.
+- [x] Bash 3.2 compatible — backgrounded subshell with signal cleanup for the spinner; ASCII spinner frames; C-style `for` arithmetic loop in `progress_bar`. Locked in by a regression test that greps for `mapfile`/`readarray`/`&>`/`declare -A`/case-conversion expansions.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/progress.sh"` block.
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths/command names and that `PYVE_VERBOSE` (referenced via `is_verbose()`) is the only PYVE_-prefixed identifier.
+- [x] 20 bats unit tests in [tests/unit/test_ui_progress.bats](../../tests/unit/test_ui_progress.bats).
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/progress.sh`; sourcing-order list extended.
 
 ---
 

@@ -127,6 +127,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/ui/progress.sh" ]]; then
+    # shellcheck source=lib/ui/progress.sh
+    source "$SCRIPT_DIR/lib/ui/progress.sh"
+else
+    printf "ERROR: Cannot find lib/ui/progress.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
