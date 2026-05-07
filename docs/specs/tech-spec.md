@@ -748,15 +748,25 @@ Default-resolution rules (first match wins):
 
 Prompt presents both options regardless of detection; the user can override the suggested default. When `--backend <type>` is supplied, the prompt renders non-interactively — the wizard flow shows a single line with the flag-resolved value (so the user sees what's locked in) and moves to the next prompt without reading stdin.
 
-#### Prompt 2 — Python version pin (venv backend only)
+#### Prompt 2 — Python version pin (backend-aware)
 
-Skipped entirely when backend is `micromamba` (env.yml owns the pin). When backend is `venv`, the prompt has up to three layers:
+The pin's mechanics differ between backends — venv pins via asdf/pyenv writing `.tool-versions` / `.python-version`; micromamba pins via the `python=X` line in `environment.yml`. Prompt 2 reflects this split.
+
+**venv branch.** Up to three layers:
 
 1. **Version-manager picker.** Present `[asdf, pyenv]` with **asdf as default**. Skipped when only one of the two is installed (auto-pick that one). Hard-fail when neither is installed: error names both managers as the supported set and points the user at their respective install docs. This wizard prompt overrides the existing implicit precedence in `detect_version_manager()` — when both are installed and the user explicitly picks `pyenv`, the wizard records `pyenv` even though the implicit ranking would have chosen `asdf`.
 2. **Pick from installed.** List manager-reported installed Python versions filtered to `^3\.`. Source: `asdf list python` (strip leading `*` and whitespace) or `pyenv versions --bare`. Final list option is `more...`.
 3. **`more...` secondary prompt.** Re-prompt with the full available version list filtered to `^3\.`. Source: `asdf list all python` or `pyenv install --list`. (Filtering to `^3\.` keeps oddities like `2.1.3`, `activepython-2.7.14`, and `stackless-3.7.5` out of the menu while still surfacing every released `3.x.y`.)
 
-Prompt also offers a **skip** option that preserves current no-pin behavior (no `.tool-versions` / `.python-version` written; system Python resolves at activation time). On selection, the wizard writes the appropriate pin file: `.tool-versions` for asdf, `.python-version` for pyenv. When `--python-version <ver>` is supplied, all three interactive layers and the picker are bypassed; the wizard flow shows a single line with the flag-resolved version (and the manager it pins via — asdf when both are installed, else whichever is installed).
+The venv branch also offers a **skip** option that preserves current no-pin behavior (no `.tool-versions` / `.python-version` written; system Python resolves at activation time). On selection, the wizard writes the appropriate pin file: `.tool-versions` for asdf, `.python-version` for pyenv. When `--python-version <ver>` is supplied, all three interactive layers and the picker are bypassed; the wizard flow shows a single line with the flag-resolved version (and the manager it pins via — asdf when both are installed, else whichever is installed).
+
+**micromamba branch.** No manager picker — micromamba doesn't use asdf/pyenv to pin; it uses the `- python=<version>` line in `environment.yml` and conda-forge supplies any 3.x version. Three sub-cases:
+
+1. **`environment.yml` already exists** → skip entirely; render `Python: managed via environment.yml`. The existing pin in env.yml owns it; the wizard does not edit env.yml mid-flow.
+2. **`environment.yml` absent + `--python-version <ver>` supplied** → render `Python: <ver> (--python-version, will be written to environment.yml)`. The existing `scaffold_starter_environment_yml` ([lib/micromamba_env.sh:422](../../lib/micromamba_env.sh#L422)) writes the pin into the scaffolded env.yml later in the init flow; the wizard just makes the choice visible.
+3. **`environment.yml` absent + no flag** → render `Python: <DEFAULT_PYTHON_VERSION> (default, will be written to environment.yml)`. `DEFAULT_PYTHON_VERSION` (defined in `pyve.sh`) is the wizard's effective choice; future polish may add an interactive "type a version" sub-prompt for this case, but the explicit override path (`--python-version`) is fully supported today and is sufficient for L.k.4.
+
+The micromamba branch never invokes asdf/pyenv. The wizard's no-managers hard-fail (venv branch) does not apply to micromamba.
 
 #### Prompt 3 — project-guide install
 

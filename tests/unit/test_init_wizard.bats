@@ -41,7 +41,7 @@ teardown() {
 #============================================================
 
 @test "_init_wizard: prints header_box when all three flags supplied" {
-    run _init_wizard "venv" "true" "yes"
+    run _init_wizard "venv" "3.13.7" "true" "yes"
     [ "$status" -eq 0 ]
     [[ "$output" == *"pyve init"* ]]
     [[ "$output" == *"╭"* ]]
@@ -53,7 +53,7 @@ teardown() {
 #============================================================
 
 @test "_init_wizard: TTY guard fires when stdin not TTY and all three flags missing" {
-    run _init_wizard "" "false" ""
+    run _init_wizard "" "" "false" ""
     [ "$status" -ne 0 ]
     [[ "$output" == *"--backend"* ]]
     [[ "$output" == *"--python-version"* ]]
@@ -62,7 +62,7 @@ teardown() {
 
 @test "_init_wizard: TTY guard error names only missing flags, not supplied ones" {
     # backend supplied; python and project-guide missing.
-    run _init_wizard "venv" "false" ""
+    run _init_wizard "venv" "" "false" ""
     [ "$status" -ne 0 ]
     # Supplied flag must NOT appear in the missing-flag list.
     [[ "$output" != *"--backend"* ]]
@@ -72,7 +72,7 @@ teardown() {
 
 @test "_init_wizard: TTY guard fires with only one missing flag" {
     # backend and project-guide supplied; only python missing.
-    run _init_wizard "venv" "false" "yes"
+    run _init_wizard "venv" "" "false" "yes"
     [ "$status" -ne 0 ]
     [[ "$output" != *"--backend"* ]]
     [[ "$output" == *"--python-version"* ]]
@@ -80,7 +80,7 @@ teardown() {
 }
 
 @test "_init_wizard: TTY guard error mentions PYVE_INIT_NONINTERACTIVE bypass" {
-    run _init_wizard "" "false" ""
+    run _init_wizard "" "" "false" ""
     [ "$status" -ne 0 ]
     [[ "$output" == *"PYVE_INIT_NONINTERACTIVE"* ]]
 }
@@ -90,7 +90,7 @@ teardown() {
 #============================================================
 
 @test "_init_wizard: TTY guard does not fire when all three supplied (any backend)" {
-    run _init_wizard "micromamba" "true" "no"
+    run _init_wizard "micromamba" "3.13.7" "true" "no"
     [ "$status" -eq 0 ]
     [[ "$output" == *"pyve init"* ]]
 }
@@ -100,13 +100,13 @@ teardown() {
 #============================================================
 
 @test "_init_wizard: PYVE_INIT_NONINTERACTIVE=1 bypasses TTY guard with all flags missing" {
-    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "false" ""
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "" "false" ""
     [ "$status" -eq 0 ]
     [[ "$output" == *"pyve init"* ]]
 }
 
 @test "_init_wizard: PYVE_INIT_NONINTERACTIVE=0 does NOT bypass" {
-    PYVE_INIT_NONINTERACTIVE=0 run _init_wizard "" "false" ""
+    PYVE_INIT_NONINTERACTIVE=0 run _init_wizard "" "" "false" ""
     [ "$status" -ne 0 ]
 }
 
@@ -174,13 +174,13 @@ teardown() {
 #============================================================
 
 @test "_init_wizard: --backend venv renders 'Backend: venv (--backend)'" {
-    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "true" "yes"
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Backend: venv (--backend)"* ]]
 }
 
 @test "_init_wizard: --backend micromamba renders 'Backend: micromamba (--backend)'" {
-    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "true" "no"
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "3.13.7" "true" "no"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Backend: micromamba (--backend)"* ]]
 }
@@ -216,12 +216,232 @@ teardown() {
 @test "_init_wizard: side-effect sets caller's backend_flag from auto-detection" {
     touch environment.yml
     local backend_flag=""
-    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "true" "yes" >/dev/null 2>&1
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "" "false" "yes" >/dev/null 2>&1
     [[ "$backend_flag" == "micromamba" ]]
 }
 
 @test "_init_wizard: --backend leaves caller's backend_flag untouched (already set)" {
     local backend_flag="venv"
-    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "true" "yes" >/dev/null 2>&1
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "" "false" "yes" >/dev/null 2>&1
     [[ "$backend_flag" == "venv" ]]
+}
+
+#============================================================
+# L.k.4: version-manager detection helper
+#============================================================
+
+# Helper for L.k.4 tests: drop fake `asdf` and/or `pyenv` shims into a
+# test-local bin dir and prepend to PATH. The shims are minimal — just
+# enough for the wizard's parsers and the pin-write paths in
+# set_local_python_version. Tests opt into a particular combination
+# (asdf, pyenv, or both) by listing them as args.
+_stub_managers() {
+    mkdir -p "$TEST_DIR/.fakebin"
+    local m
+    for m in "$@"; do
+        case "$m" in
+            asdf)
+                cat > "$TEST_DIR/.fakebin/asdf" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    list)
+        if [[ "$2" == "all" && "$3" == "python" ]]; then
+            printf '2.7.18\n3.10.0\n3.13.7\nstackless-3.7.5\n'
+        elif [[ "$2" == "python" ]]; then
+            printf '  3.12.0\n  *3.13.7\n  3.14.0\n'
+        fi
+        ;;
+    plugin)
+        if [[ "$2" == "list" ]]; then
+            printf 'python\n'
+        fi
+        ;;
+    set|local|reshim)
+        :
+        ;;
+esac
+EOF
+                chmod +x "$TEST_DIR/.fakebin/asdf"
+                ;;
+            pyenv)
+                cat > "$TEST_DIR/.fakebin/pyenv" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+    versions)
+        printf '3.12.0\n3.13.7\n'
+        ;;
+    install)
+        if [[ "$2" == "--list" ]]; then
+            printf '  2.7.18\n  3.10.0\n  3.13.7\n  pypy3.10-7.3.12\n'
+        fi
+        ;;
+    local|rehash|init)
+        :
+        ;;
+esac
+EOF
+                chmod +x "$TEST_DIR/.fakebin/pyenv"
+                ;;
+        esac
+    done
+    # Clean PATH: only the stub bin dir + the minimum needed for shell
+    # builtins (`tput`, `sed`, `grep`, etc.). Otherwise the dev's real
+    # asdf/pyenv on the inherited PATH leaks into "only X" tests.
+    export PATH="$TEST_DIR/.fakebin:/usr/bin:/bin"
+}
+
+@test "_init_detect_version_managers_available: empty when neither asdf nor pyenv on PATH" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    PATH="$TEST_DIR/.emptybin" run _init_detect_version_managers_available
+    [ "$status" -eq 0 ]
+    [[ "$output" == "" ]]
+}
+
+@test "_init_detect_version_managers_available: 'asdf' when only asdf on PATH" {
+    _stub_managers asdf
+    run _init_detect_version_managers_available
+    [ "$status" -eq 0 ]
+    [[ "$output" == "asdf" ]]
+}
+
+@test "_init_detect_version_managers_available: 'pyenv' when only pyenv on PATH" {
+    _stub_managers pyenv
+    run _init_detect_version_managers_available
+    [ "$status" -eq 0 ]
+    [[ "$output" == "pyenv" ]]
+}
+
+@test "_init_detect_version_managers_available: 'asdf,pyenv' when both on PATH" {
+    _stub_managers asdf pyenv
+    run _init_detect_version_managers_available
+    [ "$status" -eq 0 ]
+    [[ "$output" == "asdf,pyenv" ]]
+}
+
+#============================================================
+# L.k.4: installed-version listing helpers
+#============================================================
+
+@test "_init_list_installed_python_versions asdf: strips '*' and whitespace, filters ^3\\." {
+    _stub_managers asdf
+    run _init_list_installed_python_versions asdf
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.12.0"* ]]
+    [[ "$output" == *"3.13.7"* ]]
+    [[ "$output" == *"3.14.0"* ]]
+    [[ "$output" != *"*3.13.7"* ]]
+}
+
+@test "_init_list_installed_python_versions pyenv: bare format, filters ^3\\." {
+    _stub_managers pyenv
+    run _init_list_installed_python_versions pyenv
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.12.0"* ]]
+    [[ "$output" == *"3.13.7"* ]]
+}
+
+#============================================================
+# L.k.4: available-version listing helpers (full list, ^3\. filter)
+#============================================================
+
+@test "_init_list_available_python_versions asdf: filters non-3.x oddities" {
+    _stub_managers asdf
+    run _init_list_available_python_versions asdf
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.10.0"* ]]
+    [[ "$output" == *"3.13.7"* ]]
+    [[ "$output" != *"2.7.18"* ]]
+    [[ "$output" != *"stackless"* ]]
+}
+
+@test "_init_list_available_python_versions pyenv: filters non-3.x oddities" {
+    _stub_managers pyenv
+    run _init_list_available_python_versions pyenv
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.10.0"* ]]
+    [[ "$output" == *"3.13.7"* ]]
+    [[ "$output" != *"2.7.18"* ]]
+    [[ "$output" != *"pypy"* ]]
+}
+
+#============================================================
+# L.k.4: wizard Python-prompt — micromamba branch
+#============================================================
+
+@test "_init_wizard: micromamba + environment.yml present → 'managed via environment.yml'" {
+    touch environment.yml
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "3.13.7" "true" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: managed via environment.yml"* ]]
+}
+
+@test "_init_wizard: micromamba + no env.yml + --python-version → 'will be written to environment.yml'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "3.12.13" "true" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: 3.12.13 (--python-version, will be written to environment.yml)"* ]]
+}
+
+@test "_init_wizard: micromamba + no env.yml + no flag → 'default, will be written to environment.yml'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "3.13.7" "false" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: 3.13.7 (default, will be written to environment.yml)"* ]]
+}
+
+@test "_init_wizard: micromamba + no managers on PATH still succeeds (no manager detection on micromamba branch)" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    PATH="$TEST_DIR/.emptybin" PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "3.12.13" "true" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: 3.12.13"* ]]
+}
+
+#============================================================
+# L.k.4: wizard Python-prompt — venv branch, flag-driven
+#============================================================
+
+@test "_init_wizard: venv + --python-version + asdf on PATH → 'pinned via asdf'" {
+    _stub_managers asdf
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: 3.13.7 (--python-version, pinned via asdf)"* ]]
+}
+
+@test "_init_wizard: venv + --python-version + pyenv only → 'pinned via pyenv'" {
+    _stub_managers pyenv
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: 3.13.7 (--python-version, pinned via pyenv)"* ]]
+}
+
+@test "_init_wizard: venv + --python-version + both managers → asdf preferred" {
+    _stub_managers asdf pyenv
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pinned via asdf"* ]]
+    [[ "$output" != *"pinned via pyenv"* ]]
+}
+
+@test "_init_wizard: venv + --python-version + no managers → hard-fail naming both" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    PATH="$TEST_DIR/.emptybin" PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"asdf"* ]]
+    [[ "$output" == *"pyenv"* ]]
+}
+
+#============================================================
+# L.k.4: wizard Python-prompt — venv branch, bypass + no flag (silent skip)
+#============================================================
+
+@test "_init_wizard: venv + bypass + no --python-version → 'Python: skipped (no pin)'" {
+    _stub_managers asdf
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "false" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: skipped (no pin)"* ]]
+}
+
+@test "_init_wizard: venv + bypass + no flag + no managers → silent skip (no hard-fail)" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    PATH="$TEST_DIR/.emptybin" PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "false" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Python: skipped (no pin)"* ]]
 }

@@ -260,23 +260,32 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.k.4: Wizard — Python version pin prompt [Planned]
+### Story L.k.4: Wizard — Python version pin prompt [Done]
 
-**Goal.** Add the Python pin prompt. Most involved sub-story: version-manager picker, "pick from installed", `more...` secondary prompt with filtered full list, skip path, no-manager hard-fail. Only runs when backend is `venv`.
+**Goal.** Add the Python pin prompt. Most involved sub-story: backend-aware split (venv flow vs. micromamba flow), version-manager picker, "pick from installed", `more...` secondary prompt with filtered full list, skip path, no-manager hard-fail. The venv branch is the heavy half; the micromamba branch is small but real (the existing `--python-version` flag bakes into the scaffolded `environment.yml` via [lib/micromamba_env.sh:458](../../lib/micromamba_env.sh#L458) — the wizard surfaces this rather than skipping silently).
 
-**Tasks**
+**Tasks — venv branch**
 
-- [ ] Skip the entire pin prompt when backend is `micromamba` (env.yml owns the pin).
-- [ ] Detect installed version managers: presence checks for `asdf` and `pyenv` on `PATH`. If neither is installed, hard-fail with a clear message naming both as the supported set and pointing the user at the relevant install docs.
-- [ ] Version-manager sub-prompt: `ui_select` with options `[asdf, pyenv]` and asdf as default. Skipped if only one is installed.
-- [ ] "Pick from installed" prompt:
-  - asdf: parse `asdf list python` (strip leading `*` and whitespace).
-  - pyenv: parse `pyenv versions --bare`.
-  - Filter to `^3\.` numeric prefix.
-  - Final option `more...` re-prompts with the full available list (`asdf list all python` / `pyenv install --list`), same `^3\.` filter applied.
-  - Skip option (preserve current no-pin behavior).
-- [ ] On selection, write the appropriate pin file using existing pyve conventions: `.tool-versions` for asdf, `.python-version` for pyenv.
-- [ ] bats unit tests for each branch: asdf installed-list parsing, pyenv installed-list parsing, `more...` flow with mocked manager output, skip path, no-manager hard-fail, single-manager auto-pick (skips the picker sub-prompt), `^3\.` filter correctness.
+- [x] Detect installed version managers: `_init_detect_version_managers_available()` does presence checks for `asdf` and `pyenv` on PATH. Hard-fail applies only when the user is requesting a pin (flag supplied OR interactive selection); no-flag + non-interactive falls through to the no-pin skip path silently — absence of a manager is fine when no pin was requested.
+- [x] Version-manager sub-prompt (interactive path): `ui_select` with options `[asdf, pyenv]` and asdf as default. Auto-picks the single one when only one manager is installed.
+- [x] "Pick from installed" prompt — `_init_list_installed_python_versions(manager)` parses `asdf list python` (strip `*`/whitespace) or `pyenv versions --bare`, filtered to `^3\.`. Final two options are `more...` and `skip (no pin)`.
+- [x] `more...` secondary prompt — `_init_list_available_python_versions(manager)` parses `asdf list all python` or `pyenv install --list` filtered to `^3\.` (drops 2.x, stackless-*, activepython-*, pypy*).
+- [x] On selection (flag-driven or interactive), the wizard sets `VERSION_MANAGER` to the explicit pick and calls the existing `set_local_python_version` ([lib/env_detect.sh](../../lib/env_detect.sh)). asdf is preferred when both are available; the wizard's pick overrides the implicit precedence in `detect_version_manager()`.
+
+**Tasks — micromamba branch**
+
+- [x] `environment.yml` exists → `Python: managed via environment.yml`. The existing pin owns it; the wizard does not modify env.yml.
+- [x] `environment.yml` absent + `--python-version <ver>` → `Python: <ver> (--python-version, will be written to environment.yml)`. No write in the wizard; the existing `scaffold_starter_environment_yml` writes it later in the init flow.
+- [x] `environment.yml` absent + no flag → `Python: <DEFAULT_PYTHON_VERSION> (default, will be written to environment.yml)`. The default is the `python_version` value `init_project()` already passes (initialised to `DEFAULT_PYTHON_VERSION`).
+- [x] No manager detection on the micromamba branch — micromamba pins via env.yml, not asdf/pyenv.
+
+**Tasks — tests**
+
+- [x] 4 bats tests for `_init_detect_version_managers_available` (none / asdf-only / pyenv-only / both); requires PATH-cleaning in the test stub helper to keep the dev machine's real asdf/pyenv from leaking in.
+- [x] 4 bats tests for `_init_list_*_python_versions` (asdf and pyenv, installed and available), covering `*`-stripping for asdf, bare format for pyenv, and the `^3\.` filter dropping 2.7.18 / stackless / pypy.
+- [x] 6 bats tests for the venv-branch wizard paths: flag + asdf, flag + pyenv-only, flag + both → asdf preferred, flag + no managers → hard-fail, bypass + no flag → silent skip, bypass + no flag + no managers → silent skip.
+- [x] 4 bats tests for the micromamba-branch wizard paths: env.yml present → "managed via environment.yml", env.yml absent + flag → "(--python-version, will be written to environment.yml)", env.yml absent + no flag → "(default, will be written to environment.yml)", no managers + micromamba → still succeeds (no manager dependency).
+- [x] Bug surfaced + fixed during TDD: the L.k.3 backend prompt's flag-set path needs to write `backend_flag="$arg_backend_flag"` so the dynamic-scope variable is populated even when the wizard is invoked from a context that didn't pre-set `backend_flag` (e.g. bats `run _init_wizard ...`). Without this, the L.k.4 micromamba branch check (`if [[ "$backend_flag" == "micromamba" ]]`) would fall through to the venv branch in tests.
 
 ---
 

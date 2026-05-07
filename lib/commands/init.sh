@@ -203,6 +203,51 @@ _init_detect_backend_default() {
     fi
 }
 
+# Detect which Python version managers are available on PATH.
+# Returns one of: "" | "asdf" | "pyenv" | "asdf,pyenv".
+# Used by the venv branch of the L.k.4 Python prompt.
+_init_detect_version_managers_available() {
+    local available=()
+    command -v asdf  >/dev/null 2>&1 && available+=("asdf")
+    command -v pyenv >/dev/null 2>&1 && available+=("pyenv")
+    local IFS=,
+    printf '%s' "${available[*]}"
+}
+
+# List manager-reported installed Python versions, filtered to ^3\..
+# Output: one version per line, no leading whitespace, no '*' marker.
+# Args: $1 = "asdf" | "pyenv"
+_init_list_installed_python_versions() {
+    local manager="$1"
+    case "$manager" in
+        asdf)
+            asdf list python 2>/dev/null \
+                | sed -e 's/^[[:space:]]*\*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                | grep -E '^3\.' || true
+            ;;
+        pyenv)
+            pyenv versions --bare 2>/dev/null | grep -E '^3\.' || true
+            ;;
+    esac
+}
+
+# List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..
+# Output: one version per line.
+# Args: $1 = "asdf" | "pyenv"
+_init_list_available_python_versions() {
+    local manager="$1"
+    case "$manager" in
+        asdf)
+            asdf list all python 2>/dev/null | grep -E '^3\.' || true
+            ;;
+        pyenv)
+            pyenv install --list 2>/dev/null \
+                | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                | grep -E '^3\.' || true
+            ;;
+    esac
+}
+
 # Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
 #
 # Always invoked from init_project(); flags only control whether each
@@ -223,14 +268,18 @@ _init_detect_backend_default() {
 # init_project() after the wizard returns, exactly as if the user had
 # passed `--backend <value>` on the command line.
 #
-# Usage: _init_wizard <backend_flag> <python_version_supplied> <project_guide_mode>
+# Usage: _init_wizard <backend_flag> <python_value> <python_supplied> <project_guide_mode>
 #   arg_backend_flag:          "" if --backend not supplied, else the value
+#   arg_python_value:          the resolved python version (the user's flag value
+#                              when --python-version was supplied; the
+#                              DEFAULT_PYTHON_VERSION fallback otherwise)
 #   arg_python_supplied:       "true" if --python-version supplied, else "false"
 #   arg_pg_mode:               "" if neither flag supplied, else "yes" or "no"
 _init_wizard() {
     local arg_backend_flag="$1"
-    local arg_python_supplied="$2"
-    local arg_pg_mode="$3"
+    local arg_python_value="$2"
+    local arg_python_supplied="$3"
+    local arg_pg_mode="$4"
 
     local missing_flags=()
     [[ -z "$arg_backend_flag" ]] && missing_flags+=("--backend <type>")
@@ -255,6 +304,7 @@ _init_wizard() {
     # Prompt 1 — backend (Story L.k.3).
     if [[ -n "$arg_backend_flag" ]]; then
         info "Backend: $arg_backend_flag (--backend)"
+        backend_flag="$arg_backend_flag"
     elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
         local default_backend default_idx
         default_backend="$(_init_detect_backend_default)"
@@ -278,6 +328,133 @@ _init_wizard() {
         default_backend="$(_init_detect_backend_default)"
         info "Backend: $default_backend (auto-detected)"
         backend_flag="$default_backend"
+    fi
+
+    # Prompt 2 — Python version pin (Story L.k.4). Backend-aware: venv pins
+    # via asdf/pyenv writing .tool-versions / .python-version; micromamba
+    # pins via the `python=X` line in environment.yml (the existing
+    # scaffolder writes it later in the init flow).
+    if [[ "$backend_flag" == "micromamba" ]]; then
+        if [[ -f environment.yml ]]; then
+            info "Python: managed via environment.yml"
+        elif [[ "$arg_python_supplied" == "true" ]]; then
+            info "Python: $arg_python_value (--python-version, will be written to environment.yml)"
+        else
+            info "Python: $arg_python_value (default, will be written to environment.yml)"
+        fi
+    else
+        # venv branch.
+        local available_managers
+        available_managers="$(_init_detect_version_managers_available)"
+
+        if [[ "$arg_python_supplied" == "true" ]]; then
+            # Flag-driven: detect managers (hard-fail if none); pick asdf when
+            # both available; render and write the pin via the existing
+            # set_local_python_version helper.
+            if [[ -z "$available_managers" ]]; then
+                log_error "No supported Python version manager found on PATH."
+                log_error "Install one of:"
+                log_error "  asdf  — https://asdf-vm.com/"
+                log_error "  pyenv — https://github.com/pyenv/pyenv"
+                exit 1
+            fi
+            local picked_manager
+            if [[ "$available_managers" == *"asdf"* ]]; then
+                picked_manager="asdf"
+            else
+                picked_manager="pyenv"
+            fi
+            info "Python: $arg_python_value (--python-version, pinned via $picked_manager)"
+            VERSION_MANAGER="$picked_manager"
+            if ! set_local_python_version "$arg_python_value" >/dev/null 2>&1; then
+                log_error "Failed to pin Python $arg_python_value via $picked_manager."
+                exit 1
+            fi
+            python_version="$arg_python_value"
+        elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+            # Interactive: full picker flow. Hard-fail when neither manager is
+            # installed (the user is being asked to choose; the prompt has no
+            # legitimate answer otherwise).
+            if [[ -z "$available_managers" ]]; then
+                log_error "No supported Python version manager found on PATH."
+                log_error "Install one of:"
+                log_error "  asdf  — https://asdf-vm.com/"
+                log_error "  pyenv — https://github.com/pyenv/pyenv"
+                exit 1
+            fi
+            local picked_manager
+            if [[ "$available_managers" == "asdf,pyenv" ]]; then
+                local mgr_idx
+                if ! mgr_idx="$(ui_select --default 1 "Select Python version manager" "asdf" "pyenv")"; then
+                    log_error "Version-manager selection cancelled."
+                    exit 1
+                fi
+                case "$mgr_idx" in
+                    0) picked_manager="asdf" ;;
+                    1) picked_manager="pyenv" ;;
+                    *) log_error "Unexpected manager choice index: $mgr_idx"; exit 1 ;;
+                esac
+            else
+                picked_manager="$available_managers"
+            fi
+            # Build "Pick from installed" list with `more...` and `skip` as the
+            # final two options. Selecting `more...` re-prompts with the full
+            # available list.
+            local installed_versions
+            installed_versions="$(_init_list_installed_python_versions "$picked_manager")"
+            local options=()
+            local v
+            while IFS= read -r v; do
+                [[ -n "$v" ]] && options+=("$v")
+            done <<<"$installed_versions"
+            options+=("more...")
+            options+=("skip (no pin)")
+            local pick_idx
+            if ! pick_idx="$(ui_select --default 1 "Select Python version (via $picked_manager)" "${options[@]}")"; then
+                log_error "Python version selection cancelled."
+                exit 1
+            fi
+            local n_installed=$(( ${#options[@]} - 2 ))
+            local chosen_version=""
+            if (( pick_idx < n_installed )); then
+                chosen_version="${options[$pick_idx]}"
+            elif (( pick_idx == n_installed )); then
+                # `more...` — re-prompt with full available list.
+                local available_full
+                available_full="$(_init_list_available_python_versions "$picked_manager")"
+                local more_options=()
+                while IFS= read -r v; do
+                    [[ -n "$v" ]] && more_options+=("$v")
+                done <<<"$available_full"
+                if [[ ${#more_options[@]} -eq 0 ]]; then
+                    log_error "No 3.x versions available from $picked_manager."
+                    exit 1
+                fi
+                local more_idx
+                if ! more_idx="$(ui_select --default 1 "Select Python version (full list)" "${more_options[@]}")"; then
+                    log_error "Python version selection cancelled."
+                    exit 1
+                fi
+                chosen_version="${more_options[$more_idx]}"
+            else
+                # `skip` — no pin written.
+                info "Python: skipped (no pin)"
+                chosen_version=""
+            fi
+            if [[ -n "$chosen_version" ]]; then
+                info "Python: $chosen_version (pinned via $picked_manager)"
+                VERSION_MANAGER="$picked_manager"
+                if ! set_local_python_version "$chosen_version" >/dev/null 2>&1; then
+                    log_error "Failed to pin Python $chosen_version via $picked_manager."
+                    exit 1
+                fi
+                python_version="$chosen_version"
+            fi
+        else
+            # Non-TTY or bypass on, no flag → silent skip. No hard-fail on
+            # missing managers because no pin was requested.
+            info "Python: skipped (no pin)"
+        fi
     fi
 
     return 0
@@ -435,7 +612,7 @@ init_project() {
         esac
     done
 
-    _init_wizard "$backend_flag" "$python_version_supplied" "$project_guide_mode"
+    _init_wizard "$backend_flag" "$python_version" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
