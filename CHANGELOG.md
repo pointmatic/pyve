@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-05-07
+
+**Phase L — Pyve Polish.** UX overhaul: `pyve init` (both backends) and `pyve update` now deliver a `sv create`-grade scaffolding experience. Every `pyve init` invocation runs through an interactive wizard with smart defaults from repo signals; subprocess output is quiet on the happy path with `--verbose` opt-in for live streaming; long-running steps render with a step counter; init ends with a single coherent "Next steps:" summary. Plus diagnostic-correctness fixes (`pyve status` Python pin, `pyve check --help` reconciliation) and the `lib/ui/` library extraction (the boundary of an eventually-extractable bash UX library). Skips v2.5.x — Phase L stories accumulated on the phase branch without per-story bumps and ship as one minor release.
+
+See [docs/specs/phase-l-pyve-polish-plan.md](docs/specs/phase-l-pyve-polish-plan.md) for the phase plan and acceptance criteria, and [docs/specs/phase-l-pyve-polish-audit.md](docs/specs/phase-l-pyve-polish-audit.md) for the L.a audit (Diagnostic Surface / Project-Guide Integration / Terminal UX) that drove each follow-up story.
+
+### Added
+
+- **Interactive `pyve init` wizard** (Stories L.k.1–L.k.7). `pyve init` now opens with a welcome banner and walks the user through three prompts in fixed order: **backend → Python version pin → project-guide install**. The wizard always runs; flags suppress only the *interactive* part of individual prompts and render the flag-resolved value in the flow, so the user sees what's about to happen even on fully flag-driven invocations.
+  - **Backend prompt** — defaults driven by repo signals (`environment.yml` → micromamba; `.python-version`/`.tool-versions` → venv; else venv). `--backend auto` is treated as the auto-detect path. `--backend <type>` skips interactive selection and renders the resolved value.
+  - **Python version pin prompt** — backend-aware. `venv` branch: version-manager picker (asdf default; auto-pick when only one is installed; hard-fail when neither is installed AND a pin is requested), then "pick from installed" via `asdf list python` / `pyenv versions --bare` filtered to `^3\.`, with a final `more...` option that re-prompts with the full available list (`asdf list all python` / `pyenv install --list`). `micromamba` branch: env.yml-aware — managed-via-env.yml when present; flag/default version baked into the scaffolded env.yml when absent.
+  - **project-guide install prompt** — detection-keyed on `.project-guide.yml` (the canonical install marker). Already present → render "refresh (already installed)" and let the post-env hook run `project-guide update` (the safe refresh path). Declared as a project dependency → render "managed by your project dependencies" and defer entirely to the user's deps. Otherwise → prompt with default no, or in non-TTY mode defer to the existing env-var / CI-default / interactive-fallback logic in `_init_run_project_guide_hooks`.
+  - **TTY policy** — wizard hard-fails when stdin is not a TTY AND at least one prompt would read stdin AND `PYVE_INIT_NONINTERACTIVE` is not `1`. Error names the missing flags as the non-interactive path.
+  - **`PYVE_INIT_NONINTERACTIVE=1`** — new env var that bypasses the wizard's TTY guard. Mirrors the existing `PYVE_FORCE_YES` / `CI=1` pattern but specific to the wizard. Set by default in the bats and pytest test harnesses.
+- **Verbosity policy** (Story L.f) — `--verbose` (parsed pre-subcommand) and `PYVE_VERBOSE=1` (env var) are equivalent. Quiet by default. Every UI primitive consults `is_verbose()` in `lib/ui/core.sh` rather than re-implementing the env-var check.
+- **`lib/ui/` library** (Story L.e) — `lib/ui.sh` migrated to `lib/ui/core.sh` and grew sibling modules: `lib/ui/run.sh` (`run_quiet` quiet-replay-on-failure subprocess wrapper, Story L.g), `lib/ui/progress.sh` (step counters + spinner + progress bar, Story L.h), `lib/ui/select.sh` (arrow-key single/multi-select prompts with TTY fallback, Story L.i). Modules under `lib/ui/` stay pyve-agnostic — the boundary is the eventual extraction point for a standalone bash UX library.
+- **End-of-init "Next steps:" summary** (Story L.l) — `pyve init` now ends with a single numbered block replacing the per-backend ad-hoc trailing lines. Conditional items: `direnv allow` (or `pyve run <command>` under `--no-direnv`), `pyve testenv install -r requirements-dev.txt` (when `requirements-dev.txt` exists), `Read docs/project-guide/go.md` (when `.project-guide.yml` exists). Trailing micromamba+direnv caveat preserved.
+
+### Changed
+
+- **`pyve update` step framing** (Story L.j) — replaced ad-hoc `log_info` chatter with `step_begin "[N/4] ..."` / `step_end_ok` / `step_end_fail` framing across all four steps (`pyve_version` bump, `.gitignore` refresh, `.vscode/settings.json` refresh, project-guide refresh). Wrapped with `header_box` / `footer_box`. Each conditional skip path emits its own labeled step.
+- **`pyve update` and `pyve init --force`** — embedded `project-guide` invocations now pass `--quiet` alongside `--no-input` (Story L.d). Requires `project-guide >= 2.5.0`. Pip's per-package progress is captured and discarded on success, replayed on failure.
+- **`pyve status`** — micromamba projects now read the Python pin from `environment.yml` (`- python=<spec>` line, regex-grep tolerant of whitespace and a trailing `.*` glob) instead of falsely reporting "Python: not pinned" (Story L.b, audit T1-01).
+- **`pyve check --help`** — reconciled with shipped diagnostics (Story L.c, audit T1-02). Dropped the "(coming in a later release)" parenthetical from the `pyve status` reference; replaced misleading `pyve doctor` / `pyve validate` See-also entries (which hard-error post-v2.0) with a single `pyve status` entry.
+
+### Fixed
+
+- **bash 3.2 empty-array under `set -u`** (Story L.k.7) — `_init_detect_version_managers_available` in `lib/commands/init.sh` now uses `"${available[*]:-}"` instead of `"${available[*]}"`. Without the `:-` default, `pyve init` would crash on macOS bash 3.2 with `available[*]: unbound variable` whenever neither `asdf` nor `pyenv` was on PATH (e.g. CI runners with neither installed).
+- **`pyve init --backend auto` resolution in the wizard** (Story L.k.7) — the wizard now resolves `auto` to a concrete backend (via `_init_detect_backend_default`) before downstream prompts branch on it. Without this, the Python prompt fell to the venv branch even when `environment.yml` clearly indicated micromamba, hard-failing on no managers.
+- **Wizard's project-guide block over-resolved cases the post-env hook owns** (Story L.k.7) — the deps-managed and non-flag-no-signal branches no longer pre-set `project_guide_mode="no"`. The wizard renders a one-line summary; the post-env `_init_run_project_guide_hooks` retains its detailed deps-managed message and its CI-default-install behavior.
+
+### Documentation
+
+- **`docs/specs/project-essentials.md`** — appended four new invariants surfaced during Phase L: `lib/ui/` extractable boundary + verbosity gate (firm), bash 3.2 empty-array contract (unanticipated, from L.k.7), `.project-guide.yml` as canonical project-guide install marker (unanticipated, from L.k.5/L.k.6).
+- **`docs/specs/features.md`** — new FR-1a "Interactive `pyve init` wizard" subsection documenting prompt set, default-resolution rules, flag-override behavior, TTY policy, bypass env var, out-of-scope flags. New FR-1b "End-of-init Next steps summary" with the precondition table.
+- **`docs/specs/tech-spec.md`** — new "Interactive `pyve init` wizard" subsection between Modifier Flags and Exit Codes. Documents the venv/micromamba split for the Python pin and the deps-vs-install-marker precedence for project-guide.
+
 ## [2.4.0] - 2026-04-27
 
 **Phase K — Break the Pyve Monolith.** Pure-refactor release: all 11 top-level commands extracted from `pyve.sh` into per-command modules under `lib/commands/<name>.sh`. `pyve.sh` shrunk from 3,363 lines to **595 lines** (−2,768, ~82% reduction). The user-facing CLI surface is byte-identical to v2.3.2 — every command, flag, env var, exit code, and output line is preserved.

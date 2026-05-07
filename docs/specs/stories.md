@@ -379,7 +379,7 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 - [x] 12 bats unit tests in [tests/unit/test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats) covering: section header always present; direnv-allow vs pyve-run alternation; testenv install precondition (present/absent); project-guide go.md precondition (present/absent); micromamba caveat conditions (micromamba+direnv only); item numbering; combined all-conditions case.
 - [x] 4 pytest integration tests in [tests/integration/test_init_next_steps.py](../../tests/integration/test_init_next_steps.py): block renders at end of init; `--no-direnv` substitutes pyve-run; testenv install hint when `requirements-dev.txt` exists; testenv install hint absent when no `requirements-dev.txt`. The "skips direnv" test uses `pyve.run("init", ...)` directly (rather than `pyve.init()`) so its `timeout=300` kwarg is treated as a subprocess timeout — a quirk of the test helper that was easier to work around than to fix in this story.
 
-### Story L.m: Phase L wrap-up — project-essentials, version bump, phase closure [Planned]
+### Story L.m: Phase L wrap-up — project-essentials, version bump, phase closure [Done]
 
 **When.** After every Phase L implementation story (L.b–L.l) is `[Done]` (or L.d explicitly deferred to a follow-up patch). This story is intentionally last in Phase L ordering so the `project-essentials.md` pass sees the codebase and docs **as they actually landed**, and so the single `v2.6.0` bump captures the entire phase's work in one release.
 
@@ -387,27 +387,32 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 **Tasks — capture new invariants**
 
-- [ ] Re-read Phase L artifacts (`phase-l-pyve-polish-audit.md`, accumulated phase-branch commits across L.b–L.l, any new `docs/specs/project-guide-requests/*.md`).
-- [ ] Append the two firm invariants from the plan:
-  - **`lib/ui/` extractable boundary** — modules under `lib/ui/` stay pyve-agnostic (no pyve paths, command names, or config keys).
-  - **Quiet by default, verbose by opt-in** — `PYVE_VERBOSE` is the single source of truth in `lib/ui/core.sh`; primitives honor it via `is_verbose()` rather than re-implementing the env-var check.
-- [ ] Append new `###` subsections for any **unanticipated** invariant that surfaced during L.b–L.l implementation but was not pre-committed in the plan.
+- [x] Re-read Phase L artifacts (`phase-l-pyve-polish-audit.md`, phase-branch commits across L.b–L.l, the L.d project-guide-request spec).
+- [x] Appended the two firm invariants from the plan as a single combined entry "**`lib/ui/` is the extractable UX boundary — pyve-agnostic with one exception**" — covers both the boundary contract and the verbosity gate (`PYVE_VERBOSE` as single source of truth, `is_verbose()` as the only check site, the `PYVE_VERBOSE` whitelist exception inside `lib/ui/core.sh`).
+- [x] Appended unanticipated invariants surfaced during L.b–L.l:
+  - **"Bash 3.2 empty-array reads must use the `:-` default"** — surfaced in L.k.7 as a CI-only crash (`pyve.sh`'s `set -euo pipefail` + bash 3.2's empty-array-as-unbound semantics killed `pyve init` mid-wizard on runners without asdf/pyenv installed). Captures the rule + the canonical regression-test shape so the next contributor can lock in the contract from new helpers.
+  - **"`.project-guide.yml` is the canonical project-guide install marker"** — surfaced in L.k.5/L.k.6 once `pyve init` and `pyve update` both needed an "is project-guide installed?" signal. Pins the file (not the directory) as the source of truth, matching upstream's own state record. Prevents future divergence between consumers.
 
 **Tasks — prune and correct stale essentials**
 
-- [ ] Walk `docs/specs/project-essentials.md` entry-by-entry. For each subsection, verify it matches current code, filenames, conventions, and post–Phase-L reality.
-- [ ] Rewrite or delete subsections that are **clearly superseded**, **incorrect**, or **no longer actionable** — this is Phase L–sanctioned one-shot tightening, not carte blanche to reorganize the file wholesale (large-scope restructuring stays `refactor_plan`).
-- [ ] Specifically re-check entries that cite `lib/ui.sh` / UX constraints that Phase L superseded (e.g. verbatim sync with sibling projects vs. extracted `lib/ui/` library). Update wording to match shipped state.
+- [x] Walked `docs/specs/project-essentials.md` entry-by-entry. All 11 existing entries (File header conventions; Deprecation removal Cat A vs B; `is_asdf_active`; `lib/commands/<name>.sh`; explicit library sourcing; per-command help blocks; namespace single-files; uniform `.envrc`; function naming convention; function-name collision rule; cross-repo coordination with `project-guide`) verified accurate post-Phase-L. None reference the renamed `lib/ui.sh` or the dropped gitbetter-sync narrative — those references existed in the lib/ui.sh file's own header comment (replaced in L.e), not in project-essentials.md. Prune step is a no-op.
 
 **Tasks — version bump and CHANGELOG**
 
-- [ ] Bump the package version from `v2.5.x` to `v2.6.0` in every source-of-truth (`pyve.sh` `VERSION`, `pyproject.toml` if present, any other version pin).
-- [ ] Write a single consolidated CHANGELOG entry covering all of L.b–L.l (interactive wizard, verbosity policy, `lib/ui/` library, step framing, end-of-init summary, diagnostic-correctness fixes). Group by user-visible theme rather than per-story.
+- [x] [pyve.sh:32](../../pyve.sh#L32) `VERSION="2.4.0"` → `VERSION="2.6.0"`. Only source-of-truth pin (no `pyproject.toml` exists in this repo). Skipped v2.5.x per the phase plan — Phase L stories accumulated on the phase branch without per-story bumps and ship as one minor release.
+- [x] [CHANGELOG.md](../../CHANGELOG.md) — new `## [2.6.0] - 2026-05-07` entry, grouped by user-visible theme (Added / Changed / Fixed / Documentation) rather than per-story. Lead paragraph names "Phase L — Pyve Polish" and the high-level theme; subsections cover the wizard (with full prompt/flag details), the verbosity policy, the `lib/ui/` library, the end-of-init summary, the L.j step framing, the L.b/L.c diagnostic correctness fixes, the L.k.7 CI-cleanup fixes (bash 3.2 empty-array, `--backend auto`, project-guide block deferral), and the documentation drift resolved.
 
 **Tasks — close out Phase L**
 
-- [ ] Confirm [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) Acceptance criteria **1–6** and **8** are satisfied (criterion **7 is this story** — the `project-essentials.md` pass and version bump above complete it).
-- [ ] Mark this story `[Done]`. Phase branch is now ready to merge to `main`.
+- [x] Phase L acceptance criteria **1–6 and 8** confirmed:
+  - **1.** L.a audit at `docs/specs/phase-l-pyve-polish-audit.md` exists and was reviewed.
+  - **2.** L.b–L.l all `[Done]` (L.b, L.c, L.d, L.e, L.f, L.g, L.h, L.i, L.j, L.k.1–L.k.7, L.l).
+  - **3.** Wizard / `--verbose` / step framing / end-of-init summary all shipped. Manual walkthrough is the developer's pre-merge gate (not a programmatic check).
+  - **4.** Full bats suite green: 871/871 (verified under CI-like env via `env -i HOME="$HOME" PATH=/usr/bin:/bin bats tests/unit/`). Phase-L-introduced pytest tests green; pre-existing flaky/legacy failures tracked under "Future: Fix pre-existing integration test failures."
+  - **5.** Doc drift resolved: features.md FR-1a/FR-1b, tech-spec.md "Interactive `pyve init` wizard" subsection, project-essentials.md (this story).
+  - **6.** `lib/ui/` established + pyve-agnostic; boundary-invariant bats tests assert no pyve identifiers (with `PYVE_VERBOSE` whitelisted in `lib/ui/core.sh`).
+  - **8.** Single v2.4.0 → v2.6.0 minor bump shipped with one consolidated CHANGELOG entry.
+- [x] Marked `[Done]`. Phase branch is ready to merge to `main`.
 
 ---
 
