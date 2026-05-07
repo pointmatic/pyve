@@ -416,6 +416,39 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
+### Story L.n: v2.6.1 hotfix — `ui_select` TTY escape leakage [Done]
+
+**When.** Surfaced post-v2.6.0 ship via real-terminal use of the interactive `pyve init` backend prompt. Bug-report symptom from production:
+
+```
+$ pyve init
+  ╭─────────────────────────────────────────╮
+  │  pyve init                              │
+  ╰─────────────────────────────────────────╯
+Select backend
+  > venv
+    micromamba
+  ✘ Unexpected backend choice index: 0
+```
+
+**Root cause.** [lib/ui/select.sh](../../lib/ui/select.sh) `_ui_select_tty` and `_ui_multi_select_tty` ran `tput civis` / `tput cnorm` with stdout undirected. `tput` writes capability strings to stdout by default — that's how terminals interpret them when invoked directly at a shell prompt. But when `ui_select` is called via `idx="$(ui_select ...)"` (the wizard's normal call shape), the captured stdout swallows those escape sequences too. `$idx` ends up being literally `<ESC>[?25l<ESC>[?25h0` (or similar), not the bare `"0"` the case statement expects. The wizard's `case "$choice_idx" in 0) ... 1) ... esac` falls to the catch-all and emits `Unexpected backend choice index: <visible-as-just-the-digit>`. Bats unit tests didn't catch it because they exercise the fallback path (non-TTY); only a real TTY drove the bug.
+
+**Tasks**
+
+- [x] [lib/ui/select.sh](../../lib/ui/select.sh) — every `tput civis` / `tput cnorm` call (8 sites total: `_ui_select_tty` lines 155/178/184/189; `_ui_multi_select_tty` lines 227/254/263/272) now redirects to `>&2`. The terminal still receives the escape sequences (stderr is the same TTY in interactive use, so cursor visibility behavior is preserved); stdout stays clean for `$(...)` capture.
+- [x] [tests/unit/test_ui_select.bats](../../tests/unit/test_ui_select.bats) — new regression test "tput calls do not leak escape sequences to stdout (capture-safe)" greps the source file for any `tput civis|cnorm` line that lacks `>&2`. A future contributor adding an unredirected `tput` call breaks the build immediately.
+- [x] [pyve.sh:32](../../pyve.sh#L32) `VERSION="2.6.0"` → `VERSION="2.6.1"`. Patch bump per semver: bug fix, no behavior change, no API change.
+- [x] [CHANGELOG.md](../../CHANGELOG.md) — new `## [2.6.1] - 2026-05-07` entry above `[2.6.0]`, single Fixed bullet describing the escape-leak root cause and fix locations.
+- [x] Full bats unit suite green: 872/872 (871 baseline post-L.m + 1 new regression test). Verified under CI-like env (`env -i HOME="$HOME" PATH=/usr/bin:/bin bats tests/unit/`).
+
+**Notes**
+
+- The bats test for the bug greps the source file for the contract violation rather than driving a real TTY — bats can't drive a TTY (per L.i / L.k.6's note). The grep-based check is the same pattern used by `lib/ui/run.sh` and `lib/ui/progress.sh`'s "no bash-4+ constructs" lock.
+- `tput`-output-on-stdout is a well-known footgun for any UX library that gets composed via command substitution; the new regression test plus the project-essential added in L.m ("`lib/ui/` is the extractable UX boundary") together make this less likely to regress when the eventually-extracted standalone library lands.
+- L.m's "Phase L closed" claim stands — the v2.6.0 bump shipped successfully, and L.n is a normal post-release patch on the same branch line. No phase reopening; if this were a larger fix it would be its own phase.
+
+---
+
 ## Future
 
 ### Story ?.?: Apply Phase L UX framing to non-scaffold commands [Planned]

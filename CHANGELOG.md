@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.1] - 2026-05-07
+
+**Hotfix.** Interactive `pyve init` backend prompt rejected the user's selection with `✘ Unexpected backend choice index: 0|1` and exited.
+
+### Fixed
+
+- **`tput civis` / `tput cnorm` escape leakage in `lib/ui/select.sh`** (Story L.n) — both `_ui_select_tty` and `_ui_multi_select_tty` ran `tput` with stdout undirected. When `ui_select` was captured via `$(ui_select ...)` (the wizard's normal call shape), the cursor-hide / cursor-show escape sequences got captured and prepended to the numeric index. The wizard's `case "$choice_idx" in 0) ... 1) ... esac` then fell to the catch-all because `$choice_idx` was actually `<esc-seq>0` / `<esc-seq>1`, not the bare digit. Both `tput` calls (8 sites total across the two TTY helpers) now redirect to `>&2`; the terminal still sees the escape sequences via stderr (same TTY in interactive use), but stdout stays clean for capture. A regression test in [tests/unit/test_ui_select.bats](tests/unit/test_ui_select.bats) greps the source file for any `tput civis|cnorm` line lacking `>&2` so a future contributor adding an unredirected call breaks the build immediately.
+
 ## [2.6.0] - 2026-05-07
 
 **Phase L — Pyve Polish.** UX overhaul: `pyve init` (both backends) and `pyve update` now deliver a `sv create`-grade scaffolding experience. Every `pyve init` invocation runs through an interactive wizard with smart defaults from repo signals; subprocess output is quiet on the happy path with `--verbose` opt-in for live streaming; long-running steps render with a step counter; init ends with a single coherent "Next steps:" summary. Plus diagnostic-correctness fixes (`pyve status` Python pin, `pyve check --help` reconciliation) and the `lib/ui/` library extraction (the boundary of an eventually-extractable bash UX library). Skips v2.5.x — Phase L stories accumulated on the phase branch without per-story bumps and ship as one minor release.

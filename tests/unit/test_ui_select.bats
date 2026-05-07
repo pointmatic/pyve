@@ -133,3 +133,22 @@ src='source "$UI_CORE"; source "$UI_SELECT"'
     run bash -c "grep -vE '^[[:space:]]*#' '$UI_SELECT' | grep -E '(\\bmapfile\\b|\\breadarray\\b|&>[^>]|\\bdeclare -A\\b|\\\${[^}]+\\^\\^}|\\\${[^}]+,,})'"
     [ "$status" -eq 1 ]
 }
+
+@test "select.sh: tput calls do not leak escape sequences to stdout (capture-safe)" {
+    # Regression: when ui_select is called as `idx="$(ui_select ...)"`,
+    # tput civis / tput cnorm must redirect to stderr (not stdout) so
+    # the escape sequences don't get captured and prepended to the
+    # numeric index. Pre-fix: case "$idx" in 0) ... 1) ... esac fell to
+    # the catch-all because $idx was actually <esc-seq>0 / <esc-seq>1.
+    # Caught in production via `pyve init` interactive backend prompt.
+    run grep -nE '\btput (civis|cnorm)( |$)' "$UI_SELECT"
+    # Every tput civis/cnorm line MUST include `>&2` (stderr redirect).
+    # If grep finds any line without `>&2`, that's the bug.
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        if [[ "$line" != *">&2"* ]]; then
+            echo "tput call leaks to stdout: $line" >&2
+            return 1
+        fi
+    done <<<"$output"
+}
