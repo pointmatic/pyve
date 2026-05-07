@@ -176,6 +176,19 @@ Three prompts in fixed order: **backend → Python version pin → project-guide
 
 **Out of scope for the Phase L wizard.** `--auto-bootstrap`, `--bootstrap-to`, `--force`, `--env-name`, `--local-env`, `--no-direnv`, `--strict`, `--no-lock`, `--allow-synced-dir` stay flag-only. `--force` controls only the destructive-safeguard on an existing environment; it does **not** skip prompts. See [tech-spec.md "Interactive `pyve init` wizard"](tech-spec.md) for the full design.
 
+#### FR-1b: End-of-init "Next steps:" summary (Phase L / v2.6.0)
+
+`pyve init` ends with a single coherent numbered "Next steps:" block (replacing the per-backend ad-hoc trailing lines from earlier versions). Items appear conditionally based on flags and detection signals; the section header is always rendered.
+
+| Item | Precondition |
+|------|--------------|
+| `direnv allow` | `--no-direnv` was **not** passed |
+| `pyve run <command>` (alternative-activation hint) | `--no-direnv` **was** passed |
+| `pyve testenv install -r requirements-dev.txt` | `requirements-dev.txt` exists in the project |
+| `Read docs/project-guide/go.md` | `.project-guide.yml` exists in the project (canonical install marker, matching `pyve update`'s detection signal) |
+
+A short caveat is appended below the numbered items when the chosen backend is `micromamba` AND direnv is enabled — micromamba prints "to activate, run: micromamba activate ..." earlier in the output, but pyve uses direnv (or `pyve run`), not that activation. The caveat keeps the user from following stale advice.
+
 ### FR-2: Environment Purge (`pyve purge`)
 
 Remove all Pyve-created artifacts from the current directory.

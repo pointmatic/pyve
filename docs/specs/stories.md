@@ -359,22 +359,25 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.l: End-of-init "Next steps:" summary [Planned]
+### Story L.l: End-of-init 'Next steps:' summary [Done]
 
 **Goal.** After successful `pyve init`, print a numbered "Next steps:" block tailored to the chosen backend and detected scaffolding. Replaces the current ad-hoc trailing banners with one coherent post-install summary.
 
 **Tasks**
 
-- [ ] Inventory the current ad-hoc trailing output from `pyve init` (both backends, with and without project-guide install) — what gets printed after success today, and which lines are still relevant once the rest of Phase L's framing is in place.
-- [ ] Design the unified summary block. Minimum content: numbered list of next actions tailored to context:
-  - `cd <project>` (only when init was run for a different directory).
-  - `direnv allow` (always — even when `.envrc` already exists, the user may not have allowed it yet).
-  - `pyve testenv install -r requirements-dev.txt` (only when `requirements-dev.txt` exists and testenv was not just installed).
-  - `Read docs/project-guide/go.md` (when project-guide was just installed and the developer is expected to start a session).
-- [ ] Implement `_init_print_next_steps()` (command-private, in `lib/commands/init.sh`). Called at the end of `init_project()` on success. Use `lib/ui/core.sh` primitives for formatting.
-- [ ] Honor `is_verbose()` — verbose mode appends a line referencing the captured subprocess logs (e.g., "Full subprocess output: <tmpfile>") when L.g's quiet-replay path produced one.
-- [ ] Update `features.md` Init section to document the summary block.
-- [ ] bats unit tests + pytest integration tests: each conditional branch of the summary appears when its precondition holds and is omitted otherwise.
+- [x] Inventory of pre-L.l trailing output: 4 ad-hoc info-line variants (per backend × direnv state) immediately before `footer_box`. None covered by existing tests (grep for the literal strings returned no results), so removal is safe.
+- [x] Design locked: numbered list with conditional items:
+  - **`cd <project>` deliberately omitted** — pyve init's `<dir>` arg is the venv-directory NAME (within cwd), not a project path. There's no current pyve flow where init runs in a different project dir than the user's cwd, so this step would never trigger; including it would be misleading.
+  - `direnv allow` — when `--no-direnv` was **not** passed; always advise even when `.envrc` already exists (the user may not have run `direnv allow` yet).
+  - `pyve run <command>` — substitutes for `direnv allow` under `--no-direnv` (alternative-activation pattern for CI/CD).
+  - `pyve testenv install -r requirements-dev.txt` — when `requirements-dev.txt` exists. Init creates the testenv directory but doesn't install dev deps — the user still needs this command.
+  - `Read docs/project-guide/go.md` — when `.project-guide.yml` exists (canonical install marker, matching `pyve update`'s detection signal). Covers both fresh-install and refresh cases.
+  - Trailing micromamba+direnv caveat — preserved from the pre-L.l output ("ignore micromamba's 'activate' instructions above — Pyve uses direnv").
+- [x] `_init_print_next_steps()` implemented in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private per project-essential prefix rule). Signature: `_init_print_next_steps <backend> <no_direnv> <env_path>`; the `env_path` arg is reserved for a future verbose-mode log reference. Uses `banner` for the section header and `info` for the caveat; numbered items use `printf '  N. ...\n'`. Wired in to replace the ad-hoc trailing lines in both the venv and micromamba branches of `init_project()`.
+- [x] **Verbose-mode log reference deferred.** L.g shipped with discard-on-success semantics for `run_quiet` — there is no persistent tmpfile to reference after a successful init. The signature reserves `env_path` for a future change if `run_quiet` ever grows a "keep on success" mode, but no verbose-only line is added today. (Verbose mode still streams subprocess output live, which is the user-visible difference.)
+- [x] [features.md](features.md) FR-1 extended with FR-1b: precondition table + the micromamba+direnv caveat.
+- [x] 12 bats unit tests in [tests/unit/test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats) covering: section header always present; direnv-allow vs pyve-run alternation; testenv install precondition (present/absent); project-guide go.md precondition (present/absent); micromamba caveat conditions (micromamba+direnv only); item numbering; combined all-conditions case.
+- [x] 4 pytest integration tests in [tests/integration/test_init_next_steps.py](../../tests/integration/test_init_next_steps.py): block renders at end of init; `--no-direnv` substitutes pyve-run; testenv install hint when `requirements-dev.txt` exists; testenv install hint absent when no `requirements-dev.txt`. The "skips direnv" test uses `pyve.run("init", ...)` directly (rather than `pyve.init()`) so its `timeout=300` kwarg is treated as a subprocess timeout — a quirk of the test helper that was easier to work around than to fix in this story.
 
 ### Story L.m: Phase L wrap-up — project-essentials, version bump, phase closure [Planned]
 

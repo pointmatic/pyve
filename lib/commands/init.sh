@@ -970,12 +970,7 @@ EOF
         _init_run_project_guide_hooks "micromamba" "$env_path" \
             "$project_guide_mode" "$project_guide_completion_mode"
 
-        if [[ "$no_direnv" == false ]]; then
-            info "Note: ignore micromamba's 'activate' instructions above — Pyve uses direnv (or 'pyve run')"
-            info "Next: run 'direnv allow' to activate the environment, or use 'pyve run <command>'"
-        else
-            info "Use 'pyve run <command>' to execute in environment"
-        fi
+        _init_print_next_steps "micromamba" "$no_direnv" "$env_path"
         footer_box
 
         return 0
@@ -1066,11 +1061,7 @@ EOF
     _init_run_project_guide_hooks "venv" "$_venv_abs" \
         "$project_guide_mode" "$project_guide_completion_mode"
 
-    if [[ "$no_direnv" == false ]]; then
-        info "Next step: run 'direnv allow' to activate the environment"
-    else
-        info "Use 'pyve run <command>' to execute commands in the environment"
-    fi
+    _init_print_next_steps "venv" "$no_direnv" "$_venv_abs"
     footer_box
 }
 
@@ -1151,6 +1142,67 @@ _init_gitignore() {
 
     success "Updated .gitignore"
 }
+# End-of-init "Next steps:" summary (Story L.l).
+#
+# Replaces the ad-hoc trailing `info` lines with a single coherent
+# numbered block. Conditional items appear only when their precondition
+# holds. Called once on the success path of init_project, just before
+# `footer_box`.
+#
+# Usage: _init_print_next_steps <backend> <no_direnv> <env_path>
+#   backend:   "venv" | "micromamba"
+#   no_direnv: "true" | "false" (the --no-direnv flag state)
+#   env_path:  resolved env directory (currently unused; kept in the
+#              signature so verbose mode can grow log references later
+#              without a callsite churn)
+#
+# Conditional items:
+#   - direnv allow                     (when --no-direnv was NOT passed)
+#   - pyve run <command>               (when --no-direnv WAS passed)
+#   - pyve testenv install -r requirements-dev.txt
+#                                      (when requirements-dev.txt exists)
+#   - Read docs/project-guide/go.md   (when .project-guide.yml exists —
+#                                      same canonical signal pyve update
+#                                      uses for project-guide presence)
+#
+# Caveat appended for micromamba+direnv only: micromamba prints "to
+# activate, run: micromamba activate ..." earlier in stdout; pyve
+# doesn't use that, direnv does. The note keeps the user from
+# following stale advice.
+_init_print_next_steps() {
+    local backend="$1"
+    local no_direnv="$2"
+    # shellcheck disable=SC2034  # env_path reserved for future verbose-mode log references
+    local env_path="$3"
+
+    banner "Next steps"
+
+    local n=0
+    if [[ "$no_direnv" == "false" ]]; then
+        n=$((n + 1))
+        printf '  %d. direnv allow\n' "$n"
+    else
+        n=$((n + 1))
+        printf '  %d. pyve run <command>     # alternative to direnv activation\n' "$n"
+    fi
+
+    if [[ -f requirements-dev.txt ]]; then
+        n=$((n + 1))
+        printf '  %d. pyve testenv install -r requirements-dev.txt\n' "$n"
+    fi
+
+    if [[ -f .project-guide.yml ]]; then
+        n=$((n + 1))
+        printf '  %d. Read docs/project-guide/go.md\n' "$n"
+    fi
+
+    if [[ "$backend" == "micromamba" ]] && [[ "$no_direnv" == "false" ]]; then
+        echo
+        info "Note: ignore micromamba's 'activate' instructions above —"
+        info "      Pyve uses direnv (or 'pyve run')."
+    fi
+}
+
 show_init_help() {
     cat << 'EOF'
 pyve init - Initialize a Python virtual environment in the current directory
