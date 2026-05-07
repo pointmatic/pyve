@@ -184,11 +184,31 @@ _init_run_project_guide_hooks() {
     fi
 }
 
-# Interactive `pyve init` wizard skeleton (Story L.k.2).
+# Repo-signal helper: detect the default backend for this project.
+#
+# Returns one of:
+#   micromamba   if environment.yml exists in cwd
+#   venv         if .python-version or .tool-versions exists, OR no signals at all
+#
+# environment.yml wins over the venv-side signals so a project with
+# both env.yml (added recently) and an old .tool-versions still resolves
+# to micromamba.
+_init_detect_backend_default() {
+    if [[ -f environment.yml ]]; then
+        printf 'micromamba\n'
+    elif [[ -f .python-version ]] || [[ -f .tool-versions ]]; then
+        printf 'venv\n'
+    else
+        printf 'venv\n'
+    fi
+}
+
+# Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
 #
 # Always invoked from init_project(); flags only control whether each
 # individual prompt reads stdin or renders the flag-resolved value
-# non-interactively. Per-prompt logic lands in L.k.3 / L.k.4 / L.k.5.
+# non-interactively. Per-prompt logic for python pin / project-guide
+# lands in L.k.4 / L.k.5.
 #
 # TTY guard: when at least one of the three prompt-bearing parameters
 # is not flag-supplied AND stdin is not a TTY, hard-fail with a message
@@ -196,19 +216,26 @@ _init_run_project_guide_hooks() {
 # guard (used by the bats test harness so existing init-driving tests
 # stay green without supplying every prompt-bearing flag).
 #
+# Side effect: when `--backend` is unsupplied, this function resolves
+# the backend (interactive prompt or auto-default) and writes the
+# resolved value into the caller's `backend_flag` variable via bash's
+# dynamic scoping. The resolved value is therefore visible to
+# init_project() after the wizard returns, exactly as if the user had
+# passed `--backend <value>` on the command line.
+#
 # Usage: _init_wizard <backend_flag> <python_version_supplied> <project_guide_mode>
-#   backend_flag:              "" if --backend not supplied, else the value
-#   python_version_supplied:   "true" if --python-version supplied, else "false"
-#   project_guide_mode:        "" if neither flag supplied, else "yes" or "no"
+#   arg_backend_flag:          "" if --backend not supplied, else the value
+#   arg_python_supplied:       "true" if --python-version supplied, else "false"
+#   arg_pg_mode:               "" if neither flag supplied, else "yes" or "no"
 _init_wizard() {
-    local backend_flag="$1"
-    local python_version_supplied="$2"
-    local project_guide_mode="$3"
+    local arg_backend_flag="$1"
+    local arg_python_supplied="$2"
+    local arg_pg_mode="$3"
 
     local missing_flags=()
-    [[ -z "$backend_flag" ]] && missing_flags+=("--backend <type>")
-    [[ "$python_version_supplied" != "true" ]] && missing_flags+=("--python-version <ver>")
-    [[ -z "$project_guide_mode" ]] && missing_flags+=("--project-guide / --no-project-guide")
+    [[ -z "$arg_backend_flag" ]] && missing_flags+=("--backend <type>")
+    [[ "$arg_python_supplied" != "true" ]] && missing_flags+=("--python-version <ver>")
+    [[ -z "$arg_pg_mode" ]] && missing_flags+=("--project-guide / --no-project-guide")
 
     if [[ ${#missing_flags[@]} -gt 0 ]] \
        && [[ ! -t 0 ]] \
@@ -224,6 +251,35 @@ _init_wizard() {
     fi
 
     header_box "pyve init"
+
+    # Prompt 1 — backend (Story L.k.3).
+    if [[ -n "$arg_backend_flag" ]]; then
+        info "Backend: $arg_backend_flag (--backend)"
+    elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        local default_backend default_idx
+        default_backend="$(_init_detect_backend_default)"
+        if [[ "$default_backend" == "micromamba" ]]; then
+            default_idx=2
+        else
+            default_idx=1
+        fi
+        local choice_idx
+        if ! choice_idx="$(ui_select --default "$default_idx" "Select backend" "venv" "micromamba")"; then
+            log_error "Backend selection cancelled."
+            exit 1
+        fi
+        case "$choice_idx" in
+            0) backend_flag="venv" ;;
+            1) backend_flag="micromamba" ;;
+            *) log_error "Unexpected backend choice index: $choice_idx"; exit 1 ;;
+        esac
+    else
+        local default_backend
+        default_backend="$(_init_detect_backend_default)"
+        info "Backend: $default_backend (auto-detected)"
+        backend_flag="$default_backend"
+    fi
+
     return 0
 }
 

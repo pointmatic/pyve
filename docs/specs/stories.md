@@ -246,17 +246,17 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.k.3: Wizard — backend prompt + repo-signal helpers [Planned]
+### Story L.k.3: Wizard — backend prompt + repo-signal helpers [Done]
 
 **Goal.** Add the first prompt to the wizard skeleton from L.k.2. Defaults driven by repo signals.
 
 **Tasks**
 
-- [ ] Repo-signal detection helper `_init_detect_backend_default` in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private): returns `micromamba` if `environment.yml` exists; returns `venv` if `.python-version` or `.tool-versions` exists; else returns `venv`.
-- [ ] Wire the backend prompt into `_init_wizard()` using `ui_select` from `lib/ui/select.sh`. Default index is set from `_init_detect_backend_default`.
-- [ ] Flag-override path: when `--backend` is supplied, skip the prompt and use the flag value.
-- [ ] bats unit tests for `_init_detect_backend_default` (each branch of the default-resolution rules).
-- [ ] bats unit tests: `--backend` flag skips the prompt; no-flag wizard prompts with the signal-derived default.
+- [x] Repo-signal detection helper `_init_detect_backend_default` in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private): returns `micromamba` if `environment.yml` exists; returns `venv` if `.python-version` or `.tool-versions` exists; else returns `venv`. environment.yml wins over the venv-side signals.
+- [x] Backend prompt wired into `_init_wizard()` with three resolution paths: (a) `--backend` supplied → render `Backend: <value> (--backend)` non-interactively; (b) flag unset + real TTY + bypass off → `ui_select` with default index from `_init_detect_backend_default`; (c) flag unset + (non-TTY OR `PYVE_INIT_NONINTERACTIVE=1`) → auto-default render `Backend: <detected> (auto-detected)`. The wizard's internal locals were renamed `arg_*` so bash dynamic scoping can write the resolved value back into the caller's `backend_flag` variable in [init_project()](../../lib/commands/init.sh) — post-wizard, `backend_flag` is always set, just like a flag-driven invocation.
+- [x] Flag-override path: when `--backend` is supplied, the prompt renders non-interactively via path (a); the flag value is used unchanged.
+- [x] bats unit tests for `_init_detect_backend_default` (5 tests covering each branch + signal-precedence).
+- [x] bats unit tests for `_init_wizard` backend resolution (7 tests covering flag-render, auto-detect rendering for each signal case, dynamic-scope side effect, no-modification when flag was already set).
 
 ---
 

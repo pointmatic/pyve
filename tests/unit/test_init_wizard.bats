@@ -16,9 +16,13 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    # Source init.sh so _init_wizard is available for direct invocation.
-    # init.sh's external deps (log_error, header_box, etc.) come from
-    # ui/core.sh and utils.sh, both sourced by setup_pyve_env.
+    # ui/select.sh is consumed by the L.k.3 backend prompt; source it
+    # alongside init.sh so _init_wizard's prompt path can resolve.
+    source "$PYVE_ROOT/lib/ui/select.sh"
+    # Source init.sh so _init_wizard / _init_detect_backend_default
+    # are available for direct invocation. init.sh's external deps
+    # (log_error, header_box, etc.) come from ui/core.sh and utils.sh,
+    # both sourced by setup_pyve_env.
     source "$PYVE_ROOT/lib/commands/init.sh"
     create_test_dir
     # Tests in this file exercise the TTY guard explicitly. Unset the
@@ -125,4 +129,99 @@ teardown() {
     [[ "$output" != *"--python-version"* ]] || [[ "$output" != *"PYVE_INIT_NONINTERACTIVE"* ]]
     # The banner should print (proves wizard ran, did not short-circuit).
     [[ "$output" == *"pyve init"* ]]
+}
+
+#============================================================
+# L.k.3: _init_detect_backend_default (repo-signal helper)
+#============================================================
+
+@test "_init_detect_backend_default: returns micromamba when environment.yml exists" {
+    touch environment.yml
+    run _init_detect_backend_default
+    [ "$status" -eq 0 ]
+    [[ "$output" == "micromamba" ]]
+}
+
+@test "_init_detect_backend_default: returns venv when .python-version exists" {
+    touch .python-version
+    run _init_detect_backend_default
+    [ "$status" -eq 0 ]
+    [[ "$output" == "venv" ]]
+}
+
+@test "_init_detect_backend_default: returns venv when .tool-versions exists" {
+    touch .tool-versions
+    run _init_detect_backend_default
+    [ "$status" -eq 0 ]
+    [[ "$output" == "venv" ]]
+}
+
+@test "_init_detect_backend_default: returns venv when no signal files exist" {
+    run _init_detect_backend_default
+    [ "$status" -eq 0 ]
+    [[ "$output" == "venv" ]]
+}
+
+@test "_init_detect_backend_default: environment.yml wins over .python-version" {
+    touch environment.yml .python-version
+    run _init_detect_backend_default
+    [ "$status" -eq 0 ]
+    [[ "$output" == "micromamba" ]]
+}
+
+#============================================================
+# L.k.3: _init_wizard backend resolution — flag-render path
+#============================================================
+
+@test "_init_wizard: --backend venv renders 'Backend: venv (--backend)'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: venv (--backend)"* ]]
+}
+
+@test "_init_wizard: --backend micromamba renders 'Backend: micromamba (--backend)'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "micromamba" "true" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: micromamba (--backend)"* ]]
+}
+
+#============================================================
+# L.k.3: _init_wizard backend resolution — auto-default path (bypass on)
+#============================================================
+
+@test "_init_wizard: bypass + no flag + no signals → auto-detected venv" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: venv (auto-detected)"* ]]
+}
+
+@test "_init_wizard: bypass + no flag + environment.yml → auto-detected micromamba" {
+    touch environment.yml
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: micromamba (auto-detected)"* ]]
+}
+
+@test "_init_wizard: bypass + no flag + .tool-versions → auto-detected venv" {
+    touch .tool-versions
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: venv (auto-detected)"* ]]
+}
+
+#============================================================
+# L.k.3: side-effect — caller's backend_flag set to resolved value
+#============================================================
+
+@test "_init_wizard: side-effect sets caller's backend_flag from auto-detection" {
+    touch environment.yml
+    local backend_flag=""
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "true" "yes" >/dev/null 2>&1
+    [[ "$backend_flag" == "micromamba" ]]
+}
+
+@test "_init_wizard: --backend leaves caller's backend_flag untouched (already set)" {
+    local backend_flag="venv"
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "true" "yes" >/dev/null 2>&1
+    [[ "$backend_flag" == "venv" ]]
 }
