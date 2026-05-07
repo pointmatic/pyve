@@ -180,6 +180,13 @@ class PyveRunner:
                 # bypasses this default. Same pattern as PYVE_NO_LOCK above.
                 if env.get("PYVE_TEST_ALLOW_PROJECT_GUIDE") != "1":
                     env.setdefault("PYVE_NO_PROJECT_GUIDE", "1")
+                # Story L.k.6: bypass the interactive `pyve init` wizard's
+                # TTY guard. Existing integration tests pre-date the wizard
+                # and invoke `pyve init` with various flag subsets from
+                # subprocess.run (non-TTY stdin). Tests that exercise the
+                # TTY guard explicitly unset this. Mirrors the
+                # `setup_pyve_env` default for bats unit tests.
+                env.setdefault("PYVE_INIT_NONINTERACTIVE", "1")
                 # In CI, tests must be non-interactive.
                 if env.get("CI") == "true":
                     env.setdefault("PYVE_FORCE_YES", "1")

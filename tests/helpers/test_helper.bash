@@ -9,7 +9,11 @@ setup_pyve_env() {
     export PYVE_ROOT="$(cd "$(dirname "$BATS_TEST_FILENAME")/../.." && pwd)"
     export SCRIPT_DIR="$PYVE_ROOT"
     
-    # Source all lib modules
+    # Source all lib modules. ui/core.sh + ui/run.sh come first because
+    # utils.sh now calls run_quiet() (Story L.j) for quiet-on-success
+    # subprocess invocation.
+    source "$PYVE_ROOT/lib/ui/core.sh"
+    source "$PYVE_ROOT/lib/ui/run.sh"
     source "$PYVE_ROOT/lib/utils.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
@@ -17,6 +21,13 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
     source "$PYVE_ROOT/lib/micromamba_env.sh"
     source "$PYVE_ROOT/lib/distutils_shim.sh"
+
+    # Story L.k.2: bats fixtures invoke `pyve init` with various flag
+    # subsets that pre-date the interactive wizard. Default the bypass
+    # to 1 so the wizard's TTY guard does not hard-fail on bats's
+    # non-TTY stdin. Tests that exercise the wizard's TTY guard unset
+    # this locally.
+    export PYVE_INIT_NONINTERACTIVE=1
 }
 
 # Create a temporary test directory

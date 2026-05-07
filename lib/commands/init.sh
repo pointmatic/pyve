@@ -184,9 +184,352 @@ _init_run_project_guide_hooks() {
     fi
 }
 
+# Repo-signal helper: detect the default backend for this project.
+#
+# Returns one of:
+#   micromamba   if environment.yml exists in cwd
+#   venv         if .python-version or .tool-versions exists, OR no signals at all
+#
+# environment.yml wins over the venv-side signals so a project with
+# both env.yml (added recently) and an old .tool-versions still resolves
+# to micromamba.
+_init_detect_backend_default() {
+    if [[ -f environment.yml ]]; then
+        printf 'micromamba\n'
+    elif [[ -f .python-version ]] || [[ -f .tool-versions ]]; then
+        printf 'venv\n'
+    else
+        printf 'venv\n'
+    fi
+}
+
+# Detect which Python version managers are available on PATH.
+# Returns one of: "" | "asdf" | "pyenv" | "asdf,pyenv".
+# Used by the venv branch of the L.k.4 Python prompt.
+_init_detect_version_managers_available() {
+    local available=()
+    command -v asdf  >/dev/null 2>&1 && available+=("asdf")
+    command -v pyenv >/dev/null 2>&1 && available+=("pyenv")
+    # bash 3.2 (macOS system bash) raises "unbound variable" on
+    # "${array[*]}" when the array is empty — even without `set -u`.
+    # The `:-` default keeps the empty case a clean empty string.
+    local IFS=,
+    printf '%s' "${available[*]:-}"
+}
+
+# List manager-reported installed Python versions, filtered to ^3\..
+# Output: one version per line, no leading whitespace, no '*' marker.
+# Args: $1 = "asdf" | "pyenv"
+_init_list_installed_python_versions() {
+    local manager="$1"
+    case "$manager" in
+        asdf)
+            asdf list python 2>/dev/null \
+                | sed -e 's/^[[:space:]]*\*//' -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                | grep -E '^3\.' || true
+            ;;
+        pyenv)
+            pyenv versions --bare 2>/dev/null | grep -E '^3\.' || true
+            ;;
+    esac
+}
+
+# Detect whether project-guide is already installed in this project.
+# Returns 0 if `.project-guide.yml` exists in cwd, else 1. This matches
+# the canonical install marker used by `pyve update`
+# (lib/commands/update.sh:123) — `.project-guide.yml` records
+# `installed_version`, `target_dir`, `current_mode`, etc.; the
+# `docs/project-guide/` directory alone is not authoritative because
+# `target_dir` is configurable.
+_init_detect_project_guide_present() {
+    [[ -f .project-guide.yml ]]
+}
+
+# List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..
+# Output: one version per line.
+# Args: $1 = "asdf" | "pyenv"
+_init_list_available_python_versions() {
+    local manager="$1"
+    case "$manager" in
+        asdf)
+            asdf list all python 2>/dev/null | grep -E '^3\.' || true
+            ;;
+        pyenv)
+            pyenv install --list 2>/dev/null \
+                | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
+                | grep -E '^3\.' || true
+            ;;
+    esac
+}
+
+# Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
+#
+# Always invoked from init_project(); flags only control whether each
+# individual prompt reads stdin or renders the flag-resolved value
+# non-interactively. Per-prompt logic for python pin / project-guide
+# lands in L.k.4 / L.k.5.
+#
+# TTY guard: when at least one of the three prompt-bearing parameters
+# is not flag-supplied AND stdin is not a TTY, hard-fail with a message
+# naming the missing flags. PYVE_INIT_NONINTERACTIVE=1 bypasses the
+# guard (used by the bats test harness so existing init-driving tests
+# stay green without supplying every prompt-bearing flag).
+#
+# Side effect: when `--backend` is unsupplied, this function resolves
+# the backend (interactive prompt or auto-default) and writes the
+# resolved value into the caller's `backend_flag` variable via bash's
+# dynamic scoping. The resolved value is therefore visible to
+# init_project() after the wizard returns, exactly as if the user had
+# passed `--backend <value>` on the command line.
+#
+# Usage: _init_wizard <backend_flag> <python_value> <python_supplied> <project_guide_mode>
+#   arg_backend_flag:          "" if --backend not supplied, else the value
+#   arg_python_value:          the resolved python version (the user's flag value
+#                              when --python-version was supplied; the
+#                              DEFAULT_PYTHON_VERSION fallback otherwise)
+#   arg_python_supplied:       "true" if --python-version supplied, else "false"
+#   arg_pg_mode:               "" if neither flag supplied, else "yes" or "no"
+_init_wizard() {
+    local arg_backend_flag="$1"
+    local arg_python_value="$2"
+    local arg_python_supplied="$3"
+    local arg_pg_mode="$4"
+
+    local missing_flags=()
+    [[ -z "$arg_backend_flag" ]] && missing_flags+=("--backend <type>")
+    [[ "$arg_python_supplied" != "true" ]] && missing_flags+=("--python-version <ver>")
+    [[ -z "$arg_pg_mode" ]] && missing_flags+=("--project-guide / --no-project-guide")
+
+    if [[ ${#missing_flags[@]} -gt 0 ]] \
+       && [[ ! -t 0 ]] \
+       && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        log_error "pyve init: stdin is not a TTY and the wizard requires interactive input."
+        log_error "To run non-interactively, supply the missing flag(s):"
+        local f
+        for f in "${missing_flags[@]}"; do
+            log_error "  $f"
+        done
+        log_error "Or set PYVE_INIT_NONINTERACTIVE=1 to bypass."
+        exit 1
+    fi
+
+    header_box "pyve init"
+
+    # Prompt 1 — backend (Story L.k.3 + L.k.7 auto handling).
+    # `--backend auto` is the explicit "let pyve detect" form; treat it
+    # like the no-flag auto-detect path so the wizard resolves to a real
+    # backend before downstream prompts (Python/project-guide) branch on
+    # backend_flag. Without this, backend_flag stays "auto" through the
+    # Python prompt, which would then fall to the venv branch and
+    # hard-fail on no managers — even when env.yml says micromamba.
+    if [[ -n "$arg_backend_flag" ]] && [[ "$arg_backend_flag" != "auto" ]]; then
+        info "Backend: $arg_backend_flag (--backend)"
+        backend_flag="$arg_backend_flag"
+    elif [[ "$arg_backend_flag" == "auto" ]]; then
+        local default_backend
+        default_backend="$(_init_detect_backend_default)"
+        info "Backend: $default_backend (--backend auto, detected)"
+        backend_flag="$default_backend"
+    elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        local default_backend default_idx
+        default_backend="$(_init_detect_backend_default)"
+        if [[ "$default_backend" == "micromamba" ]]; then
+            default_idx=2
+        else
+            default_idx=1
+        fi
+        local choice_idx
+        if ! choice_idx="$(ui_select --default "$default_idx" "Select backend" "venv" "micromamba")"; then
+            log_error "Backend selection cancelled."
+            exit 1
+        fi
+        case "$choice_idx" in
+            0) backend_flag="venv" ;;
+            1) backend_flag="micromamba" ;;
+            *) log_error "Unexpected backend choice index: $choice_idx"; exit 1 ;;
+        esac
+    else
+        local default_backend
+        default_backend="$(_init_detect_backend_default)"
+        info "Backend: $default_backend (auto-detected)"
+        backend_flag="$default_backend"
+    fi
+
+    # Prompt 2 — Python version pin (Story L.k.4). Backend-aware: venv pins
+    # via asdf/pyenv writing .tool-versions / .python-version; micromamba
+    # pins via the `python=X` line in environment.yml (the existing
+    # scaffolder writes it later in the init flow).
+    if [[ "$backend_flag" == "micromamba" ]]; then
+        if [[ -f environment.yml ]]; then
+            info "Python: managed via environment.yml"
+        elif [[ "$arg_python_supplied" == "true" ]]; then
+            info "Python: $arg_python_value (--python-version, will be written to environment.yml)"
+        else
+            info "Python: $arg_python_value (default, will be written to environment.yml)"
+        fi
+    else
+        # venv branch.
+        local available_managers
+        available_managers="$(_init_detect_version_managers_available)"
+
+        if [[ "$arg_python_supplied" == "true" ]]; then
+            # Flag-driven: detect managers (hard-fail if none); pick asdf when
+            # both available; render and write the pin via the existing
+            # set_local_python_version helper.
+            if [[ -z "$available_managers" ]]; then
+                log_error "No supported Python version manager found on PATH."
+                log_error "Install one of:"
+                log_error "  asdf  — https://asdf-vm.com/"
+                log_error "  pyenv — https://github.com/pyenv/pyenv"
+                exit 1
+            fi
+            local picked_manager
+            if [[ "$available_managers" == *"asdf"* ]]; then
+                picked_manager="asdf"
+            else
+                picked_manager="pyenv"
+            fi
+            info "Python: $arg_python_value (--python-version, pinned via $picked_manager)"
+            VERSION_MANAGER="$picked_manager"
+            if ! set_local_python_version "$arg_python_value" >/dev/null 2>&1; then
+                log_error "Failed to pin Python $arg_python_value via $picked_manager."
+                exit 1
+            fi
+            python_version="$arg_python_value"
+        elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+            # Interactive: full picker flow. Hard-fail when neither manager is
+            # installed (the user is being asked to choose; the prompt has no
+            # legitimate answer otherwise).
+            if [[ -z "$available_managers" ]]; then
+                log_error "No supported Python version manager found on PATH."
+                log_error "Install one of:"
+                log_error "  asdf  — https://asdf-vm.com/"
+                log_error "  pyenv — https://github.com/pyenv/pyenv"
+                exit 1
+            fi
+            local picked_manager
+            if [[ "$available_managers" == "asdf,pyenv" ]]; then
+                local mgr_idx
+                if ! mgr_idx="$(ui_select --default 1 "Select Python version manager" "asdf" "pyenv")"; then
+                    log_error "Version-manager selection cancelled."
+                    exit 1
+                fi
+                case "$mgr_idx" in
+                    0) picked_manager="asdf" ;;
+                    1) picked_manager="pyenv" ;;
+                    *) log_error "Unexpected manager choice index: $mgr_idx"; exit 1 ;;
+                esac
+            else
+                picked_manager="$available_managers"
+            fi
+            # Build "Pick from installed" list with `more...` and `skip` as the
+            # final two options. Selecting `more...` re-prompts with the full
+            # available list.
+            local installed_versions
+            installed_versions="$(_init_list_installed_python_versions "$picked_manager")"
+            local options=()
+            local v
+            while IFS= read -r v; do
+                [[ -n "$v" ]] && options+=("$v")
+            done <<<"$installed_versions"
+            options+=("more...")
+            options+=("skip (no pin)")
+            local pick_idx
+            if ! pick_idx="$(ui_select --default 1 "Select Python version (via $picked_manager)" "${options[@]}")"; then
+                log_error "Python version selection cancelled."
+                exit 1
+            fi
+            local n_installed=$(( ${#options[@]} - 2 ))
+            local chosen_version=""
+            if (( pick_idx < n_installed )); then
+                chosen_version="${options[$pick_idx]}"
+            elif (( pick_idx == n_installed )); then
+                # `more...` — re-prompt with full available list.
+                local available_full
+                available_full="$(_init_list_available_python_versions "$picked_manager")"
+                local more_options=()
+                while IFS= read -r v; do
+                    [[ -n "$v" ]] && more_options+=("$v")
+                done <<<"$available_full"
+                if [[ ${#more_options[@]} -eq 0 ]]; then
+                    log_error "No 3.x versions available from $picked_manager."
+                    exit 1
+                fi
+                local more_idx
+                if ! more_idx="$(ui_select --default 1 "Select Python version (full list)" "${more_options[@]}")"; then
+                    log_error "Python version selection cancelled."
+                    exit 1
+                fi
+                chosen_version="${more_options[$more_idx]}"
+            else
+                # `skip` — no pin written.
+                info "Python: skipped (no pin)"
+                chosen_version=""
+            fi
+            if [[ -n "$chosen_version" ]]; then
+                info "Python: $chosen_version (pinned via $picked_manager)"
+                VERSION_MANAGER="$picked_manager"
+                if ! set_local_python_version "$chosen_version" >/dev/null 2>&1; then
+                    log_error "Failed to pin Python $chosen_version via $picked_manager."
+                    exit 1
+                fi
+                python_version="$chosen_version"
+            fi
+        else
+            # Non-TTY or bypass on, no flag → silent skip. No hard-fail on
+            # missing managers because no pin was requested.
+            info "Python: skipped (no pin)"
+        fi
+    fi
+
+    # Prompt 3 — project-guide install (Story L.k.5). Detection is keyed on
+    # `.project-guide.yml` (the canonical install marker, matching what
+    # `pyve update` already uses). Deps-managed signal (project-guide
+    # declared in pyproject.toml / requirements.txt / environment.yml)
+    # wins over the install-marker check — when the user manages
+    # project-guide via project deps, pyve refuses to touch it to avoid
+    # version-pin conflicts at the next `pip install -e .`.
+    if [[ "$arg_pg_mode" == "yes" ]]; then
+        info "project-guide: install (--project-guide)"
+    elif [[ "$arg_pg_mode" == "no" ]]; then
+        info "project-guide: skipped (--no-project-guide)"
+    elif project_guide_in_project_deps; then
+        # Render the wizard summary; defer to the hook's detailed
+        # auto-skip-from-deps message ("Detected 'project-guide'...")
+        # by leaving project_guide_mode empty. Pre-setting "no" here
+        # would short-circuit that message and emit a misleading
+        # "Skipping project-guide install (--no-project-guide)" instead.
+        info "project-guide: managed by your project dependencies"
+    elif _init_detect_project_guide_present; then
+        info "project-guide: refresh (already installed)"
+        project_guide_mode="yes"
+    elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        local pg_idx
+        if ! pg_idx="$(ui_select --default 2 "Install project-guide?" "yes" "no")"; then
+            log_error "project-guide selection cancelled."
+            exit 1
+        fi
+        case "$pg_idx" in
+            0) info "project-guide: install"; project_guide_mode="yes" ;;
+            1) info "project-guide: skipped"; project_guide_mode="no" ;;
+            *) log_error "Unexpected project-guide choice index: $pg_idx"; exit 1 ;;
+        esac
+    else
+        # Non-TTY / bypass + no flag + no signal: defer to the hook's
+        # existing env-var / CI-default / interactive-fallback logic
+        # (PYVE_NO_PROJECT_GUIDE, PYVE_PROJECT_GUIDE, CI=1, PYVE_FORCE_YES).
+        # Pre-setting "no" here would break the CI-default-install behavior
+        # documented in `_init_run_project_guide_hooks` priority 5.
+        info "project-guide: (env / CI default)"
+    fi
+
+    return 0
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
+    local python_version_supplied=false
     local use_local_env=false
     local backend_flag=""
     local auto_bootstrap=false
@@ -212,6 +555,7 @@ init_project() {
                     exit 1
                 fi
                 python_version="$2"
+                python_version_supplied=true
                 shift 2
                 ;;
             --backend)
@@ -334,7 +678,7 @@ init_project() {
         esac
     done
 
-    header_box "pyve init"
+    _init_wizard "$backend_flag" "$python_version" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
@@ -626,12 +970,7 @@ EOF
         _init_run_project_guide_hooks "micromamba" "$env_path" \
             "$project_guide_mode" "$project_guide_completion_mode"
 
-        if [[ "$no_direnv" == false ]]; then
-            info "Note: ignore micromamba's 'activate' instructions above — Pyve uses direnv (or 'pyve run')"
-            info "Next: run 'direnv allow' to activate the environment, or use 'pyve run <command>'"
-        else
-            info "Use 'pyve run <command>' to execute in environment"
-        fi
+        _init_print_next_steps "micromamba" "$no_direnv" "$env_path"
         footer_box
 
         return 0
@@ -722,11 +1061,7 @@ EOF
     _init_run_project_guide_hooks "venv" "$_venv_abs" \
         "$project_guide_mode" "$project_guide_completion_mode"
 
-    if [[ "$no_direnv" == false ]]; then
-        info "Next step: run 'direnv allow' to activate the environment"
-    else
-        info "Use 'pyve run <command>' to execute commands in the environment"
-    fi
+    _init_print_next_steps "venv" "$no_direnv" "$_venv_abs"
     footer_box
 }
 
@@ -807,6 +1142,67 @@ _init_gitignore() {
 
     success "Updated .gitignore"
 }
+# End-of-init "Next steps:" summary (Story L.l).
+#
+# Replaces the ad-hoc trailing `info` lines with a single coherent
+# numbered block. Conditional items appear only when their precondition
+# holds. Called once on the success path of init_project, just before
+# `footer_box`.
+#
+# Usage: _init_print_next_steps <backend> <no_direnv> <env_path>
+#   backend:   "venv" | "micromamba"
+#   no_direnv: "true" | "false" (the --no-direnv flag state)
+#   env_path:  resolved env directory (currently unused; kept in the
+#              signature so verbose mode can grow log references later
+#              without a callsite churn)
+#
+# Conditional items:
+#   - direnv allow                     (when --no-direnv was NOT passed)
+#   - pyve run <command>               (when --no-direnv WAS passed)
+#   - pyve testenv install -r requirements-dev.txt
+#                                      (when requirements-dev.txt exists)
+#   - Read docs/project-guide/go.md   (when .project-guide.yml exists —
+#                                      same canonical signal pyve update
+#                                      uses for project-guide presence)
+#
+# Caveat appended for micromamba+direnv only: micromamba prints "to
+# activate, run: micromamba activate ..." earlier in stdout; pyve
+# doesn't use that, direnv does. The note keeps the user from
+# following stale advice.
+_init_print_next_steps() {
+    local backend="$1"
+    local no_direnv="$2"
+    # shellcheck disable=SC2034  # env_path reserved for future verbose-mode log references
+    local env_path="$3"
+
+    banner "Next steps"
+
+    local n=0
+    if [[ "$no_direnv" == "false" ]]; then
+        n=$((n + 1))
+        printf '  %d. direnv allow\n' "$n"
+    else
+        n=$((n + 1))
+        printf '  %d. pyve run <command>     # alternative to direnv activation\n' "$n"
+    fi
+
+    if [[ -f requirements-dev.txt ]]; then
+        n=$((n + 1))
+        printf '  %d. pyve testenv install -r requirements-dev.txt\n' "$n"
+    fi
+
+    if [[ -f .project-guide.yml ]]; then
+        n=$((n + 1))
+        printf '  %d. Read docs/project-guide/go.md\n' "$n"
+    fi
+
+    if [[ "$backend" == "micromamba" ]] && [[ "$no_direnv" == "false" ]]; then
+        echo
+        info "Note: ignore micromamba's 'activate' instructions above —"
+        info "      Pyve uses direnv (or 'pyve run')."
+    fi
+}
+
 show_init_help() {
     cat << 'EOF'
 pyve init - Initialize a Python virtual environment in the current directory

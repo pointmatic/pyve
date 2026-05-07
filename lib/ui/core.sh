@@ -3,10 +3,11 @@
 # shellcheck shell=bash
 # Variables below are part of this library's public API — they
 # are consumed by scripts that source this file, so shellcheck
-# cannot see their usage when linting ui.sh on its own.
+# cannot see their usage when linting this module on its own.
 # shellcheck disable=SC2034
 # ──────────────────────────────────────────────────────────────
-#  lib/ui.sh — shared UI helpers, colors, and constants.
+#  lib/ui/core.sh — core module of the extractable lib/ui/
+#  library: shared UI helpers, colors, and constants.
 #
 #  Sourced, not executed. Do not add `set -euo pipefail` here —
 #  the sourcing script sets its own shell options.
@@ -14,10 +15,10 @@
 #  Respects NO_COLOR=1 (https://no-color.org) by emitting plain
 #  text and leaving the symbol variables as unadorned glyphs.
 #
-#  Backport discipline: this module MUST NOT contain any
-#  pyve-specific identifiers, paths, or references. It is
-#  intended to be kept in sync verbatim with the sibling
-#  `gitbetter` project's copy at lib/ui.sh.
+#  Library boundary: every module under lib/ui/ stays
+#  pyve-agnostic — no pyve paths, command names, or config keys.
+#  The directory is the seam along which this UX library can
+#  eventually be extracted for reuse in sibling tools.
 # ──────────────────────────────────────────────────────────────
 
 # ── Colors & Symbols ─────────────────────────────────────────
@@ -36,6 +37,14 @@ else
 fi
 
 # ── Helpers ──────────────────────────────────────────────────
+
+# is_verbose — single source-of-truth for the verbosity gate.
+# Returns 0 iff `PYVE_VERBOSE=1` is set in the environment.
+# Callers must use this helper rather than inlining the env-var
+# check, so opt-in semantics live in one place (mirrors the
+# is_asdf_active() pattern).
+is_verbose() { [[ "${PYVE_VERBOSE:-0}" == "1" ]]; }
+
 banner()  { echo -e "\n${B}${BOLD}── $1 ──${RESET}"; }
 info()    { echo -e "  ${ARROW} $1"; }
 success() { echo -e "  ${CHECK} $1"; }

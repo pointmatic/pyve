@@ -1,6 +1,8 @@
 # features.md — Pyve: A single, easy entry point for Python virtual environments
 
-This document defines **what** Pyve does — requirements, inputs, outputs, and behavior — without specifying how it is implemented. It is the source of truth for scope. For architecture and module design, see `tech_spec.md`. For the implementation plan, see `stories.md`.
+This document defines **what** the `pyve` project does -- requirements, inputs, outputs, behavior -- without specifying **how** it is implemented. This is the source of truth for scope.
+
+For a high-level concept (why), see [`concept.md`](concept.md). For implementation details (how), see [`tech-spec.md`](tech-spec.md). For a breakdown of the implementation plan (step-by-step tasks), see [`stories.md`](stories.md). For project-specific must-know facts that future LLMs need to avoid blunders, see [`project-essentials.md`](project-essentials.md). For the workflow steps tailored to the current mode (cycle steps, approval gates, conventions), see [`docs/project-guide/go.md`](../project-guide/go.md) — re-read it whenever the mode changes or after context compaction.
 
 ---
 
@@ -156,6 +158,37 @@ Initialize a complete Python development environment in the current directory.
 - **Edge cases**: Existing environment detected → offer update/force/cancel (where "update" now delegates to the separate `pyve update` subcommand, not an `init --update` flag). Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
 - **Post-init project-guide hook (FR-16)**: After environment creation and pip-deps install, runs the three-step project-guide hook (install, `project-guide init --no-input`, shell completion). Auto-skipped if `project-guide` is already declared as a project dep. `pyve update` refreshes the project-guide scaffolding independently of any `init` invocation.
 
+#### FR-1a: Interactive `pyve init` wizard (Phase L / v2.6.0)
+
+Every `pyve init` invocation runs through an interactive wizard. The wizard always runs; flags only suppress the *interactive* part of individual prompts while still rendering the resolved value in the flow, so the user sees what's about to happen even when the invocation is fully flag-driven.
+
+Three prompts in fixed order: **backend → Python version pin → project-guide install.**
+
+- **Backend.** Default-resolution rules: `environment.yml` present → `micromamba`; `.python-version` or `.tool-versions` present → `venv`; otherwise `venv`. `--backend <type>` skips the prompt and renders the flag-resolved value.
+- **Python version pin.** Backend-aware split:
+  - **venv** — up to three layers: (1) version-manager picker (`asdf` default; auto-pick when only one is installed; hard-fail when neither is installed AND a pin is requested); (2) "pick from installed" via `asdf list python` / `pyenv versions --bare` (filtered to `^3\.`); (3) `more...` re-prompts with the full available list (`asdf list all python` / `pyenv install --list`). Skip option preserves no-pin behavior.
+  - **micromamba** — no manager involved (micromamba pins via `python=X` in `environment.yml`). When `environment.yml` exists, the wizard renders `Python: managed via environment.yml` and skips. When it's absent, the version (flag-supplied or `DEFAULT_PYTHON_VERSION`) is announced and gets baked into the scaffolded env.yml by the existing `scaffold_starter_environment_yml` helper later in the init flow.
+- **project-guide install.** Detection-keyed: `.project-guide.yml` present → render `refresh (already installed)`, set the install hook to refresh; project-guide declared in project deps → render `managed by your project dependencies`, skip (deps signal wins over install-marker signal); otherwise prompt with default `no` (interactive) or skip silently (non-TTY/bypass). `--project-guide` / `--no-project-guide` skip the prompt.
+
+**TTY policy.** When at least one prompt would read stdin (i.e. at least one of `--backend`, `--python-version`, `--project-guide` / `--no-project-guide` is unsupplied) AND stdin is not a TTY, `pyve init` exits non-zero before printing the welcome banner. The error names the missing flags as the non-interactive path.
+
+**Bypass env var.** `PYVE_INIT_NONINTERACTIVE=1` bypasses the TTY guard. Used by the bats and pytest test harnesses (which invoke `pyve init` from non-TTY stdin with various flag subsets); also intended for advanced users who want to drive the wizard from non-TTY contexts knowing that any prompt requiring stdin input will degrade to its auto-detect default.
+
+**Out of scope for the Phase L wizard.** `--auto-bootstrap`, `--bootstrap-to`, `--force`, `--env-name`, `--local-env`, `--no-direnv`, `--strict`, `--no-lock`, `--allow-synced-dir` stay flag-only. `--force` controls only the destructive-safeguard on an existing environment; it does **not** skip prompts. See [tech-spec.md "Interactive `pyve init` wizard"](tech-spec.md) for the full design.
+
+#### FR-1b: End-of-init "Next steps:" summary (Phase L / v2.6.0)
+
+`pyve init` ends with a single coherent numbered "Next steps:" block (replacing the per-backend ad-hoc trailing lines from earlier versions). Items appear conditionally based on flags and detection signals; the section header is always rendered.
+
+| Item | Precondition |
+|------|--------------|
+| `direnv allow` | `--no-direnv` was **not** passed |
+| `pyve run <command>` (alternative-activation hint) | `--no-direnv` **was** passed |
+| `pyve testenv install -r requirements-dev.txt` | `requirements-dev.txt` exists in the project |
+| `Read docs/project-guide/go.md` | `.project-guide.yml` exists in the project (canonical install marker, matching `pyve update`'s detection signal) |
+
+A short caveat is appended below the numbered items when the chosen backend is `micromamba` AND direnv is enabled — micromamba prints "to activate, run: micromamba activate ..." earlier in the output, but pyve uses direnv (or `pyve run`), not that activation. The caveat keeps the user from following stale advice.
+
 ### FR-2: Environment Purge (`pyve purge`)
 
 Remove all Pyve-created artifacts from the current directory.
@@ -200,7 +233,7 @@ Execute a command inside the project environment without manual activation.
 
 Diagnose environment problems and suggest one actionable remediation per failure. Merged (in v2.0 / Stories H.c + H.e.3 + H.e.8a) the semantics of v1.x's `pyve doctor` (diagnostics) and `pyve validate` (CI-safe 0/1/2 exit codes) into a single command. See [docs/specs/phase-H-check-status-design.md](phase-H-check-status-design.md) for the full diagnostic surface.
 
-- ~20 checks covering: `.pyve/config` presence/parseability, backend configured, environment + `bin/python` present, Python version agreement, venv path sanity (relocation), `distutils_shim` status on 3.12+, direnv + `.env` presence, lock file presence/staleness (micromamba), duplicate `dist-info`, cloud-sync collision artifacts, native-library conflicts, testenv status.
+- Shipped checks cover: `.pyve/config` presence, backend configured, recorded `pyve_version` drift, environment + `bin/python` present, venv path sanity (relocation), micromamba binary availability, `environment.yml` presence (micromamba), `conda-lock.yml` presence/staleness (micromamba), direnv + `.env` presence, duplicate `dist-info`, cloud-sync collision artifacts, native-library conflicts (micromamba), and testenv pytest status. The Python version is reported informationally — a strict version-match gate against `.tool-versions` / `.python-version` and a `distutils_shim` 3.12+ probe were in the H.e design but are deferred to a follow-up story.
 - **Exit codes:** 0 (all pass) / 1 (errors — environment broken for `pyve run` / `pyve test`) / 2 (warnings only — drifting but working). Safe for CI gating.
 - **Actionable messages:** every failure points at exactly one remediation command — no chains, no cross-references.
 - **Status indicators:** ✓ (pass), ⚠ (warning), ✗ (error), plain text (info).
@@ -372,7 +405,8 @@ Non-destructive project-level upgrade path introduced in v2.0 (Story H.e.2). Ref
 - Refreshes Pyve-managed sections of `.gitignore` via the same idempotent writer used by `init`.
 - Refreshes `.vscode/settings.json` only if it already exists (never creates one on update).
 - Refreshes `.pyve/` layout (bootstraps scaffolding paths if missing — e.g. testenv roots).
-- Runs `project-guide update --no-input` (step 2 of FR-16's hook) unless `--no-project-guide` or an auto-skip condition applies.
+- Runs `project-guide update --no-input --quiet` (step 2 of FR-16's hook) unless `--no-project-guide` or an auto-skip condition applies. Subprocess output is captured and replayed only on failure; under `--verbose` / `PYVE_VERBOSE=1` it streams live.
+- **Output shape (Phase L, Story L.j)**: a `header_box`-framed run with four labeled steps — `[1/4] pyve_version`, `[2/4] Refresh .gitignore`, `[3/4] .vscode/settings.json` (refreshed when present + micromamba; otherwise reported as skipped), `[4/4] project-guide` (refreshed when `.project-guide.yml` is present and the env is intact; otherwise skipped) — followed by a `footer_box` close. Steps emit `✔` / `✘` markers via `step_end_ok` / `step_end_fail`.
 - **Never** rebuilds the venv / micromamba environment — use `pyve init --force` for that.
 - **Never** creates a `.env` or `.envrc` that does not exist — those are user state.
 - **Never** re-prompts for backend. The backend recorded in `.pyve/config` is preserved.
@@ -448,6 +482,7 @@ No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergono
 | `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Set to `1` to skip shell completion wiring (same as `--no-project-guide-completion`) |
 | `PYVE_NO_ASDF_COMPAT` | Set to `1` to suppress the asdf reshim guard in both `.envrc` and `pyve run` (FR-18). Use when you install CLIs globally via `pip install --user` and want asdf's default reshim behavior. |
 | `PYVE_ASDF_COMPAT` | Reserved for symmetry with `PYVE_NO_ASDF_COMPAT`; no distinct behavior — asdf guard is active by default when asdf is detected (FR-18). |
+| `PYVE_VERBOSE` | Set to `1` to stream subprocess output live and suppress quiet-by-default decoration. Equivalent to the global `--verbose` flag (parsed before the subcommand). Single source of truth for the verbosity gate; callers test it via `is_verbose()` in `lib/ui/core.sh`. |
 | `CI` | When set, enables non-interactive mode (auto-defaults to micromamba, skips prompts) |
 
 ### Project Config File (`.pyve/config`)

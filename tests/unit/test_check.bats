@@ -49,6 +49,23 @@ teardown() {
     [[ "$output" == *"2"* ]]
 }
 
+# Story L.c — stale "coming in a later release" parenthetical post-shipping
+# of `pyve status`. Help now points at status as a current command.
+@test "check: --help points at 'pyve status' without 'coming' parenthetical" {
+    run "$PYVE_SCRIPT" check --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve status"* ]]
+    ! printf '%s' "$output" | grep -qi "coming in a later release"
+}
+
+# Story L.c — `pyve doctor` and `pyve validate` were hard-removed in v2.0;
+# mentioning them in the See-also block is stale and misleading.
+@test "check: --help does not advertise removed pyve doctor / pyve validate" {
+    run "$PYVE_SCRIPT" check --help
+    [ "$status" -eq 0 ]
+    ! printf '%s' "$output" | grep -qE "pyve doctor|pyve validate"
+}
+
 @test "check: appears in top-level pyve --help" {
     run "$PYVE_SCRIPT" --help
     [ "$status" -eq 0 ]

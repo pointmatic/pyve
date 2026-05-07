@@ -5,10 +5,9 @@
 #
 # Unit tests for the unified UX retrofit of `pyve init` (Story H.f.1).
 #
-# These tests assert on the output structure produced by lib/ui.sh
-# helpers — header_box, banner, info, success, ask_yn, footer_box —
-# rather than the exact text. The point is: every pyve command
-# should look and feel like the gitbetter commands once H.f lands.
+# These tests assert on the output structure produced by
+# lib/ui/core.sh helpers — header_box, banner, info, success, ask_yn,
+# footer_box — rather than the exact text.
 #
 
 load ../helpers/test_helper

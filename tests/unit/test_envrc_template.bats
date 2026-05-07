@@ -17,7 +17,7 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/ui.sh"
+    source "$PYVE_ROOT/lib/ui/core.sh"
     create_test_dir
 
     VERSION_MANAGER=""

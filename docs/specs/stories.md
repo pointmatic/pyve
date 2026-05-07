@@ -2,309 +2,436 @@
 
 This document breaks the `pyve` project into an ordered sequence of small, independently completable stories grouped into phases. Each story has a checklist of concrete tasks. Stories are organized by phase and reference modules defined in `tech-spec.md`.
 
-Stories with code changes include a version number (e.g., v0.1.0). Stories with only documentation or polish changes omit the version number. The version follows semantic versioning and is bumped per story. Stories are marked with `[Planned]` initially and changed to `[Done]` when completed.
+Put **`vX.Y.Z` in the story title only when that story ships the package version bump** for that release. Doc-only or polish stories **omit the version from the title** (they share the release with the preceding code story, or use your project’s doc-release policy). **One semver bump per owning story** — extra tasks on the *same* story share that bump; see `project-essentials.md`. Semantic versioning applies to the package. Stories are marked with `[Planned]` initially and changed to `[Done]` when completed.
 
-For a high-level concept (why), see `concept.md`. For requirements and behavior (what), see `features.md`. For implementation details (how), see `tech-spec.md`. For project-specific must-know facts, see `project-essentials.md` (`plan_phase` appends new facts per phase).
-
----
-
-## Phase K: Break the Pyve Monolith
-
-Pure-refactor phase. Extracts all 11 top-level commands from `pyve.sh` (~3,500 lines) into per-command modules under `lib/commands/<name>.sh`, leaving `pyve.sh` as a thin ~200–300 line dispatcher. **Zero behavior change** is the contract — the user-facing CLI surface (every command, flag, env var, exit code, output line) is byte-identical to v2.3.0. Characterization tests precede every move so the safety net is in place before code shifts.
-
-See [phase-k-break-the-pyve-monolith-plan.md](phase-k-break-the-pyve-monolith-plan.md) for full gap analysis, technical changes, and acceptance criteria. Architectural target lives in [tech-spec.md](tech-spec.md); invariants in [project-essentials.md](project-essentials.md).
-
-**Intended release version:** `v2.4.0` — the whole phase ships together. Individual stories land unversioned; the version bump lives in the last story (K.m).
-
-**Per-extraction-story scaffolding (K.b – K.l).** Every per-command extraction story carries the same five-task pattern from the tech-spec invariant: inventory → coverage audit (story-local, references K.a) → backfill characterization tests → extract → verify green. Latent bugs surfaced by step 3 are carved off into their own dedicated fix stories — not folded into the extraction.
+For a high-level concept (why), see [`concept.md`](concept.md). For requirements and behavior (what), see [`features.md`](features.md). For implementation details (how), see [`tech-spec.md`](tech-spec.md). For project-specific must-know facts, see [`project-essentials.md`](project-essentials.md) (`plan_phase` appends new facts per phase). For the workflow steps tailored to the current mode (cycle steps, approval gates, conventions), see [`docs/project-guide/go.md`](../project-guide/go.md) — re-read it whenever the mode changes or after context compaction.
 
 ---
 
-### Story K.a.1: v2.3.1 Bugfix micromamba init --force without environment.yml [Done]
+## Phase L: Pyve Polish
 
-**Bug**: `pyve init --force --backend micromamba --python-version <ver>` on a project with an existing venv config but no `environment.yml` hard-errored with `"Neither 'environment.yml' nor 'conda-lock.yml' found"` — even though the same invocation without `--force` (on a fresh dir) succeeds by scaffolding a starter `environment.yml`.
+UX polish phase. Delivers a `sv create`-grade scaffolding experience for `pyve init` (both backends) and `pyve update` — interactive wizard with smart defaults, quiet-by-default subprocess output with `--verbose` opt-in, step-counter framing, spinners/progress, end-of-init "Next steps:" summary — plus diagnostic-correctness fixes from the audit (Tracks 1–2). The phase grows `lib/ui.sh` into a `lib/ui/` library that is the boundary of the eventually-extractable CLI UX library; modules under it stay pyve-agnostic.
 
-**Root cause**: the `--force` pre-flight at [pyve.sh:654](../../pyve.sh#L654) duplicated `validate_lock_file_status` from the main micromamba branch ([pyve.sh:829](../../pyve.sh#L829)) but omitted the `scaffold_starter_environment_yml` call that precedes it at [pyve.sh:799-806](../../pyve.sh#L799-L806). On a directory with neither file, validation's Case 4 fires before scaffolding gets a chance, aborting the switch.
+See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, gap analysis, technical changes, and acceptance criteria. Constraints: pure-Bash, no runtime deps, macOS / Linux only including bash 3.2 on macOS.
 
-**Fix**: invoke `scaffold_starter_environment_yml` before `validate_lock_file_status` in the `--force` pre-flight, mirroring the main-flow ordering. When scaffolding succeeds, set `PYVE_NO_LOCK=1` so the follow-up validation recognises the newly scaffolded file as a legitimate lock-less state.
+**Intended release version:** Single `v2.5.x` → `v2.6.0` minor bump on phase merge to `main`. L.a was documentation-only and delivered no code; subsequent stories (L.b–L.l) land on the phase branch without per-story bumps and aggregate into one release. Story titles in this section therefore omit the `vX.Y.Z` suffix; the bump ships in L.zz.
+
+**Implementation order.** Foundation-first per the plan doc: correctness fixes (L.b, L.c) are independent and can land early; the upstream-dependent integration fix (L.d) lands when the upstream change is available or defers to a follow-up patch; the `lib/ui/` migration (L.e) and primitives (L.f–L.i) land before the rollout stories (L.j–L.l) consume them.
+
+**Phase closure.** Run Story L.zz once every other Phase L story is `[Done]` (or L.d explicitly deferred) — it performs the mandated `project-essentials.md` hygiene pass and lands the single `v2.6.0` bump before the phase branch merges to `main`. L.zz's hygiene pass is deliberately **not** "add new facts only" append-only housekeeping; pruning or rewriting stale entries during L.zz is an explicit Phase L carve-out (`refactor_plan` still owns large-scale reorganizations).
+
+---
+
+### Story L.a: Audit `pyve status` / `pyve check`, project-guide integration, and terminal UX [Done]
+
+**Goal.** Produce a single combined audit document with three sections (Diagnostic Surface / Project-Guide Integration / Terminal UX) that catalogues UX/correctness rough edges across pyve's read-only diagnostic surface, its project-guide integration touchpoints, and its terminal output behavior. Each non-trivial finding becomes a follow-up implementation story (L.b, L.c, …) appended to Phase L. Upstream-located Track-2 findings produce a project-guide change-request spec instead. **No code changes**, no version bump — this story is documentation only.
+
+**Output.**
+
+- `docs/specs/phase-l-pyve-polish-audit.md` — three-section findings document. Each finding records: (a) symptom, (b) root cause, (c) proposed fix size (one-liner / small / refactor / new-helper), (d) **fix locus** (pyve-side / upstream), (e) suggested follow-up story title (or change-request spec title), (f) — Track 1 only — whether `pyve check --fix` (deferred Auto-Remediation Future story) could automate the remediation.
+- Zero or more `docs/specs/project-guide-requests/<short-name>.md` — one focused, self-contained change-request spec per upstream Track-2 finding (problem, proposed change, motivation, suggested CLI/API shape, compatibility notes).
+- A final "suggested story slate" inside the audit document mapping findings → proposed L.b+ titles, ordered by suggested implementation sequence.
+
+**Tasks — Track 1 (Diagnostic-surface correctness)**
+
+- [x] Walk every code path in [lib/commands/status.sh](../../lib/commands/status.sh) for both `venv` and `micromamba` backends. For each output row, confirm the label, the source of truth, and the value match documented behavior in [features.md](features.md) "Status" section; capture mismatches as findings.
+- [x] Walk every code path in [lib/commands/check.sh](../../lib/commands/check.sh) for both backends. For each diagnostic, confirm OK / warn / fail message text is precise, actionable, and not stale post-K renames; capture findings.
+- [x] Confirm the seed finding (micromamba projects falsely report `Python: not pinned`) and record root cause + proposed fix in the audit; the existing Future-section story for this fix gets either promoted to an L.b+ story or merged into a related cluster.
+- [x] Cross-check the `pyve status` Project / Environment / Integrations sections against each other for **same-fact contradictions** (e.g. Python-version disagreement). Capture each contradiction as a finding.
+- [x] For each Track-1 finding, tag whether `pyve check --fix` could automate the remediation later (input to the deferred Auto-Remediation Future story).
+
+**Tasks — Track 2 (Project-guide integration)**
+
+- [x] Inventory every reference to `project-guide` under `lib/` ([lib/commands/init.sh](../../lib/commands/init.sh), [lib/commands/update.sh](../../lib/commands/update.sh), [lib/commands/status.sh](../../lib/commands/status.sh), [lib/commands/self.sh](../../lib/commands/self.sh), [lib/utils.sh](../../lib/utils.sh), [lib/completion/pyve.bash](../../lib/completion/pyve.bash), [lib/completion/_pyve](../../lib/completion/_pyve)). Re-grep at audit time in case new touchpoints have been added.
+- [x] Run pyve commands against a synthetic project-guide-enabled project: `init` (both backends) with project-guide enabled, `update`, `status`, `self install/uninstall`. Record observed friction verbatim. **Waived for L.a:** no session transcript appended; friction for **T2-01** is inferred from wrappers + embedding context (see audit §Track 2). Recommended dogfood pass before **`pyve`** consumes **`project-guide --quiet`**.
+- [x] Cross-reference the [project-guide command surface](https://pointmatic.github.io/project-guide/) (commands `init`, `mode`, `override`, `update`, `status`; flags; output behavior) against pyve's invocation patterns. Identify mismatched assumptions and stale contracts.
+- [x] For each Track-2 finding, decide **fix locus** (pyve-side vs upstream). Pyve-side findings become candidate L.b+ stories; upstream findings become `docs/specs/project-guide-requests/<short-name>.md` specs.
+- [x] For any pyve-side L.b+ story that consumes a shipped upstream change, record the minimum project-guide version dependency.
+
+**Tasks — Track 3 (Terminal UX)**
+
+- [x] Catalogue current capabilities of [lib/ui.sh](../../lib/ui.sh) — what's available, what's missing. Note the gitbetter-sync header constraint is being lifted in this phase per the plan doc.
+- [x] Walk every command that emits multi-step output: `init` (both backends, with the micromamba bootstrap path treated as the worst-offender), `update`, `lock`, `testenv install`, `purge --force`. Record current output behavior verbatim, including subprocess noise.
+- [x] Identify missing primitives (step counters, spinners, progress bars, multi-step framing, arrow-key single/multi-select prompts, output-quieting helpers) and propose where each lives in `lib/ui/` (e.g. `lib/ui/progress.sh`, `lib/ui/select.sh`).
+- [x] Propose the final shape of `lib/ui/` — which modules, which boundaries, where `lib/ui.sh` migrates to (likely `lib/ui/core.sh`). Actual reorganization stays in the first Track-3 implementation story; L.a only proposes the shape.
+- [x] Compare current pyve output against reference UX from `npm create vite@latest` / `npm create svelte@latest`. Identify the achievable subset within pure-bash + bash-3.2-on-macOS.
+- [x] Recommend a verbosity policy ("quiet by default, verbose by opt-in" with `--verbose` / `PYVE_VERBOSE=1`) or, if findings push verbosity work to Future, defer it explicitly with rationale.
+
+**Tasks — synthesis**
+
+- [x] Write `docs/specs/phase-l-pyve-polish-audit.md` with three sections, a numbered findings table per track, per-finding short writeups, and the final "suggested story slate" in implementation order.
+- [x] For each upstream Track-2 finding, write the corresponding `docs/specs/project-guide-requests/<short-name>.md` spec (self-contained — droppable into the project-guide repo's planning workflow without further translation).
+- [x] Present the audit document and any project-guide change-request specs to the developer for review.
+
+### Story L.b: 'pyve status' — micromamba Python pin from 'environment.yml' [Done]
+
+**Goal.** Eliminate Project vs Environment **Python** contradiction (**[T1-01](phase-l-pyve-polish-audit.md)**). Backend-aware **`_status_configured_python`**; **`venv`** unchanged.
 
 **Tasks**
 
-- [x] Add `scaffold_starter_environment_yml` call before `validate_lock_file_status` in the `--force` pre-flight ([pyve.sh:654-664](../../pyve.sh#L654-L664))
-- [x] Add regression test `test_force_switch_venv_to_micromamba_without_environment_yml` in [tests/integration/test_force_backend_detection.py](../../tests/integration/test_force_backend_detection.py)
-- [x] Verify new test fails before fix and passes after
-- [x] Verify full bats suite (712 tests) and pytest integration suite still pass (5 pre-existing failures confirmed unrelated — tracked separately)
-- [x] Bump version to 2.3.1
+- [x] Refactor `_status_configured_python` to dispatch by backend (split into `_status_configured_python_venv` / `_status_configured_python_micromamba`).
+- [x] Implement `_status_parse_env_yml_python_pin` — regex-grep for `- python=<spec>` (tolerant of whitespace and a trailing `.*` glob).
+- [x] Bats tests for each branch: micromamba w/ pinned `environment.yml`, micromamba w/o `environment.yml`, micromamba w/ env.yml lacking `python` dep, whitespace/glob variant, venv unchanged (ignores stray `environment.yml`, still reads `.tool-versions`).
+- [x] No `features.md` update — FR-5a is high-level and doesn't claim specifics about pin-source detection.
 
-### Story K.a.2: v2.3.2 Bugfix — Uniform '.envrc' template across backends [Done]
+---
 
-**Bug**: after `pyve init --force --backend micromamba` on a previously-venv project, `project-guide` shell completion (and any other completion whose rc-file guard uses `command -v`) silently stops working. Venv-backed projects are unaffected.
+### Story L.c: Align 'pyve check' — help, docs, shipped diagnostics [Done]
 
-**Root cause**: the micromamba `.envrc` generator at [pyve.sh:1106-1126](../../pyve.sh#L1106-L1126) writes a **relative** `ENV_PATH` into `.envrc`:
+**Goal.** Fix stale **`show_check_help`** (**`pyve status`** "coming …") and reconcile **[features.md](features.md)** FR-5 claims with **[`check.sh`](../../lib/commands/check.sh)** (Python version gate, distutils shim) — **docs-only**, **implement deferred checks**, or **narrow docs** (**[T1-02](phase-l-pyve-polish-audit.md)**).
 
-```bash
-ENV_PATH=".pyve/envs/<name>"
-export PATH="$ENV_PATH/bin:$PATH"
-```
+**Resolution.** Docs/help-only narrow path per the audit's recommended starting bundle. Deferred-check implementation (Python version-match gate, `distutils_shim` 3.12+ probe) stays a future story — the H.e design called for them, but they were never shipped, and adding them is a bigger surface than this Phase L correctness pass warrants.
 
-Relative entries on `PATH` resolve against the shell's current `cwd`, not the project directory. `.zshrc` runs before direnv enters the project dir, so at startup `cwd=$HOME` and the relative entry resolves to `$HOME/.pyve/envs/<name>/bin` — which does not exist. The `command -v project-guide` guard in rc-file completion blocks fails, completion never registers. The venv backend sidesteps this by `source`-ing Python's `activate` script, which bakes an absolute `VIRTUAL_ENV` into `PATH`.
+**Tasks**
 
-**Design — uniform `.envrc` template**: rather than fix micromamba in isolation, converge both backends on a single four-line shape so the class of bug cannot recur and future backends (uv, poetry, conda) inherit the symmetry:
+- [x] `show_check_help`: drop the "(coming in a later release)" parenthetical from the `pyve status` reference (status shipped in v2.0). Replace the misleading `pyve doctor` / `pyve validate` See-also lines (those forms hard-error post-v2.0; advertising them in `pyve check --help` is stale) with a single `pyve status` See-also entry.
+- [x] `show_check_help`: tighten the `--fix` note to point at the existing Future story instead of the now-stale "Phase I" reference.
+- [x] [features.md](features.md) FR-5: narrow the check inventory to match the shipped surface. Drop "Python version agreement" (only informational today), drop "`distutils_shim` status on 3.12+" (never shipped), drop the unsubstantiated "parseability" qualifier, and add an explicit note that the Python version is reported informationally with the version-match gate / distutils shim probe deferred to a follow-up.
+- [x] bats tests: assert `pyve check --help` references `pyve status` without "coming", and does not advertise the removed `pyve doctor` / `pyve validate` forms.
 
-```bash
-PATH_add "<absolute-bin-dir>"            # direnv stdlib: resolves relative → absolute
-export <BACKEND_SENTINEL>="<absolute-env-root>"   # VIRTUAL_ENV for venv, CONDA_PREFIX for conda-like
-export PYVE_BACKEND="<name>"
-export PYVE_ENV_NAME="<name>"
-```
+---
 
-Key properties of the template:
+### Story L.d ('+' upstream): Consumer '--quiet' for embedded 'project-guide' [Done]
 
-- **`PATH_add`** is direnv's canonical primitive for "add a directory to PATH, accept that it may be relative to `.envrc`, export the absolute form." First-class stdlib, not a workaround.
-- **Backend-native sentinel** (`VIRTUAL_ENV` / `CONDA_PREFIX`) is set explicitly rather than inherited by `source`-ing an activate script. Tools that probe these env vars (pip, poetry, IDEs) continue to work.
-- **Deactivation** is delegated to direnv itself — it restores PATH on leaving the project dir. The `deactivate` shell function that `source activate` defines is a non-goal; CI/Docker uses `pyve run` or ephemeral shells, so nothing calls `deactivate` anyway.
-- **Future backends** (uv, poetry) plug in the same four-line template; no new activation machinery.
+**Goal.** Depends on **[`project-guide-requests/quiet-non-interactive-embedding.md`](project-guide-requests/quiet-non-interactive-embedding.md)** shipping upstream; then **`lib/utils.sh`** wrappers pass **`--quiet`** (or equivalent) once minimum version pinned.
 
-Applies only to the direnv path. `--no-direnv` generates no `.envrc` and is unaffected.
+**Resolution.** Upstream `--quiet` shipped in `project-guide` 2.5.0 (currently installed 2.5.8). Both embedded wrappers now pass `--no-input --quiet`; the docstring on `run_project_guide_init_in_env` records the minimum version (`project-guide >= 2.5.0`).
 
-**Tasks — implementation**
+**Tasks**
 
-- [x] Introduce a shared helper (`write_envrc_template` in `lib/utils.sh`) that takes `<rel_bin_dir> <sentinel_var> <rel_env_root> <backend_name> <env_name>` and emits the four-line template plus the existing `.env` `dotenv` block and the asdf reshim guard (Story J.b) when `is_asdf_active`.
-- [x] Rewrite `init_direnv_venv` to call the helper with `VIRTUAL_ENV` and the relative venv bin dir. Drop the `source "$VENV_DIR/bin/activate"` line.
-- [x] Rewrite `init_direnv_micromamba` to call the helper with `CONDA_PREFIX` and the relative micromamba env bin dir. Resolution of the absolute env path does not depend on `$(pwd)` at generation time — `PATH_add` resolves relative paths at direnv-source time and the sentinel uses literal `$PWD` for runtime expansion.
-- [x] Confirm `PYVE_PROMPT_PREFIX` still works under the new template (set in the helper, parameterised by backend + env_name).
+- [x] [lib/utils.sh](../../lib/utils.sh) — `run_project_guide_init_in_env` passes `--quiet` alongside `--no-input` to suppress per-file progress chatter on success. Docstring updated to record `project-guide >= 2.5.0` minimum (was `>= 2.2.3` for `--no-input` alone).
+- [x] [lib/utils.sh](../../lib/utils.sh) — `run_project_guide_update_in_env` passes `--quiet` alongside `--no-input` for the same reason; the `pyve update` and `pyve init --force` paths benefit from the cleaner output stream.
+- [x] [lib/utils.sh](../../lib/utils.sh) — `log_info` lines no longer hard-code the literal flag string (which would drift the next time we tune the wrapper).
+- [x] bats tests: each wrapper's command line includes `--quiet` (paired with the existing `--no-input` assertions).
+
+---
+
+### Story L.e: 'lib/ui/' directory establishment + 'lib/ui.sh' migration [Done]
+
+**Goal.** Foundation for all subsequent UX work. Move `lib/ui.sh` → `lib/ui/core.sh` and update every `source` line in `pyve.sh` per the explicit-sourcing project-essential. **No new primitives in this story** — pure structural prep so L.f–L.l can land siblings.
+
+**Tasks**
+
+- [x] Create `lib/ui/` directory.
+- [x] Move `lib/ui.sh` → `lib/ui/core.sh` via `git mv` (preserves history). Dropped the "verbatim sync with gitbetter" header comment per audit **[T3-03](phase-l-pyve-polish-audit.md)**; replaced with the `lib/ui/`-library boundary note (modules under it stay pyve-agnostic).
+- [x] Updated `pyve.sh`'s explicit `source` block: `source "$SCRIPT_DIR/lib/ui/core.sh"`.
+- [x] Updated in-tree callers: [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) (`UI_PATH`), [tests/unit/test_envrc_template.bats](../../tests/unit/test_envrc_template.bats), [tests/unit/test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats); refreshed code/docstring comment references in [lib/utils.sh](../../lib/utils.sh), [pyve.sh](../../pyve.sh), and the `*_ui.bats` test headers.
+- [x] Full bats unit suite green (739 / 739).
+- [x] Updated [tech-spec.md](tech-spec.md): file-tree entry, sourcing-order list, cross-command-helpers paragraph, `### lib/ui/core.sh — Unified UI Helpers` section header, sourcing/bash-3.2 paragraphs.
+
+---
+
+### Story L.f: Verbosity policy — '--verbose' / 'PYVE_VERBOSE=1' [Done]
+
+**Goal.** Add the verbosity gate as a single source of truth in `lib/ui/core.sh`. Default: quiet. **No command output changes yet** — this story just lands the gate so L.g–L.l can honor it.
+
+**Tasks**
+
+- [x] `PYVE_VERBOSE` is the single source-of-truth env var. `is_verbose()` in [lib/ui/core.sh](../../lib/ui/core.sh) checks `[[ "${PYVE_VERBOSE:-0}" == "1" ]]`; default behavior (unset / `0` / empty) is quiet.
+- [x] [pyve.sh `main()`](../../pyve.sh) consumes `--verbose` as a global flag in a pre-dispatch loop and exports `PYVE_VERBOSE=1` so subcommands inherit it. Pre-subcommand position only (`pyve --verbose init`); subcommand-trailing form is out of scope.
+- [x] `is_verbose()` is the only allowed call site for the verbosity check. The library-boundary bats invariant now whitelists `PYVE_VERBOSE` as the single Phase-L-sanctioned PYVE_-prefixed identifier in `lib/ui/core.sh` — every other PYVE_-prefixed name is still forbidden.
+- [x] `--verbose` documented in the top-level `--help` UNIVERSAL FLAGS block.
+- [x] `PYVE_VERBOSE` added to the Environment Variables table in [features.md](features.md) with the explicit "single source of truth" / `is_verbose()` guidance.
+- [x] bats unit tests in [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats): `is_verbose` returns 0 for `PYVE_VERBOSE=1`, non-zero for `0` / unset / empty.
+- [x] bats integration tests in [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats): `pyve --verbose <cmd>` sets `PYVE_VERBOSE=1` for the subcommand (verified via a new `VERBOSE:0|1` line emitted under `PYVE_DISPATCH_TRACE`); `PYVE_VERBOSE=1` in the env (no flag) does the same; `--help` documents `--verbose`.
+
+---
+
+### Story L.g: 'lib/ui/run.sh' — quiet-replay-on-failure subprocess wrapper [Done]
+
+**Goal.** New module providing `run_quiet <cmd> [args...]` that captures stdout+stderr from long-running noisy subprocesses (micromamba bootstrap, conda solve, pip install) and replays the captured output only on failure. Honors L.f's verbosity gate. **No callers wired up yet** — that happens in L.j.
+
+**Tasks**
+
+- [x] [lib/ui/run.sh](../../lib/ui/run.sh) ships `run_quiet` (capture stdout+stderr to a temp buffer; discard on success, replay on non-zero) and `run_quiet_with_label "<label>" <cmd>...` (success → `success "<label>"`; failure → replay buffer then `✘ <label>` to stderr). `mktemp` failures fall back to live execution rather than dropping the command.
+- [x] Honors `is_verbose()` from L.f — verbose mode streams output live; `run_quiet_with_label` still prints the labeled indicator under verbose so callers keep a consistent rhythm.
+- [x] Bash 3.2 compatible — `mktemp 2>/dev/null`, plain `>file 2>&1` (no `&>`); no `mapfile` / `readarray` / process substitution. Locked in by a regression test that greps for those constructs.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/run.sh"` block (per the explicit-sourcing project-essential — no glob).
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths / command names and that `PYVE_VERBOSE` (referenced via the `is_verbose()` helper) is the only PYVE_-prefixed identifier permitted.
+- [x] 16 bats unit tests in [tests/unit/test_ui_run.bats](../../tests/unit/test_ui_run.bats) covering: existence, quiet-success silence, quiet-failure replay, exit-code propagation, verbose-mode live streaming, labeled success/failure markers, library-boundary invariants, bash 3.2 sourcing.
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/run.sh`; sourcing-order list inserts `ui/run.sh` immediately after `ui/core.sh`.
+
+---
+
+### Story L.h: 'lib/ui/progress.sh' — step counter, spinner, progress bar [Done]
+
+**Goal.** New module providing the visual progress primitives needed for `sv create`-grade output: step counter framing, spinners for indeterminate ops, progress bars for slow operations with known total. Pure `tput` + ANSI; no external deps. **No callers wired up yet** — that happens in L.j.
+
+**Tasks**
+
+- [x] [lib/ui/progress.sh](../../lib/ui/progress.sh) ships:
+  - `step_begin "<label>"` — opens a labeled step (quiet: no trailing newline so a marker can append; verbose: line-per-step shape so subprocess output isn't doubly decorated).
+  - `step_end_ok` / `step_end_fail` — close the step with `✔` / `✘` markers; verbose mode prints `<marker> <label>` on its own line so the outcome stays tied to the label.
+  - `spinner_start` / `spinner_stop` — backgrounded ASCII spinner (`|/-\` frames; multibyte braille frames would break bash 3.2's byte-counting `${var:offset:1}`). No-op when verbose or when stdout is not a TTY. `spinner_stop` is idempotent.
+  - `progress_bar <current> <total> [width=40] [force]` — ASCII fill bar with carriage-return prefix so successive calls overwrite. No-op when verbose, when stdout is not a TTY, or when total ≤ 0; `force` argument bypasses the TTY check for tests.
+- [x] Honors `is_verbose()` from L.f — spinner becomes a no-op; step output switches to a line-per-step shape under `PYVE_VERBOSE=1`.
+- [x] Bash 3.2 compatible — backgrounded subshell with signal cleanup for the spinner; ASCII spinner frames; C-style `for` arithmetic loop in `progress_bar`. Locked in by a regression test that greps for `mapfile`/`readarray`/`&>`/`declare -A`/case-conversion expansions.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/progress.sh"` block.
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths/command names and that `PYVE_VERBOSE` (referenced via `is_verbose()`) is the only PYVE_-prefixed identifier.
+- [x] 20 bats unit tests in [tests/unit/test_ui_progress.bats](../../tests/unit/test_ui_progress.bats).
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/progress.sh`; sourcing-order list extended.
+
+---
+
+### Story L.i: 'lib/ui/select.sh' — arrow-key single/multi-select prompt [Done]
+
+**Goal.** New module providing arrow-key selectors for the L.k interactive wizard. Falls back to a numbered prompt when stdin is not a TTY (CI safety). **No callers wired up yet** — that happens in L.k.
+
+**Tasks**
+
+- [x] [lib/ui/select.sh](../../lib/ui/select.sh) ships:
+  - `ui_select [--default N] <label> <opt1> [opt2 ...]` — single-select. TTY path: arrow-key navigation (`\x1b[A` / `\x1b[B`), enter to confirm, escape or `q`/`Q` to cancel. Fallback path: numbered prompt with `[default]:` empty-input fallthrough. Returns the chosen 0-based index on stdout, exit 0 on confirm, non-zero on cancel / invalid.
+  - `ui_multi_select [--default N[,N...]] <label> <opt1> [opt2 ...]` — multi-select. TTY path: arrow-key + space to toggle + enter to confirm. Fallback path: comma- or space-separated indices. Returns space-separated 0-based indices on stdout (empty selection allowed; caller decides if it's meaningful).
+- [x] TTY fallback: when stdin is not a TTY, both surfaces drop to a numbered prompt that reads indices from stdin — `bats`-driven unit tests cover this path.
+- [x] Bash 3.2 compatible — `IFS= read -rsn1` raw-byte reads, manual ESC-sequence parsing with a 0.01s timeout for the bracket pair, no `mapfile` / `readarray`. Locked in by a regression test.
+- [x] Wired into `pyve.sh` via an explicit `source "$SCRIPT_DIR/lib/ui/select.sh"` block.
+- [x] Pyve-agnostic — boundary invariant tests assert no pyve paths/command names and that no `PYVE_*` identifiers appear (the verbosity gate is irrelevant to user prompts; prompt shape doesn't change with `--verbose`).
+- [x] 15 bats unit tests in [tests/unit/test_ui_select.bats](../../tests/unit/test_ui_select.bats) covering: numeric choice → 0-based index, empty input → default fallthrough, `--default` override, out-of-range / non-numeric → non-zero, prompt-text emission, multi-select space- and comma-separated parsing, library-boundary invariants, bash-3.2 sourcing. (TTY arrow-key path is smoke-tested manually; driving raw reads from a sub-shell without a real PTY is impractical — L.k's `expect`-style integration tests will cover the end-to-end flow.)
+- [x] [tech-spec.md](tech-spec.md) updated: file-tree adds `ui/select.sh`; sourcing-order list extended.
+
+---
+
+### Story L.j: Step-framing rollout — 'pyve init' (both backends) + 'pyve update' [Done]
+
+**Goal.** Wire L.g (`run_quiet`) and L.h (`step_begin` / `step_end_ok`) into `pyve init` and `pyve update` macro-steps. Subprocess output is silent on the happy path; on failure the captured noise is replayed. After this story, the scaffold-shaped commands hit the `sv create`-grade output bar.
+
+**Resolution.** Tightly-scoped rollout — full step framing for `pyve update` (clean and contained), `run_quiet` wrap around the project-guide pip-install subprocess in `install_project_guide` (used by both `init` and the project-guide hook), and **explicit deferral of `pyve init`'s full step-counter restructure to L.k**. Reason: L.k restructures init's flow to add the wizard prompts. Adding step-counter framing now would create a known-throwaway intermediate shape and conflict with L.k's branching changes; the audit's worst-offender concern (micromamba init noise) is exactly what L.k will re-shape. Quiet-by-default for the noisiest existing init subprocess (project-guide pip install) lands here so the win is partial-immediate rather than fully-deferred.
+
+**Tasks**
+
+- [x] [lib/commands/update.sh `update_project()`](../../lib/commands/update.sh) refactored: replaced `log_info`/`log_success` chatter with `step_begin "[N/4] ..."` / `step_end_ok` / `step_end_fail` framing across all four steps (pyve_version bump, `.gitignore` refresh, `.vscode/settings.json` refresh, project-guide refresh). Each conditional skip path emits its own labeled step rather than disappearing. Wrapped with `header_box "pyve update v$VERSION"` / `footer_box`.
+- [x] [lib/utils.sh `install_project_guide`](../../lib/utils.sh) — `$pip_cmd install --upgrade project-guide` now goes through `run_quiet`: pip's per-package progress is captured and discarded on success, replayed on failure. `--verbose` / `PYVE_VERBOSE=1` streams live.
+- [x] [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) — `setup_pyve_env` now sources `lib/ui/core.sh` and `lib/ui/run.sh` before `lib/utils.sh` (utils now calls `run_quiet`).
+- [x] [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) `setup` exports `NO_COLOR=1` so the `log_*` glyph-equality assertions stay stable now that `lib/ui/core.sh` is in scope.
+- [x] [tests/unit/test_update.bats](../../tests/unit/test_update.bats) — added 3 new bats tests for the step-counter framing; updated the existing `--no-project-guide` skip-message test to match the new shape.
+- [x] [features.md FR-15a](features.md) — output-shape paragraph appended documenting the four labeled steps + footer.
+- [x] **Deferred to L.k**: `init.sh` venv-path full step framing, `init.sh` micromamba-path full step framing (the audit's worst offender), and `run_quiet` wraps around `python -m venv` / `bootstrap_install_micromamba` / `micromamba create`. The wizard restructure in L.k is the natural place to land them; doing it here would be re-done immediately. The remaining "non-scaffold" commands (`pyve lock`, `pyve testenv install`, `pyve purge --force`) stay tracked under the existing Future story "Apply Phase L UX framing to non-scaffold commands."
+
+---
+
+### Story L.k: Interactive `pyve init` wizard (red-carpet experience) — split into L.k.1–L.k.6
+
+The original single-story scope grew large enough during pre-implementation Q&A (asdf-vs-pyenv precedence; `more...` secondary prompt for the full Python version list; project-guide already-present detection vs. flag-override interaction) that landing it as one cycle would mix design decisions into the implementation. The story is split into six self-contained sub-stories below. All six aggregate into the single `v2.6.0` bump in L.zz; no per-sub-story version bumps.
+
+---
+
+### Story L.k.1: Interactive init wizard — design + tech-spec [Done]
+
+**Goal.** No-code design pass that locks the wizard's shape, prompt order, default-resolution rules, version-manager precedence, `more...` flow, and TTY policy. Output is a new "Interactive init wizard" subsection in [tech-spec.md](tech-spec.md). L.k.2–L.k.6 implement against this approved spec.
+
+**Tasks**
+
+- [x] Inventory every flag that `pyve init` accepts today. **15 flags catalogued** (`--backend`, `--python-version`, `--env-name`, `--local-env`, `--no-direnv`, `--force`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--no-lock`, `--allow-synced-dir`, `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion`) plus the `<dir>` positional. Three become interactive prompts; twelve stay flag-only. Full mapping table in the new tech-spec subsection.
+- [x] Decide the prompt set and order: **backend → python version pin → project-guide install**. Default-resolution rules per prompt documented in [tech-spec.md](tech-spec.md) "Interactive init wizard" subsection (Prompts 1, 2, 3).
+- [x] Document `--force` semantics: applies only to init's destructive safeguard on the existing virtual environment; does **not** skip prompts. Captured in the flag-mapping table.
+- [x] Document flag-override precedence: any explicit flag (`--backend`, `--python-version`, `--project-guide`, `--no-project-guide`) skips its corresponding prompt and wins over detection-based defaults. Captured per-prompt in the new subsection.
+- [x] Document TTY policy: wizard hard-fails when stdin is not a TTY, error message names `--backend` and the other prompt-bearing flags as the non-interactive path. Captured in the new subsection's "TTY policy" subsection.
+- [x] Document out-of-scope items: testenv creation, `--bootstrap-to`, `--auto-bootstrap`, `--force`, plus the rest of the flag-only set — all stay flag-only. Captured in the "Out of scope for the Phase L wizard" subsection.
+- [x] Append the new "Interactive init wizard" subsection to [tech-spec.md](tech-spec.md), inserted between the Modifier Flags table and the Exit Codes section.
+
+---
+
+### Story L.k.2: Wizard skeleton — dispatch + welcome banner + TTY guard [Done]
+
+**Goal.** Land the wizard frame so L.k.3–L.k.5 can each add a single prompt without restructuring. No prompts in this story; user-visible behavior on the happy path is "banner appears, then current init flow runs unchanged."
+
+**Tasks**
+
+- [x] Route every `pyve init` invocation through `_init_wizard()`. The existing `header_box "pyve init"` call in [init_project()](../../lib/commands/init.sh) is replaced by `_init_wizard "$backend_flag" "$python_version_supplied" "$project_guide_mode"`. Wizard always runs; per-prompt interactive vs. flag-render logic lands in L.k.3–L.k.5. `python_version_supplied` is tracked as a separate boolean (set `true` in the `--python-version` flag arm) since `python_version` itself is initialized to `DEFAULT_PYTHON_VERSION` and can't distinguish user-supplied from default.
+- [x] Implement `_init_wizard()` skeleton in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private per the project-essential prefix rule). Body: TTY guard → header_box → return 0. Per-prompt logic lands in L.k.3–L.k.5.
+- [x] Welcome banner — `header_box "pyve init"` from `lib/ui/core.sh`. Always printed when the wizard runs (i.e. always — the wizard always runs).
+- [x] TTY hard-fail: if `[[ ! -t 0 ]]` AND at least one of the three prompt-bearing parameters is not flag-supplied AND `PYVE_INIT_NONINTERACTIVE != 1`, the wizard exits non-zero before printing the banner. Error names only the missing flags (supplied flags are excluded from the list) and surfaces the bypass env var. Bypass env var `PYVE_INIT_NONINTERACTIVE=1` is set by default in [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) `setup_pyve_env` so existing 804-test bats fixtures keep passing without supplying every prompt-bearing flag.
+- [x] bats unit tests in [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) (10 tests): banner prints with all three supplied; TTY guard fires when any flag missing; error names only missing flags; bypass `=1` works; bypass `=0` does not bypass; `pyve init` integration fails without flags / proceeds with bypass.
+- [x] [tech-spec.md](tech-spec.md) "TTY policy" subsection extended with a "Bypass env var" paragraph documenting `PYVE_INIT_NONINTERACTIVE=1`.
+
+---
+
+### Story L.k.3: Wizard — backend prompt + repo-signal helpers [Done]
+
+**Goal.** Add the first prompt to the wizard skeleton from L.k.2. Defaults driven by repo signals.
+
+**Tasks**
+
+- [x] Repo-signal detection helper `_init_detect_backend_default` in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private): returns `micromamba` if `environment.yml` exists; returns `venv` if `.python-version` or `.tool-versions` exists; else returns `venv`. environment.yml wins over the venv-side signals.
+- [x] Backend prompt wired into `_init_wizard()` with three resolution paths: (a) `--backend` supplied → render `Backend: <value> (--backend)` non-interactively; (b) flag unset + real TTY + bypass off → `ui_select` with default index from `_init_detect_backend_default`; (c) flag unset + (non-TTY OR `PYVE_INIT_NONINTERACTIVE=1`) → auto-default render `Backend: <detected> (auto-detected)`. The wizard's internal locals were renamed `arg_*` so bash dynamic scoping can write the resolved value back into the caller's `backend_flag` variable in [init_project()](../../lib/commands/init.sh) — post-wizard, `backend_flag` is always set, just like a flag-driven invocation.
+- [x] Flag-override path: when `--backend` is supplied, the prompt renders non-interactively via path (a); the flag value is used unchanged.
+- [x] bats unit tests for `_init_detect_backend_default` (5 tests covering each branch + signal-precedence).
+- [x] bats unit tests for `_init_wizard` backend resolution (7 tests covering flag-render, auto-detect rendering for each signal case, dynamic-scope side effect, no-modification when flag was already set).
+
+---
+
+### Story L.k.4: Wizard — Python version pin prompt [Done]
+
+**Goal.** Add the Python pin prompt. Most involved sub-story: backend-aware split (venv flow vs. micromamba flow), version-manager picker, "pick from installed", `more...` secondary prompt with filtered full list, skip path, no-manager hard-fail. The venv branch is the heavy half; the micromamba branch is small but real (the existing `--python-version` flag bakes into the scaffolded `environment.yml` via [lib/micromamba_env.sh:458](../../lib/micromamba_env.sh#L458) — the wizard surfaces this rather than skipping silently).
+
+**Tasks — venv branch**
+
+- [x] Detect installed version managers: `_init_detect_version_managers_available()` does presence checks for `asdf` and `pyenv` on PATH. Hard-fail applies only when the user is requesting a pin (flag supplied OR interactive selection); no-flag + non-interactive falls through to the no-pin skip path silently — absence of a manager is fine when no pin was requested.
+- [x] Version-manager sub-prompt (interactive path): `ui_select` with options `[asdf, pyenv]` and asdf as default. Auto-picks the single one when only one manager is installed.
+- [x] "Pick from installed" prompt — `_init_list_installed_python_versions(manager)` parses `asdf list python` (strip `*`/whitespace) or `pyenv versions --bare`, filtered to `^3\.`. Final two options are `more...` and `skip (no pin)`.
+- [x] `more...` secondary prompt — `_init_list_available_python_versions(manager)` parses `asdf list all python` or `pyenv install --list` filtered to `^3\.` (drops 2.x, stackless-*, activepython-*, pypy*).
+- [x] On selection (flag-driven or interactive), the wizard sets `VERSION_MANAGER` to the explicit pick and calls the existing `set_local_python_version` ([lib/env_detect.sh](../../lib/env_detect.sh)). asdf is preferred when both are available; the wizard's pick overrides the implicit precedence in `detect_version_manager()`.
+
+**Tasks — micromamba branch**
+
+- [x] `environment.yml` exists → `Python: managed via environment.yml`. The existing pin owns it; the wizard does not modify env.yml.
+- [x] `environment.yml` absent + `--python-version <ver>` → `Python: <ver> (--python-version, will be written to environment.yml)`. No write in the wizard; the existing `scaffold_starter_environment_yml` writes it later in the init flow.
+- [x] `environment.yml` absent + no flag → `Python: <DEFAULT_PYTHON_VERSION> (default, will be written to environment.yml)`. The default is the `python_version` value `init_project()` already passes (initialised to `DEFAULT_PYTHON_VERSION`).
+- [x] No manager detection on the micromamba branch — micromamba pins via env.yml, not asdf/pyenv.
 
 **Tasks — tests**
 
-- [x] Add bats unit tests for the new helper in [tests/unit/test_envrc_template.bats](../../tests/unit/test_envrc_template.bats) (15 tests): fixed output shape, no hand-rolled `export PATH=`, correct sentinel per backend, asdf guard appended when active, idempotency, pre-existing file preservation, project-dir independence.
-- [x] Add integration tests in [tests/integration/test_envrc_template.py](../../tests/integration/test_envrc_template.py) asserting the generated `.envrc` contains `PATH_add` and no relative PATH literals for both `--backend venv` (6 tests) and `--backend micromamba` (1 test, skipped when micromamba unavailable).
-- [x] Regression coverage for the original bug is provided by the integration test `test_envrc_is_project_dir_independent` (no absolute project-dir path baked into `.envrc`) plus the unit tests asserting `PATH_add` is the only path-mutating primitive. The full `bash -l` rc-file simulation was evaluated and judged unnecessary given the direct assertions on the file shape.
-- [x] Full bats suite and pytest integration suite verified — no regressions introduced (2 pre-existing `run_command` bats failures and 4 pre-existing/environmental pytest failures documented separately).
-
-**Tasks — documentation**
-
-- [x] **[docs/specs/tech-spec.md](../../docs/specs/tech-spec.md)** — added "Uniform `.envrc` template (v2.3.2 / Story K.a.2)" subsection under Cross-Cutting Concerns; added `write_envrc_template` row to the `lib/utils.sh` function table; updated asdf/direnv Coexistence subsection to point at the new helper.
-- [x] **[docs/site/usage.md](../../docs/site/usage.md)** — replaced the stale `layout python` example with the real v2.3.2 template.
-- [x] **[docs/site/backends.md](../../docs/site/backends.md)** — updated venv "How it Works" step 4 and micromamba step 5 to reference the uniform `.envrc` template.
-- [x] **[README.md](../../README.md)** — Backend Comparison table "Activation" row now reads "`direnv` (uniform `.envrc` template) or `pyve run`" for both backends.
-- [x] **[docs/specs/project-essentials.md](../../docs/specs/project-essentials.md)** — appended "Uniform `.envrc` template — all backends share one activation shape" section with the four-line contract and the "adding a new backend" guidance.
-
-**Tasks — release**
-
-- [x] Bumped `VERSION` in [pyve.sh](../../pyve.sh) to `2.3.2`.
-- [x] Updated the VERSION row in [docs/specs/tech-spec.md](../../docs/specs/tech-spec.md).
-- [x] Added a v2.3.2 entry to [CHANGELOG.md](../../CHANGELOG.md) — "Bug" + "Design" + affected-file summary, matching the K.a.1 entry shape.
-
-**Non-goals for this story**
-
-- Adding uv / poetry backends. The uniform template *enables* them but this story ships only venv + micromamba.
-- Replacing `.envrc` with any non-direnv activation mechanism for `--no-direnv` flows. Under `--no-direnv`, `pyve run` continues to be the canonical activation path; no `.envrc` is generated at all.
+- [x] 4 bats tests for `_init_detect_version_managers_available` (none / asdf-only / pyenv-only / both); requires PATH-cleaning in the test stub helper to keep the dev machine's real asdf/pyenv from leaking in.
+- [x] 4 bats tests for `_init_list_*_python_versions` (asdf and pyenv, installed and available), covering `*`-stripping for asdf, bare format for pyenv, and the `^3\.` filter dropping 2.7.18 / stackless / pypy.
+- [x] 6 bats tests for the venv-branch wizard paths: flag + asdf, flag + pyenv-only, flag + both → asdf preferred, flag + no managers → hard-fail, bypass + no flag → silent skip, bypass + no flag + no managers → silent skip.
+- [x] 4 bats tests for the micromamba-branch wizard paths: env.yml present → "managed via environment.yml", env.yml absent + flag → "(--python-version, will be written to environment.yml)", env.yml absent + no flag → "(default, will be written to environment.yml)", no managers + micromamba → still succeeds (no manager dependency).
+- [x] Bug surfaced + fixed during TDD: the L.k.3 backend prompt's flag-set path needs to write `backend_flag="$arg_backend_flag"` so the dynamic-scope variable is populated even when the wizard is invoked from a context that didn't pre-set `backend_flag` (e.g. bats `run _init_wizard ...`). Without this, the L.k.4 micromamba branch check (`if [[ "$backend_flag" == "micromamba" ]]`) would fall through to the venv branch in tests.
 
 ---
 
-### Story K.a.3: Command coverage audit [Done]
+### Story L.k.5: Wizard — project-guide install prompt [Done]
 
-Produce `docs/specs/phase-K-command-coverage-audit.md` mapping every command's behaviors to existing test coverage and identifying backfill targets. No code changes. Inputs to all subsequent K stories.
+**Goal.** Last prompt in the wizard. If project-guide is already present in the target dir, run `project-guide update` instead of prompting (the safe refresh path).
 
 **Tasks**
 
-- [x] Create `docs/specs/phase-K-command-coverage-audit.md` with one section per command: `init`, `purge`, `update`, `check`, `status`, `lock`, `run`, `test`, `testenv`, `python`, `self`
-- [x] For each command, document: inputs (positional + flags + env vars), outputs (stdout, stderr, exit codes, files created/modified), side effects (`.pyve/`, `.gitignore`, `.envrc`, rc files, etc.), cross-command helpers it calls (which `lib/<topic>.sh` functions)
-- [x] For each command, list every integration test (pytest) that exercises it and every unit test (Bats) that touches its helpers; note coverage gaps
-- [x] Identify backfill targets: behaviors that need new characterization tests *before* extraction can proceed safely. Be conservative — gaps are easier to spot now than after the move
-- [x] Note pre-existing coverage anomalies (tests that depend on `pyve.sh` line numbers, internal function names, etc.) — these become extraction-blockers if not handled
-- [x] Surface any cross-command coupling discovered during the audit (e.g., `init` calls a function that also gets called from `update`); these inform the `lib/<topic>.sh` vs command-private placement decisions in K.b–K.l
-- [x] Present the audit document for review before K.b starts
+- [x] Detection helper `_init_detect_project_guide_present` in [lib/commands/init.sh](../../lib/commands/init.sh): returns 0 iff `.project-guide.yml` exists in cwd, matching the canonical install marker used by `pyve update` ([lib/commands/update.sh:123](../../lib/commands/update.sh#L123)).
+- [x] When already present and no flag is supplied: render `project-guide: refresh (already installed)` and set `project_guide_mode="yes"` so the existing post-env `_init_run_project_guide_hooks` runs the update path (it already branches on `.project-guide.yml` at lines 135-139, calling `run_project_guide_update_in_env` when present). No new wiring needed in the hook.
+- [x] When project-guide is declared in project deps (`project_guide_in_project_deps()` in [lib/utils.sh](../../lib/utils.sh)): render `project-guide: managed by your project dependencies` and set `project_guide_mode="no"`. The deps signal wins over the install-marker signal — pyve refuses to touch a user-managed install to avoid version-pin conflicts at the next `pip install -e .`.
+- [x] When neither signal is present and no flag is supplied: in interactive mode (real TTY + bypass off), prompt with default no via `ui_select`; in non-TTY/bypass mode, render `project-guide: skipped (no flag)` and set `project_guide_mode="no"`.
+- [x] Flag-override path: `--project-guide` renders `install (--project-guide)`; `--no-project-guide` renders `skipped (--no-project-guide)`. The wizard does not modify `project_guide_mode` in these cases — `init_project()` already set it from the flag arm.
+- [x] 11 bats unit tests for each branch: detection helper (present / absent), flag-driven render (--project-guide / --no-project-guide), `.project-guide.yml`-present render and `project_guide_mode="yes"` side effect, deps-declared render and `project_guide_mode="no"` side effect, bypass + no-signal render and side effect, deps-vs-install-marker precedence (deps wins).
 
 ---
 
-### Story K.b: Extract 'run' [Done]
+### Story L.k.6: Wizard — end-to-end integration + features.md [Done]
 
-First extraction. Smallest, simplest command — proves the dispatcher contract in actual code. Establishes the per-command extraction pattern that K.c–K.l will follow.
+**Goal.** Close out the wizard work: features.md documentation update and the integration tests from the original L.k slate.
 
 **Tasks**
 
-- [x] **Inventory:** document `run`'s responsibilities (venv vs micromamba dispatch; arg pass-through; exit-code propagation; asdf compat env-var injection per FR-J2); list cross-command helpers it calls
-- [x] **Coverage audit (story-local):** quote K.a's `run` section; note any new gaps surfaced by closer inspection
-- [x] **Backfill characterization tests** against current `pyve.sh` (should pass immediately); commit before extraction — *audit found no gaps; existing 26 pytest + 3 J.c bats tests are sufficient characterization.*
-- [x] **Extract** `run()` to `lib/commands/run.sh` with the file-header license block; add direct-execution guard; add `source lib/commands/run.sh` line in `pyve.sh`'s sourcing block (alphabetical position); update the dispatcher's `run` arm to call the extracted function
-- [x] **Verify green:** full Bats + pytest suite passes on macOS + Linux; CLI surface byte-identical (spot-check `pyve run python --version` and `pyve --no-direnv run env | grep ASDF` if asdf is present)
-- [x] Append `lib/commands/run.sh` function-signature table to tech-spec.md's `lib/commands/<name>.sh` section
-- [x] **Cross-cutting prep (per K.a.3 audit findings F-1, F-2, F-3):** `install_self` now also copies `lib/commands/*.sh`; `tests/unit/test_bash32_compat.bats` SOURCES array now includes `lib/commands/*.sh`; `tests/unit/test_asdf_compat.bats` `source_pyve_fn` helper now takes an optional file-path arg, with the J.c `run_command` callsites updated to point at `lib/commands/run.sh`. These three changes land with K.b so K.c–K.l inherit a working pattern.
+- [x] Updated [features.md](features.md) FR-1 with a new FR-1a "Interactive `pyve init` wizard (Phase L / v2.6.0)" subsection: prompt set + order, default-resolution rules per prompt (including the venv/micromamba split for the Python pin and the deps-vs-install-marker precedence for project-guide), flag-override behavior, TTY policy, and the `PYVE_INIT_NONINTERACTIVE=1` bypass env var. Out-of-scope flags listed explicitly.
+- [x] pytest integration test in [tests/integration/test_init_wizard.py](../../tests/integration/test_init_wizard.py): `pyve init --backend venv ...` proceeds non-interactively and the wizard renders `Backend: venv (--backend)`.
+- [x] pytest integration test: `pyve init` in a directory containing `environment.yml` resolves the backend to `micromamba` via the wizard's auto-detect path. Driven via the non-TTY+bypass branch (closest faithful proxy for the interactive "press enter on the default" case — same detection signal, same resolved value; real-PTY arrow-key scripting stays out of unit-testable scope per L.i / L.k.4).
+- [x] pytest integration test: `pyve init` with `PYVE_INIT_NONINTERACTIVE=0` (overriding the harness default) and no flags exits non-zero with the wizard's TTY guard error message including "stdin is not a TTY" and "--backend".
+- [x] Test-harness alignment: [tests/helpers/pyve_test_helpers.py](../../tests/helpers/pyve_test_helpers.py) `PyveRunner.run` now sets `PYVE_INIT_NONINTERACTIVE=1` by default under pytest (mirroring the bats `setup_pyve_env` change in L.k.2). Without this, every existing pytest invocation of `pyve init` with anything less than all three prompt-bearing flags would now hard-fail on the wizard's TTY guard. The new TTY-guard test explicitly overrides this default via `monkeypatch.setenv`.
+- [x] Cross-checked the shipped wizard against [tech-spec.md "Interactive `pyve init` wizard"](tech-spec.md) — all three prompts (with the venv/micromamba split for Prompt 2 and the deps-vs-install-marker precedence for Prompt 3), the TTY policy, the bypass env var, and the always-render-banner contract are implemented as specified. No gaps.
 
 ---
 
-### Story K.c: Extract 'lock' [Done]
+### Story L.k.7: CI cleanup — bash 3.2 empty-array fix + wizard-test environment isolation [Done]
 
-Small, isolated command. Absorbs the existing `run_lock` helper from `pyve.sh` (per the tech-spec annotation: "moves to `lib/commands/lock.sh` as part of the command-module extraction phase").
+**Goal.** Close out the L.k arc with a clean CI/CD baseline before L.l begins. Two unrelated regressions surfaced in the macOS GitHub Actions runner once the wizard work landed: (1) a bash-3.2 empty-array bug in [`_init_detect_version_managers_available`](../../lib/commands/init.sh) that crashed `pyve init` mid-flow whenever neither asdf nor pyenv was on PATH; (2) wizard bats tests that implicitly depended on the dev machine's installed asdf and started failing on stripped-down CI runners. Both root causes were latent throughout L.k.4 / L.k.5 but didn't surface locally because the dev environment had asdf installed and a modern bash on PATH. Fixing them here so every subsequent story starts from green CI.
 
-**Tasks**
+**Tasks — `${available[*]}` empty-array fix (CI-only crash)**
 
-- [x] **Inventory:** `lock`'s responsibilities (backend guard, conda-lock prerequisite check, platform detection, output filtering, rebuild guidance); helpers it calls (`get_conda_platform`, etc.)
-- [x] **Coverage audit (story-local):** quote K.a's `lock` section
-- [x] **Backfill characterization tests** if needed (existing `test_lock_command.py` may already cover the surface) — *audit found no mandatory backfill; existing 12 pytest + 37 adjacent bats tests are sufficient.*
-- [x] **Extract** `lock()` (and the `run_lock` helper, renamed to `lock` itself or kept as `_lock_run_conda_lock` per audit's recommendation) to `lib/commands/lock.sh` — *function initially renamed `run_lock` → `lock`; subsequently renamed `lock` → `lock_environment` in the K.f follow-up under the project-essentials "Function naming convention: `<verb>_<operand>`" rule (operates on environment dependency graph). The intermediate clean-name choice violated the rule.*
-- [x] **Verify green** + update tech-spec annotation (drop the "currently in `pyve.sh`" note on `run_lock`'s row)
-- [x] Append function-signature table to tech-spec.md
+- [x] [lib/commands/init.sh](../../lib/commands/init.sh) `_init_detect_version_managers_available()` — change `printf '%s' "${available[*]}"` to `printf '%s' "${available[*]:-}"`. **Why:** [pyve.sh:26](../../pyve.sh#L26) sets `set -euo pipefail`, which is inherited by sourced libraries. On bash 3.2 (macOS system bash), `"${empty_array[*]}"` triggers `unbound variable` even when `set -u` was not explicitly enabled in the helper itself — modern bash (4.4+) treats it as the empty string. The bug crashes `pyve init` mid-wizard on any runner without asdf/pyenv installed, killing the flow before `validate_backend` runs (which is why subprocess tests like `test_error_ui.bats::error: 'init --backend foo'` lost their "Invalid backend: foo" output: the wizard never reached that step). Symptom in CI: `lib/commands/init.sh: line 214: available[*]: unbound variable`.
+- [x] [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) — new regression test "no 'unbound variable' under 'set -u' (bash 3.2 / pyve.sh contract)" that re-sources `lib/ui/core.sh` + `lib/commands/init.sh` from a fresh `/bin/bash -c "set -euo pipefail; ..."` shell with PATH cleaned to a manager-less directory. Locks in the contract: the helper must work under pyve.sh's runtime shell options.
 
----
+**Tasks — Wizard tests independent of dev-machine asdf**
 
-### Story K.d: Extract 'python' namespace [Done]
+- [x] [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) `_stub_managers` — `rm -rf "$TEST_DIR/.fakebin"` at the start so each call resets prior stubs. Otherwise calling `_stub_managers pyenv` after a setup-time `_stub_managers asdf` would leave both stubs in place, breaking "only X" tests.
+- [x] [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) `setup()` — call `_stub_managers asdf` so the default test environment has a usable manager. **Why:** L.k.2/L.k.3/L.k.5 tests pass `python_supplied="true"` to bypass the TTY guard (a leftover convention from when those args were 3-positional). With `python_supplied="true"` and `backend="venv"`, the wizard's flag-driven Python pin path runs, which calls `_init_detect_version_managers_available()` and **hard-fails by design** when no managers are on PATH. On dev macOS this never tripped because asdf is installed; on Linux CI without asdf/pyenv it tripped 11 wizard tests at once. Stubbing in setup gives those tests the manager they implicitly assumed; tests that explicitly test no-manager / single-manager / both-managers scenarios already override PATH or call `_stub_managers` themselves and remain unaffected.
 
-First namespace extraction. Smallest namespace — `set` + `show` only. Proves the namespace single-file convention from project-essentials.
+**Tasks — `--backend auto` resolution**
 
-**Tasks**
+- [x] [lib/commands/init.sh](../../lib/commands/init.sh) `_init_wizard` backend prompt — split the flag-set arm into two: `--backend auto` resolves through `_init_detect_backend_default` and renders `Backend: <resolved> (--backend auto, detected)`; non-auto values render verbatim as before. **Why:** previously, `pyve init --backend auto` left `backend_flag="auto"` through the Python prompt, where `if [[ "$backend_flag" == "micromamba" ]]` was false and the prompt fell to the venv branch — hard-failing on no managers even when `environment.yml` was clearly the right signal. The downstream `get_backend_priority` later resolved `auto` to a concrete backend, but the wizard never reached that step. Symptom in CI: `tests/integration/test_auto_detection.py::test_detects_micromamba_from_environment_yml` failed with the no-managers hard-fail message. Note: the wizard uses `_init_detect_backend_default` (file-only) rather than the full `get_backend_priority` (file + config), to avoid pulling in `get_backend_priority`'s ambiguous-detection prompt mid-wizard. The config-vs-file precedence mismatch is theoretical (an already-init'd project re-running with `--backend auto` while having a config that conflicts with files) and not currently observed.
+- [x] [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) — 3 new tests for the `--backend auto` path: env.yml present → resolves to micromamba and routes the Python prompt through the micromamba branch; no signals → resolves to venv default; caller's `backend_flag` is mutated from `"auto"` to the resolved value.
+- [x] [tests/unit/test_init_wizard.bats:214](../../tests/unit/test_init_wizard.bats#L214) — fixed a stale 3-arg `_init_wizard` call (leftover from the L.k.4 signature bump that wasn't caught by the bulk replace). Now passes 4 args matching the current contract.
 
-- [x] **Inventory:** namespace dispatcher + leaves (`python_set`, `python_show`); responsibilities of each
-- [x] **Coverage audit (story-local):** quote K.a's `python` section
-- [x] **Backfill characterization tests** for both leaves (set with valid version, set with invalid format, show with `.tool-versions`, show with `.python-version`, show with neither) — *added 2 hermetic backfills (`show` falls back to `.pyve/config`; `show` rejects extra args). Audit gap 1 (`python set` happy-path side-effect) deferred: not hermetic without a stubbed/probed version manager — better suited to an integration test alongside K.l.*
-- [x] **Extract** `python()` dispatcher + `python_set()` + `python_show()` to a single `lib/commands/python.sh` (per project-essentials: namespace commands are single files) — *initial extraction renamed `python_command` → `python` per audit recommendation; this regressed CI integration tests because the bash function `python()` shadowed the `python` interpreter binary at internal call sites (`python -m venv .venv`, `python -c '...'`). The unit-test suite (729 Bats) didn't catch it — every Bats test invokes pyve as a subprocess, so the function table didn't survive the boundary. Reverted: dispatcher now stays named `python_command`. The leaves keep their renames (`python_set`, `python_show`) — compound names don't collide. Added F-11 to K.a.3 audit and a "Function-name collision rule" entry to project-essentials.md so K.f and any future renames screen for this hazard.*
-- [x] **Verify green** including help-text byte-identical for `pyve python --help`, `pyve python set --help`, `pyve python show --help` — *post-revert: 729/729 Bats passing; `pyve init --backend venv` smoke succeeds end-to-end (the formerly-failing flow); 2 of the 5 CI failures (TestMacOSSpecific::test_venv_on_macos, TestCrossPlatform::test_path_separators) re-run green locally.*
-- [x] Append function-signature table to tech-spec.md
+**Tasks — wizard's project-guide block must not pre-resolve cases the post-env hook owns**
 
----
+- [x] [lib/commands/init.sh](../../lib/commands/init.sh) `_init_wizard` project-guide prompt — **deps-managed branch** no longer assigns `project_guide_mode="no"`. The wizard renders `project-guide: managed by your project dependencies` as a summary; pg_mode stays empty so the existing `_init_run_project_guide_hooks` runs its detailed auto-skip-from-deps message ("Detected 'project-guide' in your project dependencies. Pyve will not auto-install or run 'project-guide init'…"). **Why:** pre-setting `"no"` made the hook hit the `--no-project-guide`-flag path, emitting a misleading `Skipping project-guide install (--no-project-guide)` (the user never passed that flag) and silencing the accurate deps-managed message. Symptom in CI: `tests/integration/test_project_guide_integration.py::TestAutoSkipWhenInProjectDeps::test_auto_skip_when_in_pyproject_toml` and `test_auto_skip_when_in_requirements_txt` both asserted the deps-managed message and failed.
+- [x] [lib/commands/init.sh](../../lib/commands/init.sh) `_init_wizard` project-guide prompt — **non-TTY/bypass + no-flag + no-signal branch** no longer assigns `project_guide_mode="no"`. Renders `project-guide: (env / CI default)` and leaves pg_mode empty so the hook's existing priority-3/4/5/6 logic (PYVE_NO_PROJECT_GUIDE / PYVE_PROJECT_GUIDE / `project_guide_in_project_deps` / CI / PYVE_FORCE_YES / interactive) still applies. **Why:** pre-setting `"no"` broke the documented CI-default-install behavior (priority 5: "CI / PYVE_FORCE_YES → install"). With `CI=1` + `PYVE_TEST_ALLOW_PROJECT_GUIDE=1`, the hook *should* install project-guide, but the wizard short-circuited that. Symptom in CI: `TestRealInstall::test_install_with_completion_wires_everything`, `test_ci_asymmetry_install_yes_completion_no`, and `test_idempotent_reinstall_is_fast` all asserted `_project_guide_importable(test_project)` and failed because pg_mode="no" forced a skip.
+- [x] [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) — updated 2 L.k.5 unit tests to assert the new contract: `project_guide_mode` stays empty in the deps-managed and non-TTY-no-signal branches (was previously asserted as `"no"`). The new assertions are aligned with the actual UX: the wizard's job is to render the user-visible summary; the hook owns the install/skip decision and emits the detailed reasoning.
 
-### Story K.e: Extract 'self' namespace [Done]
+**Tasks — Verification**
 
-`install` + `uninstall`. Decision point: does `install_prompt_hook` belong in `self.sh` or in `init.sh`? K.a's audit informs this — placement determined by which command(s) call it.
+- [x] Reproduced the empty-array crash locally: `set -euo pipefail; a=(); printf "%s\n" "${a[*]}"` → `bash: a[*]: unbound variable` on `/bin/bash` (3.2.57). With the `:-` default → empty output, exit 0.
+- [x] Simulated Linux CI by clearing PATH inheritance: `env -i HOME="$HOME" PATH=/usr/bin:/bin bats tests/unit/` — full suite **859/859 green** (zero `not ok`). This proves the unit-suite fix without needing to push and wait for CI.
+- [x] Re-ran the previously failing pytest integration suites locally: `TestAutoSkipWhenInProjectDeps` (3 tests, was 2 failing) and `TestRealInstall` (3 tests, was 3 failing) — all 6 now pass.
+- [x] Local full unit suite: 859/859 green. Pytest integration baseline matches L.k.6 (the pre-existing failures called out in the "Future: Fix pre-existing integration test failures" story are unchanged).
 
-**Tasks**
+**Notes**
 
-- [x] **Inventory:** namespace dispatcher + `self_install` + `self_uninstall`; document `install_prompt_hook`'s caller graph from K.a
-- [x] **Coverage audit (story-local):** quote K.a's `self` section
-- [x] **Backfill characterization tests** (install + uninstall round-trip; rc-file preservation; `.local/.env` preservation when non-empty; sentinel block removal on uninstall for both `~/.zshrc` and `~/.bashrc`) — *deferred. The audit-flagged backfill targets all require HOME-monkeypatch integration tests (writing to a redirected `~/.local/bin`, asserting on rc-file mutations). Adding them is non-trivial — new pytest file, new fixtures — and out of scope for a pure refactor that does not change install/uninstall behavior. Existing safety net retained: 2 dispatch tests (`test_cli_dispatch.bats`), per-sub-help byte stability (`test_subcommand_help.bats`), 71 helper tests for the SDKMan-aware insertion (`test_project_guide.bats`). The 5 audit-flagged gaps remain known and tracked at K.a.3 §`self`.*
-- [x] **Decide and document `install_prompt_hook` placement:** F-5 resolved — `install_prompt_hook` and `uninstall_prompt_hook` are **self-namespace-private** (only callers are `install_self` / `uninstall_self`), so they move with K.e as `_self_install_prompt_hook` / `_self_uninstall_prompt_hook`. Not init-private; not cross-command-shared.
-- [x] **Extract** to `lib/commands/self.sh` — single-file namespace per project-essentials F-9. 9 functions moved (3 public: `self_command` (initially `self`, reverted in K.f follow-up under the "Function naming convention: `<verb>_<operand>`" rule), `self_install`, `self_uninstall`; 6 private with `_self_` prefix).
-- [x] **Verify green** — bats 729/729; smoke checks for `pyve self`, `pyve self bogus`, `pyve self --help`, `pyve self install --help`, `PYVE_DISPATCH_TRACE` for both leaves all byte-identical.
-- [x] Append function-signature table to tech-spec.md (with the F-5 placement decision recorded).
+- L.k.7 is bundled into the L.k arc rather than treated as a standalone hotfix because both fixes are direct consequences of the wizard work and the natural inflection point is "CI is clean, ready for L.l." It still aggregates into the single `v2.6.0` bump in L.m.
+- Future-pinned: the empty-array pattern is easy to reintroduce. A general-purpose bats test that greps for `"\${[a-z_]+\[[*@]\]}"` (without `:-` or `:?` defaults) across `lib/` could lock the contract more broadly. Deliberately not adding it here — the pattern is uncommon enough that one-off review at PR time is fine, and a noisy regex would catch lots of safe call sites.
 
 ---
 
-### Story K.f: Extract 'test' [Done]
+### Story L.l: End-of-init 'Next steps:' summary [Done]
 
-Small command that delegates to `testenv_run`. Comes before K.g, which means a temporary cross-file call (`test` in `lib/commands/test.sh` calls `testenv_run` still in `pyve.sh`); resolves naturally on K.g.
-
-**Tasks**
-
-- [x] **Inventory:** `test`'s responsibilities (auto-install pytest prompt, delegate to testenv); helpers it calls
-- [x] **Coverage audit (story-local):** quote K.a's `test` section
-- [x] **Backfill characterization tests** (pytest-present, pytest-missing-and-prompted, pytest-missing-and-CI, args pass-through, exit-code propagation) — *deferred. The 5 audit-flagged gaps decompose as: 3 implicitly covered by harness (`PYVE_TEST_AUTO_INSTALL_PYTEST=1` + every integration test running pytest exercises auto-install, args pass-through, exit-code propagation); 2 require pty fixturing (TTY accept/decline) or real Python (non-TTY no-auto-install error path needs `ensure_testenv_exists` to succeed first). Skipping bats backfill mirrors the K.e judgment. Existing safety net: 2 integration tests in `test_testenv.py` invoke `pyve test` directly + the harness implicitly exercises gaps 1/5/6 across the whole suite.*
-- [x] **Extract** `test()` to `lib/commands/test.sh`; the call to `testenv_run` resolves to the in-`pyve.sh` function for now — *function named `test_tests` per the project-essentials "Function naming convention: `<verb>_<operand>`" rule (`pyve test [args]` operates on tests; args explicit or implicit). NOT named `test` (F-11: bash-builtin shadow). The same K.f follow-up that introduced this rule retro-renamed K.c's `lock` → `lock_environment` and reverted K.e's `self()` → `self_command()`. F-8 correction: there is no `testenv_run` function — the K.f story's "temporary cross-file call to `testenv_run`" caveat is stale. `test_tests` calls `ensure_testenv_exists` (still in pyve.sh until K.g; cross-file call resolves at runtime), `_test_has_pytest`, `_test_install_pytest_into_testenv`, then `exec`s pytest. The two helpers move with K.f as `_test_` private.*
-- [x] **Verify green** — bats 729/729 still passing; smoke `pyve init --backend venv` followed by `pyve test -q` against a trivial test file: pytest auto-installed into testenv, test ran, exit 0 with the expected output.
-- [x] Append function-signature table to tech-spec.md (with the F-11 stay-as-`test_command` note and the F-8 stale-caveat correction).
-- [x] Note in story-completion comment: "Temporary cross-file call to `testenv_run` (still in `pyve.sh`); resolves on K.g." — *correction recorded above: the only cross-file call is to `ensure_testenv_exists` (NOT `testenv_run`), and K.g moves that helper to `lib/utils.sh` rather than into `lib/commands/testenv.sh`.*
-
----
-
-### Story K.g: Extract 'testenv' namespace [Done]
-
-Largest namespace command — `init` + `install` + `purge` + `run`. After this story, K.f's temporary cross-file call resolves to a clean call into `lib/commands/testenv.sh`.
+**Goal.** After successful `pyve init`, print a numbered "Next steps:" block tailored to the chosen backend and detected scaffolding. Replaces the current ad-hoc trailing banners with one coherent post-install summary.
 
 **Tasks**
 
-- [x] **Inventory:** dispatcher + four leaves; responsibilities and helper calls for each
-- [x] **Coverage audit (story-local):** quote K.a's `testenv` section; this is one of the more test-heavy commands so coverage should be strong
-- [x] **Backfill characterization tests** for any audit-identified gaps — *deferred. All 4 audit gaps (`install` without `-r` and without `requirements-dev.txt`, `install -r non-existent`, `run <missing-from-PATH>`, `purge` when absent) require a real testenv (Python via `python -m venv`). Mirrors K.f's deferral. Existing safety net retained: 6 integration tests in `test_testenv.py`, 10 grammar tests in `test_testenv_grammar.bats`, 3 UI tests in `test_testenv_ui.bats`. Smoke-verified manually post-extraction: full lifecycle (init → install → run → purge) green; all 5 error paths byte-identical to pre-extraction.*
-- [x] **Extract** dispatcher (`testenv_command()` per the project-essentials "Function naming convention" rule) + four leaves (`testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`) to `lib/commands/testenv.sh`. Per audit F-7 / F-8, also move `purge_testenv_dir` and `ensure_testenv_exists` (plus its `testenv_paths` dependency) from `pyve.sh` to `lib/utils.sh` (cross-command shared helpers — `purge` / `test` / `init` all use them).
-- [x] **Verify green** including the F-8-corrected expectation: K.f's `test_tests` now calls `ensure_testenv_exists` from `lib/utils.sh` (no longer cross-file into `pyve.sh`); the K.f story's caveat about `testenv_run` is stale (no such function exists). — *bats 729/729; smoke `pyve testenv init` → `pyve testenv install` → `pyve testenv run pytest --version` → `pyve testenv purge` end-to-end green; `testenv install -r non-existent.txt` correctly errors with "Requirements file not found" (audit gap 2 implicitly verified by manual smoke).*
-- [x] Append function-signature table to tech-spec.md
+- [x] Inventory of pre-L.l trailing output: 4 ad-hoc info-line variants (per backend × direnv state) immediately before `footer_box`. None covered by existing tests (grep for the literal strings returned no results), so removal is safe.
+- [x] Design locked: numbered list with conditional items:
+  - **`cd <project>` deliberately omitted** — pyve init's `<dir>` arg is the venv-directory NAME (within cwd), not a project path. There's no current pyve flow where init runs in a different project dir than the user's cwd, so this step would never trigger; including it would be misleading.
+  - `direnv allow` — when `--no-direnv` was **not** passed; always advise even when `.envrc` already exists (the user may not have run `direnv allow` yet).
+  - `pyve run <command>` — substitutes for `direnv allow` under `--no-direnv` (alternative-activation pattern for CI/CD).
+  - `pyve testenv install -r requirements-dev.txt` — when `requirements-dev.txt` exists. Init creates the testenv directory but doesn't install dev deps — the user still needs this command.
+  - `Read docs/project-guide/go.md` — when `.project-guide.yml` exists (canonical install marker, matching `pyve update`'s detection signal). Covers both fresh-install and refresh cases.
+  - Trailing micromamba+direnv caveat — preserved from the pre-L.l output ("ignore micromamba's 'activate' instructions above — Pyve uses direnv").
+- [x] `_init_print_next_steps()` implemented in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private per project-essential prefix rule). Signature: `_init_print_next_steps <backend> <no_direnv> <env_path>`; the `env_path` arg is reserved for a future verbose-mode log reference. Uses `banner` for the section header and `info` for the caveat; numbered items use `printf '  N. ...\n'`. Wired in to replace the ad-hoc trailing lines in both the venv and micromamba branches of `init_project()`.
+- [x] **Verbose-mode log reference deferred.** L.g shipped with discard-on-success semantics for `run_quiet` — there is no persistent tmpfile to reference after a successful init. The signature reserves `env_path` for a future change if `run_quiet` ever grows a "keep on success" mode, but no verbose-only line is added today. (Verbose mode still streams subprocess output live, which is the user-visible difference.)
+- [x] [features.md](features.md) FR-1 extended with FR-1b: precondition table + the micromamba+direnv caveat.
+- [x] 12 bats unit tests in [tests/unit/test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats) covering: section header always present; direnv-allow vs pyve-run alternation; testenv install precondition (present/absent); project-guide go.md precondition (present/absent); micromamba caveat conditions (micromamba+direnv only); item numbering; combined all-conditions case.
+- [x] 4 pytest integration tests in [tests/integration/test_init_next_steps.py](../../tests/integration/test_init_next_steps.py): block renders at end of init; `--no-direnv` substitutes pyve-run; testenv install hint when `requirements-dev.txt` exists; testenv install hint absent when no `requirements-dev.txt`. The "skips direnv" test uses `pyve.run("init", ...)` directly (rather than `pyve.init()`) so its `timeout=300` kwarg is treated as a subprocess timeout — a quirk of the test helper that was easier to work around than to fix in this story.
 
----
+### Story L.m: Phase L wrap-up — project-essentials, version bump, phase closure [Done]
 
-### Story K.h: Extract 'status' [Done]
+**When.** After every Phase L implementation story (L.b–L.l) is `[Done]` (or L.d explicitly deferred to a follow-up patch). This story is intentionally last in Phase L ordering so the `project-essentials.md` pass sees the codebase and docs **as they actually landed**, and so the single `v2.6.0` bump captures the entire phase's work in one release.
 
-Read-only command, no side effects. Well-bounded section design from `phase-H-check-status-design.md`.
+**Purpose.** Satisfy Acceptance criterion 7 in [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md): a focused hygiene pass over `docs/specs/project-essentials.md` plus the phase's single version bump.
 
-**Tasks**
+**Tasks — capture new invariants**
 
-- [x] **Inventory:** `status`'s responsibilities (sectioned read-only output: Project / Environment / Integrations); helpers it calls (config readers, package counters, etc.)
-- [x] **Coverage audit (story-local):** quote K.a's `status` section
-- [x] **Backfill characterization tests** (each section emits expected rows; always-zero exit code; behavior with missing `.pyve/config`) — *no backfill needed. Existing `test_status.bats` (25 tests) covers all three sections, the always-zero exit-code contract, the non-project fallback (`.pyve/config` missing), missing-venv, version drift, NO_COLOR, unknown-flag, etc. Audit's gap notes (more direct micromamba branch coverage; stale `conda-lock.yml` rendering specifically tested through `pyve status`) are minor and not extraction-blockers.*
-- [x] **Extract** `status_command()` → `show_status()` to `lib/commands/status.sh` per the project-essentials "Function naming convention" rule (`status` is a noun, not a verb; semantic alignment: `show_status()`) — *moved 10 functions: `show_status` orchestrator + 9 `_status_*` helpers (already prefixed). No private-helper renames; orchestrator-only.*
-- [x] **Verify green** — bats 729/729; smoke checks against the pyve project dir verify byte-identical output across all 3 sections (Project / Environment / Integrations), help text, positional-arg rejection (exit 1), unknown-flag rejection with closest-match suggestion, and `PYVE_DISPATCH_TRACE=1` trace.
-- [x] Append function-signature table to tech-spec.md
+- [x] Re-read Phase L artifacts (`phase-l-pyve-polish-audit.md`, phase-branch commits across L.b–L.l, the L.d project-guide-request spec).
+- [x] Appended the two firm invariants from the plan as a single combined entry "**`lib/ui/` is the extractable UX boundary — pyve-agnostic with one exception**" — covers both the boundary contract and the verbosity gate (`PYVE_VERBOSE` as single source of truth, `is_verbose()` as the only check site, the `PYVE_VERBOSE` whitelist exception inside `lib/ui/core.sh`).
+- [x] Appended unanticipated invariants surfaced during L.b–L.l:
+  - **"Bash 3.2 empty-array reads must use the `:-` default"** — surfaced in L.k.7 as a CI-only crash (`pyve.sh`'s `set -euo pipefail` + bash 3.2's empty-array-as-unbound semantics killed `pyve init` mid-wizard on runners without asdf/pyenv installed). Captures the rule + the canonical regression-test shape so the next contributor can lock in the contract from new helpers.
+  - **"`.project-guide.yml` is the canonical project-guide install marker"** — surfaced in L.k.5/L.k.6 once `pyve init` and `pyve update` both needed an "is project-guide installed?" signal. Pins the file (not the directory) as the source of truth, matching upstream's own state record. Prevents future divergence between consumers.
 
----
+**Tasks — prune and correct stale essentials**
 
-### Story K.i: Extract 'check' [Done]
+- [x] Walked `docs/specs/project-essentials.md` entry-by-entry. All 11 existing entries (File header conventions; Deprecation removal Cat A vs B; `is_asdf_active`; `lib/commands/<name>.sh`; explicit library sourcing; per-command help blocks; namespace single-files; uniform `.envrc`; function naming convention; function-name collision rule; cross-repo coordination with `project-guide`) verified accurate post-Phase-L. None reference the renamed `lib/ui.sh` or the dropped gitbetter-sync narrative — those references existed in the lib/ui.sh file's own header comment (replaced in L.e), not in project-essentials.md. Prune step is a no-op.
 
-~20 diagnostic checks. Large but well-bounded. Several check helpers (`doctor_check_*` in `lib/utils.sh`) **stay in `lib/utils.sh`** per the cross-command-helper rule — only the `check()` orchestrator and any check-private helpers move.
+**Tasks — version bump and CHANGELOG**
 
-**Tasks**
+- [x] [pyve.sh:32](../../pyve.sh#L32) `VERSION="2.4.0"` → `VERSION="2.6.0"`. Only source-of-truth pin (no `pyproject.toml` exists in this repo). Skipped v2.5.x per the phase plan — Phase L stories accumulated on the phase branch without per-story bumps and ship as one minor release.
+- [x] [CHANGELOG.md](../../CHANGELOG.md) — new `## [2.6.0] - 2026-05-07` entry, grouped by user-visible theme (Added / Changed / Fixed / Documentation) rather than per-story. Lead paragraph names "Phase L — Pyve Polish" and the high-level theme; subsections cover the wizard (with full prompt/flag details), the verbosity policy, the `lib/ui/` library, the end-of-init summary, the L.j step framing, the L.b/L.c diagnostic correctness fixes, the L.k.7 CI-cleanup fixes (bash 3.2 empty-array, `--backend auto`, project-guide block deferral), and the documentation drift resolved.
 
-- [x] **Inventory:** `check`'s responsibilities (run ~20 checks, aggregate severity, emit 0/1/2 exit code); list every `doctor_check_*` helper it calls and confirm they stay in `lib/utils.sh`
-- [x] **Coverage audit (story-local):** quote K.a's `check` section
-- [x] **Backfill characterization tests** for any audit-identified gaps; `pyve check` is severity-bearing so exit-code coverage matters — *no backfill needed. Existing 17 tests in `test_check.bats` cover all three exit-code paths (0/1/2), missing-config / missing-backend / missing-venv / missing-python error paths, version drift, missing-`.env`/`.envrc` warnings, escalation invariant (error not downgraded by later warning), summary footer, actionable-next-step messages, micromamba branch, unknown-flag. The 3 audit gaps (`pyve_version > running` warning, native-lib-conflict warning escalation through `pyve check`, all-pass exit-0 happy path) are minor and not extraction-blockers.*
-- [x] **Extract** `check_command()` → `check_environment()` (the orchestrator) to `lib/commands/check.sh` per the project-essentials "Function naming convention" rule (operand: the project's environment); `doctor_check_*` helpers stay in `lib/utils.sh`
-- [x] **Verify green** including all three exit-code paths (0 / 1 / 2) — *bats 729/729; manual exit-code spot-check: in-pyve-dir `pyve check` returns 2 (warning: `pyve_version` drift); in clean dir `pyve check` returns 1 (missing `.pyve/config`). Closure pattern preserved (`_check_pass`/`_check_warn`/`_check_fail` defined inside `check_environment`; helpers and `_check_summary_and_exit` see counter locals via dynamic scoping at call time). Documented this invariant explicitly in `lib/commands/check.sh`'s file header to prevent future contributors from "fixing" the closure pattern.*
-- [x] Append function-signature table to tech-spec.md
+**Tasks — close out Phase L**
 
----
-
-### Story K.j: Extract 'update' [Done]
-
-Non-destructive upgrade. Shares helpers with `init` — careful audit needed to decide which helpers move with `init` (K.l), which stay shared in `lib/utils.sh`, which become `update`-private.
-
-**Tasks**
-
-- [x] **Inventory:** `update`'s responsibilities (rewrite `.pyve/config` `pyve_version`, refresh `.gitignore` template, refresh `.vscode/settings.json` if present, refresh `.pyve/` layout, run project-guide step 2); cross-helper map vs `init`
-- [x] **Coverage audit (story-local):** quote K.a's `update` section
-- [x] **Backfill characterization tests** (no-op-when-already-current, re-running idempotency, `--no-project-guide` skips step 2, never rebuilds venv, never prompts) — *no backfill needed. `test_update.bats` already has 21 tests covering: help, missing-`.pyve/config`, missing-backend, version-bump, no-op-when-current, not-recorded-→-set, `.gitignore` refresh, H.e.2a ignore patterns, backend preservation, never-create-`.venv`/`.env`/`.envrc`/`.vscode`, never-touch-existing-`.venv`/`.env`, non-interactive, `--no-project-guide` skip path, `.project-guide.yml`-absent no-op, unknown-flag, top-level help mention, dispatch trace. All 5 audit-recommended characterization properties already covered.*
-- [x] **Decide helper placement.** Helpers called *only* by `init` and `update` (not other commands) stay in `lib/utils.sh` per the cross-command-helper rule (two callers = shared). Document each decision in the story — *moot per K.a.3 audit: no `pyve.sh`-internal helpers are shared between `init` and `update`. All cross-command helpers already live in `lib/utils.sh` (`update_config_version`, `write_gitignore_template`, `write_vscode_settings`, `run_project_guide_update_in_env`). `update_project` is fully self-contained.*
-- [x] **Extract** `update_command()` → `update_project()` to `lib/commands/update.sh` per the project-essentials "Function naming convention" rule (operand: the project; refreshes `.pyve/config`, `.gitignore`, `.vscode/settings.json`, project-guide — all project-level)
-- [x] **Verify green** — bats 729/729; smoke checks: `pyve update --help` (intact), `pyve update foo` (positional rejection exit 1), `pyve update --bogus` (closest-match unknown-flag exit 1), `pyve update` in clean dir (missing-`.pyve/config` error exit 1), `PYVE_DISPATCH_TRACE=1 pyve update` → `DISPATCH:update`.
-- [x] Append function-signature table to tech-spec.md
-
----
-
-### Story K.k: Extract 'purge' [Done]
-
-Medium complexity. `.gitignore` cleanup logic stays in `lib/utils.sh` (already used by `init`); `--keep-testenv` flag handling and venv/micromamba env removal are purge-private.
-
-**Tasks**
-
-- [x] **Inventory:** `purge`'s responsibilities (remove venv / micromamba env, version manager files, `.envrc`, `.env` if empty, `.gitignore` patterns, `.vscode/settings.json`); `--keep-testenv` flag behavior
-- [x] **Coverage audit (story-local):** quote K.a's `purge` section
-- [x] **Backfill characterization tests** for any gaps (preserve non-empty `.env`, preserve `conda-lock.yml` for micromamba, `--keep-testenv` preserves testenv) — *no backfill needed. Existing safety net: `test_purge_ui.bats` (6 tests, header/footer + `--yes` flag), `test_reinit.bats` (subset on `--keep-testenv` preservation), `test_testenv.py::test_testenv_survives_force_reinit` (the H.a-era idempotency invariant), partial coverage in `test_venv_workflow.py` and `test_micromamba_workflow.py`. The 4 audit gaps (empty-vs-non-empty `.env`, idempotency, micromamba named-removal-fallback, positional-arg vs config-derived precedence) are tracked but didn't block extraction.*
-- [x] **Extract** `purge()` → `purge_project()` to `lib/commands/purge.sh` per the project-essentials "Function naming convention" rule (operand: the project — removes venv, micromamba env, `.envrc`, `.env`, `.pyve/`, etc.) — *7 functions moved: `purge_project` orchestrator + 6 purge-private helpers renamed with `_purge_` prefix per project-essentials F (`purge_version_file` → `_purge_version_file`, etc.). `purge_testenv_dir` stays in `lib/utils.sh` (F-7, settled in K.g). Updated 2 callsites in `init()` (still in pyve.sh until K.l) from `purge --keep-testenv --yes` to `purge_project --keep-testenv --yes`; cross-file calls resolve at runtime.*
-- [x] **Verify green** including the H.a-era idempotency test (byte-identical `.gitignore` after purge-then-reinit) — *bats 729/729; smoke checks: `pyve purge --help` (intact), `pyve purge --bogus` (closest-match unknown-flag exit 1), `pyve purge --yes` end-to-end in a fixture project (removed all 5 artifacts: `.tool-versions`, `.venv`, `.pyve`, `.envrc`, `.env`), `PYVE_DISPATCH_TRACE=1 pyve purge` → `DISPATCH:purge`. The H.a-era `.gitignore` idempotency invariant is exercised by `test_reinit.bats` and integration `test_testenv_survives_force_reinit`.*
-- [x] Append function-signature table to tech-spec.md
-
----
-
-### Story K.l: Extract 'init' [Done]
-
-The largest extraction. ~300 lines of `init()` + helpers. Last in the order so it benefits from every prior story's pattern refinement. Absorbs `run_project_guide_hooks` as `_init_run_project_guide_hooks` (per the tech-spec annotation).
-
-**Tasks**
-
-- [x] **Inventory:** `init`'s responsibilities (backend detection, version manager setup, venv/micromamba env creation, pip-deps prompt, direnv configuration, `.env` setup, `.gitignore` rebuild, `.pyve/config` write, project-guide hooks, micromamba `.vscode/settings.json`, asdf compat); the long list of helpers it calls; private vs shared classification per K.a
-- [x] **Coverage audit (story-local):** quote K.a's `init` section; this is the most-tested command (`test_venv_workflow.py`, `test_micromamba_workflow.py`, `test_reinit.py`, `test_pip_upgrade.py`, etc.)
-- [x] **Backfill characterization tests** for any gaps; confidence here matters most because `init` is the primary user-facing command — *no backfill added in K.l. The audit-flagged gaps (interactive option-1 `update`, option-3 `cancel`, `--allow-synced-dir` positive override, `--no-install-deps` explicit assertion, mutually-exclusive flag-pair errors, option-2 backend-change rejection) are tracked in `docs/specs/phase-K-command-coverage-audit.md` for a future hardening pass. Extraction was a pure code move — no behavior changes — so the existing ~150+ tests across `test_venv_workflow.py`, `test_micromamba_workflow.py`, `test_reinit.py`, `test_force_backend_detection.py`, `test_envrc_template.py`, `test_pip_upgrade.py`, `test_project_guide_integration.py`, `test_bootstrap.py`, `test_helpers.py`, `test_cross_platform.py` + 60+ Bats tests are sufficient characterization.*
-- [x] **Extract** `init()` → `init_project()` (per the project-essentials "Function naming convention" rule; operand: the project) + `run_project_guide_hooks` (renamed to `_init_run_project_guide_hooks`) + any other init-private helpers to `lib/commands/init.sh`. Honor K.e's `install_prompt_hook` placement decision — *8 functions moved: `init` → `init_project`; `run_project_guide_hooks` → `_init_run_project_guide_hooks`; 6 helpers → `_init_python_version`, `_init_venv`, `_init_direnv_venv`, `_init_direnv_micromamba`, `_init_dotenv`, `_init_gitignore`. F-3 callsite update applied to `tests/unit/test_asdf_compat.bats` (5 `source_pyve_fn` calls now pass `lib/commands/init.sh` + the renamed function names; 6 `run` invocations renamed). K.e's `install_prompt_hook` placement was self-private (already settled in K.e); no init dependency.*
-- [x] **Verify green** — full suite, both backends, both platforms, both Python matrix versions; spot-check `pyve init --help` byte-identical — *bats 729/729 post-extraction; end-to-end smoke `pyve init --backend venv` → `pyve test` → `pyve status` → `pyve check` → `pyve purge --yes` all green; help blocks byte-identical for `init`, `purge`, `status`, `check`, `update`, `python`, `self`, `self install`, `self uninstall` after the help-block move.*
-- [x] Append function-signature table to tech-spec.md
-- [x] Verify `pyve.sh` line count is in the 200–350 range (acceptance criterion 1) — ***FAIL — pyve.sh is at 595 lines.* The 200–350 target is structurally unachievable at HEAD: explicit-sourcing rule (project-essentials) forces ~127 lines for source blocks alone (11 per-command + 8 lib), plus ~340 lines of header / config / legacy-flag / main dispatcher / `show_help` + `show_version` + `show_config` — floor ~470 even with the help-block move. K.l moved 9 per-command help blocks (~265 lines saved) bringing pyve.sh from ~870 to 595 (down from the 3,363-line v2.3.0 starting point — **−2,768 net, ~82% reduction**). K.m needs to revise the target to ~500–650 to match the architectural reality. Tracked in audit F-9 update.
-
----
-
-### Story K.m: v2.4.0 Release Wrap [Done]
-
-Final story. Spec finalization, version bump, CHANGELOG, startup-time sanity check.
-
-**Tasks**
-
-- [x] Verify `pyve.sh` is in the 200–350 line range; if not, investigate (likely a helper that should have moved to `lib/commands/`) — *Investigation: pyve.sh at **595 lines**, NOT 200–350. Structural floor is ~470 even with all per-command code moved (sourcing block ~165 lines for 8 lib + 11 lib/commands × 4 lines each, header/config/main dispatcher/legacy-flag handlers ~340). The original 200–300 target predated full accounting of the explicit-sourcing rule's floor. **Target revised to ~500–650 in tech-spec** to match architectural reality.*
-- [x] Spot-check `pyve.sh`'s remaining content matches the "What lives" list in tech-spec's `pyve.sh — Thin Entry Point` section: globals, sourcing, universal flags, dispatcher, `legacy_flag_error`, `unknown_flag_error`, `main` — *Confirmed. 6 functions remain: `show_help`, `show_version`, `show_config` (universal-flag implementations); `legacy_flag_error`, `unknown_flag_error` (dispatcher tier); `main` (entry point). Tech-spec "What lives" list updated to explicitly mention the three universal-flag implementations.*
-- [x] Run startup-time sanity check: `time pyve --version` before vs. after the refactor; sourcing 11 extra files should add <50ms. If significantly more, investigate (probably a helper doing real work at source-time); resolve before release — ***`pyve --version` ≈ 10–20ms across 5 trials.* Well under the 50ms target; sourcing 19 files (8 lib + 11 lib/commands) adds no measurable cost. No helper doing real work at source-time.*
-- [x] Update tech-spec.md per-command function-signature tables: confirm all 11 sections appended over K.b–K.l, no orphaned "currently in `pyve.sh`" annotations remain — *All 11 sections appended in alphabetical order. Stale annotations cleaned: F-9 reminder about `show_self_*_help` in pyve.sh updated (moved in K.l); K.f cross-file note updated (`ensure_testenv_exists` now in lib/utils.sh post-K.g); K.k cross-command callsite note updated (`init_project` in lib/commands/init.sh post-K.l); 4 `check_command` references updated to `check_environment` in the lib/utils.sh `doctor_check_*` table.*
-- [x] Bump `VERSION` in `pyve.sh` from `2.3.0` to `2.4.0` — *Bumped from `2.3.2` (the K.a.2 bugfix release was the actual starting point) to `2.4.0`. Tech-spec globals table updated.*
-- [x] Finalize `CHANGELOG.md` v2.4.0 entry: high-level summary ("All 11 top-level commands extracted to `lib/commands/<name>.sh`; `pyve.sh` is now a thin ~200–300 line dispatcher; zero behavior change") + pointer to phase-K plan doc + any latent-bug fix stories that landed as side effects — *CHANGELOG entry added: extraction summary (3,363 → 595 lines, ~82% reduction), 11 per-command modules with line counts, function naming convention + F-11 collision rule, F-7/F-8 helper moves, F-1/F-2/F-3 infrastructure fixes, K.l help-block move, target revision, test counts, migration note ("CLI is byte-identical to v2.3.2"). Pointers to phase-K plan + K.a.3 audit. K.a.1 and K.a.2 are referenced as the v2.3.1/v2.3.2 bugfix stories that preceded the extraction phase.*
-- [x] Verify: full CI green; `pyve --version` prints `2.4.0` — *Final verification: `bash -n pyve.sh` clean; `pyve --version` → `pyve version 2.4.0` ✓; **Bats: 729/729 passing**. Integration suite unchanged baseline (5 pre-existing failures tracked separately, none related to extractions).*
+- [x] Phase L acceptance criteria **1–6 and 8** confirmed:
+  - **1.** L.a audit at `docs/specs/phase-l-pyve-polish-audit.md` exists and was reviewed.
+  - **2.** L.b–L.l all `[Done]` (L.b, L.c, L.d, L.e, L.f, L.g, L.h, L.i, L.j, L.k.1–L.k.7, L.l).
+  - **3.** Wizard / `--verbose` / step framing / end-of-init summary all shipped. Manual walkthrough is the developer's pre-merge gate (not a programmatic check).
+  - **4.** Full bats suite green: 871/871 (verified under CI-like env via `env -i HOME="$HOME" PATH=/usr/bin:/bin bats tests/unit/`). Phase-L-introduced pytest tests green; pre-existing flaky/legacy failures tracked under "Future: Fix pre-existing integration test failures."
+  - **5.** Doc drift resolved: features.md FR-1a/FR-1b, tech-spec.md "Interactive `pyve init` wizard" subsection, project-essentials.md (this story).
+  - **6.** `lib/ui/` established + pyve-agnostic; boundary-invariant bats tests assert no pyve identifiers (with `PYVE_VERBOSE` whitelisted in `lib/ui/core.sh`).
+  - **8.** Single v2.4.0 → v2.6.0 minor bump shipped with one consolidated CHANGELOG entry.
+- [x] Marked `[Done]`. Phase branch is ready to merge to `main`.
 
 ---
 
 ## Future
+
+### Story ?.?: Apply Phase L UX framing to non-scaffold commands [Planned]
+
+**Motivation**: Phase L scoped the `sv create`-grade rollout (step counters, quiet-replay, spinners) to `pyve init` and `pyve update` — the scaffold-shaped commands. The same treatment plausibly improves `pyve lock` (long conda solves), `pyve testenv install` (pip output), and `pyve purge --force` (multi-step confirmation + delete). The `lib/ui/` toolkit shipped in Phase L (`run.sh`, `progress.sh`) is generic enough to apply directly.
+
+**Why deferred**: Phase L was already large after the option-1 expansion; rolling out to four more commands would have stretched it further. The scaffold commands are the canonical "first impression" surface so they were prioritized.
+
+**Tasks** (sketched; refine when picked up):
+
+- [ ] Walk each command, identify macro-steps, wrap with `step_begin`/`step_end_ok` + `run_quiet`.
+- [ ] Decide whether `purge --force` warrants step framing or if the existing confirm flow is sufficient.
+- [ ] Update `features.md` for any output-contract changes.
+- [ ] Tests per the L.j pattern.
+
+---
 
 ### Story ?.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 

@@ -213,7 +213,9 @@ EOF
 
     run "$PYVE_SCRIPT" update --no-project-guide
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Skipping project-guide"* ]]
+    # Step framing (Story L.j) renders the skip as
+    # "[4/4] project-guide refresh skipped (--no-project-guide)".
+    [[ "$output" == *"--no-project-guide"* ]] && [[ "$output" == *"skip"* ]]
 }
 
 @test "update: project-guide refresh is a no-op when .project-guide.yml absent" {
@@ -245,6 +247,38 @@ EOF
     run "$PYVE_SCRIPT" --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"update"* ]]
+}
+
+#============================================================
+# Step counter framing (Story L.j)
+#============================================================
+
+@test "update: prints [1/4] step header for pyve_version step" {
+    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+    run "$PYVE_SCRIPT" update
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[1/4]"* ]]
+    [[ "$output" == *"pyve_version"* ]]
+}
+
+@test "update: prints all four [N/4] step headers in sequence" {
+    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+    run "$PYVE_SCRIPT" update
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[1/4]"* ]]
+    [[ "$output" == *"[2/4]"* ]]
+    [[ "$output" == *"[3/4]"* ]]
+    [[ "$output" == *"[4/4]"* ]]
+}
+
+@test "update: emits a footer-box close after the last step" {
+    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+    run "$PYVE_SCRIPT" update
+    [ "$status" -eq 0 ]
+    # footer_box emits a rounded-corner glyph (e.g. ╰) — when NO_COLOR
+    # is set the glyph stays but the ANSI styling drops. Either way
+    # at least one footer line should be present.
+    [[ "$output" == *"╰"* ]] || [[ "$output" == *"All done"* ]] || [[ "$output" == *"footer"* ]]
 }
 
 @test "update: PYVE_DISPATCH_TRACE shows correct dispatch" {

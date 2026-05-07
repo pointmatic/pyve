@@ -187,6 +187,90 @@ PY
 }
 
 #============================================================
+# Project section: Python pin source — backend-aware (Story L.b)
+#============================================================
+
+@test "status: Project ▸ Python reads environment.yml pin for micromamba backend" {
+    create_pyve_config "backend: micromamba" "pyve_version: \"$CURRENT_VERSION\"" "micromamba:" "  env_name: test-env"
+    cat > environment.yml << 'YML'
+name: test-env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+YML
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.12"* ]]
+    [[ "$output" == *"environment.yml"* ]]
+    # Must NOT contradict by also reporting "not pinned" in the Project section.
+    # ("environment.yml: present" line in Environment section is fine.)
+    ! printf '%s' "$output" | awk '/^Project$/,/^Environment$/' | grep -q "not pinned"
+}
+
+@test "status: Project ▸ Python reports 'not pinned' for micromamba w/o environment.yml" {
+    create_pyve_config "backend: micromamba" "pyve_version: \"$CURRENT_VERSION\"" "micromamba:" "  env_name: test-env"
+    # No environment.yml.
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"not pinned"* ]]
+}
+
+@test "status: Project ▸ Python reports 'not pinned' for micromamba env.yml without python dep" {
+    create_pyve_config "backend: micromamba" "pyve_version: \"$CURRENT_VERSION\"" "micromamba:" "  env_name: test-env"
+    cat > environment.yml << 'YML'
+name: test-env
+channels:
+  - conda-forge
+dependencies:
+  - numpy
+  - scipy
+YML
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    # Project section's Python row prints "not pinned" because env.yml lists
+    # no python dependency.
+    printf '%s' "$output" | awk '/^Project$/,/^Environment$/' | grep -q "not pinned"
+}
+
+@test "status: Project ▸ Python parses '- python =3.12.*' with whitespace and globs" {
+    create_pyve_config "backend: micromamba" "pyve_version: \"$CURRENT_VERSION\"" "micromamba:" "  env_name: test-env"
+    cat > environment.yml << 'YML'
+name: test-env
+dependencies:
+  -  python = 3.12.*
+YML
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.12"* ]]
+    [[ "$output" == *"environment.yml"* ]]
+}
+
+@test "status: Project ▸ Python — venv backend ignores environment.yml" {
+    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
+    # Even if a stray environment.yml is present, venv backend MUST NOT use it
+    # (venv pins via .tool-versions / .python-version / .pyve/config).
+    cat > environment.yml << 'YML'
+dependencies:
+  - python=3.99
+YML
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    # 3.99 from environment.yml must not appear in the Project Python row.
+    ! printf '%s' "$output" | awk '/^Project$/,/^Environment$/' | grep -q "3.99"
+}
+
+@test "status: Project ▸ Python — venv backend still reads .tool-versions" {
+    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
+    printf 'python 3.14.4\n' > .tool-versions
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"3.14.4"* ]]
+    [[ "$output" == *".tool-versions"* ]]
+}
+
+#============================================================
 # Integrations section content
 #============================================================
 

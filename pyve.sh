@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.4.0"
+VERSION="2.6.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -111,11 +111,35 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/ui.sh" ]]; then
-    # shellcheck source=lib/ui.sh
-    source "$SCRIPT_DIR/lib/ui.sh"
+if [[ -f "$SCRIPT_DIR/lib/ui/core.sh" ]]; then
+    # shellcheck source=lib/ui/core.sh
+    source "$SCRIPT_DIR/lib/ui/core.sh"
 else
-    printf "ERROR: Cannot find lib/ui.sh\n" >&2
+    printf "ERROR: Cannot find lib/ui/core.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/ui/run.sh" ]]; then
+    # shellcheck source=lib/ui/run.sh
+    source "$SCRIPT_DIR/lib/ui/run.sh"
+else
+    printf "ERROR: Cannot find lib/ui/run.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/ui/progress.sh" ]]; then
+    # shellcheck source=lib/ui/progress.sh
+    source "$SCRIPT_DIR/lib/ui/progress.sh"
+else
+    printf "ERROR: Cannot find lib/ui/progress.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/ui/select.sh" ]]; then
+    # shellcheck source=lib/ui/select.sh
+    source "$SCRIPT_DIR/lib/ui/select.sh"
+else
+    printf "ERROR: Cannot find lib/ui/select.sh\n" >&2
     exit 1
 fi
 
@@ -269,6 +293,10 @@ UNIVERSAL FLAGS:
     --help, -h                Show this help message
     --version, -v             Show version
     --config, -c              Show current configuration
+    --verbose                 Stream subprocess output live; suppress quiet
+                              defaults. Equivalent to `PYVE_VERBOSE=1`.
+                              Parsed before the subcommand:
+                              `pyve --verbose init` (not `pyve init --verbose`).
 
 EXAMPLES:
     pyve init                            # Initialize with defaults (auto-detect backend)
@@ -388,7 +416,7 @@ legacy_flag_error() {
 #   unknown_flag_error <subcommand> <bad_flag> <valid_flag1> [<valid_flag2> ...]
 #
 # Picks the single closest valid flag by Levenshtein distance
-# (via `_edit_distance` in lib/ui.sh). Emits "Did you mean X?"
+# (via `_edit_distance` in lib/ui/core.sh). Emits "Did you mean X?"
 # only when distance <= 3; for more distant typos it omits the
 # hint to avoid suggesting an unrelated flag.
 #
@@ -421,6 +449,29 @@ unknown_flag_error() {
 
 
 main() {
+    # Global flags consumed before subcommand dispatch (Story L.f).
+    # `--verbose` is parsed here so every subcommand sees PYVE_VERBOSE=1
+    # without each having to re-implement the flag.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --verbose)
+                export PYVE_VERBOSE=1
+                shift
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # The dispatch trace surfaces verbosity state alongside the
+    # resolved handler so tests can assert wiring without adding
+    # any user-visible behavior. Honors PYVE_VERBOSE set via either
+    # `--verbose` (handled above) or directly in the environment.
+    if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+        printf 'VERBOSE:%s\n' "${PYVE_VERBOSE:-0}"
+    fi
+
     # No arguments - show help
     if [[ $# -eq 0 ]]; then
         log_error "No command provided."

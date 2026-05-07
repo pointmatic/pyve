@@ -1,6 +1,8 @@
 # tech_spec.md — Pyve (Bash)
 
-This document defines **how** Pyve is built — architecture, module layout, dependencies, function signatures, and cross-cutting concerns. For requirements and scope, see `features.md`. For the implementation plan, see `stories.md`.
+This document defines **how** the `pyve` project is built -- architecture, module layout, dependencies, data models, API signatures, and cross-cutting concerns.
+
+For requirements and behavior, see [`features.md`](features.md). For the implementation plan, see [`stories.md`](stories.md). For project-specific must-know facts (workflow rules, architecture quirks, hidden coupling), see [`project-essentials.md`](project-essentials.md) — `plan_tech_spec` populates it after this document is approved. For the workflow steps tailored to the current mode (cycle steps, approval gates, conventions), see [`docs/project-guide/go.md`](../project-guide/go.md) — re-read it whenever the mode changes or after context compaction.
 
 ---
 
@@ -52,7 +54,11 @@ pyve/
 ├── pyve.sh                          # Thin entry point — globals, sourcing, top-level dispatcher, legacy/unknown flag catches, main()
 ├── lib/
 │   ├── utils.sh                     # Logging, prompts, .gitignore management, config parsing, validation
-│   ├── ui.sh                        # Unified UX helpers (colors, symbols, prompts, run_cmd, banners) — backportable to gitbetter
+│   ├── ui/
+│   │   ├── core.sh                  # Core module of the extractable lib/ui/ library: colors, symbols, prompts, run_cmd, banners, is_verbose() gate
+│   │   ├── run.sh                   # Quiet-replay-on-failure subprocess wrapper (run_quiet, run_quiet_with_label); honors PYVE_VERBOSE
+│   │   ├── progress.sh              # Step counter (step_begin/_end_ok/_end_fail), backgrounded spinner, ASCII progress bar; honors PYVE_VERBOSE and TTY
+│   │   └── select.sh                # Arrow-key single/multi-select prompts (ui_select / ui_multi_select); numbered TTY-fallback for non-interactive callers
 │   ├── env_detect.sh                # Shell profile sourcing, version manager detection (asdf/pyenv), is_asdf_active gate, direnv check
 │   ├── backend_detect.sh            # Backend auto-detection from project files, backend validation
 │   ├── micromamba_core.sh           # Micromamba binary detection, version, location
@@ -135,7 +141,7 @@ The line-count floor is set by the explicit-sourcing rule (project-essentials): 
 - Universal flag handling: `--help` / `-h`, `--version` / `-v`, `--config` / `-c`. Implementations: `show_help()` (top-level man-page-style help describing all 11 commands and universal flags), `show_version()` (single-line `pyve version X.Y.Z`), `show_config()` (current detected config: VERSION, defaults, configured backend, micromamba availability, env file detection).
 - The top-level `case`-block dispatcher that maps a subcommand name to its `lib/commands/*.sh` function.
 - `legacy_flag_error()` — the Category B hard-error catcher for renamed/removed flags and subcommands. Three lines per catch arm; emits a precise migration error and exits non-zero.
-- `unknown_flag_error()` — closest-match suggestion for typos within a valid subcommand (uses `_edit_distance()` from `lib/ui.sh`).
+- `unknown_flag_error()` — closest-match suggestion for typos within a valid subcommand (uses `_edit_distance()` from `lib/ui/core.sh`).
 - `main()` — entry point that drives universal-flag handling, legacy/unknown-flag catches, and dispatcher invocation in that order.
 
 **What does NOT live in `pyve.sh`:**
@@ -153,7 +159,7 @@ The line-count floor is set by the explicit-sourcing rule (project-essentials): 
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
 | `TESTENV_DIR_NAME` | `"testenv"` | Dev/test runner environment directory |
 
-**Library sourcing order (helpers first, then commands).** Helpers: `utils.sh` → `ui.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui.sh` is sourced early so later modules can use its color/symbol constants and banner helpers. Commands are sourced after all helpers, in alphabetical order: `commands/check.sh` → `commands/init.sh` → `commands/lock.sh` → `commands/purge.sh` → `commands/python.sh` → `commands/run.sh` → `commands/self.sh` → `commands/status.sh` → `commands/test.sh` → `commands/testenv.sh` → `commands/update.sh`. Sourcing is **explicit**, not glob-based, so dependency ordering is auditable. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern above for the remaining hard-error form.)
+**Library sourcing order (helpers first, then commands).** Helpers: `utils.sh` → `ui/core.sh` → `ui/run.sh` → `ui/progress.sh` → `ui/select.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui/core.sh` is sourced early so later modules can use its color/symbol constants, banner helpers, and `is_verbose()` gate; `ui/run.sh`, `ui/progress.sh`, and `ui/select.sh` follow because they depend on those. Commands are sourced after all helpers, in alphabetical order: `commands/check.sh` → `commands/init.sh` → `commands/lock.sh` → `commands/purge.sh` → `commands/python.sh` → `commands/run.sh` → `commands/self.sh` → `commands/status.sh` → `commands/test.sh` → `commands/testenv.sh` → `commands/update.sh`. Sourcing is **explicit**, not glob-based, so dependency ordering is auditable. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern above for the remaining hard-error form.)
 
 Each library and command file guards against direct execution and is designed to be sourced only.
 
@@ -171,11 +177,11 @@ One file per top-level command. Each file owns the implementation of its command
   - `lib/commands/python.sh` → `python()`, `python_set()`, `python_show()`
   - `lib/commands/self.sh` → `self()`, `self_install()`, `self_uninstall()`
 - **Command-private helpers** stay inside the command file with a `_<command>_` prefix (e.g., `_init_write_envrc()`, `_check_run_diagnostics()`). They are not callable from other commands.
-- **Cross-command helpers** (used by two or more commands) live in their existing `lib/<helper>.sh` home — they do NOT migrate into `lib/commands/`. Examples: `write_gitignore_template()` in `lib/utils.sh`, `is_asdf_active()` in `lib/env_detect.sh`, `get_backend_priority()` in `lib/backend_detect.sh`, `header_box()` in `lib/ui.sh`.
+- **Cross-command helpers** (used by two or more commands) live in their existing `lib/<helper>.sh` home — they do NOT migrate into `lib/commands/`. Examples: `write_gitignore_template()` in `lib/utils.sh`, `is_asdf_active()` in `lib/env_detect.sh`, `get_backend_priority()` in `lib/backend_detect.sh`, `header_box()` in `lib/ui/core.sh`.
 
 **Direct-execution guard.** Each command file ends (or begins) with the same guard the helper modules use, so a stray `bash lib/commands/init.sh` exits non-zero rather than running unsourced.
 
-**Per-command function tables** are documented in this section as the extraction phase progresses — each story that extracts a command appends its function-signature table here, mirroring the `lib/utils.sh` / `lib/ui.sh` pattern.
+**Per-command function tables** are documented in this section as the extraction phase progresses — each story that extracts a command appends its function-signature table here, mirroring the `lib/utils.sh` / `lib/ui/core.sh` pattern.
 
 #### `lib/commands/run.sh` (Story K.b — v2.4.0)
 
@@ -287,7 +293,7 @@ Read-only state dashboard. Three sections (Project / Environment / Integrations)
 
 **No private-helper rename** — all 9 helpers already follow the `_status_*` prefix convention from when they were inlined in `pyve.sh` (Story H.e.4). They stay named exactly as-is; only the orchestrator was renamed.
 
-**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui.sh) and `PYVE_DISTUTILS_SHIM_MARKER` (defined in lib/distutils_shim.sh).
+**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui/core.sh) and `PYVE_DISTUTILS_SHIM_MARKER` (defined in lib/distutils_shim.sh).
 
 #### `lib/commands/check.sh` (Story K.i — v2.4.0)
 
@@ -341,7 +347,7 @@ Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` 
 
 **F-7 settled in K.g** — `purge_testenv_dir` already lives in `lib/utils.sh` and is called from both `purge_project` (here) and `testenv_purge` (in `lib/commands/testenv.sh`).
 
-**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
+**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui/core.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
 
 #### `lib/commands/init.sh` (Story K.l — v2.4.0)
 
@@ -548,11 +554,11 @@ Version comparison, installation validation, and config file management.
 
 ---
 
-### `lib/ui.sh` — Unified UI Helpers (Phase H / v2.0+)
+### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
-Standalone module providing the shared terminal UX primitives used across every pyve command. Introduced in H.e (first sub-story) and adopted during H.e and H.f.
+Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.
 
-Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmatic/gitbetter) project — the module contains **no pyve-specific identifiers** (no `pyve_`-prefixed names, no references to backends, `.pyve/config`, or any other pyve concept). Pyve-specific logic lives in the command scripts that call the helpers, not in the helpers themselves. The color palette and symbol set are synchronized with `gitbetter`'s `tech-spec.md` "Shared Constants & Helpers" section; changes to either side require a coordinated update.
+The module contains **no pyve-specific identifiers** (no `pyve_`-prefixed names, no references to backends, `.pyve/config`, or any other pyve concept). Pyve-specific logic lives in the command scripts that call the helpers, not in the helpers themselves. Every module under `lib/ui/` follows the same discipline — the directory is the seam along which this UX library can eventually be extracted for reuse in sibling tools (the prior verbatim-sync constraint with `gitbetter` was lifted in Phase L).
 
 **Module contents** (final v2.0 surface):
 
@@ -573,9 +579,9 @@ Designed for verbatim backport to the [`gitbetter`](https://github.com/pointmati
 | `footer_box` | `()` | Rounded-box green + bold "✓ All done." footer |
 | `_edit_distance` | `(s1, s2)` → int | Levenshtein distance on stdout. Consumer: `unknown_flag_error()` in `pyve.sh`. bash-3.2-safe flat-array DP. (H.e.9d.) |
 
-**Sourcing.** `pyve.sh` sources `lib/ui.sh` alongside the other `lib/*.sh` modules so UI helpers are available before any command dispatcher runs.
+**Sourcing.** `pyve.sh` sources `lib/ui/core.sh` alongside the other helpers so UI primitives are available before any command dispatcher runs. Sourcing is explicit (one `source` line per module) — see the explicit-sourcing project-essential.
 
-**bash-3.2 compatibility guard.** `lib/ui.sh` must source cleanly under macOS's system `/bin/bash` (3.2.57). Specifically: no `declare -A` (associative arrays are bash 4+), no `${var^^}` / `${var,,}` case operators, no `readarray`. Locked in by the H.e.7a regression tests at [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) ("source contains no 'declare -A'" + `/bin/bash` sourcing test).
+**bash-3.2 compatibility guard.** `lib/ui/core.sh` must source cleanly under macOS's system `/bin/bash` (3.2.57). Specifically: no `declare -A` (associative arrays are bash 4+), no `${var^^}` / `${var,,}` case operators, no `readarray`. Locked in by the H.e.7a regression tests at [tests/unit/test_ui.bats](../../tests/unit/test_ui.bats) ("source contains no 'declare -A'" + `/bin/bash` sourcing test).
 
 **Backport-discipline guard.** The module contains no pyve-specific identifiers — enforced by a grep test in `test_ui.bats`. (The colon-free rename-key invariant retired in Story J.d alongside `deprecation_warn`.)
 
@@ -707,6 +713,85 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--no-project-guide` | `pyve init` | Skip the project-guide hook |
 | `--project-guide-completion` | `pyve init` | Force shell completion wiring |
 | `--no-project-guide-completion` | `pyve init` | Skip shell completion wiring |
+
+### Interactive `pyve init` wizard (Phase L / v2.6.0)
+
+When `pyve init` is invoked, an interactive wizard walks the user through three prompts: **backend → Python version pin → project-guide install**. Strong repo signals make the happy path highlight the strongest choice so the user can press enter through those choices. Any explicit flag (e.g., `--backend`, `--python-version`, `--project-guide`) on the same invocation skips its corresponding prompt, displaying the flag's value in the wizard flow, and wins over detection-based defaults; flag-driven invocations therefore remain fully non-interactive (for that parameter).
+
+#### Flag inventory and wizard mapping
+
+`pyve init` accepts fifteen flags plus an optional `<dir>` positional. Three become interactive prompts; twelve stay flag-only (advanced / CI-shaped / sub-decisions of a primary prompt).
+
+| Flag | Wizard treatment |
+|------|-----------------|
+| `--backend <type>` | **Prompt** — backend selection |
+| `--python-version <ver>` | **Prompt** — Python version pin (venv backend only) |
+| `--project-guide` / `--no-project-guide` | **Prompt** — project-guide install |
+| `--project-guide-completion` / `--no-project-guide-completion` | Flag-only (sub-decision; consulted only when project-guide is being installed) |
+| `--env-name <name>` | Flag-only (advanced; defaults from project name) |
+| `--local-env` | Flag-only (advanced) |
+| `--no-direnv` | Flag-only (CI-shaped) |
+| `--auto-bootstrap` | Flag-only (sub-decision of micromamba backend) |
+| `--bootstrap-to <loc>` | Flag-only (sub-decision of `--auto-bootstrap`) |
+| `--strict` | Flag-only (CI-shaped) |
+| `--no-lock` | Flag-only (CI-shaped) |
+| `--allow-synced-dir` | Flag-only (escape hatch) |
+| `--force` | Flag-only — bypasses the destructive-safeguard on an existing virtual environment **only**; does **not** skip prompts. `pyve init --force` with no other flags still walks the wizard. |
+
+#### Prompt 1 — backend
+
+Default-resolution rules (first match wins):
+
+1. `environment.yml` exists in the target dir → default `micromamba`.
+2. `.python-version` or `.tool-versions` exists in the target dir → default `venv`.
+3. Otherwise → default `venv`.
+
+Prompt presents both options regardless of detection; the user can override the suggested default. When `--backend <type>` is supplied, the prompt renders non-interactively — the wizard flow shows a single line with the flag-resolved value (so the user sees what's locked in) and moves to the next prompt without reading stdin.
+
+#### Prompt 2 — Python version pin (backend-aware)
+
+The pin's mechanics differ between backends — venv pins via asdf/pyenv writing `.tool-versions` / `.python-version`; micromamba pins via the `python=X` line in `environment.yml`. Prompt 2 reflects this split.
+
+**venv branch.** Up to three layers:
+
+1. **Version-manager picker.** Present `[asdf, pyenv]` with **asdf as default**. Skipped when only one of the two is installed (auto-pick that one). Hard-fail when neither is installed: error names both managers as the supported set and points the user at their respective install docs. This wizard prompt overrides the existing implicit precedence in `detect_version_manager()` — when both are installed and the user explicitly picks `pyenv`, the wizard records `pyenv` even though the implicit ranking would have chosen `asdf`.
+2. **Pick from installed.** List manager-reported installed Python versions filtered to `^3\.`. Source: `asdf list python` (strip leading `*` and whitespace) or `pyenv versions --bare`. Final list option is `more...`.
+3. **`more...` secondary prompt.** Re-prompt with the full available version list filtered to `^3\.`. Source: `asdf list all python` or `pyenv install --list`. (Filtering to `^3\.` keeps oddities like `2.1.3`, `activepython-2.7.14`, and `stackless-3.7.5` out of the menu while still surfacing every released `3.x.y`.)
+
+The venv branch also offers a **skip** option that preserves current no-pin behavior (no `.tool-versions` / `.python-version` written; system Python resolves at activation time). On selection, the wizard writes the appropriate pin file: `.tool-versions` for asdf, `.python-version` for pyenv. When `--python-version <ver>` is supplied, all three interactive layers and the picker are bypassed; the wizard flow shows a single line with the flag-resolved version (and the manager it pins via — asdf when both are installed, else whichever is installed).
+
+**micromamba branch.** No manager picker — micromamba doesn't use asdf/pyenv to pin; it uses the `- python=<version>` line in `environment.yml` and conda-forge supplies any 3.x version. Three sub-cases:
+
+1. **`environment.yml` already exists** → skip entirely; render `Python: managed via environment.yml`. The existing pin in env.yml owns it; the wizard does not edit env.yml mid-flow.
+2. **`environment.yml` absent + `--python-version <ver>` supplied** → render `Python: <ver> (--python-version, will be written to environment.yml)`. The existing `scaffold_starter_environment_yml` ([lib/micromamba_env.sh:422](../../lib/micromamba_env.sh#L422)) writes the pin into the scaffolded env.yml later in the init flow; the wizard just makes the choice visible.
+3. **`environment.yml` absent + no flag** → render `Python: <DEFAULT_PYTHON_VERSION> (default, will be written to environment.yml)`. `DEFAULT_PYTHON_VERSION` (defined in `pyve.sh`) is the wizard's effective choice; future polish may add an interactive "type a version" sub-prompt for this case, but the explicit override path (`--python-version`) is fully supported today and is sufficient for L.k.4.
+
+The micromamba branch never invokes asdf/pyenv. The wizard's no-managers hard-fail (venv branch) does not apply to micromamba.
+
+#### Prompt 3 — project-guide install
+
+Default-resolution rules:
+
+1. **Already present** — if `.project-guide.yml` exists in the target dir, **skip the prompt entirely** and run `project-guide update` via the existing `run_project_guide_update_in_env` wrapper. The safe refresh path: never replaces, never destroys local edits. `.project-guide.yml` is the canonical "project-guide is installed here" marker — it records `installed_version`, `target_dir`, `current_mode`, etc.; `pyve update` already uses this single signal (lib/commands/update.sh:123) and L.k.5 aligns with that.
+2. **Not present** — prompt with default `no`. On `yes`, route through the existing `install_project_guide` + embedded-init path.
+
+When `--project-guide` or `--no-project-guide` is supplied, the prompt renders non-interactively — the wizard flow shows a single line with the flag-resolved decision (and, for the install case, whether detection found an existing install that will be refreshed vs. a fresh install). `--project-guide` always installs/updates regardless of detection; `--no-project-guide` always skips. The shell-completion sub-decision (`--project-guide-completion` / `--no-project-guide-completion`) is consulted only inside the install path and is not surfaced as a wizard prompt — its existing env-var / interactive-fallback logic in `_init_run_project_guide_hooks` handles it.
+
+#### TTY policy
+
+The wizard always runs on `pyve init`; flags suppress the *interactive* part of individual prompts but never the wizard itself. When at least one prompt would read from stdin (i.e. at least one of the three prompt-bearing parameters is not flag-supplied) **and** stdin is not a TTY, `pyve init` exits non-zero before printing the welcome banner. Error message names the specific flags that would short-circuit each missing prompt (`--backend`, `--python-version`, `--project-guide` / `--no-project-guide`). `lib/ui/select.sh`'s per-prompt numbered-stdin fallback is intentionally not used here — a multi-prompt wizard driven by piped numeric input is too brittle for CI use, and supplying the relevant flags is exactly the supported non-interactive path.
+
+When all three prompt-bearing parameters are flag-supplied, the wizard still runs and renders all three values non-interactively; no stdin read occurs, so the TTY check is moot.
+
+**Bypass env var.** `PYVE_INIT_NONINTERACTIVE=1` bypasses the TTY guard regardless of flag state. This exists for the bats test harness (which invokes `pyve init` with various flag subsets pre-dating the wizard, all from non-TTY stdin) and for advanced users who want to invoke the wizard from a non-TTY context with explicit awareness that any prompt that needs to read stdin will likely fail anyway. `setup_pyve_env()` in `tests/helpers/test_helper.bash` exports this var by default; new wizard tests unset it locally.
+
+#### Welcome banner
+
+Rendered with `header_box` from `lib/ui/core.sh`. Tone-matched to <https://pointmatic.github.io/pyve>. Always printed at the start of the wizard flow — even when all three prompts render non-interactively from flags — because the wizard always runs.
+
+#### Out of scope for the Phase L wizard
+
+Testenv creation prompt, `--bootstrap-to`, `--auto-bootstrap`, `--force`, `--env-name`, `--local-env`, `--no-direnv`, `--strict`, `--no-lock`, `--allow-synced-dir` — all stay flag-only. Future revisits may surface a subset of these (e.g. micromamba-bootstrap auto-prompt when micromamba is selected and not installed), but each is its own decision and is not bundled into Phase L's wizard rollout.
 
 ### Exit Codes
 

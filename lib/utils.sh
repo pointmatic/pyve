@@ -28,11 +28,11 @@ fi
 # Logging Functions
 #============================================================
 
-# Logging helpers emit the unified UX palette from lib/ui.sh
+# Logging helpers emit the unified UX palette from lib/ui/core.sh
 # (▸ / ⚠ / ✘ / ✔ glyphs, two-space indent, stderr vs. stdout
-# routing preserved). When ui.sh is not sourced — for example in
-# tests that load lib/utils.sh standalone — the ${VAR:-fallback}
-# pattern uses plain glyphs without ANSI wrappers.
+# routing preserved). When lib/ui/core.sh is not sourced — for
+# example in tests that load lib/utils.sh standalone — the
+# ${VAR:-fallback} pattern uses plain glyphs without ANSI wrappers.
 
 log_info() {
     printf "  %s %s\n" "${ARROW:-▸}" "$1"
@@ -554,7 +554,11 @@ install_project_guide() {
     fi
 
     log_info "Installing/upgrading project-guide into the project environment..."
-    if $pip_cmd install --upgrade project-guide; then
+    # Quiet-by-default subprocess output (Story L.j). Pip's per-package
+    # progress is captured to a buffer; on failure the buffer is replayed
+    # so the user can see what went wrong. PYVE_VERBOSE=1 (or --verbose)
+    # streams output live.
+    if run_quiet $pip_cmd install --upgrade project-guide; then
         log_success "Installed project-guide"
     else
         log_warning "Failed to install project-guide (skip with --no-project-guide)"
@@ -565,9 +569,14 @@ install_project_guide() {
 # Run `project-guide init` inside the project environment to populate the
 # project-guide artifacts (`.project-guide.yml`, `docs/project-guide/`).
 #
-# Relies on project-guide >= 2.2.3's --no-input flag for unattended runs.
-# Older project-guide versions ignore the flag (and prompt-and-fail-on-closed-stdin
-# in pyve's subprocess context); failure is non-fatal.
+# Relies on project-guide >= 2.5.0:
+#   - --no-input (>= 2.2.3): unattended runs without prompting.
+#   - --quiet    (>= 2.5.0): silent stdout on success; errors stay on
+#     stderr. Keeps pyve init's output stream clean of project-guide's
+#     per-file progress chatter.
+# Older project-guide versions error on the unknown --quiet flag; pip's
+# `--upgrade project-guide` install path keeps fresh installs current.
+# Failure is non-fatal by design.
 #
 # Usage: run_project_guide_init_in_env <backend> <env_path>
 # Returns 0 always — failure is non-fatal by design.
@@ -595,8 +604,8 @@ run_project_guide_init_in_env() {
         return 0
     fi
 
-    log_info "Running 'project-guide init --no-input' in the project environment..."
-    if $pg_cmd init --no-input; then
+    log_info "Running 'project-guide init' in the project environment..."
+    if $pg_cmd init --no-input --quiet; then
         log_success "project-guide artifacts generated"
     else
         log_warning "'project-guide init' failed (skip with --no-project-guide)"
@@ -641,8 +650,8 @@ run_project_guide_update_in_env() {
         return 0
     fi
 
-    log_info "Running 'project-guide update --no-input' in the project environment..."
-    if $pg_cmd update --no-input; then
+    log_info "Running 'project-guide update' in the project environment..."
+    if $pg_cmd update --no-input --quiet; then
         log_success "project-guide artifacts refreshed"
     else
         log_warning "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"

@@ -250,3 +250,49 @@ run_pyve() {
     run_pyve
     [ "$status" -ne 0 ]
 }
+
+#============================================================
+# Story L.f — global --verbose flag
+#   Parsed by main() before subcommand dispatch. Sets PYVE_VERBOSE=1.
+#   The dispatch trace surfaces the resolved verbose state on a
+#   `VERBOSE:0` / `VERBOSE:1` line so the wiring is testable without
+#   adding user-visible behavior.
+#============================================================
+
+@test "verbose: 'pyve status' without --verbose traces VERBOSE:0" {
+    PYVE_DISPATCH_TRACE=1 run_pyve status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VERBOSE:0"* ]]
+}
+
+@test "verbose: 'pyve --verbose status' traces VERBOSE:1" {
+    PYVE_DISPATCH_TRACE=1 run_pyve --verbose status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VERBOSE:1"* ]]
+    [[ "$output" == *"DISPATCH:status"* ]]
+}
+
+@test "verbose: PYVE_VERBOSE=1 in env traces VERBOSE:1 (no flag)" {
+    PYVE_VERBOSE=1 PYVE_DISPATCH_TRACE=1 run_pyve status
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VERBOSE:1"* ]]
+}
+
+@test "verbose: '--verbose' is a global flag — works on every subcommand" {
+    PYVE_DISPATCH_TRACE=1 run_pyve --verbose init
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"VERBOSE:1"* ]]
+    [[ "$output" == *"DISPATCH:init"* ]]
+}
+
+@test "verbose: 'pyve --verbose --help' still shows help and exits 0" {
+    run_pyve --verbose --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve"* ]]
+}
+
+@test "verbose: top-level --help documents --verbose" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--verbose"* ]]
+}

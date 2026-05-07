@@ -161,3 +161,48 @@ When naming a top-level command function in `lib/commands/<name>.sh`, the functi
 **Why:** caught the hard way in K.d. The initial `python_command` → `python` rename passed every Bats unit test (725+) but broke `pyve init --backend venv` end-to-end (CI integration tests) because the function shadowed the binary at the venv-creation step. The unit tests didn't catch it because they invoke `pyve` as a subprocess (`bash pyve.sh ...`), not from inside an already-loaded function table. Lesson: name-collision regressions hide from any test that doesn't exercise the full `pyve init` flow.
 
 **How to apply:** before renaming a command function in any future Phase K story (or any later refactor), grep for the proposed new name as a bare command in pyve.sh + lib/: `grep -nE '(\$\(|\`|^|\s|;|\|\|?)<name>\s' pyve.sh lib/*.sh lib/commands/*.sh`. If any non-comment line is found, do **not** rename — keep the `_command` suffix (or some other non-colliding form). The dispatcher arm calling `<name>_command` is fine; only the function name itself is the hazard.
+
+### Cross-repo coordination with `project-guide` — request, don't work around
+
+When pyve-side code interacts with `project-guide` (the sibling project at <https://pointmatic.github.io/project-guide/>) and the cleanest fix for a rough edge is upstream of pyve — e.g. `project-guide` is too chatty during a `pyve init` hook and the right answer is a `--quiet` flag in `project-guide` rather than output-suppression in pyve — write a focused change-request spec at `docs/specs/project-guide-requests/<short-name>.md` and ship the change in the `project-guide` repo. The pyve-side story that consumes the new behavior carries an explicit minimum-version dependency on `project-guide` (e.g. "requires project-guide ≥ vX.Y.Z").
+
+Each spec is self-contained: problem statement, proposed change, motivation, suggested CLI/API shape, compatibility notes — droppable into the `project-guide` repo's planning workflow without further translation.
+
+**Why:** working around an upstream rough edge in pyve adds permanent maintenance burden for a temporary problem and hides the issue from `project-guide`'s own maintainers (who may be the same person, but on a different release cadence). A targeted upstream fix removes the rough edge for all consumers, including any future tools built on top of `project-guide`.
+
+**How to apply:** when you find a `project-guide`-integration rough edge (Phase L's Track-2 audit is the canonical example), decide locus first — pyve-side fix or upstream change request. For pyve-side fixes, normal pyve story workflow. For upstream, write the spec under `docs/specs/project-guide-requests/` (create the directory first if it doesn't exist yet), then ship the change in the `project-guide` repo on its own release cycle. The pyve-side L.* (or M.*, N.*, …) story that consumes the change waits until the corresponding `project-guide` release is available, then lands the consumption with a min-version guard if necessary.
+
+### `lib/ui/` is the extractable UX boundary — pyve-agnostic with one exception
+
+Modules under `lib/ui/` (`core.sh`, `run.sh`, `progress.sh`, `select.sh`, and any future siblings) must stay pyve-agnostic so the directory remains lift-and-shift extractable into a standalone bash UX library. Concretely: no pyve paths (`.pyve/`, `.venv/`), no pyve command names (`pyve init`, `pyve testenv`), no pyve config keys, no `PYVE_*`-prefixed identifiers — with one Phase-L-sanctioned exception: `PYVE_VERBOSE` may appear in `lib/ui/core.sh` because it is the single source-of-truth env var for the verbosity gate consumed by every UI primitive.
+
+The verbosity check itself is centralized: every primitive that varies on verbose state calls the helper `is_verbose()` (defined in `lib/ui/core.sh` as `[[ "${PYVE_VERBOSE:-0}" == "1" ]]`) rather than inlining the env-var check. `--verbose` (parsed pre-subcommand in `pyve.sh`'s `main()`) and `PYVE_VERBOSE=1` are equivalent surfaces.
+
+**Why:** the lib/ui/ layer was carved out in Phase L (story L.e) as the core of an eventually-extractable "calm CLI UX" library. Slipping pyve-specifics into a primitive ties the extraction roadmap to a future migration, and re-implementing the env-var check elsewhere creates drift the next time the gate's semantics shift (e.g. adding a `--super-verbose`, a `PYVE_QUIET` opt-out, or a verbosity tri-state). Centralizing it in `is_verbose()` means the gate's contract has exactly one place to evolve.
+
+**How to apply:** when adding a new primitive under `lib/ui/`, the boundary-invariant bats tests (e.g. [tests/unit/test_ui_run.bats](../../tests/unit/test_ui_run.bats)) grep for forbidden tokens and fail the build on regressions — extend that test for any new module. When adding behavior that depends on verbose state, call `is_verbose()` from inside the primitive; never re-check `$PYVE_VERBOSE` directly. When evolving the gate (e.g. adding a new verbosity level), update only `is_verbose()` and its callers.
+
+### Bash 3.2 empty-array reads must use the `:-` default
+
+When reading an array with `"${arr[*]}"` or `"${arr[@]}"`, **always** provide a `:-` default if the array might be empty: `"${arr[*]:-}"`, `"${arr[@]:-}"`. Bash 3.2 (the macOS system bash, still the bash on every Apple-silicon and Intel Mac) treats reads of an empty array as **unbound variable** under `set -u` (which `pyve.sh` enables via `set -euo pipefail`), even though modern bash 4.4+ silently returns the empty string. The bug is invisible on dev macOS when the array happens to have entries from your installed tooling (asdf, pyenv, …) and surfaces only on the CI runner where the array is genuinely empty.
+
+**Why:** caught the hard way in Story L.k.7. `_init_detect_version_managers_available` in `lib/commands/init.sh` returned `printf '%s' "${available[*]}"` — fine on dev (asdf installed → array non-empty), CI-fatal (no managers → empty array → `lib/commands/init.sh: line N: available[*]: unbound variable` → `pipefail` killed the whole `pyve init` mid-wizard, before `validate_backend` even ran). Tests sourcing init.sh into bats's shell didn't catch it because bats doesn't re-enable `set -u`; the bug only fires inside `pyve.sh`'s subprocess.
+
+**How to apply:**
+
+- Default form is `"${arr[*]:-}"` / `"${arr[@]:-}"` whenever the array could be empty — and unless you control every code path leading to the read, assume it could.
+- The few cases where you've just appended to the array on the line above (e.g. `arr+=("foo"); printf '%s' "${arr[*]}"`) can skip the `:-` because the read is guaranteed-non-empty by construction. Most callsites are not in that shape.
+- The regression test pattern is: source the helper from a fresh `/bin/bash -c "set -euo pipefail; ..."` shell with PATH cleaned, exercise the empty-array path, assert no `unbound variable` in stderr. See [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) "no 'unbound variable' under 'set -u'" for the canonical shape.
+
+### `.project-guide.yml` is the canonical project-guide install marker
+
+When pyve needs to detect "is project-guide installed in this project?", check **`.project-guide.yml`** in the project root — not the `docs/project-guide/` directory. The YAML file is project-guide's own state record (`installed_version`, `target_dir`, `current_mode`, `pyve_version`, etc.) and is the source-of-truth signal upstream `project-guide` writes on init / update. The `docs/project-guide/` directory is configurable via the YAML's `target_dir` field, so its presence at the default path is neither necessary nor sufficient.
+
+Two consumers today:
+
+- [lib/commands/update.sh:123](../../lib/commands/update.sh#L123) — `pyve update` refreshes project-guide artifacts only when `.project-guide.yml` is present.
+- [lib/commands/init.sh](../../lib/commands/init.sh) — the wizard's project-guide prompt (Story L.k.5) renders "refresh (already installed)" iff `.project-guide.yml` is present, then defers to the post-env hook for the actual update.
+
+**Why:** picking the directory as the signal looked simpler at first but creates two failure modes: (1) the directory exists for unrelated reasons (the user's own `docs/project-guide.md` file inside a vendored docs structure, an empty placeholder dir, etc.); (2) the user has relocated project-guide artifacts via `target_dir`, so the directory at the default path doesn't exist while project-guide is in fact installed and active.
+
+**How to apply:** when adding a new pyve consumer that needs to know whether project-guide is installed, key off `[[ -f ".project-guide.yml" ]]`. Do not add a parallel `[[ -d "docs/project-guide" ]]` check. If you need the artifact directory's actual path, parse `target_dir` from `.project-guide.yml` (basic YAML: a plain `key: value` line), don't assume the default.
