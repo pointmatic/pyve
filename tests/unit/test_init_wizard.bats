@@ -25,6 +25,13 @@ setup() {
     # both sourced by setup_pyve_env.
     source "$PYVE_ROOT/lib/commands/init.sh"
     create_test_dir
+    # Default: stub asdf so wizard tests that exercise the venv +
+    # --python-version flag-driven path don't hard-fail on Linux CI
+    # runners where neither asdf nor pyenv is installed. Tests that
+    # explicitly test no-manager / single-manager / both-managers
+    # scenarios call _stub_managers themselves (which clears the
+    # fakebin first), or override PATH to an empty bin.
+    _stub_managers asdf
     # Tests in this file exercise the TTY guard explicitly. Unset the
     # bypass env var so the guard's natural behavior surfaces; individual
     # tests that need the bypass set it locally.
@@ -204,9 +211,39 @@ teardown() {
 
 @test "_init_wizard: bypass + no flag + .tool-versions → auto-detected venv" {
     touch .tool-versions
-    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "true" "yes"
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "3.13.7" "true" "yes"
     [ "$status" -eq 0 ]
     [[ "$output" == *"Backend: venv (auto-detected)"* ]]
+}
+
+#============================================================
+# L.k.7: --backend auto → resolved via auto-detect, not literal "auto"
+#============================================================
+
+@test "_init_wizard: --backend auto + environment.yml → resolves to micromamba" {
+    # Regression: pre-fix, backend_flag stayed as the literal "auto"
+    # through the Python prompt, which then fell to the venv branch and
+    # hard-failed on no managers — even though env.yml says micromamba.
+    touch environment.yml
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "auto" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: micromamba (--backend auto, detected)"* ]]
+    # Python prompt should hit the micromamba branch (env.yml managed),
+    # not the venv branch.
+    [[ "$output" == *"Python: managed via environment.yml"* ]]
+}
+
+@test "_init_wizard: --backend auto + no signals → resolves to venv default" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "auto" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: venv (--backend auto, detected)"* ]]
+}
+
+@test "_init_wizard: --backend auto sets caller's backend_flag to resolved value" {
+    touch environment.yml
+    local backend_flag="auto"
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "yes" >/dev/null 2>&1
+    [[ "$backend_flag" == "micromamba" ]]
 }
 
 #============================================================
@@ -236,6 +273,9 @@ teardown() {
 # set_local_python_version. Tests opt into a particular combination
 # (asdf, pyenv, or both) by listing them as args.
 _stub_managers() {
+    # Reset so each call replaces prior stubs (e.g. setup()'s default
+    # asdf is wiped by `_stub_managers pyenv`).
+    rm -rf "$TEST_DIR/.fakebin"
     mkdir -p "$TEST_DIR/.fakebin"
     local m
     for m in "$@"; do
@@ -295,6 +335,20 @@ EOF
     PATH="$TEST_DIR/.emptybin" run _init_detect_version_managers_available
     [ "$status" -eq 0 ]
     [[ "$output" == "" ]]
+}
+
+@test "_init_detect_version_managers_available: no 'unbound variable' under 'set -u' (bash 3.2 / pyve.sh contract)" {
+    # Regression: pyve.sh runs under `set -euo pipefail`. On bash 3.2
+    # (macOS system bash), "${array[*]}" on an empty array triggers
+    # "unbound variable" even without explicit `set -u` in the helper.
+    # The helper must use the `:-` default so this path stays clean.
+    mkdir -p "$TEST_DIR/.emptybin"
+    run /bin/bash -c "set -euo pipefail; \
+        source '$PYVE_ROOT/lib/ui/core.sh'; \
+        source '$PYVE_ROOT/lib/commands/init.sh'; \
+        PATH='$TEST_DIR/.emptybin' _init_detect_version_managers_available"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"unbound variable"* ]]
 }
 
 @test "_init_detect_version_managers_available: 'asdf' when only asdf on PATH" {
@@ -502,27 +556,39 @@ EOF
     [[ "$output" == *"project-guide: managed by your project dependencies"* ]]
 }
 
-@test "_init_wizard: project-guide-in-deps sets project_guide_mode='no' (don't manage)" {
+@test "_init_wizard: project-guide-in-deps leaves project_guide_mode unset (hook runs auto-skip-from-deps)" {
+    # The wizard renders the summary line but does NOT pre-set pg_mode —
+    # leaving it empty so the post-env `_init_run_project_guide_hooks`
+    # runs its detailed "Detected 'project-guide'..." auto-skip path.
+    # Pre-setting "no" here would short-circuit that message and emit
+    # the misleading "Skipping project-guide install (--no-project-guide)"
+    # in its place.
     printf 'project-guide==2.5.8\n' > requirements.txt
     local backend_flag="venv" project_guide_mode=""
     PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
-    [[ "$project_guide_mode" == "no" ]]
+    [[ "$project_guide_mode" == "" ]]
 }
 
 #============================================================
 # L.k.5: wizard project-guide prompt — bypass + no flag → silent skip
 #============================================================
 
-@test "_init_wizard: bypass + no flag + no signal → 'skipped (no flag)'" {
+@test "_init_wizard: bypass + no flag + no signal → '(env / CI default)' (defer to hook)" {
     PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" ""
     [ "$status" -eq 0 ]
-    [[ "$output" == *"project-guide: skipped (no flag)"* ]]
+    [[ "$output" == *"project-guide: (env / CI default)"* ]]
 }
 
-@test "_init_wizard: bypass + no flag + no signal sets project_guide_mode='no'" {
+@test "_init_wizard: bypass + no flag + no signal leaves project_guide_mode unset" {
+    # The wizard renders the deferred-line UI but does NOT pre-set
+    # pg_mode. The post-env hook then consults
+    # PYVE_NO_PROJECT_GUIDE / PYVE_PROJECT_GUIDE / CI / PYVE_FORCE_YES
+    # to decide. Pre-setting "no" here would break the documented
+    # CI-default-install behavior (`_init_run_project_guide_hooks`
+    # priority 5).
     local backend_flag="venv" project_guide_mode=""
     PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
-    [[ "$project_guide_mode" == "no" ]]
+    [[ "$project_guide_mode" == "" ]]
 }
 
 #============================================================

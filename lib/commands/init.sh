@@ -210,8 +210,11 @@ _init_detect_version_managers_available() {
     local available=()
     command -v asdf  >/dev/null 2>&1 && available+=("asdf")
     command -v pyenv >/dev/null 2>&1 && available+=("pyenv")
+    # bash 3.2 (macOS system bash) raises "unbound variable" on
+    # "${array[*]}" when the array is empty — even without `set -u`.
+    # The `:-` default keeps the empty case a clean empty string.
     local IFS=,
-    printf '%s' "${available[*]}"
+    printf '%s' "${available[*]:-}"
 }
 
 # List manager-reported installed Python versions, filtered to ^3\..
@@ -312,10 +315,21 @@ _init_wizard() {
 
     header_box "pyve init"
 
-    # Prompt 1 — backend (Story L.k.3).
-    if [[ -n "$arg_backend_flag" ]]; then
+    # Prompt 1 — backend (Story L.k.3 + L.k.7 auto handling).
+    # `--backend auto` is the explicit "let pyve detect" form; treat it
+    # like the no-flag auto-detect path so the wizard resolves to a real
+    # backend before downstream prompts (Python/project-guide) branch on
+    # backend_flag. Without this, backend_flag stays "auto" through the
+    # Python prompt, which would then fall to the venv branch and
+    # hard-fail on no managers — even when env.yml says micromamba.
+    if [[ -n "$arg_backend_flag" ]] && [[ "$arg_backend_flag" != "auto" ]]; then
         info "Backend: $arg_backend_flag (--backend)"
         backend_flag="$arg_backend_flag"
+    elif [[ "$arg_backend_flag" == "auto" ]]; then
+        local default_backend
+        default_backend="$(_init_detect_backend_default)"
+        info "Backend: $default_backend (--backend auto, detected)"
+        backend_flag="$default_backend"
     elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
         local default_backend default_idx
         default_backend="$(_init_detect_backend_default)"
@@ -480,8 +494,12 @@ _init_wizard() {
     elif [[ "$arg_pg_mode" == "no" ]]; then
         info "project-guide: skipped (--no-project-guide)"
     elif project_guide_in_project_deps; then
+        # Render the wizard summary; defer to the hook's detailed
+        # auto-skip-from-deps message ("Detected 'project-guide'...")
+        # by leaving project_guide_mode empty. Pre-setting "no" here
+        # would short-circuit that message and emit a misleading
+        # "Skipping project-guide install (--no-project-guide)" instead.
         info "project-guide: managed by your project dependencies"
-        project_guide_mode="no"
     elif _init_detect_project_guide_present; then
         info "project-guide: refresh (already installed)"
         project_guide_mode="yes"
@@ -497,8 +515,12 @@ _init_wizard() {
             *) log_error "Unexpected project-guide choice index: $pg_idx"; exit 1 ;;
         esac
     else
-        info "project-guide: skipped (no flag)"
-        project_guide_mode="no"
+        # Non-TTY / bypass + no flag + no signal: defer to the hook's
+        # existing env-var / CI-default / interactive-fallback logic
+        # (PYVE_NO_PROJECT_GUIDE, PYVE_PROJECT_GUIDE, CI=1, PYVE_FORCE_YES).
+        # Pre-setting "no" here would break the CI-default-install behavior
+        # documented in `_init_run_project_guide_hooks` priority 5.
+        info "project-guide: (env / CI default)"
     fi
 
     return 0
