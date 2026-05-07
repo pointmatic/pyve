@@ -152,7 +152,7 @@ _ui_select_tty() {
     (( cur < 0 )) && cur=0
     (( cur >= n )) && cur=$((n - 1))
 
-    command -v tput >/dev/null 2>&1 && tput civis 2>/dev/null
+    command -v tput >/dev/null 2>&1 && tput civis >&2 2>/dev/null
     printf '%s\n' "$label" >&2
 
     local i
@@ -175,18 +175,18 @@ _ui_select_tty() {
                     '[A') (( cur > 0 )) && cur=$((cur - 1)) ;;
                     '[B') (( cur < n - 1 )) && cur=$((cur + 1)) ;;
                     *)
-                        command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                        command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                         return 1
                         ;;
                 esac
                 ;;
             '')
-                command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                 printf '%d' "$cur"
                 return 0
                 ;;
             q|Q)
-                command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                 return 1
                 ;;
         esac
@@ -224,7 +224,7 @@ _ui_multi_select_tty() {
         done
     fi
 
-    command -v tput >/dev/null 2>&1 && tput civis 2>/dev/null
+    command -v tput >/dev/null 2>&1 && tput civis >&2 2>/dev/null
     printf '%s (space to toggle, enter to confirm)\n' "$label" >&2
 
     _draw() {
@@ -251,7 +251,7 @@ _ui_multi_select_tty() {
                     '[A') (( cur > 0 )) && cur=$((cur - 1)) ;;
                     '[B') (( cur < n - 1 )) && cur=$((cur + 1)) ;;
                     *)
-                        command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                        command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                         return 1
                         ;;
                 esac
@@ -260,7 +260,7 @@ _ui_multi_select_tty() {
                 if (( selected[cur] == 1 )); then selected[$cur]=0; else selected[$cur]=1; fi
                 ;;
             '')
-                command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                 local out=""
                 for ((i = 0; i < n; i++)); do
                     (( selected[i] == 1 )) && out="$out $i"
@@ -269,7 +269,7 @@ _ui_multi_select_tty() {
                 return 0
                 ;;
             q|Q)
-                command -v tput >/dev/null 2>&1 && tput cnorm 2>/dev/null
+                command -v tput >/dev/null 2>&1 && tput cnorm >&2 2>/dev/null
                 return 1
                 ;;
         esac
