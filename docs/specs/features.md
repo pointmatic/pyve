@@ -158,6 +158,24 @@ Initialize a complete Python development environment in the current directory.
 - **Edge cases**: Existing environment detected → offer update/force/cancel (where "update" now delegates to the separate `pyve update` subcommand, not an `init --update` flag). Reserved venv directory names rejected (`.env`, `.git`, `.gitignore`, `.tool-versions`, `.python-version`, `.envrc`). Invalid Python version format rejected.
 - **Post-init project-guide hook (FR-16)**: After environment creation and pip-deps install, runs the three-step project-guide hook (install, `project-guide init --no-input`, shell completion). Auto-skipped if `project-guide` is already declared as a project dep. `pyve update` refreshes the project-guide scaffolding independently of any `init` invocation.
 
+#### FR-1a: Interactive `pyve init` wizard (Phase L / v2.6.0)
+
+Every `pyve init` invocation runs through an interactive wizard. The wizard always runs; flags only suppress the *interactive* part of individual prompts while still rendering the resolved value in the flow, so the user sees what's about to happen even when the invocation is fully flag-driven.
+
+Three prompts in fixed order: **backend → Python version pin → project-guide install.**
+
+- **Backend.** Default-resolution rules: `environment.yml` present → `micromamba`; `.python-version` or `.tool-versions` present → `venv`; otherwise `venv`. `--backend <type>` skips the prompt and renders the flag-resolved value.
+- **Python version pin.** Backend-aware split:
+  - **venv** — up to three layers: (1) version-manager picker (`asdf` default; auto-pick when only one is installed; hard-fail when neither is installed AND a pin is requested); (2) "pick from installed" via `asdf list python` / `pyenv versions --bare` (filtered to `^3\.`); (3) `more...` re-prompts with the full available list (`asdf list all python` / `pyenv install --list`). Skip option preserves no-pin behavior.
+  - **micromamba** — no manager involved (micromamba pins via `python=X` in `environment.yml`). When `environment.yml` exists, the wizard renders `Python: managed via environment.yml` and skips. When it's absent, the version (flag-supplied or `DEFAULT_PYTHON_VERSION`) is announced and gets baked into the scaffolded env.yml by the existing `scaffold_starter_environment_yml` helper later in the init flow.
+- **project-guide install.** Detection-keyed: `.project-guide.yml` present → render `refresh (already installed)`, set the install hook to refresh; project-guide declared in project deps → render `managed by your project dependencies`, skip (deps signal wins over install-marker signal); otherwise prompt with default `no` (interactive) or skip silently (non-TTY/bypass). `--project-guide` / `--no-project-guide` skip the prompt.
+
+**TTY policy.** When at least one prompt would read stdin (i.e. at least one of `--backend`, `--python-version`, `--project-guide` / `--no-project-guide` is unsupplied) AND stdin is not a TTY, `pyve init` exits non-zero before printing the welcome banner. The error names the missing flags as the non-interactive path.
+
+**Bypass env var.** `PYVE_INIT_NONINTERACTIVE=1` bypasses the TTY guard. Used by the bats and pytest test harnesses (which invoke `pyve init` from non-TTY stdin with various flag subsets); also intended for advanced users who want to drive the wizard from non-TTY contexts knowing that any prompt requiring stdin input will degrade to its auto-detect default.
+
+**Out of scope for the Phase L wizard.** `--auto-bootstrap`, `--bootstrap-to`, `--force`, `--env-name`, `--local-env`, `--no-direnv`, `--strict`, `--no-lock`, `--allow-synced-dir` stay flag-only. `--force` controls only the destructive-safeguard on an existing environment; it does **not** skip prompts. See [tech-spec.md "Interactive `pyve init` wizard"](tech-spec.md) for the full design.
+
 ### FR-2: Environment Purge (`pyve purge`)
 
 Remove all Pyve-created artifacts from the current directory.

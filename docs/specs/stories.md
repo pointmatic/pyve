@@ -304,17 +304,18 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.k.6: Wizard — end-to-end integration + features.md [Planned]
+### Story L.k.6: Wizard — end-to-end integration + features.md [Done]
 
 **Goal.** Close out the wizard work: features.md documentation update and the integration tests from the original L.k slate.
 
 **Tasks**
 
-- [ ] Update [features.md](features.md) Init section to document the interactive wizard, prompt set, default-resolution rules, flag-override behavior, and TTY policy.
-- [ ] pytest integration test: `pyve init --backend venv` (flag-driven) skips the backend prompt and proceeds non-interactively.
-- [ ] pytest integration test: `pyve init` in an `environment.yml`-containing directory defaults the backend prompt to `micromamba` and accepts the default on enter (expect-style stdin scripting if needed).
-- [ ] pytest integration test: `pyve init` with stdin not a TTY exits non-zero with an error pointing at `--backend`.
-- [ ] Cross-check the shipped wizard against L.k.1's design subsection in tech-spec.md; close any gap surfaced by the integration tests.
+- [x] Updated [features.md](features.md) FR-1 with a new FR-1a "Interactive `pyve init` wizard (Phase L / v2.6.0)" subsection: prompt set + order, default-resolution rules per prompt (including the venv/micromamba split for the Python pin and the deps-vs-install-marker precedence for project-guide), flag-override behavior, TTY policy, and the `PYVE_INIT_NONINTERACTIVE=1` bypass env var. Out-of-scope flags listed explicitly.
+- [x] pytest integration test in [tests/integration/test_init_wizard.py](../../tests/integration/test_init_wizard.py): `pyve init --backend venv ...` proceeds non-interactively and the wizard renders `Backend: venv (--backend)`.
+- [x] pytest integration test: `pyve init` in a directory containing `environment.yml` resolves the backend to `micromamba` via the wizard's auto-detect path. Driven via the non-TTY+bypass branch (closest faithful proxy for the interactive "press enter on the default" case — same detection signal, same resolved value; real-PTY arrow-key scripting stays out of unit-testable scope per L.i / L.k.4).
+- [x] pytest integration test: `pyve init` with `PYVE_INIT_NONINTERACTIVE=0` (overriding the harness default) and no flags exits non-zero with the wizard's TTY guard error message including "stdin is not a TTY" and "--backend".
+- [x] Test-harness alignment: [tests/helpers/pyve_test_helpers.py](../../tests/helpers/pyve_test_helpers.py) `PyveRunner.run` now sets `PYVE_INIT_NONINTERACTIVE=1` by default under pytest (mirroring the bats `setup_pyve_env` change in L.k.2). Without this, every existing pytest invocation of `pyve init` with anything less than all three prompt-bearing flags would now hard-fail on the wizard's TTY guard. The new TTY-guard test explicitly overrides this default via `monkeypatch.setenv`.
+- [x] Cross-checked the shipped wizard against [tech-spec.md "Interactive `pyve init` wizard"](tech-spec.md) — all three prompts (with the venv/micromamba split for Prompt 2 and the deps-vs-install-marker precedence for Prompt 3), the TTY policy, the bypass env var, and the always-render-banner contract are implemented as specified. No gaps.
 
 ---
 
@@ -335,7 +336,7 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 - [ ] Update `features.md` Init section to document the summary block.
 - [ ] bats unit tests + pytest integration tests: each conditional branch of the summary appears when its precondition holds and is omitted otherwise.
 
-### Story L.zz: Phase L wrap-up — project-essentials, version bump, phase closure [Planned]
+### Story L.m: Phase L wrap-up — project-essentials, version bump, phase closure [Planned]
 
 **When.** After every Phase L implementation story (L.b–L.l) is `[Done]` (or L.d explicitly deferred to a follow-up patch). This story is intentionally last in Phase L ordering so the `project-essentials.md` pass sees the codebase and docs **as they actually landed**, and so the single `v2.6.0` bump captures the entire phase's work in one release.
 
