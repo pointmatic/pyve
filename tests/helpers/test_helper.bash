@@ -21,6 +21,13 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
     source "$PYVE_ROOT/lib/micromamba_env.sh"
     source "$PYVE_ROOT/lib/distutils_shim.sh"
+
+    # Story L.k.2: bats fixtures invoke `pyve init` with various flag
+    # subsets that pre-date the interactive wizard. Default the bypass
+    # to 1 so the wizard's TTY guard does not hard-fail on bats's
+    # non-TTY stdin. Tests that exercise the wizard's TTY guard unset
+    # this locally.
+    export PYVE_INIT_NONINTERACTIVE=1
 }
 
 # Create a temporary test directory

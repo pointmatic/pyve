@@ -714,6 +714,75 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--project-guide-completion` | `pyve init` | Force shell completion wiring |
 | `--no-project-guide-completion` | `pyve init` | Skip shell completion wiring |
 
+### Interactive `pyve init` wizard (Phase L / v2.6.0)
+
+When `pyve init` is invoked, an interactive wizard walks the user through three prompts: **backend → Python version pin → project-guide install**. Strong repo signals make the happy path highlight the strongest choice so the user can press enter through those choices. Any explicit flag (e.g., `--backend`, `--python-version`, `--project-guide`) on the same invocation skips its corresponding prompt, displaying the flag's value in the wizard flow, and wins over detection-based defaults; flag-driven invocations therefore remain fully non-interactive (for that parameter).
+
+#### Flag inventory and wizard mapping
+
+`pyve init` accepts fifteen flags plus an optional `<dir>` positional. Three become interactive prompts; twelve stay flag-only (advanced / CI-shaped / sub-decisions of a primary prompt).
+
+| Flag | Wizard treatment |
+|------|-----------------|
+| `--backend <type>` | **Prompt** — backend selection |
+| `--python-version <ver>` | **Prompt** — Python version pin (venv backend only) |
+| `--project-guide` / `--no-project-guide` | **Prompt** — project-guide install |
+| `--project-guide-completion` / `--no-project-guide-completion` | Flag-only (sub-decision; consulted only when project-guide is being installed) |
+| `--env-name <name>` | Flag-only (advanced; defaults from project name) |
+| `--local-env` | Flag-only (advanced) |
+| `--no-direnv` | Flag-only (CI-shaped) |
+| `--auto-bootstrap` | Flag-only (sub-decision of micromamba backend) |
+| `--bootstrap-to <loc>` | Flag-only (sub-decision of `--auto-bootstrap`) |
+| `--strict` | Flag-only (CI-shaped) |
+| `--no-lock` | Flag-only (CI-shaped) |
+| `--allow-synced-dir` | Flag-only (escape hatch) |
+| `--force` | Flag-only — bypasses the destructive-safeguard on an existing virtual environment **only**; does **not** skip prompts. `pyve init --force` with no other flags still walks the wizard. |
+
+#### Prompt 1 — backend
+
+Default-resolution rules (first match wins):
+
+1. `environment.yml` exists in the target dir → default `micromamba`.
+2. `.python-version` or `.tool-versions` exists in the target dir → default `venv`.
+3. Otherwise → default `venv`.
+
+Prompt presents both options regardless of detection; the user can override the suggested default. When `--backend <type>` is supplied, the prompt renders non-interactively — the wizard flow shows a single line with the flag-resolved value (so the user sees what's locked in) and moves to the next prompt without reading stdin.
+
+#### Prompt 2 — Python version pin (venv backend only)
+
+Skipped entirely when backend is `micromamba` (env.yml owns the pin). When backend is `venv`, the prompt has up to three layers:
+
+1. **Version-manager picker.** Present `[asdf, pyenv]` with **asdf as default**. Skipped when only one of the two is installed (auto-pick that one). Hard-fail when neither is installed: error names both managers as the supported set and points the user at their respective install docs. This wizard prompt overrides the existing implicit precedence in `detect_version_manager()` — when both are installed and the user explicitly picks `pyenv`, the wizard records `pyenv` even though the implicit ranking would have chosen `asdf`.
+2. **Pick from installed.** List manager-reported installed Python versions filtered to `^3\.`. Source: `asdf list python` (strip leading `*` and whitespace) or `pyenv versions --bare`. Final list option is `more...`.
+3. **`more...` secondary prompt.** Re-prompt with the full available version list filtered to `^3\.`. Source: `asdf list all python` or `pyenv install --list`. (Filtering to `^3\.` keeps oddities like `2.1.3`, `activepython-2.7.14`, and `stackless-3.7.5` out of the menu while still surfacing every released `3.x.y`.)
+
+Prompt also offers a **skip** option that preserves current no-pin behavior (no `.tool-versions` / `.python-version` written; system Python resolves at activation time). On selection, the wizard writes the appropriate pin file: `.tool-versions` for asdf, `.python-version` for pyenv. When `--python-version <ver>` is supplied, all three interactive layers and the picker are bypassed; the wizard flow shows a single line with the flag-resolved version (and the manager it pins via — asdf when both are installed, else whichever is installed).
+
+#### Prompt 3 — project-guide install
+
+Default-resolution rules:
+
+1. **Already present** — if `.project-guide.yml` exists in the target dir, **skip the prompt entirely** and run `project-guide update` via the existing `run_project_guide_update_in_env` wrapper. The safe refresh path: never replaces, never destroys local edits. `.project-guide.yml` is the canonical "project-guide is installed here" marker — it records `installed_version`, `target_dir`, `current_mode`, etc.; `pyve update` already uses this single signal (lib/commands/update.sh:123) and L.k.5 aligns with that.
+2. **Not present** — prompt with default `no`. On `yes`, route through the existing `install_project_guide` + embedded-init path.
+
+When `--project-guide` or `--no-project-guide` is supplied, the prompt renders non-interactively — the wizard flow shows a single line with the flag-resolved decision (and, for the install case, whether detection found an existing install that will be refreshed vs. a fresh install). `--project-guide` always installs/updates regardless of detection; `--no-project-guide` always skips. The shell-completion sub-decision (`--project-guide-completion` / `--no-project-guide-completion`) is consulted only inside the install path and is not surfaced as a wizard prompt — its existing env-var / interactive-fallback logic in `_init_run_project_guide_hooks` handles it.
+
+#### TTY policy
+
+The wizard always runs on `pyve init`; flags suppress the *interactive* part of individual prompts but never the wizard itself. When at least one prompt would read from stdin (i.e. at least one of the three prompt-bearing parameters is not flag-supplied) **and** stdin is not a TTY, `pyve init` exits non-zero before printing the welcome banner. Error message names the specific flags that would short-circuit each missing prompt (`--backend`, `--python-version`, `--project-guide` / `--no-project-guide`). `lib/ui/select.sh`'s per-prompt numbered-stdin fallback is intentionally not used here — a multi-prompt wizard driven by piped numeric input is too brittle for CI use, and supplying the relevant flags is exactly the supported non-interactive path.
+
+When all three prompt-bearing parameters are flag-supplied, the wizard still runs and renders all three values non-interactively; no stdin read occurs, so the TTY check is moot.
+
+**Bypass env var.** `PYVE_INIT_NONINTERACTIVE=1` bypasses the TTY guard regardless of flag state. This exists for the bats test harness (which invokes `pyve init` with various flag subsets pre-dating the wizard, all from non-TTY stdin) and for advanced users who want to invoke the wizard from a non-TTY context with explicit awareness that any prompt that needs to read stdin will likely fail anyway. `setup_pyve_env()` in `tests/helpers/test_helper.bash` exports this var by default; new wizard tests unset it locally.
+
+#### Welcome banner
+
+Rendered with `header_box` from `lib/ui/core.sh`. Tone-matched to <https://pointmatic.github.io/pyve>. Always printed at the start of the wizard flow — even when all three prompts render non-interactively from flags — because the wizard always runs.
+
+#### Out of scope for the Phase L wizard
+
+Testenv creation prompt, `--bootstrap-to`, `--auto-bootstrap`, `--force`, `--env-name`, `--local-env`, `--no-direnv`, `--strict`, `--no-lock`, `--allow-synced-dir` — all stay flag-only. Future revisits may surface a subset of these (e.g. micromamba-bootstrap auto-prompt when micromamba is selected and not installed), but each is its own decision and is not bundled into Phase L's wizard rollout.
+
 ### Exit Codes
 
 | Code | Meaning |

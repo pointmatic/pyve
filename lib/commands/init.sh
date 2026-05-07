@@ -184,9 +184,53 @@ _init_run_project_guide_hooks() {
     fi
 }
 
+# Interactive `pyve init` wizard skeleton (Story L.k.2).
+#
+# Always invoked from init_project(); flags only control whether each
+# individual prompt reads stdin or renders the flag-resolved value
+# non-interactively. Per-prompt logic lands in L.k.3 / L.k.4 / L.k.5.
+#
+# TTY guard: when at least one of the three prompt-bearing parameters
+# is not flag-supplied AND stdin is not a TTY, hard-fail with a message
+# naming the missing flags. PYVE_INIT_NONINTERACTIVE=1 bypasses the
+# guard (used by the bats test harness so existing init-driving tests
+# stay green without supplying every prompt-bearing flag).
+#
+# Usage: _init_wizard <backend_flag> <python_version_supplied> <project_guide_mode>
+#   backend_flag:              "" if --backend not supplied, else the value
+#   python_version_supplied:   "true" if --python-version supplied, else "false"
+#   project_guide_mode:        "" if neither flag supplied, else "yes" or "no"
+_init_wizard() {
+    local backend_flag="$1"
+    local python_version_supplied="$2"
+    local project_guide_mode="$3"
+
+    local missing_flags=()
+    [[ -z "$backend_flag" ]] && missing_flags+=("--backend <type>")
+    [[ "$python_version_supplied" != "true" ]] && missing_flags+=("--python-version <ver>")
+    [[ -z "$project_guide_mode" ]] && missing_flags+=("--project-guide / --no-project-guide")
+
+    if [[ ${#missing_flags[@]} -gt 0 ]] \
+       && [[ ! -t 0 ]] \
+       && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        log_error "pyve init: stdin is not a TTY and the wizard requires interactive input."
+        log_error "To run non-interactively, supply the missing flag(s):"
+        local f
+        for f in "${missing_flags[@]}"; do
+            log_error "  $f"
+        done
+        log_error "Or set PYVE_INIT_NONINTERACTIVE=1 to bypass."
+        exit 1
+    fi
+
+    header_box "pyve init"
+    return 0
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
+    local python_version_supplied=false
     local use_local_env=false
     local backend_flag=""
     local auto_bootstrap=false
@@ -212,6 +256,7 @@ init_project() {
                     exit 1
                 fi
                 python_version="$2"
+                python_version_supplied=true
                 shift 2
                 ;;
             --backend)
@@ -334,7 +379,7 @@ init_project() {
         esac
     done
 
-    header_box "pyve init"
+    _init_wizard "$backend_flag" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path

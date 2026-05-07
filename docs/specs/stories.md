@@ -209,35 +209,102 @@ See [phase-l-pyve-polish-plan.md](phase-l-pyve-polish-plan.md) for full theme, g
 
 ---
 
-### Story L.k: Interactive `pyve init` wizard (red-carpet experience) [Planned]
+### Story L.k: Interactive `pyve init` wizard (red-carpet experience) — split into L.k.1–L.k.6
 
-**Goal.** `pyve init` with no args opens a welcome banner, then walks the user through a guided setup using `lib/ui/select.sh` (L.i) prompts. Strong repo signals make the happy path "press enter through the defaults." Flags act as overrides — any flag-provided parameter skips its corresponding prompt — so existing flag-driven invocations remain non-interactive.
+The original single-story scope grew large enough during pre-implementation Q&A (asdf-vs-pyenv precedence; `more...` secondary prompt for the full Python version list; project-guide already-present detection vs. flag-override interaction) that landing it as one cycle would mix design decisions into the implementation. The story is split into six self-contained sub-stories below. All six aggregate into the single `v2.6.0` bump in L.zz; no per-sub-story version bumps.
 
-**Tasks — design**
+---
 
-- [ ] Inventory every flag that `pyve init` accepts today (`--backend`, `--auto-bootstrap`, `--bootstrap-to`, `--project-guide`, `--no-project-guide`, `--force`, etc.). Each is a candidate interactive prompt with the flag as its "skip this question" override.
-- [ ] Decide which inventory items become interactive prompts in the wizard. Minimum viable set:
-  - **Backend** (`venv` / `micromamba`) — default driven by repo signals: `environment.yml` present → `micromamba`; `.python-version` or `.tool-versions` present → `venv`; otherwise prompt with `venv` as default.
-  - **project-guide install** (yes/no) — default `yes` if running in a repo that already has `docs/project-guide/` or a `.project-guide.yml`; otherwise default `no` and let the user opt in.
-  - **Python version pin** (skip / pick from installed asdf versions / type a version) — only prompt for venv backend; micromamba pins via `environment.yml`. Default: skip (current behavior).
-- [ ] Out of scope for L.k: testenv creation prompt (testenv is a follow-up command, not an init concern), bootstrap location (`--bootstrap-to`), `--force` — these stay flag-only.
-- [ ] Document the prompt set + default-resolution rules in `tech-spec.md` (new "Interactive init wizard" subsection).
+### Story L.k.1: Interactive init wizard — design + tech-spec [Done]
 
-**Tasks — implementation**
+**Goal.** No-code design pass that locks the wizard's shape, prompt order, default-resolution rules, version-manager precedence, `more...` flow, and TTY policy. Output is a new "Interactive init wizard" subsection in [tech-spec.md](tech-spec.md). L.k.2–L.k.6 implement against this approved spec.
 
-- [ ] Detect "no relevant flags" entry point in `init_project()` — when true, route to `_init_wizard()` to gather any unspecified parameters. When a flag is present for a given parameter, skip that prompt and use the flag value.
-- [ ] Implement `_init_wizard()` in `lib/commands/init.sh` (command-private per the project-essential prefix rule). Uses `ui_select` (L.i) for each prompt; threads the resolved values into the existing `init_project()` codepath so post-wizard the flow is identical to flag-driven init.
-- [ ] Welcome banner at the top of the wizard (use existing `header_box` from `lib/ui/core.sh`).
-- [ ] Repo-signal detection helpers — small functions that inspect `environment.yml`, `.python-version`, `.tool-versions`, `docs/project-guide/`, `.project-guide.yml` and return the appropriate default. Live in `lib/commands/init.sh` (command-private; no other command needs them).
-- [ ] TTY check: if stdin is not a TTY, the wizard refuses to run interactively and prints a clear error pointing the user at `--backend` and friends. (`lib/ui/select.sh` handles the basic fallback for the per-prompt case, but the welcome banner + multi-prompt flow should hard-fail rather than degrade.)
-- [ ] Update `features.md` Init section to document the new interactive flow + the flag-override behavior.
+**Tasks**
 
-**Tasks — tests**
+- [x] Inventory every flag that `pyve init` accepts today. **15 flags catalogued** (`--backend`, `--python-version`, `--env-name`, `--local-env`, `--no-direnv`, `--force`, `--auto-bootstrap`, `--bootstrap-to`, `--strict`, `--no-lock`, `--allow-synced-dir`, `--project-guide`, `--no-project-guide`, `--project-guide-completion`, `--no-project-guide-completion`) plus the `<dir>` positional. Three become interactive prompts; twelve stay flag-only. Full mapping table in the new tech-spec subsection.
+- [x] Decide the prompt set and order: **backend → python version pin → project-guide install**. Default-resolution rules per prompt documented in [tech-spec.md](tech-spec.md) "Interactive init wizard" subsection (Prompts 1, 2, 3).
+- [x] Document `--force` semantics: applies only to init's destructive safeguard on the existing virtual environment; does **not** skip prompts. Captured in the flag-mapping table.
+- [x] Document flag-override precedence: any explicit flag (`--backend`, `--python-version`, `--project-guide`, `--no-project-guide`) skips its corresponding prompt and wins over detection-based defaults. Captured per-prompt in the new subsection.
+- [x] Document TTY policy: wizard hard-fails when stdin is not a TTY, error message names `--backend` and the other prompt-bearing flags as the non-interactive path. Captured in the new subsection's "TTY policy" subsection.
+- [x] Document out-of-scope items: testenv creation, `--bootstrap-to`, `--auto-bootstrap`, `--force`, plus the rest of the flag-only set — all stay flag-only. Captured in the "Out of scope for the Phase L wizard" subsection.
+- [x] Append the new "Interactive init wizard" subsection to [tech-spec.md](tech-spec.md), inserted between the Modifier Flags table and the Exit Codes section.
 
-- [ ] bats unit tests for repo-signal detection helpers (each branch of the default-resolution rules).
+---
+
+### Story L.k.2: Wizard skeleton — dispatch + welcome banner + TTY guard [Done]
+
+**Goal.** Land the wizard frame so L.k.3–L.k.5 can each add a single prompt without restructuring. No prompts in this story; user-visible behavior on the happy path is "banner appears, then current init flow runs unchanged."
+
+**Tasks**
+
+- [x] Route every `pyve init` invocation through `_init_wizard()`. The existing `header_box "pyve init"` call in [init_project()](../../lib/commands/init.sh) is replaced by `_init_wizard "$backend_flag" "$python_version_supplied" "$project_guide_mode"`. Wizard always runs; per-prompt interactive vs. flag-render logic lands in L.k.3–L.k.5. `python_version_supplied` is tracked as a separate boolean (set `true` in the `--python-version` flag arm) since `python_version` itself is initialized to `DEFAULT_PYTHON_VERSION` and can't distinguish user-supplied from default.
+- [x] Implement `_init_wizard()` skeleton in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private per the project-essential prefix rule). Body: TTY guard → header_box → return 0. Per-prompt logic lands in L.k.3–L.k.5.
+- [x] Welcome banner — `header_box "pyve init"` from `lib/ui/core.sh`. Always printed when the wizard runs (i.e. always — the wizard always runs).
+- [x] TTY hard-fail: if `[[ ! -t 0 ]]` AND at least one of the three prompt-bearing parameters is not flag-supplied AND `PYVE_INIT_NONINTERACTIVE != 1`, the wizard exits non-zero before printing the banner. Error names only the missing flags (supplied flags are excluded from the list) and surfaces the bypass env var. Bypass env var `PYVE_INIT_NONINTERACTIVE=1` is set by default in [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) `setup_pyve_env` so existing 804-test bats fixtures keep passing without supplying every prompt-bearing flag.
+- [x] bats unit tests in [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) (10 tests): banner prints with all three supplied; TTY guard fires when any flag missing; error names only missing flags; bypass `=1` works; bypass `=0` does not bypass; `pyve init` integration fails without flags / proceeds with bypass.
+- [x] [tech-spec.md](tech-spec.md) "TTY policy" subsection extended with a "Bypass env var" paragraph documenting `PYVE_INIT_NONINTERACTIVE=1`.
+
+---
+
+### Story L.k.3: Wizard — backend prompt + repo-signal helpers [Planned]
+
+**Goal.** Add the first prompt to the wizard skeleton from L.k.2. Defaults driven by repo signals.
+
+**Tasks**
+
+- [ ] Repo-signal detection helper `_init_detect_backend_default` in [lib/commands/init.sh](../../lib/commands/init.sh) (command-private): returns `micromamba` if `environment.yml` exists; returns `venv` if `.python-version` or `.tool-versions` exists; else returns `venv`.
+- [ ] Wire the backend prompt into `_init_wizard()` using `ui_select` from `lib/ui/select.sh`. Default index is set from `_init_detect_backend_default`.
+- [ ] Flag-override path: when `--backend` is supplied, skip the prompt and use the flag value.
+- [ ] bats unit tests for `_init_detect_backend_default` (each branch of the default-resolution rules).
+- [ ] bats unit tests: `--backend` flag skips the prompt; no-flag wizard prompts with the signal-derived default.
+
+---
+
+### Story L.k.4: Wizard — Python version pin prompt [Planned]
+
+**Goal.** Add the Python pin prompt. Most involved sub-story: version-manager picker, "pick from installed", `more...` secondary prompt with filtered full list, skip path, no-manager hard-fail. Only runs when backend is `venv`.
+
+**Tasks**
+
+- [ ] Skip the entire pin prompt when backend is `micromamba` (env.yml owns the pin).
+- [ ] Detect installed version managers: presence checks for `asdf` and `pyenv` on `PATH`. If neither is installed, hard-fail with a clear message naming both as the supported set and pointing the user at the relevant install docs.
+- [ ] Version-manager sub-prompt: `ui_select` with options `[asdf, pyenv]` and asdf as default. Skipped if only one is installed.
+- [ ] "Pick from installed" prompt:
+  - asdf: parse `asdf list python` (strip leading `*` and whitespace).
+  - pyenv: parse `pyenv versions --bare`.
+  - Filter to `^3\.` numeric prefix.
+  - Final option `more...` re-prompts with the full available list (`asdf list all python` / `pyenv install --list`), same `^3\.` filter applied.
+  - Skip option (preserve current no-pin behavior).
+- [ ] On selection, write the appropriate pin file using existing pyve conventions: `.tool-versions` for asdf, `.python-version` for pyenv.
+- [ ] bats unit tests for each branch: asdf installed-list parsing, pyenv installed-list parsing, `more...` flow with mocked manager output, skip path, no-manager hard-fail, single-manager auto-pick (skips the picker sub-prompt), `^3\.` filter correctness.
+
+---
+
+### Story L.k.5: Wizard — project-guide install prompt [Planned]
+
+**Goal.** Last prompt in the wizard. If project-guide is already present in the target dir, run `project-guide update` instead of prompting (the safe refresh path).
+
+**Tasks**
+
+- [ ] Detection helper `_init_detect_project_guide_present` in [lib/commands/init.sh](../../lib/commands/init.sh): returns true iff `.project-guide.yml` exists in the target dir. This matches the existing detection signal used by `pyve update` ([lib/commands/update.sh:123](../../lib/commands/update.sh#L123)) — `.project-guide.yml` is the canonical install marker (records `installed_version`, `target_dir`, `current_mode`); `docs/project-guide/` alone is not a reliable signal because the directory could exist for unrelated reasons or be relocated via `target_dir`.
+- [ ] When already present and no flag is supplied: skip the prompt, run `project-guide update` via the existing `run_project_guide_update_in_env` wrapper in [lib/utils.sh](../../lib/utils.sh).
+- [ ] When not present and no flag is supplied: prompt with default `no`. On `yes`, route through the existing project-guide install path (`install_project_guide` + the embedded-init wrapper).
+- [ ] Flag-override path: `--project-guide` always installs/updates regardless of detection; `--no-project-guide` always skips. Explicit flag wins over detection.
+- [ ] bats unit tests for each branch: detection-true (`.project-guide.yml` present) → update path, detection-false → default-no prompt, `--project-guide` with already-present (update) and absent (install), `--no-project-guide` short-circuit.
+
+---
+
+### Story L.k.6: Wizard — end-to-end integration + features.md [Planned]
+
+**Goal.** Close out the wizard work: features.md documentation update and the integration tests from the original L.k slate.
+
+**Tasks**
+
+- [ ] Update [features.md](features.md) Init section to document the interactive wizard, prompt set, default-resolution rules, flag-override behavior, and TTY policy.
 - [ ] pytest integration test: `pyve init --backend venv` (flag-driven) skips the backend prompt and proceeds non-interactively.
 - [ ] pytest integration test: `pyve init` in an `environment.yml`-containing directory defaults the backend prompt to `micromamba` and accepts the default on enter (expect-style stdin scripting if needed).
 - [ ] pytest integration test: `pyve init` with stdin not a TTY exits non-zero with an error pointing at `--backend`.
+- [ ] Cross-check the shipped wizard against L.k.1's design subsection in tech-spec.md; close any gap surfaced by the integration tests.
 
 ---
 
