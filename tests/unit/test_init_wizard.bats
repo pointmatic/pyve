@@ -445,3 +445,95 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"Python: skipped (no pin)"* ]]
 }
+
+#============================================================
+# L.k.5: _init_detect_project_guide_present (signal helper)
+#============================================================
+
+@test "_init_detect_project_guide_present: returns 0 when .project-guide.yml exists" {
+    touch .project-guide.yml
+    run _init_detect_project_guide_present
+    [ "$status" -eq 0 ]
+}
+
+@test "_init_detect_project_guide_present: returns non-zero when .project-guide.yml absent" {
+    run _init_detect_project_guide_present
+    [ "$status" -ne 0 ]
+}
+
+#============================================================
+# L.k.5: wizard project-guide prompt — flag-driven path
+#============================================================
+
+@test "_init_wizard: --project-guide renders 'install (--project-guide)'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: install (--project-guide)"* ]]
+}
+
+@test "_init_wizard: --no-project-guide renders 'skipped (--no-project-guide)'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" "no"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: skipped (--no-project-guide)"* ]]
+}
+
+#============================================================
+# L.k.5: wizard project-guide prompt — detection paths
+#============================================================
+
+@test "_init_wizard: .project-guide.yml present → 'refresh (already installed)'" {
+    touch .project-guide.yml
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" ""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: refresh (already installed)"* ]]
+}
+
+@test "_init_wizard: .project-guide.yml present sets project_guide_mode='yes'" {
+    touch .project-guide.yml
+    local backend_flag="venv" project_guide_mode=""
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
+    [[ "$project_guide_mode" == "yes" ]]
+}
+
+@test "_init_wizard: project-guide declared in requirements.txt → 'managed by your project dependencies'" {
+    printf 'project-guide==2.5.8\n' > requirements.txt
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" ""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: managed by your project dependencies"* ]]
+}
+
+@test "_init_wizard: project-guide-in-deps sets project_guide_mode='no' (don't manage)" {
+    printf 'project-guide==2.5.8\n' > requirements.txt
+    local backend_flag="venv" project_guide_mode=""
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
+    [[ "$project_guide_mode" == "no" ]]
+}
+
+#============================================================
+# L.k.5: wizard project-guide prompt — bypass + no flag → silent skip
+#============================================================
+
+@test "_init_wizard: bypass + no flag + no signal → 'skipped (no flag)'" {
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" ""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: skipped (no flag)"* ]]
+}
+
+@test "_init_wizard: bypass + no flag + no signal sets project_guide_mode='no'" {
+    local backend_flag="venv" project_guide_mode=""
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
+    [[ "$project_guide_mode" == "no" ]]
+}
+
+#============================================================
+# L.k.5: detection-signal precedence (deps wins over .project-guide.yml)
+#============================================================
+
+@test "_init_wizard: when both signals present, deps wins (refuses to manage)" {
+    touch .project-guide.yml
+    printf 'project-guide==2.5.8\n' > requirements.txt
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "true" ""
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide: managed by your project dependencies"* ]]
+    [[ "$output" != *"refresh (already installed)"* ]]
+}

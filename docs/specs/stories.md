@@ -289,17 +289,18 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.k.5: Wizard — project-guide install prompt [Planned]
+### Story L.k.5: Wizard — project-guide install prompt [Done]
 
 **Goal.** Last prompt in the wizard. If project-guide is already present in the target dir, run `project-guide update` instead of prompting (the safe refresh path).
 
 **Tasks**
 
-- [ ] Detection helper `_init_detect_project_guide_present` in [lib/commands/init.sh](../../lib/commands/init.sh): returns true iff `.project-guide.yml` exists in the target dir. This matches the existing detection signal used by `pyve update` ([lib/commands/update.sh:123](../../lib/commands/update.sh#L123)) — `.project-guide.yml` is the canonical install marker (records `installed_version`, `target_dir`, `current_mode`); `docs/project-guide/` alone is not a reliable signal because the directory could exist for unrelated reasons or be relocated via `target_dir`.
-- [ ] When already present and no flag is supplied: skip the prompt, run `project-guide update` via the existing `run_project_guide_update_in_env` wrapper in [lib/utils.sh](../../lib/utils.sh).
-- [ ] When not present and no flag is supplied: prompt with default `no`. On `yes`, route through the existing project-guide install path (`install_project_guide` + the embedded-init wrapper).
-- [ ] Flag-override path: `--project-guide` always installs/updates regardless of detection; `--no-project-guide` always skips. Explicit flag wins over detection.
-- [ ] bats unit tests for each branch: detection-true (`.project-guide.yml` present) → update path, detection-false → default-no prompt, `--project-guide` with already-present (update) and absent (install), `--no-project-guide` short-circuit.
+- [x] Detection helper `_init_detect_project_guide_present` in [lib/commands/init.sh](../../lib/commands/init.sh): returns 0 iff `.project-guide.yml` exists in cwd, matching the canonical install marker used by `pyve update` ([lib/commands/update.sh:123](../../lib/commands/update.sh#L123)).
+- [x] When already present and no flag is supplied: render `project-guide: refresh (already installed)` and set `project_guide_mode="yes"` so the existing post-env `_init_run_project_guide_hooks` runs the update path (it already branches on `.project-guide.yml` at lines 135-139, calling `run_project_guide_update_in_env` when present). No new wiring needed in the hook.
+- [x] When project-guide is declared in project deps (`project_guide_in_project_deps()` in [lib/utils.sh](../../lib/utils.sh)): render `project-guide: managed by your project dependencies` and set `project_guide_mode="no"`. The deps signal wins over the install-marker signal — pyve refuses to touch a user-managed install to avoid version-pin conflicts at the next `pip install -e .`.
+- [x] When neither signal is present and no flag is supplied: in interactive mode (real TTY + bypass off), prompt with default no via `ui_select`; in non-TTY/bypass mode, render `project-guide: skipped (no flag)` and set `project_guide_mode="no"`.
+- [x] Flag-override path: `--project-guide` renders `install (--project-guide)`; `--no-project-guide` renders `skipped (--no-project-guide)`. The wizard does not modify `project_guide_mode` in these cases — `init_project()` already set it from the flag arm.
+- [x] 11 bats unit tests for each branch: detection helper (present / absent), flag-driven render (--project-guide / --no-project-guide), `.project-guide.yml`-present render and `project_guide_mode="yes"` side effect, deps-declared render and `project_guide_mode="no"` side effect, bypass + no-signal render and side effect, deps-vs-install-marker precedence (deps wins).
 
 ---
 

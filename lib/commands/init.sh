@@ -231,6 +231,17 @@ _init_list_installed_python_versions() {
     esac
 }
 
+# Detect whether project-guide is already installed in this project.
+# Returns 0 if `.project-guide.yml` exists in cwd, else 1. This matches
+# the canonical install marker used by `pyve update`
+# (lib/commands/update.sh:123) — `.project-guide.yml` records
+# `installed_version`, `target_dir`, `current_mode`, etc.; the
+# `docs/project-guide/` directory alone is not authoritative because
+# `target_dir` is configurable.
+_init_detect_project_guide_present() {
+    [[ -f .project-guide.yml ]]
+}
+
 # List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..
 # Output: one version per line.
 # Args: $1 = "asdf" | "pyenv"
@@ -455,6 +466,39 @@ _init_wizard() {
             # missing managers because no pin was requested.
             info "Python: skipped (no pin)"
         fi
+    fi
+
+    # Prompt 3 — project-guide install (Story L.k.5). Detection is keyed on
+    # `.project-guide.yml` (the canonical install marker, matching what
+    # `pyve update` already uses). Deps-managed signal (project-guide
+    # declared in pyproject.toml / requirements.txt / environment.yml)
+    # wins over the install-marker check — when the user manages
+    # project-guide via project deps, pyve refuses to touch it to avoid
+    # version-pin conflicts at the next `pip install -e .`.
+    if [[ "$arg_pg_mode" == "yes" ]]; then
+        info "project-guide: install (--project-guide)"
+    elif [[ "$arg_pg_mode" == "no" ]]; then
+        info "project-guide: skipped (--no-project-guide)"
+    elif project_guide_in_project_deps; then
+        info "project-guide: managed by your project dependencies"
+        project_guide_mode="no"
+    elif _init_detect_project_guide_present; then
+        info "project-guide: refresh (already installed)"
+        project_guide_mode="yes"
+    elif [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        local pg_idx
+        if ! pg_idx="$(ui_select --default 2 "Install project-guide?" "yes" "no")"; then
+            log_error "project-guide selection cancelled."
+            exit 1
+        fi
+        case "$pg_idx" in
+            0) info "project-guide: install"; project_guide_mode="yes" ;;
+            1) info "project-guide: skipped"; project_guide_mode="no" ;;
+            *) log_error "Unexpected project-guide choice index: $pg_idx"; exit 1 ;;
+        esac
+    else
+        info "project-guide: skipped (no flag)"
+        project_guide_mode="no"
     fi
 
     return 0
