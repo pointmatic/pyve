@@ -268,8 +268,15 @@ EOF
     run pyve_write_sitecustomize_shim "$sp_dir"
     assert_status_equals 0
 
+    # Cross-platform mtime: try GNU stat first (`-c %Y`), fall back to BSD
+    # stat (`-f %m`). Order matters — BSD stat's `-c` exits 1 ("illegal
+    # option") so the fallback fires correctly on macOS, but GNU stat's
+    # `-f %m` does NOT fail on Linux (coreutils 9.0+ treats %m as
+    # "Mountpoint" in filesystem-status mode), which would make the
+    # fallback unreachable and produce a mountpoint string instead of an
+    # mtime — silently breaking this test on Linux CI runners.
     local mtime_before
-    mtime_before="$(stat -f %m "$sp_dir/sitecustomize.py" 2>/dev/null || stat -c %Y "$sp_dir/sitecustomize.py")"
+    mtime_before="$(stat -c %Y "$sp_dir/sitecustomize.py" 2>/dev/null || stat -f %m "$sp_dir/sitecustomize.py")"
 
     # Wait a bit so mtime would change if file were rewritten
     sleep 1
@@ -279,7 +286,7 @@ EOF
     assert_status_equals 0
 
     local mtime_after
-    mtime_after="$(stat -f %m "$sp_dir/sitecustomize.py" 2>/dev/null || stat -c %Y "$sp_dir/sitecustomize.py")"
+    mtime_after="$(stat -c %Y "$sp_dir/sitecustomize.py" 2>/dev/null || stat -f %m "$sp_dir/sitecustomize.py")"
 
     [[ "$mtime_before" == "$mtime_after" ]]
 }

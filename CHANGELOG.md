@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.2] - 2026-05-07
+
+**Hotfix (test-infra).** `ubuntu-latest` GitHub Actions CI failed `pyve_write_sitecustomize_shim: no-op when shim already matches desired content` after v2.6.1 shipped. Pre-existing fragility (the test was added in v2.2.1) that didn't surface until Phase L's CI matrix exercised the Ubuntu side reliably.
+
+### Fixed (test-infra)
+
+- **`test_distutils_shim_coverage.bats` mtime check broke on Linux CI** (Story L.o) — the "no-op when shim already matches desired content" test read the file's mtime via `stat -f %m FILE 2>/dev/null || stat -c %Y FILE`, intending BSD-first with a GNU fallback. macOS works (BSD stat's `-c` exits 1 and the fallback fires), but Linux silently broke once GNU coreutils 9.0+ added `%m` as "Mountpoint" in filesystem-status mode (`-f`) — `stat -f %m FILE` exits 0 with a mountpoint string instead of an mtime, and the GNU fallback never fires. Fix: GNU-first ordering — `stat -c %Y` returns the real mtime on Linux, and macOS BSD stat's `-c` cleanly exits 1 so the BSD fallback still fires there.
+
 ## [2.6.1] - 2026-05-07
 
 **Hotfix.** Interactive `pyve init` backend prompt rejected the user's selection with `✘ Unexpected backend choice index: 0|1` and exited.

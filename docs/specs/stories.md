@@ -416,7 +416,7 @@ The original single-story scope grew large enough during pre-implementation Q&A 
 
 ---
 
-### Story L.n: v2.6.1 hotfix — `ui_select` TTY escape leakage [Done]
+### Story L.n: v2.6.1 hotfix — 'ui_select' TTY escape leakage [Done]
 
 **When.** Surfaced post-v2.6.0 ship via real-terminal use of the interactive `pyve init` backend prompt. Bug-report symptom from production:
 
@@ -446,6 +446,35 @@ Select backend
 - The bats test for the bug greps the source file for the contract violation rather than driving a real TTY — bats can't drive a TTY (per L.i / L.k.6's note). The grep-based check is the same pattern used by `lib/ui/run.sh` and `lib/ui/progress.sh`'s "no bash-4+ constructs" lock.
 - `tput`-output-on-stdout is a well-known footgun for any UX library that gets composed via command substitution; the new regression test plus the project-essential added in L.m ("`lib/ui/` is the extractable UX boundary") together make this less likely to regress when the eventually-extracted standalone library lands.
 - L.m's "Phase L closed" claim stands — the v2.6.0 bump shipped successfully, and L.n is a normal post-release patch on the same branch line. No phase reopening; if this were a larger fix it would be its own phase.
+
+---
+
+### Story L.o: v2.6.2 hotfix — Linux CI mtime check (BSD-vs-GNU 'stat' flag ordering) [Done]
+
+**When.** Surfaced on `ubuntu-latest` GitHub Actions CI after the v2.6.1 push: `not ok 170 pyve_write_sitecustomize_shim: no-op when shim already matches desired content`. macOS CI passed; only the Linux runner tripped it. Pre-existing fragility (the test was added in v2.2.1's #29) that didn't surface until Phase L's CI matrix exercised the Ubuntu side reliably.
+
+**Root cause.** [tests/unit/test_distutils_shim_coverage.bats](../../tests/unit/test_distutils_shim_coverage.bats) reads the shim file's mtime via:
+
+```bash
+stat -f %m FILE 2>/dev/null || stat -c %Y FILE
+```
+
+The intent: BSD-first (`-f %m`), GNU fallback (`-c %Y`). On macOS this works because BSD stat's `-c` exits 1 ("illegal option") and the fallback fires. On Linux it silently breaks: **GNU coreutils 9.0+ (Ubuntu 24.04 / `ubuntu-latest`) recognizes `%m` in filesystem-status mode (`-f`) as "Mountpoint"** (added 2022). So `stat -f %m FILE` exits 0 with a mountpoint string ("/", "/tmp", etc.) instead of an mtime; the GNU fallback never fires. The test's mtime-equality check then operates on mountpoint strings rather than real mtimes, and any non-mountpoint difference between calls (or any function bug masked by the wrong assertion) shows up as a `not ok`.
+
+The fix is to swap the order: try GNU first (`stat -c %Y`), fall back to BSD (`stat -f %m`). On Linux, the GNU call returns a real mtime in seconds. On macOS, BSD stat's `-c` cleanly exits 1 with "illegal option" (verified locally) so the BSD fallback fires and also returns a real mtime in seconds. Both platforms now produce real mtimes, and the test's equality check is sound.
+
+**Tasks**
+
+- [x] [tests/unit/test_distutils_shim_coverage.bats:271-282](../../tests/unit/test_distutils_shim_coverage.bats) — flip the `stat` order in the "no-op when shim already matches desired content" test to GNU-first. Inline comment now documents both the cross-platform trap (BSD `-f %m` vs GNU `-c %Y`, with GNU's `-f %m` silently re-purposed for mountpoint in coreutils 9.0+) and why GNU-first is the correct order.
+- [x] [pyve.sh:32](../../pyve.sh#L32) `VERSION="2.6.1"` → `VERSION="2.6.2"`. Patch bump per semver: test-infra fix, no production-code change, no behavior change.
+- [x] [CHANGELOG.md](../../CHANGELOG.md) — new `## [2.6.2] - 2026-05-07` entry above `[2.6.1]`. Single bullet under a "Fixed (test-infra)" subheading describing the cross-platform `stat`-flag pitfall and the fix.
+- [x] Full bats unit suite green: 872/872 under CI-like env (`env -i HOME="$HOME" PATH=/usr/bin:/bin bats tests/unit/`). The fix is verified locally on macOS via the BSD fallback path; Linux verification is via CI itself (the failing test should now pass on `ubuntu-latest`).
+
+**Notes**
+
+- **Why a separate story rather than folding into L.n**: L.n was a user-visible production bug (`pyve init` interactive backend prompt rejected the user's choice). L.o is a test-infra fragility on one CI runner. Different blast radius, different audience for the changelog entry, and different verification path (real-TTY vs CI matrix). Keeping them as separate patch releases makes the release notes accurate to what each version actually fixed.
+- **Why not promoted to project-essentials**: the cross-platform `stat`-flag trap is real, but no production code in `lib/` reads file mtimes via `stat -f` / `stat -c`. The pitfall is currently only relevant to one bats test, so the fix is documented inline in that test rather than as a project-wide invariant. If a future story makes pyve cross-platform-mtime-aware in production, that's the moment to promote it.
+- **Why no new regression test**: the existing test IS the regression test — once the `stat`-flag ordering is correct, the test reliably exercises the function's short-circuit behavior on both platforms. Adding a "do not flip the stat order" meta-test would over-engineer.
 
 ---
 
