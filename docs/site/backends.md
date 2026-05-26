@@ -70,6 +70,10 @@ pytest==7.4.3
 ❌ **No lock files** - `requirements.txt` doesn't capture full dependency tree  
 ❌ **Platform-specific** - Requirements may differ across OS  
 
+### Testing on the venv Backend
+
+The dev/test runner environment (`.pyve/testenv/venv/`) is a plain venv that inherits its base Python from `.venv/` at `pyve testenv init` time. See [Testing](testing.md) for the full guide.
+
 ---
 
 ## micromamba Backend
@@ -129,6 +133,10 @@ pyve lock
 ❌ **Larger** - More disk space required  
 ❌ **Complex** - More moving parts  
 ❌ **Learning curve** - Different from pip workflow  
+
+### Testing on the micromamba Backend
+
+The dev/test runner environment (`.pyve/testenv/venv/`) is a plain venv (not a micromamba env) that inherits its base Python from the active micromamba env at `pyve testenv init` time — typically the version pinned by `environment.yml`. The project env must be active when `init` runs, or wrap with `pyve run pyve testenv init`. See [Testing](testing.md) for the full guide.
 
 ---
 
@@ -660,6 +668,7 @@ micromamba install --file environment.yml
 ## Next Steps
 
 - [Usage Guide](usage.md) - Full command reference
+- [Testing](testing.md) - Two-environment model, testenv lifecycle, backend deltas
 - [CI/CD Integration](ci-cd.md) - Using Pyve in automated pipelines
 - [Getting Started](getting-started.md) - Installation and quick start
 

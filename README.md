@@ -320,15 +320,13 @@ pyve purge my_venv                   # Remove custom-named venv
 pyve purge --keep-testenv            # Preserve the dev/test runner environment
 ```
 
-## Testing (v1.5.2)
+## Testing
 
-The Pyve codebase is tested using `pytest`. The test suite is located in the `tests` directory. There are both unit tests and integration tests.
-
-As a tool, Pyve supports the developer with an isolated test environment. 
+Pyve supports the developer with an isolated test environment, separate from the project's runtime environment. The full guide is at [Testing](https://pointmatic.github.io/pyve/testing/).
 
 ### The dev/test runner environment
 
-Pyve supports integration testing via a dedicated dev/test runner environment separate from the project runtime virtual environment. When you run `pyve test`, Pyve will initialize the dev/test runner environment. If `pytest` is missing, Pyve prompts to install `pytest` (interactive shell). 
+Pyve supports integration testing via a dedicated dev/test runner environment separate from the project runtime virtual environment. When you run `pyve test`, Pyve will initialize the dev/test runner environment. If `pytest` is missing, Pyve prompts to install `pytest` (interactive shell).
 
 - Project environment: `.venv/` (created by `pyve init`)
 - Dev/test runner environment: `.pyve/testenv/venv/` (used by `pyve test`)
@@ -354,8 +352,8 @@ If `pytest` is not installed in the dev/test runner environment:
 You can also install dev/test dependencies explicitly:
 
 ```bash
-pyve testenv --init
-pyve testenv --install -r requirements-dev.txt
+pyve testenv init
+pyve testenv install -r requirements-dev.txt
 ```
 
 ### All Commands

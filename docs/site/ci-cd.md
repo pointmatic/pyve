@@ -817,6 +817,7 @@ before_script:
 
 ## Additional Resources
 
+- [Testing](testing.md) - Two-environment model and the `pyve test` / `pyve testenv` flow used in CI
 - [Pyve Repository](https://github.com/pointmatic/pyve)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [GitLab CI Documentation](https://docs.gitlab.com/ee/ci/)

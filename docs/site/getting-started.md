@@ -256,6 +256,7 @@ This removes:
 
 - [Usage Guide](usage.md) - Full command reference
 - [Backends](backends.md) - Understanding venv vs micromamba
+- [Testing](testing.md) - Two-environment model, testenv lifecycle, backend deltas
 - [CI/CD Integration](ci-cd.md) - Using Pyve in automated pipelines
 
 ## Troubleshooting

@@ -26,7 +26,44 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
+## Phase M: Bugfixes and Minor Improvements
 
+### Story M.a: v2.6.3 — User-facing testing docs (close LLM testenv-on-micromamba gap) [Done]
+
+**Bug.** An LLM agent working on a separate micromamba-backend project hit `pyve testenv init` failures and misdiagnosed the cause as a missing `.tool-versions` file. Root cause: `pyve testenv init` invokes `python -m venv` against whatever `python` is on PATH at that moment, and the LLM's Bash-tool subprocess didn't have the micromamba project env activated (direnv doesn't auto-load in subprocesses). `python` fell back to an asdf shim with no pin, surfacing as "No version is set for command python." The right fix is `pyve run pyve testenv init` (which activates the project env first), not `.tool-versions` — but that guidance existed only in the LLM-facing `pyve-essentials.md` template's general "use `pyve run` from Bash tools" rule. Nothing on the user-facing MkDocs site explained the two-environment model, the backend-specific testenv-Python inheritance, or the activation-context requirement.
+
+**Why this is a documentation bug, not a code bug.** Pyve's behavior is contractually correct per `features.md` FR-11 and `tech-spec.md` lib/commands/testenv.sh. The gap is that user-facing documentation never explained how the testenv inherits its base Python from the active project env, why that matters per backend, and what to do when the project env isn't active at invocation time. The information lived in four fragments (README, usage.md, project-essentials.md template, code) and no single page composed them.
+
+**Approach.** New `docs/site/testing.md` as the canonical user-facing concept + how-to page (inserted in MkDocs nav between Backends and CI/CD Integration). Cross-link from `backends.md`, `getting-started.md`, and `ci-cd.md`. Sweep stale legacy-form references in `README.md` and `usage.md` that survived the v2.3.0 (Story J.d) delegation removal. Add the missing LLM-internal rule to the `pyve-essentials.md` template so the rendered `project-essentials.md` carries explicit guidance going forward.
+
+**Tasks**
+
+- [x] Create [docs/site/testing.md](../site/testing.md) with eight sections: Overview, Two-environment model (with table), Backend deltas (Python-inheritance per backend + admonition on activation requirement), Testenv lifecycle (init / install / run / `pyve test` / purge), Editable installs (`pythonpath` vs testenv editable), `requirements-dev.txt` convention, Activation context (developer-direnv / developer-non-activated / LLM-agent), CI/CD patterns, Troubleshooting (3 FAQs including the exact symptom from this bug).
+- [x] Add `- Testing: testing.md` to MkDocs `nav` in [mkdocs.yml](../../mkdocs.yml) between Backends and CI/CD Integration.
+- [x] Cross-link [docs/site/backends.md](../site/backends.md): new "Testing on the venv Backend" subsection in the venv section, "Testing on the micromamba Backend" subsection in the micromamba section, "Testing" entry in Next Steps.
+- [x] Cross-link [docs/site/getting-started.md](../site/getting-started.md): Testing entry in Next Steps.
+- [x] Cross-link [docs/site/ci-cd.md](../site/ci-cd.md): Testing entry in Additional Resources.
+- [x] [README.md](../../README.md) Testing section: replace stale `pyve testenv --init` / `pyve testenv --install -r requirements-dev.txt` (lines 357–358) with current subcommand forms; drop `(v1.5.2)` annotation from section header; add link to the new Testing guide.
+- [x] [docs/site/usage.md](../site/usage.md): fix line 12 (v2.0 upgrade note still framing the v2.3.0-removed delegations as "delegate-with-warning through v2.x") and lines 572–574 (testenv subcommand block making the same stale claim with a phantom "removed in v3.0" timeline).
+- [x] [docs/project-guide/templates/artifacts/pyve-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md): under Workflow rules, add explicit "LLM-internal testenv init must wrap with `pyve run`" bullet covering the exact failure mode and explaining why `.tool-versions` is not the fix on a micromamba backend.
+- [x] Bump VERSION to 2.6.3 in [pyve.sh](../../pyve.sh).
+- [x] Add v2.6.3 entry to [CHANGELOG.md](../../CHANGELOG.md) with Added (docs) and Fixed (docs) sections.
+
+**Prevention scan (housekeeping)**
+
+- [ ] Add a docs-lint that fails CI if user-facing docs (any of `docs/site/*.md` except `migration.md`, plus `README.md`) contain `pyve testenv --init|--install|--purge` or `pyve python-version <ver>` as a non-historical example. Migration.md keeps the legacy→new mapping by design and is the only file exempt.
+- [ ] Sweep other user-facing surfaces for the same "delegate-with-warning through v2.x" framing pattern — anywhere else in usage.md or backends.md that still describes a v2.3.0-removed delegation as still working. The two spots fixed here were the only ones grep surfaced today, but a fresh pass with broader patterns ("delegation", "deprecated", "v3.0") would catch any I missed.
+- [ ] Consider whether the rendered `docs/project-guide/go.md` should be refreshed in this PR via `project-guide update`, or whether the next routine refresh of the rendered file is sufficient. (Per the project-guide install-output rule, hand-editing go.md is forbidden; the template edit propagates on next sync.)
+
+**Out of scope (flagged at design gate, kept out)**
+
+- Rewriting the broader README "Testing" section structure — only the stale lines were fixed.
+- Migrating other CI examples in `ci-cd.md` to the two-env pattern. Those examples represent a valid alternate pattern (pytest installed into the project env) and are linked bidirectionally with testing.md so users can choose.
+- Future Story `?.?: Apply Phase L UX framing to non-scaffold commands` mentions `pyve testenv install` UX — orthogonal to this doc fix.
+
+---
+
+---
 
 ## Future
 
