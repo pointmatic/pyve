@@ -8,8 +8,8 @@ Complete reference for all Pyve commands, options, and workflows.
     - `pyve doctor` → `pyve check` (diagnostics with 0/1/2 CI-safe exit codes)
     - `pyve validate` → `pyve check` (same semantics; folded together)
     - `pyve init --update` → `pyve update` (a dedicated subcommand; broader semantics)
-    - `pyve python-version <ver>` → `pyve python set <ver>` (delegate-with-warning through v2.x; hard removal in v3.0)
-    - `pyve testenv --init|--install|--purge` → `pyve testenv init|install|purge` (delegate-with-warning through v2.x)
+    - `pyve python-version <ver>` → `pyve python set <ver>` (delegation removed in v2.3.0; the legacy form now falls through to the dispatcher's unknown-command path)
+    - `pyve testenv --init|--install|--purge` → `pyve testenv init|install|purge` (delegation removed in v2.3.0; same fall-through)
     - New: `pyve status` — read-only project-state dashboard
 
     The legacy-flag catches (`pyve --init`, `pyve --purge`, etc.) remain — typing one prints a precise migration error pointing at the current subcommand.
@@ -569,9 +569,9 @@ pyve testenv purge
 - `pyve test` is a convenience shortcut that runs pytest inside the testenv with auto-install support
 - Exit code matches the executed command's exit code
 
-**Legacy flag forms (deprecated; removed in v3.0).**
+**Legacy flag forms (removed in v2.3.0).**
 
-`pyve testenv --init`, `pyve testenv --install`, and `pyve testenv --purge` still work in v2.x — each emits a one-shot stderr deprecation warning and delegates to the subcommand form shown above. Update your scripts when convenient.
+`pyve testenv --init`, `pyve testenv --install`, and `pyve testenv --purge` were delegated-with-warning through v2.2.x and hard-removed in v2.3.0 (Story J.d). They now fall through to the dispatcher's unknown-flag path. See the [Migration guide](migration.md) for the mapping.
 
 ---
 

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.3] - 2026-05-20
+
+**Docs.** Closes a user-facing documentation gap surfaced when an LLM agent misdiagnosed a testenv setup failure on a micromamba-backend project: it concluded the project needed a `.tool-versions` file because `pyve testenv init` invoked from a non-activated Bash-tool shell fell back to an asdf shim with no pin. The two-environment model, testenv-Python inheritance rules per backend, and the LLM-internal `pyve run pyve testenv init` wrapping were documented only in the LLM-facing project-essentials template — nothing on the user-facing MkDocs site explained them.
+
+### Added (docs)
+
+- **New `docs/site/testing.md`** (Story M.a) — concept + how-to page covering the two-environment model, testenv lifecycle, per-backend Python inheritance, editable-install patterns (`pythonpath` vs testenv editable install), the activation-context rule for non-activated shells / LLM agents, and troubleshooting. Linked from MkDocs nav between Backends and CI/CD Integration.
+- **Cross-links into testing.md** from `backends.md` (per-backend "Testing on the X Backend" subsections + Next Steps), `getting-started.md` (Next Steps), and `ci-cd.md` (Additional Resources).
+- **`pyve-essentials.md` template** — new "LLM-internal testenv init must wrap with `pyve run`" rule under the existing Workflow rules block, making the missing guidance explicit for future LLM agents reading the rendered `project-essentials.md`.
+
+### Fixed (docs)
+
+- **`README.md` Testing section** — replaced removed-in-v2.3.0 legacy forms (`pyve testenv --init`, `pyve testenv --install -r ...`) with the current subcommand forms; dropped stale `(v1.5.2)` version annotation from the section header; linked out to the new Testing guide.
+- **`docs/site/usage.md`** — corrected two spots that still framed the v2.3.0-removed `pyve testenv --init|--install|--purge` and `pyve python-version <ver>` delegations as "delegate-with-warning through v2.x" (lines 11–12 upgrade note, line 574 testenv subcommand block). They were hard-removed in Story J.d and now fall through to the dispatcher's unknown-command path; the migration table in `migration.md` already covered the mapping.
+
 ## [2.6.2] - 2026-05-07
 
 **Hotfix (test-infra).** `ubuntu-latest` GitHub Actions CI failed `pyve_write_sitecustomize_shim: no-op when shim already matches desired content` after v2.6.1 shipped. Pre-existing fragility (the test was added in v2.2.1) that didn't surface until Phase L's CI matrix exercised the Ubuntu side reliably.

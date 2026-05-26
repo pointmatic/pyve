@@ -43,6 +43,7 @@ nav:
   - Getting Started: getting-started.md
   - Usage Guide: usage.md
   - Backends: backends.md
+  - Testing: testing.md
   - CI/CD Integration: ci-cd.md
   - Migration (v1.x → v2.0): migration.md
 
