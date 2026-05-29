@@ -109,6 +109,31 @@ Removes `.pyve/testenv/`. Re-run `pyve testenv init` (and `install`) to recreate
 pyve testenv purge
 ```
 
+## Choosing which environment runs your tests
+
+By default `pyve test` runs pytest in the **testenv** (`.pyve/testenv/venv`). That's the right choice for a normal repo checkout: the main env holds only runtime dependencies, pytest lives in the testenv, and the two stay isolated.
+
+But there's a scenario where the default is wrong — the **bundled-environment trap**:
+
+> You build an environment from an `environment.yml` (or any setup) that puts **both** `pytest` **and** the stack your tests import — `tensorflow`, `torch`, `keras`, … — into the **main** env. (A micromamba smoke env built from a shared template is the canonical case.) Now `pyve test` still routes to the *testenv*, which is a stack-less plain venv. Every test guarded by `pytest.importorskip("tensorflow")` **skips**, and the run looks green — a silent false pass.
+
+The failure is a **SKIP, not an error**, and skips are normal for hardware-gated or optional-dependency tests, so it blends in.
+
+**`pyve test --env main`** routes pytest to the main env instead, so your tests run against the stack that's actually installed there:
+
+```bash
+pyve test --env main tests/integration/test_e2e_tensorflow.py -m hardware
+```
+
+This is the first-class form of the `pyve run python -m pytest …` workaround — same effect, less to type.
+
+| Your setup | Run with |
+|---|---|
+| Repo checkout (runtime deps in main env, pytest in testenv) | `pyve test` (default) |
+| Bundled env (pytest **and** the stack-under-test both in the main env) | `pyve test --env main` |
+
+**Pyve warns you.** When the main env has pytest importable and you run the default `pyve test`, pyve prints a one-line advisory pointing at `--env main` before running — so the trap surfaces at invocation time instead of hiding behind a clean-looking skip count. In a normal repo checkout (no pytest in the main env) the advisory never fires. If you keep pytest in the main env deliberately and don't want the nudge, set `PYVE_NO_TESTENV_ADVISORY=1` to silence it.
+
 ## Editable installs
 
 When your test suite imports your project's source code (most projects), you need to decide *where* to install it editable. Two patterns:

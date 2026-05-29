@@ -323,6 +323,8 @@ Provide an isolated test environment separate from the project environment.
 
 - Test environment located at `.pyve/testenv/venv/`.
 - `pyve test` runs pytest in the test environment; prompts to install pytest if missing (interactive) or exits with instructions (non-interactive).
+- **`pyve test [--env main|testenv]` (Story M.c)**: `--env testenv` (default) preserves the historical behavior (run pytest in `.pyve/testenv/venv/`). `--env main` routes pytest to the project's main env (delegates to `run_command python -m pytest`), the first-class form of the `pyve run python -m pytest` workaround. This exists for environments built from a bundled `environment.yml` that carry **both** pytest and the stack-under-test in the main env — where the default testenv is stack-less and `importorskip`-guarded tests would silently SKIP. An invalid `--env` value is a hard error.
+- **Silent-skip advisory (Story M.c)**: when `pyve test` routes to the testenv (default) **and** the main env has pytest importable, pyve prints a one-line advisory pointing at `--env main` before running pytest. This surfaces the bundled-env trap at invocation time rather than letting a mass-SKIP masquerade as a clean run. The advisory is non-fatal and does not fire for a normal repo checkout (whose main env has no pytest). Suppressible via `PYVE_NO_TESTENV_ADVISORY=1` for users who keep pytest in the main env deliberately.
 - `pyve testenv init` and `pyve testenv install` for explicit management.
 - `pyve testenv run <command>` executes any command inside the test environment (ruff, mypy, black, etc.).
 - Survives `pyve init --force` (separate from project environment).
@@ -471,6 +473,7 @@ No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergono
 |----------|---------|
 | `PYVE_DISABLE_DISTUTILS_SHIM` | Set to `1` to disable the Python 3.12+ distutils shim |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Set to `1` to auto-install pytest without prompting (CI) |
+| `PYVE_NO_TESTENV_ADVISORY` | Set to `1` to suppress the `pyve test` silent-skip advisory (the nudge toward `--env main` when the main env also has pytest). For users who keep pytest in the main env deliberately. (Story M.c) |
 | `PYVE_AUTO_INSTALL_DEPS` | Set to `1` to auto-install pip dependencies without prompting |
 | `PYVE_NO_INSTALL_DEPS` | Set to `1` to skip pip dependency installation prompt |
 | `PYVE_FORCE_YES` | Set to `1` to auto-default to micromamba in ambiguous backend cases |

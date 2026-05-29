@@ -37,6 +37,29 @@ _test_has_pytest() {
     "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1
 }
 
+# Test-private helper: probe whether the MAIN project env (micromamba
+# env preferred, then venv) has pytest importable. Used to warn that
+# `pyve test` is routing to the (possibly stack-less) testenv when the
+# main env already carries pytest — the micromamba-testenv trap.
+# Returns 0 (main env has pytest) or 1 (no main env / no pytest).
+_test_main_env_has_pytest() {
+    local main_py=""
+
+    if [[ -d ".pyve/envs" ]]; then
+        local env_dirs=(.pyve/envs/*)
+        if [[ -d "${env_dirs[0]:-}" ]] && [[ "${env_dirs[0]:-}" != ".pyve/envs/*" ]]; then
+            main_py="${env_dirs[0]}/bin/python"
+        fi
+    fi
+
+    if [[ -z "$main_py" ]] && [[ -x "$DEFAULT_VENV_DIR/bin/python" ]]; then
+        main_py="$DEFAULT_VENV_DIR/bin/python"
+    fi
+
+    [[ -x "$main_py" ]] || return 1
+    "$main_py" -c "import pytest" >/dev/null 2>&1
+}
+
 # Test-private helper: install pytest into the testenv. If
 # `requirements-dev.txt` is present, prefer installing from it.
 _test_install_pytest_into_testenv() {
@@ -62,6 +85,42 @@ _test_install_pytest_into_testenv() {
 # K.g moves it to `lib/utils.sh`. Bash resolves the call at runtime
 # from the global function table — no special handling needed.
 test_tests() {
+    # Parse the pyve-owned `--env main|testenv` selector out of the
+    # arg list; everything else passes through to pytest verbatim.
+    local env_target="testenv"
+    local args=()
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --env)
+                env_target="${2:-}"
+                shift 2 || { log_error "--env requires a value (main|testenv)"; exit 1; }
+                ;;
+            --env=*)
+                env_target="${1#--env=}"
+                shift
+                ;;
+            *)
+                args+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [[ "$env_target" != "main" && "$env_target" != "testenv" ]]; then
+        log_error "Invalid --env value: '$env_target' (expected 'main' or 'testenv')"
+        exit 1
+    fi
+
+    # `--env main`: route pytest to the MAIN project env. Delegates to
+    # run_command, which owns backend detection (venv vs micromamba),
+    # the asdf reshim guard, and the exec. This is the first-class form
+    # of the `pyve run python -m pytest` workaround for bundled envs
+    # that carry both pytest and the stack-under-test in the main env.
+    if [[ "$env_target" == "main" ]]; then
+        run_command python -m pytest "${args[@]+"${args[@]}"}"
+        return  # not reached: run_command execs
+    fi
+
     local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
     ensure_testenv_exists
 
@@ -91,5 +150,18 @@ test_tests() {
         fi
     fi
 
-    exec "$testenv_venv/bin/python" -m pytest "$@"
+    # Silent-skip trap guard (proxy for the micromamba-testenv trap):
+    # if the MAIN env also carries pytest, the user may be expecting
+    # tests to run against the main env's stack. `pyve test` uses the
+    # separate testenv, which will not have those deps — tests that
+    # importorskip the stack will silently SKIP and look green. Warn,
+    # and point at the supported escape hatch. One line, non-fatal.
+    # Suppressible via PYVE_NO_TESTENV_ADVISORY=1 for users who keep
+    # pytest in the main env deliberately and don't want the nudge.
+    if [[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]] && _test_main_env_has_pytest; then
+        warn "Main env has pytest installed; 'pyve test' is using the separate testenv ($testenv_venv), which won't have your main-env dependencies."
+        info "If your tests need the main env's stack, run: pyve test --env main"
+    fi
+
+    exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
 }
