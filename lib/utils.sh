@@ -411,11 +411,20 @@ add_project_guide_completion() {
     # likewise critical: it writes a literal $(...) substitution to
     # the rc file so the eval runs at SHELL STARTUP, not at
     # block-construction time.
+    #
+    # The `2>/dev/null` on the substitution is load-bearing: at shell
+    # startup the project env is not yet active (direnv hasn't run), so
+    # `project-guide` resolves to an asdf shim. If the asdf-resolved
+    # Python has no project-guide installed, the shim errors noisily to
+    # stderr ("No version is set for command project-guide"). The
+    # `command -v` guard does not catch this — the shim FILE exists —
+    # so without stderr suppression the error leaks at every shell
+    # startup. Completion is best-effort (FR-16); degrade silently.
     local block
     block="$(cat <<EOF
 $PROJECT_GUIDE_COMPLETION_OPEN
 command -v project-guide >/dev/null 2>&1 && \\
-  eval "\$(_PROJECT_GUIDE_COMPLETE=${shell}_source project-guide)"
+  eval "\$(_PROJECT_GUIDE_COMPLETE=${shell}_source project-guide 2>/dev/null)"
 $PROJECT_GUIDE_COMPLETION_CLOSE
 EOF
 )"
