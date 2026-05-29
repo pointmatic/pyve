@@ -305,6 +305,45 @@ EOF
     bash -n "$HOME/.bashrc"
 }
 
+#============================================================
+# add_project_guide_completion — Story M.b regression test
+#
+# Bug: at shell-init (before direnv activates the project env),
+# `project-guide` resolves to an asdf shim. When the asdf-resolved
+# Python version has no project-guide installed, the shim errors to
+# stderr ("No version is set for command project-guide", exit 126).
+# The `command -v` guard passed because the shim FILE exists, then the
+# eval's command substitution ran the shim and let its stderr leak at
+# every shell startup. Backend-independent; reproduced on both a
+# micromamba repo (no .tool-versions) and a venv repo whose pinned
+# Python lacked project-guide. Fix: suppress stderr on the
+# substitution so the block degrades silently (completion is
+# best-effort per FR-16).
+#============================================================
+
+@test "add_project_guide_completion: block does not leak asdf shim stderr at shell init (M.b)" {
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # Fake project-guide that behaves like an asdf shim with no
+    # resolvable version: noisy stderr, empty stdout, non-zero exit.
+    local fakebin="$TEST_DIR/fakebin"
+    mkdir -p "$fakebin"
+    cat > "$fakebin/project-guide" << 'SH'
+#!/usr/bin/env bash
+echo "No version is set for command project-guide" >&2
+echo "Consider adding one of the following versions in your config file at $PWD/.tool-versions" >&2
+echo "python 3.14.3" >&2
+exit 126
+SH
+    chmod +x "$fakebin/project-guide"
+
+    # Source the rc block (the only content in this isolated rc) with
+    # the fake shim first on PATH. bats `run` captures stdout+stderr.
+    run env PATH="$fakebin:$PATH" bash -c 'source "$HOME/.zshrc"'
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"No version is set for command project-guide"* ]]
+}
+
 @test "add_project_guide_completion: SDKMan absent — block appended to end (G.e bug 1)" {
     cat > "$HOME/.zshrc" << 'EOF'
 export PATH="/usr/local/bin:$PATH"

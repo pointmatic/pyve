@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.4] - 2026-05-28
+
+**Bugfix.** The project-guide shell-completion block that `pyve init --project-guide-completion` appends to `~/.zshrc` / `~/.bashrc` printed an asdf error at every shell startup (`No version is set for command project-guide`) immediately before direnv loaded `.envrc`. Cosmetic but recurring, and it meant tab-completion silently failed to wire.
+
+### Fixed
+
+- **project-guide completion block leaked asdf-shim stderr at shell init** (Story M.b) — at shell startup, before direnv activates the project env, `project-guide` resolves to the asdf shim. When the asdf-resolved Python has no project-guide installed, the shim errors to stderr (exit 126). The `command -v project-guide` guard didn't catch this (the shim file exists), and the eval's command substitution let the error leak. Backend-independent: reproduced on a micromamba repo (no `.tool-versions`) and the pyve venv repo itself (`.tool-versions` pins `python 3.12.13`, but project-guide lives only in asdf `python 3.14.3`). Fix: add `2>/dev/null` to the command substitution in `add_project_guide_completion` ([lib/utils.sh](lib/utils.sh)) so completion degrades silently (best-effort per FR-16). **Note:** existing rc files already carrying the old block are not retroactively fixed — re-run completion wiring (or hand-edit the sentinel block) to clear the message. A bats regression test sources the block against a fake erroring shim and asserts no stderr leak.
+
 ## [2.6.3] - 2026-05-20
 
 **Docs.** Closes a user-facing documentation gap surfaced when an LLM agent misdiagnosed a testenv setup failure on a micromamba-backend project: it concluded the project needed a `.tool-versions` file because `pyve testenv init` invoked from a non-activated Bash-tool shell fell back to an asdf shim with no pin. The two-environment model, testenv-Python inheritance rules per backend, and the LLM-internal `pyve run pyve testenv init` wrapping were documented only in the LLM-facing project-essentials template — nothing on the user-facing MkDocs site explained them.

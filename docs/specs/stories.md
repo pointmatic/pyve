@@ -63,6 +63,54 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
+### Story M.b: v2.6.4 — project-guide completion block leaks asdf-shim stderr at shell init [Done]
+
+**Bug.** Every interactive shell startup in a pyve project printed:
+
+```
+No version is set for command project-guide
+Consider adding one of the following versions in your config file at <project>/.tool-versions
+python 3.14.3
+```
+
+immediately before direnv loaded `.envrc`. project-guide itself worked fine once the env activated, so the error was cosmetic — but alarming, recurring at every shell start, and it meant tab-completion silently failed to wire.
+
+**Root cause (backend-independent).** The shell-completion block that `pyve init --project-guide-completion` appends to `~/.zshrc` / `~/.bashrc` (written by `add_project_guide_completion` in [lib/utils.sh](../../lib/utils.sh)) was:
+
+```bash
+command -v project-guide >/dev/null 2>&1 && \
+  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+```
+
+This runs at shell startup, **before** direnv activates the project env, so `project-guide` resolves to the asdf shim (`~/.asdf/shims/project-guide`), not the env's binary. When the asdf-resolved Python has no project-guide installed, the shim errors to stderr (exit 126). The `command -v` guard does **not** catch this — the shim *file* exists, so the guard passes — and the eval's command substitution let the shim's stderr leak. Confirmed on two repos: a micromamba project (no `.tool-versions` → no Python set at all) and the pyve venv repo itself (`.tool-versions` pins `python 3.12.13`, but project-guide is installed only in asdf `python 3.14.3` → the shim resolves to 3.12.13 which lacks it). The venv-vs-micromamba backend was a red herring; the trigger is purely "asdf-resolved Python at shell-init lacks project-guide." Repos that don't show it have their asdf-resolved Python = the version that has project-guide.
+
+**Why tests didn't catch it.** The existing G.c/G.e completion tests assert the block's *structure* (sentinel presence, `command -v` guard, line-continuation, SDKMan ordering, syntactic validity) but never *executed* the block against a project-guide that errors. The failure only manifests at runtime when the resolved command writes to stderr.
+
+**Fix.** Add `2>/dev/null` to the eval's command substitution so the block degrades silently when the shim errors (completion is best-effort per FR-16). Minimal one-token change; preserves the `command -v` guard and the `&& \` line-continuation that the G.e regression tests assert.
+
+```bash
+command -v project-guide >/dev/null 2>&1 && \
+  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide 2>/dev/null)"
+```
+
+**Tasks**
+
+- [x] Regression test in [tests/unit/test_project_guide.bats](../../tests/unit/test_project_guide.bats) — generate the block, source it under a PATH where `project-guide` is a fake asdf shim (noisy stderr, empty stdout, exit 126), assert the asdf error does not leak. Confirmed RED against the pre-fix block, GREEN after.
+- [x] Add `2>/dev/null` to the command substitution in `add_project_guide_completion` ([lib/utils.sh](../../lib/utils.sh)); document why the suppression is load-bearing in the heredoc comment.
+- [x] Verify full `test_project_guide.bats` suite (74 tests) passes — including the G.e structural tests and the integration test's `command -v project-guide` / `_PROJECT_GUIDE_COMPLETE` assertions, which my change leaves intact.
+- [x] Prevention scan: grep `lib/` + `pyve.sh` for other shell-init `eval "$(...)"` invocations lacking stderr suppression — none found; the prompt-hook block in `lib/commands/self.sh` sources a pyve-owned file, not a shimmed command, so it's unaffected.
+- [x] Bump VERSION to 2.6.4 in [pyve.sh](../../pyve.sh); add v2.6.4 CHANGELOG entry.
+
+**Prevention scan / housekeeping (follow-up)**
+
+- [ ] Existing installs are not retroactively fixed by the source change — any `~/.zshrc` / `~/.bashrc` already carrying the old block keeps leaking until the block is re-written. Options to surface to users: (a) re-run completion wiring once shipped, or (b) a one-shot `pyve self repair-completion` that rewrites the sentinel block in place. Decide whether to add (b) or document (a) in the v2.6.4 release notes / Testing guide.
+- [ ] Consider whether `pyve check` should warn on the Project-Python (`.tool-versions`) vs Environment-Python (`.venv`) mismatch surfaced during this investigation — it's the deferred "strict version-match gate" from features.md FR-5, and it's the upstream reason this repo's asdf shim resolved to a project-guide-less Python. Distinct concern; own story.
+
+**Out of scope (flagged, kept out)**
+
+- Changing *which* project-guide the completion wires from (asdf shim vs env binary). Completion is shell-global and best-effort; silent degradation is the correct behavior, not re-architecting the resolution source.
+- The Project/Environment Python mismatch itself — benign for running code (the venv wins on PATH when active); captured as a follow-up `pyve check` candidate above.
+
 ---
 
 ## Future
