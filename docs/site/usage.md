@@ -476,17 +476,18 @@ Run tests via the dev/test runner environment.
 **Usage:**
 
 ```bash
-pyve test [pytest args...]
+pyve test [--env main|testenv] [pytest args...]
 ```
 
 **Arguments:**
 
+- `--env main|testenv` (optional, default `testenv`): which environment to run pytest in. `testenv` uses the dev/test runner env (`.pyve/testenv/venv`); `main` routes pytest to the project's main env (equivalent to `pyve run python -m pytest`).
 - `pytest args` (optional): Arguments passed directly to pytest
 
 **Examples:**
 
 ```bash
-# Run all tests
+# Run all tests (in the testenv)
 pyve test
 
 # Run specific test file
@@ -503,21 +504,31 @@ pyve test --cov=mypackage
 
 # Run a specific test
 pyve test tests/test_module.py::test_function
+
+# Run against the MAIN env (for envs that bundle pytest + the stack
+# under test in the main env — see the trap note below)
+pyve test --env main tests/integration/test_e2e.py -m hardware
 ```
 
 **What it does:**
 
-1. Dispatches to the dev/test runner environment (`.pyve/testenv/venv`) — same environment managed by `pyve testenv`
+1. Dispatches to the dev/test runner environment (`.pyve/testenv/venv`) — same environment managed by `pyve testenv` — unless `--env main` is passed
 2. Auto-installs pytest if `PYVE_TEST_AUTO_INSTALL_PYTEST=1` (CI mode)
 3. Prompts to install pytest if not found (interactive mode)
 4. Runs pytest with the provided arguments
 
 **Notes:**
 
-- Uses the dev/test runner environment, not the project environment — keeps test tools isolated from the project's dependency graph
+- Default routing uses the dev/test runner environment, not the project environment — keeps test tools isolated from the project's dependency graph
 - Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` for CI environments
 - Exit code matches the pytest exit code
-- Equivalent to `pyve testenv run python -m pytest [args...]` with auto-install support
+- Default routing is equivalent to `pyve testenv run python -m pytest [args...]` with auto-install support; `--env main` is equivalent to `pyve run python -m pytest [args...]`
+
+!!! warning "The bundled-env trap — when to use `--env main`"
+
+    `pyve test` routes to the **testenv** by default, which is correct for a normal repo checkout (the main env holds only runtime deps; pytest lives in the testenv). But if you built your environment from an `environment.yml` that bundles **both** pytest **and** the stack your tests import (e.g. a micromamba smoke env with `tensorflow`/`torch` *and* `pytest` in the main env), the default testenv won't have that stack. Tests that `pytest.importorskip("…")` will then **silently SKIP** and look green.
+
+    When the main env carries pytest, `pyve test` prints an advisory pointing here. Use `pyve test --env main` to run pytest against the main env's stack. See [Testing → Choosing which environment runs your tests](testing.md#choosing-which-environment-runs-your-tests).
 
 ---
 

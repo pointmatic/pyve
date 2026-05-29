@@ -113,6 +113,41 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
+### Story M.c: v2.7.0 — `pyve test --env main` + silent-skip advisory (micromamba-testenv trap) [Done]
+
+**Bug.** `pyve test` always routes pytest to the dedicated testenv (`.pyve/testenv/venv`, a plain venv), which is correct for a repo checkout but silently **wrong** for an environment built from a bundled `environment.yml` that puts **both** `pytest` **and** the stack-under-test (`tensorflow`, `torch`, …) in the **main** env. In that case `pyve test` runs in the stack-less testenv, every `pytest.importorskip("…")` **skips**, and the run looks green — a silent false pass. The failure is a SKIP, not an error, so it blends in with normal hardware-gated skips. Full analysis: [docs/specs/pyve-micromamba-testenv-trap.md](pyve-micromamba-testenv-trap.md) (drafted from an nbfoundry debugging session, 2026-05-29).
+
+**Why this is a pyve bug, not just nbfoundry's.** pyve owns two sharp edges: (1) `pyve test` routes to the testenv unconditionally even when the main env has both pytest and the needed deps; (2) the resulting mass-skip is given no signal. The bundling choice (pytest + stack in one `environment.yml`) is nbfoundry's and stays nbfoundry's; pyve's responsibility is the unconditional routing + the silent masking.
+
+**Scope (agreed with developer).** Ship the cheap, test-first pair from the report's options and defer the rest:
+
+- **Option 2 — `pyve test --env main|testenv`** (the escape hatch). `--env main` delegates to `run_command python -m pytest <args>`, reusing run_command's backend detection + asdf reshim guard + exec. First-class form of the documented `pyve run python -m pytest` workaround.
+- **Option 1 (proxy variant) — pre-run advisory.** When routing to the testenv (default) and the main env has pytest importable, print a one-line advisory pointing at `--env main` before exec. Chosen over the report's output-parsing variant (which would force `pyve test` from `exec` to a captured subprocess — a behavior change to the exec contract) because the proxy is cheaper, needs no exec change, is trivially test-first, and is well-targeted (never fires for a repo checkout, whose main env has no pytest).
+
+**Tasks**
+
+- [x] Failing test first: [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) — `--env main` delegates to `run_command python -m pytest <args>` (incl. `--env=` form and no-extra-args), invalid `--env` errors, advisory fires iff main env has pytest, no advisory under `--env main`. Confirmed RED (6/7) against pre-fix `test_tests`, GREEN (7/7) after.
+- [x] `test_tests` ([lib/commands/test.sh](../../lib/commands/test.sh)): parse `--env main|testenv` (and `--env=…`) out of the arg list into a bash-3.2-safe `args[]` (`"${args[@]+"${args[@]}"}"`); `--env main` → `run_command python -m pytest`; invalid value → hard error.
+- [x] New helper `_test_main_env_has_pytest` ([lib/commands/test.sh](../../lib/commands/test.sh)): resolve main env python (`.pyve/envs/*/bin/python` else `$DEFAULT_VENV_DIR/bin/python`) and probe `import pytest`; drives the advisory.
+- [x] Pre-exec advisory in the testenv branch, non-fatal, one line + the `--env main` hint.
+- [x] **Advisory opt-out** (folded in from the follow-up, since v2.7.0 was still uncommitted): `PYVE_NO_TESTENV_ADVISORY=1` suppresses the advisory for users who keep pytest in the main env deliberately. Test-first (RED→GREEN) in [test_test_command.bats](../../tests/unit/test_test_command.bats); gate is `[[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]] && _test_main_env_has_pytest`. Documented in `features.md` env-var table + FR-11, `docs/site/testing.md`, CHANGELOG.
+- [x] Verified bash-3.2 empty-array safety under `set -euo pipefail` (`--env main`, no extra args). Full unit suite: 880+ ok, 0 not ok.
+- [x] Docs (ride-along): `features.md` FR-11, `tech-spec.md` test.sh table + reuse note, `docs/site/usage.md` `pyve test` reference + trap admonition, `docs/site/testing.md` new "Choosing which environment runs your tests" section (the anchor usage.md links to).
+- [x] Bump VERSION to 2.7.0 ([pyve.sh](../../pyve.sh)) — **minor**, new user-facing flag; add v2.7.0 CHANGELOG entry.
+
+**Out of scope (flagged at design gate, kept out)**
+
+- **Option 1b (accurate skip-detection)** — parsing pytest output for `ModuleNotFoundError` / failed `importorskip` to count import-skips. Requires changing `pyve test` from `exec` to a captured/teed subprocess (exec-contract change: TTY, color, signals). Deferred; the proxy advisory covers the trap at lower risk. Revisit only if the proxy proves too blunt.
+- **Option 3 (change the default to auto-detect main-env pytest)** — changes long-standing default routing; needs its own opt-in design.
+- **Option 4 (testenv dependency seeding / inherit from main env)** — risks duplicating multi-GB native packages (torch/TF) and re-creating the cross-framework co-residence SIGBUS (nbfoundry story F.f.1). Heaviest option; not pursued.
+- **nbfoundry's bundled `environment.yml`** — nbfoundry's call; its main-env-runner workaround is already in effect.
+
+**Follow-up (housekeeping)**
+
+- [x] ~~If the proxy advisory generates false-positive noise…consider a `PYVE_NO_TESTENV_ADVISORY=1` opt-out.~~ Done in this story (folded into v2.7.0 while uncommitted). The micromamba-only-gating alternative was *not* taken — a venv project that installs pytest into `.venv` can hit the same trap, so the advisory stays backend-agnostic with the env-var as the universal escape hatch.
+
+---
+
 ## Future
 
 ### Story ?.?: Apply Phase L UX framing to non-scaffold commands [Planned]

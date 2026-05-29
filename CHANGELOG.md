@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0] - 2026-05-29
+
+**Feature + bugfix.** `pyve test` gains an `--env main|testenv` selector, and grows a silent-skip advisory — both addressing the "micromamba-testenv trap" where `pyve test` runs against a stack-less testenv and tests silently SKIP.
+
+### Added
+
+- **`pyve test --env main|testenv`** (Story M.c) — `--env testenv` (default) keeps the historical behavior; `--env main` routes pytest to the project's main env (delegates to `run_command python -m pytest`), the first-class form of the `pyve run python -m pytest` workaround. For environments built from a bundled `environment.yml` that carry **both** pytest and the stack-under-test in the main env, the default testenv is stack-less and `importorskip`-guarded tests silently SKIP — `--env main` runs them against the real stack. Invalid `--env` values are a hard error.
+
+### Fixed
+
+- **Silent-skip masking in `pyve test`** (Story M.c) — when `pyve test` routes to the testenv (default) and the main env has pytest importable, pyve now prints a one-line advisory pointing at `--env main` before running pytest, surfacing the bundled-env trap at invocation time instead of letting a mass-SKIP look like a clean run. The advisory does not fire for a normal repo checkout (whose main env has no pytest), and is suppressible via `PYVE_NO_TESTENV_ADVISORY=1` for users who keep pytest in the main env deliberately. Root cause and options documented in [docs/specs/pyve-micromamba-testenv-trap.md](docs/specs/pyve-micromamba-testenv-trap.md).
+
 ## [2.6.4] - 2026-05-28
 
 **Bugfix.** The project-guide shell-completion block that `pyve init --project-guide-completion` appends to `~/.zshrc` / `~/.bashrc` printed an asdf error at every shell startup (`No version is set for command project-guide`) immediately before direnv loaded `.envrc`. Cosmetic but recurring, and it meant tab-completion silently failed to wire.
