@@ -26,7 +26,7 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
-## Phase M: Bugfixes and Minor Improvements
+## Phase M: Bugfixes, Minor Improvements, and Test Environment DX
 
 ### Story M.a: v2.6.3 — User-facing testing docs (close LLM testenv-on-micromamba gap) [Done]
 
