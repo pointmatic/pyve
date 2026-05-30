@@ -208,7 +208,7 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
-### Story M.f: [Testenv-DX] Architectural spike — `[tool.pyve.testenvs]` config schema & reader pattern [Spike, Planned]
+### Story M.f: [Testenv-DX] Architectural spike — `[tool.pyve.testenvs]` config schema & reader pattern [Done]
 
 **Goal.** Lock in the TOML-config integration design before the bundle's foundation stories (M.g+) begin. This is the first time pyve reads TOML; the choice of approach affects every downstream story.
 
@@ -224,11 +224,11 @@ command -v project-guide >/dev/null 2>&1 && \
 
 **Tasks**
 
-- [ ] Sketch helper in throwaway form; try JSON-to-bash, shell-`key=value`, and bash-array-literal output; pick one with a one-paragraph rationale.
-- [ ] Sketch validation: invalid `backend`, missing-file `requirements`, `manifest`+`requirements` conflict. Decide error-message shape.
-- [ ] Sketch caching: measure cold-start cost of Python helper per `pyve` invocation; if < ~30ms, skip caching.
-- [ ] Write `docs/specs/spike-m-f-testenvs-config.md`: decided schema, helper invocation, output format, validation pattern, caching policy, rationale.
-- [ ] **No production code** in this story.
+- [x] Sketch helper in throwaway form; try JSON-to-bash, shell-`key=value`, and bash-array-literal output; pick one with a one-paragraph rationale. *(Picked V3 bash-array-literal — see Decision 3 in the spike doc.)*
+- [x] Sketch validation: invalid `backend`, missing-file `requirements`, `manifest`+`requirements` conflict. Decide error-message shape. *(Schema validation in Python helper; filesystem checks deferred to consumers. Prefix `error: pyve.testenvs.<env>[.<key>]: <message>`. Exit 2. Batched.)*
+- [x] Sketch caching: measure cold-start cost of Python helper per `pyve` invocation; if < ~30ms, skip caching. *(Measured ~60 ms — above the threshold, but Python's startup floor alone is ~44 ms, so the threshold was below pyve's existing baseline. **Skipping caching anyway** — the marginal ~16 ms is invisible against ambient command cost, and caching brings real invalidation/concurrency complexity. See Decision 2.)*
+- [x] Write `docs/specs/spike-m-f-testenvs-config.md`: decided schema, helper invocation, output format, validation pattern, caching policy, rationale.
+- [x] **No production code** in this story.
 
 **Out of scope.** Implementing `lib/testenvs.sh` — that's M.g, informed by this spike.
 
@@ -236,7 +236,7 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
-### Story M.g: [Testenv-DX] `lib/testenvs.sh` foundation [Planned]
+### Story M.g: [Testenv-DX] `lib/testenvs.sh` foundation [Done]
 
 **Why.** All testenv-DX stories beyond this point need a shared config reader, env-name resolver, and backend/manifest validator. Per [`lib/commands/<name>.sh` is for command implementations only](../project-guide/templates/artifacts/pyve-essentials.md), shared helpers live in `lib/<topic>.sh`, not in a command file.
 
@@ -250,10 +250,10 @@ command -v project-guide >/dev/null 2>&1 && \
 
 **Tasks**
 
-- [ ] Failing tests first: [tests/unit/test_testenvs.bats](../../tests/unit/test_testenvs.bats) covering valid config, missing config (implicit default), invalid backend, conflicting `requirements` + `manifest`, reserved-name violation in user config, `lazy = true` propagation, empty-array safety per [Bash 3.2 empty-array reads](../project-guide/templates/artifacts/pyve-essentials.md).
-- [ ] Implement `lib/testenvs.sh` per M.f decisions.
-- [ ] Add explicit `source lib/testenvs.sh` in [pyve.sh](../../pyve.sh) sourcing block (after `lib/utils.sh`, before `lib/commands/*.sh`).
-- [ ] Update [docs/specs/tech-spec.md](tech-spec.md) with the `lib/testenvs.sh` design: TOML reader pattern (Python helper invocation form), output-format contract, validation policy, caching policy — all per the M.f spike's decisions. This is the canonical implementation reference; future pyve consumers that need to read TOML reuse this helper, not an ad-hoc bash parser.
+- [x] Failing tests first: [tests/unit/test_testenvs.bats](../../tests/unit/test_testenvs.bats) covering valid config, missing config (implicit default), invalid backend, conflicting `requirements` + `manifest`, reserved-name violation in user config, `lazy = true` propagation, empty-array safety per [Bash 3.2 empty-array reads](../project-guide/templates/artifacts/pyve-essentials.md). *(14 tests; RED → GREEN 14/14; full unit suite 897/897.)*
+- [x] Implement `lib/testenvs.sh` per M.f decisions. *(Python helper at `lib/pyve_testenvs_helper.py` emits plain bash-assignment syntax — not `declare` — so `eval` inside a function lands in global scope under bash 3.2's missing-`declare -g` constraint. Honors `${PYVE_PYTHON:-python}` for interpreter override.)*
+- [x] Add explicit `source lib/testenvs.sh` in [pyve.sh](../../pyve.sh) sourcing block (after `lib/utils.sh`, before `lib/commands/*.sh`).
+- [x] Update [docs/specs/tech-spec.md](tech-spec.md) with the `lib/testenvs.sh` design: TOML reader pattern (Python helper invocation form), output-format contract, validation policy, caching policy — all per the M.f spike's decisions. *(New §`lib/testenvs.sh` between `version.sh` and `ui/core.sh`; Package Structure tree updated; tests inventory updated.)*
 
 **Out of scope.** Consumers (`testenv` namespace, `pyve test`, `pyve lock`) pull from `lib/testenvs.sh` in later stories.
 

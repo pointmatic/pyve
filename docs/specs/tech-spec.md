@@ -66,6 +66,8 @@ pyve/
 │   ├── micromamba_bootstrap.sh      # Micromamba download and installation (interactive + auto)
 │   ├── distutils_shim.sh            # Python 3.12+ distutils compatibility shim (sitecustomize.py)
 │   ├── version.sh                   # Version comparison, installation validation, config writing
+│   ├── testenvs.sh                  # Named-testenv config foundation (M.g): read [tool.pyve.testenvs], predicates, path resolver
+│   ├── pyve_testenvs_helper.py      # Python tomllib helper for lib/testenvs.sh (V3 bash-array-literal wire format)
 │   └── commands/                    # One file per top-level command; each defines a function with the same name as the file
 │       ├── init.sh                  # init() — full project initialization (both backends)
 │       ├── purge.sh                 # purge() — removal of pyve artifacts
@@ -89,6 +91,7 @@ pyve/
 │   │   ├── test_micromamba_bootstrap.bats
 │   │   ├── test_micromamba_core.bats
 │   │   ├── test_reinit.bats
+│   │   ├── test_testenvs.bats       # M.g: lib/testenvs.sh foundation tests
 │   │   └── test_version.bats
 │   ├── integration/                 # pytest integration tests (black-box, one file per workflow)
 │   │   ├── conftest.py              # Shared fixtures (temp dirs, pyve runner)
@@ -556,6 +559,61 @@ Version comparison, installation validation, and config file management.
 | `update_config_version` | `()` | Update version in existing config |
 
 **Note:** `run_full_validation()` was removed in v2.0 (Story H.e.8a) along with the `pyve validate` command. Its 0/1/2 exit-code semantics live on in `check_command` (see [phase-H-check-status-design.md §3.2](phase-H-check-status-design.md)).
+
+---
+
+### `lib/testenvs.sh` — Named-testenv Config Foundation (Story M.g, testenv-DX bundle)
+
+Reads `[tool.pyve.testenvs]` from a project's `pyproject.toml` and exposes a flat predicate/accessor surface for the bundle's downstream consumers (`pyve testenv` namespace, `pyve test --env <name>`, `pyve lock --env <name>`). This is **the canonical TOML reader for pyve** — future pyve consumers that need to read TOML reuse this helper, they do not write an ad-hoc bash parser. Spike that fixed the design: [spike-m-f-testenvs-config.md](spike-m-f-testenvs-config.md).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `read_testenv_config` | `([<pyproject.toml path>])` | Invoke the Python tomllib helper and populate the V3 parallel-indexed-array state in the calling shell. Default path: `./pyproject.toml`. Missing file or missing `[tool.pyve.testenvs]` block synthesizes the implicit default (single venv `testenv`). Validation errors propagate via non-zero exit + stderr. |
+| `resolve_testenv_path` | `(<name>)` → string | Print the on-disk path the env should live at: `root` → `.venv`; venv-backed `<name>` → `.pyve/testenvs/<name>/venv`; conda-backed `<name>` → `.pyve/testenvs/<name>/conda`. Does **not** check existence — that is the caller's responsibility. |
+| `validate_testenv_decl` | `(<name>)` → 0/1 | 0 if `<name>` is reserved (`root`, `testenv`) or declared in the read state; 1 (with a stderr error) otherwise. Schema-level validation already happened in the Python helper at read time; this function is the name-legality guard. |
+| `is_testenv_declared` | `(<name>)` → 0/1 | 0 if `<name>` appears in `PYVE_TESTENVS_NAMES`. **Note:** `root` is reserved-but-not-declared (never in `NAMES`), so `is_testenv_declared root` returns 1. |
+| `is_testenv_reserved` | `(<name>)` → 0/1 | 0 if `<name>` is `root` or `testenv`. |
+| `is_testenv_lazy` | `(<name>)` → 0/1 | 0 if `<name>` is declared with `lazy = true`, 1 otherwise (including: not declared at all). |
+| `list_testenv_names` | `()` → stdout | Print declared env names + `root` (reserved), one per line. |
+| `_testenvs_name_to_index` | `(<name>)` → int via stdout | Private: 0-based index of `<name>` in `PYVE_TESTENVS_NAMES`, or return 1. |
+| `_testenv_backend_of` / `_testenv_extra_of` / `_testenv_manifest_of` | `(<name>)` → string | Private accessors: print the named field, or return 1 if name is unknown. |
+| `_testenv_requirements_of` | `(<name> <out_var>)` | Private: populate the caller-named array with the env's requirements list (uses `eval` against `PYVE_TESTENV_REQUIREMENTS_Q[i]`'s shell-quoted form). |
+
+**Companion helper:** [`lib/pyve_testenvs_helper.py`](../../lib/pyve_testenvs_helper.py) — the Python tomllib reader, invoked via `${PYVE_PYTHON:-python} lib/pyve_testenvs_helper.py <pyproject.toml>`. Emits plain bash-assignment syntax (no `declare`) to land assignments in the calling function's global scope under bash 3.2 — see the inline comment for the rationale.
+
+**Wire format (V3 — bash-array-literal, plain assignment).** Populated by `read_testenv_config`:
+
+```bash
+PYVE_TESTENVS_DEFAULT="testenv"
+PYVE_TESTENVS_NAMES=("testenv" "hardware")
+PYVE_TESTENV_BACKEND=("venv" "micromamba")
+PYVE_TESTENV_LAZY=("0" "1")
+PYVE_TESTENV_EXTRA=("" "")
+PYVE_TESTENV_MANIFEST=("" "src/templates/environment.yml")
+PYVE_TESTENV_REQUIREMENTS_Q=("requirements-dev.txt" "")
+```
+
+Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-safe (no `declare -A`). Spike decision rationale (`jq` vs `key=value` vs array-literal): [spike-m-f-testenvs-config.md §Decision 3](spike-m-f-testenvs-config.md).
+
+**Caching policy: none.** The Python helper is invoked at most once per `pyve` command. Cold-start measured ~60 ms (Python startup alone is ~44 ms — the 30 ms threshold floated in the spike was below pyve's existing baseline). Caching's complexity (invalidation, concurrency, stale-cache support) was judged a worse trade than the marginal 16 ms. Decision recorded in [spike-m-f-testenvs-config.md §Decision 2](spike-m-f-testenvs-config.md).
+
+**Validation locus: the Python helper, at read time.** Cross-rule checks (`requirements ⊕ extra ⊕ manifest`, `manifest requires conda backend`, reserved-name violations, unknown backend) live in `validate()` in `pyve_testenvs_helper.py`. Errors are batched, printed to stderr with the prefix `error: pyve.testenvs.<env>[.<key>]: <message>`, exit status **2** (distinct from operation-failed exit 1). Filesystem existence checks (does `requirements-dev.txt` actually exist on disk) are **deferred to consumers** — `pyve testenv install` is the right surface for "manifest not found" errors. Spike: [§Decision 4](spike-m-f-testenvs-config.md).
+
+**Reserved-name semantics.** `root` is the project's main `.venv/` (or conda env) — selection-only, **cannot** be redeclared in `[tool.pyve.testenvs]`. `testenv` is the well-known default at `.pyve/testenvs/testenv/...` — **may** be redeclared to override its defaults. Both names are excluded from any user-declared name space.
+
+**Python interpreter resolution.** `read_testenv_config` honors `${PYVE_PYTHON:-python}`. Useful for bats tests (which cwd into temp dirs that break relative PATH entries via the asdf shim) and for any caller that needs to pin a specific interpreter. The default `python` works in any pyve-activated shell.
+
+**Consumers (out of scope for M.g, land in later stories):**
+
+- M.h: per-env directory layout + legacy-layout migration in `pyve update`.
+- M.i: `testenv` namespace leaves (`testenv_init`, `_install`, `_purge`, `_run`) accept the optional `<name>` argument.
+- M.j: per-env install lock at `.pyve/testenvs/<name>/.lock`.
+- M.k–M.m: conda backend plumbing, venv manifest sources, lazy provisioning.
+- M.n: M.c silent-skip advisory generalized to every named env.
+- M.o: `pyve test --env <name>` resolver extension.
+- M.p: `pyve testenv list` / `prune`.
+- M.q: `pyve lock --env <name>` / `--all`.
+- M.r: matrix execution via comma-separated `--env`.
 
 ---
 

@@ -27,6 +27,7 @@ build/
 .vscode/settings.json
 
 coverage-kcov/
+tmp/
 
 # project-guide
 /docs/project-guide/.metadata.yml
