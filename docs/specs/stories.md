@@ -28,6 +28,14 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ## Phase M: Bugfixes, Minor Improvements, and Test Environment DX
 
+Phase M serves two distinct roles.
+
+**The junk drawer.** A rolling home for small, independently-discovered fixes and minor improvements that don't justify their own phase. Each ships its own patch or minor bump as it lands — M.a (v2.6.3), M.b (v2.6.4), M.c (v2.7.0), M.d (no bump, CI config), and M.e (v2.7.1) are the pattern. New junk-drawer stories continue to accrete here on demand; cadence stays **per-story**.
+
+**The testenv-DX sub-section.** A planned, coherent initiative that generalizes pyve's one-main + one-testenv model into named, multi-backend, multi-manifest test environments. See [phase-m-testenv-dx-plan.md](phase-m-testenv-dx-plan.md) for the plan doc and [phase-m-pyve-named-testenvs.md](phase-m-pyve-named-testenvs.md) for the use-case brief. The bundle (M.f onwards) runs **unversioned** during work and ships as **one bundled release at v2.8.0** at the end.
+
+The two cadences coexist inside Phase M. Story IDs are sequential in the order performed; testenv-DX stories are tagged `[Testenv-DX]` in their bodies for clarity.
+
 ### Story M.a: v2.6.3 — User-facing testing docs (close LLM testenv-on-micromamba gap) [Done]
 
 **Bug.** An LLM agent working on a separate micromamba-backend project hit `pyve testenv init` failures and misdiagnosed the cause as a missing `.tool-versions` file. Root cause: `pyve testenv init` invokes `python -m venv` against whatever `python` is on PATH at that moment, and the LLM's Bash-tool subprocess didn't have the micromamba project env activated (direnv doesn't auto-load in subprocesses). `python` fell back to an asdf shim with no pin, surfacing as "No version is set for command python." The right fix is `pyve run pyve testenv init` (which activates the project env first), not `.tool-versions` — but that guidance existed only in the LLM-facing `pyve-essentials.md` template's general "use `pyve run` from Bash tools" rule. Nothing on the user-facing MkDocs site explained the two-environment model, the backend-specific testenv-Python inheritance, or the activation-context requirement.
@@ -145,6 +153,366 @@ command -v project-guide >/dev/null 2>&1 && \
 **Follow-up (housekeeping)**
 
 - [x] ~~If the proxy advisory generates false-positive noise…consider a `PYVE_NO_TESTENV_ADVISORY=1` opt-out.~~ Done in this story (folded into v2.7.0 while uncommitted). The micromamba-only-gating alternative was *not* taken — a venv project that installs pytest into `.venv` can hit the same trap, so the advisory stays backend-agnostic with the env-var as the universal escape hatch.
+
+---
+
+### Story M.d: Add `.github/dependabot.yml` [Done]
+
+**Why.** Production-readiness checklist gap surfaced during `plan_production_phase` Step 2 walk: `.github/dependabot.yml` was missing. Adding it closes the "automated dependency updates" item before the testenv-DX bundle begins.
+
+**Approach.** Standard Dependabot configuration covering the ecosystems pyve consumes:
+
+- `pip` — for `requirements-dev.txt` (and future runtime requirements added by the testenv-DX bundle).
+- `github-actions` — for `.github/workflows/*.yml` ([test.yml](../../.github/workflows/test.yml), [deploy-docs.yml](../../.github/workflows/deploy-docs.yml), [update-homebrew.yml](../../.github/workflows/update-homebrew.yml)).
+- Weekly schedule, grouped minor/patch updates per ecosystem to reduce PR noise.
+
+**Tasks**
+
+- [x] Create `.github/dependabot.yml` with the two ecosystems above, weekly schedule, grouped minor/patch updates.
+- [ ] Verify the file passes GitHub's Dependabot config validation (no scheduler error reported on the repo's Insights tab within 24h of merge). *(Deferred: only checkable post-merge on GitHub.)*
+
+**Out of scope**
+
+- Renovate as an alternative. Dependabot is sufficient.
+- Auto-merging Dependabot PRs. Review workflow is a separate concern.
+
+**Version impact.** No bump. Pure CI config; no pyve runtime change.
+
+---
+
+### Story M.e: v2.7.1 — `pyve test --env main` → `--env root` rename (Category-B catch) [Planned]
+
+**Why.** M.c v2.7.0 shipped `pyve test --env main` weeks ago. The name `main` overloads the git-branch term and is conceptually fuzzy for "the root project environment, not a sub-environment." The canonical name is **`root`** — the root of the project folder, the development surface. Renaming now (while the M.c form is barely in the field) avoids permanent overload and aligns with the testenv-DX bundle's design, which treats `root` and `testenv` as the two permanently-reserved env names.
+
+**Approach.** Category-B hard-error catch per [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) *Deprecation removal policy*. Three lines in the `pyve.sh` dispatcher arm: match `--env main`, print the precise replacement, exit non-zero. No Category-A silent delegation.
+
+**Tasks**
+
+- [ ] Failing test first: extend [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) with a `--env main` Category-B test asserting the hard-error message + non-zero exit code. Confirm RED.
+- [ ] Rename `--env main` → `--env root` in [lib/commands/test.sh](../../lib/commands/test.sh) (`_test_parse_args` value handling; the `root` value targets `.venv/` — current `main` behavior).
+- [ ] Add `legacy_flag_error()`-style catch for `--env main` printing: `pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead.`
+- [ ] Update `features.md` FR-11 (rename `main` → `root` in the documented value list).
+- [ ] Update `tech-spec.md` test.sh table.
+- [ ] Update `docs/site/usage.md` and `docs/site/testing.md` to use `--env root`; add a one-line note that `--env main` was renamed in v2.7.1.
+- [ ] Bump VERSION to 2.7.1 in [pyve.sh](../../pyve.sh).
+- [ ] Add v2.7.1 CHANGELOG entry under **Changed** (rename) and **Removed** (`--env main` value).
+
+**Out of scope**
+
+- Category-A delegation. Per project-essentials, the precise error message *is* the migration window.
+- Renaming private helper `_test_main_env_has_pytest`. Rename folds into M.n when the helper is generalized.
+
+**Version impact.** Patch (v2.7.1). Junk-drawer cadence. Pre-bundle.
+
+---
+
+### Story M.f: [Testenv-DX] Architectural spike — `[tool.pyve.testenvs]` config schema & reader pattern [Spike, Planned]
+
+**Goal.** Lock in the TOML-config integration design before the bundle's foundation stories (M.g+) begin. This is the first time pyve reads TOML; the choice of approach affects every downstream story.
+
+**Questions to answer.**
+
+1. **Schema shape.** Confirm `[tool.pyve.testenvs]` (top-level: `default`) + `[tool.pyve.testenvs.<name>]` (per-env: `backend`, `requirements`, `extra`, `manifest`, `lazy`). Validate against the use cases in [phase-m-testenv-dx-plan.md](phase-m-testenv-dx-plan.md).
+2. **TOML reader.** Python helper via `python -c "import tomllib; ..."` (Python 3.11+). One-shot subprocess per `pyve` invocation, or cached output in `.pyve/.testenvs-cache`?
+3. **Output format from helper.** JSON to stdout (parsed in bash via `jq`)? Shell `key=value` lines (sourced)? Bash-array-literal output? Decide a Bash-3.2-safe pattern.
+4. **Validation & error UX.** What does pyve print for invalid `backend`, missing-file `requirements`, conflicting `manifest` + `requirements`? Pinned-message contract or free-form? Validation in Python helper or in bash post-parse?
+5. **Missing-config behavior.** When `pyproject.toml` exists but has no `[tool.pyve.testenvs]` block (or `pyproject.toml` is absent), the resolver returns the implicit default: `testenv` = venv at `.pyve/testenvs/testenv/venv/`. Confirm.
+
+**Time-box.** ~1 working session. Throwaway code in `tmp/spike-testenvs/`. Deliverable is decisions documented in **`docs/specs/spike-m-f-testenvs-config.md`**.
+
+**Tasks**
+
+- [ ] Sketch helper in throwaway form; try JSON-to-bash, shell-`key=value`, and bash-array-literal output; pick one with a one-paragraph rationale.
+- [ ] Sketch validation: invalid `backend`, missing-file `requirements`, `manifest`+`requirements` conflict. Decide error-message shape.
+- [ ] Sketch caching: measure cold-start cost of Python helper per `pyve` invocation; if < ~30ms, skip caching.
+- [ ] Write `docs/specs/spike-m-f-testenvs-config.md`: decided schema, helper invocation, output format, validation pattern, caching policy, rationale.
+- [ ] **No production code** in this story.
+
+**Out of scope.** Implementing `lib/testenvs.sh` — that's M.g, informed by this spike.
+
+**Version impact.** None (no shipped change; bundle-unversioned).
+
+---
+
+### Story M.g: [Testenv-DX] `lib/testenvs.sh` foundation [Planned]
+
+**Why.** All testenv-DX stories beyond this point need a shared config reader, env-name resolver, and backend/manifest validator. Per [`lib/commands/<name>.sh` is for command implementations only](../project-guide/templates/artifacts/pyve-essentials.md), shared helpers live in `lib/<topic>.sh`, not in a command file.
+
+**Approach.** New [lib/testenvs.sh](../../lib/testenvs.sh) implementing the M.f spike's decisions:
+
+- `read_testenv_config` — invoke Python TOML helper, populate state.
+- `resolve_testenv_path <name>` — on-disk env path for a given name.
+- `validate_testenv_decl <name>` — sanity-check a declaration.
+- `is_testenv_declared <name>`, `is_testenv_reserved <name>`, `is_testenv_lazy <name>` — predicates.
+- `list_testenv_names` — all declared names + reserved (`testenv`, `root`).
+
+**Tasks**
+
+- [ ] Failing tests first: [tests/unit/test_testenvs.bats](../../tests/unit/test_testenvs.bats) covering valid config, missing config (implicit default), invalid backend, conflicting `requirements` + `manifest`, reserved-name violation in user config, `lazy = true` propagation, empty-array safety per [Bash 3.2 empty-array reads](../project-guide/templates/artifacts/pyve-essentials.md).
+- [ ] Implement `lib/testenvs.sh` per M.f decisions.
+- [ ] Add explicit `source lib/testenvs.sh` in [pyve.sh](../../pyve.sh) sourcing block (after `lib/utils.sh`, before `lib/commands/*.sh`).
+- [ ] Update [docs/specs/tech-spec.md](tech-spec.md) with the `lib/testenvs.sh` design: TOML reader pattern (Python helper invocation form), output-format contract, validation policy, caching policy — all per the M.f spike's decisions. This is the canonical implementation reference; future pyve consumers that need to read TOML reuse this helper, not an ad-hoc bash parser.
+
+**Out of scope.** Consumers (`testenv` namespace, `pyve test`, `pyve lock`) pull from `lib/testenvs.sh` in later stories.
+
+---
+
+### Story M.h: [Testenv-DX] Per-env directory layout + migration hook [Planned]
+
+**Why.** Today's single testenv lives at `.pyve/testenvs/venv/` (hard-coded). Named envs need `.pyve/testenvs/<name>/{venv,conda}/`. Existing projects must transparently migrate.
+
+**Approach.** New per-env layout: `<name>/venv/` or `<name>/conda/`, plus `<name>/.lock` and `<name>/.state`. Reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`. A `pyve update` hook detects the legacy layout and moves it.
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering migration on `pyve update` (legacy → new), idempotency, new-project layout (no migration triggered).
+- [ ] Migration helper in [lib/commands/update.sh](../../lib/commands/update.sh): detect legacy, `mv` to new path, write initial `.state`.
+- [ ] `.state` format: backend, manifest path + hash, provisioned timestamp, last-used timestamp. Plain `key=value` (sourceable).
+- [ ] Update `tech-spec.md` testenv-layout section.
+
+**Out of scope.** Namespace command expansion (M.i); `.state` consumption (folds into stories that produce/consume those signals).
+
+---
+
+### Story M.i: [Testenv-DX] `testenv` namespace expansion — name-aware ops [Planned]
+
+**Why.** With named envs declared (M.g) and the layout in place (M.h), the `testenv` namespace commands need an optional `<name>` argument. The reserved `testenv` name keeps existing workflows working.
+
+**Approach.** Extend leaves in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) per TC-M.6 in the plan doc:
+
+| CLI | No-arg behavior | With-arg behavior |
+|---|---|---|
+| `pyve testenv init [<name>]` | Default `testenv` | Named env |
+| `pyve testenv install [<name>] [-r …]` | All non-lazy envs | Named env only |
+| `pyve testenv purge [<name>]` | All envs (confirm) | Named env only |
+| `pyve testenv run [<name>] -- <cmd>` | Default `testenv` | Named env |
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering each leaf's no-arg and with-arg branches, reserved-name behavior, undeclared-name error.
+- [ ] Extend `testenv_init`, `testenv_install`, `testenv_purge`, `testenv_run`.
+- [ ] Update per-leaf help blocks (`show_testenv_<sub>_help`) per [Per-command help blocks live with their commands](../project-guide/templates/artifacts/pyve-essentials.md).
+
+**Out of scope.** `pyve testenv list` / `pyve testenv prune` (M.p — new leaves); lock machinery in `install` (M.j).
+
+---
+
+### Story M.j: [Testenv-DX] Per-env install lock (`.pyve/testenvs/<name>/.lock`) [Planned]
+
+**Why.** Pyve owns the testenv lifecycle. Concurrent `pyve testenv install <same-env>` from two shells must serialize on the env, not collide on the package cache.
+
+**Approach.** `flock`-based lock at `.pyve/testenvs/<name>/.lock`. Acquired around `pyve testenv install <name>` and any auto-provision path (M.m). Second invocation waits by default; `--no-wait` exits with a clear "another pyve process is installing `<name>` (pid N)" message.
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering serial install (no collision), `--no-wait` exit message + non-zero code, lock cleanup on success and failure.
+- [ ] `_testenv_acquire_install_lock` / `_testenv_release_install_lock` helpers in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) (command-private, per the `_<command>_` prefix).
+- [ ] Wire into `testenv_install`.
+- [ ] Document `--no-wait` in `show_testenv_install_help`.
+
+**Out of scope.** Read-only execution locking (`pyve test --env <name>` fast path is lock-free); cross-host locks (local file lock only; document the limit).
+
+---
+
+### Story M.k: [Testenv-DX] Conda-backed testenv plumbing (`backend = "micromamba"`) [Planned]
+
+**Why.** UC2 (test/runtime parity for conda mains) and UC3 (conda-only native deps — GDAL, CUDA, HDF5) both reduce to "per-env conda backend." The main-env micromamba paths exist; testenvs need the same plumbing minus the `.envrc`.
+
+**Approach.** Reuse [lib/backend_detect.sh](../../lib/backend_detect.sh) and main-env micromamba init logic. Add `_testenv_init_conda` and `_testenv_install_conda` to [lib/commands/testenv.sh](../../lib/commands/testenv.sh). Conda-backed envs accept `manifest = "<environment.yml>"` (FR-M.3); mutually exclusive with `requirements`/`extra` (validation in M.g).
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering `pyve testenv init <name>` for a conda-backed declared env, `pyve testenv install <name>` from a `manifest = "…"` source, validation error on `manifest` + `requirements` collision.
+- [ ] `_testenv_init_conda` + `_testenv_install_conda` helpers.
+- [ ] `backend = "inherit"` resolution via [lib/env_detect.sh](../../lib/env_detect.sh) (main env backend).
+- [ ] No `.envrc` emission for testenvs.
+- [ ] Update `tech-spec.md` testenv backend section.
+
+**Out of scope.** `pyve lock --env <name>` (M.q); pip-installed-into-conda mixed mode.
+
+---
+
+### Story M.l: [Testenv-DX] venv manifest sources — `requirements` and `extra` [Planned]
+
+**Why.** Venv-backed testenvs need both `requirements = ["…"]` (one or more pip manifests) and `extra = "<name>"` (named optional-dependency extra from `pyproject.toml`).
+
+**Approach.** Extend `_testenv_install_venv` in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) to dispatch on the declared source:
+
+- `requirements = ["a.txt", "b.txt"]` → `pip install -r a.txt -r b.txt`.
+- `extra = "dev"` → resolve via Python helper (extract `[project.optional-dependencies].dev`, install).
+- Neither declared → fallback to legacy `-r requirements-dev.txt` (preserves FR-M.4 light default).
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering `requirements` list (multi-file), `extra` extraction from a `pyproject.toml`, fallback when neither declared, validation error when both declared.
+- [ ] `_testenv_install_venv` extension.
+- [ ] Python helper extension (from M.g `lib/testenvs.sh`) to extract `[project.optional-dependencies].<name>`.
+- [ ] Update `docs/site/testing.md` with the three source patterns (folds into M.s sweep).
+
+**Out of scope.** Editable installs (`pip install -e .`) — existing [Editable install and testenv dependency management](../project-guide/templates/artifacts/pyve-essentials.md) policy covers this; no change.
+
+---
+
+### Story M.m: [Testenv-DX] Lazy provisioning (`lazy = true`) [Planned]
+
+**Why.** UC1's heavy hardware-smoke env (multi-GB ML stack) should not materialize on every CI run. `lazy = true` opts the env out of bulk install and provisions on first targeted use.
+
+**Approach.** Three behavior changes:
+
+1. `pyve testenv install` (no name) skips lazy envs.
+2. `pyve testenv install <lazy-env>` installs normally.
+3. `pyve test --env <lazy-env>` auto-provisions if missing (acquiring the lock per M.j), then runs.
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering lazy env skipped by bulk install, lazy env explicitly installed by name, auto-provision on first `pyve test --env <lazy-env>` use.
+- [ ] `is_testenv_lazy` predicate (from M.g) wired into `testenv_install` and `test_tests`.
+- [ ] Auto-provision gated by `PYVE_NO_AUTO_PROVISION=1` opt-out (for CI that wants strict "is-this-env-already-built?" semantics).
+- [ ] Document in `docs/site/testing.md` (folds into M.s sweep).
+
+**Out of scope.** Pre-flight bandwidth/disk-space check; provision-time error reporting uses the underlying package manager's messages.
+
+---
+
+### Story M.n: [Testenv-DX] Silent-skip advisory generalization (all named envs) [Planned]
+
+**Why.** M.c's advisory fires only when routing to the default `testenv` and detecting pytest in the main env. With many named envs, the trap surface multiplies: select any named env that lacks deps the tests import, and the run looks green via silent skips. The advisory must hold for **every** env.
+
+**Approach.** Generalize `_test_main_env_has_pytest` → `_test_env_has_pytest <name>` (parameterized over env name). Advisory message names the offending env explicitly. `PYVE_NO_TESTENV_ADVISORY=1` opt-out continues to apply to all envs.
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering advisory firing for each backend/env combination — venv testenv, conda testenv, named venv, named conda; opt-out gates the advisory off in all cases.
+- [ ] `_test_env_has_pytest <name>` helper replaces `_test_main_env_has_pytest`.
+- [ ] Advisory message: `pytest not found in env '<name>' — run 'pyve testenv install <name>' or select a different env with --env <other>`.
+- [ ] Update `features.md` FR-11 with the generalized advisory shape.
+
+**Out of scope.** Strict mode (`strict = true` → missing-dep skip = test failure). Plan doc OS-7; deferred.
+
+---
+
+### Story M.o: [Testenv-DX] `pyve test --env <name>` resolver extension [Planned]
+
+**Why.** M.e's parser accepts only `--env {testenv, root}`. With named envs declared (M.g), the resolver needs to accept any declared name.
+
+**Approach.** Extend `_test_parse_args` in [lib/commands/test.sh](../../lib/commands/test.sh):
+
+1. Accept `--env <name>` (and `--env=<name>`).
+2. Look up via `is_testenv_declared` / `is_testenv_reserved`.
+3. Resolve to on-disk path via `resolve_testenv_path`.
+4. Undeclared and not reserved → hard error listing valid choices.
+5. No `--env` → read `[tool.pyve.testenvs] default`, fall back to `testenv`.
+
+Also: touch `.state`'s `last-used` on successful run (consumed by `pyve testenv list` in M.p).
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering `--env <declared-name>`, `--env <reserved>`, `--env <undeclared>` error, no-`--env` default lookup, no-config implicit `testenv` fallback, `last-used` touch.
+- [ ] `_test_parse_args` extension.
+- [ ] Hard-error message lists all declared + reserved names.
+- [ ] `last-used` touch in success path.
+- [ ] Update `features.md` FR-11.
+
+**Out of scope.** Matrix (comma-separated) handling — M.r.
+
+---
+
+### Story M.p: [Testenv-DX] `pyve testenv list` / `pyve testenv prune` [Planned]
+
+**Why.** Disk discoverability (FR-M.12). Many envs balloon disk; surfacing per-env size + last-used + provisioning state without `du -sh` matches the "feels integral" criterion.
+
+**Approach.** Two new leaves in [lib/commands/testenv.sh](../../lib/commands/testenv.sh):
+
+- `testenv_list` — read `.state` files, compute `du -sh` per env, print a table (name, backend, size, last-used, state).
+- `testenv_prune` — three modes: no args (remove envs not declared in config, with confirmation), `--unused-since <date>` (remove envs whose `last-used` is older), `--all` (purge every env, with confirmation).
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering `list` output shape, `prune` modes, confirmation prompt mocking.
+- [ ] `testenv_list` + `testenv_prune` leaves.
+- [ ] Per-leaf help blocks.
+- [ ] Update `tech-spec.md` testenv namespace table.
+
+**Out of scope.** Real-time `last-used` tracking — folds into M.o.
+
+---
+
+### Story M.q: [Testenv-DX] `pyve lock --env <name>` / `--all` extension [Planned]
+
+**Why.** Production concern PC-2: conda-backed testenvs need deterministic resolution (no conda-forge drift across time). `pyve lock` already handles the main env; extend to per-env locking for conda-backed testenvs.
+
+**Approach.** Extend `lock_environment` in [lib/commands/lock.sh](../../lib/commands/lock.sh):
+
+- `pyve lock` (no args) → main env (existing behavior preserved).
+- `pyve lock --env <name>` → lock the named conda-backed testenv. Hard error for venv-backed envs.
+- `pyve lock --all` → main env + every conda-backed testenv.
+
+Lock files: `<manifest-basename>-lock.yml` sibling to the manifest.
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering `--env <conda-name>` produces a lock file, `--env <venv-name>` errors with a precise message, `--all` iterates correctly.
+- [ ] `lock_environment` extension.
+- [ ] Update `tech-spec.md` lock command section.
+
+**Out of scope.** Lock-file format change (continue `conda-lock` default); locking pip-installed-into-conda mixed envs.
+
+---
+
+### Story M.r: [Testenv-DX] Matrix execution — `pyve test --env a,b,c` (serial) [Planned]
+
+**Why.** UC6 (matrix testing). The same suite against multiple envs, selectable individually or as a set.
+
+**Approach.** Comma-separated `--env` value parsed into a list; each env resolved via M.o; runs sequentially; exit code aggregates as worst-case (any failure → non-zero).
+
+**Tasks**
+
+- [ ] Failing tests first: bats covering single-env (existing behavior preserved), `a,b` two-env sequential run, exit-code aggregation, output delineation per env.
+- [ ] `_test_parse_args` extension for comma-separated value.
+- [ ] Per-env section header in output (`=== Env: <name> ===`) for human readability.
+- [ ] Document in `docs/site/testing.md` (folds into M.s sweep).
+
+**Out of scope.** `--parallel` execution. Plan doc OS-4; deferred.
+
+---
+
+### Story M.s: [Testenv-DX] Docs sweep — named testenvs across user-facing docs [Planned]
+
+**Why.** The bundle introduces a substantial new surface (config schema, named envs, multi-backend, lazy provisioning, matrix). User-facing docs need a coherent story before release; piecemeal ride-along docs would fragment.
+
+**Approach.** Single consolidated docs pass:
+
+- [docs/specs/features.md](features.md) — new **FR-11a (or successor number): Named test environments** documenting the `[tool.pyve.testenvs]` DX contract as a first-class feature requirement. Schema (default + per-env `backend` / `requirements` / `extra` / `manifest` / `lazy`); reserved names (`root`, `testenv`); precedence; what happens with no config block. This is the source of truth for the DX surface; user-facing docs link here for canonical detail.
+- `docs/site/testing.md` — new "Named test environments" section with the full config schema; updated "Choosing which environment runs your tests"; same-file manifest pattern (UC4); lazy provisioning; matrix.
+- `docs/site/usage.md` — `pyve testenv {init,install,purge,run,list,prune}` reference updated with name argument; `pyve test --env <name>` reference; `pyve lock --env`/`--all` reference.
+- `docs/site/backends.md` — note that named testenvs can use conda backend independent of main env.
+- `README.md` — Testing section: mention that `[tool.pyve.testenvs]` in `pyproject.toml` is the canonical declarative config for named test environments (state lives in `.pyve/testenvs/<name>/`); link to the named-testenvs material in testing.md for detail; no full duplication.
+- `docs/project-guide/templates/artifacts/pyve-essentials.md` — Pyve Essentials section: acknowledge "two envs" is now the *minimum*; named envs are an opt-in extension; LLM workflow rules updated for `pyve test --env <name>` and `pyve testenv install <name>`.
+
+**Tasks**
+
+- [ ] Audit and update the six files above.
+- [ ] Verify all internal links resolve (`mkdocs build --strict`).
+- [ ] No code changes in this story.
+
+**Out of scope.** `migration.md` — bundle is purely additive (rename pre-shipped in M.e); no new migration entries needed.
+
+---
+
+### Story M.t: v2.8.0 — Testenv-DX bundle release [Planned]
+
+**Why.** Per the Version Cadence rule, the phase's last bundle story owns the bump. M.f through M.s ran unversioned; this story ships the bundle as **v2.8.0**.
+
+**Approach.** VERSION bump + CHANGELOG entry + final smoke pass.
+
+**Tasks**
+
+- [ ] Bump VERSION to 2.8.0 in [pyve.sh](../../pyve.sh).
+- [ ] Add v2.8.0 CHANGELOG entry. **Added**: named testenvs, per-env backend (incl. `inherit`), per-env manifest sources (`requirements`/`extra`/`manifest`), lazy provisioning, install lock, `pyve testenv list`, `pyve testenv prune`, `pyve lock --env`/`--all`, matrix execution, generalized silent-skip advisory. **Changed**: `testenv` namespace commands now accept optional `<name>`. **Internal**: `lib/testenvs.sh` foundation, per-env layout migration.
+- [ ] Final smoke: full test suite green; `pyve init` end-to-end on venv and micromamba backends; end-to-end on a project with `[tool.pyve.testenvs]` declaring two named envs (one lazy).
+- [ ] Tag and release.
+
+**Out of scope.** Anything not already done in M.f–M.s. Newly-discovered scope at this stage means the bundle is incomplete — return to the appropriate story.
 
 ---
 
