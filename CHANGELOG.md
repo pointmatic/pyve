@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.1] - 2026-05-30
+
+**Rename.** The `--env main` value introduced in v2.7.0 for `pyve test` is renamed to `--env root`. The name `main` overloaded the git-branch term and was conceptually fuzzy for "the root project environment, not a sub-environment." The canonical term `root` is the root of the project folder — the development surface — and aligns with the upcoming testenv-DX bundle, which treats `root` and `testenv` as the two permanently-reserved env names. Renaming now (while the v2.7.0 form is barely in the field) avoids permanent overload.
+
+### Changed
+
+- **`pyve test --env main` → `pyve test --env root`** (Story M.e) — same semantics (route pytest to the root project env via `run_command python -m pytest`), new name. Both forms (`--env root` and `--env=root`) are accepted. The silent-skip advisory message updates to point at `--env root`.
+
+### Removed
+
+- **`pyve test --env main`** (Story M.e) — the legacy value now hard-errors with the precise rename hint: `pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead.` (Category-B deprecation-removal policy: no silent delegation; the precise error message *is* the migration window.) Update any scripts to `--env root`.
+
 ## [2.7.0] - 2026-05-29
 
 **Feature + bugfix.** `pyve test` gains an `--env main|testenv` selector, and grows a silent-skip advisory — both addressing the "micromamba-testenv trap" where `pyve test` runs against a stack-less testenv and tests silently SKIP.

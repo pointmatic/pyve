@@ -37,11 +37,16 @@ _test_has_pytest() {
     "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1
 }
 
-# Test-private helper: probe whether the MAIN project env (micromamba
+# Test-private helper: probe whether the ROOT project env (micromamba
 # env preferred, then venv) has pytest importable. Used to warn that
 # `pyve test` is routing to the (possibly stack-less) testenv when the
-# main env already carries pytest — the micromamba-testenv trap.
-# Returns 0 (main env has pytest) or 1 (no main env / no pytest).
+# root env already carries pytest — the micromamba-testenv trap.
+# Returns 0 (root env has pytest) or 1 (no root env / no pytest).
+#
+# NOTE: function name retains `main` for M.e v2.7.1. The user-visible
+# `--env` value renamed `main → root`; the internal helper generalizes
+# (and is renamed) in M.n when the silent-skip advisory expands to all
+# named envs.
 _test_main_env_has_pytest() {
     local main_py=""
 
@@ -85,7 +90,7 @@ _test_install_pytest_into_testenv() {
 # K.g moves it to `lib/utils.sh`. Bash resolves the call at runtime
 # from the global function table — no special handling needed.
 test_tests() {
-    # Parse the pyve-owned `--env main|testenv` selector out of the
+    # Parse the pyve-owned `--env root|testenv` selector out of the
     # arg list; everything else passes through to pytest verbatim.
     local env_target="testenv"
     local args=()
@@ -93,7 +98,7 @@ test_tests() {
         case "$1" in
             --env)
                 env_target="${2:-}"
-                shift 2 || { log_error "--env requires a value (main|testenv)"; exit 1; }
+                shift 2 || { log_error "--env requires a value (root|testenv)"; exit 1; }
                 ;;
             --env=*)
                 env_target="${1#--env=}"
@@ -106,17 +111,27 @@ test_tests() {
         esac
     done
 
-    if [[ "$env_target" != "main" && "$env_target" != "testenv" ]]; then
-        log_error "Invalid --env value: '$env_target' (expected 'main' or 'testenv')"
+    # Category-B hard-error: `--env main` was renamed to `--env root` in
+    # v2.7.1 (M.e). Catch the legacy value with a precise migration hint
+    # rather than silently delegating (no Category-A). The catch lives in
+    # _test_parse_args's locus, not pyve.sh's dispatcher, because `--env`
+    # is a value parsed here — pyve.sh never sees it.
+    if [[ "$env_target" == "main" ]]; then
+        log_error "pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead."
         exit 1
     fi
 
-    # `--env main`: route pytest to the MAIN project env. Delegates to
+    if [[ "$env_target" != "root" && "$env_target" != "testenv" ]]; then
+        log_error "Invalid --env value: '$env_target' (expected 'root' or 'testenv')"
+        exit 1
+    fi
+
+    # `--env root`: route pytest to the ROOT project env. Delegates to
     # run_command, which owns backend detection (venv vs micromamba),
     # the asdf reshim guard, and the exec. This is the first-class form
     # of the `pyve run python -m pytest` workaround for bundled envs
-    # that carry both pytest and the stack-under-test in the main env.
-    if [[ "$env_target" == "main" ]]; then
+    # that carry both pytest and the stack-under-test in the root env.
+    if [[ "$env_target" == "root" ]]; then
         run_command python -m pytest "${args[@]+"${args[@]}"}"
         return  # not reached: run_command execs
     fi
@@ -151,16 +166,16 @@ test_tests() {
     fi
 
     # Silent-skip trap guard (proxy for the micromamba-testenv trap):
-    # if the MAIN env also carries pytest, the user may be expecting
-    # tests to run against the main env's stack. `pyve test` uses the
+    # if the ROOT env also carries pytest, the user may be expecting
+    # tests to run against the root env's stack. `pyve test` uses the
     # separate testenv, which will not have those deps — tests that
     # importorskip the stack will silently SKIP and look green. Warn,
     # and point at the supported escape hatch. One line, non-fatal.
     # Suppressible via PYVE_NO_TESTENV_ADVISORY=1 for users who keep
-    # pytest in the main env deliberately and don't want the nudge.
+    # pytest in the root env deliberately and don't want the nudge.
     if [[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]] && _test_main_env_has_pytest; then
-        warn "Main env has pytest installed; 'pyve test' is using the separate testenv ($testenv_venv), which won't have your main-env dependencies."
-        info "If your tests need the main env's stack, run: pyve test --env main"
+        warn "Root env has pytest installed; 'pyve test' is using the separate testenv ($testenv_venv), which won't have your root-env dependencies."
+        info "If your tests need the root env's stack, run: pyve test --env root"
     fi
 
     exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"

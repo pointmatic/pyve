@@ -180,22 +180,24 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
-### Story M.e: v2.7.1 — `pyve test --env main` → `--env root` rename (Category-B catch) [Planned]
+### Story M.e: v2.7.1 — `pyve test --env main` → `--env root` rename (Category-B catch) [Done]
 
 **Why.** M.c v2.7.0 shipped `pyve test --env main` weeks ago. The name `main` overloads the git-branch term and is conceptually fuzzy for "the root project environment, not a sub-environment." The canonical name is **`root`** — the root of the project folder, the development surface. Renaming now (while the M.c form is barely in the field) avoids permanent overload and aligns with the testenv-DX bundle's design, which treats `root` and `testenv` as the two permanently-reserved env names.
 
-**Approach.** Category-B hard-error catch per [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) *Deprecation removal policy*. Three lines in the `pyve.sh` dispatcher arm: match `--env main`, print the precise replacement, exit non-zero. No Category-A silent delegation.
+**Approach.** Category-B hard-error catch per [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) *Deprecation removal policy*: match `--env main`, print the precise replacement, exit non-zero. No Category-A silent delegation.
+
+**Correction (during M.e execution).** The plan body originally said "Three lines in the `pyve.sh` dispatcher arm," modeled on the canonical `legacy_flag_error()` catches for top-level flags like `--init` / `--purge`. That's the wrong locus for `--env main`: `--env` is a *value* parsed inside `_test_parse_args` in [lib/commands/test.sh](../../lib/commands/test.sh), not a top-level flag dispatched by `pyve.sh`. The catch belongs alongside the existing "invalid `--env` value" error in `_test_parse_args` — same Category-B semantics, correct file. The dispatcher arm in `pyve.sh` never sees the `--env` value.
 
 **Tasks**
 
-- [ ] Failing test first: extend [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) with a `--env main` Category-B test asserting the hard-error message + non-zero exit code. Confirm RED.
-- [ ] Rename `--env main` → `--env root` in [lib/commands/test.sh](../../lib/commands/test.sh) (`_test_parse_args` value handling; the `root` value targets `.venv/` — current `main` behavior).
-- [ ] Add `legacy_flag_error()`-style catch for `--env main` printing: `pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead.`
-- [ ] Update `features.md` FR-11 (rename `main` → `root` in the documented value list).
-- [ ] Update `tech-spec.md` test.sh table.
-- [ ] Update `docs/site/usage.md` and `docs/site/testing.md` to use `--env root`; add a one-line note that `--env main` was renamed in v2.7.1.
-- [ ] Bump VERSION to 2.7.1 in [pyve.sh](../../pyve.sh).
-- [ ] Add v2.7.1 CHANGELOG entry under **Changed** (rename) and **Removed** (`--env main` value).
+- [x] Failing test first: extend [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) with a `--env main` Category-B test asserting the hard-error message + non-zero exit code. Confirm RED. *(Done: also renamed the existing `--env main` happy-path tests to `--env root`. RED = 6/10 fail; GREEN = 10/10. Full unit suite 883/883.)*
+- [x] Rename `--env main` → `--env root` in [lib/commands/test.sh](../../lib/commands/test.sh) (`_test_parse_args` value handling; the `root` value targets `.venv/` — current `main` behavior).
+- [x] Add `legacy_flag_error()`-style catch for `--env main` printing: `pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead.` *(Implemented inline in `test_tests`'s arg-validation section, not via `legacy_flag_error()` in `pyve.sh` — see the **Correction** note in the Approach section above.)*
+- [x] Update `features.md` FR-11 (rename `main` → `root` in the documented value list).
+- [x] Update `tech-spec.md` test.sh table.
+- [x] Update `docs/site/usage.md` and `docs/site/testing.md` to use `--env root`; add a one-line note that `--env main` was renamed in v2.7.1.
+- [x] Bump VERSION to 2.7.1 in [pyve.sh](../../pyve.sh).
+- [x] Add v2.7.1 CHANGELOG entry under **Changed** (rename) and **Removed** (`--env main` value).
 
 **Out of scope**
 
