@@ -376,26 +376,123 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.i: [Testenv-DX] `testenv` namespace expansion — name-aware ops [Planned]
+### Story M.i: [Testenv-DX] `testenv` namespace expansion — name-aware ops [Bundle]
 
-**Why.** With named envs declared (M.g) and the layout in place (M.h), the `testenv` namespace commands need an optional `<name>` argument. The reserved `testenv` name keeps existing workflows working.
+**Why.** With named envs declared (M.g) and the layout in place (M.h), the `testenv` namespace commands need an optional `<name>` argument. The reserved `testenv` name keeps existing single-env workflows working. With-arg branches operate on a single named env; no-arg branches preserve today's defaults for unconfigured projects and expand naturally to "all non-lazy envs" (install) and "all envs with confirmation" (purge) for projects that declare named envs.
 
-**Approach.** Extend leaves in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) per TC-M.6 in the plan doc:
+**Target surface** (per TC-M.6 in the plan doc):
 
 | CLI | No-arg behavior | With-arg behavior |
 |---|---|---|
 | `pyve testenv init [<name>]` | Default `testenv` | Named env |
 | `pyve testenv install [<name>] [-r …]` | All non-lazy envs | Named env only |
-| `pyve testenv purge [<name>]` | All envs (confirm) | Named env only |
-| `pyve testenv run [<name>] -- <cmd>` | Default `testenv` | Named env |
+| `pyve testenv purge [<name>]` | All envs (confirm; `--force` skips) | Named env only |
+| `pyve testenv run [<name>] -- <cmd>` | Default `testenv` | Named env via `--` separator |
+
+**Bundle-wide scope guards** (apply to every sub-story):
+
+- **Conda-backed envs** (`backend = "micromamba"` or `inherit`) are stubbed with a "conda backend not yet implemented; see M.k" hard-error in M.i.1 and stay that way through the bundle. M.k implements the conda mechanics; M.i.1's stub is the placeholder.
+- **Manifest source consumption** (declared `requirements = [...]` / `extra = "dev"` from `[tool.pyve.testenvs]`) is NOT in this bundle — `install` continues to accept `-r <file>` or install bare `pytest` exactly like today. M.l flips that switch.
+- **Per-env install lock** (`.pyve/testenvs/<name>/.lock` via `flock`) is M.j, not M.i.
+- **Lazy auto-provisioning on first targeted use** (`pyve test --env <lazy-env>` triggering an install) is M.m.
+
+**Bundle structure (M.i.1 → M.i.4).** Each sub-story is independently RED-GREEN testable; the bundle ships unversioned, releasing at M.t (v2.8.0).
+
+| Sub-story | Scope |
+|---|---|
+| **M.i.1** | Prep — generalize `ensure_testenv_exists` to accept `[<name>]`; add a name-validation gate that rejects `root` (selection-only) and undeclared names with helpful errors; add the conda-backend stub. No user-facing leaf changes yet. |
+| **M.i.2** | `testenv init [<name>]` + `testenv run [<name>] -- <cmd>` — both single-env leaves, name-aware. `run` uses `--` as the disambiguator when a name is present. |
+| **M.i.3** | `testenv install [<name>] [-r …]` — with-arg single-env behavior + no-arg iteration over non-lazy envs. |
+| **M.i.4** | `testenv purge [<name>] [--force]` — with-arg single-env behavior + no-arg "all envs (confirm)" iteration; `--force` skips confirmation. |
+
+**Out of scope (bundle-wide).** `pyve testenv list` / `prune` (M.p — new leaves); per-env install lock (M.j); conda backend provisioning (M.k); declared manifest source consumption (M.l); lazy auto-provisioning (M.m).
+
+---
+
+### Story M.i.1: [Testenv-DX] Name-aware `ensure_testenv_exists` + validation gate + conda stub [Done]
+
+**Why.** All four leaves in M.i.2–M.i.4 need a shared way to "ensure the named env exists" (path-aware variant of today's `ensure_testenv_exists`) and a shared "is this name legal" gate that rejects `root` and undeclared names with helpful errors. Ship those + the conda-backend stub first so M.i.2+ can call them.
+
+**Approach.**
+
+1. **Generalize `ensure_testenv_exists` in [lib/utils.sh](../../lib/utils.sh)** to accept an optional `<name>` argument that defaults to `testenv`. Path resolution moves from `testenv_paths` (which is `testenv`-specific) to `resolve_testenv_path "$name"`. Existing callers (e.g. `test.sh`'s `test_tests`) keep working — no arg, same default behavior.
+2. **New name-validation gate** in [lib/testenvs.sh](../../lib/testenvs.sh): `assert_testenv_name_actionable <name>` (or similar). 0 if `<name>` is declared or equal to reserved `testenv`; 1 with a precise stderr error otherwise. Rejects `root` (selection-only — `pyve test --env root` works, but `pyve testenv init root` does not) and undeclared names (with a hint pointing at `[tool.pyve.testenvs]`).
+3. **Conda-backend stub** in `ensure_testenv_exists`: when the named env declares `backend = "micromamba"` or `backend = "inherit"`, hard-error with `conda-backed testenv '<name>' requires backend support not yet implemented (see Story M.k)`. Exit non-zero. Venv-backed envs proceed as today (just at the per-env path).
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering each leaf's no-arg and with-arg branches, reserved-name behavior, undeclared-name error.
-- [ ] Extend `testenv_init`, `testenv_install`, `testenv_purge`, `testenv_run`.
-- [ ] Update per-leaf help blocks (`show_testenv_<sub>_help`) per [Per-command help blocks live with their commands](../project-guide/templates/artifacts/pyve-essentials.md).
+- [x] Failing bats tests first in [tests/unit/test_testenv_name_aware.bats](../../tests/unit/test_testenv_name_aware.bats): `ensure_testenv_exists` (no arg / with declared name / with reserved `root` rejected / with undeclared name rejected / with conda-backed name rejected with M.k hint); `assert_testenv_name_actionable` (declared/reserved-testenv/root/undeclared/bash-3.2 `set -u` safety). *(14 tests; RED 13/14 → GREEN 14/14. Full unit suite 944/944.)*
+- [x] Generalize `ensure_testenv_exists` in [lib/utils.sh](../../lib/utils.sh). *(Accepts optional `<name>` defaulting to `testenv`; calls `read_testenv_config` (idempotent if already loaded), then validates via `assert_testenv_name_actionable` + `assert_testenv_venv_backend`; resolves path via `resolve_testenv_path "$name"`.)*
+- [x] Add `assert_testenv_name_actionable` in [lib/testenvs.sh](../../lib/testenvs.sh). *(Stricter than `validate_testenv_decl`: rejects `root` (selection-only) and undeclared names with helpful errors pointing at `[tool.pyve.testenvs]`.)*
+- [x] Wire the conda-backend stub. *(Factored as `assert_testenv_venv_backend` per the announce-gate decision — reusable by M.i.3/M.i.4 install/purge leaves. Error message includes `(see Story M.k)` so future readers find the implementation locus.)*
+- [x] Verify full unit suite passes — existing callers must keep working unchanged. *(Found and fixed two lurking issues: (a) `read_testenv_config` now short-circuits in pure bash when `pyproject.toml` is absent — no Python subprocess needed for bash-only projects, matching spike Decision 5; (b) hardened `_testenvs_name_to_index` against unset `PYVE_TESTENVS_NAMES` under `set -u`, exposed when `resolve_testenv_path` is called before any caller has loaded config.)*
 
-**Out of scope.** `pyve testenv list` / `pyve testenv prune` (M.p — new leaves); lock machinery in `install` (M.j).
+**Out of scope.** Wiring into the four leaves (M.i.2–M.i.4); any user-facing CLI change. M.i.1 is internal-helpers-only.
+
+---
+
+### Story M.i.2: [Testenv-DX] `testenv init [<name>]` + `testenv run [<name>] -- <cmd>` [Planned]
+
+**Why.** Both are single-env leaves with no iteration semantics — combining them in one story keeps the bundle granular without producing two trivially-tiny stories.
+
+**Approach.**
+
+1. **`pyve testenv init [<name>]`** — dispatcher accepts an optional positional `<name>` after `init`. Calls `assert_testenv_name_actionable "$name"` (M.i.1), then `ensure_testenv_exists "$name"` (M.i.1). No-arg path is unchanged (defaults to `testenv`).
+2. **`pyve testenv run [<name>] -- <cmd>`** — dispatcher accepts an optional positional `<name>` followed by `--` separator before the command. Without `--`, the first arg is the command (today's behavior). With `<name> -- <cmd>`, the name is validated, the path is resolved, and `testenv_run` exec's the command inside the named env. Ambiguous shapes (e.g. a bare positional that's neither `--` nor a recognizable command) hard-error with usage hints.
+
+**Tasks**
+
+- [ ] Failing bats tests first in [tests/unit/test_testenv_init_name.bats](../../tests/unit/test_testenv_init_name.bats) + [tests/unit/test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats): no-arg behavior preserved; with-arg success for a declared venv-backed env; reserved `root` and undeclared names hard-error; `run` `--` separator parsing; `run` ambiguous-shape error.
+- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `init` and `run`.
+- [ ] Update `testenv_init` to accept `<name>`; `testenv_run`'s `<testenv_venv>` argument continues to be path-shaped (the dispatcher resolves the path before calling).
+- [ ] Update per-leaf help blocks (`show_testenv_init_help`, `show_testenv_run_help`) — or, if no per-leaf help functions exist today, update the namespace `--help` text in the dispatcher for these two leaves.
+- [ ] Verify full unit suite passes (no regressions to existing `pyve testenv init` / `run` callers).
+
+**Out of scope.** `install` (M.i.3); `purge` (M.i.4); conda-backend implementation (stubbed in M.i.1).
+
+---
+
+### Story M.i.3: [Testenv-DX] `testenv install [<name>] [-r …]` — with-arg + no-arg iteration [Planned]
+
+**Why.** `install` has two distinct behaviors that share most of the same code path: with-arg installs into one env; no-arg iterates over all non-lazy declared envs. Ship them together so the iteration loop and the single-env call share a tested implementation.
+
+**Approach.**
+
+1. **With-arg single-env behavior** — dispatcher accepts an optional `<name>` and an optional `-r <file>`; both may appear in either order. Validates name via M.i.1's gate; resolves path; calls `testenv_install <path> <requirements_file>` (the existing 2-arg function) unchanged. Conda-backed envs error per M.i.1's stub.
+2. **No-arg iteration** — when no `<name>` is given, `read_testenv_config` populates `PYVE_TESTENVS_NAMES`; iterate non-lazy envs (`is_testenv_lazy <name>` returns 1); call the single-env install for each in turn. Per-env step header so the user sees per-env progress. If iteration finds no envs to install (all declared envs are lazy), print an info message and return 0.
+3. **Default-config single-env path preserved** — projects without `[tool.pyve.testenvs]` declare only the implicit `testenv` (non-lazy), so no-arg install iterates over exactly one env: the default `testenv`. Today's behavior is preserved by definition.
+
+**Tasks**
+
+- [ ] Failing bats tests first in [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats): no-arg on a project with no `[tool.pyve.testenvs]` installs into default `testenv` (today's behavior); no-arg with declared `[lazy, non-lazy]` envs iterates non-lazy only; with-arg on a declared env installs into that env; with-arg on `root` errors; with-arg on undeclared errors; `-r <file>` parsing in either argument order.
+- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `install`.
+- [ ] Implement the iteration loop (small new dispatcher-private helper, e.g. `_testenv_install_all_nonlazy`).
+- [ ] Update help block for `install`.
+- [ ] Verify full unit suite passes.
+
+**Out of scope.** Declared `requirements = [...]` / `extra = "dev"` consumption (M.l); per-env install lock (M.j); lazy auto-provisioning on `pyve test` (M.m).
+
+---
+
+### Story M.i.4: [Testenv-DX] `testenv purge [<name>] [--force]` — with-arg + no-arg iteration with confirm [Planned]
+
+**Why.** `purge` mirrors `install`'s shape but with a confirmation gate on the iteration path. The single-env path has no confirmation (matching today's `testenv_purge` behavior); the iteration path prompts `y/N` before removing all declared envs; `--force` skips the prompt.
+
+**Approach.**
+
+1. **With-arg single-env behavior** — dispatcher accepts an optional `<name>`. Validates via M.i.1's gate; resolves path; removes `.pyve/testenvs/<name>/` (the env root, not just `venv/` — covers `.state` and any future siblings). No confirm. Conda-backed envs are also purged (the on-disk shape isn't backend-specific).
+2. **No-arg iteration** — when no `<name>` is given, prompt `Remove all <N> dev/test runner environments? [y/N]`. If `y`: iterate every declared env (including lazy ones — purge isn't gated on laziness) and remove each; if `N` or empty: abort, return 0, no changes. Per-env success message.
+3. **`--force` flag** — if present, skip the confirmation; otherwise behavior is identical. The flag is supported on both the with-arg and no-arg paths (no-op on with-arg since there's no confirm there, but accepted for shell-script consistency).
+
+**Tasks**
+
+- [ ] Failing bats tests first in [tests/unit/test_testenv_purge_name.bats](../../tests/unit/test_testenv_purge_name.bats): with-arg on a declared env removes that env's directory; with-arg on `testenv` (reserved default) works; with-arg on `root` errors; with-arg on undeclared errors; no-arg with a single-env project (implicit-default config) prompts then removes; no-arg with declined prompt is a no-op; no-arg with `--force` skips the prompt; per-env failures (e.g. permission denied) are surfaced but don't halt the iteration.
+- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `purge` (handle the `--force` flag here).
+- [ ] Implement the iteration + confirmation logic (dispatcher-private helper, e.g. `_testenv_purge_all_with_confirm`).
+- [ ] Update help block for `purge`.
+- [ ] Verify full unit suite passes — existing single-env `pyve testenv purge` callers must keep working (no-arg behavior is now "purge all," not "purge the default" — but in the implicit-default config that's the same one env).
+
+**Out of scope.** `pyve testenv list` / `prune` (M.p); reading `.state` files (M.p consumes them); recovery from partial-purge failures.
 
 ---
 

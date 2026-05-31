@@ -46,6 +46,22 @@ _PYVE_TESTENVS_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_testen
 # the helper propagate via non-zero exit and stderr.
 read_testenv_config() {
     local pyproject="${1:-pyproject.toml}"
+    # Short-circuit: no pyproject.toml → synthesize the implicit-default
+    # config (single venv `testenv`) in pure bash. The Python helper
+    # would have returned the same shape, but invoking python would
+    # require python to be on PATH — which is not a given on bash-only
+    # or raw-requirements.txt projects. Same implicit-default contract
+    # as documented in [spike-m-f-testenvs-config.md §Decision 5].
+    if [[ ! -f "$pyproject" ]]; then
+        PYVE_TESTENVS_DEFAULT="testenv"
+        PYVE_TESTENVS_NAMES=("testenv")
+        PYVE_TESTENV_BACKEND=("venv")
+        PYVE_TESTENV_LAZY=("0")
+        PYVE_TESTENV_EXTRA=("")
+        PYVE_TESTENV_MANIFEST=("")
+        PYVE_TESTENV_REQUIREMENTS_Q=("")
+        return 0
+    fi
     local py="${PYVE_PYTHON:-python}"
     local kv
     kv="$("$py" "$_PYVE_TESTENVS_HELPER" "$pyproject")" || return $?
@@ -54,8 +70,14 @@ read_testenv_config() {
 
 # Index lookup: print the 0-based position of <name> in PYVE_TESTENVS_NAMES,
 # or return 1 (no output) if absent. Private helper.
+#
+# Defensive against unset PYVE_TESTENVS_NAMES: returns 1 cleanly under
+# `set -u` if read_testenv_config has not yet been called. Callers like
+# resolve_testenv_path then use their `|| fallback` arms (e.g. default
+# backend = "venv") rather than crashing the script.
 _testenvs_name_to_index() {
     local target="$1" i
+    [[ -n "${PYVE_TESTENVS_NAMES+x}" ]] || return 1
     for ((i=0; i<${#PYVE_TESTENVS_NAMES[@]}; i++)); do
         if [[ "${PYVE_TESTENVS_NAMES[$i]}" == "$target" ]]; then
             printf '%d' "$i"
@@ -132,6 +154,49 @@ validate_testenv_decl() {
         return 0
     fi
     printf "error: testenv '%s' is not declared and is not a reserved name (root, testenv)\n" "$name" >&2
+    return 1
+}
+
+# Story M.i.1: gate for name-aware actions (testenv init / install /
+# purge / run). Stricter than validate_testenv_decl — rejects `root`,
+# which is selection-only (`pyve test --env root` works, but `pyve
+# testenv init root` does not — `root` is the project's main env, not
+# a testenv). Undeclared names get a hint pointing at the canonical
+# config location.
+assert_testenv_name_actionable() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        printf "error: testenv name is required\n" >&2
+        return 1
+    fi
+    if [[ "$name" == "root" ]]; then
+        printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
+        return 1
+    fi
+    if [[ "$name" == "testenv" ]] || is_testenv_declared "$name"; then
+        return 0
+    fi
+    printf "error: testenv '%s' is not declared. Declare it under [tool.pyve.testenvs.%s] in pyproject.toml.\n" "$name" "$name" >&2
+    return 1
+}
+
+# Story M.i.1: conda-backend stub. Returns 0 for venv-backed envs;
+# 1 (with an M.k-pointing stderr message) for `micromamba` and
+# `inherit` backends. Used by `ensure_testenv_exists` (M.i.1) and
+# by the install/purge leaves (M.i.3/M.i.4) to short-circuit on
+# conda-backed envs until M.k lands the actual implementation.
+assert_testenv_venv_backend() {
+    local name="${1:-}"
+    if [[ -z "$name" ]]; then
+        printf "error: testenv name is required\n" >&2
+        return 1
+    fi
+    local backend
+    backend="$(_testenv_backend_of "$name")" || backend="venv"
+    if [[ "$backend" == "venv" ]]; then
+        return 0
+    fi
+    printf "error: conda-backed testenv '%s' (backend=%s) requires backend support not yet implemented (see Story M.k).\n" "$name" "$backend" >&2
     return 1
 }
 

@@ -1520,13 +1520,27 @@ testenv_paths() {
 # Create the testenv if it doesn't exist; rebuild it if its Python
 # version has drifted from the current project Python (mismatched
 # `pyvenv.cfg` version field).
+#
+# Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
+# to the reserved `testenv` (today's behavior). With-arg: load config
+# (idempotent if caller already ran read_testenv_config), validate name
+# via `assert_testenv_name_actionable`, short-circuit on conda backends
+# via `assert_testenv_venv_backend`, then provision at the per-env
+# path resolved by `resolve_testenv_path`.
 ensure_testenv_exists() {
-    local paths
-    local testenv_root
-    local testenv_venv
-    paths="$(testenv_paths)"
-    testenv_root="$(printf "%s" "$paths" | sed -n '1p')"
-    testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
+    local name="${1:-testenv}"
+
+    # Always load config so we can validate backend + reject undeclared
+    # names. Idempotent if the caller already populated the V3 arrays.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+    assert_testenv_name_actionable "$name" || return 1
+    assert_testenv_venv_backend     "$name" || return 1
+
+    local testenv_venv testenv_root
+    testenv_venv="$(resolve_testenv_path "$name")"
+    testenv_root="${testenv_venv%/venv}"
 
     mkdir -p "$testenv_root"
 
