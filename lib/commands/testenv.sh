@@ -116,16 +116,112 @@ testenv_run() {
 }
 
 #------------------------------------------------------------
+# Story M.j: per-env install lock
+#
+# `mkdir`-based atomic lock at `.pyve/testenvs/<name>/.lock/`. The
+# holding pid is written to `.lock/pid` so a waiting process can name
+# who holds the lock. `flock(1)` is not on macOS by default — `mkdir`
+# covers the same surface (atomic acquire, serialized wait, fast-fail
+# on collision) with zero external-binary dependencies.
+#
+# Acquire is wait-by-default (1s sleep+retry, 10-minute cap). The
+# `no-wait` mode fast-fails with a "(pid N)" message on collision.
+# Stale-lock reclamation: if the holding pid no longer exists
+# (`kill -0` fails), the lock dir is removed and re-acquired.
+#
+# Release only removes the lock dir when the caller is the recorded
+# holder ($$ == pid file contents) so a stray release call cannot
+# blow away another process's in-progress install.
+#------------------------------------------------------------
+
+_testenv_install_lock_dir() {
+    printf '%s' ".pyve/testenvs/$1/.lock"
+}
+
+_testenv_acquire_install_lock() {
+    local name="$1"
+    local mode="${2:-wait}"
+    local lock_dir
+    lock_dir="$(_testenv_install_lock_dir "$name")"
+    mkdir -p "$(dirname "$lock_dir")"
+
+    local waited=0
+    while ! mkdir "$lock_dir" 2>/dev/null; do
+        local holder_pid="?"
+        if [[ -f "$lock_dir/pid" ]]; then
+            holder_pid="$(cat "$lock_dir/pid" 2>/dev/null || printf '?')"
+        fi
+
+        # Stale-lock reclamation: holder pid no longer exists.
+        if [[ "$holder_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$holder_pid" 2>/dev/null; then
+            warn "Stale install lock for '$name' (pid $holder_pid no longer exists); reclaiming."
+            rm -rf "$lock_dir"
+            continue
+        fi
+
+        if [[ "$mode" == "no-wait" ]]; then
+            log_error "another pyve process is installing '$name' (pid $holder_pid)"
+            return 1
+        fi
+
+        if [[ "$waited" -eq 0 ]]; then
+            info "Waiting for install lock on '$name' (held by pid $holder_pid)..."
+        fi
+        sleep 1
+        waited=$((waited + 1))
+        if [[ "$waited" -gt 600 ]]; then
+            log_error "timed out waiting for install lock on '$name' (held by pid $holder_pid)"
+            return 1
+        fi
+    done
+
+    printf '%s\n' "$$" > "$lock_dir/pid"
+    return 0
+}
+
+_testenv_release_install_lock() {
+    local name="$1"
+    local lock_dir
+    lock_dir="$(_testenv_install_lock_dir "$name")"
+    if [[ -d "$lock_dir" && -f "$lock_dir/pid" ]]; then
+        local holder
+        holder="$(cat "$lock_dir/pid" 2>/dev/null || printf '')"
+        if [[ "$holder" == "$$" ]]; then
+            rm -rf "$lock_dir"
+        fi
+    fi
+}
+
+# Wraps testenv_install with acquire/release. A `trap` covers the
+# `exit 1` paths inside testenv_install (existence check, missing
+# requirements file) and SIGINT/SIGTERM so the lock dir never strands
+# the env.
+_testenv_install_with_lock() {
+    local name="$1" venv_path="$2" req_file="$3" lock_mode="${4:-wait}"
+    _testenv_acquire_install_lock "$name" "$lock_mode" || return $?
+    trap "_testenv_release_install_lock '$name'" EXIT INT TERM
+    local rc=0
+    testenv_install "$venv_path" "$req_file" || rc=$?
+    _testenv_release_install_lock "$name"
+    trap - EXIT INT TERM
+    return "$rc"
+}
+
+#------------------------------------------------------------
 # Story M.i.3: iterate `testenv install` over every non-lazy declared
 # env. Conda-backed envs are skipped with a one-line info (M.k provides
 # the real provisioning). Returns the first install failure's status.
 #
 # Reads PYVE_TESTENVS_NAMES populated by read_testenv_config — caller
 # must have loaded config (testenv_command does this in M.i.2).
+#
+# Story M.j: takes a `lock_mode` second arg (`wait` | `no-wait`) so
+# the iteration honors `--no-wait` from the caller.
 #------------------------------------------------------------
 
 _testenv_install_all_nonlazy() {
     local requirements_file="$1"
+    local lock_mode="${2:-wait}"
     local name installed_count=0 rc=0
     for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
         if is_testenv_lazy "$name"; then
@@ -138,7 +234,7 @@ _testenv_install_all_nonlazy() {
         info "Installing '$name' testenv..."
         local install_venv
         install_venv="$(resolve_testenv_path "$name")"
-        testenv_install "$install_venv" "$requirements_file" || rc=$?
+        _testenv_install_with_lock "$name" "$install_venv" "$requirements_file" "$lock_mode" || rc=$?
         installed_count=$((installed_count + 1))
     done
     if [[ "$installed_count" -eq 0 ]]; then
@@ -211,6 +307,7 @@ testenv_command() {
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
+    local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -240,6 +337,10 @@ testenv_command() {
                             fi
                             requirements_file="$2"
                             shift 2
+                            ;;
+                        --no-wait)
+                            install_no_wait=1
+                            shift
                             ;;
                         -*)
                             # Leave unknown flags to the outer loop
@@ -306,7 +407,7 @@ pyve testenv - Manage a dedicated dev/test runner environment
 
 Usage:
   pyve testenv init [<name>]
-  pyve testenv install [<name>] [-r requirements-dev.txt]
+  pyve testenv install [<name>] [-r requirements-dev.txt] [--no-wait]
   pyve testenv purge [<name>] [--force]
   pyve testenv run [<name> --] <command> [args...]
 
@@ -317,6 +418,10 @@ Notes:
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
     only into that env.
+  - `install` acquires a per-env lock at .pyve/testenvs/<name>/.lock to
+    serialize concurrent installs into the same env. Default is wait+retry;
+    `--no-wait` fast-fails with "another pyve process is installing
+    '<name>' (pid N)" instead of waiting.
   - `purge` no-arg iterates over every declared env (including lazy and
     conda-backed) and prompts `y/N` on interactive shells; `--force` skips
     the prompt. Non-TTY (CI) invocations skip the prompt automatically.
@@ -401,17 +506,21 @@ EOF
         install)
             # Story M.i.3: with-arg installs into a single named env;
             # no-arg iterates over every non-lazy declared env.
+            # Story M.j: each install is wrapped with a per-env lock;
+            # `--no-wait` switches the acquire from wait+retry to fast-fail.
+            local lock_mode="wait"
+            [[ "$install_no_wait" == "1" ]] && lock_mode="no-wait"
             if [[ -n "$action_name" ]]; then
                 if assert_testenv_name_actionable "$action_name" \
                    && assert_testenv_venv_backend "$action_name"; then
                     local install_venv
                     install_venv="$(resolve_testenv_path "$action_name")"
-                    testenv_install "$install_venv" "$requirements_file" || leaf_rc=$?
+                    _testenv_install_with_lock "$action_name" "$install_venv" "$requirements_file" "$lock_mode" || leaf_rc=$?
                 else
                     leaf_rc=1
                 fi
             else
-                _testenv_install_all_nonlazy "$requirements_file" || leaf_rc=$?
+                _testenv_install_all_nonlazy "$requirements_file" "$lock_mode" || leaf_rc=$?
             fi
             ;;
         purge)

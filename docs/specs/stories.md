@@ -496,20 +496,24 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.j: [Testenv-DX] Per-env install lock (`.pyve/testenvs/<name>/.lock`) [Planned]
+### Story M.j: [Testenv-DX] Per-env install lock (`.pyve/testenvs/<name>/.lock`) [Done]
 
 **Why.** Pyve owns the testenv lifecycle. Concurrent `pyve testenv install <same-env>` from two shells must serialize on the env, not collide on the package cache.
 
-**Approach.** `flock`-based lock at `.pyve/testenvs/<name>/.lock`. Acquired around `pyve testenv install <name>` and any auto-provision path (M.m). Second invocation waits by default; `--no-wait` exits with a clear "another pyve process is installing `<name>` (pid N)" message.
+**Approach.** Pure-bash atomic `mkdir`-as-lock at `.pyve/testenvs/<name>/.lock`. `mkdir` is the standard POSIX primitive for atomic directory creation — a second concurrent `mkdir` of the same path fails with `EEXIST`, serializing installers without an external binary. The holding pid is written into `.lock/pid` so a waiting process can name who holds the lock.
+
+**Correction (at announce gate).** The plan originally said "`flock`-based lock," but `flock(1)` is **not installed on macOS** by default and macOS is a first-class pyve platform. The cheapest portable alternative — `mkdir` — covers the same semantic surface (atomic acquire, serialized wait, fast-fail on collision) without an OS-specific binary. Stale-lock reclamation uses `kill -0` to probe the holding pid: if the holder no longer exists, the lock is freed and re-acquired.
+
+Acquired around `pyve testenv install <name>` and any auto-provision path (M.m). Second invocation waits by default (1-second sleep+retry); `--no-wait` exits non-zero with a "another pyve process is installing `<name>` (pid N)" message. A `trap` guarantees release on any exit signal (success, error, SIGINT) so the lock dir never strands the env.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering serial install (no collision), `--no-wait` exit message + non-zero code, lock cleanup on success and failure.
-- [ ] `_testenv_acquire_install_lock` / `_testenv_release_install_lock` helpers in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) (command-private, per the `_<command>_` prefix).
-- [ ] Wire into `testenv_install`.
-- [ ] Document `--no-wait` in `show_testenv_install_help`.
+- [x] Failing tests first in [tests/unit/test_testenv_install_lock.bats](../../tests/unit/test_testenv_install_lock.bats): 10 tests covering lock-dir/pid file shape, release-when-holder semantics, foreign-lock survival on release, `--no-wait` collision message + non-zero exit, stale-lock reclamation via `kill -0`, integration cleanup on successful + failed (`-r does-not-exist.txt`) install, `--no-wait` happy path, and `--help` documents the flag. *(RED 5/10 → GREEN 10/10. Full unit suite 991/991.)*
+- [x] `_testenv_acquire_install_lock` / `_testenv_release_install_lock` helpers in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) (command-private, `_testenv_` prefix). *(Also added `_testenv_install_lock_dir` path helper and `_testenv_install_with_lock` wrapper that pairs acquire+install+release with a `trap … EXIT INT TERM` so the `exit 1` paths inside `testenv_install` and SIGINT both clean the lock dir.)*
+- [x] Wire lock acquire/release around every `testenv_install` call in the dispatcher. *(Single-env path calls `_testenv_install_with_lock` directly; `_testenv_install_all_nonlazy` takes a new `lock_mode` arg and wraps each per-env install. Release is gated on `pid file == $$` so a stray release call cannot remove another process's in-progress lock.)*
+- [x] Add `--no-wait` flag parsing to the `install` sub-parser; document in the namespace `--help` block. *(`install_no_wait` local in `testenv_command` set by the sub-parser; mapped to `lock_mode="no-wait"` at the install case arm; help heredoc adds Usage and a Notes paragraph naming the lock path and the fast-fail message format.)*
 
-**Out of scope.** Read-only execution locking (`pyve test --env <name>` fast path is lock-free); cross-host locks (local file lock only; document the limit).
+**Out of scope.** Read-only execution locking (`pyve test --env <name>` fast path is lock-free); cross-host locks (local file lock only; document the limit). Lock-aware `pyve testenv purge` (a purge while an install runs would race; current `rm -rf` of the env root is independent of the lock and remains so for this story — the lock prevents install/install collisions, not install/purge ones).
 
 ---
 
