@@ -259,7 +259,7 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
-### Story M.h: [Testenv-DX] Layout migration to `testenvs/` — clear v2.7/v2.8 boundary [Bundle]
+### Story M.h: [Testenv-DX] Layout migration to `testenvs/` — clear v2.7/v2.8 boundary [Bundle, Done]
 
 **Why.** Today's single testenv lives at **`.pyve/testenv/venv/`** (singular `testenv`), driven by the global `TESTENV_DIR_NAME="testenv"` in [pyve.sh:36](../../pyve.sh#L36) and read by `lib/utils.sh`, `lib/commands/{test,testenv,check,status,purge}.sh`. The testenv-DX bundle's named-env layout is **`.pyve/testenvs/<name>/{venv,conda}/`** (plural `testenvs`, with a `<name>` slot). The reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`.
 
@@ -354,7 +354,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.h.4: [Testenv-DX] Docs sweep — testenv layout, `.state` schema, migration mechanism [Planned]
+### Story M.h.4: [Testenv-DX] Docs sweep — testenv layout, `.state` schema, migration mechanism [Done]
 
 **Why.** With code shipped (M.h.1–M.h.3), the user-facing and internal docs need to describe the new layout, the `.state` schema, and the migration mechanism. Without this, the bundle ships with stale docs pointing at `.pyve/testenv/venv/` everywhere.
 
@@ -367,10 +367,10 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Update tech-spec.md `lib/testenvs.sh` section with the M.h.1 schema table + the M.h.2/M.h.3 migration narrative. Update Package Structure tree.
-- [ ] Update features.md FR-11 (or appropriate FR-M) entry for the layout shift.
-- [ ] Update project-essentials.md Pyve Essentials section.
-- [ ] No code changes in this story.
+- [x] Update tech-spec.md `lib/testenvs.sh` section with the M.h.1 schema table + the M.h.2/M.h.3 migration narrative. Update Package Structure tree. *(Two new subsections added — `.state` per-env state file (schema table + helper table) and Legacy-layout migration (four-case outcome table + call sites + consumer-sweep narrative + `--keep-testenv` semantic expansion + gitignore template note + `TESTENV_DIR_NAME` back-compat note). Resolver row in the function table updated to mention the opportunistic-migration side effect. Test inventory extended with three new bats files.)*
+- [x] Update features.md FR-11 (or appropriate FR-M) entry for the layout shift. *(Two new bullets at the top of FR-11: v2.8+ layout shift + migration mechanism; per-env `.state` file schema summary. Inline `.pyve/testenv/venv/` reference in the M.c paragraph updated to the new path.)*
+- [x] Update project-essentials.md Pyve Essentials section. *(Workflow-rules bullets updated to reference `.pyve/testenvs/testenv/venv/`; new admonition block flags the v2.8 rename for projects upgrading from v2.7. Editable-install example path updated.)*
+- [x] No code changes in this story.
 
 **Out of scope.** User-facing `docs/site/` files — those land in M.s alongside the bundle's broader doc sweep.
 

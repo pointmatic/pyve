@@ -92,6 +92,9 @@ pyve/
 │   │   ├── test_micromamba_core.bats
 │   │   ├── test_reinit.bats
 │   │   ├── test_testenvs.bats       # M.g: lib/testenvs.sh foundation tests
+│   │   ├── test_testenvs_state.bats  # M.h.1: .state read/write helpers
+│   │   ├── test_testenvs_migration.bats # M.h.2: legacy-layout migration helper
+│   │   ├── test_testenvs_activate.bats  # M.h.3: resolver fallback + sweep guard
 │   │   └── test_version.bats
 │   ├── integration/                 # pytest integration tests (black-box, one file per workflow)
 │   │   ├── conftest.py              # Shared fixtures (temp dirs, pyve runner)
@@ -569,7 +572,9 @@ Reads `[tool.pyve.testenvs]` from a project's `pyproject.toml` and exposes a fla
 | Function | Signature | Description |
 |----------|-----------|-------------|
 | `read_testenv_config` | `([<pyproject.toml path>])` | Invoke the Python tomllib helper and populate the V3 parallel-indexed-array state in the calling shell. Default path: `./pyproject.toml`. Missing file or missing `[tool.pyve.testenvs]` block synthesizes the implicit default (single venv `testenv`). Validation errors propagate via non-zero exit + stderr. |
-| `resolve_testenv_path` | `(<name>)` → string | Print the on-disk path the env should live at: `root` → `.venv`; venv-backed `<name>` → `.pyve/testenvs/<name>/venv`; conda-backed `<name>` → `.pyve/testenvs/<name>/conda`. Does **not** check existence — that is the caller's responsibility. |
+| `resolve_testenv_path` | `(<name>)` → string | Print the on-disk path the env should live at: `root` → `.venv`; venv-backed `<name>` → `.pyve/testenvs/<name>/venv`; conda-backed `<name>` → `.pyve/testenvs/<name>/conda`. Does **not** check existence — that is the caller's responsibility. **Side effect (M.h.3):** when `<name> == "testenv"` and only the legacy `.pyve/testenv/venv/` layout exists, calls `migrate_legacy_testenv_layout` before returning. Other names short-circuit. |
+| `migrate_legacy_testenv_layout` | `()` → 0 | Story M.h.2. Move `.pyve/testenv/venv/` → `.pyve/testenvs/testenv/venv/`, write initial `.state`, log a one-line `info()`. Idempotent across all four state cases (legacy-only / new-only / both / neither). Invoked by `pyve update` (via the `_update_migrate_legacy_layout` wrapper in `lib/commands/update.sh`) and by `resolve_testenv_path testenv`'s opportunistic-migration fallback. See the *Legacy-layout migration* subsection below. |
+| `state_path` / `state_write` / `state_read` / `state_touch_last_used` | per row | Story M.h.1. `.state` per-env state file helpers (path, write/overwrite, read into `PYVE_TESTENV_STATE_*` vars, touch-last-used). Full schema + signatures in the *`.state` per-env state file* subsection below. |
 | `validate_testenv_decl` | `(<name>)` → 0/1 | 0 if `<name>` is reserved (`root`, `testenv`) or declared in the read state; 1 (with a stderr error) otherwise. Schema-level validation already happened in the Python helper at read time; this function is the name-legality guard. |
 | `is_testenv_declared` | `(<name>)` → 0/1 | 0 if `<name>` appears in `PYVE_TESTENVS_NAMES`. **Note:** `root` is reserved-but-not-declared (never in `NAMES`), so `is_testenv_declared root` returns 1. |
 | `is_testenv_reserved` | `(<name>)` → 0/1 | 0 if `<name>` is `root` or `testenv`. |
@@ -603,9 +608,9 @@ Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-saf
 
 **Python interpreter resolution.** `read_testenv_config` honors `${PYVE_PYTHON:-python}`. Useful for bats tests (which cwd into temp dirs that break relative PATH entries via the asdf shim) and for any caller that needs to pin a specific interpreter. The default `python` works in any pyve-activated shell.
 
-**Consumers (out of scope for M.g, land in later stories):**
+**Consumers (out of scope for M.g, landing in later stories):**
 
-- M.h: per-env directory layout + legacy-layout migration in `pyve update`.
+- M.h.1–M.h.4 (this bundle): `.state` schema + helpers, legacy-layout migration helper, opportunistic-fallback wiring + consumer sweep, docs sweep.
 - M.i: `testenv` namespace leaves (`testenv_init`, `_install`, `_purge`, `_run`) accept the optional `<name>` argument.
 - M.j: per-env install lock at `.pyve/testenvs/<name>/.lock`.
 - M.k–M.m: conda backend plumbing, venv manifest sources, lazy provisioning.
@@ -614,6 +619,53 @@ Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-saf
 - M.p: `pyve testenv list` / `prune`.
 - M.q: `pyve lock --env <name>` / `--all`.
 - M.r: matrix execution via comma-separated `--env`.
+
+#### `.state` per-env state file (Story M.h.1)
+
+Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state` (next to `venv/` or `conda/`). Plain `key=value` lines, sourceable; written via `state_write`, read via `state_read`. Schema:
+
+| Field | Meaning | Example |
+|---|---|---|
+| `backend` | The backend used to provision this env. One of `venv`, `micromamba`, `inherit`. | `backend=micromamba` |
+| `manifest` | Relative path to the manifest source (requirements.txt, environment.yml, or empty for an implicit-default env). | `manifest=tests/env.yml` |
+| `manifest_sha256` | SHA-256 of the manifest contents at provisioning time. Empty when no manifest. Drives M.p's "stale" indicator. | `manifest_sha256=abc123…` |
+| `provisioned_at` | Unix epoch seconds when the env was first built. | `provisioned_at=1700000000` |
+| `last_used_at` | Unix epoch seconds of the most recent `pyve test --env <name>`. Touched by M.o; consumed by M.p's `prune --unused-since`. `0` until first use. | `last_used_at=0` |
+
+**Helpers in [`lib/testenvs.sh`](../../lib/testenvs.sh):**
+
+| Function | Behavior |
+|---|---|
+| `state_path <name>` | Print `.pyve/testenvs/<name>/.state`. |
+| `state_write <name> <backend> [manifest=<path>] [manifest_sha256=<hex>] [provisioned_at=<epoch>] [last_used_at=<epoch>]` | Write/overwrite. Required positional `<name> <backend>`; optional keyword args parsed by splitting on the first `=` (so manifest paths with embedded `=` survive). Missing optional fields default to empty / current epoch / `0`. Unknown keyword keys hard-error. |
+| `state_read <name>` | Populate `PYVE_TESTENV_STATE_{BACKEND,MANIFEST,MANIFEST_SHA256,PROVISIONED_AT,LAST_USED_AT}` in the calling shell. Returns 1 (no shell mutation) if the file is missing. **Parses via `IFS= read` loop, NOT `source`** — a malformed `.state` cannot inject arbitrary shell. |
+| `state_touch_last_used <name>` | Read + rewrite, updating only `last_used_at` to the current epoch. Returns 1 if `.state` is missing. |
+
+#### Legacy-layout migration (Stories M.h.2, M.h.3)
+
+**The v2.7→v2.8 structural boundary.** v2.7 and earlier hard-coded a single testenv at `.pyve/testenv/venv/` (singular `testenv`, driven by the `TESTENV_DIR_NAME` global in `pyve.sh`). v2.8 generalizes to `.pyve/testenvs/<name>/{venv,conda}/` (plural, name-keyed). The reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`.
+
+**`migrate_legacy_testenv_layout` in [`lib/testenvs.sh`](../../lib/testenvs.sh)** is the one-shot mover. Four outcome cases:
+
+| State | Action |
+|---|---|
+| `.pyve/testenvs/testenv/venv/` exists (new layout already in place) | No-op (idempotent). |
+| `.pyve/testenv/venv/` exists; new layout absent | `mkdir -p .pyve/testenvs/testenv`, `mv .pyve/testenv/venv .pyve/testenvs/testenv/venv`, write initial `.state` via M.h.1's `state_write` (`backend=venv`, `provisioned_at=<legacy mtime>`, defaults elsewhere), `rmdir .pyve/testenv` if empty, log a one-line `info()` so the user sees what happened. |
+| Both legacy and new exist | No-op (preserve new; leave legacy alone — silent deletion of user state is the wrong default). |
+| Neither exists (greenfield) | No-op. |
+
+**Two call sites wired in M.h.3:**
+
+1. **`pyve update`** — `update_project` in [`lib/commands/update.sh`](../../lib/commands/update.sh) calls a thin private wrapper `_update_migrate_legacy_layout` as a pre-step (after the config sanity check, before `header_box`). The wrapper exists so the wiring is grep-visible from `update.sh` for source-level audit; a regression test asserts the call by name.
+2. **Opportunistic-migration fallback in `resolve_testenv_path testenv`** — when only the legacy layout exists, the resolver runs the migration as a side effect before returning the new path. Means `pyve test` / `pyve testenv …` / `pyve check` / `pyve status` work even on a v2.7-era project that hasn't yet run `pyve update`. Only the reserved `testenv` name triggers migration; `root` and user-declared named envs short-circuit.
+
+**Consumer sweep (M.h.3).** Every reference to `.pyve/$TESTENV_DIR_NAME/venv` or hard-coded `.pyve/testenv/venv` was replaced with `resolve_testenv_path testenv` (or via `testenv_paths` in [`lib/utils.sh`](../../lib/utils.sh), which derives from it). Files swept: `lib/utils.sh`, `lib/commands/{test,testenv,check,status,purge}.sh`. A bats test in [`tests/unit/test_testenvs_activate.bats`](../../tests/unit/test_testenvs_activate.bats) greps the production files and fails if a legacy literal is ever re-introduced.
+
+**`--keep-testenv` semantic expansion.** `pyve purge --keep-testenv` previously preserved the singleton `.pyve/testenv/`; it now preserves the whole `.pyve/testenvs/` tree, covering the default `testenv` plus any user-declared named envs from `[tool.pyve.testenvs]`. The single-env preservation behavior was the pre-named-envs equivalent of the same intent.
+
+**Gitignore template.** [`lib/utils.sh`](../../lib/utils.sh)'s Pyve-managed `.gitignore` section emits `.pyve/testenvs` (was `.pyve/testenv`) — covers the new layout for fresh `pyve init` runs.
+
+**`TESTENV_DIR_NAME` global** in `pyve.sh` is retained as a back-compat constant pointing at `testenv` (the reserved name). No internal code reads it post-M.h.3; the constant exists only so any external script referencing it doesn't break. Deprecation-removal can be a later cleanup story.
 
 ---
 
