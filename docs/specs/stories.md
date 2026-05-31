@@ -259,20 +259,120 @@ command -v project-guide >/dev/null 2>&1 && \
 
 ---
 
-### Story M.h: [Testenv-DX] Per-env directory layout + migration hook [Planned]
+### Story M.h: [Testenv-DX] Layout migration to `testenvs/` — clear v2.7/v2.8 boundary [Bundle]
 
-**Why.** Today's single testenv lives at `.pyve/testenvs/venv/` (hard-coded). Named envs need `.pyve/testenvs/<name>/{venv,conda}/`. Existing projects must transparently migrate.
+**Why.** Today's single testenv lives at **`.pyve/testenv/venv/`** (singular `testenv`), driven by the global `TESTENV_DIR_NAME="testenv"` in [pyve.sh:36](../../pyve.sh#L36) and read by `lib/utils.sh`, `lib/commands/{test,testenv,check,status,purge}.sh`. The testenv-DX bundle's named-env layout is **`.pyve/testenvs/<name>/{venv,conda}/`** (plural `testenvs`, with a `<name>` slot). The reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`.
 
-**Approach.** New per-env layout: `<name>/venv/` or `<name>/conda/`, plus `<name>/.lock` and `<name>/.state`. Reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`. A `pyve update` hook detects the legacy layout and moves it.
+**The singular→plural rename is an intentional structural boundary** between Pyve <2.8.x and Pyve 2.8+. Every project under v2.8 has the new layout; every project under v2.7 has the old. Existing projects must transparently migrate — `pyve update` runs the migration the first time it sees the legacy layout, and the consumer-side resolver in [lib/testenvs.sh](../../lib/testenvs.sh) runs the same migration opportunistically the first time a `pyve test` / `pyve testenv …` call needs the testenv on a not-yet-`update`d project. After migration, the legacy `.pyve/testenv/` directory is gone and the boundary is unambiguous.
+
+**Bundle structure (M.h.1 → M.h.4).** Each sub-story is independently RED-GREEN testable; the bundle ships unversioned with the rest of the testenv-DX bundle, releasing at M.t (v2.8.0).
+
+| Sub-story | Scope |
+|---|---|
+| **M.h.1** | `.state` file format + read/write helpers in `lib/testenvs.sh`. Pure schema + helpers; no callers yet. |
+| **M.h.2** | `migrate_legacy_testenv_layout` helper (uses M.h.1's `.state` writer). Detects legacy, mv to new path, writes initial `.state`. Idempotent. Not yet wired. |
+| **M.h.3** | Activate the new layout — wire M.h.2 into `pyve update`, add opportunistic-migration fallback in `resolve_testenv_path`, sweep every hard-coded `.pyve/$TESTENV_DIR_NAME/venv` consumer to read through the resolver. |
+| **M.h.4** | Docs sweep — `tech-spec.md` testenv-layout section, `features.md` testenv DX entries, `project-essentials.md` Pyve Essentials block acknowledging the new path shape. |
+
+**Out of scope (bundle-wide).** Namespace command expansion to take `<name>` arguments (M.i); `.state` field consumption — `last_used_at` touch lands in M.o, `provisioned_at` / `manifest_sha256` consumption lands in M.p's `pyve testenv list` / `prune`.
+
+---
+
+### Story M.h.1: [Testenv-DX] `.state` file format + read/write helpers [Done]
+
+**Why.** Every consumer in the bundle (migration in M.h.2; list/prune in M.p; lazy-provision in M.m; last-used tracking in M.o) needs a single shared format for per-env state. Ship the schema + helpers first so M.h.2+ has stable API.
+
+**Schema (plain `key=value`, sourceable):**
+
+```
+backend=venv|micromamba|inherit
+manifest=<relative path or empty>
+manifest_sha256=<64-hex or empty>
+provisioned_at=<unix epoch seconds>
+last_used_at=<unix epoch seconds or 0>
+```
+
+`.state` lives at `.pyve/testenvs/<name>/.state` (sibling to `venv/` or `conda/`).
+
+**Helpers in [lib/testenvs.sh](../../lib/testenvs.sh):**
+
+- `state_path <name>` — print `.pyve/testenvs/<name>/.state`.
+- `state_write <name> <backend> [manifest=<path>] [manifest_sha256=<hex>] [provisioned_at=<epoch>] [last_used_at=<epoch>]` — write/overwrite the file. Missing optional fields default sensibly (`manifest=""`, `provisioned_at=$(date +%s)`, `last_used_at=0`).
+- `state_read <name>` — populate caller's shell with `PYVE_TESTENV_STATE_BACKEND`, `_MANIFEST`, `_MANIFEST_SHA256`, `_PROVISIONED_AT`, `_LAST_USED_AT` (function-global per [lib/testenvs.sh](../../lib/testenvs.sh)'s established plain-assignment pattern; bash-3.2-safe per [Bash 3.2 empty-array reads](../project-guide/templates/artifacts/pyve-essentials.md)).
+- `state_touch_last_used <name>` — set `last_used_at=$(date +%s)`, leave other fields intact.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering migration on `pyve update` (legacy → new), idempotency, new-project layout (no migration triggered).
-- [ ] Migration helper in [lib/commands/update.sh](../../lib/commands/update.sh): detect legacy, `mv` to new path, write initial `.state`.
-- [ ] `.state` format: backend, manifest path + hash, provisioned timestamp, last-used timestamp. Plain `key=value` (sourceable).
-- [ ] Update `tech-spec.md` testenv-layout section.
+- [x] Failing bats tests first in [tests/unit/test_testenvs_state.bats](../../tests/unit/test_testenvs_state.bats): write→read round-trip, default-field behavior, `state_touch_last_used` updates only `last_used_at`, missing `.state` returns non-zero from `state_read` cleanly, bash-3.2 `set -u` safety. *(11 tests; RED → GREEN 11/11; full unit suite 908/908.)*
+- [x] Implement the four helpers in [lib/testenvs.sh](../../lib/testenvs.sh) using the plain-assignment pattern established in M.g. *(state_read parses via `IFS= read` loop rather than `source` to prevent shell-injection from a malformed `.state`.)*
+- [x] No consumers yet — M.h.2 is the first.
 
-**Out of scope.** Namespace command expansion (M.i); `.state` consumption (folds into stories that produce/consume those signals).
+**Out of scope.** The migration helper (M.h.2); any consumer that touches `.state` (M.h.3, M.o, M.p).
+
+---
+
+### Story M.h.2: [Testenv-DX] `migrate_legacy_testenv_layout` helper [Planned]
+
+**Why.** Move the on-disk testenv layout from `.pyve/testenv/venv/` (singular, hard-coded) to `.pyve/testenvs/testenv/venv/` (plural, name-keyed). Helper is standalone — M.h.3 wires it into the call sites.
+
+**Behavior.**
+
+1. If `.pyve/testenvs/testenv/venv/` already exists → no-op (idempotent; the migration has already run).
+2. Else if `.pyve/testenv/venv/` exists → `mkdir -p .pyve/testenvs/testenv`, `mv .pyve/testenv/venv .pyve/testenvs/testenv/venv`, `rmdir .pyve/testenv` if empty (it should be), write initial `.state` via M.h.1 helpers (`backend=venv`, `manifest=""`, `manifest_sha256=""`, `provisioned_at=<mtime of the venv dir>`, `last_used_at=0`). Log a one-line `info` so the user sees what happened.
+3. Else → no-op (greenfield project; nothing to migrate).
+
+**Tasks**
+
+- [ ] Failing bats tests first in [tests/unit/test_testenvs_migration.bats](../../tests/unit/test_testenvs_migration.bats): legacy→new migration with `.state` written; idempotency (already-migrated → no-op); greenfield (no-trigger); legacy + new both exist (no-op, do not overwrite). Confirm RED.
+- [ ] Implement `migrate_legacy_testenv_layout` in [lib/testenvs.sh](../../lib/testenvs.sh) (single function, calls M.h.1's `state_write`).
+- [ ] Not yet invoked from `pyve update` or the resolver — that's M.h.3.
+
+**Out of scope.** Wiring into `pyve update` / the consumer path; updating any hard-coded legacy-path references in command files.
+
+---
+
+### Story M.h.3: [Testenv-DX] Activate the new layout — wire migration, sweep consumers [Planned]
+
+**Why.** With M.h.2 in place but unwired, the codebase still hard-codes `.pyve/$TESTENV_DIR_NAME/venv` (= `.pyve/testenv/venv/`) in `lib/utils.sh` and the five command files. M.h.3 is the cut-over: wire migration into `pyve update`, add an opportunistic-migration fallback in `resolve_testenv_path` (so `pyve test` etc. work even before `pyve update`), and sweep every consumer to read through the resolver.
+
+**Approach.**
+
+1. **Wire `pyve update`** — `update_project` in [lib/commands/update.sh](../../lib/commands/update.sh) calls `migrate_legacy_testenv_layout` near the start of its project-shape refresh block.
+2. **Opportunistic-migration fallback** — `resolve_testenv_path testenv` in [lib/testenvs.sh](../../lib/testenvs.sh) calls `migrate_legacy_testenv_layout` if the new path doesn't exist and the legacy one does, *before* returning the new path. Users on v2.8 who run `pyve test` before `pyve update` get migrated transparently. (Other names short-circuit — only `testenv` has a legacy form to migrate.)
+3. **Consumer sweep** — every reference to `.pyve/$TESTENV_DIR_NAME/venv` (or hard-coded `.pyve/testenv/venv`) reads from `resolve_testenv_path testenv` instead. Files touched (per the M.h pre-flight grep): [lib/utils.sh](../../lib/utils.sh) (`testenv_paths`, `purge_testenv_dir`, `ensure_testenv_exists`), [lib/commands/test.sh](../../lib/commands/test.sh), [lib/commands/testenv.sh](../../lib/commands/testenv.sh), [lib/commands/check.sh](../../lib/commands/check.sh), [lib/commands/status.sh](../../lib/commands/status.sh), [lib/commands/purge.sh](../../lib/commands/purge.sh).
+4. **`TESTENV_DIR_NAME` global**: retain as a back-compat constant pointing at `testenv` (the reserved name) so any external script referencing it doesn't break, but stop reading it from any internal path construction. Deprecation-removal can be a later cleanup story.
+
+**Tasks**
+
+- [ ] Failing bats tests first in [tests/unit/test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats): `pyve update` triggers migration on a legacy-layout project; `resolve_testenv_path testenv` triggers migration on a legacy-layout project; both are idempotent on a fresh project; existing [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) and [tests/unit/test_testenv_namespace.bats](../../tests/unit/test_testenv_namespace.bats) (if present) keep passing after the sweep.
+- [ ] Wire migration into `update_project` in [lib/commands/update.sh](../../lib/commands/update.sh).
+- [ ] Add the opportunistic-migration fallback to `resolve_testenv_path testenv` in [lib/testenvs.sh](../../lib/testenvs.sh).
+- [ ] Sweep the six consumer files to use the resolver. Verify no `.pyve/testenv/venv` or `.pyve/$TESTENV_DIR_NAME` literal survives outside of `lib/testenvs.sh`'s migration helper and `pyve.sh`'s back-compat global.
+- [ ] Verify full unit suite passes after the sweep (regression coverage).
+
+**Out of scope.** `.state` field *consumption* — touch `last_used_at` lands in M.o, `provisioned_at` / `manifest_sha256` read lands in M.p. M.h.3 only writes `.state` at migration time (via M.h.2) and at provisioning time (existing `testenv_init` writes it via the M.h.1 helper).
+
+---
+
+### Story M.h.4: [Testenv-DX] Docs sweep — testenv layout, `.state` schema, migration mechanism [Planned]
+
+**Why.** With code shipped (M.h.1–M.h.3), the user-facing and internal docs need to describe the new layout, the `.state` schema, and the migration mechanism. Without this, the bundle ships with stale docs pointing at `.pyve/testenv/venv/` everywhere.
+
+**Files touched.**
+
+- [docs/specs/tech-spec.md](tech-spec.md) — extend the `lib/testenvs.sh` section (added in M.g) with `.state` schema + migration mechanism; update Package Structure tree if any new files were added.
+- [docs/specs/features.md](features.md) — FR-11 (or appropriate FR-M) describes the new layout as part of the testenv DX surface.
+- [docs/project-guide/templates/artifacts/pyve-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) — Pyve Essentials block: acknowledge the v2.8 layout change (`.pyve/testenv/` → `.pyve/testenvs/testenv/`); update any examples that mention paths.
+- (M.s — bundle-wide user-facing docs sweep — will pick up `docs/site/testing.md` etc.; M.h.4 stays scoped to internal/spec docs to avoid duplicating M.s's surface.)
+
+**Tasks**
+
+- [ ] Update tech-spec.md `lib/testenvs.sh` section with the M.h.1 schema table + the M.h.2/M.h.3 migration narrative. Update Package Structure tree.
+- [ ] Update features.md FR-11 (or appropriate FR-M) entry for the layout shift.
+- [ ] Update project-essentials.md Pyve Essentials section.
+- [ ] No code changes in this story.
+
+**Out of scope.** User-facing `docs/site/` files — those land in M.s alongside the bundle's broader doc sweep.
 
 ---
 

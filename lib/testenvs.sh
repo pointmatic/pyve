@@ -135,6 +135,110 @@ validate_testenv_decl() {
     return 1
 }
 
+# =====================================================================
+# .state file helpers (Story M.h.1)
+# =====================================================================
+#
+# Each named testenv has a sibling `.state` file at
+# .pyve/testenvs/<name>/.state that records provisioning + usage data.
+# Schema is plain key=value lines, sourceable:
+#
+#   backend=venv|micromamba|inherit
+#   manifest=<relative path or empty>
+#   manifest_sha256=<64-hex or empty>
+#   provisioned_at=<unix epoch seconds>
+#   last_used_at=<unix epoch seconds or 0>
+#
+# Consumers (none yet in M.h.1; first is M.h.2's migration helper).
+
+# Print the .state file path for <name>.
+state_path() {
+    printf '%s' ".pyve/testenvs/$1/.state"
+}
+
+# Write/overwrite the .state file for <name>. Required: <name> <backend>.
+# Optional keyword args (in any order):
+#   manifest=<path>
+#   manifest_sha256=<hex>
+#   provisioned_at=<epoch>   (default: current epoch)
+#   last_used_at=<epoch>     (default: 0)
+# Unknown keys are a hard error.
+state_write() {
+    local name="${1:-}" backend="${2:-}"
+    if [[ -z "$name" || -z "$backend" ]]; then
+        printf "error: state_write: requires <name> <backend>\n" >&2
+        return 1
+    fi
+    shift 2
+    local manifest="" sha="" prov="" last="0"
+    local arg key val
+    for arg in "$@"; do
+        key="${arg%%=*}"
+        val="${arg#*=}"
+        case "$key" in
+            manifest)        manifest="$val" ;;
+            manifest_sha256) sha="$val" ;;
+            provisioned_at)  prov="$val" ;;
+            last_used_at)    last="$val" ;;
+            *)
+                printf "error: state_write: unknown keyword arg '%s'\n" "$key" >&2
+                return 1
+                ;;
+        esac
+    done
+    [[ -z "$prov" ]] && prov="$(date +%s)"
+    local file; file="$(state_path "$name")"
+    mkdir -p "$(dirname "$file")"
+    {
+        printf 'backend=%s\n'         "$backend"
+        printf 'manifest=%s\n'        "$manifest"
+        printf 'manifest_sha256=%s\n' "$sha"
+        printf 'provisioned_at=%s\n'  "$prov"
+        printf 'last_used_at=%s\n'    "$last"
+    } > "$file"
+}
+
+# Read the .state file for <name> into PYVE_TESTENV_STATE_* shell vars.
+# Returns 1 (no shell mutation) if the file is missing or unreadable.
+state_read() {
+    local name="$1"
+    local file; file="$(state_path "$name")"
+    [[ -r "$file" ]] || return 1
+    # Source into local vars first (subshell isolation), then promote.
+    # Use a clean associative read rather than a raw `source` so a
+    # malformed .state cannot inject arbitrary shell.
+    local backend="" manifest="" sha="" prov="" last="0"
+    local line key val
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        key="${line%%=*}"
+        val="${line#*=}"
+        case "$key" in
+            backend)         backend="$val" ;;
+            manifest)        manifest="$val" ;;
+            manifest_sha256) sha="$val" ;;
+            provisioned_at)  prov="$val" ;;
+            last_used_at)    last="$val" ;;
+        esac
+    done < "$file"
+    PYVE_TESTENV_STATE_BACKEND="$backend"
+    PYVE_TESTENV_STATE_MANIFEST="$manifest"
+    PYVE_TESTENV_STATE_MANIFEST_SHA256="$sha"
+    PYVE_TESTENV_STATE_PROVISIONED_AT="$prov"
+    PYVE_TESTENV_STATE_LAST_USED_AT="$last"
+}
+
+# Update only `last_used_at` to the current epoch; preserve all other
+# fields. Returns 1 if the .state file is missing.
+state_touch_last_used() {
+    local name="$1"
+    state_read "$name" || return 1
+    state_write "$name" "$PYVE_TESTENV_STATE_BACKEND" \
+        manifest="$PYVE_TESTENV_STATE_MANIFEST" \
+        manifest_sha256="$PYVE_TESTENV_STATE_MANIFEST_SHA256" \
+        provisioned_at="$PYVE_TESTENV_STATE_PROVISIONED_AT" \
+        last_used_at="$(date +%s)"
+}
+
 # Resolve the on-disk path for <name>. Does NOT check existence; that is
 # the caller's responsibility. Path shape per plan doc TC-M.2:
 #   root      → .venv          (the project main venv; conda case TBD M.h)
