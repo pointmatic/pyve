@@ -28,6 +28,7 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
+    source "$PYVE_ROOT/lib/testenvs.sh"   # M.h.3: test.sh now reads paths via resolve_testenv_path
     source "$PYVE_ROOT/lib/commands/run.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     create_test_dir
@@ -50,12 +51,12 @@ teardown() {
 # Provide a fake testenv python so the final `exec` in the testenv
 # branch succeeds without a real venv.
 _make_fake_testenv_python() {
-    mkdir -p ".pyve/testenv/venv/bin"
-    cat > ".pyve/testenv/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/testenvs/testenv/venv/bin"
+    cat > ".pyve/testenvs/testenv/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenv/venv/bin/python"
+    chmod +x ".pyve/testenvs/testenv/venv/bin/python"
 }
 
 #============================================================

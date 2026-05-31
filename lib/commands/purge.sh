@@ -7,7 +7,7 @@
 # Removes the venv / micromamba env, version manager files, .envrc,
 # .env (only if empty — v0.6.0 smart purge), pyve-managed sections of
 # .gitignore, and the .pyve/ directory. Optionally preserves
-# .pyve/testenv via --keep-testenv (used by `init --force` to avoid
+# .pyve/testenvs/ via --keep-testenv (used by `init --force` to avoid
 # rebuilding the dev/test runner across re-inits).
 #
 # Function-name note: this function is named `purge_project` per the
@@ -91,13 +91,18 @@ purge_project() {
     # Remove virtual environment
     _purge_venv "$venv_dir"
 
-    # Remove .pyve directory (config and micromamba envs)
+    # Remove .pyve directory (config and micromamba envs).
+    # Post-M.h.3: `--keep-testenv` preserves the whole `.pyve/testenvs/`
+    # tree (the default `testenv` plus any user-declared named envs from
+    # [tool.pyve.testenvs]). The previous semantics preserved only the
+    # singleton legacy `.pyve/testenv/` — the named-envs generalization
+    # makes "don't blow away my testenv work" cover the whole directory.
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
-            if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
+            if [[ -d ".pyve/testenvs" ]]; then
                 rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
-                find ".pyve" -mindepth 1 -maxdepth 1 ! -name "$TESTENV_DIR_NAME" -exec rm -rf {} + 2>/dev/null || true
-                success "Removed .pyve directory contents (preserved .pyve/$TESTENV_DIR_NAME)"
+                find ".pyve" -mindepth 1 -maxdepth 1 ! -name "testenvs" -exec rm -rf {} + 2>/dev/null || true
+                success "Removed .pyve directory contents (preserved .pyve/testenvs/)"
             else
                 rm -rf ".pyve"
                 success "Removed .pyve directory (config and micromamba environments)"
@@ -227,7 +232,7 @@ Arguments:
   <dir>                       Custom venv directory name (default: .venv)
 
 Options:
-  --keep-testenv              Preserve .pyve/testenv (the dev/test runner env)
+  --keep-testenv              Preserve .pyve/testenvs/ (all dev/test runner envs)
   --yes, -y                   Skip the destructive-confirmation prompt.
                               Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
 

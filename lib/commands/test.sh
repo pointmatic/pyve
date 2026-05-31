@@ -4,7 +4,7 @@
 #============================================================
 # pyve test — run pytest via the dev/test runner environment
 #
-# Auto-creates the testenv (`.pyve/testenv/venv`) if missing, then
+# Auto-creates the testenv (`.pyve/testenvs/testenv/venv`) if missing, then
 # auto-installs pytest in CI / under PYVE_TEST_AUTO_INSTALL_PYTEST=1
 # (or prompts the user when stdin is a TTY), and finally exec()s
 # pytest with the user's args. Pytest's exit code propagates via
@@ -136,7 +136,8 @@ test_tests() {
         return  # not reached: run_command execs
     fi
 
-    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
+    local testenv_venv
+    testenv_venv="$(resolve_testenv_path testenv)"
     ensure_testenv_exists
 
     if ! _test_has_pytest "$testenv_venv"; then

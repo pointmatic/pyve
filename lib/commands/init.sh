@@ -941,7 +941,7 @@ init_project() {
         _init_dotenv "$use_local_env"
 
         # Update .gitignore — since H.e.2a the template bakes in every
-        # pyve-managed ignore pattern (.pyve/envs, .pyve/testenv, .envrc,
+        # pyve-managed ignore pattern (.pyve/envs, .pyve/testenvs, .envrc,
         # .env, .vscode/settings.json), so the micromamba path needs no
         # per-backend dynamic inserts.
         write_gitignore_template
@@ -1134,7 +1134,7 @@ _init_gitignore() {
     local section="# Pyve virtual environment"
 
     # Rebuild .gitignore: Pyve-managed template at top, user entries below.
-    # Since H.e.2a, the template bakes in .pyve/envs, .pyve/testenv, .envrc,
+    # Since H.e.2a, the template bakes in .pyve/envs, .pyve/testenvs, .envrc,
     # .env, and .vscode/settings.json — the only pattern still inserted
     # dynamically is the user-overridable venv directory name.
     write_gitignore_template

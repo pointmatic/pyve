@@ -319,6 +319,18 @@ resolve_testenv_path() {
         printf '%s' ".venv"
         return 0
     fi
+    # Opportunistic-migration fallback (M.h.3): if the caller is asking
+    # for the reserved `testenv` and a legacy `.pyve/testenv/venv/`
+    # exists where the new layout would be, run the migration as a side
+    # effect before returning the new path. This is what makes `pyve
+    # test` etc. work even before the user has run `pyve update` on a
+    # v2.7-era project. The migration is idempotent and a no-op when
+    # the new layout already exists.
+    if [[ "$name" == "testenv" ]] \
+       && [[ ! -d ".pyve/testenvs/testenv/venv" ]] \
+       && [[ -d ".pyve/testenv/venv" ]]; then
+        migrate_legacy_testenv_layout
+    fi
     local backend
     backend="$(_testenv_backend_of "$name")" || backend="venv"
     if [[ "$backend" == "micromamba" || "$backend" == "inherit" ]]; then

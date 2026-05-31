@@ -331,7 +331,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.h.3: [Testenv-DX] Activate the new layout — wire migration, sweep consumers [Planned]
+### Story M.h.3: [Testenv-DX] Activate the new layout — wire migration, sweep consumers [Done]
 
 **Why.** With M.h.2 in place but unwired, the codebase still hard-codes `.pyve/$TESTENV_DIR_NAME/venv` (= `.pyve/testenv/venv/`) in `lib/utils.sh` and the five command files. M.h.3 is the cut-over: wire migration into `pyve update`, add an opportunistic-migration fallback in `resolve_testenv_path` (so `pyve test` etc. work even before `pyve update`), and sweep every consumer to read through the resolver.
 
@@ -344,11 +344,11 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Failing bats tests first in [tests/unit/test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats): `pyve update` triggers migration on a legacy-layout project; `resolve_testenv_path testenv` triggers migration on a legacy-layout project; both are idempotent on a fresh project; existing [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) and [tests/unit/test_testenv_namespace.bats](../../tests/unit/test_testenv_namespace.bats) (if present) keep passing after the sweep.
-- [ ] Wire migration into `update_project` in [lib/commands/update.sh](../../lib/commands/update.sh).
-- [ ] Add the opportunistic-migration fallback to `resolve_testenv_path testenv` in [lib/testenvs.sh](../../lib/testenvs.sh).
-- [ ] Sweep the six consumer files to use the resolver. Verify no `.pyve/testenv/venv` or `.pyve/$TESTENV_DIR_NAME` literal survives outside of `lib/testenvs.sh`'s migration helper and `pyve.sh`'s back-compat global.
-- [ ] Verify full unit suite passes after the sweep (regression coverage).
+- [x] Failing bats tests first in [tests/unit/test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats): 13 tests covering resolver side-effect migration, resolver purity on greenfield/already-migrated, other-name short-circuit, `testenv_paths` shape, `purge_testenv_dir` new layout, gitignore template, `_update_migrate_legacy_layout` wrapper exists + invocation, source-grep wiring check, and a sweep guard that asserts no legacy literal survives in production code. *(RED 7/13 → GREEN 13/13.)*
+- [x] Wire migration into `update_project` in [lib/commands/update.sh](../../lib/commands/update.sh) via a thin `_update_migrate_legacy_layout` wrapper (grep-visible name for the source-level wiring check). Runs pre-step, after config sanity check, before `header_box`.
+- [x] Add the opportunistic-migration fallback to `resolve_testenv_path testenv` in [lib/testenvs.sh](../../lib/testenvs.sh). Only `testenv` triggers migration; `root` and named envs short-circuit.
+- [x] Sweep the six consumer files to use the resolver. Verify no `.pyve/testenv/venv` or `.pyve/$TESTENV_DIR_NAME` literal survives outside of `lib/testenvs.sh`'s migration helper and `pyve.sh`'s back-compat global. *(Implicit-scope adds flagged at announce gate: gitignore template `.pyve/testenv` → `.pyve/testenvs` in [lib/utils.sh:859](../../lib/utils.sh#L859); `--keep-testenv` semantic expansion from "preserve single legacy testenv" to "preserve whole `.pyve/testenvs/` tree" in [lib/commands/purge.sh](../../lib/commands/purge.sh) — both included for v2.8 coherence.)*
+- [x] Verify full unit suite passes after the sweep. *(930/930 ok. Three pre-existing test files updated: [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) and [tests/unit/test_status.bats](../../tests/unit/test_status.bats) fixtures now create envs at the new path; [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) idempotency tests use the new pattern. The `test_test_command` setup now sources `lib/testenvs.sh` since `test.sh` resolves paths through it.)*
 
 **Out of scope.** `.state` field *consumption* — touch `last_used_at` lands in M.o, `provisioned_at` / `manifest_sha256` read lands in M.p. M.h.3 only writes `.state` at migration time (via M.h.2) and at provisioning time (existing `testenv_init` writes it via the M.h.1 helper).
 

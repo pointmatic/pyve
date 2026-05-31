@@ -856,7 +856,7 @@ build/
 
 # Pyve virtual environment
 .pyve/envs
-.pyve/testenv
+.pyve/testenvs
 .envrc
 .env
 .vscode/settings.json
@@ -1496,15 +1496,24 @@ is_file_empty() {
 # `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
 # audit F-7 (`purge_testenv_dir` shared with `purge`) and F-8
 # (`testenv_paths` + `ensure_testenv_exists` shared with `init` and
-# `test`). Depend on the `TESTENV_DIR_NAME` global defined in pyve.sh
-# (read at call time, not at sourcing time).
+# `test`).
+#
+# Post-M.h.3: derive both paths from `resolve_testenv_path testenv`
+# in lib/testenvs.sh — the single source of truth for the new
+# `.pyve/testenvs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
+# global in pyve.sh is retained as a back-compat constant for any
+# external scripts referencing it, but no internal code reads it.
 #============================================================
 
 # Emit two lines: testenv_root, then testenv_venv. Single source of
-# truth for both paths so callers do not hard-code `.pyve/testenv/...`.
+# truth for both paths so callers do not hard-code `.pyve/testenvs/...`.
+# `resolve_testenv_path testenv` may trigger opportunistic migration
+# (M.h.3); we tolerate that side effect because every caller of
+# `testenv_paths` is about to act on the testenv anyway.
 testenv_paths() {
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
+    local testenv_venv
+    testenv_venv="$(resolve_testenv_path testenv)"
+    local testenv_root="${testenv_venv%/venv}"
     printf "%s\n" "$testenv_root" "$testenv_venv"
 }
 
@@ -1543,10 +1552,13 @@ ensure_testenv_exists() {
 
 # Remove the testenv directory (no-op message if absent).
 purge_testenv_dir() {
-    if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
-        rm -rf ".pyve/$TESTENV_DIR_NAME"
-        success "Removed .pyve/$TESTENV_DIR_NAME"
+    local testenv_venv testenv_root
+    testenv_venv="$(resolve_testenv_path testenv)"
+    testenv_root="${testenv_venv%/venv}"
+    if [[ -d "$testenv_root" ]]; then
+        rm -rf "$testenv_root"
+        success "Removed $testenv_root"
     else
-        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+        info "No dev/test runner environment found at '$testenv_root'"
     fi
 }

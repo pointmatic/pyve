@@ -302,12 +302,12 @@ YML
 
 @test "status: Integrations section notes testenv presence when present" {
     create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
-    mkdir -p .pyve/testenv/venv/bin
-    cat > .pyve/testenv/venv/bin/python << 'PY'
+    mkdir -p .pyve/testenvs/testenv/venv/bin
+    cat > .pyve/testenvs/testenv/venv/bin/python << 'PY'
 #!/usr/bin/env bash
 echo "Python 3.14.4"
 PY
-    chmod +x .pyve/testenv/venv/bin/python
+    chmod +x .pyve/testenvs/testenv/venv/bin/python
 
     run "$PYVE_SCRIPT" status
     [ "$status" -eq 0 ]

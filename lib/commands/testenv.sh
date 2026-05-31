@@ -10,7 +10,7 @@
 # `testenv_run`).
 #
 # Sub-commands:
-#   pyve testenv init                    Create .pyve/testenv/venv
+#   pyve testenv init                    Create .pyve/testenvs/testenv/venv
 #   pyve testenv install [-r <file>]     Install pytest (or -r reqs)
 #   pyve testenv purge                   Remove .pyve/testenv
 #   pyve testenv run <cmd> [args...]     exec a command inside testenv
@@ -161,7 +161,7 @@ Usage:
   pyve testenv run <command> [args...]
 
 Notes:
-  - Uses: .pyve/testenv/venv
+  - Uses: .pyve/testenvs/testenv/venv
   - This environment is preserved across `pyve init --force` and `pyve purge`.
   - `run` executes a command inside the dev/test runner environment.
 EOF
@@ -185,8 +185,9 @@ EOF
         exit 1
     fi
 
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
+    local testenv_venv testenv_root
+    testenv_venv="$(resolve_testenv_path testenv)"
+    testenv_root="${testenv_venv%/venv}"
 
     # `run` exec's into the target command, so the header/footer wrapper
     # would never close. Skip the box and dispatch directly — the called
