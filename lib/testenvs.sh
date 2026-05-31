@@ -239,6 +239,72 @@ state_touch_last_used() {
         last_used_at="$(date +%s)"
 }
 
+# =====================================================================
+# Legacy-layout migration (Story M.h.2)
+# =====================================================================
+#
+# v2.7 and earlier: the single testenv lived at `.pyve/testenv/venv/`
+# (singular, hard-coded via `TESTENV_DIR_NAME`).
+# v2.8+: every testenv lives at `.pyve/testenvs/<name>/{venv,conda}/`
+# (plural, name-keyed). The reserved `testenv` resolves to
+# `.pyve/testenvs/testenv/venv/`.
+#
+# `migrate_legacy_testenv_layout` is the one-time mover. Four cases:
+#   1. legacy only        → mv + write initial .state + info log
+#   2. new already present → no-op (idempotent)
+#   3. both exist         → no-op (preserve new; leave legacy alone)
+#   4. neither (greenfield) → no-op
+#
+# Standalone in M.h.2 — call sites land in M.h.3 (`pyve update` hook
+# and the opportunistic-migration fallback in `resolve_testenv_path`).
+migrate_legacy_testenv_layout() {
+    local legacy=".pyve/testenv/venv"
+    local new_root=".pyve/testenvs/testenv"
+    local new_venv="$new_root/venv"
+
+    # Case 2 + 3: new already exists → no-op. Preserve any user-written
+    # .state in the new layout; do not touch the legacy dir even if it
+    # also exists (a later cleanup story can remove orphan legacy dirs
+    # — silent deletion of user state here is the wrong default).
+    if [[ -d "$new_venv" ]]; then
+        return 0
+    fi
+
+    # Case 4: greenfield. Nothing to migrate.
+    if [[ ! -d "$legacy" ]]; then
+        return 0
+    fi
+
+    # Case 1: migrate. Capture legacy mtime first — the `mv` will
+    # preserve it on most filesystems, but we read it here so the
+    # `.state`'s `provisioned_at` reflects the original creation epoch.
+    local legacy_mtime=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        legacy_mtime="$(stat -f %m "$legacy" 2>/dev/null || true)"
+    else
+        legacy_mtime="$(stat -c %Y "$legacy" 2>/dev/null || true)"
+    fi
+
+    mkdir -p "$new_root"
+    mv "$legacy" "$new_venv"
+    # Clean up the now-empty `.pyve/testenv/` parent. If it isn't empty
+    # (a future contributor's other content), leave it; `rmdir` will
+    # fail silently and we move on.
+    rmdir ".pyve/testenv" 2>/dev/null || true
+
+    # Write initial .state via the M.h.1 writer. Default backend=venv —
+    # the legacy layout only ever held venv-backed envs (the conda case
+    # was always main-env-only and never produced a .pyve/testenv/).
+    local state_args=("testenv" "venv")
+    if [[ -n "$legacy_mtime" ]]; then
+        state_args+=("provisioned_at=$legacy_mtime")
+    fi
+    state_write "${state_args[@]}"
+
+    # User-visible one-liner. info() lives in lib/ui/core.sh.
+    info "Migrated legacy testenv layout: .pyve/testenv/venv → .pyve/testenvs/testenv/venv"
+}
+
 # Resolve the on-disk path for <name>. Does NOT check existence; that is
 # the caller's responsibility. Path shape per plan doc TC-M.2:
 #   root      → .venv          (the project main venv; conda case TBD M.h)

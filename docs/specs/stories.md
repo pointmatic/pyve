@@ -311,7 +311,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.h.2: [Testenv-DX] `migrate_legacy_testenv_layout` helper [Planned]
+### Story M.h.2: [Testenv-DX] `migrate_legacy_testenv_layout` helper [Done]
 
 **Why.** Move the on-disk testenv layout from `.pyve/testenv/venv/` (singular, hard-coded) to `.pyve/testenvs/testenv/venv/` (plural, name-keyed). Helper is standalone — M.h.3 wires it into the call sites.
 
@@ -323,9 +323,9 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Failing bats tests first in [tests/unit/test_testenvs_migration.bats](../../tests/unit/test_testenvs_migration.bats): legacy→new migration with `.state` written; idempotency (already-migrated → no-op); greenfield (no-trigger); legacy + new both exist (no-op, do not overwrite). Confirm RED.
-- [ ] Implement `migrate_legacy_testenv_layout` in [lib/testenvs.sh](../../lib/testenvs.sh) (single function, calls M.h.1's `state_write`).
-- [ ] Not yet invoked from `pyve update` or the resolver — that's M.h.3.
+- [x] Failing bats tests first in [tests/unit/test_testenvs_migration.bats](../../tests/unit/test_testenvs_migration.bats): legacy→new migration with `.state` written; idempotency (already-migrated → no-op); greenfield (no-trigger); legacy + new both exist (no-op, do not overwrite). *(9 tests covering all four cases + mtime preservation + bash-3.2 `set -u` safety. RED 8/9 → GREEN 9/9. Full unit suite 917/917.)*
+- [x] Implement `migrate_legacy_testenv_layout` in [lib/testenvs.sh](../../lib/testenvs.sh) (single function, calls M.h.1's `state_write`). *(macOS/Linux `stat` inline per `lib/micromamba_env.sh`'s existing pattern; legacy `.pyve/testenv/` parent removed only if empty; the both-exist case preserves both layouts rather than silently deleting user state.)*
+- [x] Not yet invoked from `pyve update` or the resolver — that's M.h.3.
 
 **Out of scope.** Wiring into `pyve update` / the consumer path; updating any hard-coded legacy-path references in command files.
 
