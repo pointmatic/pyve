@@ -26,11 +26,16 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 fi
 
 #------------------------------------------------------------
-# Leaf: pyve testenv init
+# Leaf: pyve testenv init [<name>]
+#
+# Story M.i.2: accepts an optional <name>. No arg defaults to the
+# reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
+# so all leaves share one check; `testenv_init` just creates.
 #------------------------------------------------------------
 
 testenv_init() {
-    ensure_testenv_exists
+    local name="${1:-testenv}"
+    ensure_testenv_exists "$name"
 }
 
 #------------------------------------------------------------
@@ -116,6 +121,7 @@ testenv_run() {
 
 testenv_command() {
     local action=""
+    local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
 
     while [[ $# -gt 0 ]]; do
@@ -124,6 +130,11 @@ testenv_command() {
             init)
                 action="init"
                 shift
+                # Story M.i.2: optional positional <name> after `init`.
+                if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
+                    action_name="$1"
+                    shift
+                fi
                 ;;
             install)
                 action="install"
@@ -148,22 +159,28 @@ testenv_command() {
             run)
                 action="run"
                 shift
-                break  # Remaining args are the command to execute
+                break  # Remaining args are the [<name> --] command [args]
                 ;;
             --help|-h)
                 cat << 'EOF'
 pyve testenv - Manage a dedicated dev/test runner environment
 
 Usage:
-  pyve testenv init
+  pyve testenv init [<name>]
   pyve testenv install [-r requirements-dev.txt]
   pyve testenv purge
-  pyve testenv run <command> [args...]
+  pyve testenv run [<name> --] <command> [args...]
 
 Notes:
-  - Uses: .pyve/testenvs/testenv/venv
-  - This environment is preserved across `pyve init --force` and `pyve purge`.
-  - `run` executes a command inside the dev/test runner environment.
+  - Default `testenv` lives at .pyve/testenvs/testenv/venv
+  - Named environments (Story M.i+) live at .pyve/testenvs/<name>/{venv,conda}/
+    Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
+  - `run` requires the `--` separator when routing to a named env:
+      pyve testenv run smoke -- pytest -v
+    Without `--`, the first positional is the command (today's behavior preserved).
+  - `testenv` and `root` are reserved names. `root` is selection-only
+    (use `pyve test --env root`), not creatable as a testenv.
+  - The testenv tree is preserved across `pyve init --force` and `pyve purge --keep-testenv`.
 EOF
                 exit 0
                 ;;
@@ -185,31 +202,64 @@ EOF
         exit 1
     fi
 
-    local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path testenv)"
-    testenv_root="${testenv_venv%/venv}"
+    # Story M.i.2: load named-env config so `assert_testenv_*` gates can
+    # validate non-default names. The no-pyproject.toml short-circuit
+    # (M.i.1) keeps this cheap on bash-only projects.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
 
-    # `run` exec's into the target command, so the header/footer wrapper
-    # would never close. Skip the box and dispatch directly — the called
-    # command owns the rest of the terminal.
+    # Story M.i.2: `run` has its own arg shape — parse `[<name> --]
+    # <cmd> [args]` from the leftover positional args. The `--`
+    # separator is required when routing to a named env (no magic
+    # detection of "the first arg is a name" — preserves today's
+    # `pyve testenv run ruff check .` semantics).
     if [[ "$action" == "run" ]]; then
-        testenv_run "$testenv_venv" "$@"
+        local run_name="testenv"
+        if [[ "${1:-}" == "--" ]]; then
+            shift
+        elif [[ "${2:-}" == "--" ]]; then
+            run_name="$1"
+            shift 2
+        fi
+        assert_testenv_name_actionable "$run_name" || exit 1
+        assert_testenv_venv_backend     "$run_name" || exit 1
+        local run_venv
+        run_venv="$(resolve_testenv_path "$run_name")"
+        testenv_run "$run_venv" "$@"
         return  # not reached on success (exec) but kept for clarity
     fi
 
+    # Non-`run` actions: resolve path via the selected name (default
+    # `testenv`). For `install`/`purge` the M.i.2 dispatcher still
+    # hard-codes the default; M.i.3/M.i.4 will accept `<name>` here.
+    local target_name="${action_name:-testenv}"
+    if [[ "$action" == "init" ]]; then
+        assert_testenv_name_actionable "$target_name" || exit 1
+        # Backend stub is enforced inside testenv_init -> ensure_testenv_exists.
+    fi
+    local testenv_venv testenv_root
+    testenv_venv="$(resolve_testenv_path "$target_name")"
+    testenv_root="${testenv_venv%/venv}"
+
     header_box "pyve testenv"
 
+    # Propagate leaf return codes (M.i.2). Without explicit handling,
+    # bash uses the last command's status — which is footer_box's 0,
+    # masking failures from the leaf functions.
+    local leaf_rc=0
     case "$action" in
         init)
-            testenv_init
+            testenv_init "$target_name" || leaf_rc=$?
             ;;
         install)
-            testenv_install "$testenv_venv" "$requirements_file"
+            testenv_install "$testenv_venv" "$requirements_file" || leaf_rc=$?
             ;;
         purge)
-            testenv_purge
+            testenv_purge || leaf_rc=$?
             ;;
     esac
 
     footer_box
+    return "$leaf_rc"
 }

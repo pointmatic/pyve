@@ -431,7 +431,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.i.2: [Testenv-DX] `testenv init [<name>]` + `testenv run [<name>] -- <cmd>` [Planned]
+### Story M.i.2: [Testenv-DX] `testenv init [<name>]` + `testenv run [<name>] -- <cmd>` [Done]
 
 **Why.** Both are single-env leaves with no iteration semantics — combining them in one story keeps the bundle granular without producing two trivially-tiny stories.
 
@@ -442,11 +442,11 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Failing bats tests first in [tests/unit/test_testenv_init_name.bats](../../tests/unit/test_testenv_init_name.bats) + [tests/unit/test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats): no-arg behavior preserved; with-arg success for a declared venv-backed env; reserved `root` and undeclared names hard-error; `run` `--` separator parsing; `run` ambiguous-shape error.
-- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `init` and `run`.
-- [ ] Update `testenv_init` to accept `<name>`; `testenv_run`'s `<testenv_venv>` argument continues to be path-shaped (the dispatcher resolves the path before calling).
-- [ ] Update per-leaf help blocks (`show_testenv_init_help`, `show_testenv_run_help`) — or, if no per-leaf help functions exist today, update the namespace `--help` text in the dispatcher for these two leaves.
-- [ ] Verify full unit suite passes (no regressions to existing `pyve testenv init` / `run` callers).
+- [x] Failing bats tests first in [tests/unit/test_testenv_init_name.bats](../../tests/unit/test_testenv_init_name.bats) (5 tests) + [tests/unit/test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats) (10 tests): no-arg behavior preserved; with-arg success for a declared venv-backed env; reserved `root` and undeclared names hard-error; `run` `--` separator parsing (three valid shapes); name validation through M.i.1 gates; `--` with no command errors. *(RED 10/15 → GREEN 15/15. Full unit suite 959/959.)*
+- [x] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `init` and `run`. *(`init`: optional positional `<name>` consumed in the case arm. `run`: post-loop logic detects `[<name>] --` by peeking `${1:-}` and `${2:-}` — name routing requires the explicit `--` separator per the announce-gate decision.)*
+- [x] Update `testenv_init` to accept `<name>`; `testenv_run`'s `<testenv_venv>` argument continues to be path-shaped (the dispatcher resolves the path before calling).
+- [x] Update per-leaf help blocks — *no per-leaf `show_testenv_<sub>_help` functions exist today; updated the namespace `--help` heredoc to document the new `init [<name>]` and `run [<name> --] <cmd>` shapes. Per-leaf functions are tracked as a Future story (added to the `## Future` section in this commit).*
+- [x] Verify full unit suite passes (no regressions to existing `pyve testenv init` / `run` callers). *(Also fixed a lurking issue: dispatcher previously swallowed the return code from leaf functions because `footer_box` was the last command; now captures `leaf_rc` and returns it.)*
 
 **Out of scope.** `install` (M.i.3); `purge` (M.i.4); conda-backend implementation (stubbed in M.i.1).
 
@@ -716,6 +716,24 @@ Lock files: `<manifest-basename>-lock.yml` sibling to the manifest.
 ---
 
 ## Future
+
+### Story ?.?: Per-leaf help functions for namespace commands (`testenv`, `python`, `self`) [Planned]
+
+**Motivation**: today the three namespace commands (`testenv`, `python`, `self`) keep all their help text in a single `--help` heredoc inside the namespace dispatcher (e.g. `testenv_command`'s `--help|-h` arm). As leaves accumulate flags and shape variants — M.i.2 added `--` separators for `run`, M.i.3/M.i.4 added `[<name>]` and `--force` — the single-block help grows unwieldy and per-leaf detail gets cramped.
+
+Per the *Per-command help blocks live with their commands* rule in [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md), each leaf would get its own `show_<namespace>_<leaf>_help` function inside the same `lib/commands/<namespace>.sh` file (single-file namespace rule preserved). Invocation: `pyve testenv init --help` would call `show_testenv_init_help`, leaving the namespace `--help` as a top-level overview that points at the per-leaf forms.
+
+**Why deferred**: this is a refactor that touches every namespace command's dispatcher. The right time to do it is when one of the namespaces grows enough leaves that the single heredoc becomes painful — `testenv` is approaching that point with M.i, but no leaf has so much detail that the current shape is broken. Doing it as a standalone story keeps the testenv-DX bundle scoped to feature work.
+
+**Tasks** (sketched; refine when picked up):
+
+- [ ] Per-leaf `show_<namespace>_<leaf>_help` functions in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) (`init`, `install`, `purge`, `run`, plus M.p's future `list`/`prune`), [lib/commands/python.sh](../../lib/commands/python.sh), [lib/commands/self.sh](../../lib/commands/self.sh).
+- [ ] Dispatcher routes `pyve <namespace> <leaf> --help` to the per-leaf help function.
+- [ ] Namespace `--help` retained as an overview that lists leaves + one-liner per leaf + a pointer to `pyve <namespace> <leaf> --help` for detail.
+- [ ] Existing direct-command per-leaf helps (`show_init_help`, etc.) are unchanged — this story scopes to namespace-command leaves.
+- [ ] Update tests to assert each leaf's `--help` invocation.
+
+---
 
 ### Story ?.?: Apply Phase L UX framing to non-scaffold commands [Planned]
 
