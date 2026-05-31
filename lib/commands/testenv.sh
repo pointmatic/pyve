@@ -111,6 +111,38 @@ testenv_run() {
 }
 
 #------------------------------------------------------------
+# Story M.i.3: iterate `testenv install` over every non-lazy declared
+# env. Conda-backed envs are skipped with a one-line info (M.k provides
+# the real provisioning). Returns the first install failure's status.
+#
+# Reads PYVE_TESTENVS_NAMES populated by read_testenv_config — caller
+# must have loaded config (testenv_command does this in M.i.2).
+#------------------------------------------------------------
+
+_testenv_install_all_nonlazy() {
+    local requirements_file="$1"
+    local name installed_count=0 rc=0
+    for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
+        if is_testenv_lazy "$name"; then
+            continue
+        fi
+        if ! assert_testenv_venv_backend "$name" 2>/dev/null; then
+            info "Skipping '$name' (conda backend; see Story M.k)."
+            continue
+        fi
+        info "Installing '$name' testenv..."
+        local install_venv
+        install_venv="$(resolve_testenv_path "$name")"
+        testenv_install "$install_venv" "$requirements_file" || rc=$?
+        installed_count=$((installed_count + 1))
+    done
+    if [[ "$installed_count" -eq 0 ]]; then
+        info "No non-lazy testenvs to install."
+    fi
+    return "$rc"
+}
+
+#------------------------------------------------------------
 # Namespace dispatcher: pyve testenv <subcommand>
 #
 # Function-name note: this function is named `testenv_command` per
@@ -139,6 +171,36 @@ testenv_command() {
             install)
                 action="install"
                 shift
+                # Story M.i.3: install accepts an optional positional
+                # <name> and an optional -r <file>; both may appear in
+                # either order. Sub-parse here so the order is flexible
+                # without leaking into the rest of the dispatcher.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        -r|--requirements)
+                            if [[ -z "${2:-}" ]]; then
+                                log_error "$1 requires a file path"
+                                exit 1
+                            fi
+                            requirements_file="$2"
+                            shift 2
+                            ;;
+                        -*)
+                            # Leave unknown flags to the outer loop
+                            # (e.g. --help) so it can produce the
+                            # canonical unknown_flag_error.
+                            break
+                            ;;
+                        *)
+                            if [[ -n "$action_name" ]]; then
+                                log_error "testenv install: unexpected positional '$1' (already named '$action_name')"
+                                exit 1
+                            fi
+                            action_name="$1"
+                            shift
+                            ;;
+                    esac
+                done
                 ;;
             purge)
                 action="purge"
@@ -167,7 +229,7 @@ pyve testenv - Manage a dedicated dev/test runner environment
 
 Usage:
   pyve testenv init [<name>]
-  pyve testenv install [-r requirements-dev.txt]
+  pyve testenv install [<name>] [-r requirements-dev.txt]
   pyve testenv purge
   pyve testenv run [<name> --] <command> [args...]
 
@@ -175,6 +237,9 @@ Notes:
   - Default `testenv` lives at .pyve/testenvs/testenv/venv
   - Named environments (Story M.i+) live at .pyve/testenvs/<name>/{venv,conda}/
     Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
+  - `install` no-arg iterates over every non-lazy declared env. Conda-backed
+    envs are skipped (M.k will provide provisioning). `install <name>` installs
+    only into that env.
   - `run` requires the `--` separator when routing to a named env:
       pyve testenv run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
@@ -253,7 +318,20 @@ EOF
             testenv_init "$target_name" || leaf_rc=$?
             ;;
         install)
-            testenv_install "$testenv_venv" "$requirements_file" || leaf_rc=$?
+            # Story M.i.3: with-arg installs into a single named env;
+            # no-arg iterates over every non-lazy declared env.
+            if [[ -n "$action_name" ]]; then
+                if assert_testenv_name_actionable "$action_name" \
+                   && assert_testenv_venv_backend "$action_name"; then
+                    local install_venv
+                    install_venv="$(resolve_testenv_path "$action_name")"
+                    testenv_install "$install_venv" "$requirements_file" || leaf_rc=$?
+                else
+                    leaf_rc=1
+                fi
+            else
+                _testenv_install_all_nonlazy "$requirements_file" || leaf_rc=$?
+            fi
             ;;
         purge)
             testenv_purge || leaf_rc=$?

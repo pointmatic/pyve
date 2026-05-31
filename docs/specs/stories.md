@@ -452,7 +452,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.i.3: [Testenv-DX] `testenv install [<name>] [-r …]` — with-arg + no-arg iteration [Planned]
+### Story M.i.3: [Testenv-DX] `testenv install [<name>] [-r …]` — with-arg + no-arg iteration [Done]
 
 **Why.** `install` has two distinct behaviors that share most of the same code path: with-arg installs into one env; no-arg iterates over all non-lazy declared envs. Ship them together so the iteration loop and the single-env call share a tested implementation.
 
@@ -464,11 +464,11 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Failing bats tests first in [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats): no-arg on a project with no `[tool.pyve.testenvs]` installs into default `testenv` (today's behavior); no-arg with declared `[lazy, non-lazy]` envs iterates non-lazy only; with-arg on a declared env installs into that env; with-arg on `root` errors; with-arg on undeclared errors; `-r <file>` parsing in either argument order.
-- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `install`.
-- [ ] Implement the iteration loop (small new dispatcher-private helper, e.g. `_testenv_install_all_nonlazy`).
-- [ ] Update help block for `install`.
-- [ ] Verify full unit suite passes.
+- [x] Failing bats tests first in [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats): 10 tests covering all the listed scenarios. *(RED 9/10 → GREEN 10/10. Full unit suite 969/969.)*
+- [x] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `install`. *(Sub-parser inside the `install)` case arm handles `-r <file>` and the optional positional `<name>` in either order; an unrecognized flag breaks back to the outer loop so `--help` / unknown-flag errors still work.)*
+- [x] Implement the iteration loop (small new dispatcher-private helper, e.g. `_testenv_install_all_nonlazy`). *(Iterates `PYVE_TESTENVS_NAMES`, skips lazy and conda-backed envs (conda gets a one-line `Skipping '<name>' (conda backend; see Story M.k).` info — non-fatal), returns the first install failure's status. Per-env progress via `info "Installing '<name>' testenv..."`.)*
+- [x] Update help block for `install`. *(Namespace `--help` heredoc adds the `[<name>]` slot and a note that no-arg iterates non-lazy envs and skips conda-backed envs.)*
+- [x] Verify full unit suite passes.
 
 **Out of scope.** Declared `requirements = [...]` / `extra = "dev"` consumption (M.l); per-env install lock (M.j); lazy auto-provisioning on `pyve test` (M.m).
 
@@ -738,6 +738,8 @@ Per the *Per-command help blocks live with their commands* rule in [project-esse
 ### Story ?.?: Apply Phase L UX framing to non-scaffold commands [Planned]
 
 **Motivation**: Phase L scoped the `sv create`-grade rollout (step counters, quiet-replay, spinners) to `pyve init` and `pyve update` — the scaffold-shaped commands. The same treatment plausibly improves `pyve lock` (long conda solves), `pyve testenv install` (pip output), and `pyve purge --force` (multi-step confirmation + delete). The `lib/ui/` toolkit shipped in Phase L (`run.sh`, `progress.sh`) is generic enough to apply directly.
+
+**Phase M update (M.i.3 v2.8 testenv-DX bundle).** `pyve testenv install` no-arg now **iterates over every non-lazy declared testenv** — for a project with `[tool.pyve.testenvs.{testenv,smoke,integration}]`, that's three pip installs in sequence, each producing its own stream of output. This is *exactly* the multi-step surface step counters were designed for: without them, the user gets a wall of pip output with no visible structure. With them, `[1/3] Installing testenv...` → `[2/3] Installing smoke...` → `[3/3] Installing integration...` makes the macro-shape legible. M.i.3 shipped with plain `info()` per env (no step counter) to stay scoped, but the bundle's iteration surface elevates the priority of this Future story — pick this up shortly after M.t (v2.8.0) ships and bundle it as an early v2.9-era polish release.
 
 **Why deferred**: Phase L was already large after the option-1 expansion; rolling out to four more commands would have stretched it further. The scaffold commands are the canonical "first impression" surface so they were prioritized.
 
