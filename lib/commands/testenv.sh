@@ -68,11 +68,16 @@ testenv_install() {
 }
 
 #------------------------------------------------------------
-# Leaf: pyve testenv purge
+# Leaf: pyve testenv purge [<name>]
+#
+# Story M.i.4: accepts an optional <name>. With-arg removes that env;
+# no-arg falls through to the dispatcher's iteration helper.
+# Conda-backed envs are also purged (rm -rf is backend-agnostic).
 #------------------------------------------------------------
 
 testenv_purge() {
-    purge_testenv_dir
+    local name="${1:-testenv}"
+    purge_testenv_dir "$name"
 }
 
 #------------------------------------------------------------
@@ -143,6 +148,56 @@ _testenv_install_all_nonlazy() {
 }
 
 #------------------------------------------------------------
+# Story M.i.4: iterate `testenv purge` over every declared env.
+# Confirmation gate: prompt `y/N` only on an interactive stdin AND
+# when --force is absent. CI / scripted invocations (non-TTY) skip
+# the prompt and proceed — matches `pyve init`'s prompt pattern so
+# `pyve testenv purge` stays scriptable. PYVE_FORCE_PROMPT=1 forces
+# the prompt even on non-TTY stdin (used by the bats test that
+# simulates the confirmation flow).
+#
+# Per-env failures are surfaced via warn() but do not halt the
+# iteration — `rc` accumulates the worst exit code seen.
+#------------------------------------------------------------
+
+_testenv_purge_all_with_confirm() {
+    local force="$1"
+    local count="${#PYVE_TESTENVS_NAMES[@]}"
+    if [[ "$count" -eq 0 ]]; then
+        info "No declared testenvs to purge."
+        return 0
+    fi
+
+    # Decide whether to prompt.
+    local should_prompt=0
+    if [[ "$force" != "1" ]]; then
+        if [[ "${PYVE_FORCE_PROMPT:-0}" == "1" ]] || [[ -t 0 ]]; then
+            should_prompt=1
+        fi
+    fi
+
+    if [[ "$should_prompt" == "1" ]]; then
+        printf "Remove all %d dev/test runner environment%s? [y/N]: " \
+            "$count" "$([ "$count" -ne 1 ] && echo s)"
+        local response
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            info "Aborted; no testenvs were removed."
+            return 0
+        fi
+    fi
+
+    local name rc=0
+    for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
+        if ! purge_testenv_dir "$name"; then
+            warn "Failed to purge '$name' (continuing)"
+            rc=1
+        fi
+    done
+    return "$rc"
+}
+
+#------------------------------------------------------------
 # Namespace dispatcher: pyve testenv <subcommand>
 #
 # Function-name note: this function is named `testenv_command` per
@@ -155,6 +210,7 @@ testenv_command() {
     local action=""
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
+    local purge_force=0            # Story M.i.4: --force skips the confirm prompt
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -205,6 +261,27 @@ testenv_command() {
             purge)
                 action="purge"
                 shift
+                # Story M.i.4: sub-parser for optional <name> and --force.
+                # Unrecognized flags break back to the outer loop.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --force)
+                            purge_force=1
+                            shift
+                            ;;
+                        -*)
+                            break
+                            ;;
+                        *)
+                            if [[ -n "$action_name" ]]; then
+                                log_error "testenv purge: unexpected positional '$1' (already named '$action_name')"
+                                exit 1
+                            fi
+                            action_name="$1"
+                            shift
+                            ;;
+                    esac
+                done
                 ;;
             # Story J.d (v2.3.0): Category A legacy flag forms
             # (`testenv --init|--install|--purge`) removed. Falls through
@@ -230,7 +307,7 @@ pyve testenv - Manage a dedicated dev/test runner environment
 Usage:
   pyve testenv init [<name>]
   pyve testenv install [<name>] [-r requirements-dev.txt]
-  pyve testenv purge
+  pyve testenv purge [<name>] [--force]
   pyve testenv run [<name> --] <command> [args...]
 
 Notes:
@@ -240,6 +317,10 @@ Notes:
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
     only into that env.
+  - `purge` no-arg iterates over every declared env (including lazy and
+    conda-backed) and prompts `y/N` on interactive shells; `--force` skips
+    the prompt. Non-TTY (CI) invocations skip the prompt automatically.
+    `purge <name>` removes only that env's root, no prompt.
   - `run` requires the `--` separator when routing to a named env:
       pyve testenv run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
@@ -334,7 +415,17 @@ EOF
             fi
             ;;
         purge)
-            testenv_purge || leaf_rc=$?
+            # Story M.i.4: with-arg removes one env; no-arg iterates
+            # over every declared env with a TTY-aware confirm gate.
+            if [[ -n "$action_name" ]]; then
+                if assert_testenv_name_actionable "$action_name"; then
+                    testenv_purge "$action_name" || leaf_rc=$?
+                else
+                    leaf_rc=1
+                fi
+            else
+                _testenv_purge_all_with_confirm "$purge_force" || leaf_rc=$?
+            fi
             ;;
     esac
 

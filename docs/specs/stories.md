@@ -376,7 +376,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.i: [Testenv-DX] `testenv` namespace expansion — name-aware ops [Bundle]
+### Story M.i: [Testenv-DX] `testenv` namespace expansion — name-aware ops [Bundle, Done]
 
 **Why.** With named envs declared (M.g) and the layout in place (M.h), the `testenv` namespace commands need an optional `<name>` argument. The reserved `testenv` name keeps existing single-env workflows working. With-arg branches operate on a single named env; no-arg branches preserve today's defaults for unconfigured projects and expand naturally to "all non-lazy envs" (install) and "all envs with confirmation" (purge) for projects that declare named envs.
 
@@ -474,7 +474,7 @@ last_used_at=<unix epoch seconds or 0>
 
 ---
 
-### Story M.i.4: [Testenv-DX] `testenv purge [<name>] [--force]` — with-arg + no-arg iteration with confirm [Planned]
+### Story M.i.4: [Testenv-DX] `testenv purge [<name>] [--force]` — with-arg + no-arg iteration with confirm [Done]
 
 **Why.** `purge` mirrors `install`'s shape but with a confirmation gate on the iteration path. The single-env path has no confirmation (matching today's `testenv_purge` behavior); the iteration path prompts `y/N` before removing all declared envs; `--force` skips the prompt.
 
@@ -486,11 +486,11 @@ last_used_at=<unix epoch seconds or 0>
 
 **Tasks**
 
-- [ ] Failing bats tests first in [tests/unit/test_testenv_purge_name.bats](../../tests/unit/test_testenv_purge_name.bats): with-arg on a declared env removes that env's directory; with-arg on `testenv` (reserved default) works; with-arg on `root` errors; with-arg on undeclared errors; no-arg with a single-env project (implicit-default config) prompts then removes; no-arg with declined prompt is a no-op; no-arg with `--force` skips the prompt; per-env failures (e.g. permission denied) are surfaced but don't halt the iteration.
-- [ ] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `purge` (handle the `--force` flag here).
-- [ ] Implement the iteration + confirmation logic (dispatcher-private helper, e.g. `_testenv_purge_all_with_confirm`).
-- [ ] Update help block for `purge`.
-- [ ] Verify full unit suite passes — existing single-env `pyve testenv purge` callers must keep working (no-arg behavior is now "purge all," not "purge the default" — but in the implicit-default config that's the same one env).
+- [x] Failing bats tests first in [tests/unit/test_testenv_purge_name.bats](../../tests/unit/test_testenv_purge_name.bats): 12 tests covering all the listed scenarios + simulated-TTY tests (via `PYVE_FORCE_PROMPT=1` + `echo y|n` pipe) that exercise the interactive confirm flow. *(RED 7/12 → GREEN 12/12. Full unit suite 981/981.)*
+- [x] Extend the dispatcher arg parser in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) for `purge` (handle the `--force` flag here). *(Sub-parser inside the `purge)` case arm handles `--force` and optional positional `<name>` in either order; same shape as M.i.3's `install` sub-parser.)*
+- [x] Implement the iteration + confirmation logic (dispatcher-private helper, e.g. `_testenv_purge_all_with_confirm`). *(TTY-aware confirm per the announce-gate pick (c): non-TTY (CI) skips the prompt, interactive TTY prompts `y/N`. `--force` skips the prompt explicitly. `PYVE_FORCE_PROMPT=1` env-var forces the prompt even on non-TTY stdin — used by bats tests. Per-env failures surface via `warn()` but don't halt iteration; `rc` accumulates worst exit.)*
+- [x] Update help block for `purge`.
+- [x] Verify full unit suite passes — existing single-env `pyve testenv purge` callers must keep working (no-arg behavior is now "purge all," not "purge the default" — but in the implicit-default config that's the same one env). *(`purge_testenv_dir` in `lib/utils.sh` generalized to accept optional `<name>` (default `testenv`); uses `dirname` of the resolver output so it handles both venv and conda layout shapes without hard-coding the suffix.)*
 
 **Out of scope.** `pyve testenv list` / `prune` (M.p); reading `.state` files (M.p consumes them); recovery from partial-purge failures.
 

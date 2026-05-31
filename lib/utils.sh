@@ -1565,10 +1565,19 @@ ensure_testenv_exists() {
 }
 
 # Remove the testenv directory (no-op message if absent).
+#
+# Story M.i.4: accepts an optional `<name>` argument (default `testenv`).
+# Removes the env root (`.pyve/testenvs/<name>/`), not just the inner
+# `venv/` — covers `.state` and any future siblings. Backend-agnostic
+# (rm -rf doesn't care whether the env is venv or conda underneath).
 purge_testenv_dir() {
+    local name="${1:-testenv}"
     local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path testenv)"
-    testenv_root="${testenv_venv%/venv}"
+    testenv_venv="$(resolve_testenv_path "$name")"
+    # `dirname` handles both layout shapes — .pyve/testenvs/<name>/venv
+    # (venv-backed) and .pyve/testenvs/<name>/conda (conda-backed) —
+    # without hard-coding the suffix.
+    testenv_root="$(dirname "$testenv_venv")"
     if [[ -d "$testenv_root" ]]; then
         rm -rf "$testenv_root"
         success "Removed $testenv_root"
