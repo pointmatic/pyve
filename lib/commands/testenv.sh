@@ -192,31 +192,134 @@ _testenv_release_install_lock() {
     fi
 }
 
-# Wraps testenv_install with acquire/release. A `trap` covers the
+# Wraps a testenv install with acquire/release. A `trap` covers the
 # `exit 1` paths inside testenv_install (existence check, missing
 # requirements file) and SIGINT/SIGTERM so the lock dir never strands
-# the env.
+# the env. Story M.k: dispatches on the resolved backend so a
+# conda-backed env goes through `_testenv_install_conda` (manifest-
+# driven sync) instead of `testenv_install` (pip).
 _testenv_install_with_lock() {
-    local name="$1" venv_path="$2" req_file="$3" lock_mode="${4:-wait}"
+    local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
     _testenv_acquire_install_lock "$name" "$lock_mode" || return $?
     trap "_testenv_release_install_lock '$name'" EXIT INT TERM
     local rc=0
-    testenv_install "$venv_path" "$req_file" || rc=$?
+    local backend
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    if [[ "$backend" == "micromamba" ]]; then
+        local manifest
+        manifest="$(_testenv_manifest_of "$name")" || manifest=""
+        _testenv_install_conda "$name" "$env_path" "$manifest" || rc=$?
+    else
+        testenv_install "$env_path" "$req_file" || rc=$?
+    fi
     _testenv_release_install_lock "$name"
     trap - EXIT INT TERM
     return "$rc"
 }
 
 #------------------------------------------------------------
+# Story M.k: conda-backed init/install
+#
+# `_testenv_init_conda` creates the env from its declared `manifest`
+# via `micromamba create -p <path> -f <manifest> -y`. This is conda's
+# natural one-shot (create + install packages) — there is no "empty
+# env" intermediate state for the conda backend.
+#
+# `_testenv_install_conda` syncs an *existing* env to its manifest via
+# `micromamba install -p <path> -f <manifest> -y`. If the env does not
+# exist, errors with a hint pointing at `pyve testenv init <name>`.
+#
+# Both require `manifest` to be declared in `[tool.pyve.testenvs.<name>]`
+# — the conda backend has no implicit pip-style fallback.
+#------------------------------------------------------------
+
+_testenv_init_conda() {
+    local name="$1"
+    local env_path="$2"
+    local manifest="$3"
+
+    if [[ -z "$manifest" ]]; then
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
+        log_error "Add: [tool.pyve.testenvs.$name]"
+        log_error "     manifest = \"<environment.yml path>\""
+        return 1
+    fi
+    if [[ ! -f "$manifest" ]]; then
+        log_error "Manifest file not found: $manifest"
+        return 1
+    fi
+
+    if [[ -d "$env_path/conda-meta" ]]; then
+        info "Conda-backed testenv '$name' already exists at '$env_path' — skipping create"
+        return 0
+    fi
+
+    local micromamba_path
+    micromamba_path="$(get_micromamba_path)" || micromamba_path=""
+    if [[ -z "$micromamba_path" ]]; then
+        log_error "micromamba not found — install it first (\`pyve init --backend micromamba\` bootstraps it)"
+        return 1
+    fi
+
+    mkdir -p "$(dirname "$env_path")"
+    info "Creating conda-backed testenv '$name' from $manifest..."
+    if "$micromamba_path" create -p "$env_path" -f "$manifest" -y; then
+        success "Created conda-backed testenv '$name'"
+        return 0
+    fi
+    log_error "Failed to create conda-backed testenv '$name'"
+    return 1
+}
+
+_testenv_install_conda() {
+    local name="$1"
+    local env_path="$2"
+    local manifest="$3"
+
+    if [[ -z "$manifest" ]]; then
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
+        return 1
+    fi
+    if [[ ! -f "$manifest" ]]; then
+        log_error "Manifest file not found: $manifest"
+        return 1
+    fi
+    if [[ ! -d "$env_path/conda-meta" ]]; then
+        log_error "Conda-backed testenv '$name' is not initialized at '$env_path'"
+        log_error "Run: pyve testenv init $name"
+        return 1
+    fi
+
+    local micromamba_path
+    micromamba_path="$(get_micromamba_path)" || micromamba_path=""
+    if [[ -z "$micromamba_path" ]]; then
+        log_error "micromamba not found"
+        return 1
+    fi
+
+    info "Syncing conda-backed testenv '$name' from $manifest..."
+    if "$micromamba_path" install -p "$env_path" -f "$manifest" -y; then
+        success "Synced conda-backed testenv '$name'"
+        return 0
+    fi
+    log_error "Failed to sync conda-backed testenv '$name'"
+    return 1
+}
+
+#------------------------------------------------------------
 # Story M.i.3: iterate `testenv install` over every non-lazy declared
-# env. Conda-backed envs are skipped with a one-line info (M.k provides
-# the real provisioning). Returns the first install failure's status.
+# env. Returns the first install failure's status.
 #
 # Reads PYVE_TESTENVS_NAMES populated by read_testenv_config — caller
 # must have loaded config (testenv_command does this in M.i.2).
 #
 # Story M.j: takes a `lock_mode` second arg (`wait` | `no-wait`) so
 # the iteration honors `--no-wait` from the caller.
+#
+# Story M.k: conda-backed envs are no longer skipped — backend dispatch
+# happens inside `_testenv_install_with_lock`, which calls
+# `_testenv_install_conda` for `micromamba` (and `inherit` resolving
+# to micromamba) and `testenv_install` for venv.
 #------------------------------------------------------------
 
 _testenv_install_all_nonlazy() {
@@ -227,14 +330,10 @@ _testenv_install_all_nonlazy() {
         if is_testenv_lazy "$name"; then
             continue
         fi
-        if ! assert_testenv_venv_backend "$name" 2>/dev/null; then
-            info "Skipping '$name' (conda backend; see Story M.k)."
-            continue
-        fi
         info "Installing '$name' testenv..."
-        local install_venv
-        install_venv="$(resolve_testenv_path "$name")"
-        _testenv_install_with_lock "$name" "$install_venv" "$requirements_file" "$lock_mode" || rc=$?
+        local install_env_path
+        install_env_path="$(resolve_testenv_path "$name")"
+        _testenv_install_with_lock "$name" "$install_env_path" "$requirements_file" "$lock_mode" || rc=$?
         installed_count=$((installed_count + 1))
     done
     if [[ "$installed_count" -eq 0 ]]; then
@@ -508,14 +607,15 @@ EOF
             # no-arg iterates over every non-lazy declared env.
             # Story M.j: each install is wrapped with a per-env lock;
             # `--no-wait` switches the acquire from wait+retry to fast-fail.
+            # Story M.k: backend dispatch happens inside
+            # `_testenv_install_with_lock` — no caller-side venv/conda gate.
             local lock_mode="wait"
             [[ "$install_no_wait" == "1" ]] && lock_mode="no-wait"
             if [[ -n "$action_name" ]]; then
-                if assert_testenv_name_actionable "$action_name" \
-                   && assert_testenv_venv_backend "$action_name"; then
-                    local install_venv
-                    install_venv="$(resolve_testenv_path "$action_name")"
-                    _testenv_install_with_lock "$action_name" "$install_venv" "$requirements_file" "$lock_mode" || leaf_rc=$?
+                if assert_testenv_name_actionable "$action_name"; then
+                    local install_env_path
+                    install_env_path="$(resolve_testenv_path "$action_name")"
+                    _testenv_install_with_lock "$action_name" "$install_env_path" "$requirements_file" "$lock_mode" || leaf_rc=$?
                 else
                     leaf_rc=1
                 fi

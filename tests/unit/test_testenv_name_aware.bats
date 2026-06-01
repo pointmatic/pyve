@@ -11,8 +11,10 @@
 #     undeclared names.
 #
 #   assert_testenv_venv_backend <name>
-#     in lib/testenvs.sh — conda-stub gate. 0 if the named env is
-#     venv-backed; 1 (stderr error mentioning M.k) for micromamba/inherit.
+#     in lib/testenvs.sh — venv-only gate (still used by `pyve testenv
+#     run` since M.k landed init/install for conda but not run). 0 if
+#     the resolved backend is venv; 1 (stderr error) for micromamba
+#     and `inherit` resolving to micromamba.
 #
 #   ensure_testenv_exists [<name>]
 #     in lib/utils.sh — name-aware existence-or-create. No arg defaults
@@ -27,6 +29,11 @@ load ../helpers/test_helper
 setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/testenvs.sh"
+    # Story M.k: ensure_testenv_exists now dispatches into
+    # `_testenv_init_conda` (defined in lib/commands/testenv.sh) for
+    # conda-backed envs, so the testenv command file must be sourced
+    # alongside the testenvs library to exercise the full call path.
+    source "$PYVE_ROOT/lib/commands/testenv.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 }
@@ -123,26 +130,38 @@ TOML
     assert_testenv_venv_backend testenv
 }
 
-@test "assert_testenv_venv_backend: micromamba-backed name errors with M.k hint" {
+@test "assert_testenv_venv_backend: micromamba-backed name is rejected (run is venv-only)" {
     _fixture_named_envs
     read_testenv_config
     run assert_testenv_venv_backend hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"hardware"* ]]
-    [[ "$output" == *"M.k"* ]]
     [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
 }
 
-@test "assert_testenv_venv_backend: 'inherit' backend is also a conda-shape error" {
+@test "assert_testenv_venv_backend: 'inherit' + main=micromamba is rejected" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
 manifest = "environment.yml"
 TOML
+    mkdir -p .pyve
+    printf 'backend: micromamba\n' > .pyve/config
     read_testenv_config
     run assert_testenv_venv_backend mirror
     [ "$status" -ne 0 ]
-    [[ "$output" == *"M.k"* ]]
+    [[ "$output" == *"mirror"* ]]
+}
+
+@test "assert_testenv_venv_backend: 'inherit' + main=venv passes (M.k inherit resolution)" {
+    cat > pyproject.toml <<'TOML'
+[tool.pyve.testenvs.mirror]
+backend = "inherit"
+TOML
+    mkdir -p .pyve
+    printf 'backend: venv\n' > .pyve/config
+    read_testenv_config
+    assert_testenv_venv_backend mirror
 }
 
 # ============================================================
@@ -198,13 +217,17 @@ TOML
     [ ! -d ".pyve/testenvs/bogus" ]
 }
 
-@test "ensure_testenv_exists: conda-backed name errors with M.k stub message" {
+@test "ensure_testenv_exists: conda-backed name with missing manifest file hard-errors (M.k)" {
+    # M.k landed conda init for declared envs whose manifest exists.
+    # When the manifest is declared but the file is missing, surface
+    # a clear error (no half-created env).
     _fixture_named_envs
+    # hardware's manifest = "tests/env.yml" — intentionally NOT created.
     run ensure_testenv_exists hardware
     [ "$status" -ne 0 ]
-    [[ "$output" == *"M.k"* ]]
-    [ ! -d ".pyve/testenvs/hardware/venv" ]
-    [ ! -d ".pyve/testenvs/hardware/conda" ]
+    [[ "$output" == *"tests/env.yml"* ]]
+    # Conda env was not created.
+    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
 }
 
 # ============================================================

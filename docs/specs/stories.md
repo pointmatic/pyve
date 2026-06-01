@@ -517,21 +517,32 @@ Acquired around `pyve testenv install <name>` and any auto-provision path (M.m).
 
 ---
 
-### Story M.k: [Testenv-DX] Conda-backed testenv plumbing (`backend = "micromamba"`) [Planned]
+### Story M.k: [Testenv-DX] Conda-backed testenv plumbing (`backend = "micromamba"`) [Done]
 
 **Why.** UC2 (test/runtime parity for conda mains) and UC3 (conda-only native deps — GDAL, CUDA, HDF5) both reduce to "per-env conda backend." The main-env micromamba paths exist; testenvs need the same plumbing minus the `.envrc`.
 
-**Approach.** Reuse [lib/backend_detect.sh](../../lib/backend_detect.sh) and main-env micromamba init logic. Add `_testenv_init_conda` and `_testenv_install_conda` to [lib/commands/testenv.sh](../../lib/commands/testenv.sh). Conda-backed envs accept `manifest = "<environment.yml>"` (FR-M.3); mutually exclusive with `requirements`/`extra` (validation in M.g).
+**Approach.** Reuse [lib/micromamba_core.sh::get_micromamba_path](../../lib/micromamba_core.sh) for binary resolution; add `_testenv_init_conda` (`micromamba create -p <path> -f <manifest> -y`) and `_testenv_install_conda` (`micromamba install -p <path> -f <manifest> -y`) to [lib/commands/testenv.sh](../../lib/commands/testenv.sh). Conda-backed envs accept `manifest = "<environment.yml>"` (FR-M.3); mutually exclusive with `requirements`/`extra` (validation already in the M.g Python helper). New shared helper `_testenv_resolve_backend` in [lib/testenvs.sh](../../lib/testenvs.sh) returns the concrete backend (`venv` | `micromamba`) — for `inherit`, defers to `read_config_value backend` from `.pyve/config`. The resolver consumes it so `inherit` produces the right path shape (venv when main is venv, conda when main is micromamba); `ensure_testenv_exists` and `_testenv_install_with_lock` consume it for init/install dispatch; `assert_testenv_venv_backend` consumes it so the run-only gate sees the resolved backend.
+
+**Correction (during M.k execution).** `pyve testenv run` for conda envs was kept out of scope and surfaced at the announce gate: `testenv_run` does PATH-only activation (exports `VIRTUAL_ENV`, prepends `<env>/bin` to `PATH`), which is insufficient for conda envs that need `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. The `assert_testenv_venv_backend` helper is kept (no longer the "M.k stub" — its responsibility shrinks to "venv-only gate for `run`") with a new error message pointing at `micromamba run -p .pyve/testenvs/<name>/conda <command>` as the manual workaround. Conda `run` is a future-story candidate.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering `pyve testenv init <name>` for a conda-backed declared env, `pyve testenv install <name>` from a `manifest = "…"` source, validation error on `manifest` + `requirements` collision.
-- [ ] `_testenv_init_conda` + `_testenv_install_conda` helpers.
-- [ ] `backend = "inherit"` resolution via [lib/env_detect.sh](../../lib/env_detect.sh) (main env backend).
-- [ ] No `.envrc` emission for testenvs.
-- [ ] Update `tech-spec.md` testenv backend section.
+- [x] Failing tests first in [tests/unit/test_testenv_conda.bats](../../tests/unit/test_testenv_conda.bats): 16 tests covering `_testenv_resolve_backend` (venv / micromamba / inherit + main=venv / inherit + main=micromamba / inherit + no config), `resolve_testenv_path` for inherit (both main backends), `_testenv_init_conda` (happy path + missing-file + empty-manifest errors), `_testenv_install_conda` (happy path + env-not-initialized error), `testenv init <conda-name>` + `testenv install <conda-name>` dispatcher routing, and no-arg iteration including conda envs (no "see Story M.k" skip). *(RED 15/16 → GREEN 16/16. Full unit suite 1008/1008.)*
+- [x] `_testenv_init_conda` + `_testenv_install_conda` helpers in [lib/commands/testenv.sh](../../lib/commands/testenv.sh). Both require a non-empty `manifest` and verify the file exists before invoking `micromamba`; `_init_conda` is idempotent (info-and-skip when `conda-meta` exists); `_install_conda` requires the env to exist (`pyve testenv init <name>` hint otherwise).
+- [x] `backend = "inherit"` resolution via [lib/testenvs.sh](../../lib/testenvs.sh) `_testenv_resolve_backend` (reads main env's backend via `read_config_value backend` from `.pyve/config`). Wired into `resolve_testenv_path` (path shape), `ensure_testenv_exists` (init dispatch), `_testenv_install_with_lock` (install dispatch), and `assert_testenv_venv_backend` (run-only gate).
+- [x] No `.envrc` emission for testenvs — confirmed: neither `_testenv_init_conda` nor `ensure_testenv_exists` touches `.envrc`. Testenv activation lives in the wrapper commands (`testenv_run`'s PATH/`VIRTUAL_ENV` exports, `pyve test`'s direct `<testenv>/bin/python -m pytest` invocation), not in direnv.
+- [x] Update [tech-spec.md](tech-spec.md) testenv backend section: extended the `lib/testenvs.sh` function table with `_testenv_resolve_backend` and updated `resolve_testenv_path` + `assert_testenv_venv_backend` descriptions; rewrote the `lib/commands/testenv.sh` function table to cover M.i/M.j/M.k surface (`testenv_command` flag inventory, conda + lock helpers, `_testenv_install_all_nonlazy` dispatch); added a new "Conda backend dispatch (Story M.k)" subsection under Legacy-layout migration; updated the M.k bullet in "Consumers" to mark it landed; added the two new test files to the inventory tree.
 
-**Out of scope.** `pyve lock --env <name>` (M.q); pip-installed-into-conda mixed mode.
+**Updates to existing tests (M.k semantic shift).**
+
+- [tests/unit/test_testenv_name_aware.bats](../../tests/unit/test_testenv_name_aware.bats): renamed three M.k-stub assertions to reflect post-landing semantics — `assert_testenv_venv_backend` is now the run-only gate; `inherit` resolution now depends on `.pyve/config`'s main backend; `ensure_testenv_exists` for a conda env now hard-errors on missing manifest file instead of returning the stub. Also added a new test for `inherit + main=venv` passing the gate.
+- [tests/unit/test_testenv_init_name.bats](../../tests/unit/test_testenv_init_name.bats): rewrote the M.k-stub test to assert missing-manifest-file hard-error.
+- [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats): rewrote the iteration test to include the conda env (now uses a stubbed `micromamba` recorder); rewrote the single-env conda test to assert missing-manifest-file hard-error.
+- [tests/unit/test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats): updated the conda-rejection test message check (no more "M.k" hint; now asserts `hardware` + `conda`/`micromamba` in the workaround message).
+
+**Out of scope (carried).** `pyve lock --env <name>` (M.q); pip-installed-into-conda mixed mode; conda `pyve testenv run` (deferred per Correction above).
+
+**Version impact.** None — M.k is part of the testenv-DX bundle, which ships unversioned during work and releases as `v2.8.0` at M.t.
 
 ---
 
@@ -817,5 +828,43 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 - [ ] `test_auto_detection.py::TestPriorityOrder::test_priority_cli_over_all` — asserts `(project_dir / ".venv").exists()` but the directory is not created in the scenario. Investigate whether this is a test-setup gap (missing fixture state) or a genuine regression in CLI-priority backend dispatch.
 - [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
 - [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
+
+---
+
+### Story ?.?: Generalize testenv → named environments with `purpose:` attribute (Phase N candidate) [Planned]
+
+**Motivation.** The testenv-DX bundle (M.f–M.t) introduced named, multi-backend, multi-manifest **test** environments. Looking at the model that emerged — `[tool.pyve.testenvs.<name>]` with per-env `backend`/`manifest`/`requirements`/`lazy`/`extra`, lock file at `.pyve/testenvs/<name>/.lock`, `.state` file per env, `--env <name>` selector — none of it is actually testing-specific. The same mechanism cleanly hosts utility envs (LLM/project-guide tooling, formatters, generators) and could host alternate run envs (multiple deployment targets). The `test` prefix on every identifier is an accidental holdover from when pyve only knew about one extra env.
+
+The driving artifact for the redesign is [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) — a template for the formal per-repo environment-dependencies document. It encodes the generalized model already: every env has a `purpose: {run, test, utility, temp}` attribute, the root env is `purpose: utility` by default, the first test env (`testenv`) is `purpose: test` with `default: true`, and additional envs declare distinct names. The `test` overloading in pyve's vocabulary collides with that template's clean separation. Embracing the template's vocabulary inside pyve is the natural next move once the testenv-DX bundle ships.
+
+**Approach (sketched).**
+
+1. **Schema rename.** `[tool.pyve.testenvs.*]` → `[tool.pyve.envs.*]`. New `purpose = "test"` (or `"run"`/`"utility"`/`"temp"`) attribute per env; default is `test` for back-compat with the M.* model. Reserved names extend: `root` stays selection-only; `testenv` stays the default-test alias.
+2. **CLI rename.** `pyve testenv <sub>` → `pyve env <sub>`. `pyve testenv init` becomes a Category-B sugar form that maps to `pyve env init testenv --purpose test` — keeps muscle memory and existing docs working. Same for `install`/`purge`/`run`.
+3. **Path layout.** `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/` (singular `envs` is already taken for micromamba main envs — pick the actual name during plan_phase; candidates: `.pyve/envs/` consolidated, or `.pyve/environments/`, or keep `.pyve/testenvs/` for back-compat and only rename at the schema/CLI layer). Legacy migration mechanism mirrors M.h's v2.7→v2.8 boundary.
+4. **Helper renames.** `_testenv_*` / `*_testenv_*` → `_env_*` / `*_env_*` across `lib/testenvs.sh` (→ `lib/envs.sh`?), `lib/commands/testenv.sh` (→ `lib/commands/env.sh`), `lib/utils.sh`'s `ensure_testenv_exists`, `purge_testenv_dir`, `testenv_paths`. Roughly ~12 helpers + ~1000 tests touched.
+5. **`pyve test --env <name>` resolver** stays — the surface was named `--env` from the start, so no rename needed there. The mental model just gets cleaner: any `purpose: test` env is selectable; non-`purpose: test` envs hard-error with a hint pointing at the appropriate command (`pyve env run <name>` for `purpose: utility`, etc.).
+6. **Documentation lift.** Adopt the §2 vocabulary (purpose / structured attributes / dependency source classes) from the template doc into `features.md` + `tech-spec.md`. The template doc itself becomes a first-class deliverable: ship `pyve-environment-dependencies-template.md` to the `docs/project-guide/templates/artifacts/` tree so `project-guide init` can scaffold a concrete `pyve-environment-dependencies-repo_<name>.md` for each project.
+
+**Backward compatibility.** Category-B-friendly. Every legacy form gets a precise hard-error pointing at the new form:
+- `pyve testenv init` → "renamed: use `pyve env init` (default `--purpose test`)" — and/or kept as silent sugar if the Category-A vs B decision in [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) judges this rename high-traffic enough to warrant the legacy form continuing to work.
+- `[tool.pyve.testenvs.*]` in pyproject.toml → Python helper emits a warning and reads the section as if it were `[tool.pyve.envs.*]` with implicit `purpose = "test"`.
+
+**Why deferred to Phase N (not folded into M.\*).** Pivoting the conceptual frame mid-bundle would leave half the M.\* surface speaking the old vocabulary — features.md / tech-spec.md sections from M.g–M.h reference `testenvs`, the eight M.\* test files all assert against `[tool.pyve.testenvs.*]`, and the partially-written M.l–M.s stories build on the M.f schema. Cleaner timing: finish M.\* on the current naming, ship `v2.8.0` at M.t, then plan_phase a coherent Phase N rebrand that lands the rename + the legacy catches + the template-doc adoption as one diff.
+
+**Phase ordering note.** The pre-existing Phase N plan moves to Phase O when this story is promoted; the new Phase N takes its slot. Recorded here so the displacement is visible before plan_phase is run.
+
+**Tasks** (sketched; full breakdown belongs in plan_phase):
+
+- [ ] Decide path layout (rename `.pyve/testenvs/` vs hold) — substantive backward-compat decision.
+- [ ] Decide Category A (silent sugar) vs B (hard-error catch) per legacy form — likely A for `pyve testenv *` (high-traffic, in every doc), B for everything else.
+- [ ] Schema rename in [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py); add `purpose` field with `test` default; emit migration warning for `[tool.pyve.testenvs.*]`.
+- [ ] CLI rename: new `lib/commands/env.sh` (or in-place rename of `testenv.sh`); legacy `pyve testenv` becomes a thin sugar wrapper or Category-B catch per the prior decision.
+- [ ] Helper renames + sweep tests.
+- [ ] Adopt §2 vocabulary in [features.md](features.md) + [tech-spec.md](tech-spec.md).
+- [ ] Ship [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) to `docs/project-guide/templates/artifacts/` so `project-guide init` scaffolds it.
+- [ ] Migrate this repo's own enumeration: produce `pyve-environment-dependencies-repo_pyve.md` from the template as the dogfood instance.
+
+**Cross-reference.** The driving template is [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) — read §2 (Conventions & Terminology) before plan_phase to align on vocabulary.
 
 ---

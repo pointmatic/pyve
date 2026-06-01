@@ -1524,42 +1524,59 @@ testenv_paths() {
 # Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
 # to the reserved `testenv` (today's behavior). With-arg: load config
 # (idempotent if caller already ran read_testenv_config), validate name
-# via `assert_testenv_name_actionable`, short-circuit on conda backends
-# via `assert_testenv_venv_backend`, then provision at the per-env
-# path resolved by `resolve_testenv_path`.
+# via `assert_testenv_name_actionable`, resolve path via
+# `resolve_testenv_path`.
+#
+# Story M.k: dispatches on the resolved backend — venv envs go through
+# `python -m venv`; conda envs (`backend = "micromamba"` or `inherit`
+# resolving to micromamba) go through `_testenv_init_conda` in
+# `lib/commands/testenv.sh`, which calls `micromamba create -p <path>
+# -f <manifest> -y` from the env's declared `manifest`.
 ensure_testenv_exists() {
     local name="${1:-testenv}"
 
-    # Always load config so we can validate backend + reject undeclared
-    # names. Idempotent if the caller already populated the V3 arrays.
+    # Always load config so we can validate names + dispatch on backend.
+    # Idempotent if the caller already populated the V3 arrays.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
         read_testenv_config
     fi
     assert_testenv_name_actionable "$name" || return 1
-    assert_testenv_venv_backend     "$name" || return 1
 
-    local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path "$name")"
-    testenv_root="${testenv_venv%/venv}"
+    local backend
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+
+    local testenv_env_path testenv_root
+    testenv_env_path="$(resolve_testenv_path "$name")"
+    # Strip either the /venv or /conda suffix to get the env root.
+    testenv_root="${testenv_env_path%/venv}"
+    testenv_root="${testenv_root%/conda}"
 
     mkdir -p "$testenv_root"
 
+    if [[ "$backend" == "micromamba" ]]; then
+        local manifest
+        manifest="$(_testenv_manifest_of "$name")" || manifest=""
+        _testenv_init_conda "$name" "$testenv_env_path" "$manifest"
+        return $?
+    fi
+
+    # Venv backend: today's behavior.
     # If the testenv exists but was built with a different Python version (e.g.
     # the project Python was changed after the initial pyve init, then pyve init
     # --force preserved the old testenv via --keep-testenv), rebuild it.
-    if [[ -d "$testenv_venv" ]] && [[ -f "$testenv_venv/pyvenv.cfg" ]]; then
+    if [[ -d "$testenv_env_path" ]] && [[ -f "$testenv_env_path/pyvenv.cfg" ]]; then
         local testenv_ver current_ver
-        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
+        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_env_path/pyvenv.cfg" 2>/dev/null || true)"
         current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
             warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
-            rm -rf "$testenv_venv"
+            rm -rf "$testenv_env_path"
         fi
     fi
 
-    if [[ ! -d "$testenv_venv" ]]; then
-        info "Creating dev/test runner environment in '$testenv_venv'..."
-        run_cmd python -m venv "$testenv_venv"
+    if [[ ! -d "$testenv_env_path" ]]; then
+        info "Creating dev/test runner environment in '$testenv_env_path'..."
+        run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
     fi
 }

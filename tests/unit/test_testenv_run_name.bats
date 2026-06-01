@@ -129,11 +129,16 @@ TOML
     [[ "$output" == *"bogus"* ]]
 }
 
-@test "testenv run <conda-backed> -- <cmd>: micromamba backend hits M.k stub" {
+@test "testenv run <conda-backed> -- <cmd>: micromamba backend rejected (run is venv-only)" {
+    # Story M.k landed conda init/install but kept `pyve testenv run`
+    # venv-only — PATH-only activation does not set CONDA_PREFIX /
+    # CONDA_PYTHON_EXE. The hard-error points at the `micromamba run`
+    # workaround.
     _fixture_named_envs
     run testenv_command run hardware -- pytest
     [ "$status" -ne 0 ]
-    [[ "$output" == *"M.k"* ]]
+    [[ "$output" == *"hardware"* ]]
+    [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
 }
 
 # ============================================================

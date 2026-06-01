@@ -88,22 +88,34 @@ TOML
 # no-arg with declared named envs: iterate non-lazy, skip lazy
 # ============================================================
 
-@test "testenv install: no-arg with declared envs iterates non-lazy, skips lazy" {
+@test "testenv install: no-arg with declared envs iterates non-lazy (incl. conda after M.k), skips lazy" {
     _fixture_named_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
     _make_fake_named_venv heavy
+    # Story M.k: the conda env now needs its manifest on disk + a fake
+    # micromamba binary so iteration successfully passes through it.
+    mkdir -p tests
+    printf 'name: hardware\ndependencies: [python]\n' > tests/env.yml
+    mkdir -p .pyve/testenvs/hardware/conda/conda-meta   # `install` requires existing env
+    mkdir -p .pyve/bin
+    cat > .pyve/bin/micromamba <<'SH'
+#!/usr/bin/env bash
+printf 'MICROMAMBA:%s\n' "$*"
+exit 0
+SH
+    chmod +x .pyve/bin/micromamba
     _stub_run_cmd_records
 
     run testenv_command install
     [ "$status" -eq 0 ]
-    # testenv + smoke are non-lazy → both installed.
+    # testenv + smoke are non-lazy → both installed via pip.
     [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
     [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
     # heavy is lazy → NOT installed.
     [[ "$output" != *"testenvs/heavy/venv/bin/python"* ]]
-    # hardware is conda-backed → not iterated (would M.k stub anyway).
-    [[ "$output" != *"testenvs/hardware/"* ]]
+    # hardware is conda-backed → installed via micromamba (M.k landed).
+    [[ "$output" == *"MICROMAMBA:install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y"* ]]
 }
 
 @test "testenv install: no-arg with only lazy envs prints info, exits 0" {
@@ -157,11 +169,15 @@ TOML
     [[ "$output" == *"tool.pyve.testenvs"* ]]
 }
 
-@test "testenv install <conda-backed>: M.k stub hard-error" {
+@test "testenv install <conda-backed>: missing manifest file hard-errors (M.k landed)" {
+    # Story M.k landed: conda install routes through `_testenv_install_conda`.
+    # When the declared manifest is missing on disk, surface a clear
+    # error (the fixture declares manifest = "tests/env.yml" without
+    # creating it).
     _fixture_named_envs
     run testenv_command install hardware
     [ "$status" -ne 0 ]
-    [[ "$output" == *"M.k"* ]]
+    [[ "$output" == *"tests/env.yml"* ]]
 }
 
 # ============================================================

@@ -79,7 +79,8 @@ def test_testenv_survives_force_reinit(pyve, project_builder):
 
     # `pyve test` should auto-create the dev/test runner env and (in tests/CI)
     # auto-install pytest without prompting.
-    testenv_python = project_builder.project_dir / ".pyve" / "testenv" / "venv" / "bin" / "python"
+    # Post-M.h.3 layout: `.pyve/testenvs/<name>/{venv,conda}/`.
+    testenv_python = project_builder.project_dir / ".pyve" / "testenvs" / "testenv" / "venv" / "bin" / "python"
 
     result = pyve.run("test", "-q", check=False)
     # If there are no tests, pytest exits 5. Accept that as success signal for wiring.

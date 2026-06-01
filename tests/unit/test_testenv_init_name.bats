@@ -103,10 +103,15 @@ TOML
     [ ! -d ".pyve/testenvs/bogus" ]
 }
 
-@test "testenv init <name>: conda-backed name errors with M.k stub message" {
+@test "testenv init <name>: conda-backed name with missing manifest file hard-errors (M.k)" {
+    # Story M.k landed: conda-backed init/install now route through
+    # `micromamba`. With a declared manifest that does not exist on disk,
+    # the dispatch should hard-error before invoking the binary so no
+    # half-created env is left behind.
     _fixture_named_envs
+    # hardware's manifest = "tests/env.yml" — intentionally NOT created.
     run testenv_command init hardware
     [ "$status" -ne 0 ]
-    [[ "$output" == *"M.k"* ]]
-    [ ! -d ".pyve/testenvs/hardware" ]
+    [[ "$output" == *"tests/env.yml"* ]]
+    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
 }

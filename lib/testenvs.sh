@@ -180,11 +180,35 @@ assert_testenv_name_actionable() {
     return 1
 }
 
-# Story M.i.1: conda-backend stub. Returns 0 for venv-backed envs;
-# 1 (with an M.k-pointing stderr message) for `micromamba` and
-# `inherit` backends. Used by `ensure_testenv_exists` (M.i.1) and
-# by the install/purge leaves (M.i.3/M.i.4) to short-circuit on
-# conda-backed envs until M.k lands the actual implementation.
+# Story M.k: resolve <name>'s effective backend. Returns the concrete
+# literal `venv` or `micromamba` — never `inherit`. For `inherit`, reads
+# the main env's backend from `.pyve/config` via `read_config_value`;
+# falls back to `venv` if no config (matches the bash-only / greenfield
+# project case). For undeclared names, returns `venv`.
+_testenv_resolve_backend() {
+    local name="$1"
+    local raw
+    raw="$(_testenv_backend_of "$name")" || raw="venv"
+    if [[ "$raw" != "inherit" ]]; then
+        printf '%s' "$raw"
+        return 0
+    fi
+    local main_backend
+    main_backend="$(read_config_value backend 2>/dev/null || printf '')"
+    if [[ "$main_backend" == "micromamba" ]]; then
+        printf '%s' "micromamba"
+    else
+        printf '%s' "venv"
+    fi
+}
+
+# Story M.i.1 / M.k: venv-only gate for `pyve testenv run`. Returns 0
+# when the resolved backend is `venv`; 1 (with a stderr error) for
+# `micromamba` (and `inherit` that resolves to micromamba). M.k landed
+# conda-backed init/install, but `pyve testenv run` still uses PATH-only
+# activation and does not set CONDA_PREFIX / CONDA_PYTHON_EXE, so it is
+# kept venv-only for now. Use `micromamba run -p <path> <cmd>` for the
+# conda case (manual workaround).
 assert_testenv_venv_backend() {
     local name="${1:-}"
     if [[ -z "$name" ]]; then
@@ -192,11 +216,11 @@ assert_testenv_venv_backend() {
         return 1
     fi
     local backend
-    backend="$(_testenv_backend_of "$name")" || backend="venv"
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "venv" ]]; then
         return 0
     fi
-    printf "error: conda-backed testenv '%s' (backend=%s) requires backend support not yet implemented (see Story M.k).\n" "$name" "$backend" >&2
+    printf "error: 'pyve testenv run' does not yet support conda-backed testenv '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/testenvs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
     return 1
 }
 
@@ -397,11 +421,12 @@ resolve_testenv_path() {
         migrate_legacy_testenv_layout
     fi
     local backend
-    backend="$(_testenv_backend_of "$name")" || backend="venv"
-    if [[ "$backend" == "micromamba" || "$backend" == "inherit" ]]; then
-        # Note: `inherit` resolution to a concrete backend happens at
-        # provisioning time (M.k). The on-disk layout slot is still
-        # conda-shaped for envs that *will* resolve to micromamba.
+    # Story M.k: dispatch on the *resolved* backend so `inherit` produces
+    # a venv-shaped path when main is venv (and a conda-shaped path when
+    # main is micromamba). Before M.k, `inherit` was unconditionally
+    # conda-shaped; that was wrong for main=venv projects.
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    if [[ "$backend" == "micromamba" ]]; then
         printf '%s' ".pyve/testenvs/${name}/conda"
     else
         printf '%s' ".pyve/testenvs/${name}/venv"
