@@ -92,7 +92,7 @@ TOML
     _make_fake_named_venv_with_state smoke
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env smoke -q
     [ "$status" -eq 0 ]
@@ -106,7 +106,7 @@ TOML
     _make_fake_named_venv_with_state smoke
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env=smoke
     [ "$status" -eq 0 ]
@@ -151,7 +151,7 @@ TOML
     _make_fake_named_venv_with_state heavy
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env heavy -q
     [ "$status" -eq 0 ]
@@ -178,7 +178,7 @@ TOML
     _make_fake_named_venv_with_state smoke
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests -q
     [ "$status" -eq 0 ]
@@ -194,7 +194,7 @@ TOML
     _make_fake_named_venv_with_state testenv
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests -q
     [ "$status" -eq 0 ]
@@ -215,7 +215,7 @@ TOML
     _make_fake_named_venv_with_state testenv
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]
@@ -235,7 +235,7 @@ TOML
 
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env smoke -q
     [ "$status" -eq 0 ]

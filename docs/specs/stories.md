@@ -642,20 +642,27 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.o: [Testenv-DX] Silent-skip advisory generalization (all named envs) [Planned]
+### Story M.o: [Testenv-DX] Silent-skip advisory generalization (all named envs) [Done]
 
 **Why.** M.c's advisory fires only when routing to the default `testenv` and detecting pytest in the main env. With many named envs, the trap surface multiplies: select any named env that lacks deps the tests import, and the run looks green via silent skips. The advisory must hold for **every** env.
 
-**Approach.** Generalize `_test_main_env_has_pytest` → `_test_env_has_pytest <name>` (parameterized over env name). Advisory message names the offending env explicitly. `PYVE_NO_TESTENV_ADVISORY=1` opt-out continues to apply to all envs.
+**Approach (announce-gate decision (a)).** Generalized `_test_main_env_has_pytest` → `_test_env_has_pytest <name>` (parameterized). The advisory in `test_tests` now scans `root` plus every declared env, skipping the target itself; any candidate where `import pytest` succeeds is listed as an alternative the user may have meant.
+
+**Story-body advisory message redirected.** The task body's proposed message text (`pytest not found in env '<name>'…`) describes the *target env lacks pytest* case (today's install-pytest prompt), which is orthogonal to the silent-skip trap M.c generalizes. The "Why" paragraph is the load-bearing intent; the message text was a hasty draft. Implemented the silent-skip generalization only — `pytest not found in env` polish to the install-pytest prompt remains a candidate for a future story, not folded into M.o.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering advisory firing for each backend/env combination — venv testenv, conda testenv, named venv, named conda; opt-out gates the advisory off in all cases.
-- [ ] `_test_env_has_pytest <name>` helper replaces `_test_main_env_has_pytest`.
-- [ ] Advisory message: `pytest not found in env '<name>' — run 'pyve testenv install <name>' or select a different env with --env <other>`.
-- [ ] Update `features.md` FR-11 with the generalized advisory shape.
+- [x] Failing tests first in [tests/unit/test_test_env_advisory.bats](../../tests/unit/test_test_env_advisory.bats): 11 tests covering the helper's name resolution (root probe, named-env probe via `resolve_testenv_path`, missing-env clean return), advisory firing with one alternative, advisory excluding the target, multi-alternative listing, opt-out, no-fire when no candidate has pytest, `--env root` skipping the advisory, M.c regression (root-only advisory still fires). *(RED 8/11 → GREEN 11/11. Full unit suite 1050/1050.)*
+- [x] `_test_env_has_pytest <name>` helper replaces `_test_main_env_has_pytest` in [lib/commands/test.sh](../../lib/commands/test.sh). `<name> == "root"` preserves the M.c root-env resolution (micromamba `.pyve/envs/*` first, else `$DEFAULT_VENV_DIR/bin/python`); any other name resolves via `resolve_testenv_path "$name"` and probes its `bin/python`.
+- [x] Advisory generalized: scans `root` + `list_testenv_names` (minus the target), lists every match. Message text: `Targeted env '<T>' may be missing dependencies from other env(s) that also have pytest installed: <list>` + `If your tests need a different env's stack, try one of: --env <X>, --env <Y>`. Per-the-redirect note above, the install-pytest prompt is unchanged.
+- [x] Sibling test files swept for the mock rename: [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats), [tests/unit/test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats), [tests/unit/test_test_env_lazy_autoprovision.bats](../../tests/unit/test_test_env_lazy_autoprovision.bats) — 14 mock occurrences renamed via `sed`. No assertion text changes were needed; all existing assertions remain valid against the new advisory shape (the M.c-shaped `--env root` text still appears when root is the sole candidate).
+- [x] Update [features.md](features.md) FR-11 — silent-skip advisory paragraph rewritten to describe the M.o generalization (`root` + every declared env, naming alternatives).
 
-**Out of scope.** Strict mode (`strict = true` → missing-dep skip = test failure). Plan doc OS-7; deferred.
+**Tech-spec.md updates.** Replaced the `_test_main_env_has_pytest` row with the `_test_env_has_pytest <name>` row in the `lib/commands/test.sh` table. Updated the `test_tests` row's advisory-block description for the new scan behavior. Updated the M.o consumer-list bullet (landed). Added the new bats file to the test inventory.
+
+**Out of scope.** Strict mode (`strict = true` → missing-dep skip = test failure). Plan doc OS-7; deferred. Polishing the install-pytest prompt with named-env hints (see story-body redirect above); future candidate.
+
+**Version impact.** None — M.o is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

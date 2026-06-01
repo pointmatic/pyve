@@ -124,7 +124,7 @@ SH
 @test "pyve test (testenv routing): advisory when root env has pytest" {
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }          # testenv already has pytest
-    _test_main_env_has_pytest() { return 0; } # ROOT env ALSO has pytest
+    _test_env_has_pytest() { return 0; } # ROOT env ALSO has pytest
     _make_fake_testenv_python
 
     run test_tests -q
@@ -135,7 +135,7 @@ SH
 @test "pyve test (testenv routing): PYVE_NO_TESTENV_ADVISORY=1 suppresses the advisory" {
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 0; } # root env HAS pytest — would normally warn
+    _test_env_has_pytest() { return 0; } # root env HAS pytest — would normally warn
     _make_fake_testenv_python
     export PYVE_NO_TESTENV_ADVISORY=1
 
@@ -147,7 +147,7 @@ SH
 @test "pyve test (testenv routing): no advisory when root env lacks pytest" {
     ensure_testenv_exists() { :; }
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; } # ROOT env has NO pytest
+    _test_env_has_pytest() { return 1; } # ROOT env has NO pytest
     _make_fake_testenv_python
 
     run test_tests -q
@@ -156,7 +156,7 @@ SH
 }
 
 @test "pyve test --env root: no testenv advisory (routed away from testenv)" {
-    _test_main_env_has_pytest() { return 0; }
+    _test_env_has_pytest() { return 0; }
     run_command() { printf 'RUN_COMMAND_ARGS:%s\n' "$*"; }
 
     run test_tests --env root

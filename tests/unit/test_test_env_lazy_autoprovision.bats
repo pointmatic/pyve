@@ -73,7 +73,7 @@ SH
     _fixture_lazy_heavy
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }       # post-provision: pretend pytest is installed
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env heavy -q
     [ "$status" -eq 0 ]
@@ -121,7 +121,7 @@ SH
     # (no `pip install` invocation should appear).
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env heavy -q
     [ "$status" -eq 0 ]
@@ -137,7 +137,7 @@ SH
     _fixture_lazy_heavy
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }
-    _test_main_env_has_pytest() { return 1; }
+    _test_env_has_pytest() { return 1; }
 
     run test_tests --env heavy -q
     [ "$status" -eq 0 ]
