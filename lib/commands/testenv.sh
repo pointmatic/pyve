@@ -6,8 +6,9 @@
 #
 # Single-file namespace command (project-essentials F-9): one file
 # contains the namespace dispatcher (`testenv_command`) and every
-# leaf (`testenv_init`, `testenv_install`, `testenv_purge`,
-# `testenv_run`).
+# leaf (`testenv_init`, `testenv_purge`, `testenv_run`) plus the
+# backend-keyed install helpers (`_testenv_install_venv`,
+# `_testenv_install_conda`).
 #
 # Sub-commands:
 #   pyve testenv init                    Create .pyve/testenvs/testenv/venv
@@ -39,32 +40,121 @@ testenv_init() {
 }
 
 #------------------------------------------------------------
-# Leaf: pyve testenv install [-r <requirements_file>]
+# Story M.l: venv-backed install with source dispatch.
 #
-# Pre-condition: testenv must already exist. Without -r, installs
-# bare `pytest`. With -r, installs from the named requirements file.
+# Renamed from `testenv_install` for symmetry with M.k's
+# `_testenv_install_conda`. Pre-condition: the venv must already
+# exist at `<env_path>`. Dispatches on the highest-precedence
+# install source available (1 = top precedence):
+#
+#   1. CLI `-r <file>` (today's explicit-override behavior).
+#   2. Declared `[tool.pyve.testenvs.<name>].requirements = ["a","b",...]`
+#      → `pip install -r a -r b ...`.
+#   3. Declared `[tool.pyve.testenvs.<name>].extra = "<extra>"`
+#      → resolve `[project.optional-dependencies].<extra>` via the
+#      Python helper, `pip install <pkg1> <pkg2> ...`.
+#   4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
+#   5. Bare `pytest` fallback (pre-M.l default).
+#
+# Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the
+# M.g Python helper at config-read time, so by the time we get here
+# at most one of (2) and (3) is non-empty.
 #------------------------------------------------------------
 
-testenv_install() {
-    local testenv_venv="$1"
-    local requirements_file="$2"
+_testenv_install_venv() {
+    local name="$1"
+    local env_path="$2"
+    local cli_req_file="$3"
 
-    if [[ ! -x "$testenv_venv/bin/python" ]]; then
+    if [[ ! -x "$env_path/bin/python" ]]; then
         log_error "Dev/test runner environment not initialized"
-        log_error "Run: pyve testenv init"
+        log_error "Run: pyve testenv init $name"
         exit 1
     fi
-    info "Installing dev/test dependencies into '$testenv_venv'..."
-    if [[ -n "$requirements_file" ]]; then
-        if [[ ! -f "$requirements_file" ]]; then
-            log_error "Requirements file not found: $requirements_file"
+    info "Installing dev/test dependencies into '$env_path'..."
+
+    # Precedence 1: CLI `-r <file>` always wins.
+    if [[ -n "$cli_req_file" ]]; then
+        if [[ ! -f "$cli_req_file" ]]; then
+            log_error "Requirements file not found: $cli_req_file"
             exit 1
         fi
-        run_cmd "$testenv_venv/bin/python" -m pip install -r "$requirements_file"
-    else
-        run_cmd "$testenv_venv/bin/python" -m pip install pytest
+        run_cmd "$env_path/bin/python" -m pip install -r "$cli_req_file"
+        success "Dev/test dependencies installed"
+        return 0
     fi
+
+    # Precedence 2: declared `requirements = [...]`.
+    local -a declared_reqs=()
+    _testenv_requirements_of "$name" declared_reqs 2>/dev/null || true
+    if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
+        local r
+        local -a r_args=()
+        for r in "${declared_reqs[@]}"; do
+            if [[ ! -f "$r" ]]; then
+                log_error "Declared requirements file not found: $r"
+                log_error "(declared as [tool.pyve.testenvs.$name].requirements)"
+                exit 1
+            fi
+            r_args+=("-r" "$r")
+        done
+        run_cmd "$env_path/bin/python" -m pip install "${r_args[@]}"
+        success "Dev/test dependencies installed"
+        return 0
+    fi
+
+    # Precedence 3: declared `extra = "<name>"`.
+    local declared_extra
+    declared_extra="$(_testenv_extra_of "$name" 2>/dev/null || printf '')"
+    if [[ -n "$declared_extra" ]]; then
+        local -a pkgs=()
+        if ! _testenv_resolve_extra_packages "$declared_extra" pkgs; then
+            exit 1
+        fi
+        if [[ "${#pkgs[@]}" -eq 0 ]]; then
+            info "Extra '$declared_extra' has no packages — skipping install"
+            return 0
+        fi
+        run_cmd "$env_path/bin/python" -m pip install "${pkgs[@]}"
+        success "Dev/test dependencies installed"
+        return 0
+    fi
+
+    # Precedence 4: auto-detect requirements-dev.txt.
+    if [[ -f "requirements-dev.txt" ]]; then
+        run_cmd "$env_path/bin/python" -m pip install -r "requirements-dev.txt"
+        success "Dev/test dependencies installed"
+        return 0
+    fi
+
+    # Precedence 5: bare pytest fallback.
+    run_cmd "$env_path/bin/python" -m pip install pytest
     success "Dev/test dependencies installed"
+}
+
+# Story M.l: invoke the Python helper's `--resolve-extra` mode to
+# expand a declared `extra = "<name>"` into a concrete package list.
+# Populates the caller-named array `<out_var>`. Returns non-zero
+# (with helper's stderr already on the terminal) when the extra is
+# not declared in `[project.optional-dependencies]` or pyproject.toml
+# is missing.
+_testenv_resolve_extra_packages() {
+    local extra_name="$1"
+    local out_var="$2"
+    local py="${PYVE_PYTHON:-python}"
+    local pyproject="${PYVE_PYPROJECT:-pyproject.toml}"
+    local pkg_lines rc=0
+    pkg_lines="$("$py" "$_PYVE_TESTENVS_HELPER" --resolve-extra "$pyproject" "$extra_name")" || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        return "$rc"
+    fi
+    eval "$out_var=()"
+    local line
+    while IFS= read -r line; do
+        [[ -z "$line" ]] && continue
+        eval "$out_var+=(\"\$line\")"
+    done <<< "$pkg_lines"
+    return 0
 }
 
 #------------------------------------------------------------
@@ -193,11 +283,14 @@ _testenv_release_install_lock() {
 }
 
 # Wraps a testenv install with acquire/release. A `trap` covers the
-# `exit 1` paths inside testenv_install (existence check, missing
+# `exit 1` paths inside the install helpers (existence checks, missing
 # requirements file) and SIGINT/SIGTERM so the lock dir never strands
 # the env. Story M.k: dispatches on the resolved backend so a
 # conda-backed env goes through `_testenv_install_conda` (manifest-
-# driven sync) instead of `testenv_install` (pip).
+# driven sync); Story M.l: venv backend goes through
+# `_testenv_install_venv` (renamed from `testenv_install`), which
+# itself dispatches on declared sources (`requirements`/`extra`/
+# auto-detect/bare-pytest).
 _testenv_install_with_lock() {
     local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
     _testenv_acquire_install_lock "$name" "$lock_mode" || return $?
@@ -210,7 +303,7 @@ _testenv_install_with_lock() {
         manifest="$(_testenv_manifest_of "$name")" || manifest=""
         _testenv_install_conda "$name" "$env_path" "$manifest" || rc=$?
     else
-        testenv_install "$env_path" "$req_file" || rc=$?
+        _testenv_install_venv "$name" "$env_path" "$req_file" || rc=$?
     fi
     _testenv_release_install_lock "$name"
     trap - EXIT INT TERM

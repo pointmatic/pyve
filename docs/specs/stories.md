@@ -546,24 +546,35 @@ Acquired around `pyve testenv install <name>` and any auto-provision path (M.m).
 
 ---
 
-### Story M.l: [Testenv-DX] venv manifest sources — `requirements` and `extra` [Planned]
+### Story M.l: [Testenv-DX] venv manifest sources — `requirements` and `extra` [Done]
 
 **Why.** Venv-backed testenvs need both `requirements = ["…"]` (one or more pip manifests) and `extra = "<name>"` (named optional-dependency extra from `pyproject.toml`).
 
-**Approach.** Extend `_testenv_install_venv` in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) to dispatch on the declared source:
+**Approach.** Renamed `testenv_install` → `_testenv_install_venv` in [lib/commands/testenv.sh](../../lib/commands/testenv.sh) (symmetry with M.k's `_testenv_install_conda`) and grew its signature to take `<name>` so it can read declarations. Five-stage source dispatch (highest precedence first):
 
-- `requirements = ["a.txt", "b.txt"]` → `pip install -r a.txt -r b.txt`.
-- `extra = "dev"` → resolve via Python helper (extract `[project.optional-dependencies].dev`, install).
-- Neither declared → fallback to legacy `-r requirements-dev.txt` (preserves FR-M.4 light default).
+1. CLI `-r <file>` (today's explicit-override behavior).
+2. Declared `requirements = ["a","b"]` → `pip install -r a -r b`.
+3. Declared `extra = "<name>"` → resolve `[project.optional-dependencies].<name>` via the Python helper's new `--resolve-extra` mode, `pip install <pkg1> <pkg2> ...`.
+4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
+5. Bare `pytest` fallback (pre-M.l default).
+
+Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Python helper at config-read time, so by dispatch time at most one of (2) and (3) is non-empty.
+
+**Naming choice (announce-gate decision (a)).** Renaming over extending-in-place: blast radius was ~1 production caller (`_testenv_install_with_lock`) plus two fixtures, in exchange for the readable `_testenv_install_venv` / `_testenv_install_conda` symmetry in the lock wrapper.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering `requirements` list (multi-file), `extra` extraction from a `pyproject.toml`, fallback when neither declared, validation error when both declared.
-- [ ] `_testenv_install_venv` extension.
-- [ ] Python helper extension (from M.g `lib/testenvs.sh`) to extract `[project.optional-dependencies].<name>`.
-- [ ] Update `docs/site/testing.md` with the three source patterns (folds into M.s sweep).
+- [x] Failing tests first in [tests/unit/test_testenv_venv_manifest.bats](../../tests/unit/test_testenv_venv_manifest.bats): 11 tests covering `requirements` single/multi-file + missing-file hard-error; `extra` resolution from `[project.optional-dependencies]` + missing-extra hard-error; auto-detect `requirements-dev.txt`; bare-`pytest` fallback; CLI `-r` override of both declared sources; M.g mutex validation; mixed iteration (one env with `extra`, one with `requirements`). *(RED 7/11 → GREEN 11/11. Full unit suite 1019/1019.)*
+- [x] Rename `testenv_install` → `_testenv_install_venv` and grow its dispatch in [lib/commands/testenv.sh](../../lib/commands/testenv.sh). Updated caller `_testenv_install_with_lock` to use the new name and pass `<name>`. New private `_testenv_resolve_extra_packages` invokes the helper's `--resolve-extra` mode and populates a caller-named array.
+- [x] Python helper extension — added `--resolve-extra <pyproject> <extra_name>` side mode to [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py). Emits one package spec per line on success; exits 2 with a precise stderr message for missing pyproject, undeclared extra (lists available extras), or non-list extra value.
+- [x] Fixture updates: [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats) `_fixture_named_envs` now creates the declared `requirements-dev.txt` + `tests/smoke-requirements.txt` files on disk; [tests/unit/test_testenv_conda.bats](../../tests/unit/test_testenv_conda.bats) `_fixture_mixed_envs` does the same for `requirements-dev.txt`. Pre-M.l the declarations were inert; post-M.l they must resolve.
+- [ ] Update `docs/site/testing.md` with the three source patterns (deferred to the M.s bundle-wide user-facing docs sweep — its scope per the existing story).
+
+**Tech-spec.md updates.** Extended the `lib/commands/testenv.sh` function table with `_testenv_install_venv` (replacing the old `testenv_install` row) and `_testenv_resolve_extra_packages`. Added a "Side mode: `--resolve-extra`" paragraph under the existing Validation-locus paragraph in the `lib/testenvs.sh` section. Updated the consumer-list bullet for M.l to mark it landed. Added [test_testenv_venv_manifest.bats](../../tests/unit/test_testenv_venv_manifest.bats) to the test inventory.
 
 **Out of scope.** Editable installs (`pip install -e .`) — existing [Editable install and testenv dependency management](../project-guide/templates/artifacts/pyve-essentials.md) policy covers this; no change.
+
+**Version impact.** None — M.l is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

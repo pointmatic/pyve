@@ -89,6 +89,10 @@ requirements = ["requirements-dev.txt"]
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
+    # Story M.l: testenv's declared `requirements = [...]` is now consumed
+    # at install time, so the file must exist on disk for iteration tests
+    # that exercise the testenv install path.
+    printf 'pytest\n' > requirements-dev.txt
 }
 
 _make_fake_named_venv() {

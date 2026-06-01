@@ -70,6 +70,14 @@ lazy = true
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
+    # Story M.l: declared `requirements = [...]` is now consumed at
+    # install time (pre-M.l the declaration was inert and `pyve testenv
+    # install` defaulted to bare pytest). Create the declared files
+    # on disk so the fixture stays usable across the install tests.
+    mkdir -p tests
+    printf 'pytest\n' > requirements-dev.txt
+    printf 'pytest-asyncio\n' > tests/smoke-requirements.txt
+    # heavy's file does not need to exist (lazy = true → never iterated).
 }
 
 # ============================================================

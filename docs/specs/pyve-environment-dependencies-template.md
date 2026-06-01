@@ -80,8 +80,12 @@ Additions](#8-proposed-canonical-backend-additions).
   `testenv`. Additional environments use distinct names (e.g. `testenv-integration`,
   `testenv-min`). Each maps to exactly one backend.
 - **Backend** — the environment-management mechanism pyve uses to materialize an
-  environment. Values are **specific mechanism names** (e.g. `venv`, `micromamba`,
-  `homebrew`, `apt`), never generic categories. The special value **`none`** means there is
+  environment. Values are **specific mechanism names** (e.g. `venv`, `micromamba`, `npm`,
+  `pnpm`, `yarn`, `homebrew`, `apt`, `docker`, `podman`), never generic categories.
+  Closely-related mechanisms with leaky behavioral differences are kept as **separate
+  flavored values** (e.g. `docker` vs `podman`, `homebrew` vs `apt`, `npm` vs `pnpm` vs
+  `yarn`) rather than a single generic backend, so each flavor's quirks are codified once
+  instead of patched per repo. The special value **`none`** means there is
   no formal configuration mechanism — the environment is the bare OS. Since every
   environment ultimately runs on a system, `none` is the implicit default for any surface
   that pyve does not materialize. See [§3](#3-backend-catalog).
@@ -130,6 +134,21 @@ Choose a non-`venv` backend only with a stated reason (recorded per environment 
 (installed ad-hoc on the host, or materialized at runtime) uses backend `none` — the bare
 OS. Use a specific name (`homebrew`, `apt`, ...) instead whenever a real mechanism exists,
 even if pyve does not yet treat it as canonical (record it as `proposed` and cross-ref §8).
+
+**On container flavors:** `docker` and `podman` are **distinct backends that share a single
+OCI `Dockerfile`** manifest — they diverge in *runtime behavior* (socket path, mount/SELinux
+flags, rootless/userns, compose provider, BuildKit vs Buildah), not in the manifest. Pick
+the flavor that matches the target host; pin the image by digest (`@sha256:...`) for
+reproducibility. A container backend is also an *isolation level* and may nest another
+backend (e.g. a `Dockerfile` that runs `pip install` or `apt-get`).
+
+**Backend tiers (for orientation):** backends fall into rough tiers — *language-env*
+(`venv`, `micromamba`, `npm`, `pnpm`, `yarn`: a project-local dependency dir + a runtime +
+a lockfile), *host-package* (`homebrew`, `apt`: OS-level tools), and *isolation*
+(`docker`, `podman`: an OS boundary that may nest the others). Node flavors `npm`/`pnpm`/
+`yarn` share a `package.json` declaration but diverge in **both** lockfile
+(`package-lock.json` / `pnpm-lock.yaml` / `yarn.lock`) and `node_modules` layout (hoisted vs
+pnpm's symlinked store vs Yarn PnP), which is why they are separate flavors.
 
 ---
 

@@ -123,7 +123,49 @@ def emit(cfg, out):
     )
 
 
+def resolve_extra(pyproject, extra_name):
+    """Story M.l: extract [project.optional-dependencies].<extra_name> from
+    <pyproject>. Emits one package spec per line to stdout. Hard-errors
+    (exit 2, stderr message) when the file is missing or the extra is
+    not declared — pyve's M.l dispatch surfaces both as "extra not
+    resolvable" rather than silently installing an empty package list."""
+    if not pyproject.exists():
+        print(
+            f"error: pyve.testenvs: pyproject.toml not found at '{pyproject}'",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    with pyproject.open("rb") as f:
+        data = tomllib.load(f)
+    extras = data.get("project", {}).get("optional-dependencies", {})
+    if extra_name not in extras:
+        available = ", ".join(sorted(extras.keys())) or "(none declared)"
+        print(
+            f"error: pyve.testenvs: extra '{extra_name}' not found in "
+            f"[project.optional-dependencies] (available: {available})",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    pkgs = extras[extra_name]
+    if not isinstance(pkgs, list):
+        print(
+            f"error: pyve.testenvs: [project.optional-dependencies].{extra_name} "
+            f"is not a list",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    for p in pkgs:
+        print(p)
+
+
 def main():
+    # Story M.l: `--resolve-extra <pyproject> <extra_name>` is a side
+    # mode used by `_testenv_install_venv` to expand a declared
+    # `extra = "<name>"` into its concrete package list. Default mode
+    # (no flag) is M.g's V3-array emission.
+    if len(sys.argv) >= 4 and sys.argv[1] == "--resolve-extra":
+        resolve_extra(Path(sys.argv[2]), sys.argv[3])
+        sys.exit(0)
     pyproject = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("pyproject.toml")
     cfg = load(pyproject)
     errors = validate(cfg)
