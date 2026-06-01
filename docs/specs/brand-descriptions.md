@@ -17,21 +17,23 @@ Wrangle your virtual environments
 
 ## Long Tagline
 
-Wrangle your Python virtual environments.
+Wrangle all your virtual environments.
 
 ## One-liner
 
-A single, easy entry point for Python virtual environments.
+A single, easy entry point for managing virtual environments.
 
 ### Friendly Brief Description (follows one-liner)
 
-Pyve orchestrates Python virtual environments (init, auto-activate, purge) — auto-detects and configures asdf/pyenv, venv/micromamba, and direnv.
+Pyve orchestrates virtual environments with any stack combo (init, auto-activate, purge) — auto-detects and configures asdf/pyenv, venv/micromamba/pnpm/docker/etc, and direnv.
 
 ## Two-clause Technical Description
 
-A command-line tool that simplifies setting up and managing Python virtual environments on macOS and Linux, orchestrating Python version managers, venv and micromamba backends, and direnv in a single script.
+A command-line tool that simplifies setting up and managing just about any stack combination in virtual environments on macOS and Linux, orchestrating many languages (Python, Node.js, Ruby, etc.) with a broad choice of backends (venv, micromamba, pnpm, Docker/Podman, Homebrew, apt, etc.) all activated seamlessly with direnv.
 
 ## Benefits
+
+**NEEDS REVISION for Pyve 3.0**
 
 - One-command environment setup (`pyve init`)
 - Dual backend support — venv (pip) and micromamba (conda-compatible)
@@ -43,15 +45,21 @@ A command-line tool that simplifies setting up and managing Python virtual envir
 
 ## Technical Description
 
+**NEEDS REVISION for Pyve 3.0**
+
 Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing Python virtual environments on macOS and Linux. It orchestrates Python version management (asdf or pyenv), virtual environments (venv or micromamba), and direnv integration in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
 
 ## Keywords
+
+**NEEDS REVISION for Pyve 3.0**
 
 `python`, `virtual-environment`, `asdf`, `pyenv`, `venv`, `micromamba`, `conda`, `direnv`, `environment-manager`, `cli`, `bash`, `macos`, `linux`, `devtools`
 
 ---
 
 ## Feature Cards
+
+**NEEDS REVISION for Pyve 3.0**
 
 Short blurbs for landing pages and feature grids. Each card has a title and a one-to-two sentence description.
 
@@ -75,8 +83,8 @@ Short blurbs for landing pages and feature grids. Each card has a title and a on
 | `README.md` line 7 | Two-clause Technical Description |
 | `README.md` line 13 | Benefits (inline) |
 | `README.md` line 11 | Technical Description |
-| `docs/index.html` hero `<h1>` | One-liner |
-| `docs/index.html` hero `<p>` | Friendly Brief Description |
-| `docs/index.html` feature grid | Feature Cards |
+| `docs/site/index.html` hero `<h1>` | One-liner (MkDocs) |
+| `docs/site/index.html` hero `<p>` | Friendly Brief Description (MkDocs) |
+| `docs/site/index.html` feature grid | Feature Cards (MkDocs) |
 | `docs/specs/features.md` line 1 | One-liner + Long Tagline |
 | (GitHub Repository) | One-liner + ":" + Long Tagline |
