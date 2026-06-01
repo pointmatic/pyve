@@ -28,6 +28,197 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 
 
+## Phase N: Pyve 3.0 — Plugin Architecture & Named Envs
+
+**Theme.** Generalize Pyve from a Python-only virtual-environment manager into a declarative, polyglot project-environment orchestrator. Introduce the canonical root-level `pyve.toml` manifest with `[env.<name>]` blocks carrying `purpose ∈ {run, test, utility, temp}`; re-seat the Python ecosystem as the first reference plugin behind a backend-provider contract; ship Node/SvelteKit as the second reference plugin; compose `.envrc`, `pyve check`, `pyve status`, and `pyve purge` across plugins and envs; introduce `pyve deploy` as an artifact-materialization hook. Driving artifact: [phase-n-plugin-architecture-named-envs-plan.md](phase-n-plugin-architecture-named-envs-plan.md). Concept input: [phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md).
+
+**Structure — read before drafting any Phase N story.** Phase N is split into **8 subphases** because of its size. Stories are authored **one subphase at a time** — each subphase's stories get drafted in its own `plan_production_phase` session immediately before that subphase's implementation begins. This planning session drafted only **Subphase N-1**; N-2 through N-8 carry descriptions only. Subphase IDs are arabic-numeral-hyphenated (`N-1`, `N-2`, …) and are **structural markers in this file, not part of the story-ID scheme**. Story letters (`N.a`, `N.b`, …) continue monotonically **across subphases** — if N-1 ends at `N.j`, N-2 starts at `N.k`. Subphase headings in this file use `##` (same level as the phase heading) per the project convention.
+
+**Two release tags (exception to Version Cadence).** Phase N ships **two** releases — the only post-1.0 phase to do so:
+
+- **v3.0.0** at the end of Subphase N-7 (after the architectural cutover).
+- **v3.1.0** at the end of Subphase N-8 (UX visual refinement + hard migration gate).
+
+Within each subphase, stories run unversioned during work; the subphase contributes to its assigned release bundle. **No intermediate release tags between subphases within a bundle.**
+
+---
+
+## Subphase N-1: Declarative `pyve.toml` manifest with `envs`/`purpose:` vocabulary
+
+Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `[env.<name>]` blocks; rename `testenvs → envs` with `purpose` attribute; ship the deterministic `pyve self migrate` command; add the v3.0 soft migration banner; preserve v3.0-only read-compat for legacy `[tool.pyve.testenvs.*]` and `.pyve/config`. This subphase is the foundation everything else builds on. Full detail per story below; bundles into **v3.0.0** with N-2 through N-7.
+
+### Story N.a: `pyve.toml` schema + Python TOML helper [Planned]
+
+**Motivation.** v3.0 introduces a single canonical declarative manifest at the repo root: `pyve.toml`. This story lays the schema and parse foundation so every subsequent N-1 story can read/write the v3 shape. No CLI surface change in this story.
+
+**Tasks**
+
+- [ ] Define `pyve.toml` schema in [tech-spec.md](tech-spec.md): `[project]`, `[env.<name>]` with `purpose` / `backend` / `path` / structured attributes (`app_type`, `frameworks`, `languages`); schema-version key `pyve_schema = "3.0"`.
+- [ ] New `lib/pyve_toml_helper.py` — TOML read/parse mirroring [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py); exposes the same Bash-callable surface.
+- [ ] New `lib/manifest.sh` — Bash shim over the Python helper: `manifest_load`, `manifest_get_env`, `manifest_list_envs`, `manifest_get_purpose`, etc.
+- [ ] Bats unit tests for round-trip parse + every documented schema field.
+- [ ] No CLI dispatcher changes — covered in later stories.
+
+### Story N.b: `lib/envs.sh` + `lib/commands/env.sh` rename (`testenvs` → `envs`) [Planned]
+
+**Motivation.** The `testenvs` vocabulary is an accidental holdover from when Pyve only knew about one extra env. v3.0 generalizes to `envs`. This story is the source-tree rename + helper-name sweep; the user-facing CLI rename lands in Story N.c.
+
+**Tasks**
+
+- [ ] Rename [lib/testenvs.sh](../../lib/testenvs.sh) → `lib/envs.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh) (no glob sourcing per [project-essentials.md](project-essentials.md)).
+- [ ] Rename [lib/commands/testenv.sh](../../lib/commands/testenv.sh) → `lib/commands/env.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh).
+- [ ] Rename helper functions: `_testenv_*` → `_env_*`, `testenv_*` → `env_*`, `*_testenv_*` → `*_env_*`; namespace dispatcher `testenv_command` → `env_command` (Story N.c registers the new dispatcher arm).
+- [ ] Function-name collision check (per [project-essentials.md](project-essentials.md) F-11 rule): grep for `env`, `env_init`, `env_install`, `env_run`, `env_purge` as bare commands invoked by Pyve; confirm zero shadow risks. (`env` itself is a POSIX utility but is not invoked by Pyve internally — verify with `grep -nE '(\$\(|\`|^|\s|;|\|\|?)env\s' pyve.sh lib/*.sh lib/commands/*.sh`.)
+- [ ] Sweep Bats tests: ~1000 assertions touching old function names; update to new names. Test scripts that source `lib/testenvs.sh` directly need their path updated.
+- [ ] Sweep `_testenv_paths`, `ensure_testenv_exists`, `purge_testenv_dir` and related shared helpers in [lib/utils.sh](../../lib/utils.sh) to `_env_paths`, etc.
+
+### Story N.c: `pyve env` CLI dispatcher + `pyve testenv` legacy sugar [Planned]
+
+**Motivation.** Register the new `pyve env <sub>` namespace and keep the existing `pyve testenv <sub>` working as legacy sugar through the v3.x deprecation window.
+
+**Tasks**
+
+- [ ] Add `env)` arm to [pyve.sh](../../pyve.sh)'s case dispatcher invoking `env_command "$@"`.
+- [ ] Implement `pyve testenv` as a **Category A delegation wrapper** (per [project-essentials.md](project-essentials.md) deprecation policy, with the documented exception — `pyve testenv` is high-traffic enough that hard-error breakage is the worse outcome). Wrapper prints a `deprecation_warn` once per shell, then re-dispatches to `env_command "$@"`.
+- [ ] `pyve testenv --help` and `pyve env --help` show identical content with a one-line "renamed from `pyve testenv`" note on the legacy form.
+- [ ] Bats tests: every `pyve testenv <sub>` invocation works exactly as before; deprecation warning fires once per shell.
+
+### Story N.d: `purpose:` attribute + selector semantics [Planned]
+
+**Motivation.** The `purpose: {run, test, utility, temp}` attribute is the cornerstone of the v3 env model — it lets one mechanism host test envs, utility/dev-tooling envs, run/runtime envs, and ephemeral envs without overloading "test."
+
+**Tasks**
+
+- [ ] Extend [lib/manifest.sh](../../lib/manifest.sh) (from N.a) with `manifest_get_purpose <env>` returning one of `run | test | utility | temp`.
+- [ ] Default-purpose rules: env name `testenv` → `purpose = "test"`; env name `root` → `purpose = "utility"`; otherwise → `purpose = "utility"`. Explicit `purpose = ...` always wins.
+- [ ] `pyve test --env <name>` (existing surface) restricts to `purpose: test` envs; selecting a non-`test` env hard-errors with a precise hint (`pyve env run <name>` for `purpose: utility`, etc.).
+- [ ] Update [features.md](features.md) and [tech-spec.md](tech-spec.md) sections covering the env model.
+- [ ] Bats tests for each purpose's default-rule + the `--env` selector behavior.
+
+### Story N.e: `pyve init` writes `pyve.toml` on fresh projects [Planned]
+
+**Motivation.** Wire `pyve init` to scaffold `pyve.toml` for fresh projects. **Existing v2-configured projects are not auto-migrated by `pyve init`** — they hit the soft migration banner (Story N.h) and are directed to `pyve self migrate` (Story N.g). This keeps `pyve init` semantically clean.
+
+**Tasks**
+
+- [ ] `pyve init` (no `pyve.toml` and no v2 sources) writes a fresh `pyve.toml` with `[project]`, `[env.root]` (`purpose = "utility"`), and (when a Python interpreter is selected during init) `[env.testenv]` (`purpose = "test"`, `default = true`).
+- [ ] `pyve init` (no `pyve.toml` but v2 sources detected) prints the soft migration banner from Story N.h and exits with a hint pointing at `pyve self migrate`; does **not** auto-migrate.
+- [ ] `pyve init` (existing `pyve.toml`) is a refresh: re-validates the manifest, updates managed files, leaves the manifest content alone.
+- [ ] Remove the `.pyve/config` write path from `pyve init`; legacy YAML is read-only from v3.0 onward (Story N.i).
+- [ ] Bats integration tests for each of the three branches.
+
+### Story N.f: State directory final path — `.pyve/testenvs/<name>/` decision [Planned]
+
+**Motivation.** The v3 state layout needs a decided path. Candidates: consolidate under `.pyve/envs/` (but `.pyve/envs/` is currently micromamba's main-env namespace — needs disambiguation); `.pyve/environments/`; or keep `.pyve/testenvs/` and only rename at the CLI/schema layer. **Decision is made in this story's first task.** Actual relocation happens inside `pyve self migrate` (Story N.g).
+
+**Tasks**
+
+- [ ] **Decision task** — pick the final v3 state directory path. Document the choice + rationale in this story body before continuing. Reference the concept doc § 2 candidates ([phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md)).
+- [ ] Update [tech-spec.md](tech-spec.md) with the chosen path + the v2 → v3 path-mapping table.
+- [ ] Update all path-construction helpers in [lib/envs.sh](../../lib/envs.sh) (from N.b) to use the chosen path. Tests sweep to match.
+- [ ] Confirm `is_asdf_active()` + `.envrc` template generation (per [project-essentials.md](project-essentials.md)) still work with the new path.
+
+### Story N.g: `pyve self migrate` — v2 → v3 migration command [Planned]
+
+**Motivation.** The load-bearing migration story. Deterministic, idempotent command that brings any v2.7/v2.8 project to v3 in one invocation: writes `pyve.toml` from legacy artifacts, backs them up, runs `pyve init --force` to rebuild envs at the new state layout. This is the path the soft banner (N.h) and (eventually) the v3.1 hard gate (N-8) point users to.
+
+**Tasks**
+
+- [ ] Implement `self_migrate()` in [lib/commands/self.sh](../../lib/commands/self.sh) (per the *Namespace commands are single files* rule in [project-essentials.md](project-essentials.md)).
+- [ ] Detection step: returns clean if no v2 configuration is present (no `.pyve/config`, no `[tool.pyve.testenvs.*]`, no `.pyve/testenvs/`). Otherwise proceed.
+- [ ] Manifest generation: translate `.pyve/config` (YAML) + each `[tool.pyve.testenvs.<name>]` block into the v3 `[env.<name>]` shape in a new `pyve.toml`. Former testenv blocks get `purpose = "test"`; the main-env block becomes `[env.root]` with `purpose = "utility"`.
+- [ ] Backup step: move `.pyve/config`, the `[tool.pyve.testenvs.*]` section of `pyproject.toml`, and the old `.pyve/testenvs/` tree into `.pyve/.v2-legacy/` (preserving structure). Keep for one release cycle so the user can roll back.
+- [ ] Rebuild step: invoke `pyve init --force` to rebuild envs at the new state layout (decided in N.f).
+- [ ] Summary print: list what was migrated, where the backup lives, and a `pyve check` recommendation to verify.
+- [ ] Flags: `--dry-run` (print plan without writing); `--no-rebuild` (write `pyve.toml` + backup only, skip `init --force`).
+- [ ] Idempotency: re-running `pyve self migrate` on an already-migrated project is a no-op with a clean message.
+- [ ] `show_self_migrate_help` function added to [lib/commands/self.sh](../../lib/commands/self.sh) per the per-command help convention.
+- [ ] Bats integration tests: v2.7.x → v3 happy path; v2.8.x → v3 happy path; idempotency; `--dry-run`; `--no-rebuild`; rollback from `.pyve/.v2-legacy/`.
+
+### Story N.h: Soft migration banner on `pyve <cmd>` in v2-configured projects [Planned]
+
+**Motivation.** Every `pyve <cmd>` invocation in a v2-configured project should nudge the user toward migration without forcing it. Soft in v3.0; the hard gate replaces this in N-8.
+
+**Tasks**
+
+- [ ] Pre-dispatch hook in [pyve.sh](../../pyve.sh)'s `main()` (before the case dispatcher). Detection helper from Story N.g returns "v2-configured" iff legacy sources present AND no `pyve.toml`.
+- [ ] One-shot soft banner (per shell session, per cwd): *"Pyve v3 detected v2 configuration. Run `pyve self migrate` to upgrade — legacy support ends at v3.1."*
+- [ ] Suppress under `PYVE_QUIET=1` or `--quiet` (existing primitive in [lib/ui/core.sh](../../lib/ui/core.sh)).
+- [ ] Per-session memoization: write a sentinel under `$XDG_STATE_HOME/pyve/migrate-banner-shown` (or fallback `$HOME/.local/state/pyve/`) keyed by project root, so the banner doesn't repeat for the same project in the same shell.
+- [ ] After the banner, control passes to the existing dispatcher; the command continues to execute via the read-compat layer (Story N.i).
+- [ ] Bats tests: banner appears once per shell session; suppressed under `PYVE_QUIET`; does not fire in a v3-configured project; does not fire in a no-config bare directory.
+
+### Story N.i: Read-compat layer — v3.0 reads legacy sources [Planned]
+
+**Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Subphase N-8 removes the layer.
+
+**Tasks**
+
+- [ ] In [lib/manifest.sh](../../lib/manifest.sh): when `pyve.toml` is absent but legacy sources exist, parse them and emit a synthesized in-memory `pyve.toml`-equivalent so the rest of Pyve sees the v3 shape.
+- [ ] Each legacy-source read emits a one-shot `deprecation_warn` per shell.
+- [ ] Bats tests: a v2.8.0 project layout (sources present, no `pyve.toml`) installs cleanly under v3.0; `pyve test --env <name>` works against legacy `[tool.pyve.testenvs.*]`; deprecation warning fires once.
+- [ ] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) and flag the N-8 removal point.
+- [ ] The legacy-read code path is clearly marked (e.g., `# v3.0-only: remove in N-8`) so the N-8 sweep is mechanical.
+
+### Story N.j: Append project-essentials entries for N-1 [Planned]
+
+**Motivation.** Capture must-know facts that surfaced during N-1 so future contributors (and future LLM sessions) don't re-derive them.
+
+**Tasks**
+
+- [ ] `pyve.toml` as canonical declaration; `.pyve/` = state only.
+- [ ] `purpose:` vocabulary (run/test/utility/temp) + default-purpose rules.
+- [ ] Category A delegation for `pyve testenv *` (the documented exception to the Category B policy).
+- [ ] The v2→v3 migration model: `pyve self migrate` (deterministic), v3.0 soft banner, v3.1 hard gate.
+- [ ] Read-compat window policy (v3.0 only; removed in N-8).
+- [ ] Final state-directory path decision from Story N.f.
+- [ ] `.pyve/.v2-legacy/` backup location.
+- [ ] Skip the story entirely if N-1 surfaced no new invariants beyond what's already captured.
+
+---
+
+## Subphase N-2: Plugin / backend-provider contract — Python as first reference plugin
+
+Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend declaration, detection, lifecycle, activation, diagnostics, `.gitignore`, smart-purge) and re-seat the Python ecosystem behind it as the dog-food reference. No new user-facing surface; existing Python behavior preserved via the contract. Resolves **PC-1** (plugin contract input safety). Story breakdown deferred to its own `plan_production_phase` session, kicked off when N-1 ships. Bundles into **v3.0.0**.
+
+---
+
+## Subphase N-3: Node/SvelteKit second reference plugin
+
+Implement the Node plugin with `pnpm`/`npm`/`yarn` backend-providers and a SvelteKit detection rule. Proves the contract generalizes beyond Python. Story breakdown deferred. Bundles into **v3.0.0**.
+
+---
+
+## Subphase N-4: Composed activation, diagnostics, and purge
+
+`pyve init` materializes **all** declared envs; composes one `.envrc` with sentinel-marked plugin sections; self-heals one `.gitignore`. `pyve check` and `pyve status` aggregate per-plugin/per-env with worst-severity exit-code roll-up. `pyve purge` composes created-vs-authored inventory from each plugin. Monorepo `path` support lands here. Resolves **PC-2** (`.envrc` refresh safety) and **PC-4** (no-Python noise + plugin latency budget). Story breakdown deferred. Bundles into **v3.0.0**.
+
+---
+
+## Subphase N-5: `pyve deploy` lifecycle hook
+
+Architectural scaffold for `pyve deploy [--env <name>]` as an artifact-materialization hook (pinned `docker`/`podman` image, lock bundle). Whether any provider ships in v3.0 is a v3.0-window decision (per concept doc Q6). Story breakdown deferred. Bundles into **v3.0.0**.
+
+---
+
+## Subphase N-6: Documentation refresh + brand alignment
+
+`refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
+
+---
+
+## Subphase N-7: v3.0.0 release tag
+
+Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **First Phase N release tag.** Story breakdown deferred.
+
+---
+
+## Subphase N-8: UX visual refinement + hard migration gate (post-v3.0.0)
+
+Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred. Ships **v3.1.0** as the second Phase N release tag.
+
+---
+
 ## Future
 
 ### Story ?.?: Per-leaf help functions for namespace commands (`testenv`, `python`, `self`) [Planned]
@@ -126,43 +317,5 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 - [ ] `test_auto_detection.py::TestPriorityOrder::test_priority_cli_over_all` — asserts `(project_dir / ".venv").exists()` but the directory is not created in the scenario. Investigate whether this is a test-setup gap (missing fixture state) or a genuine regression in CLI-priority backend dispatch.
 - [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
 - [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
-
----
-
-### Story ?.?: Generalize testenv → named environments with `purpose:` attribute (Phase N candidate) [Planned]
-
-**Motivation.** The testenv-DX bundle (M.f–M.t) introduced named, multi-backend, multi-manifest **test** environments. Looking at the model that emerged — `[tool.pyve.testenvs.<name>]` with per-env `backend`/`manifest`/`requirements`/`lazy`/`extra`, lock file at `.pyve/testenvs/<name>/.lock`, `.state` file per env, `--env <name>` selector — none of it is actually testing-specific. The same mechanism cleanly hosts utility envs (LLM/project-guide tooling, formatters, generators) and could host alternate run envs (multiple deployment targets). The `test` prefix on every identifier is an accidental holdover from when pyve only knew about one extra env.
-
-The driving artifact for the redesign is [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) — a template for the formal per-repo environment-dependencies document. It encodes the generalized model already: every env has a `purpose: {run, test, utility, temp}` attribute, the root env is `purpose: utility` by default, the first test env (`testenv`) is `purpose: test` with `default: true`, and additional envs declare distinct names. The `test` overloading in pyve's vocabulary collides with that template's clean separation. Embracing the template's vocabulary inside pyve is the natural next move once the testenv-DX bundle ships.
-
-**Approach (sketched).**
-
-1. **Schema rename.** `[tool.pyve.testenvs.*]` → `[tool.pyve.envs.*]`. New `purpose = "test"` (or `"run"`/`"utility"`/`"temp"`) attribute per env; default is `test` for back-compat with the M.* model. Reserved names extend: `root` stays selection-only; `testenv` stays the default-test alias.
-2. **CLI rename.** `pyve testenv <sub>` → `pyve env <sub>`. `pyve testenv init` becomes a Category-B sugar form that maps to `pyve env init testenv --purpose test` — keeps muscle memory and existing docs working. Same for `install`/`purge`/`run`.
-3. **Path layout.** `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/` (singular `envs` is already taken for micromamba main envs — pick the actual name during plan_phase; candidates: `.pyve/envs/` consolidated, or `.pyve/environments/`, or keep `.pyve/testenvs/` for back-compat and only rename at the schema/CLI layer). Legacy migration mechanism mirrors M.h's v2.7→v2.8 boundary.
-4. **Helper renames.** `_testenv_*` / `*_testenv_*` → `_env_*` / `*_env_*` across `lib/testenvs.sh` (→ `lib/envs.sh`?), `lib/commands/testenv.sh` (→ `lib/commands/env.sh`), `lib/utils.sh`'s `ensure_testenv_exists`, `purge_testenv_dir`, `testenv_paths`. Roughly ~12 helpers + ~1000 tests touched.
-5. **`pyve test --env <name>` resolver** stays — the surface was named `--env` from the start, so no rename needed there. The mental model just gets cleaner: any `purpose: test` env is selectable; non-`purpose: test` envs hard-error with a hint pointing at the appropriate command (`pyve env run <name>` for `purpose: utility`, etc.).
-6. **Documentation lift.** Adopt the §2 vocabulary (purpose / structured attributes / dependency source classes) from the template doc into `features.md` + `tech-spec.md`. The template doc itself becomes a first-class deliverable: ship `pyve-environment-dependencies-template.md` to the `docs/project-guide/templates/artifacts/` tree so `project-guide init` can scaffold a concrete `pyve-environment-dependencies-repo_<name>.md` for each project.
-
-**Backward compatibility.** Category-B-friendly. Every legacy form gets a precise hard-error pointing at the new form:
-- `pyve testenv init` → "renamed: use `pyve env init` (default `--purpose test`)" — and/or kept as silent sugar if the Category-A vs B decision in [project-essentials.md](../project-guide/templates/artifacts/pyve-essentials.md) judges this rename high-traffic enough to warrant the legacy form continuing to work.
-- `[tool.pyve.testenvs.*]` in pyproject.toml → Python helper emits a warning and reads the section as if it were `[tool.pyve.envs.*]` with implicit `purpose = "test"`.
-
-**Why deferred to Phase N (not folded into M.\*).** Pivoting the conceptual frame mid-bundle would leave half the M.\* surface speaking the old vocabulary — features.md / tech-spec.md sections from M.g–M.h reference `testenvs`, the eight M.\* test files all assert against `[tool.pyve.testenvs.*]`, and the partially-written M.l–M.s stories build on the M.f schema. Cleaner timing: finish M.\* on the current naming, ship `v2.8.0` at M.t, then plan_phase a coherent Phase N rebrand that lands the rename + the legacy catches + the template-doc adoption as one diff.
-
-**Phase ordering note.** The pre-existing Phase N plan moves to Phase O when this story is promoted; the new Phase N takes its slot. Recorded here so the displacement is visible before plan_phase is run.
-
-**Tasks** (sketched; full breakdown belongs in plan_phase):
-
-- [ ] Decide path layout (rename `.pyve/testenvs/` vs hold) — substantive backward-compat decision.
-- [ ] Decide Category A (silent sugar) vs B (hard-error catch) per legacy form — likely A for `pyve testenv *` (high-traffic, in every doc), B for everything else.
-- [ ] Schema rename in [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py); add `purpose` field with `test` default; emit migration warning for `[tool.pyve.testenvs.*]`.
-- [ ] CLI rename: new `lib/commands/env.sh` (or in-place rename of `testenv.sh`); legacy `pyve testenv` becomes a thin sugar wrapper or Category-B catch per the prior decision.
-- [ ] Helper renames + sweep tests.
-- [ ] Adopt §2 vocabulary in [features.md](features.md) + [tech-spec.md](tech-spec.md).
-- [ ] Ship [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) to `docs/project-guide/templates/artifacts/` so `project-guide init` scaffolds it.
-- [ ] Migrate this repo's own enumeration: produce `pyve-environment-dependencies-repo_pyve.md` from the template as the dogfood instance.
-
-**Cross-reference.** The driving template is [docs/specs/pyve-environment-dependencies-template.md](pyve-environment-dependencies-template.md) — read §2 (Conventions & Terminology) before plan_phase to align on vocabulary.
 
 ---
