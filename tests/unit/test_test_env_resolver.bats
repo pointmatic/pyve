@@ -132,14 +132,17 @@ TOML
 # (M.n will replace this with auto-provisioning)
 # ============================================================
 
-@test "pyve test --env <lazy-name> unprovisioned: hard-errors with install hint" {
+@test "pyve test --env <lazy-name> unprovisioned + PYVE_NO_AUTO_PROVISION=1: hard-errors with install hint" {
+    # Pre-M.n this test asserted the bare hard-error. M.n landed
+    # auto-provisioning; the strict-CI opt-out preserves the M.m
+    # contract for users who want it.
     _fixture_default_smoke
-    # heavy is lazy and not yet provisioned (no venv on disk).
+    export PYVE_NO_AUTO_PROVISION=1
     run test_tests --env heavy
     [ "$status" -ne 0 ]
     [[ "$output" == *"heavy"* ]]
     [[ "$output" == *"pyve testenv install heavy"* ]]
-    [[ "$output" == *"lazy"* ]]
+    [[ "$output" == *"PYVE_NO_AUTO_PROVISION"* ]]
 }
 
 @test "pyve test --env <lazy-name> already provisioned: routes normally" {

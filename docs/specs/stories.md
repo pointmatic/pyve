@@ -613,24 +613,32 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.n: [Testenv-DX] Lazy provisioning (`lazy = true`) [Planned]
+### Story M.n: [Testenv-DX] Lazy provisioning (`lazy = true`) [Done]
 
 **Why.** UC1's heavy hardware-smoke env (multi-GB ML stack) should not materialize on every CI run. `lazy = true` opts the env out of bulk install and provisions on first targeted use.
 
 **Approach.** Three behavior changes:
 
-1. `pyve testenv install` (no name) skips lazy envs.
-2. `pyve testenv install <lazy-env>` installs normally.
-3. `pyve test --env <lazy-env>` auto-provisions if missing (acquiring the lock per M.j), then runs.
+1. `pyve testenv install` (no name) skips lazy envs — already true since M.i.3's iteration loop. M.n adds a regression test.
+2. `pyve testenv install <lazy-env>` installs normally — also already true since M.i.3 (the lazy bit only gates *iteration*, not explicit-by-name). M.n adds a regression test.
+3. **`pyve test --env <lazy-env>` auto-provisions if missing.** This is the only new behavior. M.m left a hard-error site at the lazy-unprovisioned gate; M.n replaces that with `ensure_testenv_exists "$env_target"` + `_testenv_install_with_lock "$env_target" "$path" "" wait` — the same lock wrapper that bulk install uses, so concurrent `pyve test`s on the same lazy env serialize cleanly via M.j's `mkdir`-based lock. Auto-provisioning is gated by `PYVE_NO_AUTO_PROVISION=1` for strict CI that wants the pre-M.n "is this env already built?" semantics — when set, the M.m hard-error returns (with a `PYVE_NO_AUTO_PROVISION` marker in the message so users can find the opt-out).
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering lazy env skipped by bulk install, lazy env explicitly installed by name, auto-provision on first `pyve test --env <lazy-env>` use.
-- [ ] `is_testenv_lazy` predicate (from M.g) wired into `testenv_install` and `test_tests`.
-- [ ] Auto-provision gated by `PYVE_NO_AUTO_PROVISION=1` opt-out (for CI that wants strict "is-this-env-already-built?" semantics).
-- [ ] Document in `docs/site/testing.md` (folds into M.s sweep).
+- [x] Failing tests first in [tests/unit/test_test_env_lazy_autoprovision.bats](../../tests/unit/test_test_env_lazy_autoprovision.bats): 5 tests covering auto-provision happy path (env created, declared requirements installed via M.l, exec runs), `PYVE_NO_AUTO_PROVISION=1` hard-error (with `pyve testenv install <name>` hint), already-provisioned no-op (no second install), lock cleanup after auto-provision success, conda lazy still rejected by M.k's venv-only gate. *(RED 3/5 → GREEN 5/5. Plus 1 net new regression test in [tests/unit/test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats) for `install <lazy-name>`. Full unit suite 1039/1039.)*
+- [x] M.m's lazy hard-error site in [lib/commands/test.sh](../../lib/commands/test.sh) replaced with the auto-provision dispatch: `was_lazy_unprovisioned` flag captured at the gate; `ensure_testenv_exists` (already in the venv code path) creates the env; immediately afterward, `_testenv_install_with_lock` installs per the env's declarations.
+- [x] `is_testenv_lazy` wired into `test_tests` (already wired into `testenv_install`'s iteration via M.i.3 — no additional wiring needed for tasks 1 & 2).
+- [x] `PYVE_NO_AUTO_PROVISION=1` gate added at the lazy-unprovisioned site; documented in [features.md](features.md) Environment Variables table.
+- [x] Updated [tests/unit/test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats): the M.m "lazy unprovisioned hard-errors with install hint" test now requires `PYVE_NO_AUTO_PROVISION=1` and asserts the new opt-out-marker message text.
+- [ ] Document in `docs/site/testing.md` — deferred to the M.s bundle-wide user-facing docs sweep per its existing scope.
+
+**Tech-spec.md updates.** Updated the M.m note in `test_tests`'s row to reflect M.n landed (auto-provision + opt-out); updated the M.n consumer-list bullet (landed); added the new bats file to the test inventory.
+
+**Features.md updates.** FR-11's lazy paragraph rewritten to "auto-provisioned… suppressible via `PYVE_NO_AUTO_PROVISION=1`"; new `PYVE_NO_AUTO_PROVISION` row in the Environment Variables table.
 
 **Out of scope.** Pre-flight bandwidth/disk-space check; provision-time error reporting uses the underlying package manager's messages.
+
+**Version impact.** None — M.n is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

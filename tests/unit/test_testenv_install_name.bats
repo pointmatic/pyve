@@ -158,6 +158,21 @@ TOML
     [[ "$output" != *"testenvs/testenv/"* ]]
 }
 
+@test "testenv install <lazy-name>: explicit install bypasses lazy-skip (M.n regression)" {
+    # M.i.3 made no-arg iteration skip lazy envs. Story M.n verifies
+    # the dual behavior: an explicit name installs the lazy env
+    # normally — the lazy bit only gates *bulk* / iteration paths.
+    _fixture_named_envs
+    mkdir -p tests
+    printf 'pytest\n' > tests/heavy.txt
+    _make_fake_named_venv heavy
+    _stub_run_cmd_records
+    run testenv_command install heavy
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"testenvs/heavy/venv/bin/python"* ]]
+    [[ "$output" == *"-r tests/heavy.txt"* ]]
+}
+
 # ============================================================
 # Name validation
 # ============================================================

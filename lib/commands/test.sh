@@ -166,17 +166,35 @@ test_tests() {
     # against a conda main env, or `micromamba run -p <path> pytest`.
     assert_testenv_venv_backend "$env_target" || exit 1
 
-    # Lazy envs that have not been provisioned yet hard-error in M.m
-    # (auto-provision lands in M.n).
     local testenv_venv
     testenv_venv="$(resolve_testenv_path "$env_target")"
+
+    # Story M.n: lazy envs that have not been provisioned yet are
+    # auto-provisioned on first targeted use — ensure_testenv_exists
+    # creates the venv, then `_testenv_install_with_lock` installs
+    # per the env's declared sources (M.l). The whole thing is gated
+    # by PYVE_NO_AUTO_PROVISION=1 for strict CI that wants the M.m
+    # "is this env already built?" semantics.
+    local was_lazy_unprovisioned=0
     if is_testenv_lazy "$env_target" && [[ ! -x "$testenv_venv/bin/python" ]]; then
-        log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
-        log_error "Run: pyve testenv install $env_target"
-        exit 1
+        if [[ "${PYVE_NO_AUTO_PROVISION:-0}" == "1" ]]; then
+            log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
+            log_error "PYVE_NO_AUTO_PROVISION=1 is set — refusing to auto-provision."
+            log_error "Run: pyve testenv install $env_target"
+            exit 1
+        fi
+        info "Lazy testenv '$env_target' not yet provisioned — auto-provisioning..."
+        was_lazy_unprovisioned=1
     fi
 
     ensure_testenv_exists "$env_target"
+
+    if [[ "$was_lazy_unprovisioned" == "1" ]]; then
+        if ! _testenv_install_with_lock "$env_target" "$testenv_venv" "" "wait"; then
+            log_error "Auto-provisioning failed for '$env_target'"
+            exit 1
+        fi
+    fi
 
     if ! _test_has_pytest "$testenv_venv"; then
         local auto_install=false
