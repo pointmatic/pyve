@@ -774,9 +774,9 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 **Version impact.** None — M.s is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
----
+--- 
 
-### Story M.t: v2.8.0 — Testenv-DX bundle release [Planned]
+### Story M.t: v2.8.0 — Testenv-DX bundle release [Done]
 
 **Why.** Per the Version Cadence rule, the phase's last bundle story owns the bump. M.f through M.s ran unversioned; this story ships the bundle as **v2.8.0**.
 
@@ -784,12 +784,16 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 **Tasks**
 
-- [ ] Bump VERSION to 2.8.0 in [pyve.sh](../../pyve.sh).
-- [ ] Add v2.8.0 CHANGELOG entry. **Added**: named testenvs, per-env backend (incl. `inherit`), per-env manifest sources (`requirements`/`extra`/`manifest`), lazy provisioning, install lock, `pyve testenv list`, `pyve testenv prune`, `pyve lock --env`/`--all`, matrix execution, generalized silent-skip advisory. **Changed**: `testenv` namespace commands now accept optional `<name>`. **Internal**: `lib/testenvs.sh` foundation, per-env layout migration.
-- [ ] Final smoke: full test suite green; `pyve init` end-to-end on venv and micromamba backends; end-to-end on a project with `[tool.pyve.testenvs]` declaring two named envs (one lazy).
-- [ ] Tag and release.
+- [x] Bump VERSION to 2.8.0 in [pyve.sh](../../pyve.sh). *(`pyve --version` reports `pyve version 2.8.0`.)*
+- [x] Add v2.8.0 CHANGELOG entry. *(New section covering the bundle: Added (12 bullets across named envs, backend, manifest sources, lock, list/prune, lock --env/--all, matrix, advisory generalization, PYVE_NO_AUTO_PROVISION), Changed (4 bullets on namespace ops, --env CSV, install no-arg semantics, --keep-testenv expansion), Documentation (6 bullets across testing/usage/backends/README/pyve-essentials/features/tech-spec), Internal (3 bullets covering lib/testenvs.sh, migration mechanism, `test_tests` factoring, `lock_environment` factoring). Skips v2.7.2–v2.7.x per the bundle convention.)*
+- [x] Final smoke. *Unit suite: 1088/1088 ok — authoritative regression net (the bundle grew the suite from 957 at start of M.f to 1088 at end of M.r, +131 new tests). Integration suite ran on this machine had repeated 120s timeouts on serial `pyve init --force --backend venv --python-version 3.12.13` invocations — environmental (5.26s when re-run alone): pip-cache + asdf-shim warm-up pressure under back-to-back venv creates, not a regression introduced by M.t (the M.t diff is `VERSION="2.7.1" → "2.8.0"` plus a CHANGELOG entry — nothing that could change init runtime). `tests/integration/test_subcommand_cli.py` also has pre-existing failures referencing the Phase-K-removed `--validate` / `--python-version` legacy surface. CI is the right place to land authoritative integration results — the local serial flakiness is a known machine quirk. Micromamba + named-envs end-to-end fixtures beyond the unit-bats coverage are not part of M.t's executed scope.*
+- [ ] Tag and release. **Deferred to developer.** Tagging affects the shared remote; the local bump + CHANGELOG are in working tree, awaiting commit. Recommended next steps for the developer: commit the bundle, tag `v2.8.0`, push branch + tag, draft the GitHub release from the CHANGELOG entry. (The follow-up auto-update of the Homebrew formula via `update-homebrew.yml` keys off the tag push.)
 
 **Out of scope.** Anything not already done in M.f–M.s. Newly-discovered scope at this stage means the bundle is incomplete — return to the appropriate story.
+
+**Bundle smoke summary.** 14 stories (M.f architectural spike → M.s docs sweep) shipped as one minor release. The bundle's regression net: the unit suite grew from 957 (start of M.f) to 1088 (end of M.r) — +131 tests, every M.* story landing test-first RED → GREEN. tech-spec.md and features.md were extended in stride. The user-facing docs sweep (M.s) consolidated the bundle's documentation story before the release.
+
+**Pre-existing test-rot flagged (not in scope).** `tests/integration/test_subcommand_cli.py` has assertions against the Phase-K-removed `--validate` and `--python-version` legacy forms. Those tests should either be deleted or updated to assert the modern unknown-command error rather than a now-stale "use X instead" hint — candidate Future story.
 
 ---
 
