@@ -856,7 +856,7 @@ build/
 
 # Pyve virtual environment
 .pyve/envs
-.pyve/testenv
+.pyve/testenvs
 .envrc
 .env
 .vscode/settings.json
@@ -1496,57 +1496,124 @@ is_file_empty() {
 # `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
 # audit F-7 (`purge_testenv_dir` shared with `purge`) and F-8
 # (`testenv_paths` + `ensure_testenv_exists` shared with `init` and
-# `test`). Depend on the `TESTENV_DIR_NAME` global defined in pyve.sh
-# (read at call time, not at sourcing time).
+# `test`).
+#
+# Post-M.h.3: derive both paths from `resolve_testenv_path testenv`
+# in lib/testenvs.sh — the single source of truth for the new
+# `.pyve/testenvs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
+# global in pyve.sh is retained as a back-compat constant for any
+# external scripts referencing it, but no internal code reads it.
 #============================================================
 
 # Emit two lines: testenv_root, then testenv_venv. Single source of
-# truth for both paths so callers do not hard-code `.pyve/testenv/...`.
+# truth for both paths so callers do not hard-code `.pyve/testenvs/...`.
+# `resolve_testenv_path testenv` may trigger opportunistic migration
+# (M.h.3); we tolerate that side effect because every caller of
+# `testenv_paths` is about to act on the testenv anyway.
 testenv_paths() {
-    local testenv_root=".pyve/$TESTENV_DIR_NAME"
-    local testenv_venv="$testenv_root/venv"
+    local testenv_venv
+    testenv_venv="$(resolve_testenv_path testenv)"
+    local testenv_root="${testenv_venv%/venv}"
     printf "%s\n" "$testenv_root" "$testenv_venv"
 }
 
 # Create the testenv if it doesn't exist; rebuild it if its Python
 # version has drifted from the current project Python (mismatched
 # `pyvenv.cfg` version field).
+#
+# Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
+# to the reserved `testenv` (today's behavior). With-arg: load config
+# (idempotent if caller already ran read_testenv_config), validate name
+# via `assert_testenv_name_actionable`, resolve path via
+# `resolve_testenv_path`.
+#
+# Story M.k: dispatches on the resolved backend — venv envs go through
+# `python -m venv`; conda envs (`backend = "micromamba"` or `inherit`
+# resolving to micromamba) go through `_testenv_init_conda` in
+# `lib/commands/testenv.sh`, which calls `micromamba create -p <path>
+# -f <manifest> -y` from the env's declared `manifest`.
 ensure_testenv_exists() {
-    local paths
-    local testenv_root
-    local testenv_venv
-    paths="$(testenv_paths)"
-    testenv_root="$(printf "%s" "$paths" | sed -n '1p')"
-    testenv_venv="$(printf "%s" "$paths" | sed -n '2p')"
+    local name="${1:-testenv}"
+
+    # Always load config so we can validate names + dispatch on backend.
+    # Idempotent if the caller already populated the V3 arrays.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+    assert_testenv_name_actionable "$name" || return 1
+
+    local backend
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+
+    local testenv_env_path testenv_root
+    testenv_env_path="$(resolve_testenv_path "$name")"
+    # Strip either the /venv or /conda suffix to get the env root.
+    testenv_root="${testenv_env_path%/venv}"
+    testenv_root="${testenv_root%/conda}"
 
     mkdir -p "$testenv_root"
 
+    if [[ "$backend" == "micromamba" ]]; then
+        local manifest
+        manifest="$(_testenv_manifest_of "$name")" || manifest=""
+        _testenv_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
+        # Story M.m: write initial `.state` for the conda env (parallel
+        # to the venv branch below). Idempotent: skipped when .state
+        # already exists.
+        if [[ ! -f "$(state_path "$name")" ]]; then
+            state_write "$name" "micromamba" manifest="$manifest"
+        fi
+        return 0
+    fi
+
+    # Venv backend: today's behavior.
     # If the testenv exists but was built with a different Python version (e.g.
     # the project Python was changed after the initial pyve init, then pyve init
     # --force preserved the old testenv via --keep-testenv), rebuild it.
-    if [[ -d "$testenv_venv" ]] && [[ -f "$testenv_venv/pyvenv.cfg" ]]; then
+    if [[ -d "$testenv_env_path" ]] && [[ -f "$testenv_env_path/pyvenv.cfg" ]]; then
         local testenv_ver current_ver
-        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_venv/pyvenv.cfg" 2>/dev/null || true)"
+        testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_env_path/pyvenv.cfg" 2>/dev/null || true)"
         current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
             warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
-            rm -rf "$testenv_venv"
+            rm -rf "$testenv_env_path"
         fi
     fi
 
-    if [[ ! -d "$testenv_venv" ]]; then
-        info "Creating dev/test runner environment in '$testenv_venv'..."
-        run_cmd python -m venv "$testenv_venv"
+    if [[ ! -d "$testenv_env_path" ]]; then
+        info "Creating dev/test runner environment in '$testenv_env_path'..."
+        run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
+    fi
+
+    # Story M.m: write an initial `.state` for the freshly-created env
+    # so M.m's `last_used_at` touch (in `test_tests`) and M.p's
+    # `pyve testenv list` / `prune` have something to read. Idempotent:
+    # skipped when `.state` already exists (preserves `provisioned_at`
+    # from the legacy migration or a prior `state_write` invocation).
+    if [[ ! -f "$(state_path "$name")" ]]; then
+        state_write "$name" "venv"
     fi
 }
 
 # Remove the testenv directory (no-op message if absent).
+#
+# Story M.i.4: accepts an optional `<name>` argument (default `testenv`).
+# Removes the env root (`.pyve/testenvs/<name>/`), not just the inner
+# `venv/` — covers `.state` and any future siblings. Backend-agnostic
+# (rm -rf doesn't care whether the env is venv or conda underneath).
 purge_testenv_dir() {
-    if [[ -d ".pyve/$TESTENV_DIR_NAME" ]]; then
-        rm -rf ".pyve/$TESTENV_DIR_NAME"
-        success "Removed .pyve/$TESTENV_DIR_NAME"
+    local name="${1:-testenv}"
+    local testenv_venv testenv_root
+    testenv_venv="$(resolve_testenv_path "$name")"
+    # `dirname` handles both layout shapes — .pyve/testenvs/<name>/venv
+    # (venv-backed) and .pyve/testenvs/<name>/conda (conda-backed) —
+    # without hard-coding the suffix.
+    testenv_root="$(dirname "$testenv_venv")"
+    if [[ -d "$testenv_root" ]]; then
+        rm -rf "$testenv_root"
+        success "Removed $testenv_root"
     else
-        info "No dev/test runner environment found at '.pyve/$TESTENV_DIR_NAME'"
+        info "No dev/test runner environment found at '$testenv_root'"
     fi
 }

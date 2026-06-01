@@ -262,9 +262,9 @@ EOF
     [ "$status" -eq 0 ]
 }
 
-@test "write_gitignore_template: Pyve-managed section includes .pyve/testenv (H.e.2a)" {
+@test "write_gitignore_template: Pyve-managed section includes .pyve/testenvs (H.e.2a; renamed in M.h.3)" {
     write_gitignore_template
-    run grep -qxF ".pyve/testenv" .gitignore
+    run grep -qxF ".pyve/testenvs" .gitignore
     [ "$status" -eq 0 ]
 }
 
@@ -353,14 +353,14 @@ EOF
 
 @test "write_gitignore_template: idempotent after purge-then-reinit cycle (byte-level)" {
     # Regression test for v1.1.4 CI failure: after purge removed some dynamic
-    # entries but left .pyve/testenv, a second init produced trailing blank
-    # lines. Uses md5 checksum to catch trailing newline differences that
-    # $(cat) would mask.
+    # entries but left .pyve/testenvs (was .pyve/testenv pre-M.h.3), a second
+    # init produced trailing blank lines. Uses md5 checksum to catch trailing
+    # newline differences that $(cat) would mask.
     local section="# Pyve virtual environment"
 
     # Simulate first init: template + dynamic entries
     write_gitignore_template
-    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
     insert_pattern_in_gitignore_section ".envrc" "$section"
     insert_pattern_in_gitignore_section ".env" "$section"
     insert_pattern_in_gitignore_section ".venv" "$section"
@@ -374,7 +374,7 @@ EOF
 
     # Simulate second init: template + dynamic entries again
     write_gitignore_template
-    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
     insert_pattern_in_gitignore_section ".envrc" "$section"
     insert_pattern_in_gitignore_section ".env" "$section"
     insert_pattern_in_gitignore_section ".venv" "$section"
@@ -391,7 +391,7 @@ EOF
     local section="# Pyve virtual environment"
 
     write_gitignore_template
-    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
     insert_pattern_in_gitignore_section ".envrc" "$section"
     insert_pattern_in_gitignore_section ".env" "$section"
     insert_pattern_in_gitignore_section ".venv" "$section"
@@ -405,7 +405,7 @@ EOF
         remove_pattern_from_gitignore ".envrc"
 
         write_gitignore_template
-        insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+        insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
         insert_pattern_in_gitignore_section ".envrc" "$section"
         insert_pattern_in_gitignore_section ".env" "$section"
         insert_pattern_in_gitignore_section ".venv" "$section"
@@ -423,7 +423,7 @@ EOF
     local section="# Pyve virtual environment"
 
     write_gitignore_template
-    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
     insert_pattern_in_gitignore_section ".envrc" "$section"
     insert_pattern_in_gitignore_section ".env" "$section"
     insert_pattern_in_gitignore_section ".venv" "$section"
@@ -445,7 +445,7 @@ EOF
     remove_pattern_from_gitignore ".envrc"
 
     write_gitignore_template
-    insert_pattern_in_gitignore_section ".pyve/testenv" "$section"
+    insert_pattern_in_gitignore_section ".pyve/testenvs" "$section"
     insert_pattern_in_gitignore_section ".envrc" "$section"
     insert_pattern_in_gitignore_section ".env" "$section"
     insert_pattern_in_gitignore_section ".venv" "$section"

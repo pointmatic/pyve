@@ -165,7 +165,8 @@ check_environment() {
     fi
 
     # Check 16: testenv (conditional — only warn if exists but broken)
-    local testenv_venv=".pyve/$TESTENV_DIR_NAME/venv"
+    local testenv_venv
+    testenv_venv="$(resolve_testenv_path testenv)"
     if [[ -d "$testenv_venv" ]]; then
         if [[ -x "$testenv_venv/bin/python" ]] && \
            "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then

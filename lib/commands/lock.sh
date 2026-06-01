@@ -27,8 +27,18 @@ fi
 # project-essentials "Function naming convention: verb_<operand>" rule —
 # `pyve lock` operates on the environment's dependency graph (locks
 # `environment.yml` → `conda-lock.yml`).
+#
+# Story M.q surface (extends to per-testenv locking):
+#   pyve lock                  → main env (existing behavior)
+#   pyve lock --env <name>     → lock the named conda-backed testenv
+#                                (uses [tool.pyve.testenvs.<name>].manifest;
+#                                output: <manifest-basename>-lock.yml
+#                                sibling to the manifest)
+#   pyve lock --all            → main env + every conda-backed testenv
 lock_environment() {
     local check_mode=false
+    local mode="main"            # main | env | all
+    local target_name=""
 
     # Parse flags
     while [[ $# -gt 0 ]]; do
@@ -37,17 +47,62 @@ lock_environment() {
                 check_mode=true
                 shift
                 ;;
+            --env)
+                mode="env"
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--env requires a testenv name"
+                    exit 1
+                fi
+                target_name="$2"
+                shift 2
+                ;;
+            --env=*)
+                mode="env"
+                target_name="${1#--env=}"
+                shift
+                ;;
+            --all)
+                mode="all"
+                shift
+                ;;
             -*)
-                unknown_flag_error "lock" "$1" --check --help
+                unknown_flag_error "lock" "$1" --check --env --all --help
                 ;;
             *)
                 log_error "pyve lock takes no positional arguments (got: $1)"
-                log_error "Usage: pyve lock [--check]"
+                log_error "Usage: pyve lock [--check] [--env <name>] [--all]"
                 exit 1
                 ;;
         esac
     done
 
+    # Per-env routing — M.q. `--check` for per-env modes is not in
+    # scope for M.q (today's `--check` is main-env-only). The dispatch
+    # below routes `--env`/`--all`/`main` to the right helper.
+    case "$mode" in
+        env)
+            _lock_one_env "$target_name"
+            return $?
+            ;;
+        all)
+            # Main env first (existing behavior), then per-testenv.
+            # Use a subshell for the main-env call so its `exit` paths
+            # don't kill the whole `--all` iteration.
+            ( _lock_main_env ) || true
+            _lock_all_conda_testenvs
+            return $?
+            ;;
+    esac
+
+    # Default mode: main env. Delegate to the helper so the body can
+    # be shared with the `--all` path (above) via a subshell.
+    _lock_main_env
+    return $?
+}
+
+# Main-env locking — the pre-M.q body of `lock_environment`, factored
+# so `--all` can call it without re-implementing.
+_lock_main_env() {
     # --check: mtime comparison only, no conda-lock invocation
     if [[ "$check_mode" == "true" ]]; then
         if [[ ! -f "environment.yml" ]]; then
@@ -134,4 +189,116 @@ lock_environment() {
     printf "\n"
     printf "If the environment is already initialized and you only need to commit the\n"
     printf "updated lock file, rebuilding is optional.\n"
+}
+
+#============================================================
+# Story M.q: per-testenv locking
+#
+# `pyve lock --env <name>` locks a single conda-backed testenv by
+# running `conda-lock -f <manifest> -p <platform> --lockfile <out>`
+# where `<out>` is `<manifest-basename>-lock.yml` sibling to the
+# manifest. Venv-backed envs hard-error (conda-lock is conda-only).
+# `pyve lock --all` locks the main env plus every conda-backed
+# testenv.
+#============================================================
+
+# Derive the sibling lock-file path for a manifest.
+# tests/env.yml        → tests/env-lock.yml
+# environment.yaml     → environment-lock.yml
+# Strips `.yml` or `.yaml`, then appends `-lock.yml`.
+_lock_env_lock_path() {
+    local manifest="$1"
+    local dir base
+    dir="$(dirname "$manifest")"
+    base="$(basename "$manifest")"
+    base="${base%.yaml}"
+    base="${base%.yml}"
+    if [[ "$dir" == "." ]]; then
+        printf '%s-lock.yml' "$base"
+    else
+        printf '%s/%s-lock.yml' "$dir" "$base"
+    fi
+}
+
+# Lock a single named testenv. Uses `return` (not `exit`) so callers
+# can iterate without the first failure killing the whole walk.
+_lock_one_env() {
+    local name="$1"
+
+    # Load named-env config (idempotent).
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+
+    if [[ "$name" == "root" ]]; then
+        log_error "pyve lock --env root: 'root' is the main project env."
+        log_error "Use: pyve lock (no args) to lock the main env."
+        return 1
+    fi
+    if ! is_testenv_declared "$name"; then
+        log_error "pyve lock --env: testenv '$name' is not declared in [tool.pyve.testenvs]."
+        log_error "Declare it under [tool.pyve.testenvs.$name] in pyproject.toml."
+        return 1
+    fi
+
+    local backend
+    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    if [[ "$backend" != "micromamba" ]]; then
+        log_error "pyve lock --env: testenv '$name' (backend=$backend) is not conda-backed."
+        log_error "Only micromamba-backed testenvs can be locked via conda-lock."
+        return 1
+    fi
+
+    local manifest
+    manifest="$(_testenv_manifest_of "$name")" || manifest=""
+    if [[ -z "$manifest" ]]; then
+        log_error "pyve lock --env: testenv '$name' has no 'manifest' declared."
+        log_error "Add: [tool.pyve.testenvs.$name]"
+        log_error "     manifest = \"<environment.yml path>\""
+        return 1
+    fi
+    if [[ ! -f "$manifest" ]]; then
+        log_error "Manifest file not found: $manifest"
+        return 1
+    fi
+
+    if ! command -v conda-lock >/dev/null 2>&1; then
+        log_error "conda-lock is not available in the current environment."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
+        return 1
+    fi
+
+    local platform
+    platform="$(get_conda_platform)"
+
+    local lock_path
+    lock_path="$(_lock_env_lock_path "$manifest")"
+
+    log_info "Generating lock file for testenv '$name' (manifest: $manifest, platform: $platform)..."
+
+    if conda-lock -f "$manifest" -p "$platform" --lockfile "$lock_path"; then
+        success "Locked testenv '$name' → $lock_path"
+        return 0
+    fi
+    log_error "Failed to lock testenv '$name'"
+    return 1
+}
+
+# Iterate every declared conda-backed testenv and lock it. Venv envs
+# are silently skipped (handled by main-env lock or out of scope for
+# `pyve lock`). Errors per-env are warned but do not halt iteration.
+_lock_all_conda_testenvs() {
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+    local name backend rc=0
+    for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
+        backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+        [[ "$backend" == "micromamba" ]] || continue
+        if ! _lock_one_env "$name"; then
+            warn "Failed to lock testenv '$name' (continuing)"
+            rc=1
+        fi
+    done
+    return "$rc"
 }

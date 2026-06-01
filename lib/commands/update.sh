@@ -28,6 +28,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
+# Update-private wrapper around the M.h.2 migration helper. Exists as
+# a named function so the M.h.3 wiring is grep-visible from update.sh
+# (the unit test `update_project: source-grep verifies the migration
+# wrapper is wired` keys off the name).
+_update_migrate_legacy_layout() {
+    migrate_legacy_testenv_layout
+}
+
 update_project() {
     local pg_mode=""  # "" | "no"  (only --no-project-guide is supported per H.d §4.3)
 
@@ -66,6 +74,12 @@ update_project() {
 
     local previous_version
     previous_version="$(read_config_value "pyve_version")"
+
+    # Pre-step: migrate any legacy .pyve/testenv/venv/ layout to the v2.8
+    # .pyve/testenvs/testenv/venv/ shape. Silent on greenfield and on
+    # already-migrated projects; prints a one-line info() when an actual
+    # move happens. M.h.3 wires this; the helper lives in lib/testenvs.sh.
+    _update_migrate_legacy_layout
 
     header_box "pyve update v$VERSION"
 

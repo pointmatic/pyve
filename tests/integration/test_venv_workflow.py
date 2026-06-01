@@ -173,11 +173,13 @@ class TestVenvWorkflow:
         assert '.pytest_cache/' in lines
         assert '.DS_Store' in lines
         
-        # Venv-specific entries in Pyve section
+        # Venv-specific entries in Pyve section. v2.8+ layout: gitignore
+        # covers .pyve/testenvs (parent of all named testenvs); was
+        # .pyve/testenv (singular) pre-M.h.3.
         assert '.venv' in lines
         assert '.env' in lines
         assert '.envrc' in lines
-        assert '.pyve/testenv' in lines
+        assert '.pyve/testenvs' in lines
 
 
 @pytest.mark.venv
@@ -232,7 +234,8 @@ class TestGitignoreManagement:
         content_before = gitignore_path.read_text()
         assert '.venv' in content_before
         assert '__pycache__' in content_before
-        assert '.pyve/testenv' in content_before
+        # v2.8+ layout: gitignore covers .pyve/testenvs (was .pyve/testenv pre-M.h.3).
+        assert '.pyve/testenvs' in content_before
         
         pyve.purge(auto_yes=True)
         
@@ -249,7 +252,7 @@ class TestGitignoreManagement:
         # Permanent entries should remain
         assert '__pycache__' in lines
         assert '*.egg-info' in lines
-        assert '.pyve/testenv' in lines
+        assert '.pyve/testenvs' in lines
         assert '.coverage' in lines
         assert '.pytest_cache/' in lines
 

@@ -145,18 +145,20 @@ class TestMicromambaWorkflow:
         # Create testenv
         pyve.run('testenv', 'init')
 
-        # Verify both exist
+        # Verify both exist. v2.8+ layout: testenv lives under .pyve/testenvs/testenv/
+        # (was .pyve/testenv/ pre-M.h.3). `--keep-testenv` preserves the
+        # whole .pyve/testenvs/ tree post-M.h.3.
         assert (pyve.cwd / '.pyve' / 'envs').exists()
-        assert (pyve.cwd / '.pyve' / 'testenv').exists()
+        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
 
         # Purge with keep-testenv
         result = pyve.run('purge', '--keep-testenv', input='y\n')
-        
+
         assert result.returncode == 0
         # Micromamba env should be removed
         assert not (pyve.cwd / '.pyve' / 'envs').exists()
         # Testenv should be preserved
-        assert (pyve.cwd / '.pyve' / 'testenv').exists()
+        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
     
     def test_reinit_after_purge(self, pyve, project_builder):
         """Test that we can re-initialize after purge."""
@@ -213,8 +215,10 @@ dependencies:
         assert '.pyve/envs' in lines
         assert '.env' in lines
         assert '.envrc' in lines
-        assert '.pyve/testenv' in lines
-        
+        # v2.8+ layout: gitignore covers .pyve/testenvs (parent of all
+        # named testenvs); was .pyve/testenv (singular) pre-M.h.3.
+        assert '.pyve/testenvs' in lines
+
         # Environment name should NOT be in gitignore
         assert 'test-env' not in gitignore_content
 

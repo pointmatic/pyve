@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="2.7.0"
+VERSION="2.8.0"
 DEFAULT_PYTHON_VERSION="3.14.4"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -59,6 +59,13 @@ if [[ -f "$SCRIPT_DIR/lib/utils.sh" ]]; then
     source "$SCRIPT_DIR/lib/utils.sh"
 else
     printf "ERROR: Cannot find lib/utils.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/testenvs.sh" ]]; then
+    source "$SCRIPT_DIR/lib/testenvs.sh"
+else
+    printf "ERROR: Cannot find lib/testenvs.sh\n" >&2
     exit 1
 fi
 

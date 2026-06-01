@@ -48,7 +48,7 @@ Organized into four categories (same as `pyve --help`):
 |---------|-------------|
 | `run <command> [args...]` | Run a command inside the project environment |
 | `test [pytest args...]` | Run pytest via the dev/test runner environment |
-| `testenv init\|install\|purge\|run` | Manage the dev/test runner environment |
+| `testenv init\|install\|purge\|run\|list\|prune` | Manage one or more dev/test runner environments |
 
 #### Diagnostics
 
@@ -269,7 +269,7 @@ pyve purge [<dir>] [options]
 
 **Options:**
 
-- `--keep-testenv`: Preserve `.pyve/testenv` (the dev/test runner environment) across purge
+- `--keep-testenv`: Preserve `.pyve/testenvs/` (every dev/test runner environment) across purge
 
 **Examples:**
 
@@ -296,7 +296,7 @@ pyve purge custom_venv
 
 - Homebrew-managed installations cannot use `purge` (use `brew uninstall pyve`)
 - Does not remove `.python-version`, `requirements.txt`, or `environment.yml`
-- The testenv at `.pyve/testenv` is removed by default; pass `--keep-testenv` to preserve it
+- Every testenv under `.pyve/testenvs/` is removed by default; pass `--keep-testenv` to preserve them all
 - Safe to run multiple times
 
 ---
@@ -345,17 +345,20 @@ scripts at your leisure; they will fail after v3.0.
 
 ---
 
-### `lock [--check]`
+### `lock [--check] [--env <name>|--all]`
 
-Generate or update `conda-lock.yml` for the current platform. Micromamba
-projects only.
+Generate or update lock files. Without arguments, locks the main env (`environment.yml` → `conda-lock.yml`). With `--env <name>` or `--all`, also locks conda-backed testenvs declared in `[tool.pyve.testenvs]`.
 
 **Usage:**
 
 ```bash
-pyve lock           # generate / update conda-lock.yml
-pyve lock --check   # verify conda-lock.yml is current (exit 0) or stale/missing (exit 1)
+pyve lock                   # generate / update conda-lock.yml (main env)
+pyve lock --check           # verify conda-lock.yml is current (exit 0) or stale/missing (exit 1)
+pyve lock --env <name>      # lock one conda-backed testenv → <manifest>-lock.yml
+pyve lock --all             # main env + every conda-backed testenv
 ```
+
+`--env <name>` writes the lock file sibling to the env's `manifest` (`tests/env.yml` → `tests/env-lock.yml`). Hard-errors for venv-backed names, undeclared names, the reserved `root`, and missing `manifest` declarations / files. `--all` iterates: locks the main env first (in a subshell so its exit-paths don't halt the loop), then every micromamba-backed env; venv-backed envs are silently skipped; per-env failures `warn` and accumulate into a non-zero exit.
 
 **Prerequisites:**
 
@@ -476,18 +479,24 @@ Run tests via the dev/test runner environment.
 **Usage:**
 
 ```bash
-pyve test [--env main|testenv] [pytest args...]
+pyve test [--env <name>[,<name>...]] [pytest args...]
 ```
 
 **Arguments:**
 
-- `--env main|testenv` (optional, default `testenv`): which environment to run pytest in. `testenv` uses the dev/test runner env (`.pyve/testenv/venv`); `main` routes pytest to the project's main env (equivalent to `pyve run python -m pytest`).
-- `pytest args` (optional): Arguments passed directly to pytest
+- `--env <name>[,<name>...]` (optional): which environment(s) to run pytest in.
+    - **No `--env`:** routes to `[tool.pyve.testenvs].default` if declared, else the implicit `testenv` at `.pyve/testenvs/testenv/venv/`.
+    - **Reserved `root`:** routes pytest to the project's root env (equivalent to `pyve run python -m pytest`) — the first-class form of the `pyve run python -m pytest` workaround for bundled-env setups.
+    - **Reserved `testenv`:** explicit selection of the implicit-default testenv.
+    - **`<declared-name>`:** any name declared in `[tool.pyve.testenvs.<name>]` — venv-backed only (conda-backed envs hard-error; use `--env root` or `micromamba run` as a fallback). Lazy envs (`lazy = true`) auto-provision on first targeted use; suppress with `PYVE_NO_AUTO_PROVISION=1`.
+    - **Comma-separated list (matrix mode):** `--env a,b,c` runs pytest against each named env sequentially with `=== Env: <name> ===` headers; exit code is the worst-case aggregate; iteration never halts on a failing env. `--parallel` is out of scope.
+    - **Legacy `--env main`** now hard-errors with the rename hint (renamed to `--env root` in v2.7.1; Category-B deprecation-removal policy).
+- `pytest args` (optional): Arguments passed directly to pytest.
 
 **Examples:**
 
 ```bash
-# Run all tests (in the testenv)
+# Run all tests (default env)
 pyve test
 
 # Run specific test file
@@ -505,80 +514,104 @@ pyve test --cov=mypackage
 # Run a specific test
 pyve test tests/test_module.py::test_function
 
-# Run against the MAIN env (for envs that bundle pytest + the stack
-# under test in the main env — see the trap note below)
-pyve test --env main tests/integration/test_e2e.py -m hardware
+# Run against the ROOT env (for envs that bundle pytest + the stack
+# under test in the root env — see the trap note below)
+pyve test --env root tests/integration/test_e2e.py -m hardware
+
+# Run against a declared named env (requires [tool.pyve.testenvs.smoke])
+pyve test --env smoke
+
+# Matrix: run against two envs sequentially
+pyve test --env smoke,integration
 ```
 
 **What it does:**
 
-1. Dispatches to the dev/test runner environment (`.pyve/testenv/venv`) — same environment managed by `pyve testenv` — unless `--env main` is passed
-2. Auto-installs pytest if `PYVE_TEST_AUTO_INSTALL_PYTEST=1` (CI mode)
-3. Prompts to install pytest if not found (interactive mode)
-4. Runs pytest with the provided arguments
+1. Resolves `--env` per the rules above. Comma in the value triggers matrix mode.
+2. For each target env: auto-installs pytest if `PYVE_TEST_AUTO_INSTALL_PYTEST=1` (CI mode) or prompts (interactive); lazy envs auto-provision on first use (unless `PYVE_NO_AUTO_PROVISION=1`).
+3. Runs pytest with the provided arguments. `.state.last_used_at` is touched per env on the success path so `pyve testenv list` / `prune --unused-since` can see it.
 
 **Notes:**
 
-- Default routing uses the dev/test runner environment, not the project environment — keeps test tools isolated from the project's dependency graph
-- Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` for CI environments
-- Exit code matches the pytest exit code
-- Default routing is equivalent to `pyve testenv run python -m pytest [args...]` with auto-install support; `--env main` is equivalent to `pyve run python -m pytest [args...]`
+- Default routing uses the dev/test runner environment, not the project environment — keeps test tools isolated from the project's dependency graph.
+- Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` for CI environments.
+- Exit code matches pytest's (single env) or the worst-case aggregate (matrix mode).
+- Default routing is equivalent to `pyve testenv run python -m pytest [args...]` with auto-install support; `--env root` is equivalent to `pyve run python -m pytest [args...]`.
+- The silent-skip advisory scans every other env (`root` + declared names) for pytest-importability and prints a one-line hint listing alternatives. Suppress with `PYVE_NO_TESTENV_ADVISORY=1` (matrix mode sets it automatically).
 
-!!! warning "The bundled-env trap — when to use `--env main`"
+!!! warning "The bundled-env trap — when to use `--env root`"
 
-    `pyve test` routes to the **testenv** by default, which is correct for a normal repo checkout (the main env holds only runtime deps; pytest lives in the testenv). But if you built your environment from an `environment.yml` that bundles **both** pytest **and** the stack your tests import (e.g. a micromamba smoke env with `tensorflow`/`torch` *and* `pytest` in the main env), the default testenv won't have that stack. Tests that `pytest.importorskip("…")` will then **silently SKIP** and look green.
+    `pyve test` routes to the **testenv** by default, which is correct for a normal repo checkout (the root env holds only runtime deps; pytest lives in the testenv). But if you built your environment from an `environment.yml` that bundles **both** pytest **and** the stack your tests import (e.g. a micromamba smoke env with `tensorflow`/`torch` *and* `pytest` in the root env), the default testenv won't have that stack. Tests that `pytest.importorskip("…")` will then **silently SKIP** and look green.
 
-    When the main env carries pytest, `pyve test` prints an advisory pointing here. Use `pyve test --env main` to run pytest against the main env's stack. See [Testing → Choosing which environment runs your tests](testing.md#choosing-which-environment-runs-your-tests).
+    When another env carries pytest, `pyve test` prints an advisory pointing at it. Use `pyve test --env root` (or `--env <named-env>`) to run pytest against the stack you actually need. See [Testing → Choosing which environment runs your tests](testing.md#choosing-which-environment-runs-your-tests).
+
+    *Renamed in v2.7.1:* the previous value `--env main` was renamed to `--env root`. The legacy form now hard-errors with the rename hint per the Category-B deprecation-removal policy.
 
 ---
 
 ### `testenv <subcommand>`
 
-Manage a dedicated dev/test runner environment for tools like ruff, mypy,
-black, and pytest. This environment lives at `.pyve/testenv/venv` and is
-preserved across `pyve init --force` and `pyve purge` (unless `--keep-testenv`
-is omitted — see below).
+Manage dedicated dev/test runner environments for tools like ruff, mypy, black, and pytest. The implicit-default testenv lives at `.pyve/testenvs/testenv/venv/`. Projects may also declare additional named envs in `[tool.pyve.testenvs]` (see [Testing → Named test environments](testing.md#named-test-environments)). All envs are preserved across `pyve init --force` and `pyve purge --keep-testenv`.
 
 **Usage:**
 
 ```bash
-pyve testenv init                                   # Create the environment
-pyve testenv install [-r requirements-dev.txt]      # Install dependencies
-pyve testenv purge                                  # Remove the environment
-pyve testenv run <command> [args...]                # Run a command in the testenv
+pyve testenv init [<name>]                                  # Create an env (default: testenv)
+pyve testenv install [<name>] [-r <file>] [--no-wait]       # Install dependencies
+pyve testenv purge [<name>] [--force]                       # Remove env(s)
+pyve testenv run [<name> --] <command> [args...]            # Run a command in an env
+pyve testenv list                                           # Tabulate every known env
+pyve testenv prune [--unused-since <YYYY-MM-DD>|--all] [--force]   # Remove unused envs
 ```
 
 **Subcommands:**
 
-- `init`: Creates `.pyve/testenv/venv` using the system Python.
-- `install [-r <file>]`: Installs packages into the testenv. Without `-r`, installs pytest only. With `-r <file>`, installs from the given requirements file.
-- `purge`: Removes the testenv entirely.
-- `run <command> [args...]`: Executes a command inside the testenv by prepending its `bin/` to `PATH`. If the command binary exists in the testenv, it is executed directly; otherwise the command is run with the testenv's `bin/` on `PATH`.
+- `init [<name>]`: Creates `.pyve/testenvs/<name>/{venv,conda}/` using the active project Python (venv backend) or `micromamba create -f <manifest>` (conda backend, when the env declares `backend = "micromamba"`).
+- `install [<name>] [-r <file>] [--no-wait]`: No `<name>` iterates every declared non-lazy env. With `<name>` installs into one env. `-r <file>` overrides the declared source (`requirements` / `extra` / `manifest`); without a declared source, falls back to auto-detected `requirements-dev.txt` or bare `pytest`. `--no-wait` fast-fails if another pyve process holds the install lock.
+- `purge [<name>] [--force]`: With `<name>` removes one env. Without, removes every declared env (TTY-prompted; `--force` skips the prompt; non-TTY stdin also skips).
+- `run [<name> --] <command> [args...]`: Executes a command inside an env. With `<name>`, the `--` separator disambiguates env name from command. Venv-only — conda-backed envs hard-error with a `micromamba run -p <env> <cmd>` workaround hint.
+- `list`: Tabulates the union of declared envs and on-disk envs with `NAME / BACKEND / SIZE / LAST-USED / STATE` columns. STATE is one of `ready`, `lazy`, `not provisioned`, `orphaned`.
+- `prune`: Disk-walking removal. Default mode removes orphans (on-disk but not declared); `--unused-since <ISO-date>` removes envs whose `.state.last_used_at` is strictly older (envs never used are preserved); `--all` removes every on-disk env. Distinct from `purge` (which is config-driven, walking `[tool.pyve.testenvs]`).
 
 **Examples:**
 
 ```bash
-# Set up dev tools
+# Set up the default testenv
 pyve testenv init
 pyve testenv install -r requirements-dev.txt
 
-# Run dev tools from the testenv
+# Set up a named env (requires [tool.pyve.testenvs.smoke] declaration)
+pyve testenv init smoke
+pyve testenv install smoke         # uses declared `requirements` / `extra` / `manifest`
+
+# Install every declared non-lazy env in one shot
+pyve testenv install
+
+# Run dev tools from the default testenv
 pyve testenv run ruff check .
 pyve testenv run mypy src/
 pyve testenv run black --check .
 
-# Run pytest directly (equivalent to pyve test)
-pyve testenv run python -m pytest -v
+# Run a tool in a named env (note the `--` separator)
+pyve testenv run smoke -- pytest -v
 
-# Tear down the testenv
-pyve testenv purge
+# See what's on disk
+pyve testenv list
+
+# Remove envs nobody has used since 2026-01-01
+pyve testenv prune --unused-since 2026-01-01
+
+# Tear down a specific env / every declared env
+pyve testenv purge smoke
+pyve testenv purge --force
 ```
 
 **Notes:**
 
-- The testenv survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes it
-- `pyve test` is a convenience shortcut that runs pytest inside the testenv with auto-install support
-- Exit code matches the executed command's exit code
+- Every env survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes them.
+- `pyve test` is a convenience shortcut that runs pytest inside the resolved env with auto-install support and the silent-skip advisory.
+- Exit code matches the executed command's exit code (single env) or the worst-case aggregate (`install` / `purge` no-arg iteration).
+- Concurrent `pyve testenv install <same-env>` from two shells serialize via a `mkdir`-based lock at `.pyve/testenvs/<name>/.lock/`; the holder's PID is in `lock/pid`. `--no-wait` fast-fails with a "(pid N)" message instead of queuing.
 
 **Legacy flag forms (removed in v2.3.0).**
 
