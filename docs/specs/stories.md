@@ -725,20 +725,27 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.r: [Testenv-DX] Matrix execution — `pyve test --env a,b,c` (serial) [Planned]
+### Story M.r: [Testenv-DX] Matrix execution — `pyve test --env a,b,c` (serial) [Done]
 
 **Why.** UC6 (matrix testing). The same suite against multiple envs, selectable individually or as a set.
 
 **Approach.** Comma-separated `--env` value parsed into a list; each env resolved via M.m; runs sequentially; exit code aggregates as worst-case (any failure → non-zero).
 
+**Correction (at execution).** The plan said "`_test_parse_args` extension" — but there is no `_test_parse_args` function in [lib/commands/test.sh](../../lib/commands/test.sh); the parser is inline in `test_tests`, per the M.m note ("no `_test_parse_args` extraction — kept the existing shape for blast-radius hygiene"). Extended the inline parser, then factored the per-env body into a new private helper `_test_run_one_env` so the matrix loop can call it inside a subshell without losing the single-env exec contract.
+
 **Tasks**
 
-- [ ] Failing tests first: bats covering single-env (existing behavior preserved), `a,b` two-env sequential run, exit-code aggregation, output delineation per env.
-- [ ] `_test_parse_args` extension for comma-separated value.
-- [ ] Per-env section header in output (`=== Env: <name> ===`) for human readability.
-- [ ] Document in `docs/site/testing.md` (folds into M.s sweep).
+- [x] Failing tests first in [tests/unit/test_test_env_matrix.bats](../../tests/unit/test_test_env_matrix.bats): 10 tests covering single-env behavior preserved (M.m regression — no matrix header), two-env sequential run, `--env=a,b` `=` form, per-env section header order matches CSV order, one-env-fails aggregate non-zero, both-fail returns the highest fail code, first-env failure does not halt the second, undeclared-name-in-list hard-errors, legacy `--env main,smoke` caught with M.e migration hint, `.state.last_used_at` touched on every env in matrix. *(RED 8/10 → GREEN 10/10. Full unit suite 1088/1088.)*
+- [x] Inline `--env` parser in `test_tests` ([lib/commands/test.sh](../../lib/commands/test.sh)) extended to split CSV via `IFS=',' read -r -a env_targets` (per-call IFS, not `local IFS=','` — the latter leaks into the rest of the function and corrupts `"$*"` expansions; caught the hard way when `--env root` started joining run_command's argv with commas).
+- [x] Per-env body factored into `_test_run_one_env <name> <explicit> [args...]` — identical behavior to pre-M.r single-env path (legacy `main` catch, `root` short-circuit, name validation, conda gate, lazy auto-provision, pytest install prompt, silent-skip advisory, `.state` touch, exec).
+- [x] Matrix dispatch in `test_tests`: when `${#env_targets[@]} -ge 2`, iterate with `printf '\n=== Env: %s ===\n' "$one"` per env, run `_test_run_one_env` in a subshell (so per-env `exit` / `exec` doesn't kill iteration), aggregate worst-case rc, `exit $rc` at the end. Matrix path exports `PYVE_NO_TESTENV_ADVISORY=1` inside each subshell — the M.o cross-env "you might have meant X" hint is noise when the user explicitly listed multiple envs.
+- [x] Update [tech-spec.md](tech-spec.md): `test_tests` row rewritten for the matrix dispatcher + the `_test_run_one_env` worker (new row added immediately below); M.r consumer-list bullet (landed); new bats file added to test inventory.
+- [x] Update [features.md](features.md) FR-11 — new bullet for the matrix form documenting per-env header, exit-aggregation rule, no-halt iteration, M.o advisory suppression, and the `--parallel` out-of-scope marker.
+- [ ] Document in `docs/site/testing.md` (folds into M.s sweep per its existing scope).
 
 **Out of scope.** `--parallel` execution. Plan doc OS-4; deferred.
+
+**Version impact.** None — M.r is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

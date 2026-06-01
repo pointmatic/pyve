@@ -107,18 +107,24 @@ test_tests() {
     # Any name declared in `[tool.pyve.testenvs]` is accepted; absent
     # `--env` defaults to `[tool.pyve.testenvs].default` (fallback:
     # `testenv`). Resolver rules below.
-    local env_target=""
+    #
+    # Story M.r: `<name>` may also be a comma-separated list of names
+    # (`--env a,b,c`). With a single name (no comma), the M.m exec path
+    # is preserved verbatim. With multiple names, each is run in a
+    # subshell sequentially; exit code is the worst-case aggregate;
+    # each env's output is preceded by `=== Env: <name> ===`.
+    local env_csv=""
     local env_target_explicit=0
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
-                env_target="${2:-}"
+                env_csv="${2:-}"
                 env_target_explicit=1
                 shift 2 || { log_error "--env requires a value (a declared env name, or 'root')"; exit 1; }
                 ;;
             --env=*)
-                env_target="${1#--env=}"
+                env_csv="${1#--env=}"
                 env_target_explicit=1
                 shift
                 ;;
@@ -128,6 +134,65 @@ test_tests() {
                 ;;
         esac
     done
+
+    # Story M.r: split CSV into a list. A single name (no comma)
+    # produces a 1-element list; downstream single-vs-matrix dispatch
+    # branches on `${#env_targets[@]}`.
+    local -a env_targets=()
+    if [[ -n "$env_csv" ]]; then
+        IFS=',' read -r -a env_targets <<< "$env_csv"
+    fi
+
+    # Matrix path: ≥2 declared envs. Each runs in a subshell so an
+    # `exit` (or `exec`) inside a per-env run terminates only that
+    # subshell; iteration continues. Exit code aggregates worst-case
+    # (highest failing rc).
+    if [[ "${#env_targets[@]}" -ge 2 ]]; then
+        local rc=0
+        local one
+        for one in "${env_targets[@]}"; do
+            printf '\n=== Env: %s ===\n' "$one"
+            # Suppress the M.o silent-skip advisory in matrix mode:
+            # the user is explicitly running multiple envs, so the
+            # cross-env "you might have meant X" hint is noise. The
+            # subshell scoping is intentional (the export does NOT
+            # leak to test_tests' caller).
+            # shellcheck disable=SC2030
+            (
+                export PYVE_NO_TESTENV_ADVISORY=1
+                _test_run_one_env "$one" 1 "${args[@]+"${args[@]}"}"
+            )
+            local sub_rc=$?
+            [[ $sub_rc -gt $rc ]] && rc=$sub_rc
+        done
+        exit $rc
+    fi
+
+    # Single-env path (no comma): preserve the M.m exec contract.
+    local env_target="${env_targets[0]:-}"
+    _test_run_one_env "$env_target" "$env_target_explicit" "${args[@]+"${args[@]}"}"
+}
+
+# Story M.r: extracted from `test_tests` so the matrix loop can call
+# the per-env logic inside a subshell without losing the M.m exec
+# behavior on the single-env path. Signature:
+#
+#   _test_run_one_env <name> <explicit> [pytest args...]
+#
+# `<name>` may be empty (use the declared default); `<explicit>` is
+# "1" when the caller passed `--env` (single-env or matrix; matrix
+# always passes 1) and "0" only when single-env had no `--env` at all.
+#
+# Behavior is identical to pre-M.r `test_tests`: legacy-value catch,
+# `root` short-circuit to `run_command`, name validation, conda gate,
+# lazy auto-provision (M.n), pytest install prompt, silent-skip
+# advisory (M.o), `last_used_at` touch (M.m), then `exec pytest`.
+# Returns only on error paths (the success tail execs).
+_test_run_one_env() {
+    local env_target="$1"
+    local env_target_explicit="$2"
+    shift 2 || true
+    local -a args=("$@")
 
     # Category-B hard-error: `--env main` was renamed to `--env root` in
     # v2.7.1 (M.e). Catch the legacy value with a precise migration hint
@@ -239,7 +304,9 @@ test_tests() {
     # silently SKIP in the targeted env and look green. Warn, list
     # the alternatives, point at the supported escape hatch. One
     # line, non-fatal. Suppressible via PYVE_NO_TESTENV_ADVISORY=1
-    # for users who keep pytest in multiple envs deliberately.
+    # for users who keep pytest in multiple envs deliberately —
+    # matrix mode (M.r) sets the env-var inside its per-env subshell.
+    # shellcheck disable=SC2031
     if [[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]]; then
         local -a advisory_envs=()
         local probe
