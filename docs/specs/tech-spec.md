@@ -102,6 +102,7 @@ pyve/
 │   │   ├── test_test_env_lazy_autoprovision.bats # M.n: lazy auto-provisioning + PYVE_NO_AUTO_PROVISION opt-out
 │   │   ├── test_test_env_advisory.bats     # M.o: generalized silent-skip advisory (root + all declared envs)
 │   │   ├── test_testenv_list_prune.bats    # M.p: testenv list (table) + testenv prune (orphan/--unused-since/--all)
+│   │   ├── test_lock_per_env.bats          # M.q: pyve lock --env <name> + --all (per-testenv conda-lock dispatch)
 │   │   └── test_version.bats
 │   ├── integration/                 # pytest integration tests (black-box, one file per workflow)
 │   │   ├── conftest.py              # Shared fixtures (temp dirs, pyve runner)
@@ -208,9 +209,13 @@ No private helpers — `run_command` is self-contained and calls only cross-comm
 
 | Function | Signature | Description |
 |---|---|---|
-| `lock_environment` | `([--check])` | Generate or verify `conda-lock.yml` (micromamba projects only). Default mode: invoke `conda-lock -f environment.yml -p <platform>`, filter the misleading "conda-lock install" post-run message, detect "spec hash already locked" → "already up to date" output, otherwise emit success + `pyve init --force` rebuild hint. `--check` mode: pure mtime comparison via `is_lock_file_stale`, never invokes `conda-lock`, suitable as a CI gate. Three guards run before `conda-lock`: (1) refuses venv backend, (2) requires `environment.yml`, (3) requires `conda-lock` on `$PATH`. |
+| `lock_environment` | `([--check] [--env <name>] [--all])` | Dispatcher. Default mode (no flags): main env via `_lock_main_env`. `--env <name>`: lock the named conda-backed testenv via `_lock_one_env`. `--all`: main env (via subshell so its `exit` doesn't kill the iteration) + every conda-backed testenv via `_lock_all_conda_testenvs`. `--check` applies only to the main env (per-env `--check` is out of scope for M.q). Pre-M.q this function held the main-env body inline; M.q factored it into `_lock_main_env` so `--all` can reuse it. |
+| `_lock_main_env` | `()` | The pre-M.q main-env locking body. Reads `check_mode` via dynamic scoping from `lock_environment`. `--check`: pure mtime comparison via `is_lock_file_stale`, never invokes `conda-lock`. Otherwise: invokes `conda-lock -f environment.yml -p <platform>`, filters the misleading "conda-lock install" post-run message, detects "spec hash already locked" → "already up to date", otherwise emits success + `pyve init --force` rebuild hint. Three guards run before `conda-lock`: (1) refuses venv backend, (2) requires `environment.yml`, (3) requires `conda-lock` on `$PATH`. |
+| `_lock_one_env` | `(<name>)` → 0/1 | Story M.q. Lock a single conda-backed testenv. Loads `read_testenv_config` (idempotent). Hard-errors for `root` (with a "use `pyve lock` no-args" hint), undeclared names (with a `[tool.pyve.testenvs]` hint), non-micromamba backends (after `_testenv_resolve_backend` so `inherit` resolves to the main backend), missing `manifest` declaration, and missing manifest file on disk. Resolves the output path via `_lock_env_lock_path`, invokes `conda-lock -f <manifest> -p <platform> --lockfile <out>`. Uses `return` (not `exit`) so callers can iterate. |
+| `_lock_env_lock_path` | `(<manifest>)` → string | Story M.q. Derive the sibling lock-file path: `tests/env.yml` → `tests/env-lock.yml`. Strips `.yaml`/`.yml` extension, appends `-lock.yml`. Preserves the manifest's directory; bare `<base>.yml` → `<base>-lock.yml`. |
+| `_lock_all_conda_testenvs` | `()` → 0/1 | Story M.q. Iterate `PYVE_TESTENVS_NAMES`, skip non-`micromamba` backends, call `_lock_one_env` per env. Per-env failures `warn` and accumulate into a non-zero return; iteration always completes. |
 
-No private helpers — `lock_environment` is self-contained and calls only cross-command helpers (`config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `is_lock_file_stale`, `get_conda_platform`).
+**Cross-command helpers called:** `config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `warn`, `success`, `is_lock_file_stale`, `get_conda_platform`. Story M.q adds calls to `read_testenv_config`, `is_testenv_declared`, `_testenv_resolve_backend`, `_testenv_manifest_of` (all in `lib/testenvs.sh`, sourced before commands in `pyve.sh`).
 
 **Renamed from `run_lock`** in K.c. Final name `lock_environment()` adopted in the K.f follow-up under the project-essentials "Function naming convention: `<verb>_<operand>`" rule — `pyve lock` operates on the environment's dependency graph (`environment.yml` → `conda-lock.yml`). The K.c interim name `lock()` was a rule violation (no operand suffix) and was retired alongside K.e's `self()`. No external callers — only the dispatcher arm referenced the function name.
 
@@ -640,6 +645,7 @@ Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-saf
 - M.n: lazy provisioning — `pyve test --env <lazy-name>` auto-provisions on first targeted use via `ensure_testenv_exists` + `_testenv_install_with_lock`; `PYVE_NO_AUTO_PROVISION=1` opt-out restores the M.m hard-error for strict CI (landed).
 - M.o: silent-skip advisory generalization — `_test_main_env_has_pytest` → `_test_env_has_pytest <name>`; advisory in `test_tests` now scans `root` + every declared env and lists every alternative that has pytest importable (landed).
 - M.p: `pyve testenv list` / `pyve testenv prune` — `list` prints a table (name / backend / size / last-used / state) over the union of declared + on-disk envs; `prune` has three modes (orphans default, `--unused-since <ISO-date>`, `--all`) with the standard `--force` / TTY confirmation. Consumes the `.state.last_used_at` field M.m started writing (landed).
+- M.q: `pyve lock --env <name>` / `pyve lock --all` — extends `lock_environment` (factored: `_lock_main_env` + `_lock_one_env` + `_lock_all_conda_testenvs`). Output lock-file path follows `_lock_env_lock_path` (`tests/env.yml` → `tests/env-lock.yml`). Venv-backed envs, undeclared names, missing manifest declarations / files, and `--env root` all hard-error with precise messages (landed).
 - M.n: M.c silent-skip advisory generalized to every named env.
 - M.o: `pyve test --env <name>` resolver extension.
 - M.p: `pyve testenv list` / `prune`.

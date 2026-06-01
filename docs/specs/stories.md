@@ -700,25 +700,28 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.q: [Testenv-DX] `pyve lock --env <name>` / `--all` extension [Planned]
+### Story M.q: [Testenv-DX] `pyve lock --env <name>` / `--all` extension [Done]
 
 **Why.** Production concern PC-2: conda-backed testenvs need deterministic resolution (no conda-forge drift across time). `pyve lock` already handles the main env; extend to per-env locking for conda-backed testenvs.
 
-**Approach.** Extend `lock_environment` in [lib/commands/lock.sh](../../lib/commands/lock.sh):
+**Approach.** Factored `lock_environment` in [lib/commands/lock.sh](../../lib/commands/lock.sh) into a thin dispatcher + four helpers. Pre-M.q the function held the main-env body inline; that body moved into `_lock_main_env` so `--all` can reuse it without duplication. New private helpers `_lock_one_env`, `_lock_env_lock_path`, `_lock_all_conda_testenvs` deliver the per-env surface.
 
-- `pyve lock` (no args) → main env (existing behavior preserved).
-- `pyve lock --env <name>` → lock the named conda-backed testenv. Hard error for venv-backed envs.
-- `pyve lock --all` → main env + every conda-backed testenv.
+- `pyve lock` (no args) → `_lock_main_env` (existing behavior preserved verbatim).
+- `pyve lock --env <name>` → `_lock_one_env "$name"`. Loads `read_testenv_config` (idempotent). Validates: rejects `root` (with a "use `pyve lock` no-args" hint), rejects undeclared names (with a `[tool.pyve.testenvs]` hint), rejects non-`micromamba` backends after resolving `inherit` via `_testenv_resolve_backend`, rejects missing-`manifest` declarations + missing manifest files on disk, requires `conda-lock` on PATH. Invokes `conda-lock -f <manifest> -p <platform> --lockfile <out>` where `<out>` = `_lock_env_lock_path <manifest>` (`tests/env.yml` → `tests/env-lock.yml`, strips `.yml`/`.yaml`, appends `-lock.yml`).
+- `pyve lock --all` → subshell-wrapped `_lock_main_env` (so its `exit` paths don't kill iteration) + `_lock_all_conda_testenvs`. The latter iterates `PYVE_TESTENVS_NAMES`, skips non-`micromamba` backends, calls `_lock_one_env` per env. Per-env failures `warn` and accumulate into a non-zero return; iteration always completes. Venv-backed testenvs are skipped silently — they live outside conda-lock's scope.
 
-Lock files: `<manifest-basename>-lock.yml` sibling to the manifest.
+**Test infrastructure note (debugging tax).** First bats run hung because `unknown_flag_error` lives in `pyve.sh` (not in any `lib/`) — the unknown-flag arm in lock.sh's parser called a "command not found" function, and the parser looped on the unshifted arg. Fix: stubbed `unknown_flag_error` in the test's `setup()` to a clean `log_error + exit 1`. This is a class of bug that will recur for any future lib/commands test exercising the unknown-flag arm; the existing `tests/unit/test_unknown_flag.bats` sidesteps it by shelling out to `$PYVE_SCRIPT` (full sourcing). A class-level fix — moving `unknown_flag_error` into `lib/utils.sh` so the standard test sourcing picks it up — is a candidate Future story.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering `--env <conda-name>` produces a lock file, `--env <venv-name>` errors with a precise message, `--all` iterates correctly.
-- [ ] `lock_environment` extension.
-- [ ] Update `tech-spec.md` lock command section.
+- [x] Failing tests first in [tests/unit/test_lock_per_env.bats](../../tests/unit/test_lock_per_env.bats): 12 tests covering `--env <conda-name>` happy path with assertions on `conda-lock` argv (manifest + `--lockfile` sibling), `--env=<name>` `=` form, `--env <venv-name>` rejected with backend hint, `--env <undeclared>` rejected with config hint, `--env root` rejected with `pyve lock` guidance, `--env <conda-name>` with no `manifest` declared / missing manifest file both hard-error, `--all` iterates main + conda-backed envs (skipping venv), today's `pyve lock` (no args) + `--check` behavior preserved, unknown-flag still errors. *(Full unit suite 1078/1078.)*
+- [x] `lock_environment` extension — dispatcher + `_lock_main_env` extraction + three M.q helpers (`_lock_one_env`, `_lock_env_lock_path`, `_lock_all_conda_testenvs`). `unknown_flag_error` allowlist updated.
+- [x] Update [tech-spec.md](tech-spec.md) lock command section: replaced the single-row `lock_environment` description with five rows (dispatcher + the four helpers); updated the cross-command-helpers paragraph for M.q's `testenvs.sh` calls; added the M.q consumer-list bullet (landed); added the new bats file to the test inventory.
+- [x] Update [features.md](features.md) flag inventory: two new rows (`--env <name>` and `--all` under `pyve lock`).
 
-**Out of scope.** Lock-file format change (continue `conda-lock` default); locking pip-installed-into-conda mixed envs.
+**Out of scope.** Lock-file format change (continue `conda-lock` default); locking pip-installed-into-conda mixed envs; `pyve lock --check --env <name>` (per-env staleness check) — defer to a polish pass; moving `unknown_flag_error` into `lib/utils.sh` (Future story candidate per the debugging-tax note above).
+
+**Version impact.** None — M.q is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

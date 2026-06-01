@@ -92,6 +92,8 @@ Pyve is a command-line tool that provides a single, deterministic entry point fo
 | `--project-guide-completion` | Force shell completion wiring (no prompt) | `pyve init --project-guide-completion` |
 | `--no-project-guide-completion` | Skip shell completion wiring (no prompt) | `pyve init --no-project-guide-completion` |
 | `--check` | (lock) verify lock file freshness without regenerating | `pyve lock --check` |
+| `--env <name>` | (lock) lock the named conda-backed testenv via `conda-lock` (Story M.q). Output: `<manifest-basename>-lock.yml` sibling to the manifest. Hard-errors for venv-backed names, undeclared names, `root`, and missing `manifest` declarations / files. | `pyve lock --env hardware` |
+| `--all` | (lock) lock the main env + every conda-backed testenv (Story M.q). Venv-backed testenvs are skipped silently. | `pyve lock --all` |
 
 ### Project Files (Auto-Detection)
 
