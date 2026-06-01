@@ -101,6 +101,7 @@ pyve/
 │   │   ├── test_test_env_resolver.bats # M.m: pyve test --env <name> resolver + .state last-used touch
 │   │   ├── test_test_env_lazy_autoprovision.bats # M.n: lazy auto-provisioning + PYVE_NO_AUTO_PROVISION opt-out
 │   │   ├── test_test_env_advisory.bats     # M.o: generalized silent-skip advisory (root + all declared envs)
+│   │   ├── test_testenv_list_prune.bats    # M.p: testenv list (table) + testenv prune (orphan/--unused-since/--all)
 │   │   └── test_version.bats
 │   ├── integration/                 # pytest integration tests (black-box, one file per workflow)
 │   │   ├── conftest.py              # Shared fixtures (temp dirs, pyve runner)
@@ -284,6 +285,10 @@ Largest namespace command — 4 leaves: `init`, `install`, `purge`, `run`. The K
 | `_testenv_init_conda` / `_testenv_install_conda` | M.k | Conda-backed init/install via `micromamba create -p <path> -f <manifest> -y` / `micromamba install -p <path> -f <manifest> -y`. Both require `manifest` declared in `[tool.pyve.testenvs.<name>]`; both error cleanly when the manifest file is missing. `_init_conda` is idempotent (info+skip if `conda-meta` already exists); `_install_conda` requires the env to exist (errors with a `pyve testenv init <name>` hint otherwise). See *Conda backend dispatch (Story M.k)* under `lib/testenvs.sh` for the wider design. |
 | `_testenv_install_all_nonlazy` | M.i.3 + M.k | Iteration loop for no-arg `install`. Iterates `PYVE_TESTENVS_NAMES`, skips lazy envs, calls `_testenv_install_with_lock` for each remaining env. Conda envs are no longer skipped post-M.k — backend dispatch is uniform across iteration and single-env paths. |
 | `_testenv_purge_all_with_confirm` | M.i.4 | Iteration loop for no-arg `purge`. TTY-aware `y/N` confirmation (`--force` skips; `PYVE_FORCE_PROMPT=1` forces). |
+| `testenv_list` | M.p | Walk the union of declared (`PYVE_TESTENVS_NAMES`) and on-disk (`.pyve/testenvs/*/`) env names; print a header (`NAME BACKEND SIZE LAST-USED STATE`) followed by one row per env via `_testenv_list_one_row`. Read-mostly; no mutations. |
+| `_testenv_list_all_names` / `_testenv_list_one_row` | M.p | `_all_names` emits the union of declared + on-disk names, deduped via bash-3.2-safe string-membership (no `declare -A`). `_one_row` resolves backend (declared → `_testenv_resolve_backend`; orphaned → infer from on-disk shape), runs `du -sh`, reads `.state.last_used_at` (`never` for `0`, ISO date otherwise via `_testenv_format_epoch`), and assigns `STATE` (`ready` / `lazy` / `not provisioned` / `orphaned`). |
+| `testenv_prune` | M.p | Three modes: default (orphans, declared-name guard + reserved-`testenv` guard), `--unused-since <ISO-date>` (compares `.state.last_used_at` against the parsed epoch; preserves `last_used=0` "never used" entries), `--all` (every on-disk env, disk-driven — distinct from `testenv purge` no-arg's config-driven walk). Bad date format hard-errors before walking. Confirmation gating mirrors `_testenv_purge_all_with_confirm` (`--force` / `PYVE_FORCE_PROMPT=1` / TTY). Calls `purge_testenv_dir` per candidate; accumulates the worst exit. |
+| `_testenv_format_epoch` / `_testenv_parse_iso_date` | M.p | Cross-platform date helpers — BSD `date -r`/`date -j -f` on Darwin, GNU `date -d @…`/`date -d <iso>` elsewhere. Both fail closed (`?` / non-zero return) on bad input. |
 
 **F-7 / F-8 helper moves (K.g performs):** `purge_testenv_dir`, `ensure_testenv_exists`, and `testenv_paths` move from `pyve.sh` to `lib/utils.sh` because they are each shared by 2+ commands (per project-essentials cross-command-helper rule):
 
@@ -634,6 +639,7 @@ Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-saf
 - M.m: `pyve test --env <name>` resolver extension — accepts any declared name, defaults to `[tool.pyve.testenvs].default`, hard-errors on undeclared names (lists valid choices), hard-errors on conda-backed envs (run is venv-only), hard-errors on unprovisioned lazy envs with an install hint, touches `.state.last_used_at` on the success path. `ensure_testenv_exists` and `_testenv_init_conda` write initial `.state` on env creation so the touch has something to update (landed).
 - M.n: lazy provisioning — `pyve test --env <lazy-name>` auto-provisions on first targeted use via `ensure_testenv_exists` + `_testenv_install_with_lock`; `PYVE_NO_AUTO_PROVISION=1` opt-out restores the M.m hard-error for strict CI (landed).
 - M.o: silent-skip advisory generalization — `_test_main_env_has_pytest` → `_test_env_has_pytest <name>`; advisory in `test_tests` now scans `root` + every declared env and lists every alternative that has pytest importable (landed).
+- M.p: `pyve testenv list` / `pyve testenv prune` — `list` prints a table (name / backend / size / last-used / state) over the union of declared + on-disk envs; `prune` has three modes (orphans default, `--unused-since <ISO-date>`, `--all`) with the standard `--force` / TTY confirmation. Consumes the `.state.last_used_at` field M.m started writing (landed).
 - M.n: M.c silent-skip advisory generalized to every named env.
 - M.o: `pyve test --env <name>` resolver extension.
 - M.p: `pyve testenv list` / `prune`.

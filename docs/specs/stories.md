@@ -666,23 +666,37 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.p: [Testenv-DX] `pyve testenv list` / `pyve testenv prune` [Planned]
+### Story M.p: [Testenv-DX] `pyve testenv list` / `pyve testenv prune` [Done]
 
 **Why.** Disk discoverability (FR-M.12). Many envs balloon disk; surfacing per-env size + last-used + provisioning state without `du -sh` matches the "feels integral" criterion.
 
 **Approach.** Two new leaves in [lib/commands/testenv.sh](../../lib/commands/testenv.sh):
 
-- `testenv_list` — read `.state` files, compute `du -sh` per env, print a table (name, backend, size, last-used, state).
-- `testenv_prune` — three modes: no args (remove envs not declared in config, with confirmation), `--unused-since <date>` (remove envs whose `last-used` is older), `--all` (purge every env, with confirmation).
+- `testenv_list` — walk the union of declared (`PYVE_TESTENVS_NAMES`) and on-disk (`.pyve/testenvs/*/`) env names; for each, print `NAME / BACKEND / SIZE / LAST-USED / STATE`. `LAST-USED` is from `.state.last_used_at` (`never` for `0`, ISO date `YYYY-MM-DD` otherwise via `_testenv_format_epoch`); `SIZE` from `du -sh`; `STATE` is `ready` (declared + on disk) / `lazy` (declared `lazy = true`, not yet provisioned) / `not provisioned` (declared non-lazy, absent from disk) / `orphaned` (on disk, not declared; the reserved `testenv` is never orphaned).
+- `testenv_prune` — three modes, all disk-walking with confirmation gating that mirrors M.i.4's `purge`:
+  - **no args** — remove orphans.
+  - **`--unused-since <YYYY-MM-DD>`** — compare each env's `.state.last_used_at` against the cutoff; remove the strict-older set. `last_used=0` ("never used") preserves so freshly-provisioned envs are not eaten. Bad date format hard-errors before walking.
+  - **`--all`** — remove every on-disk env. Distinct from `testenv purge` no-arg's config-driven iteration over `PYVE_TESTENVS_NAMES`.
+
+**Announce-gate decisions.**
+
+- **Last-used display:** absolute ISO date (`YYYY-MM-DD`). Cross-platform relative-time math via `date` is fiddly (BSD vs GNU); ISO is portable.
+- **`--unused-since` format:** ISO date only. No relative durations (`30d` / `1w`) — defer to a polish pass if real friction surfaces.
+- **State column:** `ready` / `lazy` / `not provisioned` / `orphaned`. **Stale** (manifest-sha mismatch) explicitly deferred — M.p's `.state` consumption stays read-mostly; a `stale`-aware story can land later.
+- **`prune --all` vs `testenv purge` no-arg:** kept as separate surfaces with the **disk-driven** vs **config-driven** distinction explicit in the help heredoc.
 
 **Tasks**
 
-- [ ] Failing tests first: bats covering `list` output shape, `prune` modes, confirmation prompt mocking.
-- [ ] `testenv_list` + `testenv_prune` leaves.
-- [ ] Per-leaf help blocks.
-- [ ] Update `tech-spec.md` testenv namespace table.
+- [x] Failing tests first in [tests/unit/test_testenv_list_prune.bats](../../tests/unit/test_testenv_list_prune.bats): 16 tests covering `list` over the empty / ready / lazy / orphaned / conda / never-used / not-provisioned cases plus header columns; `prune` orphan mode (skips declared + reserved `testenv`, info-when-empty); `prune --unused-since` (removes-older, preserves never-used, rejects bad date format); `prune --all --force`; `--help` documents both leaves; unknown-flag hard-error. *(RED 15/16 → GREEN 16/16 after a single fixture epoch correction. Full unit suite 1066/1066.)*
+- [x] `testenv_list` + `testenv_prune` leaves in [lib/commands/testenv.sh](../../lib/commands/testenv.sh), plus four private helpers: `_testenv_list_all_names` (bash-3.2-safe dedup via string-membership; no `declare -A`), `_testenv_list_one_row` (per-row formatting + state classification), `_testenv_format_epoch` (epoch → ISO date, cross-platform), `_testenv_parse_iso_date` (ISO date → epoch). Dispatcher wired with new `list` / `prune` arms; the `prune` sub-parser captures `--unused-since <date>` / `--all` / `--force` into a `prune_args[]` array forwarded to the leaf.
+- [x] Per-leaf help blocks — **deferred per the announce-gate decision** to the existing Future story for per-leaf help functions in namespace commands. The namespace `--help` heredoc was updated with usage + behavior bullets covering both new leaves.
+- [x] Update [tech-spec.md](tech-spec.md) testenv namespace table — added five rows (`testenv_list`, `_testenv_list_all_names` / `_one_row`, `testenv_prune`, `_testenv_format_epoch` / `_parse_iso_date`); updated the consumer-list bullet for M.p (landed); added the new bats file to the test inventory.
 
-**Out of scope.** Real-time `last-used` tracking — folds into M.m.
+**Features.md updates.** FR-11's `.state` per-env-file bullet extended to cite M.p's consumption. Two new bullets describe `pyve testenv list` and `pyve testenv prune` with the full mode catalog + the disk-vs-config distinction from `testenv purge`.
+
+**Out of scope.** Stale-state detection (manifest_sha256 mismatch) — future candidate. Per-leaf `show_<leaf>_help` functions — covered by the existing Future story for the namespace-wide refactor. Relative-time displays / durations — defer to polish pass. `docs/site/testing.md` documentation — folds into M.s.
+
+**Version impact.** None — M.p is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
 
 ---
 

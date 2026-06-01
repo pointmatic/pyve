@@ -158,6 +158,267 @@ _testenv_resolve_extra_packages() {
 }
 
 #------------------------------------------------------------
+# Story M.p — date helpers (epoch ↔ ISO date, cross-platform).
+#
+# macOS ships BSD date (`date -r <epoch>`, `date -j -f`); Linux ships
+# GNU date (`date -d @<epoch>`, `date -d <iso>`). Probe via `uname` per
+# the existing micromamba_env.sh pattern.
+#------------------------------------------------------------
+
+_testenv_format_epoch() {
+    local epoch="$1"
+    if [[ "$(uname)" == "Darwin" ]]; then
+        date -r "$epoch" '+%Y-%m-%d' 2>/dev/null || printf '?'
+    else
+        date -d "@$epoch" '+%Y-%m-%d' 2>/dev/null || printf '?'
+    fi
+}
+
+# Print the epoch for the given ISO date (YYYY-MM-DD). Return 1 + no
+# output if the input is not in that exact shape or `date` rejects it.
+_testenv_parse_iso_date() {
+    local iso="$1"
+    [[ "$iso" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
+    if [[ "$(uname)" == "Darwin" ]]; then
+        date -j -f '%Y-%m-%d' "$iso" '+%s' 2>/dev/null || return 1
+    else
+        date -d "$iso" '+%s' 2>/dev/null || return 1
+    fi
+}
+
+#------------------------------------------------------------
+# Story M.p — `testenv list` / `testenv prune`.
+#
+# `testenv_list`: walk the union of declared (PYVE_TESTENVS_NAMES) and
+# on-disk (`.pyve/testenvs/*/`) env names; for each, print one row
+# with name/backend/size/last-used/state.
+#
+# `testenv_prune`: three modes:
+#   default (no args)       — remove on-disk envs not declared in
+#                              pyproject (orphans). Reserved `testenv`
+#                              is never orphaned.
+#   --unused-since <ISO>    — remove on-disk envs whose `.state`'s
+#                              last_used_at is strictly older than
+#                              the given date. last_used=0 ("never")
+#                              is preserved so freshly-provisioned envs
+#                              are not eaten.
+#   --all                   — remove every on-disk env (declared and
+#                              orphaned alike). Disk-driven; distinct
+#                              from `testenv purge` no-arg, which is
+#                              config-driven (iterates
+#                              PYVE_TESTENVS_NAMES).
+# Confirmation gating mirrors M.i.4's `purge` semantics: `--force`
+# skips; non-TTY (CI) skips; `PYVE_FORCE_PROMPT=1` forces.
+#------------------------------------------------------------
+
+# Print the union of declared + on-disk env names, one per line.
+# Bash-3.2-safe dedup via string-membership (no `declare -A`).
+_testenv_list_all_names() {
+    local name seen=" "
+    for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
+        if [[ "$seen" != *" $name "* ]]; then
+            printf '%s\n' "$name"
+            seen+="$name "
+        fi
+    done
+    if [[ -d ".pyve/testenvs" ]]; then
+        local d
+        for d in .pyve/testenvs/*/; do
+            [[ -d "$d" ]] || continue
+            name="$(basename "$d")"
+            if [[ "$seen" != *" $name "* ]]; then
+                printf '%s\n' "$name"
+                seen+="$name "
+            fi
+        done
+    fi
+}
+
+# Print a single env's row.
+_testenv_list_one_row() {
+    local name="$1"
+    local backend size last_used state
+    local on_disk=0
+    [[ -d ".pyve/testenvs/$name" ]] && on_disk=1
+
+    if is_testenv_declared "$name"; then
+        backend="$(_testenv_resolve_backend "$name" 2>/dev/null || printf 'venv')"
+    elif [[ -d ".pyve/testenvs/$name/conda" ]]; then
+        backend="micromamba"
+    elif [[ -d ".pyve/testenvs/$name/venv" ]]; then
+        backend="venv"
+    else
+        backend="?"
+    fi
+
+    if [[ "$on_disk" == "1" ]]; then
+        size="$(du -sh ".pyve/testenvs/$name" 2>/dev/null | awk '{print $1}')"
+        [[ -z "$size" ]] && size="?"
+    else
+        size="--"
+    fi
+
+    if state_read "$name" 2>/dev/null; then
+        if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" == "0" ]]; then
+            last_used="never"
+        else
+            last_used="$(_testenv_format_epoch "$PYVE_TESTENV_STATE_LAST_USED_AT")"
+        fi
+    else
+        last_used="--"
+    fi
+
+    if is_testenv_declared "$name"; then
+        if [[ "$on_disk" == "1" ]]; then
+            state="ready"
+        elif is_testenv_lazy "$name"; then
+            state="lazy"
+        else
+            state="not provisioned"
+        fi
+    else
+        state="orphaned"
+    fi
+
+    printf '%-12s %-12s %-8s %-12s %s\n' "$name" "$backend" "$size" "$last_used" "$state"
+}
+
+testenv_list() {
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+    printf '%-12s %-12s %-8s %-12s %s\n' NAME BACKEND SIZE LAST-USED STATE
+    local name
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        _testenv_list_one_row "$name"
+    done < <(_testenv_list_all_names)
+}
+
+testenv_prune() {
+    local mode="orphan"
+    local cutoff_date=""
+    local force=0
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --unused-since)
+                mode="unused-since"
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--unused-since requires a date (YYYY-MM-DD)"
+                    exit 1
+                fi
+                cutoff_date="$2"
+                shift 2
+                ;;
+            --all)
+                mode="all"
+                shift
+                ;;
+            --force)
+                force=1
+                shift
+                ;;
+            *)
+                log_error "Unknown prune flag: $1"
+                log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                exit 1
+                ;;
+        esac
+    done
+
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+
+    # Pre-loop arg validation.
+    local cutoff_epoch=""
+    if [[ "$mode" == "unused-since" ]]; then
+        if ! cutoff_epoch="$(_testenv_parse_iso_date "$cutoff_date")"; then
+            log_error "Invalid date '$cutoff_date' (expected YYYY-MM-DD)"
+            exit 1
+        fi
+    fi
+
+    if [[ ! -d ".pyve/testenvs" ]]; then
+        case "$mode" in
+            orphan)        info "No orphaned testenvs to prune." ;;
+            all)           info "No testenvs on disk to prune." ;;
+            unused-since)  info "No testenvs unused since $cutoff_date — nothing to prune." ;;
+        esac
+        return 0
+    fi
+
+    # Walk on-disk envs and collect candidates per mode.
+    local -a candidates=()
+    local d name
+    for d in .pyve/testenvs/*/; do
+        [[ -d "$d" ]] || continue
+        name="$(basename "$d")"
+        case "$mode" in
+            orphan)
+                # Skip declared + the reserved 'testenv' (always implicit).
+                if is_testenv_declared "$name" || [[ "$name" == "testenv" ]]; then
+                    continue
+                fi
+                candidates+=("$name")
+                ;;
+            all)
+                candidates+=("$name")
+                ;;
+            unused-since)
+                if ! state_read "$name" 2>/dev/null; then
+                    # No .state → safer to skip than to remove blindly.
+                    continue
+                fi
+                if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" == "0" ]]; then
+                    # Never used → preserve (don't eat freshly-provisioned envs).
+                    continue
+                fi
+                if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" -lt "$cutoff_epoch" ]]; then
+                    candidates+=("$name")
+                fi
+                ;;
+        esac
+    done
+
+    if [[ "${#candidates[@]}" -eq 0 ]]; then
+        case "$mode" in
+            orphan)        info "No orphaned testenvs to prune." ;;
+            all)           info "No testenvs on disk to prune." ;;
+            unused-since)  info "No testenvs unused since $cutoff_date — nothing to prune." ;;
+        esac
+        return 0
+    fi
+
+    # Confirm — same TTY/--force semantics as M.i.4.
+    local should_prompt=0
+    if [[ "$force" != "1" ]]; then
+        if [[ "${PYVE_FORCE_PROMPT:-0}" == "1" ]] || [[ -t 0 ]]; then
+            should_prompt=1
+        fi
+    fi
+    if [[ "$should_prompt" == "1" ]]; then
+        printf "Remove %d testenv(s): %s? [y/N]: " "${#candidates[@]}" "${candidates[*]}"
+        local response
+        read -r response
+        if [[ ! "$response" =~ ^[Yy]$ ]]; then
+            info "Aborted; no testenvs were removed."
+            return 0
+        fi
+    fi
+
+    local rc=0
+    for name in "${candidates[@]}"; do
+        if ! purge_testenv_dir "$name"; then
+            warn "Failed to remove '$name' (continuing)"
+            rc=1
+        fi
+    done
+    return "$rc"
+}
+
+#------------------------------------------------------------
 # Leaf: pyve testenv purge [<name>]
 #
 # Story M.i.4: accepts an optional <name>. With-arg removes that env;
@@ -500,6 +761,7 @@ testenv_command() {
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
+    local -a prune_args=()         # Story M.p: prune flags forwarded to testenv_prune
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -576,6 +838,45 @@ testenv_command() {
                     esac
                 done
                 ;;
+            list)
+                action="list"
+                shift
+                # Story M.p: `list` takes no positional / sub-flag args
+                # today. Any leftover args fall through to the outer
+                # unknown-flag/unknown-arg arms.
+                ;;
+            prune)
+                action="prune"
+                shift
+                # Story M.p: sub-parser absorbs flags here. The action
+                # leaf consumes them via shell positional preservation
+                # using a captured array.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --unused-since|--all|--force)
+                            prune_args+=("$1")
+                            shift
+                            ;;
+                        --unused-since=*)
+                            prune_args+=("--unused-since" "${1#--unused-since=}")
+                            shift
+                            ;;
+                        *)
+                            # `--unused-since` consumes the next arg in
+                            # the leaf; route any remaining positionals
+                            # through too so the leaf sees the date.
+                            if [[ "${prune_args[*]: -1}" == "--unused-since" ]]; then
+                                prune_args+=("$1")
+                                shift
+                                continue
+                            fi
+                            log_error "Unknown prune arg: $1"
+                            log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                            exit 1
+                            ;;
+                    esac
+                done
+                ;;
             # Story J.d (v2.3.0): Category A legacy flag forms
             # (`testenv --init|--install|--purge`) removed. Falls through
             # to the `-*)` arm below, which produces the standard
@@ -602,6 +903,8 @@ Usage:
   pyve testenv install [<name>] [-r requirements-dev.txt] [--no-wait]
   pyve testenv purge [<name>] [--force]
   pyve testenv run [<name> --] <command> [args...]
+  pyve testenv list
+  pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
 
 Notes:
   - Default `testenv` lives at .pyve/testenvs/testenv/venv
@@ -610,6 +913,19 @@ Notes:
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
     only into that env.
+  - `list` (M.p) prints a table of every env (declared + on-disk):
+      NAME / BACKEND / SIZE / LAST-USED / STATE.
+    Last-used is from `.state.last_used_at` (M.m); `never` when 0.
+    State is one of: ready / lazy / not provisioned / orphaned.
+  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--force`:
+      no args            — remove orphans (on disk but not declared,
+                            excluding the reserved `testenv`).
+      --unused-since DATE — remove envs whose last-used is strictly older.
+                            ISO date YYYY-MM-DD. Envs with last-used=0
+                            (never used) are preserved.
+      --all              — remove every env on disk (declared + orphaned).
+                            Disk-driven; distinct from `testenv purge` no-arg,
+                            which is config-driven.
   - `install` acquires a per-env lock at .pyve/testenvs/<name>/.lock to
     serialize concurrent installs into the same env. Default is wait+retry;
     `--no-wait` fast-fails with "another pyve process is installing
@@ -641,7 +957,7 @@ EOF
 
     if [[ -z "$action" ]]; then
         log_error "No testenv action provided"
-        log_error "Use: pyve testenv <init|install|purge|run <command>>"
+        log_error "Use: pyve testenv <init|install|purge|run|list|prune> [...]"
         exit 1
     fi
 
@@ -728,6 +1044,14 @@ EOF
             else
                 _testenv_purge_all_with_confirm "$purge_force" || leaf_rc=$?
             fi
+            ;;
+        list)
+            # Story M.p: read-mostly walk of declared + on-disk envs.
+            testenv_list || leaf_rc=$?
+            ;;
+        prune)
+            # Story M.p: forward the captured flags to the leaf.
+            testenv_prune "${prune_args[@]+"${prune_args[@]}"}" || leaf_rc=$?
             ;;
     esac
 
