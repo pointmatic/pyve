@@ -202,7 +202,7 @@ command -v project-guide >/dev/null 2>&1 && \
 **Out of scope**
 
 - Category-A delegation. Per project-essentials, the precise error message *is* the migration window.
-- Renaming private helper `_test_main_env_has_pytest`. Rename folds into M.n when the helper is generalized.
+- Renaming private helper `_test_main_env_has_pytest`. Rename folds into M.o when the helper is generalized.
 
 **Version impact.** Patch (v2.7.1). Junk-drawer cadence. Pre-bundle.
 
@@ -274,13 +274,13 @@ command -v project-guide >/dev/null 2>&1 && \
 | **M.h.3** | Activate the new layout — wire M.h.2 into `pyve update`, add opportunistic-migration fallback in `resolve_testenv_path`, sweep every hard-coded `.pyve/$TESTENV_DIR_NAME/venv` consumer to read through the resolver. |
 | **M.h.4** | Docs sweep — `tech-spec.md` testenv-layout section, `features.md` testenv DX entries, `project-essentials.md` Pyve Essentials block acknowledging the new path shape. |
 
-**Out of scope (bundle-wide).** Namespace command expansion to take `<name>` arguments (M.i); `.state` field consumption — `last_used_at` touch lands in M.o, `provisioned_at` / `manifest_sha256` consumption lands in M.p's `pyve testenv list` / `prune`.
+**Out of scope (bundle-wide).** Namespace command expansion to take `<name>` arguments (M.i); `.state` field consumption — `last_used_at` touch lands in M.m, `provisioned_at` / `manifest_sha256` consumption lands in M.p's `pyve testenv list` / `prune`.
 
 ---
 
 ### Story M.h.1: [Testenv-DX] `.state` file format + read/write helpers [Done]
 
-**Why.** Every consumer in the bundle (migration in M.h.2; list/prune in M.p; lazy-provision in M.m; last-used tracking in M.o) needs a single shared format for per-env state. Ship the schema + helpers first so M.h.2+ has stable API.
+**Why.** Every consumer in the bundle (migration in M.h.2; list/prune in M.p; lazy-provision in M.n; last-used tracking in M.m) needs a single shared format for per-env state. Ship the schema + helpers first so M.h.2+ has stable API.
 
 **Schema (plain `key=value`, sourceable):**
 
@@ -307,7 +307,7 @@ last_used_at=<unix epoch seconds or 0>
 - [x] Implement the four helpers in [lib/testenvs.sh](../../lib/testenvs.sh) using the plain-assignment pattern established in M.g. *(state_read parses via `IFS= read` loop rather than `source` to prevent shell-injection from a malformed `.state`.)*
 - [x] No consumers yet — M.h.2 is the first.
 
-**Out of scope.** The migration helper (M.h.2); any consumer that touches `.state` (M.h.3, M.o, M.p).
+**Out of scope.** The migration helper (M.h.2); any consumer that touches `.state` (M.h.3, M.m, M.p).
 
 ---
 
@@ -350,7 +350,7 @@ last_used_at=<unix epoch seconds or 0>
 - [x] Sweep the six consumer files to use the resolver. Verify no `.pyve/testenv/venv` or `.pyve/$TESTENV_DIR_NAME` literal survives outside of `lib/testenvs.sh`'s migration helper and `pyve.sh`'s back-compat global. *(Implicit-scope adds flagged at announce gate: gitignore template `.pyve/testenv` → `.pyve/testenvs` in [lib/utils.sh:859](../../lib/utils.sh#L859); `--keep-testenv` semantic expansion from "preserve single legacy testenv" to "preserve whole `.pyve/testenvs/` tree" in [lib/commands/purge.sh](../../lib/commands/purge.sh) — both included for v2.8 coherence.)*
 - [x] Verify full unit suite passes after the sweep. *(930/930 ok. Three pre-existing test files updated: [tests/unit/test_test_command.bats](../../tests/unit/test_test_command.bats) and [tests/unit/test_status.bats](../../tests/unit/test_status.bats) fixtures now create envs at the new path; [tests/unit/test_utils.bats](../../tests/unit/test_utils.bats) idempotency tests use the new pattern. The `test_test_command` setup now sources `lib/testenvs.sh` since `test.sh` resolves paths through it.)*
 
-**Out of scope.** `.state` field *consumption* — touch `last_used_at` lands in M.o, `provisioned_at` / `manifest_sha256` read lands in M.p. M.h.3 only writes `.state` at migration time (via M.h.2) and at provisioning time (existing `testenv_init` writes it via the M.h.1 helper).
+**Out of scope.** `.state` field *consumption* — touch `last_used_at` lands in M.m, `provisioned_at` / `manifest_sha256` read lands in M.p. M.h.3 only writes `.state` at migration time (via M.h.2) and at provisioning time (existing `testenv_init` writes it via the M.h.1 helper).
 
 ---
 
@@ -394,7 +394,7 @@ last_used_at=<unix epoch seconds or 0>
 - **Conda-backed envs** (`backend = "micromamba"` or `inherit`) are stubbed with a "conda backend not yet implemented; see M.k" hard-error in M.i.1 and stay that way through the bundle. M.k implements the conda mechanics; M.i.1's stub is the placeholder.
 - **Manifest source consumption** (declared `requirements = [...]` / `extra = "dev"` from `[tool.pyve.testenvs]`) is NOT in this bundle — `install` continues to accept `-r <file>` or install bare `pytest` exactly like today. M.l flips that switch.
 - **Per-env install lock** (`.pyve/testenvs/<name>/.lock` via `flock`) is M.j, not M.i.
-- **Lazy auto-provisioning on first targeted use** (`pyve test --env <lazy-env>` triggering an install) is M.m.
+- **Lazy auto-provisioning on first targeted use** (`pyve test --env <lazy-env>` triggering an install) is M.n.
 
 **Bundle structure (M.i.1 → M.i.4).** Each sub-story is independently RED-GREEN testable; the bundle ships unversioned, releasing at M.t (v2.8.0).
 
@@ -405,7 +405,7 @@ last_used_at=<unix epoch seconds or 0>
 | **M.i.3** | `testenv install [<name>] [-r …]` — with-arg single-env behavior + no-arg iteration over non-lazy envs. |
 | **M.i.4** | `testenv purge [<name>] [--force]` — with-arg single-env behavior + no-arg "all envs (confirm)" iteration; `--force` skips confirmation. |
 
-**Out of scope (bundle-wide).** `pyve testenv list` / `prune` (M.p — new leaves); per-env install lock (M.j); conda backend provisioning (M.k); declared manifest source consumption (M.l); lazy auto-provisioning (M.m).
+**Out of scope (bundle-wide).** `pyve testenv list` / `prune` (M.p — new leaves); per-env install lock (M.j); conda backend provisioning (M.k); declared manifest source consumption (M.l); lazy auto-provisioning (M.n).
 
 ---
 
@@ -470,7 +470,7 @@ last_used_at=<unix epoch seconds or 0>
 - [x] Update help block for `install`. *(Namespace `--help` heredoc adds the `[<name>]` slot and a note that no-arg iterates non-lazy envs and skips conda-backed envs.)*
 - [x] Verify full unit suite passes.
 
-**Out of scope.** Declared `requirements = [...]` / `extra = "dev"` consumption (M.l); per-env install lock (M.j); lazy auto-provisioning on `pyve test` (M.m).
+**Out of scope.** Declared `requirements = [...]` / `extra = "dev"` consumption (M.l); per-env install lock (M.j); lazy auto-provisioning on `pyve test` (M.n).
 
 ---
 
@@ -504,7 +504,7 @@ last_used_at=<unix epoch seconds or 0>
 
 **Correction (at announce gate).** The plan originally said "`flock`-based lock," but `flock(1)` is **not installed on macOS** by default and macOS is a first-class pyve platform. The cheapest portable alternative — `mkdir` — covers the same semantic surface (atomic acquire, serialized wait, fast-fail on collision) without an OS-specific binary. Stale-lock reclamation uses `kill -0` to probe the holding pid: if the holder no longer exists, the lock is freed and re-acquired.
 
-Acquired around `pyve testenv install <name>` and any auto-provision path (M.m). Second invocation waits by default (1-second sleep+retry); `--no-wait` exits non-zero with a "another pyve process is installing `<name>` (pid N)" message. A `trap` guarantees release on any exit signal (success, error, SIGINT) so the lock dir never strands the env.
+Acquired around `pyve testenv install <name>` and any auto-provision path (M.n). Second invocation waits by default (1-second sleep+retry); `--no-wait` exits non-zero with a "another pyve process is installing `<name>` (pid N)" message. A `trap` guarantees release on any exit signal (success, error, SIGINT) so the lock dir never strands the env.
 
 **Tasks**
 
@@ -578,7 +578,42 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.m: [Testenv-DX] Lazy provisioning (`lazy = true`) [Planned]
+### Story M.m: [Testenv-DX] `pyve test --env <name>` resolver extension [Done]
+
+**Why.** M.e's parser accepts only `--env {testenv, root}`. With named envs declared (M.g), the resolver needs to accept any declared name.
+
+**Approach.** Extended the inline `--env` parser in `test_tests` (no `_test_parse_args` extraction — kept the existing shape for blast-radius hygiene):
+
+1. Accept `--env <name>` (and `--env=<name>`).
+2. Load `read_testenv_config` (idempotent) so the parser can validate names + read the declared default.
+3. No `--env` → default to `${PYVE_TESTENVS_DEFAULT:-testenv}` (reads `[tool.pyve.testenvs].default`; falls back to the reserved `testenv` when no `default` declared or no `pyproject.toml`).
+4. Validate via `is_testenv_declared` / the reserved-name guard (`root` short-circuits to `run_command`; `testenv` is always accepted).
+5. Undeclared and not reserved → hard error listing every valid choice (`root`, `testenv`, plus declared names).
+6. Conda-backed envs → hard error via `assert_testenv_venv_backend` (the same M.k gate `pyve testenv run` uses; M.n does NOT change this — run + test are venv-only by design until a future story adds conda activation).
+7. Lazy envs that have not been provisioned → hard error with a `pyve testenv install <name>` hint. **M.n replaces this with auto-provisioning on the same code path.**
+8. Resolve via `resolve_testenv_path "$env_target"`, auto-create via `ensure_testenv_exists "$env_target"` for non-lazy envs.
+9. Touch `.state.last_used_at` via `state_touch_last_used "$env_target"` before exec — best-effort, suppressed stderr (silent no-op when `.state` is missing on legacy envs).
+
+**Infrastructure addition.** `ensure_testenv_exists` (in [lib/utils.sh](../../lib/utils.sh)) and `_testenv_init_conda` (in [lib/commands/testenv.sh](../../lib/commands/testenv.sh)) now write an initial `.state` for freshly-created envs. Idempotent — skipped when `.state` already exists (preserves `provisioned_at` from legacy migration or a prior write). This is the infrastructure M.m's last-used touch depends on and the natural home for it (previously only the legacy migration wrote `.state`).
+
+**Tasks**
+
+- [x] Failing tests first in [tests/unit/test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats): 14 tests covering `--env <declared-name>` happy path (both `--env <val>` and `--env=<val>` forms), undeclared-name error with list of valid choices, lazy unprovisioned hard-error + lazy-already-provisioned happy path, conda-backed hard-error, no-`--env` default lookup, no-pyproject.toml fallback to `testenv`, `--env root` / `--env testenv` regressions, `.state` `last_used_at` touched on success, `--env root` does not touch other envs' state, `ensure_testenv_exists` writes initial `.state` + idempotency. *(RED 9/14 → GREEN 14/14. Full unit suite 1033/1033.)*
+- [x] Extend `test_tests` inline `--env` parser in [lib/commands/test.sh](../../lib/commands/test.sh) per the nine-step rule list above.
+- [x] Hard-error message lists all declared + reserved names — via `list_testenv_names` plus the reserved `root`/`testenv`.
+- [x] `last-used` touch in success path — `state_touch_last_used "$env_target"` before `exec`, suppressed stderr.
+- [x] Initial `.state` writes in `ensure_testenv_exists` (venv + conda branches) — the M.m-only infrastructure surface flagged at the approval gate.
+- [x] Update [features.md](features.md) FR-11 — full `[--env <name>]` paragraph (defaults, undeclared, conda gate, lazy hard-error, M.n forward-pointer) + `.state` per-env file updated to cite M.m's write/touch surface.
+
+**Tech-spec.md updates.** Rewrote the `test_tests` row in the `lib/commands/test.sh` table for the new resolver + `.state` touch. Updated the consumer-list bullet for M.m (landed). Added the new bats file to the test inventory.
+
+**Out of scope.** Matrix (comma-separated `--env a,b,c`) — M.r. Auto-provisioning of lazy envs — M.n. Silent-skip advisory generalization to named envs — M.o.
+
+**Version impact.** None — M.m is part of the testenv-DX bundle, which ships unversioned during work and releases as a single `v2.8.0` at M.t.
+
+---
+
+### Story M.n: [Testenv-DX] Lazy provisioning (`lazy = true`) [Planned]
 
 **Why.** UC1's heavy hardware-smoke env (multi-GB ML stack) should not materialize on every CI run. `lazy = true` opts the env out of bulk install and provisions on first targeted use.
 
@@ -599,7 +634,7 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 
 ---
 
-### Story M.n: [Testenv-DX] Silent-skip advisory generalization (all named envs) [Planned]
+### Story M.o: [Testenv-DX] Silent-skip advisory generalization (all named envs) [Planned]
 
 **Why.** M.c's advisory fires only when routing to the default `testenv` and detecting pytest in the main env. With many named envs, the trap surface multiplies: select any named env that lacks deps the tests import, and the run looks green via silent skips. The advisory must hold for **every** env.
 
@@ -613,32 +648,6 @@ Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the M.g Pytho
 - [ ] Update `features.md` FR-11 with the generalized advisory shape.
 
 **Out of scope.** Strict mode (`strict = true` → missing-dep skip = test failure). Plan doc OS-7; deferred.
-
----
-
-### Story M.o: [Testenv-DX] `pyve test --env <name>` resolver extension [Planned]
-
-**Why.** M.e's parser accepts only `--env {testenv, root}`. With named envs declared (M.g), the resolver needs to accept any declared name.
-
-**Approach.** Extend `_test_parse_args` in [lib/commands/test.sh](../../lib/commands/test.sh):
-
-1. Accept `--env <name>` (and `--env=<name>`).
-2. Look up via `is_testenv_declared` / `is_testenv_reserved`.
-3. Resolve to on-disk path via `resolve_testenv_path`.
-4. Undeclared and not reserved → hard error listing valid choices.
-5. No `--env` → read `[tool.pyve.testenvs] default`, fall back to `testenv`.
-
-Also: touch `.state`'s `last-used` on successful run (consumed by `pyve testenv list` in M.p).
-
-**Tasks**
-
-- [ ] Failing tests first: bats covering `--env <declared-name>`, `--env <reserved>`, `--env <undeclared>` error, no-`--env` default lookup, no-config implicit `testenv` fallback, `last-used` touch.
-- [ ] `_test_parse_args` extension.
-- [ ] Hard-error message lists all declared + reserved names.
-- [ ] `last-used` touch in success path.
-- [ ] Update `features.md` FR-11.
-
-**Out of scope.** Matrix (comma-separated) handling — M.r.
 
 ---
 
@@ -658,7 +667,7 @@ Also: touch `.state`'s `last-used` on successful run (consumed by `pyve testenv 
 - [ ] Per-leaf help blocks.
 - [ ] Update `tech-spec.md` testenv namespace table.
 
-**Out of scope.** Real-time `last-used` tracking — folds into M.o.
+**Out of scope.** Real-time `last-used` tracking — folds into M.m.
 
 ---
 
@@ -688,7 +697,7 @@ Lock files: `<manifest-basename>-lock.yml` sibling to the manifest.
 
 **Why.** UC6 (matrix testing). The same suite against multiple envs, selectable individually or as a set.
 
-**Approach.** Comma-separated `--env` value parsed into a list; each env resolved via M.o; runs sequentially; exit code aggregates as worst-case (any failure → non-zero).
+**Approach.** Comma-separated `--env` value parsed into a list; each env resolved via M.m; runs sequentially; exit code aggregates as worst-case (any failure → non-zero).
 
 **Tasks**
 

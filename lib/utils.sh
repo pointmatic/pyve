@@ -1556,8 +1556,14 @@ ensure_testenv_exists() {
     if [[ "$backend" == "micromamba" ]]; then
         local manifest
         manifest="$(_testenv_manifest_of "$name")" || manifest=""
-        _testenv_init_conda "$name" "$testenv_env_path" "$manifest"
-        return $?
+        _testenv_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
+        # Story M.m: write initial `.state` for the conda env (parallel
+        # to the venv branch below). Idempotent: skipped when .state
+        # already exists.
+        if [[ ! -f "$(state_path "$name")" ]]; then
+            state_write "$name" "micromamba" manifest="$manifest"
+        fi
+        return 0
     fi
 
     # Venv backend: today's behavior.
@@ -1578,6 +1584,15 @@ ensure_testenv_exists() {
         info "Creating dev/test runner environment in '$testenv_env_path'..."
         run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
+    fi
+
+    # Story M.m: write an initial `.state` for the freshly-created env
+    # so M.m's `last_used_at` touch (in `test_tests`) and M.p's
+    # `pyve testenv list` / `prune` have something to read. Idempotent:
+    # skipped when `.state` already exists (preserves `provisioned_at`
+    # from the legacy migration or a prior `state_write` invocation).
+    if [[ ! -f "$(state_path "$name")" ]]; then
+        state_write "$name" "venv"
     fi
 }
 

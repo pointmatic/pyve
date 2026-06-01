@@ -90,18 +90,26 @@ _test_install_pytest_into_testenv() {
 # K.g moves it to `lib/utils.sh`. Bash resolves the call at runtime
 # from the global function table — no special handling needed.
 test_tests() {
-    # Parse the pyve-owned `--env root|testenv` selector out of the
-    # arg list; everything else passes through to pytest verbatim.
-    local env_target="testenv"
+    # Parse the pyve-owned `--env <name>` selector out of the arg list;
+    # everything else passes through to pytest verbatim.
+    #
+    # Story M.m: `<name>` is no longer limited to `root` / `testenv`.
+    # Any name declared in `[tool.pyve.testenvs]` is accepted; absent
+    # `--env` defaults to `[tool.pyve.testenvs].default` (fallback:
+    # `testenv`). Resolver rules below.
+    local env_target=""
+    local env_target_explicit=0
     local args=()
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
                 env_target="${2:-}"
-                shift 2 || { log_error "--env requires a value (root|testenv)"; exit 1; }
+                env_target_explicit=1
+                shift 2 || { log_error "--env requires a value (a declared env name, or 'root')"; exit 1; }
                 ;;
             --env=*)
                 env_target="${1#--env=}"
+                env_target_explicit=1
                 shift
                 ;;
             *)
@@ -113,16 +121,9 @@ test_tests() {
 
     # Category-B hard-error: `--env main` was renamed to `--env root` in
     # v2.7.1 (M.e). Catch the legacy value with a precise migration hint
-    # rather than silently delegating (no Category-A). The catch lives in
-    # _test_parse_args's locus, not pyve.sh's dispatcher, because `--env`
-    # is a value parsed here — pyve.sh never sees it.
+    # rather than silently delegating (no Category-A).
     if [[ "$env_target" == "main" ]]; then
         log_error "pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead."
-        exit 1
-    fi
-
-    if [[ "$env_target" != "root" && "$env_target" != "testenv" ]]; then
-        log_error "Invalid --env value: '$env_target' (expected 'root' or 'testenv')"
         exit 1
     fi
 
@@ -136,9 +137,46 @@ test_tests() {
         return  # not reached: run_command execs
     fi
 
+    # Story M.m: load named-env config so we can validate the target
+    # name and pick the declared default when `--env` is absent.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_testenv_config
+    fi
+
+    if [[ "$env_target_explicit" == "0" ]]; then
+        env_target="${PYVE_TESTENVS_DEFAULT:-testenv}"
+    fi
+
+    # Validate the target name. Accept the reserved `testenv` and any
+    # declared name; reject everything else with the list of valid
+    # choices.
+    if [[ "$env_target" != "testenv" ]] && ! is_testenv_declared "$env_target"; then
+        log_error "Invalid --env value: '$env_target' is not a declared testenv"
+        log_error "Valid choices:"
+        local choice
+        for choice in root testenv $( { list_testenv_names | grep -vE '^(root|testenv)$'; } 2>/dev/null ); do
+            log_error "  $choice"
+        done
+        exit 1
+    fi
+
+    # Conda-backed envs are not yet supported by `pyve test`'s exec
+    # path (PATH-only activation doesn't set CONDA_PREFIX/CONDA_PYTHON_EXE).
+    # Same M.k gate that `pyve testenv run` uses; use `--env root`
+    # against a conda main env, or `micromamba run -p <path> pytest`.
+    assert_testenv_venv_backend "$env_target" || exit 1
+
+    # Lazy envs that have not been provisioned yet hard-error in M.m
+    # (auto-provision lands in M.n).
     local testenv_venv
-    testenv_venv="$(resolve_testenv_path testenv)"
-    ensure_testenv_exists
+    testenv_venv="$(resolve_testenv_path "$env_target")"
+    if is_testenv_lazy "$env_target" && [[ ! -x "$testenv_venv/bin/python" ]]; then
+        log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
+        log_error "Run: pyve testenv install $env_target"
+        exit 1
+    fi
+
+    ensure_testenv_exists "$env_target"
 
     if ! _test_has_pytest "$testenv_venv"; then
         local auto_install=false
@@ -178,6 +216,14 @@ test_tests() {
         warn "Root env has pytest installed; 'pyve test' is using the separate testenv ($testenv_venv), which won't have your root-env dependencies."
         info "If your tests need the root env's stack, run: pyve test --env root"
     fi
+
+    # Story M.m: touch `.state`'s `last_used_at` before exec so M.p's
+    # `pyve testenv list` / `prune` can report which envs are active.
+    # Best-effort: silent no-op when `.state` is missing (e.g. an env
+    # provisioned before M.m landed `.state` writes in
+    # `ensure_testenv_exists`). Suppress stdout/stderr — the touch
+    # is bookkeeping, not user-facing.
+    state_touch_last_used "$env_target" >/dev/null 2>&1 || true
 
     exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
 }
