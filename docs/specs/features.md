@@ -343,6 +343,67 @@ Provide an isolated test environment separate from the project environment.
 - `pyve testenv run <command>` executes any command inside the test environment (ruff, mypy, black, etc.).
 - Survives `pyve init --force` (separate from project environment).
 
+### FR-11a: Named Test Environments (`[tool.pyve.testenvs]`)
+
+Declarative configuration of one or more named test environments per project, with per-env backend, manifest source, and lifecycle policy. Source of truth for the testenv-DX surface; user-facing docs (`testing.md`, `usage.md`) link here for the canonical schema.
+
+**Config schema.** In `pyproject.toml`:
+
+```toml
+[tool.pyve.testenvs]
+default = "smoke"            # optional; default-default is "testenv"
+
+[tool.pyve.testenvs.testenv]
+requirements = ["requirements-dev.txt"]
+
+[tool.pyve.testenvs.smoke]
+extra = "dev"                # resolves [project.optional-dependencies].dev
+
+[tool.pyve.testenvs.heavy]
+requirements = ["tests/heavy.txt"]
+lazy = true                  # auto-provision on first targeted use
+
+[tool.pyve.testenvs.hardware]
+backend = "micromamba"
+manifest = "tests/env.yml"
+```
+
+**Per-env keys.** All optional except where one of `requirements` / `extra` / `manifest` is required for the backend.
+
+| Key | Type | Meaning |
+|---|---|---|
+| `backend` | `"venv"` (default) \| `"micromamba"` \| `"inherit"` | Provisioning backend. `inherit` resolves to the main env's backend (`.pyve/config`'s `backend` value); useful when a project's main backend is mixed-team and the testenv should follow. |
+| `requirements` | list of strings | One or more pip manifest paths. Mutually exclusive with `extra` and (for conda) `manifest`. |
+| `extra` | string | Named optional-dependency extra from `[project.optional-dependencies].<name>`. Resolved at install time via the pyve TOML helper's `--resolve-extra` mode. Mutually exclusive with `requirements` and `manifest`. |
+| `manifest` | string | Path to a conda `environment.yml`. Required when `backend = "micromamba"`. Mutually exclusive with `requirements` / `extra`. |
+| `lazy` | bool (default false) | When true, the env is skipped by `pyve testenv install` (no-arg iteration) and auto-provisioned on first targeted `pyve test --env <name>` invocation. |
+
+**Top-level keys.** `default` (optional string) — the name `pyve test` routes to when `--env` is omitted. Falls back to the reserved `testenv` when not declared.
+
+**Reserved names.** Two names are reserved and may not appear as table keys in user config:
+
+| Name | Selectable via `pyve test --env` | Actionable via `pyve testenv …` |
+|---|---|---|
+| `root` | yes — routes to the root project env via `run_command python -m pytest` | no — `pyve testenv init root` etc. hard-error |
+| `testenv` | yes — the implicit-default name when no `[tool.pyve.testenvs]` block exists | yes — appears in declared-or-implicit form |
+
+**Precedence — pyve test source selection.** When `pyve testenv install <name>` runs (or lazy auto-provision fires under `pyve test`), the source dispatch is (highest-precedence first):
+
+1. CLI `-r <file>` (explicit override; only `pyve testenv install -r <file>`).
+2. Declared `requirements = ["a", "b"]` (venv only).
+3. Declared `extra = "<n>"` (venv only).
+4. Declared `manifest = "<env.yml>"` (micromamba only).
+5. Auto-detect `requirements-dev.txt` in CWD (venv only).
+6. Bare `pytest` fallback (venv only).
+
+Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) happens at config-read time in the Python helper; by dispatch time at most one of (2)/(3)/(4) is populated.
+
+**Missing-config behavior.** When `pyproject.toml` is absent, or present but without a `[tool.pyve.testenvs]` block, the resolver returns the implicit default: a single venv-backed env named `testenv` at `.pyve/testenvs/testenv/venv/` with no declared manifest source. This preserves the pre-M.g single-env behavior for unconfigured projects.
+
+**On-disk layout.** Every env lives at `.pyve/testenvs/<name>/{venv,conda}/` (the suffix tracks the resolved backend), with a sibling `.state` file. See FR-11's "v2.8+ layout" and "Per-env `.state` file" bullets for the path / state-file schema details. Projects upgrading from v2.7 are migrated transparently the first time `pyve update` runs or a `pyve test` / `pyve testenv` invocation needs the testenv.
+
+**Consumers.** `pyve test [--env <name>[,<name>...]]` (FR-11; M.m/M.n/M.o/M.r), `pyve testenv {init,install,purge,run,list,prune}` (FR-11; M.i/M.p), `pyve lock [--env <name>|--all]` (FR-15; M.q). Every command that accepts `<name>` validates against the union of reserved names and `[tool.pyve.testenvs.*]` keys.
+
 ### FR-12: Smart Re-Initialization
 
 Handle `pyve init` on already-initialized projects.

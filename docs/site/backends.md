@@ -72,7 +72,7 @@ pytest==7.4.3
 
 ### Testing on the venv Backend
 
-The dev/test runner environment (`.pyve/testenv/venv/`) is a plain venv that inherits its base Python from `.venv/` at `pyve testenv init` time. See [Testing](testing.md) for the full guide.
+The implicit-default dev/test runner environment (`.pyve/testenvs/testenv/venv/`) is a plain venv that inherits its base Python from `.venv/` at `pyve testenv init` time. Named test environments declared in `[tool.pyve.testenvs]` materialize alongside it under `.pyve/testenvs/<name>/`; **each declares its own backend independently** — a venv-backed main project can mix in a `backend = "micromamba"` testenv for native-dep stacks (GDAL, CUDA, HDF5) without touching the main env. See [Testing → Named test environments](testing.md#named-test-environments) for the config schema, and [Testing](testing.md) for the full guide.
 
 ---
 
@@ -136,7 +136,9 @@ pyve lock
 
 ### Testing on the micromamba Backend
 
-The dev/test runner environment (`.pyve/testenv/venv/`) is a plain venv (not a micromamba env) that inherits its base Python from the active micromamba env at `pyve testenv init` time — typically the version pinned by `environment.yml`. The project env must be active when `init` runs, or wrap with `pyve run pyve testenv init`. See [Testing](testing.md) for the full guide.
+The implicit-default dev/test runner environment (`.pyve/testenvs/testenv/venv/`) is a plain venv (not a micromamba env) that inherits its base Python from the active micromamba env at `pyve testenv init` time — typically the version pinned by `environment.yml`. The project env must be active when `init` runs, or wrap with `pyve run pyve testenv init`.
+
+Named test environments declared in `[tool.pyve.testenvs]` may opt into the conda backend on a per-env basis (`backend = "micromamba"` + `manifest = "<env.yml>"`); they're independent of the main env's backend. Per-env conda envs land at `.pyve/testenvs/<name>/conda/` and lock via `pyve lock --env <name>` (writes `<manifest>-lock.yml` sibling to the manifest); `pyve lock --all` locks the main env + every conda-backed testenv in one shot. See [Testing → Named test environments](testing.md#named-test-environments) for the schema, and [Testing](testing.md) for the full guide.
 
 ---
 
