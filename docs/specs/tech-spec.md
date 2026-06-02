@@ -735,6 +735,30 @@ Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state`
 
 **Why N.f handles only the testenv-side rename, not the micromamba main-env move.** The micromamba main-env relocation (`.pyve/envs/<old_name>/` → `.pyve/envs/root/conda/`) is a rename + restructure at once: the env loses its user-chosen name and gains a backend-subdir. That cutover ships with `pyve self migrate` (Story N.g) where the user gets full `.pyve/.v2-legacy/` backup and rollback. N.f's scope is the flat parent swap (`testenvs` → `envs`) — same name, same shape, opportunistically migrated so pre-N.g code paths don't silently lose envs.
 
+#### v3.0-only read-compat layer (Story N.i, removed in Subphase N-8)
+
+`manifest_load` in [`lib/manifest.sh`](../../lib/manifest.sh) **synthesizes** the v3 array shape from legacy v2 sources when `pyve.toml` is absent. This is the **deprecation-window** mechanism that lets v2.7/v2.8 projects continue to operate against v3.0 binaries *without* having to run `pyve self migrate` first.
+
+**Triggering condition.** Synthesis fires only when `pyve.toml` is missing AND at least one v2 **config** source exists — `.pyve/config` (the YAML main-env declaration) or `[tool.pyve.testenvs.*]` (the v2.8 named-testenv declarations in `pyproject.toml`). Bare `.pyve/testenvs/` on disk is state, not configuration; it does not trigger synthesis (the N.h banner still fires for the user-visible nudge, but the manifest stays empty for that pathological case).
+
+**Synthesis mapping** mirrors what `pyve self migrate` (Story N.g) writes to `pyve.toml` — but populates the `PYVE_*` arrays directly instead of going through TOML text:
+
+- Always emits `[env.root]` (`purpose = "utility"`, `backend` from `.pyve/config:backend` or empty).
+- Each declared testenv → `[env.<name>]` (`purpose = "test"`, plus `backend` / `lazy` / `extra` / `manifest` / `requirements` carried over from the v2 declaration).
+- The env named `testenv` (or, if none, the first declared) gets `default = "1"`.
+- When `.pyve/config` exists but `pyproject.toml` has no testenvs block, `read_env_config`'s implicit-default "testenv" entry is included so v2 projects relying on it keep working.
+
+**One-shot deprecation warning per (session, cwd).** Each synthesis emits a single `warning: pyve is reading legacy v2 sources …` line to stderr, memoized via a sentinel under `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/legacy-read-warn-<session>-<cksum-of-cwd>`. The session key reuses the N.h banner's `PYVE_V2_BANNER_SESSION` override seam so test harnesses (and explicit user override) work identically across both surfaces.
+
+**N-8 cleanup is mechanical.** Every read-compat code path in `lib/manifest.sh` is tagged with the literal comment `v3.0-only: remove in N-8`. A unit test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker exists. The N-8 sweep removes:
+
+1. The `_manifest_has_legacy_sources` / `_manifest_synthesize_from_legacy` / `_manifest_deprecation_warn_legacy` helpers.
+2. The fallback branch in `manifest_load` that calls them.
+3. The N.h soft banner (per Subphase N-8's plan — replaced by the hard interactive gate).
+4. The corresponding regression tests.
+
+After N-8, `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally; v2-configured projects must run `pyve self migrate` to function.
+
 #### Conda backend dispatch (Story M.k)
 
 `pyve testenv init/install` now supports conda-backed envs declared as `backend = "micromamba"` or `backend = "inherit"` in `[tool.pyve.testenvs.<name>]`. The plumbing reuses `lib/micromamba_core.sh::get_micromamba_path` (binary resolution: project sandbox → user sandbox → system PATH) — no new bootstrap path is introduced. Conda envs land at `.pyve/testenvs/<name>/conda/` (the resolver shape); no `.envrc` is ever emitted for testenvs (testenvs are activated through their wrapper commands, not direnv).

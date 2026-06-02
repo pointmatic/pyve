@@ -42,31 +42,184 @@ fi
 _PYVE_MANIFEST_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_toml_helper.py"
 
 # Read pyve.toml from <path> (default ./pyve.toml) and populate the V3
-# array state. Missing file → empty config (zero envs, schema "3.0").
-# Validation errors propagate via non-zero exit + stderr.
+# array state. Validation errors propagate via non-zero exit + stderr.
+#
+# Fallback paths (when the manifest file is absent):
+#   v3.0-only: remove in N-8
+#     - If legacy v2 sources are present (`.pyve/config` and/or
+#       `[tool.pyve.testenvs.*]`), synthesize the v3 array shape from
+#       them so the rest of pyve sees a uniform model and v2-configured
+#       projects continue to work through the deprecation window.
+#     - The synthesis path emits a one-shot deprecation_warn per shell
+#       (memoized via the same sentinel scheme as the N.h banner).
+#   - If no legacy sources either → empty config (zero envs).
+#
+# The synthesis layer is bounded; Subphase N-8 removes everything tagged
+# `v3.0-only: remove in N-8` together with the rest of the v2
+# deprecation surface.
 manifest_load() {
     local manifest="${1:-pyve.toml}"
     if [[ ! -f "$manifest" ]]; then
-        PYVE_SCHEMA_VERSION="3.0"
-        PYVE_PROJECT_NAME=""
-        PYVE_ENV_NAMES=()
-        PYVE_ENV_PURPOSE=()
-        PYVE_ENV_BACKEND=()
-        PYVE_ENV_PATH=()
-        PYVE_ENV_DEFAULT=()
-        PYVE_ENV_LAZY=()
-        PYVE_ENV_EXTRA=()
-        PYVE_ENV_MANIFEST=()
-        PYVE_ENV_APP_TYPE=()
-        PYVE_ENV_REQUIREMENTS_Q=()
-        PYVE_ENV_FRAMEWORKS_Q=()
-        PYVE_ENV_LANGUAGES_Q=()
+        # v3.0-only: remove in N-8
+        if _manifest_has_legacy_sources; then
+            _manifest_synthesize_from_legacy
+            return 0
+        fi
+        _manifest_reset_state
         return 0
     fi
     local py="${PYVE_PYTHON:-python}"
     local kv
     kv="$("$py" "$_PYVE_MANIFEST_HELPER" "$manifest")" || return $?
     eval "$kv"
+}
+
+# Reset every PYVE_* array to the empty-config baseline. Pulled out
+# so both the "no sources at all" path and the synthesis path start
+# from the same clean state.
+_manifest_reset_state() {
+    # shellcheck disable=SC2034  # PYVE_SCHEMA_VERSION + PYVE_PROJECT_NAME are
+    # exposed globals consumed by downstream pyve code and tests; the assignments
+    # here are the contract — they look unused inside this single file only.
+    PYVE_SCHEMA_VERSION="3.0"
+    PYVE_PROJECT_NAME=""
+    PYVE_ENV_NAMES=()
+    PYVE_ENV_PURPOSE=()
+    PYVE_ENV_BACKEND=()
+    PYVE_ENV_PATH=()
+    PYVE_ENV_DEFAULT=()
+    PYVE_ENV_LAZY=()
+    PYVE_ENV_EXTRA=()
+    PYVE_ENV_MANIFEST=()
+    PYVE_ENV_APP_TYPE=()
+    PYVE_ENV_REQUIREMENTS_Q=()
+    PYVE_ENV_FRAMEWORKS_Q=()
+    PYVE_ENV_LANGUAGES_Q=()
+}
+
+# v3.0-only: remove in N-8
+#
+# Detect whether any v2 *config* source exists. Bare `.pyve/testenvs/`
+# on disk is state, not configuration, and does not by itself trigger
+# synthesis (the N.h banner still fires on it for the user-visible
+# nudge, but the manifest stays empty for that pathological case).
+_manifest_has_legacy_sources() {
+    [[ -f .pyve/config ]] && return 0
+    if [[ -f pyproject.toml ]] \
+       && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
+        return 0
+    fi
+    return 1
+}
+
+# v3.0-only: remove in N-8
+#
+# Build the v3 array state from `.pyve/config` (YAML, for [env.root])
+# and `[tool.pyve.testenvs.*]` (TOML, for each declared test env).
+# Mirrors what `pyve self migrate` writes into pyve.toml, but populates
+# arrays directly rather than going through TOML text.
+#
+# Mapping rules (mirrors N.g's render):
+#   - Always emit [env.root]: purpose="utility", backend from
+#     `.pyve/config:backend` (empty when no `.pyve/config`).
+#   - Each declared testenv becomes [env.<name>] with purpose="test"
+#     and per-env attrs (backend/lazy/extra/manifest/requirements)
+#     carried over from the v2 declaration.
+#   - The env named "testenv" (or, if none, the first declared) gets
+#     `default = "1"`.
+#   - When no testenv blocks are declared but `.pyve/config` exists,
+#     `read_env_config` synthesizes the implicit-default "testenv"
+#     entry — same behavior pre-N.i had via the v2 lib/envs.sh
+#     reader, preserved here for compatibility.
+_manifest_synthesize_from_legacy() {
+    _manifest_reset_state
+    # shellcheck disable=SC2034  # exposed global, see note on _manifest_reset_state
+    PYVE_PROJECT_NAME="$(basename "$(pwd)")"
+
+    # [env.root]: backend from .pyve/config when available.
+    local main_backend=""
+    if [[ -f .pyve/config ]]; then
+        main_backend="$(read_config_value backend 2>/dev/null || true)"
+    fi
+    PYVE_ENV_NAMES+=("root")
+    PYVE_ENV_PURPOSE+=("utility")
+    PYVE_ENV_BACKEND+=("$main_backend")
+    PYVE_ENV_PATH+=(".")
+    PYVE_ENV_DEFAULT+=("0")
+    PYVE_ENV_LAZY+=("0")
+    PYVE_ENV_EXTRA+=("")
+    PYVE_ENV_MANIFEST+=("")
+    PYVE_ENV_APP_TYPE+=("")
+    PYVE_ENV_REQUIREMENTS_Q+=("")
+    PYVE_ENV_FRAMEWORKS_Q+=("")
+    PYVE_ENV_LANGUAGES_Q+=("")
+
+    # Determine whether to walk testenvs.
+    local should_read_testenvs=0
+    if [[ -f pyproject.toml ]] \
+       && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
+        should_read_testenvs=1
+    elif [[ -f .pyve/config ]]; then
+        # v2 projects rely on the implicit "testenv" default even
+        # without an explicit pyproject block.
+        should_read_testenvs=1
+    fi
+
+    if [[ "$should_read_testenvs" == "1" ]]; then
+        read_env_config
+        local n=${#PYVE_TESTENVS_NAMES[@]}
+        local i default_idx=-1
+        for ((i=0; i<n; i++)); do
+            if [[ "${PYVE_TESTENVS_NAMES[$i]}" == "testenv" ]]; then
+                default_idx=$i
+                break
+            fi
+        done
+        if [[ "$default_idx" -lt 0 ]] && [[ "$n" -gt 0 ]]; then
+            default_idx=0
+        fi
+        for ((i=0; i<n; i++)); do
+            PYVE_ENV_NAMES+=("${PYVE_TESTENVS_NAMES[$i]}")
+            PYVE_ENV_PURPOSE+=("test")
+            PYVE_ENV_BACKEND+=("${PYVE_TESTENV_BACKEND[$i]}")
+            PYVE_ENV_PATH+=(".")
+            if [[ "$i" -eq "$default_idx" ]]; then
+                PYVE_ENV_DEFAULT+=("1")
+            else
+                PYVE_ENV_DEFAULT+=("0")
+            fi
+            PYVE_ENV_LAZY+=("${PYVE_TESTENV_LAZY[$i]}")
+            PYVE_ENV_EXTRA+=("${PYVE_TESTENV_EXTRA[$i]}")
+            PYVE_ENV_MANIFEST+=("${PYVE_TESTENV_MANIFEST[$i]}")
+            PYVE_ENV_APP_TYPE+=("")
+            PYVE_ENV_REQUIREMENTS_Q+=("${PYVE_TESTENV_REQUIREMENTS_Q[$i]}")
+            PYVE_ENV_FRAMEWORKS_Q+=("")
+            PYVE_ENV_LANGUAGES_Q+=("")
+        done
+    fi
+
+    _manifest_deprecation_warn_legacy
+}
+
+# v3.0-only: remove in N-8
+#
+# Emit a one-shot deprecation warning per (session, cwd) when pyve
+# reads from legacy v2 sources. Memoization mirrors N.h's banner —
+# `PYVE_V2_BANNER_SESSION` (when set) or `$PPID` keys the sentinel,
+# with `$XDG_STATE_HOME/pyve/` (or `~/.local/state/pyve/`) as the
+# state dir.
+_manifest_deprecation_warn_legacy() {
+    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/pyve"
+    local session_key="${PYVE_V2_BANNER_SESSION:-${PPID:-0}}"
+    local hash
+    hash="$(printf '%s' "$PWD" | cksum | awk '{print $1}')"
+    local sentinel="$state_dir/legacy-read-warn-$session_key-$hash"
+    if [[ -f "$sentinel" ]]; then
+        return 0
+    fi
+    printf "warning: pyve is reading legacy v2 sources (.pyve/config and/or [tool.pyve.testenvs.*]); legacy support ends at v3.1. Run 'pyve self migrate' to upgrade.\n" >&2
+    mkdir -p "$state_dir" 2>/dev/null || true
+    : >| "$sentinel" 2>/dev/null || true
 }
 
 # Index lookup: print the 0-based position of <name> in PYVE_ENV_NAMES,

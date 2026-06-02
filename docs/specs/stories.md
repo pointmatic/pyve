@@ -217,17 +217,17 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - [x] After the banner, control passes to the existing dispatcher; the command continues to execute. Pre-N.i (read-compat) commands still work because the v2 readers (`.pyve/config`, `[tool.pyve.testenvs.*]`) are still in place; N.i replaces them with synthesis from `pyve.toml`.
 - [x] Bats tests: 15 cases in [tests/unit/test_n_h_v2_banner.bats](../../tests/unit/test_n_h_v2_banner.bats) covering — fires on each of the three v2-source classes (.pyve/config; pyproject `[tool.pyve.testenvs.*]`; `.pyve/testenvs/` on disk); does NOT fire on v3 (pyve.toml present), bare directory, `PYVE_QUIET=1`, informational verbs, `self install` / `self migrate`; once-per-session memoization (second call in same shell is silent); sentinel lands under `XDG_STATE_HOME/pyve/`; sentinel key differs by cwd so two distinct projects in the same shell both fire. Full unit suite: 1208 ok / 0 fail.
 
-### Story N.i: Read-compat layer — v3.0 reads legacy sources [Planned]
+### Story N.i: Read-compat layer — v3.0 reads legacy sources [Done]
 
 **Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Subphase N-8 removes the layer.
 
 **Tasks**
 
-- [ ] In [lib/manifest.sh](../../lib/manifest.sh): when `pyve.toml` is absent but legacy sources exist, parse them and emit a synthesized in-memory `pyve.toml`-equivalent so the rest of Pyve sees the v3 shape.
-- [ ] Each legacy-source read emits a one-shot `deprecation_warn` per shell.
-- [ ] Bats tests: a v2.8.0 project layout (sources present, no `pyve.toml`) installs cleanly under v3.0; `pyve test --env <name>` works against legacy `[tool.pyve.testenvs.*]`; deprecation warning fires once.
-- [ ] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) and flag the N-8 removal point.
-- [ ] The legacy-read code path is clearly marked (e.g., `# v3.0-only: remove in N-8`) so the N-8 sweep is mechanical.
+- [x] In [lib/manifest.sh](../../lib/manifest.sh): when `pyve.toml` is absent but legacy sources exist, synthesize the v3 array shape directly (no intermediate TOML text). Three new helpers: `_manifest_has_legacy_sources` (detection), `_manifest_synthesize_from_legacy` (population), `_manifest_deprecation_warn_legacy` (one-shot warn). The existing `manifest_load` empty-state setup was extracted into `_manifest_reset_state` so the "no sources at all" and "synthesis" paths both start from the same clean baseline. Synthesis mapping mirrors N.g's `pyve self migrate` render — `[env.root]` (`purpose = "utility"`, `backend` from `.pyve/config`) plus one `[env.<name>]` per declared testenv (`purpose = "test"` + per-env attrs); the env named `testenv` (or first declared) carries `default = "1"`.
+- [x] Each legacy-source read emits a one-shot `warning: pyve is reading legacy v2 sources …` line on stderr. Memoization mirrors N.h's banner — `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/legacy-read-warn-<session>-<cksum-of-cwd>`, with session key `${PYVE_V2_BANNER_SESSION:-$PPID}` so the same test override seam works for both surfaces.
+- [x] Bats tests: 15 cases in [tests/unit/test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) covering — synthesis from .pyve/config alone, from `[tool.pyve.testenvs.*]` alone, from both; purpose='test' for testenvs; default='1' on the `testenv`-named env; backend/lazy/extra/manifest preserved; v3 (pyve.toml present) takes priority over legacy; empty config on bare directory; bare `.pyve/testenvs/` on disk does NOT trigger synthesis (state, not config); deprecation warn fires once per shell; silent on second call; silent under v3; the N-8 removal marker is grep-visible. Full unit suite: 1223 ok / 0 fail.
+- [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Subphase N-8)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-8.
+- [x] The legacy-read code path is clearly marked with the literal comment `v3.0-only: remove in N-8` at every helper boundary and at the conditional inside `manifest_load`. A dedicated bats test asserts the marker is grep-visible from `lib/manifest.sh` so accidental removal during refactors gets caught.
 
 ### Story N.j: Append project-essentials entries for N-1 [Planned]
 
