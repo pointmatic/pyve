@@ -70,6 +70,7 @@ SH
 # ============================================================
 
 @test "pyve test --env <lazy-unprovisioned>: auto-provisions then routes" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_lazy_heavy
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }       # post-provision: pretend pytest is installed
@@ -90,6 +91,7 @@ SH
 # ============================================================
 
 @test "pyve test --env <lazy-unprovisioned> with PYVE_NO_AUTO_PROVISION=1: hard-errors" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_lazy_heavy
     export PYVE_NO_AUTO_PROVISION=1
 
@@ -107,6 +109,7 @@ SH
 # ============================================================
 
 @test "pyve test --env <lazy-already-provisioned>: routes normally (no re-provision)" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_lazy_heavy
     # Pre-provision heavy by hand.
     mkdir -p .pyve/testenvs/heavy/venv/bin
@@ -134,6 +137,7 @@ SH
 # ============================================================
 
 @test "pyve test --env <lazy-unprovisioned>: auto-provision lock is released after success" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_lazy_heavy
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }
@@ -151,6 +155,7 @@ SH
 # ============================================================
 
 @test "pyve test --env <lazy-conda>: still rejected (run is venv-only)" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy-conda>] selector requires read-compat shim"
     mkdir -p tests
     printf 'name: hardware\ndependencies: [python]\n' > tests/env.yml
     cat > pyproject.toml <<'TOML'

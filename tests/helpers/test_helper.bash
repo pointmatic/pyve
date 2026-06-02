@@ -15,6 +15,11 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/ui/core.sh"
     source "$PYVE_ROOT/lib/ui/run.sh"
     source "$PYVE_ROOT/lib/utils.sh"
+    # Story N.d: tests that exercise selectors which consult the v3
+    # manifest (e.g. lib/commands/test.sh's purpose gate) need
+    # manifest_resolve_purpose available. Adding to the default helper
+    # so every test file inherits it without per-file source bloat.
+    source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"

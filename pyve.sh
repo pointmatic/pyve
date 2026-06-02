@@ -69,6 +69,13 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/manifest.sh" ]]; then
+    source "$SCRIPT_DIR/lib/manifest.sh"
+else
+    printf "ERROR: Cannot find lib/manifest.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/env_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/env_detect.sh"
 else

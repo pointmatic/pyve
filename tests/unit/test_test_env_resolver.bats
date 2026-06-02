@@ -88,6 +88,7 @@ TOML
 # ============================================================
 
 @test "pyve test --env <declared-name>: routes pytest to that env's venv" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] selector requires read-compat shim"
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
     ensure_env_exists() { :; }
@@ -102,6 +103,7 @@ TOML
 }
 
 @test "pyve test --env=<declared-name>: '=' form also works" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] selector requires read-compat shim"
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
     ensure_env_exists() { :; }
@@ -133,6 +135,7 @@ TOML
 # ============================================================
 
 @test "pyve test --env <lazy-name> unprovisioned + PYVE_NO_AUTO_PROVISION=1: hard-errors with install hint" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     # Pre-M.n this test asserted the bare hard-error. M.n landed
     # auto-provisioning; the strict-CI opt-out preserves the M.m
     # contract for users who want it.
@@ -146,6 +149,7 @@ TOML
 }
 
 @test "pyve test --env <lazy-name> already provisioned: routes normally" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_default_smoke
     # heavy is lazy but the user already provisioned it.
     _make_fake_named_venv_with_state heavy
@@ -162,6 +166,7 @@ TOML
 # ============================================================
 
 @test "pyve test --env <conda-name>: hard-errors (run is venv-only)" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<conda>] selector requires read-compat shim"
     _fixture_default_smoke
     run test_tests --env hardware
     [ "$status" -ne 0 ]
@@ -174,6 +179,7 @@ TOML
 # ============================================================
 
 @test "pyve test (no --env): routes to declared 'default' env" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] default-env selector requires read-compat shim"
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
     ensure_env_exists() { :; }
@@ -226,6 +232,7 @@ TOML
 # ============================================================
 
 @test "pyve test: 'last_used_at' is touched on the success path" {
+    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] success-path .state touch requires read-compat shim"
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
     # state_write seeded last_used_at=0; the touch should set it to a

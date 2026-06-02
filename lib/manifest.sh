@@ -106,6 +106,43 @@ manifest_get_purpose() {
     printf '%s' "${PYVE_ENV_PURPOSE[$i]}"
 }
 
+# Story N.d. Resolve <env_name> to one of: run | test | utility | temp.
+# Always returns a valid purpose; never empty, never fail-1. Resolution:
+#   1. If <env_name> is in PYVE_ENV_NAMES with a non-empty declared
+#      purpose → return the declared value.
+#   2. Else apply the name-based default rule:
+#        "testenv" → "test"
+#        "root"    → "utility"
+#        otherwise → "utility"
+#
+# Works even if manifest_load has not been called (PYVE_ENV_NAMES unset
+# is treated as "no declared envs" — bash-3.2-safe under `set -u`).
+# This is the canonical resolver used by purpose-gating selectors
+# (e.g. `pyve test --env <name>`); `manifest_get_purpose` remains the
+# raw accessor.
+manifest_resolve_purpose() {
+    local name="$1"
+    local raw=""
+    if [[ -n "${PYVE_ENV_NAMES+x}" ]]; then
+        local i
+        for ((i=0; i<${#PYVE_ENV_NAMES[@]}; i++)); do
+            if [[ "${PYVE_ENV_NAMES[$i]}" == "$name" ]]; then
+                raw="${PYVE_ENV_PURPOSE[$i]}"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$raw" ]]; then
+        printf '%s' "$raw"
+        return 0
+    fi
+    case "$name" in
+        testenv) printf '%s' "test" ;;
+        root)    printf '%s' "utility" ;;
+        *)       printf '%s' "utility" ;;
+    esac
+}
+
 manifest_get_backend() {
     local i; i="$(_manifest_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_ENV_BACKEND[$i]}"

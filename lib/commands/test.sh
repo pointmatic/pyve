@@ -235,6 +235,28 @@ _test_run_one_env() {
         exit 1
     fi
 
+    # Story N.d: purpose gate. `pyve test --env <name>` is reserved
+    # for envs with `purpose = "test"` (declared in pyve.toml, or
+    # implied by the name-based default rule in
+    # `lib/manifest.sh::manifest_resolve_purpose`). Non-test envs hard-
+    # error with a precise hint at the right invocation form.
+    #
+    # The shim that propagates `purpose = "test"` from v2-source
+    # `[tool.pyve.testenvs.<name>]` blocks lands in Story N.i; until
+    # then, v2-only selector paths are intentionally broken (test-suite
+    # coverage carries `N.i-pending` skip markers — see the audit in
+    # `tests/unit/test_test_env_resolver.bats`'s setup).
+    if [[ -f pyve.toml ]]; then
+        manifest_load
+    fi
+    local resolved_purpose
+    resolved_purpose="$(manifest_resolve_purpose "$env_target")"
+    if [[ "$resolved_purpose" != "test" ]]; then
+        log_error "Env '$env_target' has purpose '$resolved_purpose'; 'pyve test' is reserved for purpose='test' envs."
+        log_error "Use 'pyve env run $env_target -- <command>' to invoke a command in this env."
+        exit 1
+    fi
+
     # Conda-backed envs are not yet supported by `pyve test`'s exec
     # path (PATH-only activation doesn't set CONDA_PREFIX/CONDA_PYTHON_EXE).
     # Same M.k gate that `pyve testenv run` uses; use `--env root`

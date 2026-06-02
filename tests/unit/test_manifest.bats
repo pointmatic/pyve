@@ -277,7 +277,104 @@ TOML
 }
 
 # ============================================================
-# 4. Empty-array safety under `set -u` (project-essentials rule)
+# 4. manifest_resolve_purpose: explicit value wins over name-default
+#    (Story N.d)
+# ============================================================
+#
+# Resolution contract (lib/manifest.sh):
+#   1. If env is in PYVE_ENV_NAMES with a non-empty declared `purpose`
+#      → return the declared value.
+#   2. Otherwise apply the name-based default:
+#        env name "testenv" → "test"
+#        env name "root"    → "utility"
+#        otherwise          → "utility"
+# Always returns one of {run, test, utility, temp}; never empty,
+# never fail-1 (works even if the env is not declared in the manifest).
+
+@test "manifest_resolve_purpose: explicit declared purpose wins" {
+    _fixture_full_manifest
+    manifest_load
+    [ "$(manifest_resolve_purpose root)" = "utility" ]
+    [ "$(manifest_resolve_purpose testenv)" = "test" ]
+    [ "$(manifest_resolve_purpose web)" = "run" ]
+}
+
+@test "manifest_resolve_purpose: declared env with empty purpose falls back to name-default" {
+    cat > pyve.toml <<'TOML'
+[env.testenv]
+backend = "venv"
+
+[env.root]
+backend = "venv"
+
+[env.smoke]
+backend = "venv"
+TOML
+    manifest_load
+    # None of the three has an explicit `purpose`; name-based defaults
+    # apply.
+    [ "$(manifest_resolve_purpose testenv)" = "test" ]
+    [ "$(manifest_resolve_purpose root)" = "utility" ]
+    [ "$(manifest_resolve_purpose smoke)" = "utility" ]
+}
+
+@test "manifest_resolve_purpose: undeclared env applies name-default by name" {
+    # No pyve.toml; manifest_load synthesizes an empty config.
+    manifest_load
+    [ "$(manifest_resolve_purpose testenv)" = "test" ]
+    [ "$(manifest_resolve_purpose root)" = "utility" ]
+    [ "$(manifest_resolve_purpose anything-else)" = "utility" ]
+}
+
+@test "manifest_resolve_purpose: works without prior manifest_load (PYVE_ENV_NAMES unset)" {
+    # Fresh shell — manifest_load not called. The resolver must still
+    # return a valid purpose for any name.
+    output="$(/bin/bash -c "
+        set -euo pipefail
+        export PYVE_ROOT='$PYVE_ROOT'
+        source '$PYVE_ROOT/lib/manifest.sh'
+        manifest_resolve_purpose testenv
+        printf ' '
+        manifest_resolve_purpose root
+        printf ' '
+        manifest_resolve_purpose other
+    " 2>&1)"
+    [ "$output" = "test utility utility" ]
+}
+
+@test "manifest_resolve_purpose: explicit non-test purpose wins over name-default" {
+    cat > pyve.toml <<'TOML'
+[env.testenv]
+purpose = "utility"
+TOML
+    manifest_load
+    # Even though the name is "testenv", the explicit purpose wins.
+    [ "$(manifest_resolve_purpose testenv)" = "utility" ]
+}
+
+@test "manifest_resolve_purpose: all four purpose values round-trip" {
+    cat > pyve.toml <<'TOML'
+[env.r]
+purpose = "run"
+
+[env.t]
+purpose = "test"
+
+[env.u]
+purpose = "utility"
+
+[env.x]
+purpose = "temp"
+TOML
+    manifest_load
+    [ "$(manifest_resolve_purpose r)" = "run" ]
+    [ "$(manifest_resolve_purpose t)" = "test" ]
+    [ "$(manifest_resolve_purpose u)" = "utility" ]
+    [ "$(manifest_resolve_purpose x)" = "temp" ]
+}
+
+# ============================================================
+# 5. Empty-array safety under `set -u` (project-essentials rule)
 # ============================================================
 #
 # Sourcing lib/manifest.sh and calling each surface function from a
