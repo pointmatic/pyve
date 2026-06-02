@@ -250,7 +250,154 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 ## Subphase N-2: Plugin / backend-provider contract — Python as first reference plugin
 
-Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend declaration, detection, lifecycle, activation, diagnostics, `.gitignore`, smart-purge) and re-seat the Python ecosystem behind it as the dog-food reference. No new user-facing surface; existing Python behavior preserved via the contract. Resolves **PC-1** (plugin contract input safety). Story breakdown deferred to its own `plan_production_phase` session, kicked off when N-1 ships. Bundles into **v3.0.0**.
+Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend declaration, detection, lifecycle, activation, diagnostics, `.gitignore`, smart-purge) and re-seat the Python ecosystem behind it as the dog-food reference. No new user-facing surface; existing Python behavior preserved via the contract. Resolves **PC-1** (plugin contract input safety). Bundles into **v3.0.0**.
+
+**Design source:** [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) — the architectural spike for N-2 (drafted 2026-06-02) that establishes the design decisions referenced as **S1–S11** in the story bodies below. Synthesis section of that doc is the canonical record for the env/backend/plugin model; story bodies cite individual S-numbers rather than re-explaining the decisions.
+
+### Story N.k: Plugin contract + registry skeleton with root-loader [Planned]
+
+**Motivation.** Define the 8-hook plugin/backend-provider contract and the registry that loads plugins from `pyve.toml`. Establishes the seam every subsequent N-2 story builds against. No behavior change yet — the registry loads plugins but the Python plugin doesn't exist until N.n; v2-shape behavior is preserved via the read-compat layer until then.
+
+**Tasks**
+
+- [ ] New `lib/plugins/contract.sh`: 8 hook signatures with documented stubs — `pyve_plugin_manifest_namespace`, `pyve_plugin_register_backends`, `pyve_plugin_detect`, `pyve_plugin_init` / `pyve_plugin_purge` / `pyve_plugin_update` / `pyve_plugin_check` / `pyve_plugin_status` / `pyve_plugin_run` / `pyve_plugin_test` (lifecycle), `pyve_plugin_activate`, `pyve_plugin_diagnostics`, `pyve_plugin_gitignore_entries`, `pyve_plugin_purge_inventory`. Per concept doc § 5.
+- [ ] New `lib/plugins/registry.sh`: `plugin_register <name>`, `plugin_load_all_from_manifest`, `plugin_list_active`, `plugin_dispatch <name> <hook> [args...]`. Reads `[plugins.*]` blocks from `pyve.toml` via [lib/manifest.sh](../../lib/manifest.sh).
+- [ ] No-op default implementations for every hook so plugins implementing a subset don't error.
+- [ ] **Implicit-Python rule (S5):** when `[plugins.*]` is absent from `pyve.toml`, the registry treats Python as the implicit plugin at `path = "."`. Covers the migration target (v2-shape projects with only Python surfaces).
+- [ ] **`path = "."` cardinality validation (S4):** registry errors if two plugins both omit `path` (or both set `path = "."`). Single source of truth: at most one plugin owns the project root.
+- [ ] Explicit `source lib/plugins/contract.sh` and `source lib/plugins/registry.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule.
+- [ ] Bats unit tests: registry loads explicit `[plugins.*]`; implicit-Python default; cardinality error; hook dispatch invokes the right plugin.
+
+### Story N.k.1: `[plugins.*]` schema in `pyve.toml` [Planned]
+
+**Motivation.** Pre-implementation split of N.k (per the [Sub-numbered stories rule](../project-guide/templates/modes/_phase-letters.md)). N.k's registry needs the manifest schema in place; this story lands the schema before N.k consumes it.
+
+**Tasks**
+
+- [ ] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to parse `[plugins.<name>]` blocks. Per S3, the schema has just `path` (default `"."`) — **no `role` field**.
+- [ ] Extend [lib/manifest.sh](../../lib/manifest.sh) with `manifest_list_plugins`, `manifest_get_plugin_path <name>`, `manifest_get_plugin_attr <name> <key>`.
+- [ ] Bats unit tests: parse explicit `[plugins.*]`; parse implicit (no `[plugins.*]`) → empty list; reject `[plugins.<name>]` with unrecognized core keys (provider-private keys per S9 stay free-form for the plugin to interpret).
+- [ ] Update [tech-spec.md](tech-spec.md) with the `[plugins.*]` schema section.
+
+### Story N.l: Backend-provider registry + abstraction (three-category) [Planned]
+
+**Motivation.** Backends become first-class registered providers inside their plugin. The dispatch layer (`bp_dispatch <backend> <hook>`) mediates today's direct `init_direnv_venv` / `init_direnv_micromamba` callsites. Per revised **S6**, providers declare one of three categories: **project-virtualized**, **cache-backed**, or **check-only**. v3.0 ships only project-virtualized; the schema accommodates the other two for future plugins.
+
+**Tasks**
+
+- [ ] New `lib/plugins/backend_registry.sh`: `bp_register <plugin> <backend_name> <category>`, `bp_lookup <backend_name>` (returns owning plugin), `bp_dispatch <backend_name> <hook> [args...]`.
+- [ ] Define the three category enum values (`virtualized`, `cache-backed`, `check-only`) and their differing hook semantics per S6: `init` / `purge` / `activation` behavior varies by category.
+- [ ] Refactor current direct callsites in [lib/commands/env.sh](../../lib/commands/env.sh) and [lib/utils.sh](../../lib/utils.sh) to route through `bp_dispatch` for backend-specific operations. Behavior unchanged.
+- [ ] Bats unit tests: registry lookup; dispatch routes to the correct provider; category attribute readable per provider; v3.0's `venv` and `micromamba` register as `virtualized` (no other categories exercised yet).
+- [ ] Update [tech-spec.md](tech-spec.md) with the three-category taxonomy.
+
+### Story N.m: PC-1 — plugin input safety validator [Planned]
+
+**Motivation.** Resolves **PC-1** from the Phase N plan. Plugin-emitted text (going into composed `.envrc` and `.gitignore`) must not smuggle shell-evaluable content. Central validator enforces a strict allow-list before composition.
+
+**Tasks**
+
+- [ ] New `lib/envrc_safety.sh`: `validate_envrc_snippet <text>` enforces the direnv-stdlib allow-list — only `PATH_add "<quoted>"`, `export VAR="<quoted>"`, comment lines, and blank lines accepted. Reject backticks, `$(...)`, unquoted `${VAR}` in dangerous positions.
+- [ ] `validate_gitignore_snippet <text>` enforces simple pattern lines (no shell interpolation).
+- [ ] Wire validators into the activation-hook composer (used in N.q) and the smart-purge inventory composer (used in N.r). For N.m itself, ship the validators with their own test suite; composer integration lands in N.q / N.r.
+- [ ] Bats unit tests covering each allow-list rule and each rejection case (a regression test for every smuggling pattern considered).
+
+### Story N.n: Python plugin module + scaffold-time detection hook [Planned]
+
+**Motivation.** Re-seat the Python ecosystem as the first reference plugin — the dog-food invariant per concept doc R2. Detection becomes scaffold-time only (per the prior N-2 design): once `pyve.toml` exists, the manifest is the runtime source of truth; detection only runs during `pyve init` to inform the initial scaffold.
+
+**Tasks**
+
+- [ ] New `lib/plugins/python/plugin.sh`: registers the Python plugin with the contract from N.k; registers `venv` and `micromamba` as `virtualized`-category backend-providers via N.l's `bp_register`.
+- [ ] Move detection logic from [lib/backend_detect.sh](../../lib/backend_detect.sh) into the plugin's `pyve_plugin_detect` hook. Detection returns a positive signal for projects with `pyproject.toml`, `requirements*.txt`, `environment*.yml`, `setup.py`, or `*.py` source files at the project root.
+- [ ] Runtime version resolution stays in the plugin's internal `init` helpers (per S10 — Python's precedence is asdf > pyenv > system; `is_asdf_active()` remains the single gate per [project-essentials.md](project-essentials.md)).
+- [ ] Update [pyve.sh](../../pyve.sh) to call `plugin_load_all_from_manifest` early in `main()`; the Python plugin is loaded either explicitly (`[plugins.python]` present) or implicitly (the implicit-Python rule from N.k).
+- [ ] Existing direct calls to `detect_backend` in [pyve.sh](../../pyve.sh) and [lib/commands/init.sh](../../lib/commands/init.sh) now delegate to the Python plugin's detection hook via `plugin_dispatch python pyve_plugin_detect`.
+- [ ] Bats unit + integration tests: detection still works on every fixture project shape; behavior unchanged end-to-end.
+
+### Story N.o: Python plugin — init / purge / update hooks [Planned]
+
+**Motivation.** Re-seat the scaffolding commands behind the plugin contract. `pyve init` / `pyve purge` / `pyve update` dispatch into the Python plugin's lifecycle hooks; existing behavior preserved exactly.
+
+**Tasks**
+
+- [ ] Implement `pyve_plugin_init` in `lib/plugins/python/plugin.sh` — delegates to today's `init_project` logic for the Python plugin's contribution (venv creation, `.envrc` template emission via the activation hook from N.q, etc.).
+- [ ] Implement `pyve_plugin_purge` — delegates to today's `purge_project` Python-specific paths.
+- [ ] Implement `pyve_plugin_update` — delegates to today's `update_project` Python-specific paths.
+- [ ] **Env-block validation per S9**: the `init` hook receives the entire `[env.<name>]` block and validates `purpose` ∈ {run, test, utility, temp} and `backend` is a registered name; everything else is provider-private and passed through to the backend-provider.
+- [ ] **Read the `languages` advisory attribute** (S11) but treat it as informational only in v3.0 for Python — no behavior change. Storing the read sets up the diagnostics task in N.p.
+- [ ] Refactor [lib/commands/init.sh](../../lib/commands/init.sh), [lib/commands/purge.sh](../../lib/commands/purge.sh), and [lib/commands/update.sh](../../lib/commands/update.sh) to dispatch through the plugin contract instead of calling Python-specific helpers directly.
+- [ ] Bats + integration regression: every existing init/purge/update fixture passes unchanged.
+
+### Story N.p: Python plugin — check / status / run / test hooks [Planned]
+
+**Motivation.** Re-seat the diagnostic and execution commands. Same shape as N.o but for the runtime-side commands. Adds the `manual_steps` (S7) and `languages` (S11) surfacing — both advisory in v3.0.
+
+**Tasks**
+
+- [ ] Implement `pyve_plugin_check`, `pyve_plugin_status`, `pyve_plugin_run`, `pyve_plugin_test` in the Python plugin — delegate to today's command implementations.
+- [ ] **`manual_steps` surfacing (S7):** if any active env has a non-empty `manual_steps` list, render those entries in `pyve check` and `pyve status` output as advisories (no failure exit code — they're informational).
+- [ ] **`languages` advisory in `check`** (S11): when `languages` is set on an env, the Python plugin's `check` hook can warn on simple gaps (e.g., `languages = ["python"]` is the default; richer cross-checks defer to a future phase).
+- [ ] Re-seat [lib/commands/check.sh](../../lib/commands/check.sh), [lib/commands/status.sh](../../lib/commands/status.sh), [lib/commands/run.sh](../../lib/commands/run.sh), [lib/commands/test.sh](../../lib/commands/test.sh) to dispatch through the plugin contract.
+- [ ] `pyve python set` and `pyve python show` (the per-Python-version commands in [lib/commands/python.sh](../../lib/commands/python.sh)) re-seat into the Python plugin alongside the other hooks. Behavior unchanged; just moves the implementation locus.
+- [ ] Bats + integration regression: every existing check/status/run/test fixture passes unchanged.
+
+### Story N.q: Python plugin — activation hook (`.envrc` emission) [Planned]
+
+**Motivation.** Move `.envrc` template emission into the Python plugin's activation hook. The PC-1 validator from N.m runs on the output before it gets written.
+
+**Tasks**
+
+- [ ] Implement `pyve_plugin_activate` in the Python plugin — wraps today's `write_envrc_template` in [lib/utils.sh](../../lib/utils.sh).
+- [ ] Output from the activation hook passes through `validate_envrc_snippet` (N.m) before being written to disk. Invalid output halts with a precise error pointing at the offending snippet line.
+- [ ] Preserve the existing uniform `.envrc` template shape per [project-essentials.md](project-essentials.md) (the *Uniform `.envrc` template* rule).
+- [ ] Re-seat callsites in [lib/commands/init.sh](../../lib/commands/init.sh) (and anywhere else that emits `.envrc`) to dispatch through `plugin_dispatch python pyve_plugin_activate`.
+- [ ] Bats + integration regression: emitted `.envrc` is byte-equivalent to today's output for every existing fixture.
+
+### Story N.r: Python plugin — `.gitignore` + smart-purge hooks [Planned]
+
+**Motivation.** Re-seat the remaining template / inventory hooks. Python plugin declares its `.gitignore` ecosystem entries and its created-vs-authored inventory for `pyve purge`.
+
+**Tasks**
+
+- [ ] Implement `pyve_plugin_gitignore_entries` in the Python plugin — returns the list of patterns the Python ecosystem wants in the project's `.gitignore` (e.g., `__pycache__/`, `*.pyc`, `.venv/`, `*.egg-info/`). Output passes through `validate_gitignore_snippet` (N.m).
+- [ ] Implement `pyve_plugin_purge_inventory` — declares created-vs-authored files/dirs for the Python ecosystem (Pyve-created: `.venv/`, `.pyve/envs/<name>/`, `.envrc`; user-authored: `pyproject.toml`, `requirements*.txt`, source files — never touch).
+- [ ] Re-seat `.gitignore` self-healing in [lib/commands/init.sh](../../lib/commands/init.sh) and `pyve purge`'s inventory composition in [lib/commands/purge.sh](../../lib/commands/purge.sh) to dispatch through these hooks.
+- [ ] Bats + integration regression: `.gitignore` self-heal output unchanged; `pyve purge` removes the same artifacts as today; never touches user-authored files.
+
+### Story N.s: End-to-end regression sweep + tech-spec / features doc updates [Planned]
+
+**Motivation.** Verify the full N-2 refactor preserves behavior end-to-end before declaring the subphase done. Update spec docs to reflect the new architecture; N-6 will revisit holistically but this story captures the immediate updates so the docs don't lie between N-2 and N-6.
+
+**Tasks**
+
+- [ ] Run the full Bats unit suite + integration suite against the post-N-2 codebase. Zero regressions expected (every existing behavior preserved by the re-seat).
+- [ ] Run `pyve init`, `pyve update`, `pyve check`, `pyve status`, `pyve test`, `pyve env install`, `pyve env run` against a fresh v3-shape project and a migrated-from-v2 project. Verify identical output to today.
+- [ ] Update [tech-spec.md](tech-spec.md): add sections on the plugin contract (8 hooks per N.k), the backend-provider three-category taxonomy (per revised S6), and the implicit-Python rule (per S5).
+- [ ] Update [features.md](features.md): note the env-as-materialization framing (S1), the `languages` advisory axis (S11), the `manual_steps` advisory (S7). Per S11, no behavior change for users in v3.0 — these are schema/diagnostic additions.
+- [ ] Update [brand-descriptions.md](brand-descriptions.md) — brief annotation only, marking the relevant **NEEDS REVISION for Pyve 3.0** sections to reference the new identity ("orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems"). Full revision lands in N-6 via `refactor_document`.
+- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+
+### Story N.t: Append project-essentials entries for N-2 [Planned]
+
+**Motivation.** Capture the spike's S1–S11 conclusions plus the embedded-`purpose:` gap as Phase N invariants so future contributors (and future LLM sessions) don't re-derive them.
+
+**Tasks**
+
+- [ ] Append to [project-essentials.md](project-essentials.md) the following invariants from the spike (cite the spike doc for full reasoning):
+  - **S1**: env = materialization (distinct dependency closure), not a run surface.
+  - **S2**: `backend` is a singleton per env; layering is internal to the provider.
+  - **S3**: no `role` field; spatial owner inferred from `path`.
+  - **S4**: zero-or-one host (zero-or-one plugin with `path = "."`).
+  - **S5**: implicit-Python rule when `[plugins.*]` is absent.
+  - **S6 (revised)**: three backend categories (project-virtualized / cache-backed / check-only) with differing `init` / `purge` / `activation` semantics.
+  - **S7**: `manual_steps` as optional advisory `[env.*]` field.
+  - **S8**: deploy lives in `[deploy.<env-name>]`, not as a `purpose:` value.
+  - **S9**: `[env.*]` core fields (`purpose`, `backend`) + provider-private extension space.
+  - **S10**: runtime version resolution is plugin-internal; each plugin owns its own precedence chain (no framework-level asdf-first rule).
+  - **S11**: language flavors via `languages` structured attribute (orthogonal to backend / plugin).
+- [ ] Append the **embedded-`purpose:` gap** as a documented limitation: `purpose: embedded` is the future-phase candidate for hardware-deployment ecosystems; not a v3.0 schema change. See the *Known partial fits* section of the spike doc.
+- [ ] Skip the story entirely if N-2 introduced no new invariants beyond what's already captured (extremely unlikely given S1–S11).
 
 ---
 
