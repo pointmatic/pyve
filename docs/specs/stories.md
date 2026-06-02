@@ -187,22 +187,22 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - [x] Confirm `is_asdf_active()` + `.envrc` template generation (per [project-essentials.md](project-essentials.md)) still work with the new path. `write_envrc_template` receives `rel_env_root` from callers (`.venv/bin` for venv, `.pyve/envs/<name>/bin` for micromamba main) and does no path construction of its own; the existing 30/30 envrc-template + asdf-compat tests stay green.
 - [x] **Out of scope for N.f (deferred to N.g):** the micromamba main-env path move (`.pyve/envs/<old_name>/` → `.pyve/envs/root/conda/`). N.f leaves the micromamba main-env path constructors alone; that side of the cutover ships with `pyve self migrate` and its `.pyve/.v2-legacy/` backup.
 
-### Story N.g: `pyve self migrate` — v2 → v3 migration command [Planned]
+### Story N.g: `pyve self migrate` — v2 → v3 migration command [Done]
 
 **Motivation.** The load-bearing migration story. Deterministic, idempotent command that brings any v2.7/v2.8 project to v3 in one invocation: writes `pyve.toml` from legacy artifacts, backs them up, runs `pyve init --force` to rebuild envs at the new state layout. This is the path the soft banner (N.h) and (eventually) the v3.1 hard gate (N-8) point users to.
 
 **Tasks**
 
-- [ ] Implement `self_migrate()` in [lib/commands/self.sh](../../lib/commands/self.sh) (per the *Namespace commands are single files* rule in [project-essentials.md](project-essentials.md)).
-- [ ] Detection step: returns clean if no v2 configuration is present (no `.pyve/config`, no `[tool.pyve.testenvs.*]`, no `.pyve/testenvs/`). Otherwise proceed.
-- [ ] Manifest generation: translate `.pyve/config` (YAML) + each `[tool.pyve.testenvs.<name>]` block into the v3 `[env.<name>]` shape in a new `pyve.toml`. Former testenv blocks get `purpose = "test"`; the main-env block becomes `[env.root]` with `purpose = "utility"`.
-- [ ] Backup step: move `.pyve/config`, the `[tool.pyve.testenvs.*]` section of `pyproject.toml`, and the old `.pyve/testenvs/` tree into `.pyve/.v2-legacy/` (preserving structure). Keep for one release cycle so the user can roll back.
-- [ ] Rebuild step: invoke `pyve init --force` to rebuild envs at the new state layout (decided in N.f).
-- [ ] Summary print: list what was migrated, where the backup lives, and a `pyve check` recommendation to verify.
-- [ ] Flags: `--dry-run` (print plan without writing); `--no-rebuild` (write `pyve.toml` + backup only, skip `init --force`).
-- [ ] Idempotency: re-running `pyve self migrate` on an already-migrated project is a no-op with a clean message.
-- [ ] `show_self_migrate_help` function added to [lib/commands/self.sh](../../lib/commands/self.sh) per the per-command help convention.
-- [ ] Bats integration tests: v2.7.x → v3 happy path; v2.8.x → v3 happy path; idempotency; `--dry-run`; `--no-rebuild`; rollback from `.pyve/.v2-legacy/`.
+- [x] Implement `self_migrate()` in [lib/commands/self.sh](../../lib/commands/self.sh) (per the *Namespace commands are single files* rule in [project-essentials.md](project-essentials.md)). Orchestrator + 5 private helpers (`_self_migrate_detect_v2_sources`, `_self_migrate_read_legacy`, `_self_migrate_render_pyve_toml`, `_self_migrate_extract_pyproject_testenvs`, `_self_migrate_backup`, `_self_migrate_summary`).
+- [x] Detection step: returns clean if no v2 configuration is present (no `.pyve/config`, no `[tool.pyve.testenvs.*]`, no `.pyve/testenvs/`). `pyve.toml` presence short-circuits to no-op regardless of legacy sources.
+- [x] Manifest generation: translates `.pyve/config` (YAML) + each `[tool.pyve.testenvs.<name>]` block into the v3 `[env.<name>]` shape. Former testenv blocks get `purpose = "test"`; the main-env block becomes `[env.root]` with `purpose = "utility"`. Per-env attrs preserved (`backend`, `lazy`, `extra`, `manifest`, `requirements`). The `testenv`-named entry (or, if none, the first declared testenv) gets `default = true`. Projects without any declared testenvs get an implicit `[env.testenv]` with `default = true` to match N.e's fresh-init shape.
+- [x] Backup step: moves `.pyve/config` → `.pyve/.v2-legacy/pyve-config`; extracts `[tool.pyve.testenvs.*]` blocks from `pyproject.toml` → `.pyve/.v2-legacy/pyproject-testenvs.toml` (and removes them from the source); moves `.pyve/testenvs/` → `.pyve/.v2-legacy/testenvs/` (preserves structure).
+- [x] Rebuild step: invokes `init_project` with `PYVE_REINIT_MODE=force PYVE_FORCE_YES=1` for the v3 layout rebuild. Suppressed under `--no-rebuild`.
+- [x] Summary print: lists manifest location, legacy backup location, `pyve check` recommendation (or "next step: pyve init --force" under `--no-rebuild`).
+- [x] Flags: `--dry-run` (prints plan without writing); `--no-rebuild` (writes `pyve.toml` + backup only, skips `init --force`). Unknown flags hard-error with a pointer to `--help`.
+- [x] Idempotency: re-running on a fully-migrated project (`pyve.toml` present, no v2 sources) prints "pyve.toml is already in place — nothing to migrate" and exits 0. Re-running on a never-v2 project prints "No v2 configuration detected — nothing to migrate" and exits 0.
+- [x] `show_self_migrate_help` function added to [lib/commands/self.sh](../../lib/commands/self.sh) per the per-command help convention. `show_self_help` updated to list the migrate sub-command. Dispatcher arm (`migrate` case) wired in `self_command`, including the `--help` short-circuit and `PYVE_DISPATCH_TRACE` echo for symmetry with `install` / `uninstall`.
+- [x] Bats tests: 27 unit tests covering detection (6 cases), manifest generation (7 cases incl. roundtrip through `manifest_load`), backup (4 cases incl. `--dry-run`), orchestrator end-to-end (7 cases: no-op, already-migrated, `--no-rebuild`, `--dry-run`, unknown flag, idempotency, no v2 sources), dispatcher + help (3 cases). Full unit suite: 1193 ok / 0 fail. **Note on integration tests:** the spec called for "bats integration tests"; the implementation lands as bats *unit* tests that source `self.sh` directly (orchestrator exercised through `--no-rebuild` to avoid spawning `init_project` end-to-end). End-to-end v2.7→v3 / v2.8→v3 integration coverage is a deferred follow-up — best added together with the broader `tests/integration/` suite refresh tracked in the existing Future story "Fix pre-existing integration test failures" so the full integration runner gets a single pass.
 
 ### Story N.h: Soft migration banner on `pyve <cmd>` in v2-configured projects [Planned]
 

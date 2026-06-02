@@ -154,21 +154,26 @@ EOF
 # Production-code path-literal sweep (extends test_testenvs_activate.bats)
 #============================================================
 
-@test "sweep: no '.pyve/testenvs/' literals in production code outside the migration helper" {
-    # Allowed locations:
+@test "sweep: no '.pyve/testenvs/' literals in production code outside the migration helpers" {
+    # Allowed locations (migrator surfaces):
     #   - lib/envs.sh: legitimately mentions the legacy v2.8 path inside
-    #     migrate_legacy_env_layout (source-of-truth for the mover).
+    #     migrate_legacy_env_layout (source-of-truth for the opportunistic
+    #     mover).
+    #   - lib/commands/self.sh: `pyve self migrate` (Story N.g) reads
+    #     the legacy paths during detection/backup; its surface refers
+    #     to .pyve/testenvs/ by name.
     #   - lib/utils.sh: the gitignore template line keeping `.pyve/testenvs`
     #     ignored during the v3.0 transition window (removed in N-8 with
     #     the rest of the read-compat layer).
     #
-    # Everything else (lib/commands/*.sh other than env.sh-as-allowed-below,
-    # pyve.sh) must route through state_path() / resolve_env_path() /
-    # other helpers — hard-coded path strings get caught here.
+    # Everything else (lib/commands/*.sh other than self.sh, pyve.sh)
+    # must route through state_path() / resolve_env_path() / other
+    # helpers — hard-coded path strings get caught here.
     local hits
     hits="$(grep -rnE '\.pyve/testenvs/' \
         "$PYVE_ROOT/lib/commands/" \
         "$PYVE_ROOT/pyve.sh" 2>/dev/null \
+        | grep -vE '^[^:]+/self\.sh:' \
         | grep -vE '^[^:]+:[0-9]+:[[:space:]]*#' \
         | grep -vE '\.pyve/testenvs/<name>/\\\{venv,conda\\\}/' \
         || true)"
