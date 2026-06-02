@@ -721,6 +721,125 @@ Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state`
 
 ---
 
+### `lib/manifest.sh` — v3.0 Canonical Manifest Reader (Story N.a, Subphase N-1)
+
+Reads `pyve.toml` — the v3.0 root-level canonical declarative manifest introduced by Phase N — via the Python `tomllib` helper [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py) and exposes a flat accessor surface for downstream consumers. **`pyve.toml` is the single canonical declaration in v3.0+**; it supersedes both `.pyve/config` (YAML, v2.x main env) and `[tool.pyve.testenvs.*]` (pyproject.toml, Phase M testenvs). After v3.0, `.pyve/` holds materialized state only — never declaration. Foundation laid in Story N.a; CLI wiring (`pyve init` write path, dispatcher) lands in later N-1 stories.
+
+**`pyve.toml` schema (v3.0):**
+
+```toml
+# Schema-version key — top-level, required (defaults to "3.0" if absent).
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+# Each [env.<name>] declares one project environment surface.
+# Every field is optional; the helper applies the documented defaults.
+[env.root]
+purpose  = "utility"     # one of: run | test | utility | temp
+backend  = "venv"        # plugin-registered backend name (free-form string)
+path     = "."           # working/detection root (monorepo support)
+default  = false         # at most one env may set true
+lazy     = false         # opt-in lazy provisioning
+
+# Structured attributes (optional; intended for plugin consumption)
+app_type   = "library"
+frameworks = ["sveltekit"]
+languages  = ["python"]
+
+# Backend-source attributes (carried over from Phase M [tool.pyve.testenvs]).
+# `requirements`, `extra`, `manifest` are mutually exclusive.
+requirements = ["requirements-dev.txt"]
+extra        = "dev"
+manifest     = "tests/env.yml"
+
+[env.testenv]
+purpose = "test"
+default = true
+```
+
+**Field semantics:**
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `pyve_schema` | string (top-level) | `"3.0"` | Schema-version key. v3.0-only valid value; other versions hard-error at parse time. R8 (per-env / per-plugin schema versioning) generalizes this. |
+| `[project].name` | string | `""` | Display name. |
+| `[env.<name>].purpose` | enum string | `""` (raw); default rules applied in Story N.d | One of `run`, `test`, `utility`, `temp`. Story N.d wires the default-purpose rules (`testenv` → `test`; `root` → `utility`; else → `utility`) and the `pyve test --env <name>` selector. |
+| `[env.<name>].backend` | string | `""` (raw) | Plugin-registered backend identifier. v3.0 ships `venv`, `micromamba`, `inherit` (Python plugin, N-2) and `pnpm`/`npm`/`yarn` (Node plugin, N-3). N.a accepts any non-empty string — plugin enforcement lands in N-2's contract. |
+| `[env.<name>].path` | string | `"."` | Working/detection root (monorepo / sub-surface support per R10). |
+| `[env.<name>].default` | bool | `false` | At most one env per manifest may declare `default = true`. |
+| `[env.<name>].lazy` | bool | `false` | Carried over from Phase M; opt-in lazy provisioning (consumer = N.d/N.e). |
+| `[env.<name>].app_type` | string | `""` | Structured attribute (free-form for N.a; plugin-defined vocabularies in later stories). |
+| `[env.<name>].frameworks` | string list | `[]` | Structured attribute. |
+| `[env.<name>].languages` | string list | `[]` | Structured attribute. |
+| `[env.<name>].requirements` | string list | `[]` | Phase M carryover; mutex with `extra` / `manifest`. |
+| `[env.<name>].extra` | string | `""` | Phase M carryover; mutex with `requirements` / `manifest`. |
+| `[env.<name>].manifest` | string | `""` | Phase M carryover; mutex with `requirements` / `extra`. |
+
+**Validation rules (enforced by the Python helper at read time, stderr-prefixed `error: pyve.<key>: ...`, exit 2):**
+
+1. `pyve_schema` must equal `"3.0"` (absent → defaulted; any other literal → error).
+2. Each env's `purpose`, if non-empty, must be one of the four valid values.
+3. At most one env may declare `default = true`.
+4. Per env, at most one of `requirements` / `extra` / `manifest` may be declared.
+
+**`lib/manifest.sh` accessor surface:**
+
+| Function | Signature | Description |
+|---|---|---|
+| `manifest_load` | `([<pyve.toml path>])` | Invoke the Python helper and populate the v3 parallel-indexed-array state in the calling shell. Default path: `./pyve.toml`. Missing file → empty config (`PYVE_ENV_NAMES=()`, schema `"3.0"`). Validation errors propagate via non-zero exit + stderr. |
+| `manifest_list_envs` | `()` → stdout | Print declared env names, one per line. Empty when no envs declared. |
+| `manifest_get_env` | `(<name>)` → 0/1 | Predicate: 0 if `<name>` appears in `PYVE_ENV_NAMES`, 1 otherwise. |
+| `manifest_get_purpose` | `(<name>)` → string | Print the env's `purpose` (raw — empty if unset). Returns 1 if name is unknown. |
+| `manifest_get_backend` | `(<name>)` → string | Print the env's `backend` (raw — empty if unset). Returns 1 if name is unknown. |
+| `manifest_get_path` | `(<name>)` → string | Print the env's `path` (defaults to `"."`). Returns 1 if name is unknown. |
+| `manifest_get_app_type` | `(<name>)` → string | Print the env's `app_type` (empty if unset). Returns 1 if name is unknown. |
+| `manifest_is_default` | `(<name>)` → 0/1 | 0 if env has `default = true`, 1 otherwise. |
+| `manifest_is_lazy` | `(<name>)` → 0/1 | 0 if env has `lazy = true`, 1 otherwise. |
+| `manifest_get_frameworks` | `(<name> <out_var>)` | Populate caller-named array with the env's `frameworks` list (uses `eval` against shell-quoted form). |
+| `manifest_get_languages` | `(<name> <out_var>)` | Populate caller-named array with the env's `languages` list. |
+| `manifest_get_requirements` | `(<name> <out_var>)` | Populate caller-named array with the env's `requirements` list. |
+| `_manifest_name_to_index` | `(<name>)` → int via stdout | Private: 0-based index in `PYVE_ENV_NAMES`, or return 1. Bash-3.2-safe under `set -u`. |
+
+**Companion helper:** [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py) — Python `tomllib` reader, invoked via `${PYVE_PYTHON:-python} lib/pyve_toml_helper.py <pyve.toml>`. Emits plain bash-assignment syntax (no `declare`) to land assignments in the calling function's global scope under bash 3.2.
+
+**Wire format.** Populated by `manifest_load`:
+
+```bash
+PYVE_SCHEMA_VERSION="3.0"
+PYVE_PROJECT_NAME="demo"
+PYVE_ENV_NAMES=("root" "testenv")
+PYVE_ENV_PURPOSE=("utility" "test")
+PYVE_ENV_BACKEND=("venv" "venv")
+PYVE_ENV_PATH=("." ".")
+PYVE_ENV_DEFAULT=("0" "1")
+PYVE_ENV_LAZY=("0" "0")
+PYVE_ENV_EXTRA=("" "")
+PYVE_ENV_MANIFEST=("" "")
+PYVE_ENV_APP_TYPE=("" "")
+PYVE_ENV_REQUIREMENTS_Q=("" "")
+PYVE_ENV_FRAMEWORKS_Q=("" "")
+PYVE_ENV_LANGUAGES_Q=("" "")
+```
+
+Parallel indexed arrays keyed by position in `PYVE_ENV_NAMES`. Bash-3.2-safe (no `declare -A`). List-valued fields (`_REQUIREMENTS_Q`, `_FRAMEWORKS_Q`, `_LANGUAGES_Q`) carry one shell-quoted joined string per env; consumers expand with `eval "out=( $val )"` — same wire shape Story M.g uses for `PYVE_TESTENV_REQUIREMENTS_Q`.
+
+**Subphase N-1 consumer roadmap (not in scope for N.a):**
+
+- **N.b:** rename `lib/testenvs.sh` → `lib/envs.sh` and `lib/commands/testenv.sh` → `lib/commands/env.sh` (the v2 helper rename — independent of this v3 manifest reader).
+- **N.c:** register `pyve env <sub>` dispatcher; `pyve testenv <sub>` becomes Category A legacy sugar.
+- **N.d:** `purpose:` default rules + `pyve test --env <name>` selector semantics layered on top of `manifest_get_purpose`.
+- **N.e:** `pyve init` writes `pyve.toml` on fresh projects.
+- **N.f:** decide the final v3 state-directory path.
+- **N.g:** `pyve self migrate` consumes both this manifest helper (write path) and the legacy testenvs helper (read path) to produce a fresh `pyve.toml` from v2 sources.
+- **N.h:** soft migration banner detects "v2 sources present AND `pyve.toml` absent."
+- **N.i:** read-compat layer — when `pyve.toml` is absent but legacy sources exist, parse them and emit a synthesized in-memory v3 shape so the rest of pyve sees a uniform model.
+
+**No sourcing in `pyve.sh` yet.** Per Story N.a's "no CLI dispatcher changes," `lib/manifest.sh` is not added to `pyve.sh`'s explicit source block in this story. Sourcing lands when the first command consumes the helper (Story N.e — `pyve init` write path — is the canonical first consumer).
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

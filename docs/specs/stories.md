@@ -47,17 +47,17 @@ Within each subphase, stories run unversioned during work; the subphase contribu
 
 Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `[env.<name>]` blocks; rename `testenvs → envs` with `purpose` attribute; ship the deterministic `pyve self migrate` command; add the v3.0 soft migration banner; preserve v3.0-only read-compat for legacy `[tool.pyve.testenvs.*]` and `.pyve/config`. This subphase is the foundation everything else builds on. Full detail per story below; bundles into **v3.0.0** with N-2 through N-7.
 
-### Story N.a: `pyve.toml` schema + Python TOML helper [Planned]
+### Story N.a: `pyve.toml` schema + Python TOML helper [Done]
 
 **Motivation.** v3.0 introduces a single canonical declarative manifest at the repo root: `pyve.toml`. This story lays the schema and parse foundation so every subsequent N-1 story can read/write the v3 shape. No CLI surface change in this story.
 
 **Tasks**
 
-- [ ] Define `pyve.toml` schema in [tech-spec.md](tech-spec.md): `[project]`, `[env.<name>]` with `purpose` / `backend` / `path` / structured attributes (`app_type`, `frameworks`, `languages`); schema-version key `pyve_schema = "3.0"`.
-- [ ] New `lib/pyve_toml_helper.py` — TOML read/parse mirroring [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py); exposes the same Bash-callable surface.
-- [ ] New `lib/manifest.sh` — Bash shim over the Python helper: `manifest_load`, `manifest_get_env`, `manifest_list_envs`, `manifest_get_purpose`, etc.
-- [ ] Bats unit tests for round-trip parse + every documented schema field.
-- [ ] No CLI dispatcher changes — covered in later stories.
+- [x] Define `pyve.toml` schema in [tech-spec.md](tech-spec.md): `[project]`, `[env.<name>]` with `purpose` / `backend` / `path` / structured attributes (`app_type`, `frameworks`, `languages`); schema-version key `pyve_schema = "3.0"`.
+- [x] New `lib/pyve_toml_helper.py` — TOML read/parse mirroring [lib/pyve_testenvs_helper.py](../../lib/pyve_testenvs_helper.py); exposes the same Bash-callable surface.
+- [x] New `lib/manifest.sh` — Bash shim over the Python helper: `manifest_load`, `manifest_get_env`, `manifest_list_envs`, `manifest_get_purpose`, etc.
+- [x] Bats unit tests for round-trip parse + every documented schema field.
+- [x] No CLI dispatcher changes — covered in later stories.
 
 ### Story N.b: `lib/envs.sh` + `lib/commands/env.sh` rename (`testenvs` → `envs`) [Planned]
 
