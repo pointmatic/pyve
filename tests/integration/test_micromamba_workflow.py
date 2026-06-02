@@ -141,24 +141,27 @@ class TestMicromambaWorkflow:
             dependencies=['python=3.11']
         )
         pyve.init(backend='micromamba')
-        
+
         # Create testenv
         pyve.run('testenv', 'init')
 
-        # Verify both exist. v2.8+ layout: testenv lives under .pyve/testenvs/testenv/
-        # (was .pyve/testenv/ pre-M.h.3). `--keep-testenv` preserves the
-        # whole .pyve/testenvs/ tree post-M.h.3.
-        assert (pyve.cwd / '.pyve' / 'envs').exists()
-        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
+        # v3 layout (Story N.f): the micromamba main env and the testenv
+        # share `.pyve/envs/` — main env at `.pyve/envs/test-env/` (still
+        # pre-N.g, the env-name from environment.yml), testenv at
+        # `.pyve/envs/testenv/`. Story N.f-aware `pyve purge --keep-testenv`
+        # surgically deletes the main-env subdir and preserves the rest of
+        # `.pyve/envs/`.
+        assert (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
+        assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
 
         # Purge with keep-testenv
         result = pyve.run('purge', '--keep-testenv', input='y\n')
 
         assert result.returncode == 0
-        # Micromamba env should be removed
-        assert not (pyve.cwd / '.pyve' / 'envs').exists()
-        # Testenv should be preserved
-        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
+        # Micromamba main env should be removed
+        assert not (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
+        # Testenv should be preserved (now under `.pyve/envs/testenv/`)
+        assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
     
     def test_reinit_after_purge(self, pyve, project_builder):
         """Test that we can re-initialize after purge."""

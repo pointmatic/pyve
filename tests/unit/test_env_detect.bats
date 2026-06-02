@@ -526,8 +526,15 @@ EOF
 }
 
 @test "assert_python_resolvable: python missing entirely → generic activation hint" {
-    # PATH was scrubbed in setup; no python anywhere.
-    run assert_python_resolvable
+    # setup() sets PATH="$SHIM_DIR:/usr/bin:/bin" — fine on macOS where
+    # /usr/bin/python is absent, but Ubuntu CI runners ship
+    # /usr/bin/python (symlinked to python3), so the system interpreter
+    # leaks in and `python --version` would succeed. Point PYVE_PYTHON
+    # at a nonexistent path so the assertion exercises the
+    # missing-entirely branch deterministically across runners (keeping
+    # the rest of PATH intact so bats helpers like grep still work).
+    PYVE_PYTHON="/nonexistent/python-deliberately-missing" \
+        run assert_python_resolvable
     assert_status_equals 1
     assert_output_contains "direnv allow"
 }
