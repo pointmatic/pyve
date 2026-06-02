@@ -27,7 +27,7 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/lock.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir

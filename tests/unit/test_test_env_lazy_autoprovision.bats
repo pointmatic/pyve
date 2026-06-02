@@ -8,8 +8,8 @@
 # M.m left a hard-error site for `pyve test --env <lazy-name>` when the
 # env hadn't been provisioned yet (pointing the user at `pyve testenv
 # install <name>`). M.n replaces that hard-error with auto-provisioning
-# on the same code path: `ensure_testenv_exists <name>` then
-# `_testenv_install_with_lock <name> <path> "" wait`, gated by a
+# on the same code path: `ensure_env_exists <name>` then
+# `_env_install_with_lock <name> <path> "" wait`, gated by a
 # `PYVE_NO_AUTO_PROVISION=1` opt-out for strict CI that wants the
 # pre-M.n "is this env already built?" semantics.
 
@@ -17,9 +17,9 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/run.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -46,7 +46,7 @@ lazy = true
 TOML
 }
 
-# Stub `python -m venv <path>` (called from ensure_testenv_exists)
+# Stub `python -m venv <path>` (called from ensure_env_exists)
 # to materialize a marker venv at the requested path.
 _stub_run_cmd_creates_venv_and_records() {
     run_cmd() {
@@ -60,7 +60,7 @@ SH
             chmod +x "$venv_path/bin/python"
         fi
         # Record every run_cmd invocation so tests can observe what
-        # `_testenv_install_venv` did.
+        # `_env_install_venv` did.
         printf 'RUN_CMD:%s\n' "$*"
     }
 }
@@ -117,7 +117,7 @@ SH
     chmod +x .pyve/testenvs/heavy/venv/bin/python
     state_write heavy venv
 
-    # Stub run_cmd so we can prove `_testenv_install_venv` was NOT called
+    # Stub run_cmd so we can prove `_env_install_venv` was NOT called
     # (no `pip install` invocation should appear).
     _stub_run_cmd_creates_venv_and_records
     _test_has_pytest() { return 0; }

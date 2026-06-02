@@ -5,10 +5,10 @@
 # pyve testenv — manage a dedicated dev/test runner environment
 #
 # Single-file namespace command (project-essentials F-9): one file
-# contains the namespace dispatcher (`testenv_command`) and every
-# leaf (`testenv_init`, `testenv_purge`, `testenv_run`) plus the
-# backend-keyed install helpers (`_testenv_install_venv`,
-# `_testenv_install_conda`).
+# contains the namespace dispatcher (`env_command`) and every
+# leaf (`env_init`, `env_purge`, `env_run`) plus the
+# backend-keyed install helpers (`_env_install_venv`,
+# `_env_install_conda`).
 #
 # Sub-commands:
 #   pyve testenv init                    Create .pyve/testenvs/testenv/venv
@@ -31,19 +31,19 @@ fi
 #
 # Story M.i.2: accepts an optional <name>. No arg defaults to the
 # reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
-# so all leaves share one check; `testenv_init` just creates.
+# so all leaves share one check; `env_init` just creates.
 #------------------------------------------------------------
 
-testenv_init() {
+env_init() {
     local name="${1:-testenv}"
-    ensure_testenv_exists "$name"
+    ensure_env_exists "$name"
 }
 
 #------------------------------------------------------------
 # Story M.l: venv-backed install with source dispatch.
 #
-# Renamed from `testenv_install` for symmetry with M.k's
-# `_testenv_install_conda`. Pre-condition: the venv must already
+# Renamed from `env_install` for symmetry with M.k's
+# `_env_install_conda`. Pre-condition: the venv must already
 # exist at `<env_path>`. Dispatches on the highest-precedence
 # install source available (1 = top precedence):
 #
@@ -61,7 +61,7 @@ testenv_init() {
 # at most one of (2) and (3) is non-empty.
 #------------------------------------------------------------
 
-_testenv_install_venv() {
+_env_install_venv() {
     local name="$1"
     local env_path="$2"
     local cli_req_file="$3"
@@ -86,7 +86,7 @@ _testenv_install_venv() {
 
     # Precedence 2: declared `requirements = [...]`.
     local -a declared_reqs=()
-    _testenv_requirements_of "$name" declared_reqs 2>/dev/null || true
+    _env_requirements_of "$name" declared_reqs 2>/dev/null || true
     if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
         local r
         local -a r_args=()
@@ -105,10 +105,10 @@ _testenv_install_venv() {
 
     # Precedence 3: declared `extra = "<name>"`.
     local declared_extra
-    declared_extra="$(_testenv_extra_of "$name" 2>/dev/null || printf '')"
+    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
     if [[ -n "$declared_extra" ]]; then
         local -a pkgs=()
-        if ! _testenv_resolve_extra_packages "$declared_extra" pkgs; then
+        if ! _env_resolve_extra_packages "$declared_extra" pkgs; then
             exit 1
         fi
         if [[ "${#pkgs[@]}" -eq 0 ]]; then
@@ -138,7 +138,7 @@ _testenv_install_venv() {
 # (with helper's stderr already on the terminal) when the extra is
 # not declared in `[project.optional-dependencies]` or pyproject.toml
 # is missing.
-_testenv_resolve_extra_packages() {
+_env_resolve_extra_packages() {
     local extra_name="$1"
     local out_var="$2"
     local py="${PYVE_PYTHON:-python}"
@@ -165,7 +165,7 @@ _testenv_resolve_extra_packages() {
 # the existing micromamba_env.sh pattern.
 #------------------------------------------------------------
 
-_testenv_format_epoch() {
+_env_format_epoch() {
     local epoch="$1"
     if [[ "$(uname)" == "Darwin" ]]; then
         date -r "$epoch" '+%Y-%m-%d' 2>/dev/null || printf '?'
@@ -176,7 +176,7 @@ _testenv_format_epoch() {
 
 # Print the epoch for the given ISO date (YYYY-MM-DD). Return 1 + no
 # output if the input is not in that exact shape or `date` rejects it.
-_testenv_parse_iso_date() {
+_env_parse_iso_date() {
     local iso="$1"
     [[ "$iso" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || return 1
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -189,11 +189,11 @@ _testenv_parse_iso_date() {
 #------------------------------------------------------------
 # Story M.p — `testenv list` / `testenv prune`.
 #
-# `testenv_list`: walk the union of declared (PYVE_TESTENVS_NAMES) and
+# `env_list`: walk the union of declared (PYVE_TESTENVS_NAMES) and
 # on-disk (`.pyve/testenvs/*/`) env names; for each, print one row
 # with name/backend/size/last-used/state.
 #
-# `testenv_prune`: three modes:
+# `env_prune`: three modes:
 #   default (no args)       — remove on-disk envs not declared in
 #                              pyproject (orphans). Reserved `testenv`
 #                              is never orphaned.
@@ -213,7 +213,7 @@ _testenv_parse_iso_date() {
 
 # Print the union of declared + on-disk env names, one per line.
 # Bash-3.2-safe dedup via string-membership (no `declare -A`).
-_testenv_list_all_names() {
+_env_list_all_names() {
     local name seen=" "
     for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
         if [[ "$seen" != *" $name "* ]]; then
@@ -235,14 +235,14 @@ _testenv_list_all_names() {
 }
 
 # Print a single env's row.
-_testenv_list_one_row() {
+_env_list_one_row() {
     local name="$1"
     local backend size last_used state
     local on_disk=0
     [[ -d ".pyve/testenvs/$name" ]] && on_disk=1
 
-    if is_testenv_declared "$name"; then
-        backend="$(_testenv_resolve_backend "$name" 2>/dev/null || printf 'venv')"
+    if is_env_declared "$name"; then
+        backend="$(_env_resolve_backend "$name" 2>/dev/null || printf 'venv')"
     elif [[ -d ".pyve/testenvs/$name/conda" ]]; then
         backend="micromamba"
     elif [[ -d ".pyve/testenvs/$name/venv" ]]; then
@@ -262,16 +262,16 @@ _testenv_list_one_row() {
         if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" == "0" ]]; then
             last_used="never"
         else
-            last_used="$(_testenv_format_epoch "$PYVE_TESTENV_STATE_LAST_USED_AT")"
+            last_used="$(_env_format_epoch "$PYVE_TESTENV_STATE_LAST_USED_AT")"
         fi
     else
         last_used="--"
     fi
 
-    if is_testenv_declared "$name"; then
+    if is_env_declared "$name"; then
         if [[ "$on_disk" == "1" ]]; then
             state="ready"
-        elif is_testenv_lazy "$name"; then
+        elif is_env_lazy "$name"; then
             state="lazy"
         else
             state="not provisioned"
@@ -283,19 +283,19 @@ _testenv_list_one_row() {
     printf '%-12s %-12s %-8s %-12s %s\n' "$name" "$backend" "$size" "$last_used" "$state"
 }
 
-testenv_list() {
+env_list() {
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
     printf '%-12s %-12s %-8s %-12s %s\n' NAME BACKEND SIZE LAST-USED STATE
     local name
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
-        _testenv_list_one_row "$name"
-    done < <(_testenv_list_all_names)
+        _env_list_one_row "$name"
+    done < <(_env_list_all_names)
 }
 
-testenv_prune() {
+env_prune() {
     local mode="orphan"
     local cutoff_date=""
     local force=0
@@ -328,13 +328,13 @@ testenv_prune() {
     done
 
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
 
     # Pre-loop arg validation.
     local cutoff_epoch=""
     if [[ "$mode" == "unused-since" ]]; then
-        if ! cutoff_epoch="$(_testenv_parse_iso_date "$cutoff_date")"; then
+        if ! cutoff_epoch="$(_env_parse_iso_date "$cutoff_date")"; then
             log_error "Invalid date '$cutoff_date' (expected YYYY-MM-DD)"
             exit 1
         fi
@@ -358,7 +358,7 @@ testenv_prune() {
         case "$mode" in
             orphan)
                 # Skip declared + the reserved 'testenv' (always implicit).
-                if is_testenv_declared "$name" || [[ "$name" == "testenv" ]]; then
+                if is_env_declared "$name" || [[ "$name" == "testenv" ]]; then
                     continue
                 fi
                 candidates+=("$name")
@@ -410,7 +410,7 @@ testenv_prune() {
 
     local rc=0
     for name in "${candidates[@]}"; do
-        if ! purge_testenv_dir "$name"; then
+        if ! purge_env_dir "$name"; then
             warn "Failed to remove '$name' (continuing)"
             rc=1
         fi
@@ -426,9 +426,9 @@ testenv_prune() {
 # Conda-backed envs are also purged (rm -rf is backend-agnostic).
 #------------------------------------------------------------
 
-testenv_purge() {
+env_purge() {
     local name="${1:-testenv}"
-    purge_testenv_dir "$name"
+    purge_env_dir "$name"
 }
 
 #------------------------------------------------------------
@@ -439,7 +439,7 @@ testenv_purge() {
 # the rest of the terminal.
 #------------------------------------------------------------
 
-testenv_run() {
+env_run() {
     local testenv_venv="$1"
     shift
 
@@ -485,15 +485,15 @@ testenv_run() {
 # blow away another process's in-progress install.
 #------------------------------------------------------------
 
-_testenv_install_lock_dir() {
+_env_install_lock_dir() {
     printf '%s' ".pyve/testenvs/$1/.lock"
 }
 
-_testenv_acquire_install_lock() {
+_env_acquire_install_lock() {
     local name="$1"
     local mode="${2:-wait}"
     local lock_dir
-    lock_dir="$(_testenv_install_lock_dir "$name")"
+    lock_dir="$(_env_install_lock_dir "$name")"
     mkdir -p "$(dirname "$lock_dir")"
 
     local waited=0
@@ -530,10 +530,10 @@ _testenv_acquire_install_lock() {
     return 0
 }
 
-_testenv_release_install_lock() {
+_env_release_install_lock() {
     local name="$1"
     local lock_dir
-    lock_dir="$(_testenv_install_lock_dir "$name")"
+    lock_dir="$(_env_install_lock_dir "$name")"
     if [[ -d "$lock_dir" && -f "$lock_dir/pid" ]]; then
         local holder
         holder="$(cat "$lock_dir/pid" 2>/dev/null || printf '')"
@@ -547,26 +547,26 @@ _testenv_release_install_lock() {
 # `exit 1` paths inside the install helpers (existence checks, missing
 # requirements file) and SIGINT/SIGTERM so the lock dir never strands
 # the env. Story M.k: dispatches on the resolved backend so a
-# conda-backed env goes through `_testenv_install_conda` (manifest-
+# conda-backed env goes through `_env_install_conda` (manifest-
 # driven sync); Story M.l: venv backend goes through
-# `_testenv_install_venv` (renamed from `testenv_install`), which
+# `_env_install_venv` (renamed from `env_install`), which
 # itself dispatches on declared sources (`requirements`/`extra`/
 # auto-detect/bare-pytest).
-_testenv_install_with_lock() {
+_env_install_with_lock() {
     local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
-    _testenv_acquire_install_lock "$name" "$lock_mode" || return $?
-    trap "_testenv_release_install_lock '$name'" EXIT INT TERM
+    _env_acquire_install_lock "$name" "$lock_mode" || return $?
+    trap "_env_release_install_lock '$name'" EXIT INT TERM
     local rc=0
     local backend
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "micromamba" ]]; then
         local manifest
-        manifest="$(_testenv_manifest_of "$name")" || manifest=""
-        _testenv_install_conda "$name" "$env_path" "$manifest" || rc=$?
+        manifest="$(_env_manifest_of "$name")" || manifest=""
+        _env_install_conda "$name" "$env_path" "$manifest" || rc=$?
     else
-        _testenv_install_venv "$name" "$env_path" "$req_file" || rc=$?
+        _env_install_venv "$name" "$env_path" "$req_file" || rc=$?
     fi
-    _testenv_release_install_lock "$name"
+    _env_release_install_lock "$name"
     trap - EXIT INT TERM
     return "$rc"
 }
@@ -574,12 +574,12 @@ _testenv_install_with_lock() {
 #------------------------------------------------------------
 # Story M.k: conda-backed init/install
 #
-# `_testenv_init_conda` creates the env from its declared `manifest`
+# `_env_init_conda` creates the env from its declared `manifest`
 # via `micromamba create -p <path> -f <manifest> -y`. This is conda's
 # natural one-shot (create + install packages) — there is no "empty
 # env" intermediate state for the conda backend.
 #
-# `_testenv_install_conda` syncs an *existing* env to its manifest via
+# `_env_install_conda` syncs an *existing* env to its manifest via
 # `micromamba install -p <path> -f <manifest> -y`. If the env does not
 # exist, errors with a hint pointing at `pyve testenv init <name>`.
 #
@@ -587,7 +587,7 @@ _testenv_install_with_lock() {
 # — the conda backend has no implicit pip-style fallback.
 #------------------------------------------------------------
 
-_testenv_init_conda() {
+_env_init_conda() {
     local name="$1"
     local env_path="$2"
     local manifest="$3"
@@ -625,7 +625,7 @@ _testenv_init_conda() {
     return 1
 }
 
-_testenv_install_conda() {
+_env_install_conda() {
     local name="$1"
     local env_path="$2"
     local manifest="$3"
@@ -664,30 +664,30 @@ _testenv_install_conda() {
 # Story M.i.3: iterate `testenv install` over every non-lazy declared
 # env. Returns the first install failure's status.
 #
-# Reads PYVE_TESTENVS_NAMES populated by read_testenv_config — caller
-# must have loaded config (testenv_command does this in M.i.2).
+# Reads PYVE_TESTENVS_NAMES populated by read_env_config — caller
+# must have loaded config (env_command does this in M.i.2).
 #
 # Story M.j: takes a `lock_mode` second arg (`wait` | `no-wait`) so
 # the iteration honors `--no-wait` from the caller.
 #
 # Story M.k: conda-backed envs are no longer skipped — backend dispatch
-# happens inside `_testenv_install_with_lock`, which calls
-# `_testenv_install_conda` for `micromamba` (and `inherit` resolving
-# to micromamba) and `testenv_install` for venv.
+# happens inside `_env_install_with_lock`, which calls
+# `_env_install_conda` for `micromamba` (and `inherit` resolving
+# to micromamba) and `env_install` for venv.
 #------------------------------------------------------------
 
-_testenv_install_all_nonlazy() {
+_env_install_all_nonlazy() {
     local requirements_file="$1"
     local lock_mode="${2:-wait}"
     local name installed_count=0 rc=0
     for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
-        if is_testenv_lazy "$name"; then
+        if is_env_lazy "$name"; then
             continue
         fi
         info "Installing '$name' testenv..."
         local install_env_path
-        install_env_path="$(resolve_testenv_path "$name")"
-        _testenv_install_with_lock "$name" "$install_env_path" "$requirements_file" "$lock_mode" || rc=$?
+        install_env_path="$(resolve_env_path "$name")"
+        _env_install_with_lock "$name" "$install_env_path" "$requirements_file" "$lock_mode" || rc=$?
         installed_count=$((installed_count + 1))
     done
     if [[ "$installed_count" -eq 0 ]]; then
@@ -709,7 +709,7 @@ _testenv_install_all_nonlazy() {
 # iteration — `rc` accumulates the worst exit code seen.
 #------------------------------------------------------------
 
-_testenv_purge_all_with_confirm() {
+_env_purge_all_with_confirm() {
     local force="$1"
     local count="${#PYVE_TESTENVS_NAMES[@]}"
     if [[ "$count" -eq 0 ]]; then
@@ -738,7 +738,7 @@ _testenv_purge_all_with_confirm() {
 
     local name rc=0
     for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
-        if ! purge_testenv_dir "$name"; then
+        if ! purge_env_dir "$name"; then
             warn "Failed to purge '$name' (continuing)"
             rc=1
         fi
@@ -749,19 +749,19 @@ _testenv_purge_all_with_confirm() {
 #------------------------------------------------------------
 # Namespace dispatcher: pyve testenv <subcommand>
 #
-# Function-name note: this function is named `testenv_command` per
+# Function-name note: this function is named `env_command` per
 # the project-essentials "Function naming convention: verb_<operand>"
 # rule — for namespace dispatchers the operand is the sub-command
 # name that follows.
 #------------------------------------------------------------
 
-testenv_command() {
+env_command() {
     local action=""
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
-    local -a prune_args=()         # Story M.p: prune flags forwarded to testenv_prune
+    local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -961,11 +961,11 @@ EOF
         exit 1
     fi
 
-    # Story M.i.2: load named-env config so `assert_testenv_*` gates can
+    # Story M.i.2: load named-env config so `assert_env_*` gates can
     # validate non-default names. The no-pyproject.toml short-circuit
     # (M.i.1) keeps this cheap on bash-only projects.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
 
     # Story M.i.2: `run` has its own arg shape — parse `[<name> --]
@@ -981,11 +981,11 @@ EOF
             run_name="$1"
             shift 2
         fi
-        assert_testenv_name_actionable "$run_name" || exit 1
-        assert_testenv_venv_backend     "$run_name" || exit 1
+        assert_env_name_actionable "$run_name" || exit 1
+        assert_env_venv_backend     "$run_name" || exit 1
         local run_venv
-        run_venv="$(resolve_testenv_path "$run_name")"
-        testenv_run "$run_venv" "$@"
+        run_venv="$(resolve_env_path "$run_name")"
+        env_run "$run_venv" "$@"
         return  # not reached on success (exec) but kept for clarity
     fi
 
@@ -994,11 +994,11 @@ EOF
     # hard-codes the default; M.i.3/M.i.4 will accept `<name>` here.
     local target_name="${action_name:-testenv}"
     if [[ "$action" == "init" ]]; then
-        assert_testenv_name_actionable "$target_name" || exit 1
-        # Backend stub is enforced inside testenv_init -> ensure_testenv_exists.
+        assert_env_name_actionable "$target_name" || exit 1
+        # Backend stub is enforced inside env_init -> ensure_env_exists.
     fi
     local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path "$target_name")"
+    testenv_venv="$(resolve_env_path "$target_name")"
     testenv_root="${testenv_venv%/venv}"
 
     header_box "pyve testenv"
@@ -1009,7 +1009,7 @@ EOF
     local leaf_rc=0
     case "$action" in
         init)
-            testenv_init "$target_name" || leaf_rc=$?
+            env_init "$target_name" || leaf_rc=$?
             ;;
         install)
             # Story M.i.3: with-arg installs into a single named env;
@@ -1017,41 +1017,41 @@ EOF
             # Story M.j: each install is wrapped with a per-env lock;
             # `--no-wait` switches the acquire from wait+retry to fast-fail.
             # Story M.k: backend dispatch happens inside
-            # `_testenv_install_with_lock` — no caller-side venv/conda gate.
+            # `_env_install_with_lock` — no caller-side venv/conda gate.
             local lock_mode="wait"
             [[ "$install_no_wait" == "1" ]] && lock_mode="no-wait"
             if [[ -n "$action_name" ]]; then
-                if assert_testenv_name_actionable "$action_name"; then
+                if assert_env_name_actionable "$action_name"; then
                     local install_env_path
-                    install_env_path="$(resolve_testenv_path "$action_name")"
-                    _testenv_install_with_lock "$action_name" "$install_env_path" "$requirements_file" "$lock_mode" || leaf_rc=$?
+                    install_env_path="$(resolve_env_path "$action_name")"
+                    _env_install_with_lock "$action_name" "$install_env_path" "$requirements_file" "$lock_mode" || leaf_rc=$?
                 else
                     leaf_rc=1
                 fi
             else
-                _testenv_install_all_nonlazy "$requirements_file" "$lock_mode" || leaf_rc=$?
+                _env_install_all_nonlazy "$requirements_file" "$lock_mode" || leaf_rc=$?
             fi
             ;;
         purge)
             # Story M.i.4: with-arg removes one env; no-arg iterates
             # over every declared env with a TTY-aware confirm gate.
             if [[ -n "$action_name" ]]; then
-                if assert_testenv_name_actionable "$action_name"; then
-                    testenv_purge "$action_name" || leaf_rc=$?
+                if assert_env_name_actionable "$action_name"; then
+                    env_purge "$action_name" || leaf_rc=$?
                 else
                     leaf_rc=1
                 fi
             else
-                _testenv_purge_all_with_confirm "$purge_force" || leaf_rc=$?
+                _env_purge_all_with_confirm "$purge_force" || leaf_rc=$?
             fi
             ;;
         list)
             # Story M.p: read-mostly walk of declared + on-disk envs.
-            testenv_list || leaf_rc=$?
+            env_list || leaf_rc=$?
             ;;
         prune)
             # Story M.p: forward the captured flags to the leaf.
-            testenv_prune "${prune_args[@]+"${prune_args[@]}"}" || leaf_rc=$?
+            env_prune "${prune_args[@]+"${prune_args[@]}"}" || leaf_rc=$?
             ;;
     esac
 

@@ -337,7 +337,7 @@ _status_section_integrations() {
     fi
 
     local testenv_venv
-    testenv_venv="$(resolve_testenv_path testenv)"
+    testenv_venv="$(resolve_env_path testenv)"
     if [[ -d "$testenv_venv" ]]; then
         if [[ -x "$testenv_venv/bin/python" ]] && \
            "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then

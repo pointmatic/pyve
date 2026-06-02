@@ -62,10 +62,10 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/testenvs.sh" ]]; then
-    source "$SCRIPT_DIR/lib/testenvs.sh"
+if [[ -f "$SCRIPT_DIR/lib/envs.sh" ]]; then
+    source "$SCRIPT_DIR/lib/envs.sh"
 else
-    printf "ERROR: Cannot find lib/testenvs.sh\n" >&2
+    printf "ERROR: Cannot find lib/envs.sh\n" >&2
     exit 1
 fi
 
@@ -226,11 +226,11 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/testenv.sh" ]]; then
-    # shellcheck source=lib/commands/testenv.sh
-    source "$SCRIPT_DIR/lib/commands/testenv.sh"
+if [[ -f "$SCRIPT_DIR/lib/commands/env.sh" ]]; then
+    # shellcheck source=lib/commands/env.sh
+    source "$SCRIPT_DIR/lib/commands/env.sh"
 else
-    printf "ERROR: Cannot find lib/commands/testenv.sh\n" >&2
+    printf "ERROR: Cannot find lib/commands/env.sh\n" >&2
     exit 1
 fi
 
@@ -603,7 +603,7 @@ main() {
             ;;
         testenv)
             shift
-            testenv_command "$@"
+            env_command "$@"
             ;;
         test)
             shift

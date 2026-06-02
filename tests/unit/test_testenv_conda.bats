@@ -6,19 +6,19 @@
 # Unit tests for Story M.k — conda-backed testenv plumbing.
 #
 # Surface under test:
-#   _testenv_resolve_backend <name>     — venv | micromamba | "inherit"-resolved
-#   _testenv_init_conda <name> <path> <manifest>     — `micromamba create -p ...`
-#   _testenv_install_conda <name> <path> <manifest>  — `micromamba install -p ...`
-#   testenv init  <conda-name>     — dispatcher routes to _testenv_init_conda
-#   testenv install <conda-name>   — dispatcher routes to _testenv_install_conda
+#   _env_resolve_backend <name>     — venv | micromamba | "inherit"-resolved
+#   _env_init_conda <name> <path> <manifest>     — `micromamba create -p ...`
+#   _env_install_conda <name> <path> <manifest>  — `micromamba install -p ...`
+#   testenv init  <conda-name>     — dispatcher routes to _env_init_conda
+#   testenv install <conda-name>   — dispatcher routes to _env_install_conda
 #   testenv install (no-arg)       — iteration installs conda envs too (no skip)
 
 load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -112,39 +112,39 @@ _stub_run_cmd_records() {
 }
 
 # ============================================================
-# _testenv_resolve_backend
+# _env_resolve_backend
 # ============================================================
 
-@test "_testenv_resolve_backend: returns 'venv' for venv-backed declared env" {
+@test "_env_resolve_backend: returns 'venv' for venv-backed declared env" {
     _fixture_mixed_envs
-    read_testenv_config
-    run _testenv_resolve_backend testenv
+    read_env_config
+    run _env_resolve_backend testenv
     [ "$status" -eq 0 ]
     [ "$output" = "venv" ]
 }
 
-@test "_testenv_resolve_backend: returns 'micromamba' for micromamba-backed env" {
+@test "_env_resolve_backend: returns 'micromamba' for micromamba-backed env" {
     _fixture_mixed_envs
-    read_testenv_config
-    run _testenv_resolve_backend hardware
+    read_env_config
+    run _env_resolve_backend hardware
     [ "$status" -eq 0 ]
     [ "$output" = "micromamba" ]
 }
 
-@test "_testenv_resolve_backend: 'inherit' + main backend=venv resolves to venv" {
+@test "_env_resolve_backend: 'inherit' + main backend=venv resolves to venv" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
 TOML
     mkdir -p .pyve
     printf 'backend: venv\n' > .pyve/config
-    read_testenv_config
-    run _testenv_resolve_backend mirror
+    read_env_config
+    run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
     [ "$output" = "venv" ]
 }
 
-@test "_testenv_resolve_backend: 'inherit' + main backend=micromamba resolves to micromamba" {
+@test "_env_resolve_backend: 'inherit' + main backend=micromamba resolves to micromamba" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
@@ -152,41 +152,41 @@ manifest = "environment.yml"
 TOML
     mkdir -p .pyve
     printf 'backend: micromamba\n' > .pyve/config
-    read_testenv_config
-    run _testenv_resolve_backend mirror
+    read_env_config
+    run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
     [ "$output" = "micromamba" ]
 }
 
-@test "_testenv_resolve_backend: 'inherit' with no .pyve/config defaults to venv" {
+@test "_env_resolve_backend: 'inherit' with no .pyve/config defaults to venv" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
 TOML
-    read_testenv_config
-    run _testenv_resolve_backend mirror
+    read_env_config
+    run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
     [ "$output" = "venv" ]
 }
 
 # ============================================================
-# resolve_testenv_path follows _testenv_resolve_backend (M.k)
+# resolve_env_path follows _env_resolve_backend (M.k)
 # ============================================================
 
-@test "resolve_testenv_path: 'inherit' + main=venv yields venv-shaped path" {
+@test "resolve_env_path: 'inherit' + main=venv yields venv-shaped path" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
 TOML
     mkdir -p .pyve
     printf 'backend: venv\n' > .pyve/config
-    read_testenv_config
-    run resolve_testenv_path mirror
+    read_env_config
+    run resolve_env_path mirror
     [ "$status" -eq 0 ]
     [ "$output" = ".pyve/testenvs/mirror/venv" ]
 }
 
-@test "resolve_testenv_path: 'inherit' + main=micromamba yields conda-shaped path" {
+@test "resolve_env_path: 'inherit' + main=micromamba yields conda-shaped path" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
@@ -194,20 +194,20 @@ manifest = "environment.yml"
 TOML
     mkdir -p .pyve
     printf 'backend: micromamba\n' > .pyve/config
-    read_testenv_config
-    run resolve_testenv_path mirror
+    read_env_config
+    run resolve_env_path mirror
     [ "$status" -eq 0 ]
     [ "$output" = ".pyve/testenvs/mirror/conda" ]
 }
 
 # ============================================================
-# _testenv_init_conda
+# _env_init_conda
 # ============================================================
 
-@test "_testenv_init_conda: invokes 'micromamba create -p <path> -f <manifest> -y'" {
+@test "_env_init_conda: invokes 'micromamba create -p <path> -f <manifest> -y'" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _testenv_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
     [ "$status" -eq 0 ]
     [ -f ".pyve/micromamba.log" ]
     grep -q "create -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
@@ -215,43 +215,43 @@ TOML
     [ -d ".pyve/testenvs/hardware/conda/conda-meta" ]
 }
 
-@test "_testenv_init_conda: missing manifest file hard-errors" {
+@test "_env_init_conda: missing manifest file hard-errors" {
     _fixture_conda_env
     _stub_micromamba_recorder
     rm tests/env.yml
-    run _testenv_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
     [ ! -f ".pyve/micromamba.log" ]
 }
 
-@test "_testenv_init_conda: empty manifest argument hard-errors" {
+@test "_env_init_conda: empty manifest argument hard-errors" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _testenv_init_conda hardware ".pyve/testenvs/hardware/conda" ""
+    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" ""
     [ "$status" -ne 0 ]
     [[ "$output" == *"manifest"* ]]
     [ ! -f ".pyve/micromamba.log" ]
 }
 
 # ============================================================
-# _testenv_install_conda
+# _env_install_conda
 # ============================================================
 
-@test "_testenv_install_conda: invokes 'micromamba install -p <path> -f <manifest> -y' on existing env" {
+@test "_env_install_conda: invokes 'micromamba install -p <path> -f <manifest> -y' on existing env" {
     _fixture_conda_env
     _stub_micromamba_recorder
     # Pre-create the env so install proceeds past the existence check.
     mkdir -p .pyve/testenvs/hardware/conda/conda-meta
-    run _testenv_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
     [ "$status" -eq 0 ]
     grep -q "install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
 }
 
-@test "_testenv_install_conda: env not yet initialized hard-errors with 'init' hint" {
+@test "_env_install_conda: env not yet initialized hard-errors with 'init' hint" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _testenv_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
     [ "$status" -ne 0 ]
     [[ "$output" == *"init"* ]]
     [ ! -f ".pyve/micromamba.log" ]
@@ -261,11 +261,11 @@ TOML
 # Dispatcher: testenv init <conda-name>
 # ============================================================
 
-@test "testenv init <conda-name>: routes to _testenv_init_conda (no python -m venv)" {
+@test "testenv init <conda-name>: routes to _env_init_conda (no python -m venv)" {
     _fixture_conda_env
     _stub_micromamba_recorder
     _stub_run_cmd_records
-    run testenv_command init hardware
+    run env_command init hardware
     [ "$status" -eq 0 ]
     grep -q "create -p .pyve/testenvs/hardware/conda" .pyve/micromamba.log
     # python -m venv must NOT have run (no venv-shaped sibling).
@@ -279,7 +279,7 @@ TOML
 backend = "micromamba"
 TOML
     _stub_micromamba_recorder
-    run testenv_command init hardware
+    run env_command init hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"manifest"* ]]
     [ ! -f ".pyve/micromamba.log" ]
@@ -289,11 +289,11 @@ TOML
 # Dispatcher: testenv install <conda-name>
 # ============================================================
 
-@test "testenv install <conda-name>: routes to _testenv_install_conda" {
+@test "testenv install <conda-name>: routes to _env_install_conda" {
     _fixture_conda_env
     _stub_micromamba_recorder
     mkdir -p .pyve/testenvs/hardware/conda/conda-meta
-    run testenv_command install hardware
+    run env_command install hardware
     [ "$status" -eq 0 ]
     grep -q "install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
     # Lock dir cleaned up.
@@ -310,7 +310,7 @@ TOML
     mkdir -p .pyve/testenvs/hardware/conda/conda-meta
     _stub_micromamba_recorder
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     # venv env installed via pip.
     [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]

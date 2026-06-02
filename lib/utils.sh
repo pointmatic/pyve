@@ -1494,12 +1494,12 @@ is_file_empty() {
 #
 # Three cross-command helpers — each shared by 2+ of `init`,
 # `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
-# audit F-7 (`purge_testenv_dir` shared with `purge`) and F-8
-# (`testenv_paths` + `ensure_testenv_exists` shared with `init` and
+# audit F-7 (`purge_env_dir` shared with `purge`) and F-8
+# (`env_paths` + `ensure_env_exists` shared with `init` and
 # `test`).
 #
-# Post-M.h.3: derive both paths from `resolve_testenv_path testenv`
-# in lib/testenvs.sh — the single source of truth for the new
+# Post-M.h.3: derive both paths from `resolve_env_path testenv`
+# in lib/envs.sh — the single source of truth for the new
 # `.pyve/testenvs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
 # global in pyve.sh is retained as a back-compat constant for any
 # external scripts referencing it, but no internal code reads it.
@@ -1507,12 +1507,12 @@ is_file_empty() {
 
 # Emit two lines: testenv_root, then testenv_venv. Single source of
 # truth for both paths so callers do not hard-code `.pyve/testenvs/...`.
-# `resolve_testenv_path testenv` may trigger opportunistic migration
+# `resolve_env_path testenv` may trigger opportunistic migration
 # (M.h.3); we tolerate that side effect because every caller of
-# `testenv_paths` is about to act on the testenv anyway.
-testenv_paths() {
+# `env_paths` is about to act on the testenv anyway.
+env_paths() {
     local testenv_venv
-    testenv_venv="$(resolve_testenv_path testenv)"
+    testenv_venv="$(resolve_env_path testenv)"
     local testenv_root="${testenv_venv%/venv}"
     printf "%s\n" "$testenv_root" "$testenv_venv"
 }
@@ -1523,30 +1523,30 @@ testenv_paths() {
 #
 # Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
 # to the reserved `testenv` (today's behavior). With-arg: load config
-# (idempotent if caller already ran read_testenv_config), validate name
-# via `assert_testenv_name_actionable`, resolve path via
-# `resolve_testenv_path`.
+# (idempotent if caller already ran read_env_config), validate name
+# via `assert_env_name_actionable`, resolve path via
+# `resolve_env_path`.
 #
 # Story M.k: dispatches on the resolved backend — venv envs go through
 # `python -m venv`; conda envs (`backend = "micromamba"` or `inherit`
-# resolving to micromamba) go through `_testenv_init_conda` in
-# `lib/commands/testenv.sh`, which calls `micromamba create -p <path>
+# resolving to micromamba) go through `_env_init_conda` in
+# `lib/commands/env.sh`, which calls `micromamba create -p <path>
 # -f <manifest> -y` from the env's declared `manifest`.
-ensure_testenv_exists() {
+ensure_env_exists() {
     local name="${1:-testenv}"
 
     # Always load config so we can validate names + dispatch on backend.
     # Idempotent if the caller already populated the V3 arrays.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
-    assert_testenv_name_actionable "$name" || return 1
+    assert_env_name_actionable "$name" || return 1
 
     local backend
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
 
     local testenv_env_path testenv_root
-    testenv_env_path="$(resolve_testenv_path "$name")"
+    testenv_env_path="$(resolve_env_path "$name")"
     # Strip either the /venv or /conda suffix to get the env root.
     testenv_root="${testenv_env_path%/venv}"
     testenv_root="${testenv_root%/conda}"
@@ -1555,8 +1555,8 @@ ensure_testenv_exists() {
 
     if [[ "$backend" == "micromamba" ]]; then
         local manifest
-        manifest="$(_testenv_manifest_of "$name")" || manifest=""
-        _testenv_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
+        manifest="$(_env_manifest_of "$name")" || manifest=""
+        _env_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
         # Story M.m: write initial `.state` for the conda env (parallel
         # to the venv branch below). Idempotent: skipped when .state
         # already exists.
@@ -1602,10 +1602,10 @@ ensure_testenv_exists() {
 # Removes the env root (`.pyve/testenvs/<name>/`), not just the inner
 # `venv/` — covers `.state` and any future siblings. Backend-agnostic
 # (rm -rf doesn't care whether the env is venv or conda underneath).
-purge_testenv_dir() {
+purge_env_dir() {
     local name="${1:-testenv}"
     local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path "$name")"
+    testenv_venv="$(resolve_env_path "$name")"
     # `dirname` handles both layout shapes — .pyve/testenvs/<name>/venv
     # (venv-backed) and .pyve/testenvs/<name>/conda (conda-backed) —
     # without hard-coding the suffix.

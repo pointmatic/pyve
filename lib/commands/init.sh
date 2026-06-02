@@ -1048,7 +1048,7 @@ EOF
     success "Created .pyve/config"
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
-    ensure_testenv_exists
+    ensure_env_exists
 
     # Absolute venv path — used by both dep install and project-guide hooks
     local _venv_abs

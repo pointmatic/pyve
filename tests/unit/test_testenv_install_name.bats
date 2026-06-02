@@ -13,14 +13,14 @@
 # manifest source declared in [tool.pyve.testenvs.<name>]
 # (`requirements`/`extra`) is intentionally NOT consumed here — M.l
 # flips that switch. M.i.3 preserves today's `-r <file>` or bare-pytest
-# install semantics from `testenv_install`.
+# install semantics from `env_install`.
 
 load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -33,7 +33,7 @@ teardown() {
 }
 
 # Pre-create a fake testenv venv at .pyve/testenvs/<name>/venv/bin/python
-# so testenv_install passes the existence guard without invoking real python.
+# so env_install passes the existence guard without invoking real python.
 _make_fake_named_venv() {
     local name="$1"
     mkdir -p ".pyve/testenvs/$name/venv/bin"
@@ -87,7 +87,7 @@ TOML
 @test "testenv install: no-arg without config installs into default testenv (today's behavior)" {
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
 }
@@ -115,7 +115,7 @@ SH
     chmod +x .pyve/bin/micromamba
     _stub_run_cmd_records
 
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     # testenv + smoke are non-lazy → both installed via pip.
     [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
@@ -137,7 +137,7 @@ TOML
     # default testenv venv exist so it can be installed.
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/testenv/"* ]]
     [[ "$output" != *"testenvs/heavy/"* ]]
@@ -151,7 +151,7 @@ TOML
     _fixture_named_envs
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke
+    run env_command install smoke
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
     # Default testenv NOT installed as a side effect.
@@ -167,7 +167,7 @@ TOML
     printf 'pytest\n' > tests/heavy.txt
     _make_fake_named_venv heavy
     _stub_run_cmd_records
-    run testenv_command install heavy
+    run env_command install heavy
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/heavy/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/heavy.txt"* ]]
@@ -179,26 +179,26 @@ TOML
 
 @test "testenv install root: reserved 'root' hard-errors" {
     _fixture_named_envs
-    run testenv_command install root
+    run env_command install root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
 }
 
 @test "testenv install <undeclared>: hard-errors with [tool.pyve.testenvs] hint" {
     _fixture_named_envs
-    run testenv_command install bogus
+    run env_command install bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
     [[ "$output" == *"tool.pyve.testenvs"* ]]
 }
 
 @test "testenv install <conda-backed>: missing manifest file hard-errors (M.k landed)" {
-    # Story M.k landed: conda install routes through `_testenv_install_conda`.
+    # Story M.k landed: conda install routes through `_env_install_conda`.
     # When the declared manifest is missing on disk, surface a clear
     # error (the fixture declares manifest = "tests/env.yml" without
     # creating it).
     _fixture_named_envs
-    run testenv_command install hardware
+    run env_command install hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
 }
@@ -213,7 +213,7 @@ ruff
 EOF
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install -r requirements-dev.txt
+    run env_command install -r requirements-dev.txt
     [ "$status" -eq 0 ]
     [[ "$output" == *"-r requirements-dev.txt"* ]]
 }
@@ -226,7 +226,7 @@ ruff
 EOF
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke -r tests/smoke-requirements.txt
+    run env_command install smoke -r tests/smoke-requirements.txt
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]
@@ -240,7 +240,7 @@ ruff
 EOF
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install -r tests/smoke-requirements.txt smoke
+    run env_command install -r tests/smoke-requirements.txt smoke
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]

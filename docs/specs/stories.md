@@ -59,18 +59,18 @@ Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `
 - [x] Bats unit tests for round-trip parse + every documented schema field.
 - [x] No CLI dispatcher changes — covered in later stories.
 
-### Story N.b: `lib/envs.sh` + `lib/commands/env.sh` rename (`testenvs` → `envs`) [Planned]
+### Story N.b: `lib/envs.sh` + `lib/commands/env.sh` rename (`testenvs` → `envs`) [Done]
 
 **Motivation.** The `testenvs` vocabulary is an accidental holdover from when Pyve only knew about one extra env. v3.0 generalizes to `envs`. This story is the source-tree rename + helper-name sweep; the user-facing CLI rename lands in Story N.c.
 
 **Tasks**
 
-- [ ] Rename [lib/testenvs.sh](../../lib/testenvs.sh) → `lib/envs.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh) (no glob sourcing per [project-essentials.md](project-essentials.md)).
-- [ ] Rename [lib/commands/testenv.sh](../../lib/commands/testenv.sh) → `lib/commands/env.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh).
-- [ ] Rename helper functions: `_testenv_*` → `_env_*`, `testenv_*` → `env_*`, `*_testenv_*` → `*_env_*`; namespace dispatcher `testenv_command` → `env_command` (Story N.c registers the new dispatcher arm).
-- [ ] Function-name collision check (per [project-essentials.md](project-essentials.md) F-11 rule): grep for `env`, `env_init`, `env_install`, `env_run`, `env_purge` as bare commands invoked by Pyve; confirm zero shadow risks. (`env` itself is a POSIX utility but is not invoked by Pyve internally — verify with `grep -nE '(\$\(|\`|^|\s|;|\|\|?)env\s' pyve.sh lib/*.sh lib/commands/*.sh`.)
-- [ ] Sweep Bats tests: ~1000 assertions touching old function names; update to new names. Test scripts that source `lib/testenvs.sh` directly need their path updated.
-- [ ] Sweep `_testenv_paths`, `ensure_testenv_exists`, `purge_testenv_dir` and related shared helpers in [lib/utils.sh](../../lib/utils.sh) to `_env_paths`, etc.
+- [x] Rename [lib/testenvs.sh](../../lib/testenvs.sh) → `lib/envs.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh) (no glob sourcing per [project-essentials.md](project-essentials.md)).
+- [x] Rename [lib/commands/testenv.sh](../../lib/commands/testenv.sh) → `lib/commands/env.sh`; update the explicit `source` line in [pyve.sh](../../pyve.sh).
+- [x] Rename helper functions: `_testenv_*` → `_env_*`, `testenv_*` → `env_*`, `*_testenv_*` → `*_env_*`; namespace dispatcher `testenv_command` → `env_command` (Story N.c registers the new dispatcher arm).
+- [x] Function-name collision check (per [project-essentials.md](project-essentials.md) F-11 rule): grep for `env`, `env_init`, `env_install`, `env_run`, `env_purge` as bare commands invoked by Pyve; confirm zero shadow risks. (`env` itself is a POSIX utility but is not invoked by Pyve internally — verify with `grep -nE '(\$\(|\`|^|\s|;|\|\|?)env\s' pyve.sh lib/*.sh lib/commands/*.sh`.)
+- [x] Sweep Bats tests: ~1000 assertions touching old function names; update to new names. Test scripts that source `lib/testenvs.sh` directly need their path updated.
+- [x] Sweep `_testenv_paths`, `ensure_testenv_exists`, `purge_testenv_dir` and related shared helpers in [lib/utils.sh](../../lib/utils.sh) to `_env_paths`, etc.
 
 ### Story N.c: `pyve env` CLI dispatcher + `pyve testenv` legacy sugar [Planned]
 

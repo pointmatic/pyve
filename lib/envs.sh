@@ -2,13 +2,13 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/testenvs.sh — testenv-DX config foundation (Story M.g)
+# lib/envs.sh — testenv-DX config foundation (Story M.g)
 #
 # Reads [tool.pyve.testenvs] from a project's pyproject.toml via the
 # Python tomllib helper (`lib/pyve_testenvs_helper.py`) and exposes a
 # flat accessor surface for consumers (`pyve testenv`, `pyve test`,
 # `pyve lock`). All state lives in parallel indexed arrays populated by
-# `read_testenv_config`.
+# `read_env_config`.
 #
 # Spike doc (decisions): docs/specs/spike-m-f-testenvs-config.md
 #
@@ -18,7 +18,7 @@
 #   - `testenv` — the well-known default at .pyve/testenvs/testenv/...
 #                 MAY be redeclared.
 #
-# State populated by `read_testenv_config` (V3 wire format):
+# State populated by `read_env_config` (V3 wire format):
 #   PYVE_TESTENVS_DEFAULT       — name of the default env
 #   PYVE_TESTENVS_NAMES[]       — declared env names (indexed)
 #   PYVE_TESTENV_BACKEND[]      — parallel: backend per env
@@ -44,7 +44,7 @@ _PYVE_TESTENVS_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_testen
 # and populate the V3 array state. Missing file or missing block yields
 # the implicit default (single venv `testenv`). Validation errors from
 # the helper propagate via non-zero exit and stderr.
-read_testenv_config() {
+read_env_config() {
     local pyproject="${1:-pyproject.toml}"
     # Short-circuit: no pyproject.toml → synthesize the implicit-default
     # config (single venv `testenv`) in pure bash. The Python helper
@@ -72,10 +72,10 @@ read_testenv_config() {
 # or return 1 (no output) if absent. Private helper.
 #
 # Defensive against unset PYVE_TESTENVS_NAMES: returns 1 cleanly under
-# `set -u` if read_testenv_config has not yet been called. Callers like
-# resolve_testenv_path then use their `|| fallback` arms (e.g. default
+# `set -u` if read_env_config has not yet been called. Callers like
+# resolve_env_path then use their `|| fallback` arms (e.g. default
 # backend = "venv") rather than crashing the script.
-_testenvs_name_to_index() {
+_envs_name_to_index() {
     local target="$1" i
     [[ -n "${PYVE_TESTENVS_NAMES+x}" ]] || return 1
     for ((i=0; i<${#PYVE_TESTENVS_NAMES[@]}; i++)); do
@@ -89,30 +89,30 @@ _testenvs_name_to_index() {
 
 # Field accessors (used by tests and consumers; one per parallel array).
 # Print empty string if name is unknown; bash-3.2-safe under set -u.
-_testenv_backend_of() {
-    local i; i="$(_testenvs_name_to_index "$1")" || return 1
+_env_backend_of() {
+    local i; i="$(_envs_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_TESTENV_BACKEND[$i]}"
 }
-_testenv_extra_of() {
-    local i; i="$(_testenvs_name_to_index "$1")" || return 1
+_env_extra_of() {
+    local i; i="$(_envs_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_TESTENV_EXTRA[$i]}"
 }
-_testenv_manifest_of() {
-    local i; i="$(_testenvs_name_to_index "$1")" || return 1
+_env_manifest_of() {
+    local i; i="$(_envs_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_TESTENV_MANIFEST[$i]}"
 }
 # Populate a caller-named array with the env's requirements list.
-# Usage: declare -a reqs; _testenv_requirements_of <name> reqs
-_testenv_requirements_of() {
+# Usage: declare -a reqs; _env_requirements_of <name> reqs
+_env_requirements_of() {
     local i out_var
-    i="$(_testenvs_name_to_index "$1")" || return 1
+    i="$(_envs_name_to_index "$1")" || return 1
     out_var="$2"
     eval "$out_var=( ${PYVE_TESTENV_REQUIREMENTS_Q[$i]} )"
 }
 
 # Predicate: 0 if <name> is one of the reserved names (`root`, `testenv`),
 # 1 otherwise.
-is_testenv_reserved() {
+is_env_reserved() {
     case "$1" in
         root|testenv) return 0 ;;
         *) return 1 ;;
@@ -121,26 +121,26 @@ is_testenv_reserved() {
 
 # Predicate: 0 if <name> appears in PYVE_TESTENVS_NAMES, 1 otherwise.
 # Note: `root` is reserved-but-not-declared (never in PYVE_TESTENVS_NAMES).
-is_testenv_declared() {
-    _testenvs_name_to_index "$1" >/dev/null
+is_env_declared() {
+    _envs_name_to_index "$1" >/dev/null
 }
 
 # Predicate: 0 if <name> is declared with `lazy = true`, 1 otherwise
 # (including: not declared at all).
-is_testenv_lazy() {
-    local i; i="$(_testenvs_name_to_index "$1")" || return 1
+is_env_lazy() {
+    local i; i="$(_envs_name_to_index "$1")" || return 1
     [[ "${PYVE_TESTENV_LAZY[$i]}" == "1" ]]
 }
 
 # Print declared env names + reserved names, one per line. Reserved
 # names that overlap with declared ones (i.e. `testenv`) print once.
-list_testenv_names() {
+list_env_names() {
     local n
     for n in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
         printf '%s\n' "$n"
     done
     # `root` is the one reserved name that is never in NAMES.
-    if ! _testenvs_name_to_index root >/dev/null; then
+    if ! _envs_name_to_index root >/dev/null; then
         printf '%s\n' "root"
     fi
 }
@@ -148,9 +148,9 @@ list_testenv_names() {
 # Verify a name is usable: declared OR reserved. Print a helpful error
 # to stderr and return 1 if not. Caller's job to log_error if it wants
 # its own formatting; this prints the canonical message.
-validate_testenv_decl() {
+validate_env_decl() {
     local name="$1"
-    if is_testenv_reserved "$name" || is_testenv_declared "$name"; then
+    if is_env_reserved "$name" || is_env_declared "$name"; then
         return 0
     fi
     printf "error: testenv '%s' is not declared and is not a reserved name (root, testenv)\n" "$name" >&2
@@ -158,12 +158,12 @@ validate_testenv_decl() {
 }
 
 # Story M.i.1: gate for name-aware actions (testenv init / install /
-# purge / run). Stricter than validate_testenv_decl — rejects `root`,
+# purge / run). Stricter than validate_env_decl — rejects `root`,
 # which is selection-only (`pyve test --env root` works, but `pyve
 # testenv init root` does not — `root` is the project's main env, not
 # a testenv). Undeclared names get a hint pointing at the canonical
 # config location.
-assert_testenv_name_actionable() {
+assert_env_name_actionable() {
     local name="${1:-}"
     if [[ -z "$name" ]]; then
         printf "error: testenv name is required\n" >&2
@@ -173,7 +173,7 @@ assert_testenv_name_actionable() {
         printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
         return 1
     fi
-    if [[ "$name" == "testenv" ]] || is_testenv_declared "$name"; then
+    if [[ "$name" == "testenv" ]] || is_env_declared "$name"; then
         return 0
     fi
     printf "error: testenv '%s' is not declared. Declare it under [tool.pyve.testenvs.%s] in pyproject.toml.\n" "$name" "$name" >&2
@@ -185,10 +185,10 @@ assert_testenv_name_actionable() {
 # the main env's backend from `.pyve/config` via `read_config_value`;
 # falls back to `venv` if no config (matches the bash-only / greenfield
 # project case). For undeclared names, returns `venv`.
-_testenv_resolve_backend() {
+_env_resolve_backend() {
     local name="$1"
     local raw
-    raw="$(_testenv_backend_of "$name")" || raw="venv"
+    raw="$(_env_backend_of "$name")" || raw="venv"
     if [[ "$raw" != "inherit" ]]; then
         printf '%s' "$raw"
         return 0
@@ -209,14 +209,14 @@ _testenv_resolve_backend() {
 # activation and does not set CONDA_PREFIX / CONDA_PYTHON_EXE, so it is
 # kept venv-only for now. Use `micromamba run -p <path> <cmd>` for the
 # conda case (manual workaround).
-assert_testenv_venv_backend() {
+assert_env_venv_backend() {
     local name="${1:-}"
     if [[ -z "$name" ]]; then
         printf "error: testenv name is required\n" >&2
         return 1
     fi
     local backend
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "venv" ]]; then
         return 0
     fi
@@ -338,15 +338,15 @@ state_touch_last_used() {
 # (plural, name-keyed). The reserved `testenv` resolves to
 # `.pyve/testenvs/testenv/venv/`.
 #
-# `migrate_legacy_testenv_layout` is the one-time mover. Four cases:
+# `migrate_legacy_env_layout` is the one-time mover. Four cases:
 #   1. legacy only        → mv + write initial .state + info log
 #   2. new already present → no-op (idempotent)
 #   3. both exist         → no-op (preserve new; leave legacy alone)
 #   4. neither (greenfield) → no-op
 #
 # Standalone in M.h.2 — call sites land in M.h.3 (`pyve update` hook
-# and the opportunistic-migration fallback in `resolve_testenv_path`).
-migrate_legacy_testenv_layout() {
+# and the opportunistic-migration fallback in `resolve_env_path`).
+migrate_legacy_env_layout() {
     local legacy=".pyve/testenv/venv"
     local new_root=".pyve/testenvs/testenv"
     local new_venv="$new_root/venv"
@@ -400,7 +400,7 @@ migrate_legacy_testenv_layout() {
 #   <name>    → .pyve/testenvs/<name>/{venv|conda}/  (per declared backend)
 #               Reserved `testenv` follows the same shape (always venv unless
 #               redeclared) for back-compat with the existing layout.
-resolve_testenv_path() {
+resolve_env_path() {
     local name="$1"
     if [[ "$name" == "root" ]]; then
         # Main project env. M.h will reconcile this with main-env conda
@@ -418,14 +418,14 @@ resolve_testenv_path() {
     if [[ "$name" == "testenv" ]] \
        && [[ ! -d ".pyve/testenvs/testenv/venv" ]] \
        && [[ -d ".pyve/testenv/venv" ]]; then
-        migrate_legacy_testenv_layout
+        migrate_legacy_env_layout
     fi
     local backend
     # Story M.k: dispatch on the *resolved* backend so `inherit` produces
     # a venv-shaped path when main is venv (and a conda-shaped path when
     # main is micromamba). Before M.k, `inherit` was unconditionally
     # conda-shaped; that was wrong for main=venv projects.
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "micromamba" ]]; then
         printf '%s' ".pyve/testenvs/${name}/conda"
     else

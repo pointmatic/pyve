@@ -46,7 +46,7 @@ _test_has_pytest() {
 #
 # `<name> == "root"` resolves the main project env (micromamba env
 # preferred at `.pyve/envs/<first>`, else `$DEFAULT_VENV_DIR/bin/python`).
-# Other names resolve via `resolve_testenv_path <name>` and probe its
+# Other names resolve via `resolve_env_path <name>` and probe its
 # `bin/python`. Returns 0 (env has pytest importable) / 1 (no env /
 # no pytest / probe failure).
 #
@@ -67,7 +67,7 @@ _test_env_has_pytest() {
         fi
     else
         local env_path
-        env_path="$(resolve_testenv_path "$env_name" 2>/dev/null)" || return 1
+        env_path="$(resolve_env_path "$env_name" 2>/dev/null)" || return 1
         py="$env_path/bin/python"
     fi
 
@@ -96,7 +96,7 @@ _test_install_pytest_into_testenv() {
 
 # Public: pyve test [pytest args...]
 #
-# Cross-file call: `ensure_testenv_exists` lives in `pyve.sh` until
+# Cross-file call: `ensure_env_exists` lives in `pyve.sh` until
 # K.g moves it to `lib/utils.sh`. Bash resolves the call at runtime
 # from the global function table — no special handling needed.
 test_tests() {
@@ -215,7 +215,7 @@ _test_run_one_env() {
     # Story M.m: load named-env config so we can validate the target
     # name and pick the declared default when `--env` is absent.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
 
     if [[ "$env_target_explicit" == "0" ]]; then
@@ -225,11 +225,11 @@ _test_run_one_env() {
     # Validate the target name. Accept the reserved `testenv` and any
     # declared name; reject everything else with the list of valid
     # choices.
-    if [[ "$env_target" != "testenv" ]] && ! is_testenv_declared "$env_target"; then
+    if [[ "$env_target" != "testenv" ]] && ! is_env_declared "$env_target"; then
         log_error "Invalid --env value: '$env_target' is not a declared testenv"
         log_error "Valid choices:"
         local choice
-        for choice in root testenv $( { list_testenv_names | grep -vE '^(root|testenv)$'; } 2>/dev/null ); do
+        for choice in root testenv $( { list_env_names | grep -vE '^(root|testenv)$'; } 2>/dev/null ); do
             log_error "  $choice"
         done
         exit 1
@@ -239,19 +239,19 @@ _test_run_one_env() {
     # path (PATH-only activation doesn't set CONDA_PREFIX/CONDA_PYTHON_EXE).
     # Same M.k gate that `pyve testenv run` uses; use `--env root`
     # against a conda main env, or `micromamba run -p <path> pytest`.
-    assert_testenv_venv_backend "$env_target" || exit 1
+    assert_env_venv_backend "$env_target" || exit 1
 
     local testenv_venv
-    testenv_venv="$(resolve_testenv_path "$env_target")"
+    testenv_venv="$(resolve_env_path "$env_target")"
 
     # Story M.n: lazy envs that have not been provisioned yet are
-    # auto-provisioned on first targeted use — ensure_testenv_exists
-    # creates the venv, then `_testenv_install_with_lock` installs
+    # auto-provisioned on first targeted use — ensure_env_exists
+    # creates the venv, then `_env_install_with_lock` installs
     # per the env's declared sources (M.l). The whole thing is gated
     # by PYVE_NO_AUTO_PROVISION=1 for strict CI that wants the M.m
     # "is this env already built?" semantics.
     local was_lazy_unprovisioned=0
-    if is_testenv_lazy "$env_target" && [[ ! -x "$testenv_venv/bin/python" ]]; then
+    if is_env_lazy "$env_target" && [[ ! -x "$testenv_venv/bin/python" ]]; then
         if [[ "${PYVE_NO_AUTO_PROVISION:-0}" == "1" ]]; then
             log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
             log_error "PYVE_NO_AUTO_PROVISION=1 is set — refusing to auto-provision."
@@ -262,10 +262,10 @@ _test_run_one_env() {
         was_lazy_unprovisioned=1
     fi
 
-    ensure_testenv_exists "$env_target"
+    ensure_env_exists "$env_target"
 
     if [[ "$was_lazy_unprovisioned" == "1" ]]; then
-        if ! _testenv_install_with_lock "$env_target" "$testenv_venv" "" "wait"; then
+        if ! _env_install_with_lock "$env_target" "$testenv_venv" "" "wait"; then
             log_error "Auto-provisioning failed for '$env_target'"
             exit 1
         fi
@@ -312,7 +312,7 @@ _test_run_one_env() {
         local probe
         # Candidates: root + every declared name (M.o). Skip the
         # target env itself — we're already routing there.
-        for probe in root $({ list_testenv_names; } 2>/dev/null); do
+        for probe in root $({ list_env_names; } 2>/dev/null); do
             [[ "$probe" == "$env_target" ]] && continue
             if _test_env_has_pytest "$probe"; then
                 advisory_envs+=("$probe")
@@ -334,7 +334,7 @@ _test_run_one_env() {
     # `pyve testenv list` / `prune` can report which envs are active.
     # Best-effort: silent no-op when `.state` is missing (e.g. an env
     # provisioned before M.m landed `.state` writes in
-    # `ensure_testenv_exists`). Suppress stdout/stderr — the touch
+    # `ensure_env_exists`). Suppress stdout/stderr — the touch
     # is bookkeeping, not user-facing.
     state_touch_last_used "$env_target" >/dev/null 2>&1 || true
 

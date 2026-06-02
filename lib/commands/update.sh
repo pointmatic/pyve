@@ -33,7 +33,7 @@ fi
 # (the unit test `update_project: source-grep verifies the migration
 # wrapper is wired` keys off the name).
 _update_migrate_legacy_layout() {
-    migrate_legacy_testenv_layout
+    migrate_legacy_env_layout
 }
 
 update_project() {
@@ -78,7 +78,7 @@ update_project() {
     # Pre-step: migrate any legacy .pyve/testenv/venv/ layout to the v2.8
     # .pyve/testenvs/testenv/venv/ shape. Silent on greenfield and on
     # already-migrated projects; prints a one-line info() when an actual
-    # move happens. M.h.3 wires this; the helper lives in lib/testenvs.sh.
+    # move happens. M.h.3 wires this; the helper lives in lib/envs.sh.
     _update_migrate_legacy_layout
 
     header_box "pyve update v$VERSION"

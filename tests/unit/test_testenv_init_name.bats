@@ -17,8 +17,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -67,7 +67,7 @@ TOML
 
 @test "testenv init: no arg creates the default testenv at the new path" {
     _stub_run_cmd_creates_venv
-    run testenv_command init
+    run env_command init
     [ "$status" -eq 0 ]
     [ -d ".pyve/testenvs/testenv/venv" ]
 }
@@ -79,7 +79,7 @@ TOML
 @test "testenv init <name>: declared venv-backed name creates at .pyve/testenvs/<name>/venv" {
     _fixture_named_envs
     _stub_run_cmd_creates_venv
-    run testenv_command init smoke
+    run env_command init smoke
     [ "$status" -eq 0 ]
     [ -d ".pyve/testenvs/smoke/venv" ]
     # Default testenv NOT created as a side effect.
@@ -88,7 +88,7 @@ TOML
 
 @test "testenv init <name>: reserved 'root' hard-errors" {
     _fixture_named_envs
-    run testenv_command init root
+    run env_command init root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
     [ ! -d ".pyve/testenvs/root" ]
@@ -96,7 +96,7 @@ TOML
 
 @test "testenv init <name>: undeclared name hard-errors with [tool.pyve.testenvs] hint" {
     _fixture_named_envs
-    run testenv_command init bogus
+    run env_command init bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
     [[ "$output" == *"tool.pyve.testenvs"* ]]
@@ -110,7 +110,7 @@ TOML
     # half-created env is left behind.
     _fixture_named_envs
     # hardware's manifest = "tests/env.yml" — intentionally NOT created.
-    run testenv_command init hardware
+    run env_command init hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
     [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]

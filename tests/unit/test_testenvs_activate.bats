@@ -5,13 +5,13 @@
 #
 # Unit tests for the M.h.3 layout cut-over:
 #
-#   - resolve_testenv_path testenv triggers migration as a side effect
+#   - resolve_env_path testenv triggers migration as a side effect
 #     when only the legacy layout is present (opportunistic fallback).
-#   - resolve_testenv_path on any name is otherwise a pure pretty-printer.
+#   - resolve_env_path on any name is otherwise a pure pretty-printer.
 #   - lib/commands/update.sh exposes a private migration wrapper that
 #     update_project invokes (verified by sourcing + grep).
-#   - testenv_paths in lib/utils.sh emits the new paths (.pyve/testenvs/testenv/...).
-#   - purge_testenv_dir in lib/utils.sh removes the new layout.
+#   - env_paths in lib/utils.sh emits the new paths (.pyve/testenvs/testenv/...).
+#   - purge_env_dir in lib/utils.sh removes the new layout.
 #   - lib/utils.sh's gitignore template ignores .pyve/testenvs (not .pyve/testenv).
 #
 # Existing test_test_command.bats / test_status.bats fixtures are updated
@@ -21,7 +21,7 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/update.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -32,15 +32,15 @@ teardown() {
 }
 
 # ============================================================
-# resolve_testenv_path opportunistic migration
+# resolve_env_path opportunistic migration
 # ============================================================
 
-@test "resolve_testenv_path testenv: legacy-only state triggers migration as a side effect" {
+@test "resolve_env_path testenv: legacy-only state triggers migration as a side effect" {
     mkdir -p ".pyve/testenv/venv/bin"
     printf 'legacy-marker' > ".pyve/testenv/venv/MARKER"
 
     # Discard stdout — we only care about the migration side effect here.
-    resolve_testenv_path testenv >/dev/null
+    resolve_env_path testenv >/dev/null
 
     # Migration happened: new path exists with original contents.
     [ -d ".pyve/testenvs/testenv/venv" ]
@@ -49,43 +49,43 @@ teardown() {
     [ -f ".pyve/testenvs/testenv/.state" ]
 }
 
-@test "resolve_testenv_path testenv: greenfield project does NOT create any directories" {
+@test "resolve_env_path testenv: greenfield project does NOT create any directories" {
     [ ! -d ".pyve" ]
-    [ "$(resolve_testenv_path testenv)" = ".pyve/testenvs/testenv/venv" ]
+    [ "$(resolve_env_path testenv)" = ".pyve/testenvs/testenv/venv" ]
     # Pure pretty-printer when neither legacy nor new state exists.
     [ ! -d ".pyve" ]
 }
 
-@test "resolve_testenv_path testenv: already-migrated state is a no-op (no churn)" {
+@test "resolve_env_path testenv: already-migrated state is a no-op (no churn)" {
     mkdir -p ".pyve/testenvs/testenv/venv"
     printf 'new-marker' > ".pyve/testenvs/testenv/venv/MARKER"
 
-    resolve_testenv_path testenv >/dev/null
+    resolve_env_path testenv >/dev/null
     # Marker untouched; no .state appears if it wasn't already present.
     [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
 }
 
-@test "resolve_testenv_path other-name: never triggers migration (only 'testenv' has a legacy form)" {
+@test "resolve_env_path other-name: never triggers migration (only 'testenv' has a legacy form)" {
     mkdir -p ".pyve/testenv/venv"
     # An unrelated name lookup must not move .pyve/testenv/.
-    resolve_testenv_path hardware >/dev/null
+    resolve_env_path hardware >/dev/null
     [ -d ".pyve/testenv/venv" ]
     [ ! -d ".pyve/testenvs/hardware" ]
 }
 
-@test "resolve_testenv_path root: never triggers migration (root is selection-only)" {
+@test "resolve_env_path root: never triggers migration (root is selection-only)" {
     mkdir -p ".pyve/testenv/venv"
-    resolve_testenv_path root >/dev/null
+    resolve_env_path root >/dev/null
     [ -d ".pyve/testenv/venv" ]
 }
 
 # ============================================================
-# testenv_paths emits the new layout
+# env_paths emits the new layout
 # ============================================================
 
-@test "testenv_paths: emits new .pyve/testenvs/testenv root + venv paths" {
+@test "env_paths: emits new .pyve/testenvs/testenv root + venv paths" {
     local out
-    out="$(testenv_paths)"
+    out="$(env_paths)"
     local root venv
     root="$(printf "%s" "$out" | sed -n '1p')"
     venv="$(printf "%s" "$out" | sed -n '2p')"
@@ -94,17 +94,17 @@ teardown() {
 }
 
 # ============================================================
-# purge_testenv_dir removes the new layout
+# purge_env_dir removes the new layout
 # ============================================================
 
-@test "purge_testenv_dir: removes .pyve/testenvs/testenv (new layout)" {
+@test "purge_env_dir: removes .pyve/testenvs/testenv (new layout)" {
     mkdir -p ".pyve/testenvs/testenv/venv/bin"
-    purge_testenv_dir >/dev/null 2>&1
+    purge_env_dir >/dev/null 2>&1
     [ ! -d ".pyve/testenvs/testenv" ]
 }
 
-@test "purge_testenv_dir: missing testenv prints info, no error" {
-    run purge_testenv_dir
+@test "purge_env_dir: missing testenv prints info, no error" {
+    run purge_env_dir
     [ "$status" -eq 0 ]
 }
 
@@ -142,7 +142,7 @@ teardown() {
     # We don't invoke update_project end-to-end here (it does many other
     # things that need a fully-initialized project). Source-level grep
     # gives a brittle-but-accurate "the wiring is present" signal.
-    grep -qE "_update_migrate_legacy_layout|migrate_legacy_testenv_layout" \
+    grep -qE "_update_migrate_legacy_layout|migrate_legacy_env_layout" \
         "$PYVE_ROOT/lib/commands/update.sh"
 }
 
@@ -151,14 +151,14 @@ teardown() {
 # ============================================================
 
 @test "sweep: no '.pyve/testenv/' or '.pyve/\$TESTENV_DIR_NAME' literals in production code outside the migration helper" {
-    # Allowed locations: lib/testenvs.sh (the migration helper itself
+    # Allowed locations: lib/envs.sh (the migration helper itself
     # legitimately references the legacy path), pyve.sh (the back-compat
     # TESTENV_DIR_NAME global declaration). Everything else must be gone.
     local hits
     hits="$(grep -rnE '\.pyve/(\$TESTENV_DIR_NAME|testenv[^s])' \
         "$PYVE_ROOT/lib/utils.sh" \
         "$PYVE_ROOT/lib/commands/test.sh" \
-        "$PYVE_ROOT/lib/commands/testenv.sh" \
+        "$PYVE_ROOT/lib/commands/env.sh" \
         "$PYVE_ROOT/lib/commands/check.sh" \
         "$PYVE_ROOT/lib/commands/status.sh" \
         "$PYVE_ROOT/lib/commands/purge.sh" \

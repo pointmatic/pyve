@@ -110,7 +110,7 @@ purge_project() {
         fi
     else
         _purge_pyve_dir
-        purge_testenv_dir
+        purge_env_dir
     fi
 
     # Remove .envrc

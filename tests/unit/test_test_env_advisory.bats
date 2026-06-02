@@ -23,9 +23,9 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/run.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -126,7 +126,7 @@ SH
         esac
     }
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]
@@ -147,7 +147,7 @@ SH
         esac
     }
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]
@@ -169,7 +169,7 @@ SH
         esac
     }
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]
@@ -187,7 +187,7 @@ SH
     _make_fake_named_venv_with_state smoke
     _test_env_has_pytest() { return 0; }  # every env has pytest
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     export PYVE_NO_TESTENV_ADVISORY=1
 
     run test_tests --env testenv -q
@@ -210,7 +210,7 @@ SH
         esac
     }
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]
@@ -248,7 +248,7 @@ SH
         esac
     }
     _test_has_pytest() { return 0; }
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
     [ "$status" -eq 0 ]

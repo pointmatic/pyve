@@ -17,12 +17,12 @@
 #   4. Hard-error on lazy envs that have not been provisioned yet,
 #      pointing at `pyve testenv install <name>` (auto-provision is
 #      M.n's job — M.m stays self-contained).
-#   5. Hard-error on conda-backed envs (via `assert_testenv_venv_backend`
+#   5. Hard-error on conda-backed envs (via `assert_env_venv_backend`
 #      from M.i.1/M.k — `pyve testenv run` is venv-only and the same
 #      gate applies to `pyve test`'s exec).
 #   6. Touch `.state`'s `last_used_at` on the success path (consumed
 #      by M.p's `pyve testenv list / prune`).
-#   7. Have `ensure_testenv_exists` and `_testenv_init_conda` write
+#   7. Have `ensure_env_exists` and `_env_init_conda` write
 #      an initial `.state` on env creation so the touch in (6) has
 #      something to update.
 
@@ -30,9 +30,9 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/run.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -90,7 +90,7 @@ TOML
 @test "pyve test --env <declared-name>: routes pytest to that env's venv" {
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -104,7 +104,7 @@ TOML
 @test "pyve test --env=<declared-name>: '=' form also works" {
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -149,7 +149,7 @@ TOML
     _fixture_default_smoke
     # heavy is lazy but the user already provisioned it.
     _make_fake_named_venv_with_state heavy
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -176,7 +176,7 @@ TOML
 @test "pyve test (no --env): routes to declared 'default' env" {
     _fixture_default_smoke
     _make_fake_named_venv_with_state smoke
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -192,7 +192,7 @@ TOML
 @test "pyve test (no --env, no [tool.pyve.testenvs] block): falls back to 'testenv'" {
     # No pyproject.toml at all — implicit-default config has 'testenv' only.
     _make_fake_named_venv_with_state testenv
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -213,7 +213,7 @@ TOML
 
 @test "pyve test --env testenv: explicit default still routes to testenv venv" {
     _make_fake_named_venv_with_state testenv
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -233,7 +233,7 @@ TOML
     state_read smoke
     [ "$PYVE_TESTENV_STATE_LAST_USED_AT" = "0" ]
 
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -263,10 +263,10 @@ TOML
 }
 
 # ============================================================
-# ensure_testenv_exists writes initial .state on creation (M.m)
+# ensure_env_exists writes initial .state on creation (M.m)
 # ============================================================
 
-@test "ensure_testenv_exists: writes initial .state for a fresh venv testenv" {
+@test "ensure_env_exists: writes initial .state for a fresh venv testenv" {
     _fixture_default_smoke
     # Stub run_cmd's `python -m venv` to create the marker venv dir
     # instead of invoking python (avoids the asdf-in-tmpdir issue).
@@ -281,7 +281,7 @@ SH
             chmod +x "$venv_path/bin/python"
         fi
     }
-    ensure_testenv_exists smoke
+    ensure_env_exists smoke
     [ -d ".pyve/testenvs/smoke/venv" ]
     [ -f ".pyve/testenvs/smoke/.state" ]
     state_read smoke
@@ -290,13 +290,13 @@ SH
     [ "$PYVE_TESTENV_STATE_LAST_USED_AT" = "0" ]
 }
 
-@test "ensure_testenv_exists: idempotent .state — does not overwrite an existing file" {
+@test "ensure_env_exists: idempotent .state — does not overwrite an existing file" {
     _fixture_default_smoke
     # Pre-seed a .state with a known provisioned_at.
     _make_fake_named_venv_with_state smoke  # uses provisioned_at=1700000000
     run_cmd() { :; }  # no-op (env already exists)
 
-    ensure_testenv_exists smoke
+    ensure_env_exists smoke
 
     state_read smoke
     [ "$PYVE_TESTENV_STATE_PROVISIONED_AT" = "1700000000" ]

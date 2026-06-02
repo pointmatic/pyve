@@ -25,9 +25,9 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/run.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -82,7 +82,7 @@ TOML
 @test "pyve test --env <single-name>: preserves single-env exec path (M.m regression)" {
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -100,7 +100,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
     _make_fake_named_venv_with_state heavy 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -114,7 +114,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
     _make_fake_named_venv_with_state heavy 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -128,7 +128,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
     _make_fake_named_venv_with_state heavy 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -148,7 +148,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
     _make_fake_named_venv_with_state heavy 2  # pytest "collection error"
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -163,7 +163,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 3
     _make_fake_named_venv_with_state heavy 5
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -175,7 +175,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 1  # fails
     _make_fake_named_venv_with_state heavy 0  # would-succeed
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -192,7 +192,7 @@ TOML
 @test "pyve test --env a,bogus: undeclared name in list hard-errors" {
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 
@@ -218,7 +218,7 @@ TOML
     _fixture_two_envs
     _make_fake_named_venv_with_state smoke 0
     _make_fake_named_venv_with_state heavy 0
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; }
 

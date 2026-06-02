@@ -5,8 +5,8 @@
 #
 # Unit tests for Story M.l — venv testenv manifest sources.
 #
-# `_testenv_install_venv` (renamed from `testenv_install` in M.l for
-# symmetry with M.k's `_testenv_install_conda`) dispatches on the
+# `_env_install_venv` (renamed from `env_install` in M.l for
+# symmetry with M.k's `_env_install_conda`) dispatches on the
 # declared install source from [tool.pyve.testenvs.<name>]:
 #
 #   1. CLI `-r <file>` (always wins; today's explicit-override behavior).
@@ -24,8 +24,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -67,7 +67,7 @@ TOML
     printf 'ruff\n' > tests/smoke-requirements.txt
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke
+    run env_command install smoke
     [ "$status" -eq 0 ]
     [[ "$output" == *"-m pip install -r tests/smoke-requirements.txt"* ]]
 }
@@ -81,7 +81,7 @@ TOML
     printf 'pytest\n' > requirements-dev.txt
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install testenv
+    run env_command install testenv
     [ "$status" -eq 0 ]
     [[ "$output" == *"-r requirements.txt -r requirements-dev.txt"* ]]
 }
@@ -93,7 +93,7 @@ requirements = ["tests/missing.txt"]
 TOML
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke
+    run env_command install smoke
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/missing.txt"* ]]
 }
@@ -116,7 +116,7 @@ extra = "dev"
 TOML
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install testenv
+    run env_command install testenv
     [ "$status" -eq 0 ]
     [[ "$output" == *"pip install"* ]]
     [[ "$output" == *"pytest>=8"* ]]
@@ -137,7 +137,7 @@ extra = "missing"
 TOML
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install testenv
+    run env_command install testenv
     [ "$status" -ne 0 ]
     [[ "$output" == *"missing"* ]]
 }
@@ -150,7 +150,7 @@ TOML
     _make_fake_named_venv testenv
     printf 'pytest\n' > requirements-dev.txt
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     [[ "$output" == *"pip install -r requirements-dev.txt"* ]]
 }
@@ -158,7 +158,7 @@ TOML
 @test "venv install: no declarations, no requirements-dev.txt → bare 'pytest'" {
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     # Today's default: bare pytest install.
     [[ "$output" == *"pip install pytest"* ]]
@@ -178,7 +178,7 @@ TOML
     printf 'ignored\n' > should-not-be-used.txt
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install -r requirements-cli.txt
+    run env_command install -r requirements-cli.txt
     [ "$status" -eq 0 ]
     [[ "$output" == *"-r requirements-cli.txt"* ]]
     [[ "$output" != *"should-not-be-used.txt"* ]]
@@ -199,7 +199,7 @@ TOML
     printf 'pytest\n' > requirements-cli.txt
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install -r requirements-cli.txt
+    run env_command install -r requirements-cli.txt
     [ "$status" -eq 0 ]
     [[ "$output" == *"-r requirements-cli.txt"* ]]
     [[ "$output" != *"should-not-be-installed"* ]]
@@ -224,7 +224,7 @@ extra = "dev"
 TOML
     _make_fake_named_venv bad
     _stub_run_cmd_records
-    run testenv_command install bad
+    run env_command install bad
     [ "$status" -ne 0 ]
     # The M.g Python helper batches this as
     # "pyve.testenvs.bad: only one of 'requirements'/'extra'/'manifest' may be declared".
@@ -255,7 +255,7 @@ TOML
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     # testenv: extra resolution → ruff>=0.6 in args.
     [[ "$output" == *"ruff>=0.6"* ]]

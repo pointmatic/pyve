@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for `migrate_legacy_testenv_layout` in lib/testenvs.sh
+# Unit tests for `migrate_legacy_env_layout` in lib/envs.sh
 # (Story M.h.2). One helper, four outcome cases:
 #
 #   1. Legacy `.pyve/testenv/venv/` only          → migrate + write .state
@@ -17,7 +17,7 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 }
@@ -55,7 +55,7 @@ SH
 
 @test "migrate: legacy-only → moves venv, writes initial .state, removes legacy parent" {
     _make_legacy_venv
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path exists with original contents intact.
     [ -d ".pyve/testenvs/testenv/venv" ]
@@ -75,7 +75,7 @@ SH
 
 @test "migrate: legacy-only → user sees a one-line info on stdout" {
     _make_legacy_venv
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # info() in lib/ui/core.sh prints to stdout; assert the migration
     # event is surfaced. Substring kept loose so message wording can evolve.
@@ -93,7 +93,7 @@ SH
     else
         touch -d "@$target" ".pyve/testenv/venv"
     fi
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     local pa; pa=$(grep '^provisioned_at=' ".pyve/testenvs/testenv/.state" | cut -d= -f2)
     # Allow ±2s slack for filesystem-precision noise.
@@ -109,7 +109,7 @@ SH
     _make_new_venv
     state_write testenv venv manifest=req.txt last_used_at=12345
     local before_state; before_state="$(cat .pyve/testenvs/testenv/.state)"
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path untouched.
     [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
@@ -119,10 +119,10 @@ SH
 
 @test "migrate: idempotent (running twice on a legacy project produces the same result)" {
     _make_legacy_venv
-    migrate_legacy_testenv_layout
+    migrate_legacy_env_layout
     local after_first; after_first="$(cat .pyve/testenvs/testenv/.state)"
     # Second invocation hits the already-migrated branch.
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     [ "$(cat .pyve/testenvs/testenv/.state)" = "$after_first" ]
     [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "legacy-marker" ]
@@ -135,7 +135,7 @@ SH
 @test "migrate: both legacy and new exist → no-op, new content preserved, legacy left alone" {
     _make_legacy_venv
     _make_new_venv
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path's marker intact (was not overwritten by legacy contents).
     [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
@@ -151,14 +151,14 @@ SH
 # ============================================================
 
 @test "migrate: greenfield (no .pyve at all) → no-op, no directories created" {
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     [ ! -d ".pyve" ]
 }
 
 @test "migrate: greenfield (empty .pyve) → no-op, no testenv directories created" {
     mkdir -p ".pyve"
-    run migrate_legacy_testenv_layout
+    run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/testenv" ]
     [ ! -d ".pyve/testenvs" ]
@@ -177,7 +177,7 @@ SH
             set -euo pipefail
             export PYVE_ROOT='$PYVE_ROOT'
             export PYVE_PYTHON='$PYVE_PYTHON'
-            source '$PYVE_ROOT/lib/testenvs.sh'
+            source '$PYVE_ROOT/lib/envs.sh'
             workdir=\$(mktemp -d)
             cd \"\$workdir\"
             case '$case' in
@@ -187,7 +187,7 @@ SH
                 both)             mkdir -p .pyve/testenv/venv .pyve/testenvs/testenv/venv ;;
                 greenfield)       : ;;
             esac
-            migrate_legacy_testenv_layout >/dev/null
+            migrate_legacy_env_layout >/dev/null
             rm -rf \"\$workdir\"
         " 2>&1)" || true
         stderr+="$out"$'\n'

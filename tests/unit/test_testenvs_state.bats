@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for the `.state` helpers in lib/testenvs.sh (Story M.h.1).
+# Unit tests for the `.state` helpers in lib/envs.sh (Story M.h.1).
 #
 # Schema (plain key=value, sourceable):
 #   backend=venv|micromamba|inherit
@@ -24,7 +24,7 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
     # See test_testenvs.bats: capture an absolute python path before cwd
     # changes — the asdf shim can't resolve a relative .pyve/testenv/...
     # entry once we leave PYVE_ROOT.
@@ -167,7 +167,7 @@ _clear_state_vars() {
         set -euo pipefail
         export PYVE_ROOT='$PYVE_ROOT'
         export PYVE_PYTHON='$PYVE_PYTHON'
-        source '$PYVE_ROOT/lib/testenvs.sh'
+        source '$PYVE_ROOT/lib/envs.sh'
         cd '$TEST_DIR'
         state_path testenv >/dev/null
         state_write testenv venv >/dev/null
