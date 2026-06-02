@@ -48,17 +48,17 @@ teardown() {
     cleanup_test_dir
 }
 
-# Drop a fake venv python at .pyve/testenvs/<name>/venv/bin/python so
+# Drop a fake venv python at .pyve/envs/<name>/venv/bin/python so
 # `exec` succeeds without a real venv. Also seeds the .state file (the
 # resolver's last-used touch needs it present).
 _make_fake_named_venv_with_state() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
     state_write "$name" "venv" provisioned_at=1700000000
 }
 
@@ -289,8 +289,8 @@ SH
         fi
     }
     ensure_env_exists smoke
-    [ -d ".pyve/testenvs/smoke/venv" ]
-    [ -f ".pyve/testenvs/smoke/.state" ]
+    [ -d ".pyve/envs/smoke/venv" ]
+    [ -f ".pyve/envs/smoke/.state" ]
     state_read smoke
     [ "$PYVE_TESTENV_STATE_BACKEND" = "venv" ]
     [[ "$PYVE_TESTENV_STATE_PROVISIONED_AT" =~ ^[0-9]+$ ]]

@@ -97,12 +97,12 @@ TOML
 
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
 }
 
 _stub_run_cmd_records() {
@@ -183,7 +183,7 @@ TOML
     read_env_config
     run resolve_env_path mirror
     [ "$status" -eq 0 ]
-    [ "$output" = ".pyve/testenvs/mirror/venv" ]
+    [ "$output" = ".pyve/envs/mirror/venv" ]
 }
 
 @test "resolve_env_path: 'inherit' + main=micromamba yields conda-shaped path" {
@@ -197,7 +197,7 @@ TOML
     read_env_config
     run resolve_env_path mirror
     [ "$status" -eq 0 ]
-    [ "$output" = ".pyve/testenvs/mirror/conda" ]
+    [ "$output" = ".pyve/envs/mirror/conda" ]
 }
 
 # ============================================================
@@ -207,19 +207,19 @@ TOML
 @test "_env_init_conda: invokes 'micromamba create -p <path> -f <manifest> -y'" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_init_conda hardware ".pyve/envs/hardware/conda" "tests/env.yml"
     [ "$status" -eq 0 ]
     [ -f ".pyve/micromamba.log" ]
-    grep -q "create -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
+    grep -q "create -p .pyve/envs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
     # The stub mkdir's the conda-meta dir on success.
-    [ -d ".pyve/testenvs/hardware/conda/conda-meta" ]
+    [ -d ".pyve/envs/hardware/conda/conda-meta" ]
 }
 
 @test "_env_init_conda: missing manifest file hard-errors" {
     _fixture_conda_env
     _stub_micromamba_recorder
     rm tests/env.yml
-    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_init_conda hardware ".pyve/envs/hardware/conda" "tests/env.yml"
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
     [ ! -f ".pyve/micromamba.log" ]
@@ -228,7 +228,7 @@ TOML
 @test "_env_init_conda: empty manifest argument hard-errors" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _env_init_conda hardware ".pyve/testenvs/hardware/conda" ""
+    run _env_init_conda hardware ".pyve/envs/hardware/conda" ""
     [ "$status" -ne 0 ]
     [[ "$output" == *"manifest"* ]]
     [ ! -f ".pyve/micromamba.log" ]
@@ -242,16 +242,16 @@ TOML
     _fixture_conda_env
     _stub_micromamba_recorder
     # Pre-create the env so install proceeds past the existence check.
-    mkdir -p .pyve/testenvs/hardware/conda/conda-meta
-    run _env_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    mkdir -p .pyve/envs/hardware/conda/conda-meta
+    run _env_install_conda hardware ".pyve/envs/hardware/conda" "tests/env.yml"
     [ "$status" -eq 0 ]
-    grep -q "install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
+    grep -q "install -p .pyve/envs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
 }
 
 @test "_env_install_conda: env not yet initialized hard-errors with 'init' hint" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    run _env_install_conda hardware ".pyve/testenvs/hardware/conda" "tests/env.yml"
+    run _env_install_conda hardware ".pyve/envs/hardware/conda" "tests/env.yml"
     [ "$status" -ne 0 ]
     [[ "$output" == *"init"* ]]
     [ ! -f ".pyve/micromamba.log" ]
@@ -267,9 +267,9 @@ TOML
     _stub_run_cmd_records
     run env_command init hardware
     [ "$status" -eq 0 ]
-    grep -q "create -p .pyve/testenvs/hardware/conda" .pyve/micromamba.log
+    grep -q "create -p .pyve/envs/hardware/conda" .pyve/micromamba.log
     # python -m venv must NOT have run (no venv-shaped sibling).
-    [ ! -d ".pyve/testenvs/hardware/venv" ]
+    [ ! -d ".pyve/envs/hardware/venv" ]
 }
 
 @test "testenv init <conda-name>: missing manifest declaration in pyproject hard-errors" {
@@ -292,12 +292,12 @@ TOML
 @test "testenv install <conda-name>: routes to _env_install_conda" {
     _fixture_conda_env
     _stub_micromamba_recorder
-    mkdir -p .pyve/testenvs/hardware/conda/conda-meta
+    mkdir -p .pyve/envs/hardware/conda/conda-meta
     run env_command install hardware
     [ "$status" -eq 0 ]
-    grep -q "install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
+    grep -q "install -p .pyve/envs/hardware/conda -f tests/env.yml -y" .pyve/micromamba.log
     # Lock dir cleaned up.
-    [ ! -d ".pyve/testenvs/hardware/.lock" ]
+    [ ! -d ".pyve/envs/hardware/.lock" ]
 }
 
 # ============================================================
@@ -307,15 +307,15 @@ TOML
 @test "testenv install (no-arg): iteration includes conda envs (no 'see Story M.k' skip)" {
     _fixture_mixed_envs
     _make_fake_named_venv testenv
-    mkdir -p .pyve/testenvs/hardware/conda/conda-meta
+    mkdir -p .pyve/envs/hardware/conda/conda-meta
     _stub_micromamba_recorder
     _stub_run_cmd_records
     run env_command install
     [ "$status" -eq 0 ]
     # venv env installed via pip.
-    [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
+    [[ "$output" == *"envs/testenv/venv/bin/python"* ]]
     # conda env installed via micromamba.
-    grep -q "install -p .pyve/testenvs/hardware/conda" .pyve/micromamba.log
+    grep -q "install -p .pyve/envs/hardware/conda" .pyve/micromamba.log
     # Old M.k skip message must NOT appear anymore.
     [[ "$output" != *"see Story M.k"* ]]
 }

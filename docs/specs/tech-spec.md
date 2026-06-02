@@ -703,6 +703,38 @@ Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state`
 
 **`TESTENV_DIR_NAME` global** in `pyve.sh` is retained as a back-compat constant pointing at `testenv` (the reserved name). No internal code reads it post-M.h.3; the constant exists only so any external script referencing it doesn't break. Deprecation-removal can be a later cleanup story.
 
+#### v2 → v3 state-directory boundary (Story N.f, Subphase N-1)
+
+**The v2.8 → v3.0 structural boundary.** Phase N consolidates state under a single root: `.pyve/envs/<name>/<backend>/`. The same nested shape that v2.8 used for testenvs (`.pyve/testenvs/<name>/{venv,conda}/`) now applies to *every* declared env from `pyve.toml` — run / test / utility / temp. One root, one shape, plugin-friendly: each backend plugin (venv, micromamba, future Node, future Go) owns its subdirectory under `<name>/`.
+
+**v3 on-disk layout:**
+
+```
+.pyve/
+  envs/
+    root/             ← [env.root]    (purpose = "utility")
+      venv/             venv-backed
+      # or conda/       micromamba-backed (one level deeper than v2)
+    testenv/          ← [env.testenv] (purpose = "test")
+      venv/
+    smoke/            ← [env.smoke]   (custom test env)
+      venv/
+```
+
+**v2 → v3 path mapping:**
+
+| v2 location | v3 location | Migration owner |
+|---|---|---|
+| `.pyve/testenv/venv/` (v2.7 singular) | `.pyve/envs/testenv/venv/` | `migrate_legacy_env_layout` (opportunistic, fired by `resolve_env_path testenv` and `pyve update`) |
+| `.pyve/testenvs/<name>/venv/` (v2.8 plural, venv-backed) | `.pyve/envs/<name>/venv/` | `migrate_legacy_env_layout` (opportunistic) |
+| `.pyve/testenvs/<name>/conda/` (v2.8 plural, conda-backed) | `.pyve/envs/<name>/conda/` | `migrate_legacy_env_layout` (opportunistic) |
+| `.pyve/testenvs/<name>/.state` (v2.8 state sibling) | `.pyve/envs/<name>/.state` | `migrate_legacy_env_layout` (opportunistic) |
+| `.pyve/envs/<configured_name>/` (v2.x micromamba main env) | `.pyve/envs/root/conda/` | `pyve self migrate` (Story N.g, deterministic) |
+
+**Path-construction helpers (post-N.f).** `state_path` and `resolve_env_path` in [`lib/envs.sh`](../../lib/envs.sh) produce v3 paths. Production code must route through these helpers; hard-coded `.pyve/testenvs/...` literals are forbidden and caught by the regression sweep in [`tests/unit/test_testenvs_activate.bats`](../../tests/unit/test_testenvs_activate.bats).
+
+**Why N.f handles only the testenv-side rename, not the micromamba main-env move.** The micromamba main-env relocation (`.pyve/envs/<old_name>/` → `.pyve/envs/root/conda/`) is a rename + restructure at once: the env loses its user-chosen name and gains a backend-subdir. That cutover ships with `pyve self migrate` (Story N.g) where the user gets full `.pyve/.v2-legacy/` backup and rollback. N.f's scope is the flat parent swap (`testenvs` → `envs`) — same name, same shape, opportunistically migrated so pre-N.g code paths don't silently lose envs.
+
 #### Conda backend dispatch (Story M.k)
 
 `pyve testenv init/install` now supports conda-backed envs declared as `backend = "micromamba"` or `backend = "inherit"` in `[tool.pyve.testenvs.<name>]`. The plumbing reuses `lib/micromamba_core.sh::get_micromamba_path` (binary resolution: project sandbox → user sandbox → system PATH) — no new bootstrap path is introduced. Conda envs land at `.pyve/testenvs/<name>/conda/` (the resolver shape); no `.envrc` is ever emitted for testenvs (testenvs are activated through their wrapper commands, not direnv).

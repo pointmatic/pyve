@@ -32,16 +32,16 @@ teardown() {
     cleanup_test_dir
 }
 
-# Pre-create a fake testenv venv at .pyve/testenvs/<name>/venv/bin/python
+# Pre-create a fake testenv venv at .pyve/envs/<name>/venv/bin/python
 # so env_install passes the existence guard without invoking real python.
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
 }
 
 # Stub run_cmd to record the pip invocation rather than execute it.
@@ -89,7 +89,7 @@ TOML
     _stub_run_cmd_records
     run env_command install
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
+    [[ "$output" == *"envs/testenv/venv/bin/python"* ]]
 }
 
 # ============================================================
@@ -105,7 +105,7 @@ TOML
     # micromamba binary so iteration successfully passes through it.
     mkdir -p tests
     printf 'name: hardware\ndependencies: [python]\n' > tests/env.yml
-    mkdir -p .pyve/testenvs/hardware/conda/conda-meta   # `install` requires existing env
+    mkdir -p .pyve/envs/hardware/conda/conda-meta   # `install` requires existing env
     mkdir -p .pyve/bin
     cat > .pyve/bin/micromamba <<'SH'
 #!/usr/bin/env bash
@@ -118,12 +118,12 @@ SH
     run env_command install
     [ "$status" -eq 0 ]
     # testenv + smoke are non-lazy → both installed via pip.
-    [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/testenv/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     # heavy is lazy → NOT installed.
-    [[ "$output" != *"testenvs/heavy/venv/bin/python"* ]]
+    [[ "$output" != *"envs/heavy/venv/bin/python"* ]]
     # hardware is conda-backed → installed via micromamba (M.k landed).
-    [[ "$output" == *"MICROMAMBA:install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y"* ]]
+    [[ "$output" == *"MICROMAMBA:install -p .pyve/envs/hardware/conda -f tests/env.yml -y"* ]]
 }
 
 @test "testenv install: no-arg with only lazy envs prints info, exits 0" {
@@ -139,8 +139,8 @@ TOML
     _stub_run_cmd_records
     run env_command install
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/testenv/"* ]]
-    [[ "$output" != *"testenvs/heavy/"* ]]
+    [[ "$output" == *"envs/testenv/"* ]]
+    [[ "$output" != *"envs/heavy/"* ]]
 }
 
 # ============================================================
@@ -153,9 +153,9 @@ TOML
     _stub_run_cmd_records
     run env_command install smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     # Default testenv NOT installed as a side effect.
-    [[ "$output" != *"testenvs/testenv/"* ]]
+    [[ "$output" != *"envs/testenv/"* ]]
 }
 
 @test "testenv install <lazy-name>: explicit install bypasses lazy-skip (M.n regression)" {
@@ -169,7 +169,7 @@ TOML
     _stub_run_cmd_records
     run env_command install heavy
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/heavy/venv/bin/python"* ]]
+    [[ "$output" == *"envs/heavy/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/heavy.txt"* ]]
 }
 
@@ -228,7 +228,7 @@ EOF
     _stub_run_cmd_records
     run env_command install smoke -r tests/smoke-requirements.txt
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]
 }
 
@@ -242,6 +242,6 @@ EOF
     _stub_run_cmd_records
     run env_command install -r tests/smoke-requirements.txt smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]
 }

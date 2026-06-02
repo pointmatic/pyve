@@ -45,12 +45,12 @@ teardown() {
 # without a real venv. Used by happy-path tests.
 _make_fake_named_venv_with_state() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
     state_write "$name" "venv" provisioned_at=1700000000
 }
 

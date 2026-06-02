@@ -151,16 +151,41 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - [x] `pyve init` (existing `pyve.toml`) is a refresh: re-validates the manifest, leaves the manifest content alone (does not rewrite). Other managed-file refresh behavior (`.envrc`, `.gitignore`, `.vscode/settings.json`, `.pyve/config`) is unchanged from v2 — `pyve init` continues to write/refresh them as it always has.
 - [x] Bats unit tests covering: fresh-write happy path (both backends); fresh-write project-name derivation from cwd; `pyve.toml` parses + validates clean after init; refresh path leaves an existing `pyve.toml` byte-identical; refresh path errors on an invalid `pyve.toml`.
 
-### Story N.f: State directory final path — `.pyve/testenvs/<name>/` decision [Planned]
+### Story N.f: State directory final path — `.pyve/envs/<name>/<backend>/` decision [Done]
 
 **Motivation.** The v3 state layout needs a decided path. Candidates: consolidate under `.pyve/envs/` (but `.pyve/envs/` is currently micromamba's main-env namespace — needs disambiguation); `.pyve/environments/`; or keep `.pyve/testenvs/` and only rename at the CLI/schema layer. **Decision is made in this story's first task.** Actual relocation happens inside `pyve self migrate` (Story N.g).
 
+**Decision (made during execution): `.pyve/envs/<name>/<backend>/`.** Single root, per-backend subdir. Concretely:
+
+```
+.pyve/
+  envs/
+    root/             ← [env.root] (purpose = "utility")
+      venv/           ← venv-backed
+      # or conda/     ← micromamba-backed (gets one level deeper than v2)
+    testenv/          ← [env.testenv] (purpose = "test")
+      venv/
+    smoke/            ← [env.smoke] (custom test env)
+      venv/
+```
+
+**Rationale.**
+
+- **Uniformity across env purposes.** v2.8's testenv layout (`.pyve/testenvs/<name>/{venv,conda}/`) already proves the per-backend-subdir pattern. v3 generalizes it: all envs — run, test, utility, temp — share one root, one shape. Plugin contract: each backend plugin owns `<name>/<backend>/` and pyve doesn't need backend-aware path branching.
+- **Plugin-friendly for N-3 onward.** Node's `.pyve/envs/<name>/node_modules/`, future Go's `.pyve/envs/<name>/gopath/`, etc., all slot in without changing the root.
+- **Migration churn is bounded.** Two surfaces move: v2.8 testenvs (`.pyve/testenvs/<name>/{venv,conda}/` → `.pyve/envs/<name>/{venv,conda}/` — flat parent swap) and micromamba main envs (`.pyve/envs/<name>/` → `.pyve/envs/root/conda/` — one level deeper, name → "root"). N.g's `pyve self migrate` does both deterministically with full `.pyve/.v2-legacy/` backup; opportunistic auto-migration (in `migrate_legacy_env_layout`) catches v2.7 → v3 and v2.8 → v3 on the testenv side so pre-N.g code paths don't silently lose envs.
+- **Why not `.pyve/environments/`.** Two extra characters per path, no semantic gain. `.pyve/envs/` is already the canonical short form in the codebase.
+- **Why not keep `.pyve/testenvs/`.** Would create a permanent dissonance — CLI says `pyve env`, schema says `[env.<name>]`, on-disk says `.pyve/testenvs/`. Future readers (LLM and human) hit the mismatch every time. The dissonance only gets worse as non-test envs (`utility`, `run`) land alongside test envs.
+
 **Tasks**
 
-- [ ] **Decision task** — pick the final v3 state directory path. Document the choice + rationale in this story body before continuing. Reference the concept doc § 2 candidates ([phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md)).
-- [ ] Update [tech-spec.md](tech-spec.md) with the chosen path + the v2 → v3 path-mapping table.
-- [ ] Update all path-construction helpers in [lib/envs.sh](../../lib/envs.sh) (from N.b) to use the chosen path. Tests sweep to match.
-- [ ] Confirm `is_asdf_active()` + `.envrc` template generation (per [project-essentials.md](project-essentials.md)) still work with the new path.
+- [x] **Decision task** — pick the final v3 state directory path. Documented above.
+- [x] Update [tech-spec.md](tech-spec.md) with the chosen path + the v2 → v3 path-mapping table. New subsection "v2 → v3 state-directory boundary (Story N.f, Subphase N-1)" landed next to the M.h.2 legacy-migration section.
+- [x] Update all path-construction helpers in [lib/envs.sh](../../lib/envs.sh) (from N.b) to use the chosen path. `state_path` now returns `.pyve/envs/<name>/.state`; `resolve_env_path` returns `.pyve/envs/<name>/{venv,conda}/`. Reserved `root` continues to short-circuit to `.venv` (N.g owns the micromamba main-env move). 22 bats unit-test files swept; 1166 ok / 0 fail post-sweep.
+- [x] Extend `migrate_legacy_env_layout` to handle v2.8 (`.pyve/testenvs/<name>/{venv,conda}/`) → v3 (`.pyve/envs/<name>/{venv,conda}/`) opportunistically. Split into two private movers — `_migrate_legacy_env_v27_to_v3` (singular v2.7 → v3) and `_migrate_legacy_env_v28_to_v3` (per-env v2.8 → v3 with `.state` sibling) — both invoked from the public entry point. Per-env idempotent; "both legacy and v3 present" preserves v3 and leaves the legacy entry alone.
+- [x] Sweep `lib/commands/*.sh` for any hardcoded `.pyve/testenvs/` paths. `lib/commands/env.sh` (15 hits in `_env_list_*`, `_env_install_lock_dir`, help text), `lib/commands/purge.sh` (`--keep-testenv` branch rewritten for the v3 merged-namespace shape — preserves `.pyve/envs/` while surgically deleting the micromamba main-env subdir identified from `.pyve/config`, with `.pyve/testenvs/` also preserved defensively for the transition window). Stale comments in `lib/commands/test.sh`, `lib/commands/update.sh`, `lib/utils.sh` updated.
+- [x] Confirm `is_asdf_active()` + `.envrc` template generation (per [project-essentials.md](project-essentials.md)) still work with the new path. `write_envrc_template` receives `rel_env_root` from callers (`.venv/bin` for venv, `.pyve/envs/<name>/bin` for micromamba main) and does no path construction of its own; the existing 30/30 envrc-template + asdf-compat tests stay green.
+- [x] **Out of scope for N.f (deferred to N.g):** the micromamba main-env path move (`.pyve/envs/<old_name>/` → `.pyve/envs/root/conda/`). N.f leaves the micromamba main-env path constructors alone; that side of the cutover ships with `pyve self migrate` and its `.pyve/.v2-legacy/` backup.
 
 ### Story N.g: `pyve self migrate` — v2 → v3 migration command [Planned]
 

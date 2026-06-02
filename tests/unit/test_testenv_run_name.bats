@@ -44,12 +44,12 @@ _stub_testenv_run() {
 # chain into ensure_env_exists (if any) short-circuits on existence.
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
 }
 
 _fixture_named_envs() {
@@ -75,7 +75,7 @@ TOML
     _stub_testenv_run
     run env_command run ruff check .
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv ruff check ."* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv ruff check ."* ]]
 }
 
 # ============================================================
@@ -87,7 +87,7 @@ TOML
     _stub_testenv_run
     run env_command run -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv pytest -v"* ]]
 }
 
 # ============================================================
@@ -100,7 +100,7 @@ TOML
     _stub_testenv_run
     run env_command run smoke -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/smoke/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/smoke/venv pytest -v"* ]]
 }
 
 @test "testenv run testenv -- <cmd>: explicit default name + '--' separator works" {
@@ -108,7 +108,7 @@ TOML
     _stub_testenv_run
     run env_command run testenv -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv pytest -v"* ]]
 }
 
 # ============================================================

@@ -44,12 +44,12 @@ teardown() {
 
 _make_fake_named_venv_with_state() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
     state_write "$name" "venv" provisioned_at=1700000000
 }
 
@@ -82,11 +82,11 @@ TOML
     _fixture_two_venv_envs
     _make_fake_named_venv_with_state smoke
     # Replace the venv python with a stub that fails 'import pytest'.
-    cat > .pyve/testenvs/smoke/venv/bin/python <<'SH'
+    cat > .pyve/envs/smoke/venv/bin/python <<'SH'
 #!/usr/bin/env bash
 exit 1
 SH
-    chmod +x .pyve/testenvs/smoke/venv/bin/python
+    chmod +x .pyve/envs/smoke/venv/bin/python
     run _test_env_has_pytest smoke
     [ "$status" -ne 0 ]
 }
@@ -94,11 +94,11 @@ SH
 @test "_test_env_has_pytest <named-name>: returns 0 when 'import pytest' succeeds" {
     _fixture_two_venv_envs
     _make_fake_named_venv_with_state smoke
-    cat > .pyve/testenvs/smoke/venv/bin/python <<'SH'
+    cat > .pyve/envs/smoke/venv/bin/python <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x .pyve/testenvs/smoke/venv/bin/python
+    chmod +x .pyve/envs/smoke/venv/bin/python
     run _test_env_has_pytest smoke
     [ "$status" -eq 0 ]
 }

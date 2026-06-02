@@ -10,9 +10,9 @@
 #   - resolve_env_path on any name is otherwise a pure pretty-printer.
 #   - lib/commands/update.sh exposes a private migration wrapper that
 #     update_project invokes (verified by sourcing + grep).
-#   - env_paths in lib/utils.sh emits the new paths (.pyve/testenvs/testenv/...).
+#   - env_paths in lib/utils.sh emits the new paths (.pyve/envs/testenv/...).
 #   - purge_env_dir in lib/utils.sh removes the new layout.
-#   - lib/utils.sh's gitignore template ignores .pyve/testenvs (not .pyve/testenv).
+#   - lib/utils.sh's gitignore template ignores .pyve/envs (not .pyve/testenv).
 #
 # Existing test_test_command.bats / test_status.bats fixtures are updated
 # separately to point at the new path; that update is part of M.h.3.
@@ -43,26 +43,26 @@ teardown() {
     resolve_env_path testenv >/dev/null
 
     # Migration happened: new path exists with original contents.
-    [ -d ".pyve/testenvs/testenv/venv" ]
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "legacy-marker" ]
+    [ -d ".pyve/envs/testenv/venv" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "legacy-marker" ]
     [ ! -d ".pyve/testenv" ]
-    [ -f ".pyve/testenvs/testenv/.state" ]
+    [ -f ".pyve/envs/testenv/.state" ]
 }
 
 @test "resolve_env_path testenv: greenfield project does NOT create any directories" {
     [ ! -d ".pyve" ]
-    [ "$(resolve_env_path testenv)" = ".pyve/testenvs/testenv/venv" ]
+    [ "$(resolve_env_path testenv)" = ".pyve/envs/testenv/venv" ]
     # Pure pretty-printer when neither legacy nor new state exists.
     [ ! -d ".pyve" ]
 }
 
 @test "resolve_env_path testenv: already-migrated state is a no-op (no churn)" {
-    mkdir -p ".pyve/testenvs/testenv/venv"
-    printf 'new-marker' > ".pyve/testenvs/testenv/venv/MARKER"
+    mkdir -p ".pyve/envs/testenv/venv"
+    printf 'new-marker' > ".pyve/envs/testenv/venv/MARKER"
 
     resolve_env_path testenv >/dev/null
     # Marker untouched; no .state appears if it wasn't already present.
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "new-marker" ]
 }
 
 @test "resolve_env_path other-name: never triggers migration (only 'testenv' has a legacy form)" {
@@ -70,7 +70,7 @@ teardown() {
     # An unrelated name lookup must not move .pyve/testenv/.
     resolve_env_path hardware >/dev/null
     [ -d ".pyve/testenv/venv" ]
-    [ ! -d ".pyve/testenvs/hardware" ]
+    [ ! -d ".pyve/envs/hardware" ]
 }
 
 @test "resolve_env_path root: never triggers migration (root is selection-only)" {
@@ -83,24 +83,24 @@ teardown() {
 # env_paths emits the new layout
 # ============================================================
 
-@test "env_paths: emits new .pyve/testenvs/testenv root + venv paths" {
+@test "env_paths: emits new .pyve/envs/testenv root + venv paths" {
     local out
     out="$(env_paths)"
     local root venv
     root="$(printf "%s" "$out" | sed -n '1p')"
     venv="$(printf "%s" "$out" | sed -n '2p')"
-    [ "$root" = ".pyve/testenvs/testenv" ]
-    [ "$venv" = ".pyve/testenvs/testenv/venv" ]
+    [ "$root" = ".pyve/envs/testenv" ]
+    [ "$venv" = ".pyve/envs/testenv/venv" ]
 }
 
 # ============================================================
 # purge_env_dir removes the new layout
 # ============================================================
 
-@test "purge_env_dir: removes .pyve/testenvs/testenv (new layout)" {
-    mkdir -p ".pyve/testenvs/testenv/venv/bin"
+@test "purge_env_dir: removes .pyve/envs/testenv (new layout)" {
+    mkdir -p ".pyve/envs/testenv/venv/bin"
     purge_env_dir >/dev/null 2>&1
-    [ ! -d ".pyve/testenvs/testenv" ]
+    [ ! -d ".pyve/envs/testenv" ]
 }
 
 @test "purge_env_dir: missing testenv prints info, no error" {
@@ -109,13 +109,13 @@ teardown() {
 }
 
 # ============================================================
-# gitignore template ignores the new layout (.pyve/testenvs)
+# gitignore template ignores the new layout (.pyve/envs)
 # ============================================================
 
-@test "gitignore template: pyve-managed section ignores .pyve/testenvs (not .pyve/testenv)" {
+@test "gitignore template: pyve-managed section ignores .pyve/envs (not .pyve/testenv)" {
     # write_gitignore_template writes to ./.gitignore in cwd.
     write_gitignore_template
-    grep -qxF ".pyve/testenvs" .gitignore
+    grep -qxF ".pyve/envs" .gitignore
     # Legacy entry not written for new projects.
     if grep -qxF ".pyve/testenv" .gitignore; then
         echo "stale legacy entry '.pyve/testenv' present in fresh .gitignore" >&2
@@ -134,7 +134,7 @@ teardown() {
 @test "_update_migrate_legacy_layout: invoking it migrates a legacy project" {
     mkdir -p ".pyve/testenv/venv/bin"
     _update_migrate_legacy_layout >/dev/null
-    [ -d ".pyve/testenvs/testenv/venv" ]
+    [ -d ".pyve/envs/testenv/venv" ]
     [ ! -d ".pyve/testenv" ]
 }
 

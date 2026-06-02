@@ -11,7 +11,7 @@
 # `_env_install_conda`).
 #
 # Sub-commands:
-#   pyve testenv init                    Create .pyve/testenvs/testenv/venv
+#   pyve testenv init                    Create .pyve/envs/testenv/venv
 #   pyve testenv install [-r <file>]     Install pytest (or -r reqs)
 #   pyve testenv purge                   Remove .pyve/testenv
 #   pyve testenv run <cmd> [args...]     exec a command inside testenv
@@ -190,7 +190,7 @@ _env_parse_iso_date() {
 # Story M.p — `testenv list` / `testenv prune`.
 #
 # `env_list`: walk the union of declared (PYVE_TESTENVS_NAMES) and
-# on-disk (`.pyve/testenvs/*/`) env names; for each, print one row
+# on-disk (`.pyve/envs/*/`) env names; for each, print one row
 # with name/backend/size/last-used/state.
 #
 # `env_prune`: three modes:
@@ -221,9 +221,9 @@ _env_list_all_names() {
             seen+="$name "
         fi
     done
-    if [[ -d ".pyve/testenvs" ]]; then
+    if [[ -d ".pyve/envs" ]]; then
         local d
-        for d in .pyve/testenvs/*/; do
+        for d in .pyve/envs/*/; do
             [[ -d "$d" ]] || continue
             name="$(basename "$d")"
             if [[ "$seen" != *" $name "* ]]; then
@@ -239,20 +239,20 @@ _env_list_one_row() {
     local name="$1"
     local backend size last_used state
     local on_disk=0
-    [[ -d ".pyve/testenvs/$name" ]] && on_disk=1
+    [[ -d ".pyve/envs/$name" ]] && on_disk=1
 
     if is_env_declared "$name"; then
         backend="$(_env_resolve_backend "$name" 2>/dev/null || printf 'venv')"
-    elif [[ -d ".pyve/testenvs/$name/conda" ]]; then
+    elif [[ -d ".pyve/envs/$name/conda" ]]; then
         backend="micromamba"
-    elif [[ -d ".pyve/testenvs/$name/venv" ]]; then
+    elif [[ -d ".pyve/envs/$name/venv" ]]; then
         backend="venv"
     else
         backend="?"
     fi
 
     if [[ "$on_disk" == "1" ]]; then
-        size="$(du -sh ".pyve/testenvs/$name" 2>/dev/null | awk '{print $1}')"
+        size="$(du -sh ".pyve/envs/$name" 2>/dev/null | awk '{print $1}')"
         [[ -z "$size" ]] && size="?"
     else
         size="--"
@@ -340,7 +340,7 @@ env_prune() {
         fi
     fi
 
-    if [[ ! -d ".pyve/testenvs" ]]; then
+    if [[ ! -d ".pyve/envs" ]]; then
         case "$mode" in
             orphan)        info "No orphaned testenvs to prune." ;;
             all)           info "No testenvs on disk to prune." ;;
@@ -352,7 +352,7 @@ env_prune() {
     # Walk on-disk envs and collect candidates per mode.
     local -a candidates=()
     local d name
-    for d in .pyve/testenvs/*/; do
+    for d in .pyve/envs/*/; do
         [[ -d "$d" ]] || continue
         name="$(basename "$d")"
         case "$mode" in
@@ -469,7 +469,7 @@ env_run() {
 #------------------------------------------------------------
 # Story M.j: per-env install lock
 #
-# `mkdir`-based atomic lock at `.pyve/testenvs/<name>/.lock/`. The
+# `mkdir`-based atomic lock at `.pyve/envs/<name>/.lock/`. The
 # holding pid is written to `.lock/pid` so a waiting process can name
 # who holds the lock. `flock(1)` is not on macOS by default — `mkdir`
 # covers the same surface (atomic acquire, serialized wait, fast-fail
@@ -486,7 +486,7 @@ env_run() {
 #------------------------------------------------------------
 
 _env_install_lock_dir() {
-    printf '%s' ".pyve/testenvs/$1/.lock"
+    printf '%s' ".pyve/envs/$1/.lock"
 }
 
 _env_acquire_install_lock() {
@@ -910,8 +910,8 @@ Notes:
   - The legacy spelling `pyve testenv <sub>` is preserved as a Category A
     delegation alias through the v3.x deprecation window (removal in v4.0).
     Every invocation prints a one-shot deprecation warning to stderr.
-  - Default `testenv` lives at .pyve/testenvs/testenv/venv
-  - Named environments (Story M.i+) live at .pyve/testenvs/<name>/{venv,conda}/
+  - Default `testenv` lives at .pyve/envs/testenv/venv
+  - Named environments (Story M.i+) live at .pyve/envs/<name>/{venv,conda}/
     Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
@@ -929,7 +929,7 @@ Notes:
       --all              — remove every env on disk (declared + orphaned).
                             Disk-driven; distinct from `env purge` no-arg,
                             which is config-driven.
-  - `install` acquires a per-env lock at .pyve/testenvs/<name>/.lock to
+  - `install` acquires a per-env lock at .pyve/envs/<name>/.lock to
     serialize concurrent installs into the same env. Default is wait+retry;
     `--no-wait` fast-fails with "another pyve process is installing
     '<name>' (pid N)" instead of waiting.

@@ -12,7 +12,7 @@
 #   provisioned_at=<unix epoch seconds>
 #   last_used_at=<unix epoch seconds or 0>
 #
-# `.state` lives at .pyve/testenvs/<name>/.state
+# `.state` lives at .pyve/envs/<name>/.state
 #
 # Surface under test:
 #   state_path <name>
@@ -50,9 +50,9 @@ _clear_state_vars() {
 # state_path
 # ============================================================
 
-@test "state_path: prints .pyve/testenvs/<name>/.state" {
-    [ "$(state_path testenv)" = ".pyve/testenvs/testenv/.state" ]
-    [ "$(state_path hardware)" = ".pyve/testenvs/hardware/.state" ]
+@test "state_path: prints .pyve/envs/<name>/.state" {
+    [ "$(state_path testenv)" = ".pyve/envs/testenv/.state" ]
+    [ "$(state_path hardware)" = ".pyve/envs/hardware/.state" ]
 }
 
 # ============================================================
@@ -65,26 +65,26 @@ _clear_state_vars() {
         manifest_sha256=abc123 \
         provisioned_at=1700000000 \
         last_used_at=1700000500
-    [ -f ".pyve/testenvs/hardware/.state" ]
-    grep -q "^backend=micromamba$"          ".pyve/testenvs/hardware/.state"
-    grep -q "^manifest=tests/env.yml$"      ".pyve/testenvs/hardware/.state"
-    grep -q "^manifest_sha256=abc123$"      ".pyve/testenvs/hardware/.state"
-    grep -q "^provisioned_at=1700000000$"   ".pyve/testenvs/hardware/.state"
-    grep -q "^last_used_at=1700000500$"     ".pyve/testenvs/hardware/.state"
+    [ -f ".pyve/envs/hardware/.state" ]
+    grep -q "^backend=micromamba$"          ".pyve/envs/hardware/.state"
+    grep -q "^manifest=tests/env.yml$"      ".pyve/envs/hardware/.state"
+    grep -q "^manifest_sha256=abc123$"      ".pyve/envs/hardware/.state"
+    grep -q "^provisioned_at=1700000000$"   ".pyve/envs/hardware/.state"
+    grep -q "^last_used_at=1700000500$"     ".pyve/envs/hardware/.state"
 }
 
 @test "state_write: minimal arg set defaults manifest='', sha='', last_used_at=0, provisioned_at=now" {
     local before; before=$(date +%s)
     state_write testenv venv
     local after; after=$(date +%s)
-    [ -f ".pyve/testenvs/testenv/.state" ]
-    grep -q "^backend=venv$"             ".pyve/testenvs/testenv/.state"
-    grep -q "^manifest=$"                ".pyve/testenvs/testenv/.state"
-    grep -q "^manifest_sha256=$"         ".pyve/testenvs/testenv/.state"
-    grep -q "^last_used_at=0$"           ".pyve/testenvs/testenv/.state"
+    [ -f ".pyve/envs/testenv/.state" ]
+    grep -q "^backend=venv$"             ".pyve/envs/testenv/.state"
+    grep -q "^manifest=$"                ".pyve/envs/testenv/.state"
+    grep -q "^manifest_sha256=$"         ".pyve/envs/testenv/.state"
+    grep -q "^last_used_at=0$"           ".pyve/envs/testenv/.state"
     # provisioned_at lies in [before, after].
     local pa
-    pa=$(grep '^provisioned_at=' ".pyve/testenvs/testenv/.state" | cut -d= -f2)
+    pa=$(grep '^provisioned_at=' ".pyve/envs/testenv/.state" | cut -d= -f2)
     [ "$pa" -ge "$before" ]
     [ "$pa" -le "$after" ]
 }
@@ -92,9 +92,9 @@ _clear_state_vars() {
 @test "state_write: overwrites an existing .state (no merge)" {
     state_write testenv venv manifest=old.txt last_used_at=42
     state_write testenv venv manifest=new.txt
-    grep -q "^manifest=new.txt$" ".pyve/testenvs/testenv/.state"
+    grep -q "^manifest=new.txt$" ".pyve/envs/testenv/.state"
     # last_used_at reverts to default 0 because state_write overwrites.
-    grep -q "^last_used_at=0$"   ".pyve/testenvs/testenv/.state"
+    grep -q "^last_used_at=0$"   ".pyve/envs/testenv/.state"
 }
 
 @test "state_write: unknown keyword arg hard-errors" {

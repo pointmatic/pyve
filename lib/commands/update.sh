@@ -75,10 +75,12 @@ update_project() {
     local previous_version
     previous_version="$(read_config_value "pyve_version")"
 
-    # Pre-step: migrate any legacy .pyve/testenv/venv/ layout to the v2.8
-    # .pyve/testenvs/testenv/venv/ shape. Silent on greenfield and on
-    # already-migrated projects; prints a one-line info() when an actual
-    # move happens. M.h.3 wires this; the helper lives in lib/envs.sh.
+    # Pre-step: opportunistically migrate any v2.7 `.pyve/testenv/venv/`
+    # or v2.8 `.pyve/testenvs/<name>/{venv,conda}/` layout to the v3
+    # `.pyve/envs/<name>/{venv,conda}/` shape (Story N.f). Silent on
+    # greenfield and on already-migrated projects; prints a one-line
+    # info() per boundary when an actual move happens. M.h.3 wires this;
+    # the helper lives in lib/envs.sh.
     _update_migrate_legacy_layout
 
     header_box "pyve update v$VERSION"

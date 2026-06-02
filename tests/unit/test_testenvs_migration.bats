@@ -7,7 +7,7 @@
 # (Story M.h.2). One helper, four outcome cases:
 #
 #   1. Legacy `.pyve/testenv/venv/` only          → migrate + write .state
-#   2. New `.pyve/testenvs/testenv/venv/` already → no-op (idempotent)
+#   2. New `.pyve/envs/testenv/venv/` already → no-op (idempotent)
 #   3. Both legacy + new exist                    → no-op (do not overwrite)
 #   4. Neither exists (greenfield project)        → no-op (no trigger)
 #
@@ -40,13 +40,13 @@ SH
 }
 
 _make_new_venv() {
-    mkdir -p ".pyve/testenvs/testenv/venv/bin"
-    cat > ".pyve/testenvs/testenv/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/testenv/venv/bin"
+    cat > ".pyve/envs/testenv/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/testenv/venv/bin/python"
-    printf 'new-marker' > ".pyve/testenvs/testenv/venv/MARKER"
+    chmod +x ".pyve/envs/testenv/venv/bin/python"
+    printf 'new-marker' > ".pyve/envs/testenv/venv/MARKER"
 }
 
 # ============================================================
@@ -58,19 +58,19 @@ SH
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path exists with original contents intact.
-    [ -d ".pyve/testenvs/testenv/venv" ]
-    [ -x ".pyve/testenvs/testenv/venv/bin/python" ]
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "legacy-marker" ]
+    [ -d ".pyve/envs/testenv/venv" ]
+    [ -x ".pyve/envs/testenv/venv/bin/python" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "legacy-marker" ]
     # Legacy path is gone (parent .pyve/testenv removed when empty).
     [ ! -d ".pyve/testenv" ]
     # .state was written with backend=venv and the defaults.
-    [ -f ".pyve/testenvs/testenv/.state" ]
-    grep -q "^backend=venv$"        ".pyve/testenvs/testenv/.state"
-    grep -q "^manifest=$"           ".pyve/testenvs/testenv/.state"
-    grep -q "^manifest_sha256=$"    ".pyve/testenvs/testenv/.state"
-    grep -q "^last_used_at=0$"      ".pyve/testenvs/testenv/.state"
+    [ -f ".pyve/envs/testenv/.state" ]
+    grep -q "^backend=venv$"        ".pyve/envs/testenv/.state"
+    grep -q "^manifest=$"           ".pyve/envs/testenv/.state"
+    grep -q "^manifest_sha256=$"    ".pyve/envs/testenv/.state"
+    grep -q "^last_used_at=0$"      ".pyve/envs/testenv/.state"
     # provisioned_at present and numeric.
-    grep -qE "^provisioned_at=[0-9]+$" ".pyve/testenvs/testenv/.state"
+    grep -qE "^provisioned_at=[0-9]+$" ".pyve/envs/testenv/.state"
 }
 
 @test "migrate: legacy-only → user sees a one-line info on stdout" {
@@ -80,7 +80,7 @@ SH
     # info() in lib/ui/core.sh prints to stdout; assert the migration
     # event is surfaced. Substring kept loose so message wording can evolve.
     [[ "$output" == *"testenv"* ]]
-    [[ "$output" == *".pyve/testenvs/testenv"* ]]
+    [[ "$output" == *".pyve/envs/testenv"* ]]
 }
 
 @test "migrate: provisioned_at reflects the legacy venv's mtime when available" {
@@ -95,7 +95,7 @@ SH
     fi
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
-    local pa; pa=$(grep '^provisioned_at=' ".pyve/testenvs/testenv/.state" | cut -d= -f2)
+    local pa; pa=$(grep '^provisioned_at=' ".pyve/envs/testenv/.state" | cut -d= -f2)
     # Allow ±2s slack for filesystem-precision noise.
     [ "$pa" -ge $(( target - 2 )) ]
     [ "$pa" -le $(( target + 2 )) ]
@@ -108,24 +108,24 @@ SH
 @test "migrate: already-migrated (new only) → no-op, no .state churn" {
     _make_new_venv
     state_write testenv venv manifest=req.txt last_used_at=12345
-    local before_state; before_state="$(cat .pyve/testenvs/testenv/.state)"
+    local before_state; before_state="$(cat .pyve/envs/testenv/.state)"
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path untouched.
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "new-marker" ]
     # .state untouched (no overwrite of an existing migrated env).
-    [ "$(cat .pyve/testenvs/testenv/.state)" = "$before_state" ]
+    [ "$(cat .pyve/envs/testenv/.state)" = "$before_state" ]
 }
 
 @test "migrate: idempotent (running twice on a legacy project produces the same result)" {
     _make_legacy_venv
     migrate_legacy_env_layout
-    local after_first; after_first="$(cat .pyve/testenvs/testenv/.state)"
+    local after_first; after_first="$(cat .pyve/envs/testenv/.state)"
     # Second invocation hits the already-migrated branch.
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
-    [ "$(cat .pyve/testenvs/testenv/.state)" = "$after_first" ]
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "legacy-marker" ]
+    [ "$(cat .pyve/envs/testenv/.state)" = "$after_first" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "legacy-marker" ]
 }
 
 # ============================================================
@@ -138,7 +138,7 @@ SH
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     # New path's marker intact (was not overwritten by legacy contents).
-    [ "$(cat .pyve/testenvs/testenv/venv/MARKER)" = "new-marker" ]
+    [ "$(cat .pyve/envs/testenv/venv/MARKER)" = "new-marker" ]
     # Legacy path still present (the helper does not touch it when the
     # new layout is already present — leaves it to the user / a later
     # cleanup story rather than silently deleting state).
@@ -161,7 +161,7 @@ SH
     run migrate_legacy_env_layout
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/testenv" ]
-    [ ! -d ".pyve/testenvs" ]
+    [ ! -d ".pyve/envs" ]
 }
 
 # ============================================================
@@ -182,9 +182,9 @@ SH
             cd \"\$workdir\"
             case '$case' in
                 legacy)           mkdir -p .pyve/testenv/venv ;;
-                already_migrated) mkdir -p .pyve/testenvs/testenv/venv
-                                  printf 'backend=venv\nmanifest=\nmanifest_sha256=\nprovisioned_at=0\nlast_used_at=0\n' > .pyve/testenvs/testenv/.state ;;
-                both)             mkdir -p .pyve/testenv/venv .pyve/testenvs/testenv/venv ;;
+                already_migrated) mkdir -p .pyve/envs/testenv/venv
+                                  printf 'backend=venv\nmanifest=\nmanifest_sha256=\nprovisioned_at=0\nlast_used_at=0\n' > .pyve/envs/testenv/.state ;;
+                both)             mkdir -p .pyve/testenv/venv .pyve/envs/testenv/venv ;;
                 greenfield)       : ;;
             esac
             migrate_legacy_env_layout >/dev/null

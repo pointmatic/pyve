@@ -1498,15 +1498,15 @@ is_file_empty() {
 # (`env_paths` + `ensure_env_exists` shared with `init` and
 # `test`).
 #
-# Post-M.h.3: derive both paths from `resolve_env_path testenv`
-# in lib/envs.sh — the single source of truth for the new
-# `.pyve/testenvs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
+# Post-M.h.3 / N.f: derive both paths from `resolve_env_path testenv`
+# in lib/envs.sh — the single source of truth for the v3
+# `.pyve/envs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
 # global in pyve.sh is retained as a back-compat constant for any
 # external scripts referencing it, but no internal code reads it.
 #============================================================
 
 # Emit two lines: testenv_root, then testenv_venv. Single source of
-# truth for both paths so callers do not hard-code `.pyve/testenvs/...`.
+# truth for both paths so callers do not hard-code `.pyve/envs/...`.
 # `resolve_env_path testenv` may trigger opportunistic migration
 # (M.h.3); we tolerate that side effect because every caller of
 # `env_paths` is about to act on the testenv anyway.
@@ -1618,15 +1618,16 @@ ensure_env_exists() {
 # Remove the testenv directory (no-op message if absent).
 #
 # Story M.i.4: accepts an optional `<name>` argument (default `testenv`).
-# Removes the env root (`.pyve/testenvs/<name>/`), not just the inner
-# `venv/` — covers `.state` and any future siblings. Backend-agnostic
-# (rm -rf doesn't care whether the env is venv or conda underneath).
+# Removes the env root (`.pyve/envs/<name>/` in v3, was `.pyve/testenvs/<name>/`
+# pre-N.f), not just the inner `venv/` — covers `.state` and any future
+# siblings. Backend-agnostic (rm -rf doesn't care whether the env is
+# venv or conda underneath).
 purge_env_dir() {
     local name="${1:-testenv}"
     local testenv_venv testenv_root
     testenv_venv="$(resolve_env_path "$name")"
-    # `dirname` handles both layout shapes — .pyve/testenvs/<name>/venv
-    # (venv-backed) and .pyve/testenvs/<name>/conda (conda-backed) —
+    # `dirname` handles both layout shapes — .pyve/envs/<name>/venv
+    # (venv-backed) and .pyve/envs/<name>/conda (conda-backed) —
     # without hard-coding the suffix.
     testenv_root="$(dirname "$testenv_venv")"
     if [[ -d "$testenv_root" ]]; then

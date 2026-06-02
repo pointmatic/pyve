@@ -222,10 +222,10 @@ TOML
 @test "resolve_env_path: per-env layout matches plan doc TC-M.2" {
     _fixture_full_config
     read_env_config
-    # testenv: venv-backed → .pyve/testenvs/testenv/venv
-    [ "$(resolve_env_path testenv)" = ".pyve/testenvs/testenv/venv" ]
-    # hardware: micromamba-backed → .pyve/testenvs/hardware/conda
-    [ "$(resolve_env_path hardware)" = ".pyve/testenvs/hardware/conda" ]
+    # testenv: venv-backed → .pyve/envs/testenv/venv
+    [ "$(resolve_env_path testenv)" = ".pyve/envs/testenv/venv" ]
+    # hardware: micromamba-backed → .pyve/envs/hardware/conda
+    [ "$(resolve_env_path hardware)" = ".pyve/envs/hardware/conda" ]
 }
 
 @test "resolve_env_path: 'root' resolves to the project main venv path" {

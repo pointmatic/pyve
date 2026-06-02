@@ -75,7 +75,7 @@ teardown() {
 @test "ensure_env_exists drift-check: pre-flight gates the silent no-op (loud error instead)" {
     # Build a fake existing venv-backed testenv with a pyvenv.cfg that
     # has a stale version recorded, so the drift block is entered.
-    local target=".pyve/testenvs/testenv/venv"
+    local target=".pyve/envs/testenv/venv"
     mkdir -p "$target/bin"
     cat > "$target/pyvenv.cfg" << 'EOF'
 home = /usr/local/bin

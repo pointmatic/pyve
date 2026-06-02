@@ -43,19 +43,19 @@ teardown() {
     cleanup_test_dir
 }
 
-# Drop a fake venv python at .pyve/testenvs/<name>/venv/bin/python that
+# Drop a fake venv python at .pyve/envs/<name>/venv/bin/python that
 # exits with a configurable code so we can drive matrix exit aggregation
 # from a test's POV. `_rc` of 0 → success; otherwise the python stub
 # `exit $_rc`s.
 _make_fake_named_venv_with_state() {
     local name="$1"
     local rc="${2:-0}"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<SH
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<SH
 #!/usr/bin/env bash
 exit $rc
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
     state_write "$name" "venv" provisioned_at=1700000000
 }
 

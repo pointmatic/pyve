@@ -79,7 +79,7 @@ SH
     run test_tests --env heavy -q
     [ "$status" -eq 0 ]
     # Auto-provision wrote the venv on disk.
-    [ -x ".pyve/testenvs/heavy/venv/bin/python" ]
+    [ -x ".pyve/envs/heavy/venv/bin/python" ]
     # The install path ran with the declared requirements file.
     [[ "$output" == *"-r tests/heavy.txt"* ]]
     # The lazy hard-error message from M.m is gone.
@@ -101,7 +101,7 @@ SH
     [[ "$output" == *"PYVE_NO_AUTO_PROVISION"* ]]
     [[ "$output" == *"pyve testenv install heavy"* ]]
     # Auto-provision did NOT run.
-    [ ! -d ".pyve/testenvs/heavy/venv" ]
+    [ ! -d ".pyve/envs/heavy/venv" ]
 }
 
 # ============================================================
@@ -112,12 +112,12 @@ SH
     skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
     _fixture_lazy_heavy
     # Pre-provision heavy by hand.
-    mkdir -p .pyve/testenvs/heavy/venv/bin
-    cat > .pyve/testenvs/heavy/venv/bin/python <<'SH'
+    mkdir -p .pyve/envs/heavy/venv/bin
+    cat > .pyve/envs/heavy/venv/bin/python <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x .pyve/testenvs/heavy/venv/bin/python
+    chmod +x .pyve/envs/heavy/venv/bin/python
     state_write heavy venv
 
     # Stub run_cmd so we can prove `_env_install_venv` was NOT called
@@ -147,7 +147,7 @@ SH
     [ "$status" -eq 0 ]
     # Lock dir cleaned up — the M.j release happens regardless of
     # whether the install was bulk or auto-provisioned.
-    [ ! -d ".pyve/testenvs/heavy/.lock" ]
+    [ ! -d ".pyve/envs/heavy/.lock" ]
 }
 
 # ============================================================

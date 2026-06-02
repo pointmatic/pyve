@@ -8,7 +8,7 @@
 # Dispatcher accepts an optional positional <name> after `init`.
 # Routing rules:
 #   - no arg                  → default `testenv`
-#   - declared venv-backed    → create at .pyve/testenvs/<name>/venv
+#   - declared venv-backed    → create at .pyve/envs/<name>/venv
 #   - reserved `root`         → hard-error (selection-only)
 #   - undeclared              → hard-error (with [tool.pyve.testenvs] hint)
 #   - conda-backed declared   → M.k stub hard-error
@@ -69,21 +69,21 @@ TOML
     _stub_run_cmd_creates_venv
     run env_command init
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv/venv" ]
+    [ -d ".pyve/envs/testenv/venv" ]
 }
 
 # ============================================================
 # with-arg routing
 # ============================================================
 
-@test "testenv init <name>: declared venv-backed name creates at .pyve/testenvs/<name>/venv" {
+@test "testenv init <name>: declared venv-backed name creates at .pyve/envs/<name>/venv" {
     _fixture_named_envs
     _stub_run_cmd_creates_venv
     run env_command init smoke
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/smoke/venv" ]
+    [ -d ".pyve/envs/smoke/venv" ]
     # Default testenv NOT created as a side effect.
-    [ ! -d ".pyve/testenvs/testenv/venv" ]
+    [ ! -d ".pyve/envs/testenv/venv" ]
 }
 
 @test "testenv init <name>: reserved 'root' hard-errors" {
@@ -91,7 +91,7 @@ TOML
     run env_command init root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
-    [ ! -d ".pyve/testenvs/root" ]
+    [ ! -d ".pyve/envs/root" ]
 }
 
 @test "testenv init <name>: undeclared name hard-errors with [tool.pyve.testenvs] hint" {
@@ -100,7 +100,7 @@ TOML
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
     [[ "$output" == *"tool.pyve.testenvs"* ]]
-    [ ! -d ".pyve/testenvs/bogus" ]
+    [ ! -d ".pyve/envs/bogus" ]
 }
 
 @test "testenv init <name>: conda-backed name with missing manifest file hard-errors (M.k)" {
@@ -113,5 +113,5 @@ TOML
     run env_command init hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
-    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
+    [ ! -d ".pyve/envs/hardware/conda/conda-meta" ]
 }

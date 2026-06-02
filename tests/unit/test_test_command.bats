@@ -51,12 +51,12 @@ teardown() {
 # Provide a fake testenv python so the final `exec` in the testenv
 # branch succeeds without a real venv.
 _make_fake_testenv_python() {
-    mkdir -p ".pyve/testenvs/testenv/venv/bin"
-    cat > ".pyve/testenvs/testenv/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/testenv/venv/bin"
+    cat > ".pyve/envs/testenv/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/testenv/venv/bin/python"
+    chmod +x ".pyve/envs/testenv/venv/bin/python"
 }
 
 #============================================================

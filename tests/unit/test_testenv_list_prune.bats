@@ -49,12 +49,12 @@ _make_env_on_disk() {
     local name="$1" backend="${2:-venv}" last_used="${3:-0}"
     local kind="venv"
     [[ "$backend" == "micromamba" ]] && kind="conda"
-    mkdir -p ".pyve/testenvs/$name/$kind/bin"
-    cat > ".pyve/testenvs/$name/$kind/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/$kind/bin"
+    cat > ".pyve/envs/$name/$kind/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/$kind/bin/python"
+    chmod +x ".pyve/envs/$name/$kind/bin/python"
     state_write "$name" "$backend" provisioned_at=1735689600 last_used_at="$last_used"
 }
 
@@ -169,15 +169,15 @@ TOML
     _make_env_on_disk old-stuff venv 1735776000
     run env_command prune --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/old-stuff" ]
+    [ -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/old-stuff" ]
 }
 
 @test "testenv prune (no args): reserved 'testenv' is never orphaned (no pyproject)" {
     _make_env_on_disk testenv venv 1735776000
     run env_command prune --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
+    [ -d ".pyve/envs/testenv" ]
 }
 
 @test "testenv prune (no args): nothing to do prints info and exits 0" {
@@ -209,9 +209,9 @@ TOML
     _make_env_on_disk fresh venv 1775347200
     run env_command prune --unused-since 2026-01-01 --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
-    [ -d ".pyve/testenvs/fresh" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/fresh" ]
 }
 
 @test "testenv prune --unused-since: 'never used' envs (last_used=0) are preserved" {
@@ -222,7 +222,7 @@ TOML
     _make_env_on_disk testenv venv 0
     run env_command prune --unused-since 2026-01-01 --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
+    [ -d ".pyve/envs/testenv" ]
 }
 
 @test "testenv prune --unused-since: bad date format hard-errors" {
@@ -246,9 +246,9 @@ TOML
     _make_env_on_disk old-stuff venv 1735776000
     run env_command prune --all --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
-    [ ! -d ".pyve/testenvs/old-stuff" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ ! -d ".pyve/envs/old-stuff" ]
 }
 
 # ============================================================

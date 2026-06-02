@@ -19,7 +19,7 @@
 #   ensure_env_exists [<name>]
 #     in lib/utils.sh — name-aware existence-or-create. No arg defaults
 #     to the reserved `testenv` (today's behavior). With arg: validates
-#     via the two gates above, then creates `.pyve/testenvs/<name>/venv`
+#     via the two gates above, then creates `.pyve/envs/<name>/venv`
 #     for venv-backed envs.
 #
 # Bundle scope: M.i.1 is internal-helpers-only — no leaf CLI changes.
@@ -171,18 +171,18 @@ TOML
 @test "ensure_env_exists: no arg creates the default testenv venv at new path" {
     _stub_run_cmd_creates_venv
     ensure_env_exists
-    [ -d ".pyve/testenvs/testenv/venv" ]
-    [ -x ".pyve/testenvs/testenv/venv/bin/python" ]
+    [ -d ".pyve/envs/testenv/venv" ]
+    [ -x ".pyve/envs/testenv/venv/bin/python" ]
 }
 
 @test "ensure_env_exists: no arg is idempotent" {
     _stub_run_cmd_creates_venv
     ensure_env_exists
     local marker_mtime_a
-    marker_mtime_a=$(stat -f %m ".pyve/testenvs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/testenvs/testenv/venv/bin/python")
+    marker_mtime_a=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
     ensure_env_exists
     local marker_mtime_b
-    marker_mtime_b=$(stat -f %m ".pyve/testenvs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/testenvs/testenv/venv/bin/python")
+    marker_mtime_b=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
     [ "$marker_mtime_a" = "$marker_mtime_b" ]
 }
 
@@ -190,14 +190,14 @@ TOML
 # ensure_env_exists (with arg) — name-aware
 # ============================================================
 
-@test "ensure_env_exists: with declared venv-backed name creates at .pyve/testenvs/<name>/venv" {
+@test "ensure_env_exists: with declared venv-backed name creates at .pyve/envs/<name>/venv" {
     _fixture_named_envs
     _stub_run_cmd_creates_venv
     ensure_env_exists smoke
-    [ -d ".pyve/testenvs/smoke/venv" ]
-    [ -x ".pyve/testenvs/smoke/venv/bin/python" ]
+    [ -d ".pyve/envs/smoke/venv" ]
+    [ -x ".pyve/envs/smoke/venv/bin/python" ]
     # The default testenv is NOT created as a side effect.
-    [ ! -d ".pyve/testenvs/testenv/venv" ]
+    [ ! -d ".pyve/envs/testenv/venv" ]
 }
 
 @test "ensure_env_exists: reserved 'root' is rejected (not a testenv)" {
@@ -205,7 +205,7 @@ TOML
     run ensure_env_exists root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
-    [ ! -d ".pyve/testenvs/root" ]
+    [ ! -d ".pyve/envs/root" ]
 }
 
 @test "ensure_env_exists: undeclared name is rejected with [tool.pyve.testenvs] hint" {
@@ -214,7 +214,7 @@ TOML
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
     [[ "$output" == *"tool.pyve.testenvs"* ]]
-    [ ! -d ".pyve/testenvs/bogus" ]
+    [ ! -d ".pyve/envs/bogus" ]
 }
 
 @test "ensure_env_exists: conda-backed name with missing manifest file hard-errors (M.k)" {
@@ -227,7 +227,7 @@ TOML
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
     # Conda env was not created.
-    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
+    [ ! -d ".pyve/envs/hardware/conda/conda-meta" ]
 }
 
 # ============================================================

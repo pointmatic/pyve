@@ -15,8 +15,9 @@
 # Reserved names:
 #   - `root`    — the project's main `.venv/` (or conda env). NOT a
 #                 testenv; selection-only. Cannot be redeclared.
-#   - `testenv` — the well-known default at .pyve/testenvs/testenv/...
-#                 MAY be redeclared.
+#   - `testenv` — the well-known default at .pyve/envs/testenv/... (v3;
+#                 v2.8 lived at .pyve/testenvs/testenv/...). MAY be
+#                 redeclared.
 #
 # State populated by `read_env_config` (V3 wire format):
 #   PYVE_TESTENVS_DEFAULT       — name of the default env
@@ -220,16 +221,16 @@ assert_env_venv_backend() {
     if [[ "$backend" == "venv" ]]; then
         return 0
     fi
-    printf "error: 'pyve testenv run' does not yet support conda-backed testenv '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/testenvs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
+    printf "error: 'pyve testenv run' does not yet support conda-backed testenv '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/envs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
     return 1
 }
 
 # =====================================================================
-# .state file helpers (Story M.h.1)
+# .state file helpers (Story M.h.1; N.f relocated to .pyve/envs/)
 # =====================================================================
 #
-# Each named testenv has a sibling `.state` file at
-# .pyve/testenvs/<name>/.state that records provisioning + usage data.
+# Each named env has a sibling `.state` file at
+# .pyve/envs/<name>/.state that records provisioning + usage data.
 # Schema is plain key=value lines, sourceable:
 #
 #   backend=venv|micromamba|inherit
@@ -237,12 +238,10 @@ assert_env_venv_backend() {
 #   manifest_sha256=<64-hex or empty>
 #   provisioned_at=<unix epoch seconds>
 #   last_used_at=<unix epoch seconds or 0>
-#
-# Consumers (none yet in M.h.1; first is M.h.2's migration helper).
 
 # Print the .state file path for <name>.
 state_path() {
-    printf '%s' ".pyve/testenvs/$1/.state"
+    printf '%s' ".pyve/envs/$1/.state"
 }
 
 # Write/overwrite the .state file for <name>. Required: <name> <backend>.
@@ -329,44 +328,53 @@ state_touch_last_used() {
 }
 
 # =====================================================================
-# Legacy-layout migration (Story M.h.2)
+# Legacy-layout migration (Story M.h.2; N.f extends to v3)
 # =====================================================================
 #
-# v2.7 and earlier: the single testenv lived at `.pyve/testenv/venv/`
-# (singular, hard-coded via `TESTENV_DIR_NAME`).
-# v2.8+: every testenv lives at `.pyve/testenvs/<name>/{venv,conda}/`
-# (plural, name-keyed). The reserved `testenv` resolves to
-# `.pyve/testenvs/testenv/venv/`.
+# Three layout generations, three boundaries:
 #
-# `migrate_legacy_env_layout` is the one-time mover. Four cases:
+#   v2.7  →  .pyve/testenv/venv/                (singular, TESTENV_DIR_NAME)
+#   v2.8  →  .pyve/testenvs/<name>/{venv,conda}/  (plural, name-keyed)
+#   v3.0  →  .pyve/envs/<name>/{venv,conda}/      (Story N.f, env vocabulary)
+#
+# `migrate_legacy_env_layout` is the opportunistic mover for both
+# boundaries. It runs as a side effect of `resolve_env_path` and as a
+# pre-step in `pyve update`, so users on v2.7/v2.8 layouts pick up the
+# move without explicit action. The deterministic, fully backed-up
+# variant lives in `pyve self migrate` (Story N.g).
+#
+# Four-case shape preserved across both boundaries:
 #   1. legacy only        → mv + write initial .state + info log
-#   2. new already present → no-op (idempotent)
-#   3. both exist         → no-op (preserve new; leave legacy alone)
+#   2. v3 already present → no-op (idempotent)
+#   3. both exist         → no-op (preserve v3; leave legacy alone)
 #   4. neither (greenfield) → no-op
-#
-# Standalone in M.h.2 — call sites land in M.h.3 (`pyve update` hook
-# and the opportunistic-migration fallback in `resolve_env_path`).
 migrate_legacy_env_layout() {
+    # --- v2.7 → v3: .pyve/testenv/venv/ → .pyve/envs/testenv/venv/ ---
+    _migrate_legacy_env_v27_to_v3
+    # --- v2.8 → v3: .pyve/testenvs/<name>/* → .pyve/envs/<name>/* ---
+    _migrate_legacy_env_v28_to_v3
+}
+
+# v2.7 (singular) → v3 mover. Handles the original M.h.2 case; the v3
+# destination is `.pyve/envs/testenv/...` rather than v2.8's
+# `.pyve/testenvs/testenv/...`.
+_migrate_legacy_env_v27_to_v3() {
     local legacy=".pyve/testenv/venv"
-    local new_root=".pyve/testenvs/testenv"
+    local new_root=".pyve/envs/testenv"
     local new_venv="$new_root/venv"
 
-    # Case 2 + 3: new already exists → no-op. Preserve any user-written
-    # .state in the new layout; do not touch the legacy dir even if it
-    # also exists (a later cleanup story can remove orphan legacy dirs
-    # — silent deletion of user state here is the wrong default).
+    # Case 2 + 3: v3 already present → no-op.
     if [[ -d "$new_venv" ]]; then
         return 0
     fi
-
-    # Case 4: greenfield. Nothing to migrate.
+    # Case 4: greenfield for this boundary.
     if [[ ! -d "$legacy" ]]; then
         return 0
     fi
 
-    # Case 1: migrate. Capture legacy mtime first — the `mv` will
-    # preserve it on most filesystems, but we read it here so the
-    # `.state`'s `provisioned_at` reflects the original creation epoch.
+    # Case 1: migrate. Capture legacy mtime so the new `.state` records
+    # the original provisioning epoch (mv preserves mtime on most FSes,
+    # but we read it explicitly).
     local legacy_mtime=""
     if [[ "$(uname)" == "Darwin" ]]; then
         legacy_mtime="$(stat -f %m "$legacy" 2>/dev/null || true)"
@@ -376,59 +384,103 @@ migrate_legacy_env_layout() {
 
     mkdir -p "$new_root"
     mv "$legacy" "$new_venv"
-    # Clean up the now-empty `.pyve/testenv/` parent. If it isn't empty
-    # (a future contributor's other content), leave it; `rmdir` will
-    # fail silently and we move on.
     rmdir ".pyve/testenv" 2>/dev/null || true
 
-    # Write initial .state via the M.h.1 writer. Default backend=venv —
-    # the legacy layout only ever held venv-backed envs (the conda case
-    # was always main-env-only and never produced a .pyve/testenv/).
     local state_args=("testenv" "venv")
     if [[ -n "$legacy_mtime" ]]; then
         state_args+=("provisioned_at=$legacy_mtime")
     fi
     state_write "${state_args[@]}"
 
-    # User-visible one-liner. info() lives in lib/ui/core.sh.
-    info "Migrated legacy testenv layout: .pyve/testenv/venv → .pyve/testenvs/testenv/venv"
+    info "Migrated v2.7 testenv layout: .pyve/testenv/venv → .pyve/envs/testenv/venv"
+}
+
+# v2.8 (plural) → v3 mover. Walks every `.pyve/testenvs/<name>/` entry
+# and moves its inner `venv/`, `conda/`, and sibling `.state` to the
+# matching `.pyve/envs/<name>/` location. Per-env idempotent.
+_migrate_legacy_env_v28_to_v3() {
+    local legacy_root=".pyve/testenvs"
+    # Case 4: greenfield for this boundary.
+    if [[ ! -d "$legacy_root" ]]; then
+        return 0
+    fi
+
+    local moved_any=0
+    local entry name new_dir
+    for entry in "$legacy_root"/*/; do
+        # `*/` literal stays when nothing matched the glob.
+        [[ -d "$entry" ]] || continue
+        name="$(basename "$entry")"
+        new_dir=".pyve/envs/$name"
+
+        # Per-env case 2 + 3: v3 inner dirs already present → leave
+        # legacy entry alone (preserve v3; silent deletion of user
+        # state is the wrong default).
+        if [[ -d "$new_dir/venv" || -d "$new_dir/conda" ]]; then
+            continue
+        fi
+
+        # Per-env case 1: at least one inner artifact (venv/, conda/,
+        # or .state) exists under legacy and the v3 dest is empty.
+        mkdir -p "$new_dir"
+        [[ -d "$entry/venv"  ]] && mv "$entry/venv"  "$new_dir/venv"
+        [[ -d "$entry/conda" ]] && mv "$entry/conda" "$new_dir/conda"
+        [[ -f "$entry/.state" ]] && mv "$entry/.state" "$new_dir/.state"
+        # Drop the now-empty legacy entry; leave it alone if anything
+        # else (lock dirs, future contrib state) was tucked inside.
+        rmdir "$entry" 2>/dev/null || true
+        moved_any=1
+    done
+
+    # Clean up the now-empty `.pyve/testenvs/` parent if every entry
+    # moved cleanly. Leave it alone otherwise.
+    rmdir "$legacy_root" 2>/dev/null || true
+
+    if [[ "$moved_any" == "1" ]]; then
+        info "Migrated v2.8 testenv layout: .pyve/testenvs/<name>/ → .pyve/envs/<name>/"
+    fi
 }
 
 # Resolve the on-disk path for <name>. Does NOT check existence; that is
-# the caller's responsibility. Path shape per plan doc TC-M.2:
-#   root      → .venv          (the project main venv; conda case TBD M.h)
-#   <name>    → .pyve/testenvs/<name>/{venv|conda}/  (per declared backend)
-#               Reserved `testenv` follows the same shape (always venv unless
-#               redeclared) for back-compat with the existing layout.
+# the caller's responsibility. Path shape (N.f):
+#   root      → .venv          (the project main venv; micromamba main-env
+#                                relocation to .pyve/envs/root/conda/
+#                                is owned by `pyve self migrate`, Story N.g)
+#   <name>    → .pyve/envs/<name>/{venv|conda}/  (per declared backend)
 resolve_env_path() {
     local name="$1"
     if [[ "$name" == "root" ]]; then
-        # Main project env. M.h will reconcile this with main-env conda
-        # backends; for now this matches today's .venv assumption.
+        # Main project env. Pre-N.g this still maps to .venv; N.g's
+        # deterministic migrator owns the micromamba main-env move.
         printf '%s' ".venv"
         return 0
     fi
-    # Opportunistic-migration fallback (M.h.3): if the caller is asking
-    # for the reserved `testenv` and a legacy `.pyve/testenv/venv/`
-    # exists where the new layout would be, run the migration as a side
-    # effect before returning the new path. This is what makes `pyve
-    # test` etc. work even before the user has run `pyve update` on a
-    # v2.7-era project. The migration is idempotent and a no-op when
-    # the new layout already exists.
+    # Opportunistic-migration fallback. Two trigger conditions:
+    #   (a) v2.7 legacy at `.pyve/testenv/venv/` (only when asking for
+    #       reserved `testenv`)
+    #   (b) v2.8 legacy at `.pyve/testenvs/<name>/...` for the env being
+    #       asked for
+    # Either trigger fires the full migrator (it's a cheap pair of dir
+    # checks per branch); the migrator is internally idempotent.
+    local v3_venv=".pyve/envs/${name}/venv"
+    local v3_conda=".pyve/envs/${name}/conda"
     if [[ "$name" == "testenv" ]] \
-       && [[ ! -d ".pyve/testenvs/testenv/venv" ]] \
+       && [[ ! -d "$v3_venv" ]] \
        && [[ -d ".pyve/testenv/venv" ]]; then
+        migrate_legacy_env_layout
+    elif [[ ! -d "$v3_venv" ]] \
+         && [[ ! -d "$v3_conda" ]] \
+         && [[ -d ".pyve/testenvs/${name}" ]]; then
         migrate_legacy_env_layout
     fi
     local backend
     # Story M.k: dispatch on the *resolved* backend so `inherit` produces
     # a venv-shaped path when main is venv (and a conda-shaped path when
-    # main is micromamba). Before M.k, `inherit` was unconditionally
-    # conda-shaped; that was wrong for main=venv projects.
+    # main is micromamba).
     backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "micromamba" ]]; then
-        printf '%s' ".pyve/testenvs/${name}/conda"
+        printf '%s' ".pyve/envs/${name}/conda"
     else
-        printf '%s' ".pyve/testenvs/${name}/venv"
+        printf '%s' ".pyve/envs/${name}/venv"
     fi
 }

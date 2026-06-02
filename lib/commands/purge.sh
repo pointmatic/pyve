@@ -7,7 +7,7 @@
 # Removes the venv / micromamba env, version manager files, .envrc,
 # .env (only if empty — v0.6.0 smart purge), pyve-managed sections of
 # .gitignore, and the .pyve/ directory. Optionally preserves
-# .pyve/testenvs/ via --keep-testenv (used by `init --force` to avoid
+# .pyve/envs/ via --keep-testenv (used by `init --force` to avoid
 # rebuilding the dev/test runner across re-inits).
 #
 # Function-name note: this function is named `purge_project` per the
@@ -92,17 +92,34 @@ purge_project() {
     _purge_venv "$venv_dir"
 
     # Remove .pyve directory (config and micromamba envs).
-    # Post-M.h.3: `--keep-testenv` preserves the whole `.pyve/testenvs/`
-    # tree (the default `testenv` plus any user-declared named envs from
-    # [tool.pyve.testenvs]). The previous semantics preserved only the
-    # singleton legacy `.pyve/testenv/` — the named-envs generalization
-    # makes "don't blow away my testenv work" cover the whole directory.
+    # N.f: in v3 the named-env tree lives at `.pyve/envs/<name>/<backend>/`
+    # and shares its parent with the micromamba main env (pre-N.g layout
+    # at `.pyve/envs/<configured_name>/` — no /conda subdir). `--keep-testenv`
+    # therefore preserves `.pyve/envs/` as a whole and surgically deletes
+    # only the micromamba main-env subdir (identified from `.pyve/config`).
+    # The legacy `.pyve/testenvs/` directory is also preserved defensively
+    # in case the opportunistic migrator (`migrate_legacy_env_layout`)
+    # hasn't run yet on a v2.8 project. Granular per-`purpose` preservation
+    # is N.g's deterministic-migrator territory.
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
-            if [[ -d ".pyve/testenvs" ]]; then
-                rm -rf ".pyve/config" ".pyve/envs" 2>/dev/null || true
-                find ".pyve" -mindepth 1 -maxdepth 1 ! -name "testenvs" -exec rm -rf {} + 2>/dev/null || true
-                success "Removed .pyve directory contents (preserved .pyve/testenvs/)"
+            if [[ -d ".pyve/envs" ]] || [[ -d ".pyve/testenvs" ]]; then
+                local main_env_subdir=""
+                if [[ -f ".pyve/config" ]]; then
+                    local cfg_backend
+                    cfg_backend="$(read_config_value backend 2>/dev/null || true)"
+                    if [[ "$cfg_backend" == "micromamba" ]]; then
+                        main_env_subdir="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+                    fi
+                fi
+                rm -rf ".pyve/config" 2>/dev/null || true
+                if [[ -n "$main_env_subdir" ]] && [[ -d ".pyve/envs/$main_env_subdir" ]]; then
+                    rm -rf ".pyve/envs/$main_env_subdir" 2>/dev/null || true
+                fi
+                find ".pyve" -mindepth 1 -maxdepth 1 \
+                    ! -name "envs" ! -name "testenvs" \
+                    -exec rm -rf {} + 2>/dev/null || true
+                success "Removed .pyve directory contents (preserved .pyve/envs/ test environments)"
             else
                 rm -rf ".pyve"
                 success "Removed .pyve directory (config and micromamba environments)"
@@ -232,7 +249,7 @@ Arguments:
   <dir>                       Custom venv directory name (default: .venv)
 
 Options:
-  --keep-testenv              Preserve .pyve/testenvs/ (all dev/test runner envs)
+  --keep-testenv              Preserve .pyve/envs/ (all dev/test runner envs)
   --yes, -y                   Skip the destructive-confirmation prompt.
                               Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
 
