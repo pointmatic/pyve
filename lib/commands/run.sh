@@ -27,22 +27,38 @@ run_command() {
         exit 1
     fi
 
-    # Detect active backend by checking what exists
+    # Detect active backend. Authoritative source is .pyve/config's
+    # `backend:` field; the directory heuristic is only a fallback for
+    # legacy projects with no config. Story N.j.1: post-N.f, the
+    # `.pyve/envs/*` glob also matches testenvs (e.g. .pyve/envs/testenv/),
+    # so the pre-N.f "any child under .pyve/envs/ means micromamba" rule
+    # would mis-route every venv-backed project that has a testenv to the
+    # micromamba branch — and within micromamba projects, mis-route the
+    # main env to whichever sibling sorted first alphabetically.
     local backend=""
     local venv_dir="$DEFAULT_VENV_DIR"
+    local mm_env_name=""
 
-    # Check for micromamba environment first
-    if [[ -d ".pyve/envs" ]]; then
-        # Find the first environment directory
-        local env_dirs=(.pyve/envs/*)
-        if [[ -d "${env_dirs[0]}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
-            backend="micromamba"
+    if [[ -f ".pyve/config" ]]; then
+        backend="$(read_config_value backend 2>/dev/null || printf '')"
+        if [[ "$backend" == "micromamba" ]]; then
+            mm_env_name="$(read_config_value micromamba.env_name 2>/dev/null || printf '')"
         fi
     fi
 
-    # Check for venv if micromamba not found
-    if [[ -z "$backend" ]] && [[ -d "$venv_dir" ]]; then
-        backend="venv"
+    # Fallback for legacy projects with no .pyve/config: prefer the
+    # explicit `.venv/` signal; otherwise look for a single-tenant
+    # `.pyve/envs/<name>/` (pre-N.f micromamba layout).
+    if [[ -z "$backend" ]]; then
+        if [[ -d "$venv_dir" ]]; then
+            backend="venv"
+        elif [[ -d ".pyve/envs" ]]; then
+            local env_dirs=(.pyve/envs/*)
+            if [[ -d "${env_dirs[0]:-}" ]] && [[ "${env_dirs[0]}" != ".pyve/envs/*" ]]; then
+                backend="micromamba"
+                mm_env_name="$(basename "${env_dirs[0]}")"
+            fi
+        fi
     fi
 
     # Error if no environment found
@@ -93,12 +109,16 @@ run_command() {
             exit 1
         fi
 
-        # Find environment directory
-        local env_dirs=(.pyve/envs/*)
-        local env_path="${env_dirs[0]}"
-
+        # Identify the micromamba main env. mm_env_name was set above
+        # from `.pyve/config:micromamba.env_name` (or, for legacy
+        # projects with no config, from the sole .pyve/envs/* entry).
+        if [[ -z "$mm_env_name" ]]; then
+            log_error "Micromamba env_name not recorded in .pyve/config"
+            exit 1
+        fi
+        local env_path=".pyve/envs/$mm_env_name"
         if [[ ! -d "$env_path" ]]; then
-            log_error "Micromamba environment not found"
+            log_error "Micromamba environment not found at $env_path"
             exit 1
         fi
 

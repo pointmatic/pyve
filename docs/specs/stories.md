@@ -246,6 +246,28 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 **File touched:** [docs/specs/project-essentials.md](project-essentials.md). Net change: +5 top-level entries (`### …`) at the end of the file + 1 paragraph addendum to the existing "Deprecation removal policy" entry. No code change, no bats sweep — this is a pure docs landing for N-1's invariants.
 
+### Story N.j.1: `pyve run` backend detection — config-first, glob-fallback [Done]
+
+**Report.** CI failed on 5 macOS integration tests in [tests/integration/test_cross_platform.py](../../tests/integration/test_cross_platform.py) — every one of them invoked `pyve run python …` (or `pyve run bash …`) after `pyve.init(backend='venv')` and got `returncode=1` with empty stdout AND empty stderr. Reproduced locally: `pyve init --backend venv` in a fresh dir creates `.venv/` plus `.pyve/envs/testenv/{.state,venv/}` (the default testenv N.e wires into `pyve.toml` plus the N.f state file). `pyve run python --version` then enters [lib/commands/run.sh:35-46](../../lib/commands/run.sh#L35-L46)'s backend-detection block, which says "if `.pyve/envs/*` has any children, the backend is micromamba." Locally micromamba happens to be on PATH and accidentally succeeds (it runs system python from outside the activated env); on the CI macOS runner micromamba is present too but micromamba runs against a non-conda dir, exiting 1 silently.
+
+**Why this is a pyve bug.** N.f's state-directory move (`.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`) generalized the `.pyve/envs/` namespace from "micromamba main env only" to "any env: main, test, or otherwise." [lib/commands/run.sh](../../lib/commands/run.sh) was the only pyve site still using the pre-N.f heuristic "`.pyve/envs/*` exists → micromamba." Every venv-backed project with a default testenv now mis-routes to the micromamba branch; within micromamba projects, the main env is mis-identified as whichever sibling sorts first alphabetically (latent bug — broken whenever the user's micromamba env_name sorts after `testenv`).
+
+**Fix.** [lib/commands/run.sh](../../lib/commands/run.sh) now reads `backend` from `.pyve/config` first (authoritative source — written by `pyve init` per Story N.e), with the directory heuristic preserved as a fallback for legacy projects with no config. For micromamba, the main-env path is derived from `micromamba.env_name` in `.pyve/config` rather than `.pyve/envs/*`'s alphabetically-first entry, so testenv siblings can no longer shadow the main env. Per [project-essentials.md](project-essentials.md)'s state-directory rule, this routes through `read_config_value` rather than hard-coding `.pyve/envs/...` literals.
+
+**Tasks**
+
+- [x] Test first: 4 bats tests in [tests/unit/test_n_j_1_run_backend_detection.bats](../../tests/unit/test_n_j_1_run_backend_detection.bats) — (1) the regression: venv project with `.pyve/envs/testenv/` resolves to venv (planted `.venv/bin/python` fake observable in stdout); (2) micromamba project picks the main env from `config.micromamba.env_name` (`zzz-env` — chosen to sort AFTER `testenv` so the v2-era glob-order accident cannot hide the bug); (3) no env present → "No Python environment found" exit 1; (4) legacy project (no `.pyve/config`) with `.venv/` falls back to venv. RED confirmed on (1) and (2); GREEN after the fix.
+- [x] Fix [lib/commands/run.sh](../../lib/commands/run.sh): backend resolution reads `.pyve/config` via `read_config_value backend` first; falls back to the directory heuristic only when no config is present (preferring `.venv/` over `.pyve/envs/*` in the fallback path so the same regression cannot recur via a partial-config edge). Micromamba branch's `env_path` is built from `mm_env_name` (config-derived, or the sole `.pyve/envs/*` entry in the legacy fallback) rather than `env_dirs[0]`.
+- [x] Full unit suite: **1227 ok / 0 not ok** (1223 prior + 4 new).
+- [x] End-to-end verification: all 5 CI-failing integration tests in [tests/integration/test_cross_platform.py](../../tests/integration/test_cross_platform.py) pass locally — `test_python_version_detection`, `test_path_separators`, `test_environment_variables`, `TestPlatformDetection::test_architecture_detection`, `TestShellIntegration::test_shell_script_execution`.
+
+**Out of scope (flagged, kept out)**
+
+- **General `.pyve/envs/*` heuristic audit across the codebase.** [lib/commands/run.sh](../../lib/commands/run.sh) was the obvious smoking gun (CI told us). Other pyve sites may carry the same pre-N.f assumption — `pyve check`, `pyve status`, `pyve purge`'s inventory composition. A grep for `.pyve/envs/\*` outside of `lib/envs.sh` (the layout owner) and the migrator surfaces (`lib/commands/self.sh`) is a clean follow-up sweep; deferred to N-4 ("composed activation, diagnostics, and purge"), which already owns the equivalent diagnostic surfaces.
+- **Removing `.pyve/config` reads.** N.i's read-compat layer is in place but the legacy `read_config_value` call surfaces have not yet been migrated to `manifest_get_env`/`manifest_resolve_purpose`. Reading from `.pyve/config` here is the consistent v3.0 idiom for now — the migration to `pyve.toml`-first reads is N-1's outstanding cleanup, not a fix-side concern.
+
+**Placement note.** Authored as **N.j.1** per developer direction during the debug cycle, slotted after N.j (the final docs-landing story of Subphase N-1). Topically the regression was introduced by Story N.f's state-directory relocation, so the fix belongs to N-1's bundle. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+
 ---
 
 ## Subphase N-2: Plugin / backend-provider contract — Python as first reference plugin
