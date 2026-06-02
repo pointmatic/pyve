@@ -229,20 +229,22 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Subphase N-8)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-8.
 - [x] The legacy-read code path is clearly marked with the literal comment `v3.0-only: remove in N-8` at every helper boundary and at the conditional inside `manifest_load`. A dedicated bats test asserts the marker is grep-visible from `lib/manifest.sh` so accidental removal during refactors gets caught.
 
-### Story N.j: Append project-essentials entries for N-1 [Planned]
+### Story N.j: Append project-essentials entries for N-1 [Done]
 
 **Motivation.** Capture must-know facts that surfaced during N-1 so future contributors (and future LLM sessions) don't re-derive them.
 
 **Tasks**
 
-- [ ] `pyve.toml` as canonical declaration; `.pyve/` = state only.
-- [ ] `purpose:` vocabulary (run/test/utility/temp) + default-purpose rules.
-- [ ] Category A delegation for `pyve testenv *` (the documented exception to the Category B policy).
-- [ ] The v2→v3 migration model: `pyve self migrate` (deterministic), v3.0 soft banner, v3.1 hard gate.
-- [ ] Read-compat window policy (v3.0 only; removed in N-8).
-- [ ] Final state-directory path decision from Story N.f.
-- [ ] `.pyve/.v2-legacy/` backup location.
-- [ ] Skip the story entirely if N-1 surfaced no new invariants beyond what's already captured.
+- [x] **`pyve.toml` as canonical declaration; `.pyve/` = state only** — new entry. Rule: route through `manifest_load` + accessors; no new declaration file; per-user prefs go to `~/.config/pyve/` or env vars, never `.pyve/`.
+- [x] **`purpose:` vocabulary (run/test/utility/temp) + default-purpose rules** — new entry. Rule: always call `manifest_resolve_purpose`; never inline `[[ "$name" == "testenv" ]]` checks; closed set defined in `lib/pyve_toml_helper.py`'s `VALID_PURPOSES`.
+- [x] **Category A delegation for `pyve testenv *` (the documented exception to the Category B policy)** — appended as a "Documented exception" paragraph to the existing "Deprecation removal policy — Category A vs Category B" entry rather than duplicating the whole thing. Captures the exception's bounds (high-traffic surface; hard-error replacement in v4.0) and explicitly warns against generalizing the exception.
+- [x] **v2→v3 migration model: three coordinated surfaces** — new entry covering `pyve self migrate` (deterministic) + v3.0 soft banner + v3.1 hard gate, plus `.pyve/.v2-legacy/` as the single backup location (folds task 7 in). Rule: don't add a fourth ad-hoc nudge; route through the existing banner if a future change wants to surface a migration message.
+- [x] **Read-compat window policy (v3.0 only; removed in N-8)** — new entry. Rule: every v3.0-only code path MUST carry the literal `v3.0-only: remove in N-8` comment so N-8's sweep is mechanical; a bats test enforces the marker is grep-visible.
+- [x] **Final state-directory path decision from Story N.f** — new entry covering `.pyve/envs/<name>/<backend>/` + helper routing (`state_path` / `resolve_env_path` / `migrate_legacy_env_layout`). Rule: never hard-code `.pyve/envs/...` literals in command code; the [tests/unit/test_n_f_state_layout.bats](../../tests/unit/test_n_f_state_layout.bats) sweep test catches regressions; migrator surfaces (`lib/envs.sh`, `lib/commands/self.sh`) are exempted by location.
+- [x] **`.pyve/.v2-legacy/` backup location** — folded into the migration-model entry above; not a standalone entry. The location IS the single source of truth for v2→v3 rollback and is named in the migration entry's "How to apply" guidance.
+- [x] **Skip entirely if N-1 surfaced no new invariants beyond what's already captured** — assessed and rejected; N-1 introduced six distinct invariants worth capturing (the five new entries above plus the Category A exception). Tech-spec.md captures the architecture (the *what*); project-essentials.md now captures the constraints a future contributor would otherwise re-derive (the *what you must not do or undo*).
+
+**File touched:** [docs/specs/project-essentials.md](project-essentials.md). Net change: +5 top-level entries (`### …`) at the end of the file + 1 paragraph addendum to the existing "Deprecation removal policy" entry. No code change, no bats sweep — this is a pure docs landing for N-1's invariants.
 
 ---
 

@@ -51,6 +51,8 @@ When removing or renaming a CLI command or flag, prefer the **Category B** patte
 
 **How to apply:** When deprecating a CLI surface in a future phase, write the Category B catch from day one. Skip the Category A delegation step entirely. Don't resurrect Category A even if "users need a migration window" — the migration window is achieved by the precise error message, not by the old form continuing to silently work.
 
+**Documented exception — `pyve testenv *` (Story N.c, Phase N).** Phase N's CLI rename `testenv → env` reintroduces Category A delegation for the entire `pyve testenv <sub>` namespace: every invocation re-dispatches to `env_command` and emits one `deprecation_warn` per shell. The exception is justified because `pyve testenv` is high-traffic enough (LLM training data, blog posts, internal scripts) that a Category B hard error would block too many real workflows during the v3.x window. Hard-error replacement happens in v4.0 alongside the rest of the legacy surface. **Do not generalize this exception to other future renames** — the bar is "established enough that hard-error would meaningfully break the world," and most surfaces will not clear it.
+
 ### `is_asdf_active()` is the single gate for asdf-aware behavior
 
 Any code branch that needs to behave differently when asdf is the version manager **must** call `is_asdf_active()` (in `lib/env_detect.sh`) — never inline `[[ "$VERSION_MANAGER" == "asdf" ]]`.
@@ -206,3 +208,55 @@ Two consumers today:
 **Why:** picking the directory as the signal looked simpler at first but creates two failure modes: (1) the directory exists for unrelated reasons (the user's own `docs/project-guide.md` file inside a vendored docs structure, an empty placeholder dir, etc.); (2) the user has relocated project-guide artifacts via `target_dir`, so the directory at the default path doesn't exist while project-guide is in fact installed and active.
 
 **How to apply:** when adding a new pyve consumer that needs to know whether project-guide is installed, key off `[[ -f ".project-guide.yml" ]]`. Do not add a parallel `[[ -d "docs/project-guide" ]]` check. If you need the artifact directory's actual path, parse `target_dir` from `.project-guide.yml` (basic YAML: a plain `key: value` line), don't assume the default.
+
+### `pyve.toml` is the canonical declaration; `.pyve/` holds state only
+
+From v3.0 onward, every project's declaration lives at root-level `pyve.toml` (schema: `pyve_schema`, `[project]`, `[env.<name>]`). Everything under `.pyve/` is **materialized state** — environments, locks, sentinels, the `.v2-legacy/` backup tree — never configuration. The Python helper [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py) is the only TOML reader; the Bash shim [`lib/manifest.sh`](../../lib/manifest.sh) exposes the parsed result through `manifest_load` + flat accessors (`manifest_get_purpose`, `manifest_resolve_purpose`, `manifest_get_backend`, etc.).
+
+**Why:** the v2 model spread declaration across `.pyve/config` (YAML) and `[tool.pyve.testenvs.*]` (pyproject TOML). Two sources of truth was the root cause of every "but it works on my machine" bug in Phase M's testenv-DX bundle, and it forced consumers to keep two readers in sync. Consolidating onto one root-level file removes that whole class of failure and matches the Pyve visibility goal (root-level presence signals "this is a Pyve project" to humans and tools at a glance).
+
+**How to apply:** when adding a new pyve consumer that needs a configuration value, route through `manifest_load` + an accessor. Do not parse `pyve.toml` directly. Do not introduce a new YAML / TOML / INI declaration file. If a value genuinely doesn't fit the `pyve.toml` schema (e.g., a per-user preference rather than per-project), it belongs in `~/.config/pyve/` or an env var — never under `.pyve/` (state) and never alongside `pyve.toml` (which is the schema-validated surface).
+
+### `purpose:` vocabulary and the name-based default rule
+
+Every `[env.<name>]` block carries a `purpose` attribute drawn from the closed set `{run, test, utility, temp}`. When `purpose` is omitted, the resolver [`manifest_resolve_purpose`](../../lib/manifest.sh) applies a name-based default: `testenv → test`, `root → utility`, everything else → `utility`. Explicit declaration always wins. The resolver is the **single** gate purpose-keyed selectors consult — `pyve test --env <name>` hard-errors when the resolved purpose is not `test`, and analogous gates ship in later subphases for `run` / `utility`.
+
+**Why:** the v2 `testenvs` namespace overloaded "test environment" to mean "any env that isn't the main one" — utility envs (dev tooling, formatters) and ephemeral envs (one-shot tasks) all rode the same label. Phase N split them so each purpose can grow its own lifecycle (e.g., `temp` envs auto-prune; `utility` envs survive `pyve purge`). The name-based default keeps the common case (one main env + one test env) zero-config.
+
+**How to apply:** when adding a new purpose-aware feature, call `manifest_resolve_purpose <name>` — never inline a `[[ "$name" == "testenv" ]]` check (that re-implements the default rule and silently drifts when the resolver changes). When introducing a fifth purpose value, the closed set in [`lib/pyve_toml_helper.py`'s](../../lib/pyve_toml_helper.py) `VALID_PURPOSES` is the canonical place; update accessors and gates from there.
+
+### The v2 → v3 deprecation surface has exactly three layers
+
+Phase N ships three coordinated surfaces for the v2 → v3 transition. Don't add a fourth ad-hoc nudge; don't conflate the layers.
+
+1. **Deterministic migrator** — `pyve self migrate` ([`lib/commands/self.sh`](../../lib/commands/self.sh)). Writes `pyve.toml` from legacy sources, moves them into `.pyve/.v2-legacy/` for one release cycle, invokes `pyve init --force` to rebuild envs at the v3 state layout. Idempotent; `--dry-run` / `--no-rebuild` flags expose intermediate states.
+2. **v3.0 soft banner** — pre-dispatch hook in [`pyve.sh`](../../pyve.sh)'s `main()` (`_pyve_maybe_show_v2_banner`). One-shot per `(PPID, cwd)` via a sentinel under `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/`. Skips `--help` / `--version` / `--config` / `self` namespace. Suppressible via `PYVE_QUIET=1`.
+3. **v3.1 hard interactive gate (Subphase N-8)** — replaces the soft banner with an interactive prompt that invokes `self_migrate()` on accept. Ships in `v3.1.0`. Removes the read-compat layer at the same time.
+
+The v3.0 read-compat in [`lib/manifest.sh`](../../lib/manifest.sh) (`_manifest_synthesize_from_legacy`) is what lets users actually defer the migration during the v3.0 window — without it, the banner would only nag without the underlying command working.
+
+**Why:** three layers cover three distinct user states — (a) ready to migrate (uses `self migrate`), (b) not yet migrated but using pyve every day (sees the banner once per shell, keeps working via read-compat), (c) holdout at v3.1 (forced to migrate via the hard gate). A fourth nudge inside any individual command (`pyve check`, `pyve status`, …) would either duplicate the banner's signal or fight its memoization.
+
+**How to apply:** if a future change wants to surface a migration-related message, route it through the existing banner, not a new print site. If it's an error condition (`pyve self migrate` failed; user state is inconsistent), keep the error in the command that detected it — don't escalate to the banner. The `.pyve/.v2-legacy/` directory is the single deterministic backup location; no other rollback path is supported.
+
+### `v3.0-only: remove in N-8` marker is the contract for the read-compat sweep
+
+Every code path in [`lib/manifest.sh`](../../lib/manifest.sh) that exists solely to support v2-configured projects during the v3.0 window carries the literal comment `v3.0-only: remove in N-8`. The N-8 cleanup is mechanical: grep the marker, delete the matching helpers (and their callsites + tests), confirm `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally. A bats test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker is grep-visible so accidental removal during unrelated refactors gets caught.
+
+**Why:** the read-compat surface intentionally synthesizes a v3 shape from v2 sources (`.pyve/config` + `[tool.pyve.testenvs.*]`). Without the marker, an LLM or human refactoring `manifest.sh` for unrelated reasons (style, perf, accessor cleanup) can't tell which branches are load-bearing vs deprecation-window scaffolding. Tagging the boundary makes the N-8 sweep a 5-minute job; untagging would turn it into a full re-audit.
+
+**How to apply:** when adding any new code path that exists only to bridge v2 → v3 (a fallback parser, a defensive normalization, a deprecation warning), open the change with `# v3.0-only: remove in N-8` on the function or block. If you find yourself wanting to make a v3.0-only path "permanent" (e.g., during a perf tune), that's a sign the v3 manifest schema is missing something — fix the schema, don't promote the read-compat.
+
+### v3 state directory is `.pyve/envs/<name>/<backend>/`; route through helpers
+
+All declared envs materialize at `.pyve/envs/<name>/<backend>/` (Story N.f). `<backend>` is `venv` for venv-backed, `conda` for micromamba-backed; future plugin backends pick their own subdir name. The reserved `root` env's micromamba prefix lands at `.pyve/envs/root/conda/` after `pyve self migrate` runs (pre-migration, it stays at `.pyve/envs/<configured_name>/` for compat). Path-construction goes through the helpers in [`lib/envs.sh`](../../lib/envs.sh):
+
+- `state_path <name>` → `.pyve/envs/<name>/.state`
+- `resolve_env_path <name>` → `.pyve/envs/<name>/{venv|conda}/`
+- `migrate_legacy_env_layout` runs as a side effect of `resolve_env_path` to opportunistically catch v2.7 / v2.8 layouts.
+
+A bats sweep in [`tests/unit/test_n_f_state_layout.bats`](../../tests/unit/test_n_f_state_layout.bats) greps `lib/commands/*.sh` and `pyve.sh` for forbidden `.pyve/testenvs/` literals and fails the build on regression. The migrator surfaces (`lib/envs.sh`, `lib/commands/self.sh`) are exempted by location since they legitimately reference the legacy path during migration.
+
+**Why:** the v2 layout split env state across `.pyve/envs/` (micromamba main env) and `.pyve/testenvs/` (named testenvs). v3 consolidates both into one root so every backend plugin owns a uniform `<name>/<backend>/` slot. Hard-coding paths in command code recreates the v2 fragmentation: when N-3's Node plugin (or any future plugin) needs the env directory, it asks the helper and gets the right shape — not whatever literal the command author happened to type.
+
+**How to apply:** when a command needs an env's on-disk path, call `resolve_env_path <name>` or `state_path <name>`. Do not construct `.pyve/envs/<name>/venv` (or any variant) by string concatenation. If you find yourself wanting to write the literal because "the helper does too much" (e.g., it triggers opportunistic migration as a side effect), that's a signal to factor the helper, not to inline the path. The sentinel test catches the literal regardless of intent.
