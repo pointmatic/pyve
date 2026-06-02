@@ -418,6 +418,29 @@ legacy_flag_error() {
 }
 
 #------------------------------------------------------------
+# Category A delegation primitive (Story N.c, v3.0).
+#
+#   deprecation_warn <old_form> <new_form>
+#
+# Prints a one-shot stderr message naming both the legacy and
+# canonical CLI form, then returns 0 so the caller can proceed
+# to re-dispatch. Used for high-traffic renames where the cost
+# of Category B (hard-error) breakage is worse than the cost of
+# carrying the alias through a deprecation window.
+#
+# Per [project-essentials.md](docs/specs/project-essentials.md)'s
+# Category A documented exception, `pyve testenv` (renamed to
+# `pyve env` in Phase N) is the first user of this primitive.
+# Removal of the legacy form is scheduled for v4.0.
+#------------------------------------------------------------
+deprecation_warn() {
+    local old_form="$1"
+    local new_form="$2"
+    printf "warning: 'pyve %s' is deprecated and has been renamed to 'pyve %s'. Update your scripts; the legacy form will be removed in v4.0.\n" \
+        "$old_form" "$new_form" >&2
+}
+
+#------------------------------------------------------------
 # Unknown-flag error with closest-match suggestion (H.e.9d).
 #
 #   unknown_flag_error <subcommand> <bad_flag> <valid_flag1> [<valid_flag2> ...]
@@ -601,8 +624,24 @@ main() {
             shift
             run_command "$@"
             ;;
-        testenv)
+        env)
             shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:env %s\n' "$*"
+                exit 0
+            fi
+            env_command "$@"
+            ;;
+        testenv)
+            # Story N.c: Category A delegation. `pyve testenv` is the
+            # legacy spelling of `pyve env`; re-dispatch with a one-shot
+            # deprecation warning. Removal scheduled for v4.0.
+            shift
+            deprecation_warn "testenv" "env"
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:testenv %s\n' "$*"
+                exit 0
+            fi
             env_command "$@"
             ;;
         test)

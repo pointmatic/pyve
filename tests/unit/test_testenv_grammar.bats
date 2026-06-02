@@ -95,11 +95,15 @@ _install_banner_absent='Dev/test runner environment not initialized'
 #============================================================
 
 @test "testenv: --help documents the new subcommand grammar" {
+    # Story N.c renamed the canonical form to `pyve env`. The help heredoc
+    # documents that grammar; `pyve testenv --help` reaches the same
+    # heredoc through the Category A delegation wrapper, so both forms
+    # show the `pyve env <sub>` spelling.
     run "$PYVE_SCRIPT" testenv --help
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenv init"* ]]
-    [[ "$output" == *"testenv install"* ]]
-    [[ "$output" == *"testenv purge"* ]]
+    [[ "$output" == *"pyve env init"* ]]
+    [[ "$output" == *"pyve env install"* ]]
+    [[ "$output" == *"pyve env purge"* ]]
 }
 
 @test "testenv: --help no longer mentions the Category A legacy flag forms (Story J.d)" {

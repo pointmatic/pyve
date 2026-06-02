@@ -72,16 +72,16 @@ Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `
 - [x] Sweep Bats tests: ~1000 assertions touching old function names; update to new names. Test scripts that source `lib/testenvs.sh` directly need their path updated.
 - [x] Sweep `_testenv_paths`, `ensure_testenv_exists`, `purge_testenv_dir` and related shared helpers in [lib/utils.sh](../../lib/utils.sh) to `_env_paths`, etc.
 
-### Story N.c: `pyve env` CLI dispatcher + `pyve testenv` legacy sugar [Planned]
+### Story N.c: `pyve env` CLI dispatcher + `pyve testenv` legacy sugar [Done]
 
 **Motivation.** Register the new `pyve env <sub>` namespace and keep the existing `pyve testenv <sub>` working as legacy sugar through the v3.x deprecation window.
 
 **Tasks**
 
-- [ ] Add `env)` arm to [pyve.sh](../../pyve.sh)'s case dispatcher invoking `env_command "$@"`.
-- [ ] Implement `pyve testenv` as a **Category A delegation wrapper** (per [project-essentials.md](project-essentials.md) deprecation policy, with the documented exception — `pyve testenv` is high-traffic enough that hard-error breakage is the worse outcome). Wrapper prints a `deprecation_warn` once per shell, then re-dispatches to `env_command "$@"`.
-- [ ] `pyve testenv --help` and `pyve env --help` show identical content with a one-line "renamed from `pyve testenv`" note on the legacy form.
-- [ ] Bats tests: every `pyve testenv <sub>` invocation works exactly as before; deprecation warning fires once per shell.
+- [x] Add `env)` arm to [pyve.sh](../../pyve.sh)'s case dispatcher invoking `env_command "$@"`.
+- [x] Implement `pyve testenv` as a **Category A delegation wrapper** (per [project-essentials.md](project-essentials.md) deprecation policy, with the documented exception — `pyve testenv` is high-traffic enough that hard-error breakage is the worse outcome). Wrapper prints a `deprecation_warn` once per shell, then re-dispatches to `env_command "$@"`.
+- [x] `pyve testenv --help` and `pyve env --help` show identical content with a one-line "renamed from `pyve testenv`" note on the legacy form.
+- [x] Bats tests: every `pyve testenv <sub>` invocation works exactly as before; deprecation warning fires once per shell.
 
 ### Story N.d: `purpose:` attribute + selector semantics [Planned]
 

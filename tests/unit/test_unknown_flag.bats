@@ -103,7 +103,11 @@ teardown() {
 }
 
 @test "unknown_flag: 'pyve testenv --bogus' surfaces valid flags" {
+    # Story N.c renamed the dispatcher's context label from `testenv` to
+    # `env`. The legacy `pyve testenv` form still routes here via the
+    # Category A delegation wrapper, but the unknown-flag error names
+    # the new canonical form.
     run "$PYVE_SCRIPT" testenv --bogus
     [ "$status" -eq 1 ]
-    [[ "$output" == *"Valid flags for 'pyve testenv'"* ]]
+    [[ "$output" == *"Valid flags for 'pyve env'"* ]]
 }

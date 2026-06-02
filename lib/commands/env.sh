@@ -896,17 +896,20 @@ env_command() {
                 ;;
             --help|-h)
                 cat << 'EOF'
-pyve testenv - Manage a dedicated dev/test runner environment
+pyve env - Manage one or more declared project environments
 
 Usage:
-  pyve testenv init [<name>]
-  pyve testenv install [<name>] [-r requirements-dev.txt] [--no-wait]
-  pyve testenv purge [<name>] [--force]
-  pyve testenv run [<name> --] <command> [args...]
-  pyve testenv list
-  pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
+  pyve env init [<name>]
+  pyve env install [<name>] [-r requirements-dev.txt] [--no-wait]
+  pyve env purge [<name>] [--force]
+  pyve env run [<name> --] <command> [args...]
+  pyve env list
+  pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
 
 Notes:
+  - The legacy spelling `pyve testenv <sub>` is preserved as a Category A
+    delegation alias through the v3.x deprecation window (removal in v4.0).
+    Every invocation prints a one-shot deprecation warning to stderr.
   - Default `testenv` lives at .pyve/testenvs/testenv/venv
   - Named environments (Story M.i+) live at .pyve/testenvs/<name>/{venv,conda}/
     Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
@@ -924,7 +927,7 @@ Notes:
                             ISO date YYYY-MM-DD. Envs with last-used=0
                             (never used) are preserved.
       --all              — remove every env on disk (declared + orphaned).
-                            Disk-driven; distinct from `testenv purge` no-arg,
+                            Disk-driven; distinct from `env purge` no-arg,
                             which is config-driven.
   - `install` acquires a per-env lock at .pyve/testenvs/<name>/.lock to
     serialize concurrent installs into the same env. Default is wait+retry;
@@ -935,29 +938,30 @@ Notes:
     the prompt. Non-TTY (CI) invocations skip the prompt automatically.
     `purge <name>` removes only that env's root, no prompt.
   - `run` requires the `--` separator when routing to a named env:
-      pyve testenv run smoke -- pytest -v
+      pyve env run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
   - `testenv` and `root` are reserved names. `root` is selection-only
-    (use `pyve test --env root`), not creatable as a testenv.
-  - The testenv tree is preserved across `pyve init --force` and `pyve purge --keep-testenv`.
+    (use `pyve test --env root`), not creatable as an env.
+  - The default-env tree is preserved across `pyve init --force` and
+    `pyve purge --keep-testenv` (the `--keep-testenv` flag name is unchanged).
 EOF
                 exit 0
                 ;;
             -*)
-                unknown_flag_error "testenv" "$1" \
+                unknown_flag_error "env" "$1" \
                     --requirements -r --help
                 ;;
             *)
-                log_error "Unknown testenv argument: $1"
-                log_error "Usage: pyve testenv <init|install|purge|run> [options]"
+                log_error "Unknown env argument: $1"
+                log_error "Usage: pyve env <init|install|purge|run> [options]"
                 exit 1
                 ;;
         esac
     done
 
     if [[ -z "$action" ]]; then
-        log_error "No testenv action provided"
-        log_error "Use: pyve testenv <init|install|purge|run|list|prune> [...]"
+        log_error "No env action provided"
+        log_error "Use: pyve env <init|install|purge|run|list|prune> [...]"
         exit 1
     fi
 
