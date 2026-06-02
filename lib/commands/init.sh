@@ -1085,6 +1085,11 @@ _init_venv() {
         info "Virtual environment '$venv_dir' already exists, skipping"
     else
         info "Creating virtual environment in '$venv_dir'..."
+        # Story N.d.1: pre-flight check for the asdf/pyenv shim trap.
+        # Same wire-in pattern as `ensure_env_exists`'s testenv venv
+        # creation — placed after the banner so the user sees the
+        # intent, then a pyve-owned error if `python` would fail.
+        assert_python_resolvable || return 1
         run_cmd python -m venv "$venv_dir"
         success "Created virtual environment"
     fi

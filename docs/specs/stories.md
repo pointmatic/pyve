@@ -97,6 +97,45 @@ Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `
 
 **N.i-pending technical debt (this story):** 18 bats tests in [test_test_env_lazy_autoprovision.bats](../../tests/unit/test_test_env_lazy_autoprovision.bats), [test_test_env_matrix.bats](../../tests/unit/test_test_env_matrix.bats), [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats) exercise v2-source-only paths (`[tool.pyve.testenvs.<non-testenv-name>]` with no `pyve.toml`) that the new purpose gate now rejects (name-based default → `utility`). All carry `skip "N.i-pending: ..."` markers and are discoverable via `rg "N.i-pending" tests/unit/`. The read-compat shim landing in Story N.i must propagate `purpose = "test"` for every `[tool.pyve.testenvs.<name>]` block; when N.i ships, the skip markers are removed mechanically and the tests pass as-is. **Production solidness for v2 projects is restored at N.i; no released artifact ships between N.d and N.i.**
 
+### Story N.d.1: pre-flight `assert_python_resolvable` — convert asdf-shim trap into an actionable pyve error [Done]
+
+**Report.** A developer ran `pyve test` on a micromamba project (learningfoundry, v2.8.0 layout) and hit:
+
+```
+Exit code 126
+No version is set for command python
+Consider adding one of the following versions in your config file at .../learningfoundry/.tool-versions
+python 3.14.4
+...
+python 3.11.11
+```
+
+The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/python` rather than the project env's interpreter. With no `.tool-versions` going up the tree and no global asdf pin, the shim errored. The error reads as a pyve bug but is actually "the project env isn't active in this shell." The dev's own diagnostic (`asdf current python` showing blank Version/Source) confirms it, and the same `pyve test` run cleanly from another shell where direnv had loaded `.envrc`.
+
+**Why this is a pyve bug.** Same asdf-shim-no-version class as **M.a** (`pyve testenv init`), **M.b** (project-guide completion block leak), and now `pyve test`'s drift-rebuild path here — third instance of the same trap. pyve invokes `python` from a code path that *can* be reached without an active project env, and lets the version manager's confusing stderr leak through. Users (and LLM agents) read it as a pyve failure and head down the wrong remediation road (`.tool-versions`, `pyve init --force`, etc.) instead of the actual fix (`direnv allow` or `pyve run`).
+
+**Fix.** New helper `assert_python_resolvable` in [lib/env_detect.sh](../../lib/env_detect.sh) — probes `python --version` (respecting `PYVE_PYTHON` per the existing pattern at [lib/envs.sh:65](../../lib/envs.sh#L65)), and on failure inspects the resolved path. If it's an asdf or pyenv shim, emit a pyve-owned actionable error pointing at `direnv allow` (interactive fix) and `pyve run <cmd>` (one-shot fix); otherwise emit a generic "env isn't active" hint. Wired into `ensure_env_exists` ([lib/utils.sh](../../lib/utils.sh)) just before `run_cmd python -m venv`, *after* the "Creating dev/test runner environment" banner — so the user sees the intent first, the existing testenv-grammar tests still observe the banner, and the failure (when it fires) carries pyve's actionable message instead of asdf's.
+
+**Tasks**
+
+- [x] Test first: 4 bats tests in [tests/unit/test_env_detect.bats](../../tests/unit/test_env_detect.bats) for the helper — python-works → silent 0, asdf-shim-no-version → exit 1 + `direnv allow` / `pyve run` hint (assert asdf's "Consider adding…" does *not* leak), pyenv-shim-no-version → same, generic python-missing → generic activation hint. RED confirmed against 127 (helper undefined); GREEN after implementation.
+- [x] `assert_python_resolvable` in [lib/env_detect.sh](../../lib/env_detect.sh) — respects `PYVE_PYTHON`, falls back to bare `python`, path-substring match on `/.asdf/shims/python` and `/.pyenv/shims/python` to surface the most actionable error.
+- [x] **Wire-in #1** — `ensure_env_exists` testenv venv-creation ([lib/utils.sh](../../lib/utils.sh)) inside the `if [[ ! -d "$testenv_env_path" ]]` block, immediately after the `Creating dev/test runner environment` banner, before `run_cmd python -m venv`. This is the call site that bit the dev.
+- [x] **Wire-in #2** — `_init_venv` ([lib/commands/init.sh](../../lib/commands/init.sh#L1088)), venv-backend `pyve init`'s `python -m venv` for the main venv. Same trap class; same pattern after the "Creating virtual environment in '$venv_dir'…" banner.
+- [x] **Wire-in #3** — `ensure_env_exists` drift-check ([lib/utils.sh](../../lib/utils.sh)). Previously `current_ver="$(python -c '…' 2>/dev/null || true)"` silently no-op'd when the asdf shim tripped it, leaving stale testenvs unrebuilt with no signal. Pre-flight added before the drift block; `|| true` dropped from `current_ver` since python is now guaranteed resolvable past the pre-flight.
+- [x] Test first: 4 additional bats tests in [tests/unit/test_preflight_wire_in.bats](../../tests/unit/test_preflight_wire_in.bats) verifying wire-ins #1 and #3 (#2 is structurally identical to #1; covered by code review and by #4's flag-file sentinel showing pre-flight fires exactly once on the no-existing-testenv path).
+- [x] Fixed an intermediate breakage during wire-in #1 — 8 venv-path tests in `test_testenv_name_aware.bats` went red because they call `pyve testenv init` as a subprocess (no `PYVE_PYTHON`). Root cause: my helper wasn't respecting `PYVE_PYTHON`. Added the pattern to match the rest of `lib/`.
+- [x] Full unit suite: **1140 ok / 0 not ok** (8 new tests folded in clean).
+
+**Out of scope (flagged, kept out)**
+
+- **The dev's *other* issue — editable install lost on testenv rebuild.** Per the dev's own follow-up note: when the testenv is recreated, the project's `pip install -e .` doesn't survive. Documented in the editable-install convention (project-essentials "Editable install and testenv dependency management") and not a pyve bug, but it co-occurred with the asdf-trap and confused the diagnosis. Surface for future docs polish, not a code change.
+- **General `2>/dev/null || true`-around-python sweep.** The drift-check (#3 above) was one instance; grep for `python -c.*2>/dev/null` and `2>/dev/null.*python` will surface others (lock-version probe, distutils-shim check, etc.). Each silenced site that fronts a python invocation should plausibly be gated by `assert_python_resolvable` instead of returning a silent empty string. Distinct concern; natural N-4 hardening pass.
+
+**Placement note.** Story authored as **N.d.1** per developer direction during the debug cycle, slotted after `N.d` because it surfaced while exercising `N.d`'s `pyve test --env` selector on a real project. **Topically it belongs to Subphase N-4** ("composed activation, diagnostics, and **purge**") — the pre-flight is a diagnostic in the literal sense, and asserting env-active state is exactly N-4 territory. The file is a sequential log of what was implemented in execution order, so this story stays in place; the N-4 subphase heading carries a forward-reference pointing here, rather than the story moving.
+
+---
+
 ### Story N.e: `pyve init` writes `pyve.toml` on fresh projects [Planned]
 
 **Motivation.** Wire `pyve init` to scaffold `pyve.toml` for fresh projects. **Existing v2-configured projects are not auto-migrated by `pyve init`** — they hit the soft migration banner (Story N.h) and are directed to `pyve self migrate` (Story N.g). This keeps `pyve init` semantically clean.
@@ -194,6 +233,10 @@ Implement the Node plugin with `pnpm`/`npm`/`yarn` backend-providers and a Svelt
 ## Subphase N-4: Composed activation, diagnostics, and purge
 
 `pyve init` materializes **all** declared envs; composes one `.envrc` with sentinel-marked plugin sections; self-heals one `.gitignore`. `pyve check` and `pyve status` aggregate per-plugin/per-env with worst-severity exit-code roll-up. `pyve purge` composes created-vs-authored inventory from each plugin. Monorepo `path` support lands here. Resolves **PC-2** (`.envrc` refresh safety) and **PC-4** (no-Python noise + plugin latency budget). Story breakdown deferred. Bundles into **v3.0.0**.
+
+**Already-implemented in this subphase's topical scope:**
+
+- **[Story N.d.1](#story-nd1-pre-flight-assert_python_resolvable--convert-asdf-shim-trap-into-an-actionable-pyve-error-done)** — pre-flight `assert_python_resolvable` in `lib/env_detect.sh`, wired into `ensure_env_exists`. Lives in the file under N-1 (sequential-log placement) but is topically N-4 diagnostics work. When N-4's story breakdown is drafted, reference this story rather than re-numbering it.
 
 ---
 

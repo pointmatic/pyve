@@ -1571,9 +1571,18 @@ ensure_env_exists() {
     # the project Python was changed after the initial pyve init, then pyve init
     # --force preserved the old testenv via --keep-testenv), rebuild it.
     if [[ -d "$testenv_env_path" ]] && [[ -f "$testenv_env_path/pyvenv.cfg" ]]; then
+        # Story N.d.1: pre-flight before invoking `python -c` for the
+        # drift check. Previously this silently no-op'd when python
+        # errored — `current_ver` came back empty, the comparison
+        # short-circuited, and the stale testenv stayed in place with
+        # no signal to the user. Now we surface the same actionable
+        # asdf-shim error here. `|| true` removed from `current_ver`
+        # since python is pre-flighted; a failure now means something
+        # unexpected, not the routine asdf-trap.
+        assert_python_resolvable || return 1
         local testenv_ver current_ver
         testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_env_path/pyvenv.cfg" 2>/dev/null || true)"
-        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
+        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
             warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
             rm -rf "$testenv_env_path"
@@ -1582,6 +1591,16 @@ ensure_env_exists() {
 
     if [[ ! -d "$testenv_env_path" ]]; then
         info "Creating dev/test runner environment in '$testenv_env_path'..."
+        # Story N.d.1: pre-flight check for the asdf/pyenv shim trap.
+        # The next call invokes `python` directly. In a non-activated
+        # shell with no resolvable version pin, the shim errors with
+        # asdf's confusing "No version is set for command python" — a
+        # leak that reads as a pyve bug. Catch it here and emit a
+        # pyve-owned error pointing at `direnv allow` / `pyve run`.
+        # Placed AFTER the banner so the user sees the intent first,
+        # and the existing testenv-grammar tests still observe the
+        # banner before the eventual error.
+        assert_python_resolvable || return 1
         run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
     fi

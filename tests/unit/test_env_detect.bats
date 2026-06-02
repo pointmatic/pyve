@@ -451,3 +451,83 @@ EOF
     assert_status_equals 1
     assert_output_contains "direnv is not installed"
 }
+
+# ────────────────────────────────────────────────────────────────────
+# assert_python_resolvable — Story N.d.1 pre-flight check.
+#
+# Detects the recurring "asdf-shim with no resolvable version" trap
+# (bit `pyve testenv init` in M.a, project-guide completion in M.b,
+# `pyve test` drift-rebuild in the N.d.1 report) before pyve invokes
+# `python -m venv` (or any python). Emits a pyve-owned actionable
+# error pointing at `direnv allow` / `pyve run`, instead of letting
+# asdf's "No version is set for command python" leak through.
+# ────────────────────────────────────────────────────────────────────
+
+# Shim builder: a `python` that behaves like an asdf shim with no
+# resolvable version — noisy stderr, exit 126.
+make_asdf_python_shim_no_version() {
+    mkdir -p "$SHIM_DIR/.asdf/shims"
+    cat > "$SHIM_DIR/.asdf/shims/python" << 'EOF'
+#!/usr/bin/env bash
+echo "No version is set for command python" >&2
+echo "Consider adding one of the following versions in your config file at $PWD/.tool-versions" >&2
+echo "python 3.14.4" >&2
+exit 126
+EOF
+    chmod +x "$SHIM_DIR/.asdf/shims/python"
+    export PATH="$SHIM_DIR/.asdf/shims:$SHIM_DIR:/usr/bin:/bin"
+}
+
+# Shim builder: a `python` that behaves like a pyenv shim with no
+# resolvable version.
+make_pyenv_python_shim_no_version() {
+    mkdir -p "$SHIM_DIR/.pyenv/shims"
+    cat > "$SHIM_DIR/.pyenv/shims/python" << 'EOF'
+#!/usr/bin/env bash
+echo "pyenv: no version configured for this directory" >&2
+exit 1
+EOF
+    chmod +x "$SHIM_DIR/.pyenv/shims/python"
+    export PATH="$SHIM_DIR/.pyenv/shims:$SHIM_DIR:/usr/bin:/bin"
+}
+
+# Shim builder: a `python` that just works (simulates project env on PATH).
+make_working_python() {
+    cat > "$SHIM_DIR/python" << 'EOF'
+#!/usr/bin/env bash
+echo "Python 3.12.13"
+EOF
+    chmod +x "$SHIM_DIR/python"
+}
+
+@test "assert_python_resolvable: python works → returns 0 silently" {
+    make_working_python
+    run assert_python_resolvable
+    assert_status_equals 0
+    [ -z "$output" ]
+}
+
+@test "assert_python_resolvable: asdf-shim-no-version → exit 1 + actionable error" {
+    make_asdf_python_shim_no_version
+    run assert_python_resolvable
+    assert_status_equals 1
+    assert_output_contains "direnv allow"
+    assert_output_contains "pyve run"
+    # Must NOT leak asdf's own message — pyve owns the error now.
+    [[ "$output" != *"Consider adding one of the following versions"* ]]
+}
+
+@test "assert_python_resolvable: pyenv-shim-no-version → exit 1 + actionable error" {
+    make_pyenv_python_shim_no_version
+    run assert_python_resolvable
+    assert_status_equals 1
+    assert_output_contains "direnv allow"
+    assert_output_contains "pyve run"
+}
+
+@test "assert_python_resolvable: python missing entirely → generic activation hint" {
+    # PATH was scrubbed in setup; no python anywhere.
+    run assert_python_resolvable
+    assert_status_equals 1
+    assert_output_contains "direnv allow"
+}

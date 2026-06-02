@@ -305,3 +305,65 @@ check_direnv_installed() {
     fi
     return 1
 }
+
+#============================================================
+# Python pre-flight check (Story N.d.1)
+#============================================================
+
+# Detect the recurring "asdf/pyenv shim with no resolvable version"
+# trap before pyve invokes `python` (e.g. `python -m venv` for testenv
+# creation). At shell-init / non-direnv-active shells, `python`
+# resolves to the version-manager's shim; with no `.tool-versions` /
+# `.python-version` and no global pin, the shim errors noisily.
+# Without this guard the user sees asdf's "No version is set for
+# command python" and reads it as a pyve bug — they don't realize the
+# real cause is "the project env isn't active in this shell."
+#
+# Returns:
+#   0 — `python` is resolvable; safe to invoke.
+#   1 — trap detected (or generic unresolvable python); pyve-owned
+#       error printed to stderr, naming the actual fix.
+#
+# This guard does NOT depend on detect_version_manager being run
+# first; it probes `python` directly. Callers can invoke it pre-flight
+# without ordering concerns.
+assert_python_resolvable() {
+    # Respect PYVE_PYTHON for callers that have already resolved a
+    # specific interpreter (the tests' setup pre-resolves this before
+    # cd'ing to a tmp dir, mirroring `local py="${PYVE_PYTHON:-python}"`
+    # used throughout lib/). Fall back to bare `python` otherwise —
+    # which is exactly where the asdf-shim trap bites.
+    local py="${PYVE_PYTHON:-python}"
+
+    # Fast path: python runs cleanly → resolved regardless of how.
+    # `--version` is the cheapest universally-supported probe.
+    if "$py" --version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # python failed. Inspect what it resolved to and emit the most
+    # actionable error possible.
+    local python_path
+    python_path="$(command -v "$py" 2>/dev/null || true)"
+
+    if [[ "$python_path" == *"/.asdf/shims/python"* ]] \
+       || [[ "$python_path" == *"/.pyenv/shims/python"* ]]; then
+        log_error "Cannot resolve 'python' — version-manager shim has no version pinned for this directory."
+        log_error "  Shim path: $python_path"
+        log_error ""
+        log_error "Most likely cause: the project environment isn't active in this shell."
+        log_error "Fix one of these:"
+        log_error "  • Run 'direnv allow' in the project root (one-time per shell session)"
+        log_error "  • Re-run wrapped: 'pyve run <cmd>' (one-shot, works without direnv)"
+        return 1
+    fi
+
+    # Generic fallback — python missing entirely, or some other
+    # unresolvable case. Still point at activation as the most likely fix.
+    log_error "Cannot resolve 'python' on PATH."
+    log_error "Most likely cause: the project environment isn't active in this shell."
+    log_error "Fix one of these:"
+    log_error "  • Run 'direnv allow' in the project root"
+    log_error "  • Re-run wrapped: 'pyve run <cmd>'"
+    return 1
+}
