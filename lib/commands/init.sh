@@ -245,6 +245,69 @@ _init_detect_project_guide_present() {
     [[ -f .project-guide.yml ]]
 }
 
+# Story N.e — emit the v3.0 canonical `pyve.toml` manifest at cwd.
+#
+# Idempotent: if `pyve.toml` already exists, this is a silent no-op
+# (the existing manifest is the source of truth — the refresh path
+# leaves it alone per N.e Task 3).
+#
+# Schema shipped:
+#   pyve_schema = "3.0"
+#   [project] name = <project_name>
+#   [env.root]    purpose = "utility"
+#   [env.testenv] purpose = "test", default = true
+#
+# The `[env.testenv]` declaration matches today's two-env init shape:
+# `pyve init` materializes the run env (`.venv/`) and `pyve testenv
+# init` later materializes the test env. Declaring testenv here means
+# `pyve test --env testenv` and other purpose-keyed selectors resolve
+# correctly even before the testenv venv exists on disk.
+_init_write_pyve_toml() {
+    local project_name="$1"
+    if [[ -f pyve.toml ]]; then
+        return 0
+    fi
+    cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "${project_name}"
+
+[env.root]
+purpose = "utility"
+
+[env.testenv]
+purpose = "test"
+default = true
+EOF
+}
+
+# Story N.e — refresh-path guard. When `pyve.toml` exists, validate
+# it before letting `init_project` proceed. Validation is delegated
+# to `manifest_load` (which calls the Python helper and exits 2 with
+# stderr diagnostics on malformed schema / unknown purpose / etc.).
+#
+# Silent success when `pyve.toml` is absent — callers don't need to
+# pre-check, the caller path falls through to `_init_write_pyve_toml`
+# at the end of init.
+#
+# On validation failure, surface the Python helper's stderr (already
+# captured to the process's stderr by manifest_load's invocation
+# shape) and exit non-zero. We don't try to translate the message
+# here — the helper's own "error: pyve.<key>: <message>" form is the
+# documented contract.
+_init_validate_existing_manifest() {
+    if [[ ! -f pyve.toml ]]; then
+        return 0
+    fi
+    if ! manifest_load pyve.toml; then
+        log_error "pyve.toml: invalid manifest (see error(s) above)"
+        log_error "Fix the manifest and re-run, or remove pyve.toml to re-scaffold."
+        return 1
+    fi
+    return 0
+}
+
 # List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..
 # Output: one version per line.
 # Args: $1 = "asdf" | "pyenv"
@@ -678,6 +741,16 @@ init_project() {
         esac
     done
 
+    # Story N.e — refresh-path guard. If `pyve.toml` exists, validate
+    # it before doing any work; surface helper errors and abort on
+    # malformed schema / unknown purpose / etc. Absent manifest is a
+    # silent no-op (the fresh-init path falls through to the writer
+    # at the end). Runs before the wizard so an invalid manifest
+    # short-circuits without prompting the user.
+    if ! _init_validate_existing_manifest; then
+        exit 1
+    fi
+
     _init_wizard "$backend_flag" "$python_version" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
@@ -958,6 +1031,15 @@ micromamba:
 EOF
         success "Created .pyve/config"
 
+        # Story N.e — write the v3.0 canonical manifest. No-op if it
+        # already exists (refresh path). `.pyve/config` continues to
+        # be written above; the YAML removal lands in Story N.i with
+        # the read-compat sweep.
+        if [[ ! -f pyve.toml ]]; then
+            _init_write_pyve_toml "$(basename "$(pwd)")"
+            success "Created pyve.toml"
+        fi
+
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
 
@@ -1046,6 +1128,15 @@ python:
   version: $python_version
 EOF
     success "Created .pyve/config"
+
+    # Story N.e — write the v3.0 canonical manifest. No-op if it
+    # already exists (refresh path). `.pyve/config` continues to
+    # be written above; the YAML removal lands in Story N.i with
+    # the read-compat sweep.
+    if [[ ! -f pyve.toml ]]; then
+        _init_write_pyve_toml "$(basename "$(pwd)")"
+        success "Created pyve.toml"
+    fi
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists

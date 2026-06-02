@@ -136,17 +136,20 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 ---
 
-### Story N.e: `pyve init` writes `pyve.toml` on fresh projects [Planned]
+### Story N.e: `pyve init` writes `pyve.toml` on fresh projects [Done]
 
 **Motivation.** Wire `pyve init` to scaffold `pyve.toml` for fresh projects. **Existing v2-configured projects are not auto-migrated by `pyve init`** — they hit the soft migration banner (Story N.h) and are directed to `pyve self migrate` (Story N.g). This keeps `pyve init` semantically clean.
 
+**Scope (decided during execution).** Two tasks from the original draft were descoped to keep N.e self-contained and avoid pulling unrelated subphase work forward:
+
+- **Task "v2-source detection + soft banner in `pyve init`"** → deferred to **N.g/N.h**. N.h is the load-bearing story for the soft banner, and depends on N.g's detection helper. Re-implementing a banner stub inside `pyve init` only to delete it when N.h lands is churn for no benefit. While N.e is `[Done]` and N.h has not yet landed, a `pyve init` invocation against a v2-only project (no `pyve.toml`, has `.pyve/config` or `[tool.pyve.testenvs.*]`) falls into the existing v2 re-init interactive prompt (3-option choice in `init_project`) — unchanged from v2 behavior.
+- **Task "Remove the `.pyve/config` write path from `pyve init`"** → deferred to **N.i**. Today many call sites still `read_config_value` / `config_file_exists` directly (15+ across `lib/`, `pyve.sh`, `lib/commands/*.sh`). The read-compat layer that lets those sites work off `pyve.toml` is N.i's deliverable; removing the write before N.i ships breaks `pyve check`, `pyve status`, `pyve update`, etc. on every fresh project. So N.e writes **both** `pyve.toml` (new) and `.pyve/config` (existing), and N.i's sweep removes the YAML write together with the reader migration.
+
 **Tasks**
 
-- [ ] `pyve init` (no `pyve.toml` and no v2 sources) writes a fresh `pyve.toml` with `[project]`, `[env.root]` (`purpose = "utility"`), and (when a Python interpreter is selected during init) `[env.testenv]` (`purpose = "test"`, `default = true`).
-- [ ] `pyve init` (no `pyve.toml` but v2 sources detected) prints the soft migration banner from Story N.h and exits with a hint pointing at `pyve self migrate`; does **not** auto-migrate.
-- [ ] `pyve init` (existing `pyve.toml`) is a refresh: re-validates the manifest, updates managed files, leaves the manifest content alone.
-- [ ] Remove the `.pyve/config` write path from `pyve init`; legacy YAML is read-only from v3.0 onward (Story N.i).
-- [ ] Bats integration tests for each of the three branches.
+- [x] `pyve init` (no `pyve.toml` and no v2 sources) writes a fresh `pyve.toml` with `[project]`, `[env.root]` (`purpose = "utility"`), and (when a Python interpreter is selected during init) `[env.testenv]` (`purpose = "test"`, `default = true`).
+- [x] `pyve init` (existing `pyve.toml`) is a refresh: re-validates the manifest, leaves the manifest content alone (does not rewrite). Other managed-file refresh behavior (`.envrc`, `.gitignore`, `.vscode/settings.json`, `.pyve/config`) is unchanged from v2 — `pyve init` continues to write/refresh them as it always has.
+- [x] Bats unit tests covering: fresh-write happy path (both backends); fresh-write project-name derivation from cwd; `pyve.toml` parses + validates clean after init; refresh path leaves an existing `pyve.toml` byte-identical; refresh path errors on an invalid `pyve.toml`.
 
 ### Story N.f: State directory final path — `.pyve/testenvs/<name>/` decision [Planned]
 
