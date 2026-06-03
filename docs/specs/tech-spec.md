@@ -899,6 +899,63 @@ Parallel indexed arrays keyed by position in `PYVE_ENV_NAMES`. Bash-3.2-safe (no
 
 ---
 
+### Plugin contract architecture
+
+The plugin layer is the seam through which Pyve materializes language-specific environments behind a uniform contract. Three coordinated registries split the responsibilities cleanly: the **plugin registry** ([lib/plugins/registry.sh](../../lib/plugins/registry.sh)) tracks which plugins are active; the **contract default-hooks** ([lib/plugins/contract.sh](../../lib/plugins/contract.sh)) provide no-op fallbacks for every documented hook; the **backend-provider registry** ([lib/plugins/backend_registry.sh](../../lib/plugins/backend_registry.sh)) tracks which backends each plugin owns and routes backend-specific calls through a uniform dispatcher.
+
+**The 14 contract hooks.** Every plugin can implement any subset; unimplemented hooks fall through to the silent no-op defaults in `contract.sh`. The hooks group as:
+
+| Group | Hooks | When called |
+|---|---|---|
+| Identity | `manifest_namespace` | At registration; returns the plugin's `[plugins.<name>]` key. |
+| Backend setup | `register_backends` | Eagerly at source-time; registers the plugin's backend providers via `bp_register`. |
+| Detection | `detect` | Scaffold-time from `pyve init`; auto-selects the backend for fresh projects. |
+| Lifecycle (×7) | `init`, `purge`, `update`, `check`, `status`, `run`, `test` | One per `pyve <command>` user-surface; routed via `plugin_dispatch` from `pyve.sh`'s case arms. |
+| Activation | `activate` | From `pyve init`'s direnv-emission path; composes the plugin's `.envrc` snippet through PC-1 validation, then delegates the actual write to the backend-provider activate hook. |
+| Diagnostics | `diagnostics` | Reserved for plugin-internal health checks surfaced through `pyve check`. v3.0 ships no implementations. |
+| File-management (×2) | `gitignore_entries`, `purge_inventory` | From `write_gitignore_template` and `purge_project`; the plugin declares the patterns / created-vs-authored paths it owns. |
+
+Total: 1 + 1 + 1 + 7 + 1 + 1 + 2 = 14 hooks. The 7 lifecycle hooks and the activation hook are the load-bearing surface for v3.0; diagnostics is forward-looking.
+
+**Two dispatch layers.** `plugin_dispatch` and `bp_dispatch` route different concerns:
+
+- **`plugin_dispatch <plugin> <hook> [args...]`** — calls `<plugin>_pyve_plugin_<hook>` if defined, else the no-op default. Owns: cross-plugin routing. Invoked from `pyve.sh`'s case dispatcher as the public entry boundary.
+- **`bp_dispatch <backend> <hook> [args...]`** — calls `<backend>_pyve_bp_<hook>`, dispatched by registered backend name (not plugin name). Owns: within-plugin backend-specific shape (venv-vs-micromamba activation paths, for instance). Invoked from inside a plugin's hook implementations.
+
+A typical call chain (Python's `activate` hook through both dispatchers):
+
+```
+pyve init                                       ← pyve.sh case arm
+  plugin_dispatch python init <args>            ← cross-plugin routing
+    python_pyve_plugin_init                     ← plugin lifecycle hook
+      init_project <args>                       ← Python plugin's implementation
+        plugin_dispatch python activate ...     ← re-enters the cross-plugin layer
+          python_pyve_plugin_activate           ← plugin's activate hook (PC-1 gate)
+            _python_pyve_plugin_envrc_snippet   ← plugin-owned snippet
+            validate_envrc_snippet              ← PC-1 validation
+            bp_dispatch <backend> activate ...  ← within-plugin backend routing
+              {venv,micromamba}_pyve_bp_activate  ← backend shim
+                write_envrc_template            ← composer (lib/utils.sh)
+```
+
+**Three backend categories.** Each registered backend declares one of `virtualized` / `cache-backed` / `check-only` at `bp_register` time. The category drives the `init` / `purge` / `activate` semantics:
+
+- `virtualized` — per-project env dir; PATH activation required for project-pinned binaries. v3.0 ships: `venv`, `micromamba`.
+- `cache-backed` — shared user-level dep cache + project lockfile. v3.0: designed-in, no implementations (first candidates: Rust, Go).
+- `check-only` — Pyve verifies presence and version; no install action. v3.0: designed-in, no implementations (first candidates: mobile toolchains, Docker, Homebrew).
+
+See the [backend-provider registry subsection](#libpluginsbackend_registrysh--backend-provider-registry-story-nl-subphase-n-2) for the dispatcher API and category-default fallback semantics.
+
+**Implicit-Python rule.** A project that contains no `[plugins.*]` declarations in `pyve.toml` gets `python` implicitly registered at `path = "."`. This is the migration shape for every v2-vintage project (which had no `[plugins.*]` blocks). Explicit declarations override the implicit expansion; an explicit `[plugins.node]` (with no `[plugins.python]`) does NOT additionally register Python — implicit-Python fires only when `[plugins.*]` is absent entirely.
+
+**Cardinality.** At most one plugin may resolve to `path = "."`. Two declarations both claiming the project root is a manifest error; the registry's load step returns non-zero with a precise diagnostic. The check applies after both explicit registration and implicit-Python expansion.
+
+**PC-1 input safety.** Plugin-emitted content bound for shell-evaluated files (`.envrc`) or git-evaluated files (`.gitignore`) passes through [lib/envrc_safety.sh](../../lib/envrc_safety.sh)'s line-oriented allow-list validators before write. A failing snippet aborts the write; a pre-existing file is left byte-identical. Infrastructure lines emitted by the composer itself (header comments, dotenv conditional, macOS `.DS_Store`) are never validated — they're not plugin-emitted.
+
+The per-component subsections below describe each registry, the Python plugin's implementation of every hook, and the composer-side seams where the contract integrates with the pre-existing `pyve init` / `purge` / `update` / `check` / `status` / `run` / `test` command implementations (all relocated into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) as part of the Phase N-2 cutover).
+
+---
+
 ### `lib/plugins/contract.sh` + `lib/plugins/registry.sh` — Plugin contract & registry (Story N.k, Subphase N-2)
 
 The plugin layer is the seam through which N-2 onwards re-seats Python (and later Node, etc.) as registered plugins. Two files, two responsibilities:
@@ -952,7 +1009,7 @@ app_type = "spa"     # provider-private; available via manifest_get_plugin_attr
 
 **Sourcing order** (in `pyve.sh`): after `lib/manifest.sh` (the registry reads `PYVE_PLUGIN_NAMES` etc.) and before per-command modules (commands may dispatch hooks). Per the project-essentials rule, both files are sourced explicitly — no glob.
 
-**What N.k does NOT do.** No plugin implementations exist yet — `lib/plugins/python/plugin.sh` lands in Story N.n. The backend-provider abstraction is a separate registry — Story N.l. PC-1 input safety validation — Story N.m. Re-seating today's `pyve init` / `purge` / `check` / `status` / `run` / `test` behind the contract — Stories N.o–N.r. v3.0 shipping behavior is preserved through this whole window via the read-compat layer (Story N.i) and the unchanged direct callsites in `lib/commands/*.sh` (which dispatch through the contract starting in N.o).
+**What N.k does NOT do.** No plugin implementations land in N.k itself — the Python plugin module ships in Story N.n, the backend-provider registry in Story N.l, PC-1 input safety validation in Story N.m, the per-command lifecycle hooks in Stories N.o (lifecycle: init / purge / update) and N.p (runtime: check / status / run / test), the activate hook in N.q, and the gitignore + smart-purge hooks in N.r. N.k provides the skeleton only — the empty contract, the registry that loads it, and the no-op defaults that make missing-hook behavior safe.
 
 ---
 
@@ -1127,7 +1184,7 @@ Empty `purpose` and empty `backend` are both allowed — `manifest_resolve_purpo
 
 **S11 `languages` advisory read.** `_python_pyve_plugin_languages_advisory_read` iterates declared envs and calls `manifest_get_languages` for each. v3.0 is read-only: the read confirms the data flow is wired so Story N.p can surface the values in `pyve check` / `pyve status` without a schema change. The values are intentionally unused in N.o.
 
-**What N.o does NOT do.** The Python plugin's `check` / `status` / `run` / `test` hooks stay as no-op defaults (Story N.p). The `activate` hook still uses the legacy `_init_direnv_*` path via the bp_activate shims (Story N.q replaces with composed snippets through `validate_envrc_snippet`). `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). Whole-function relocation of `init_project` / `purge_project` / `update_project` into the plugin file is the Option 1 path — revisited in Story N.s.
+**What N.o does NOT do.** N.o ships only the lifecycle triplet (init / purge / update); the runtime quartet (check / status / run / test) lands in N.p, the activate hook in N.q, and the gitignore + smart-purge hooks in N.r. The whole-function relocation of `init_project` / `purge_project` / `update_project` from `lib/commands/` into the plugin file (the Option 1 carry-over) ships in Stories N.s.1–N.s.3.
 
 ---
 
@@ -1185,9 +1242,9 @@ status) plugin_dispatch python status "$@" ;;
 
 `--help` / `PYVE_DISPATCH_TRACE` short-circuits above each arm preserved unchanged. Internal cross-command callsites (e.g., `test_tests` calling `run_command` in its non-root short-circuit at `lib/commands/test.sh:211`) stay direct — Option 2 only refactors public entry points.
 
-**`pyve python set` / `pyve python show` relocation (Option (a)).** The two Python-version-management commands move from [lib/commands/python.sh](../../lib/commands/python.sh) to [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) as ordinary functions (not contract hooks — they're plugin-private extensions). The `python_command` dispatcher in `lib/commands/python.sh` still calls `python_set` / `python_show` by name; bash function-name lookup is global, so the relocation is invisible to the dispatcher. Behavior unchanged.
+**`pyve python set` / `pyve python show` relocation (Option (a)).** The two Python-version-management commands move from `lib/commands/python.sh` to [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) as ordinary functions (not contract hooks — they're plugin-private extensions). The `python_command` namespace dispatcher follows in Story N.s.8, completing the namespace inside the plugin file; bash function-name lookup is global, so dispatcher → leaf calls resolve identically regardless of file location.
 
-**What N.p does NOT do.** The plugin's `activate` hook still uses the legacy `_init_direnv_*` path via the bp_activate shims (Story N.q replaces with composed snippets through `validate_envrc_snippet`). `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). Whole-function relocation of `check_environment` / `show_status` / `run_command` / `test_tests` into the plugin file is on the Option 1 path — revisited in Story N.s. The `python_command` dispatcher itself stays in `lib/commands/python.sh`; if a future story wants to move that too, it's a minor follow-up.
+**What N.p does NOT do.** N.p ships only the runtime quartet (check / status / run / test) plus the `python set` / `show` leaf relocation. The activate hook lands in N.q, the gitignore + smart-purge hooks in N.r, and the whole-function relocation of `check_environment` / `show_status` / `run_command` / `test_tests` (and the `python_command` dispatcher) from `lib/commands/` into the plugin file ships in Stories N.s.4–N.s.8.
 
 ---
 
@@ -1198,7 +1255,7 @@ N.q closes the loop on PC-1: the plugin's `activate` hook composes the plugin-ow
 **Three-layer call chain.**
 
 ```
-lib/commands/init.sh
+init_project (in lib/plugins/python/plugin.sh)
     plugin_dispatch python activate <backend> <env_path> <env_name>
         python_pyve_plugin_activate                     ← N.q (PC-1 gate)
             _python_pyve_plugin_envrc_snippet  ── PC-1 ─→ validate_envrc_snippet
@@ -1238,9 +1295,9 @@ Result: the strict N.m allow-list is usable for plugins **without retroactively 
 3. Returns non-zero. The `bp_dispatch` call never fires; no file is written.
 4. A pre-existing `.envrc` (from a prior `pyve init`) is left byte-identical.
 
-**Callsite re-seat.** Two `bp_dispatch ... activate` callsites in [lib/commands/init.sh](../../lib/commands/init.sh) — the venv-backend init at [init.sh:1117](../../lib/commands/init.sh#L1117) and the micromamba-backend init at [init.sh:1012](../../lib/commands/init.sh#L1012) — now route through `plugin_dispatch python activate <backend> ...`. The bp_dispatch path stays alive: the plugin's hook delegates to it after the validation gate.
+**Callsite re-seat.** Two `bp_dispatch ... activate` callsites inside `init_project` (the venv-backend init path and the micromamba-backend init path) now route through `plugin_dispatch python activate <backend> ...`. The bp_dispatch path stays alive: the plugin's hook delegates to it after the validation gate. Post-N.s.1, both callsites and the `_init_direnv_*` helpers they ultimately invoke all live inside [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh); the call chain crosses no file boundaries.
 
-**What N.q does NOT do.** `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). The legacy `_init_direnv_*` helpers stay in [lib/commands/init.sh](../../lib/commands/init.sh) — Option 1 (whole-function relocation into the plugin file) is on N.s's docket. The infrastructure lines in `write_envrc_template` are not validated and not refactored; they're outside the plugin contract.
+**What N.q does NOT do.** N.q ships only the activate hook with PC-1 gate. The gitignore + smart-purge hooks land in N.r. The infrastructure lines in `write_envrc_template` (the dotenv conditional, the asdf compat block) are composer-owned, not plugin-emitted; the PC-1 validator never sees them. `write_envrc_template` itself stays composer-side per the N.s umbrella's explicit-non-relocations — it emits content for any plugin's activation path, not just Python's.
 
 ---
 
@@ -1320,7 +1377,7 @@ Plugin purge inventory (Story N.r):
 
 The actual removal calls (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`) stay direct. The data interface is the seam: future plugins (Node, etc.) can declare their own creation/authorship surfaces; future stories can extend `purge_project` to drive removal decisions from the inventory. For v3.0 with only Python in scope, the inventory matches the hardcoded behavior — no behavior change.
 
-**What N.r does NOT do.** The Python plugin's `register_backends` hook still fires eagerly at source-time from [pyve.sh](../../pyve.sh) (rather than via `plugin_dispatch python register_backends` from `main()`'s plugin-load chain) — same pattern as N.l/N.n. The actual purge-removal logic stays hardcoded; the inventory is a read-only seam in v3.0. Whole-function relocation of `write_gitignore_template` / `purge_project` into the plugin file is on the Option 1 path — revisited in Story N.s.
+**What N.r does NOT do.** The Python plugin's `register_backends` hook still fires eagerly at source-time from [pyve.sh](../../pyve.sh) (rather than via `plugin_dispatch python register_backends` from `main()`'s plugin-load chain) — same pattern as N.l/N.n. The actual purge-removal logic stays hardcoded; the inventory is a read-only seam in v3.0. `purge_project` itself relocated into the plugin file in Story N.s.2; `write_gitignore_template` stays composer-side per the N.s umbrella's explicit-non-relocations (it emits infrastructure lines that apply to every plugin, not just Python).
 
 ---
 

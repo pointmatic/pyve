@@ -821,17 +821,29 @@ These slot into the existing "Fix pre-existing integration test failures" Future
 - **Fixing the 5 pre-existing integration test failures.** Belongs to the "Fix pre-existing integration test failures" Future story tracked from N.g — N.s.9 surfaces and classifies, doesn't fix.
 - **Running the unmarked-failure portion of the integration suite past pytest's `--maxfail=5` gate.** With 5 of the macOS/cross-platform tests failing on the same wizard-gate trap, the remaining tests would likely have similar timeouts. Re-running with a higher maxfail would burn ~10+ minutes per failed test. Skipped; the failure-class identification stands without exhaustive enumeration.
 
-### Story N.s.10: Update tech-spec.md for the plugin architecture [Planned]
+### Story N.s.10: Update tech-spec.md for the plugin architecture [Done]
 
 **Motivation.** Surface the full plugin architecture in the canonical tech-spec document. N.k / N.l / N.m / N.n / N.o / N.p / N.q / N.r each added their own subsections incrementally; N.s.10 adds the top-level "how the contract fits together" narrative that's been deferred until the Option 1 cutover is complete.
 
 **Tasks**
 
-- [ ] Add a new top-level "Plugin contract architecture" section to [tech-spec.md](tech-spec.md) covering the 14 hooks per N.k (manifest_namespace, register_backends, detect, lifecycle init/purge/update/check/status/run/test, activate, diagnostics, gitignore_entries, purge_inventory), how `plugin_dispatch` routes, and how `bp_dispatch` mediates backend selection within a plugin.
-- [ ] Document the backend-provider three-category taxonomy per revised S6 (project-virtualized, cache-backed, check-only) with the v3.0 ship-list (Python's venv + micromamba both `virtualized`).
-- [ ] Document the implicit-Python rule per S5 (`plugin_load_all_from_manifest` registers `python` at `path = "."` when no `[plugins.*]` is declared).
-- [ ] Audit the per-story subsections added in N.k–N.r: ensure each remains accurate post-relocation; rename "Option 2" → "Option 1 / relocated" where N.s.1–N.s.8 changed the locus (most rows already updated incrementally; this is the consistency-check pass).
-- [ ] No content removal beyond the Option-2 / Option-1 fixup — N-6's `refactor_document` pass owns the holistic doc reorganization. N.s.10 is targeted additions + consistency only.
+- [x] Add a new top-level "Plugin contract architecture" section to [tech-spec.md](tech-spec.md) (slotted before the N.k per-component subsection, inside the "Key Component Design" section). Covers: the 14 hooks grouped as identity / backend-setup / detection / lifecycle×7 / activation / diagnostics / file-management×2 (with a table mapping each group to its trigger); the two dispatch layers (`plugin_dispatch` for cross-plugin routing, `bp_dispatch` for within-plugin backend routing); a worked call-chain example showing both dispatchers in sequence for Python's `activate`.
+- [x] Document the backend-provider three-category taxonomy per revised S6 (`virtualized`, `cache-backed`, `check-only`) in the new top-level section, with the v3.0 ship-list explicitly named (Python's venv + micromamba both `virtualized`; the other two categories are designed-in with no v3.0 implementations).
+- [x] Document the implicit-Python rule per S5 in the new top-level section: a project with no `[plugins.*]` declarations gets `python` implicitly registered at `path = "."`; explicit declarations override; explicit `[plugins.node]` alone does NOT additionally register Python (implicit-Python fires only when `[plugins.*]` is absent entirely).
+- [x] **Audit per-story "What X does NOT do" subsections** in N.k, N.o, N.p, N.q, N.r. All five were rewritten from future-tense roadmap ("Whole-function relocation ... is on the Option 1 path — revisited in Story N.s") to past-tense / current-reality ("relocated in Story N.s.X" or "ships composer-side per the umbrella's explicit-non-relocations"). Also updated:
+  - N.q's call-chain diagram top-line (`lib/commands/init.sh` → `init_project (in lib/plugins/python/plugin.sh)`)
+  - N.q's "Callsite re-seat" paragraph (callsite locations are now internal to plugin.sh, line numbers and external-file references stripped)
+  - N.p's "python set/show relocation" paragraph (recorded the N.s.8 dispatcher completion)
+- [x] **Subsection headings preserved verbatim.** Per the feedback-memory rule, the "(Story N.k, Subphase N-2)" / "(Story N.l, Subphase N-2)" / etc. headers in subsection titles are *contract references* — they name the architectural decision in the canonical history doc, and a future reader looking up "where did the plugin contract come from?" needs the N.k anchor to navigate stories.md. Load-bearing; not stripped.
+- [x] No content removal beyond the Option-2 / Option-1 fixup. N-6's `refactor_document` pass owns the holistic doc reorganization — N.s.10 added the synthesis section and corrected stale narratives only.
+
+**Verification.** Doc-only changes; no test impact. Spot-checked the call-chain diagram against the actual plugin.sh source (`init_project` → `plugin_dispatch python activate` → `python_pyve_plugin_activate` → `_python_pyve_plugin_envrc_snippet` + `validate_envrc_snippet` + `bp_dispatch <backend> activate` → `{venv,micromamba}_pyve_bp_activate` → `_init_direnv_*` → `write_envrc_template`) — every layer present in plugin.sh + lib/utils.sh.
+
+**Out of scope (flagged, kept out).**
+
+- **Holistic tech-spec.md reflow** (e.g., consolidating the per-component N.k–N.r subsections into a single "Plugin layer" section that subsumes the new synthesis + the per-file detail). That's N-6's `refactor_document` job; N.s.10 added the synthesis as a peer that frames the per-file detail without rewriting it.
+- **Stripping `Story N.X` markers from production code.** Code-side narrative refs in plugin.sh and other lib/ files are pre-existing debt. Per the feedback-memory rule, distinguishing contract refs from narrative refs requires reading each comment in context — a separate sweep, not a doc-update story.
+- **Sweeping `Story N.X` markers from features.md / brand-descriptions.md.** Those docs get their own touch-up stories (N.s.11 / N.s.12).
 
 ### Story N.s.11: Update features.md for the v3 env model [Planned]
 
@@ -1006,7 +1018,7 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 
 ### Story ?.?: Fix pre-existing integration test failures [Planned]
 
-**Motivation**: surfaced during story K.a.1 regression sweep. Four tests in [tests/integration/](../../tests/integration/) fail against `main` unrelated to any in-flight change; three are UI-drift (assertions checking `stderr` for output now on `stdout`, or looking for prompt text that changed), one is a genuine behavior check worth reinvestigating, and one is a flaky timeout. Pinning these now so they don't mask real regressions in future `make test-integration` runs.
+**Motivation**: surfaced during story K.a.1 regression sweep. Four tests in [tests/integration/](../../tests/integration/) fail against `main` unrelated to any in-flight change; three are UI-drift (assertions checking `stderr` for output now on `stdout`, or looking for prompt text that changed), one is a genuine behavior check worth reinvestigating, and one is a flaky timeout. Pinning these now so they don't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9.
 
 **Tasks**
 
