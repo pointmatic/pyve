@@ -30,6 +30,12 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/plugins/contract.sh"
     source "$PYVE_ROOT/lib/plugins/registry.sh"
     source "$PYVE_ROOT/lib/plugins/backend_registry.sh"
+    # Story N.r: write_gitignore_template now runs the Python plugin's
+    # gitignore_entries output through validate_gitignore_snippet
+    # (Story N.m PC-1 gate). Source envrc_safety.sh before the plugin
+    # so the validator is available when the plugin file (and
+    # write_gitignore_template) is called.
+    source "$PYVE_ROOT/lib/envrc_safety.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"

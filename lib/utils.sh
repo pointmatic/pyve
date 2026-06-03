@@ -825,35 +825,35 @@ write_gitignore_template() {
     tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
 
     # --- 1. Write the Pyve-managed section ---
-    # The Pyve virtual environment block below bakes in every pyve-managed
-    # ignore pattern that is NOT user-overridable at init time. Before
-    # Story H.e.2a only `.pyve/envs` for micromamba and `.venv` for venv
-    # were added dynamically per-backend, which meant a venv-init'd project
-    # that later had a micromamba env drop into `.pyve/envs/` leaked
-    # thousands of files to `git status`. Static patterns eliminate that
-    # asymmetry — `pyve update` restores them on any pre-fix project.
+    # Composer owns the macOS + Pyve infrastructure lines; the Python
+    # plugin owns the language-ecosystem patterns (Python build/test
+    # artifacts + Jupyter). Story N.r added the plugin/composer split:
+    # plugin lines flow through validate_gitignore_snippet (N.m PC-1
+    # gate); infrastructure lines are emitted directly.
     cat > "$tmpfile" << 'GITIGNORE_EOF'
 # macOS only
 .DS_Store
 
-# Python build and test artifacts
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.egg-info
-*.egg
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
-dist/
-build/
+GITIGNORE_EOF
 
-# Jupyter notebooks
-.ipynb_checkpoints/
-*.ipynb_checkpoints
+    # Plugin-owned language-ecosystem block. Validated via PC-1
+    # before write. On validation failure, the plugin's contribution
+    # is dropped (the file still gets the composer-owned lines so
+    # `.gitignore` is never absent — but plugin smuggling never reaches
+    # disk). The validator's per-line rejection message goes to stderr.
+    if declare -F python_pyve_plugin_gitignore_entries >/dev/null 2>&1; then
+        local _plugin_gitignore_block
+        _plugin_gitignore_block="$(python_pyve_plugin_gitignore_entries)"
+        if validate_gitignore_snippet "$_plugin_gitignore_block" 2>/dev/null; then
+            printf '%s\n\n' "$_plugin_gitignore_block" >> "$tmpfile"
+        else
+            # Validation failed — fall through. The composer-only file
+            # is still safe; the plugin contribution is just skipped.
+            :
+        fi
+    fi
 
+    cat >> "$tmpfile" << 'GITIGNORE_EOF'
 # Pyve virtual environment
 .pyve/envs
 .pyve/testenvs

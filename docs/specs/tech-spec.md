@@ -1242,6 +1242,86 @@ Result: the strict N.m allow-list is usable for plugins **without retroactively 
 
 ---
 
+### Python plugin — `.gitignore` + smart-purge hooks (Story N.r)
+
+N.r closes out the Python plugin's contract surface with the two remaining data interfaces. Both ship as data — the plugin returns lists; the consumer (composer) decides what to do with them.
+
+**`python_pyve_plugin_gitignore_entries`** — language-ecosystem patterns the Python plugin contributes to `.gitignore`:
+
+```
+# Python build and test artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+```
+
+Output flows through `validate_gitignore_snippet` (Story N.m PC-1 gate) before `write_gitignore_template` writes it. On validation failure the plugin contribution is silently dropped (the file still gets composer-owned lines — macOS `.DS_Store`, Pyve infrastructure — so `.gitignore` is never absent).
+
+**`python_pyve_plugin_purge_inventory`** — declares Pyve-created and user-authored paths:
+
+```
+created .venv
+created .pyve/envs
+created .envrc
+authored pyproject.toml
+authored requirements*.txt
+authored setup.py
+authored environment.yml
+```
+
+Line format: `<class> <path>` where class is `created` (safe to remove on purge) or `authored` (never touch on purge).
+
+**Plugin-vs-composer boundary (same as N.q's for `.envrc`).** `write_gitignore_template` in [lib/utils.sh](../../lib/utils.sh) splits the file into three composer-owned sections + one plugin-owned section:
+
+```
+# macOS only                                  ← composer
+.DS_Store
+                                              ← blank
+<python_pyve_plugin_gitignore_entries>        ← plugin (PC-1-validated)
+                                              ← blank
+# Pyve virtual environment                    ← composer
+.pyve/envs
+.pyve/testenvs
+.envrc
+.env
+.vscode/settings.json
+```
+
+The dynamic venv directory line (`.venv` or the user's `--venv-dir`) is appended by the deduplication pass at the bottom. Byte-equivalent `.gitignore` for every existing fixture — verified by the existing `test_utils.bats` regression tests for `write_gitignore_template`.
+
+**Purge inventory as a data interface (v3.0 minimum).** `purge_project` in [lib/commands/purge.sh](../../lib/commands/purge.sh) reads the inventory via `plugin_dispatch python purge_inventory` and surfaces it under `--verbose`:
+
+```
+$ pyve --verbose purge --yes
+…
+Plugin purge inventory (Story N.r):
+  created .venv
+  created .pyve/envs
+  created .envrc
+  authored pyproject.toml
+  authored requirements*.txt
+  …
+```
+
+The actual removal calls (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`) stay direct. The data interface is the seam: future plugins (Node, etc.) can declare their own creation/authorship surfaces; future stories can extend `purge_project` to drive removal decisions from the inventory. For v3.0 with only Python in scope, the inventory matches the hardcoded behavior — no behavior change.
+
+**What N.r does NOT do.** The Python plugin's `register_backends` hook still fires eagerly at source-time from [pyve.sh](../../pyve.sh) (rather than via `plugin_dispatch python register_backends` from `main()`'s plugin-load chain) — same pattern as N.l/N.n. The actual purge-removal logic stays hardcoded; the inventory is a read-only seam in v3.0. Whole-function relocation of `write_gitignore_template` / `purge_project` into the plugin file is on the Option 1 path — revisited in Story N.s.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

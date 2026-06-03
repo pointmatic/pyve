@@ -61,6 +61,22 @@ purge_project() {
 
     header_box "pyve purge"
 
+    # Story N.r: pull the active plugin's purge_inventory as a data
+    # interface. v3.0 reads the inventory for diagnostic / verbose
+    # surfacing only — the actual removal calls below stay direct.
+    # Future stories can extend the composer to consume the inventory
+    # for path-level removal decisions; for now the seam is in place.
+    if declare -F plugin_dispatch >/dev/null 2>&1; then
+        local _plugin_inventory
+        _plugin_inventory="$(plugin_dispatch python purge_inventory 2>/dev/null || true)"
+        if [[ -n "${PYVE_VERBOSE:-}" ]] && [[ -n "$_plugin_inventory" ]]; then
+            info "Plugin purge inventory (Story N.r):"
+            while IFS= read -r _inv_line; do
+                [[ -n "$_inv_line" ]] && info "  $_inv_line"
+            done <<< "$_plugin_inventory"
+        fi
+    fi
+
     # Destructive-confirmation prompt. Skipped when:
     #   --yes / -y passed (e.g., by `init --force`), CI=1, or PYVE_FORCE_YES=1.
     if [[ "$skip_confirm" != true ]] && [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then

@@ -354,6 +354,66 @@ export PYVE_PROMPT_PREFIX="($backend:$env_name) "
 EOF
 }
 
+#------------------------------------------------------------
+# Plugin contract — gitignore_entries (Story N.r)
+#
+# Returns the Python-ecosystem patterns the plugin contributes to
+# `.gitignore`. Output flows through validate_gitignore_snippet
+# (Story N.m PC-1 gate) before being written. Composer-owned lines
+# (macOS `.DS_Store`, Pyve-managed `.pyve/envs`, the dynamic venv
+# directory) stay in `write_gitignore_template` — same plugin-vs-
+# infrastructure boundary as N.q used for `.envrc`.
+#------------------------------------------------------------
+
+python_pyve_plugin_gitignore_entries() {
+    cat <<'EOF'
+# Python build and test artifacts
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.egg-info
+*.egg
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+dist/
+build/
+
+# Jupyter notebooks
+.ipynb_checkpoints/
+*.ipynb_checkpoints
+EOF
+}
+
+#------------------------------------------------------------
+# Plugin contract — purge_inventory (Story N.r)
+#
+# Declares the paths the Python plugin manages, split into two
+# classes:
+#   - `created <path>`   — Pyve-created; safe to remove on purge.
+#   - `authored <path>`  — user-authored; never touch on purge.
+#
+# v3.0 ships this as a data interface — `purge_project` reads but
+# does not consume it for removal decisions. The existing hardcoded
+# removal calls in lib/commands/purge.sh stay direct. The seam is in
+# place for future plugins (Node, etc.) that need to declare their
+# own creation/authorship surfaces.
+#------------------------------------------------------------
+
+python_pyve_plugin_purge_inventory() {
+    cat <<'EOF'
+created .venv
+created .pyve/envs
+created .envrc
+authored pyproject.toml
+authored requirements*.txt
+authored setup.py
+authored environment.yml
+EOF
+}
+
 # Plugin activate hook. Unified signature across backends:
 #   python_pyve_plugin_activate <backend> <env_path> <env_name>
 #
