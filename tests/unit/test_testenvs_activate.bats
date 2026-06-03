@@ -160,7 +160,7 @@ teardown() {
         "$PYVE_ROOT/lib/commands/test.sh" \
         "$PYVE_ROOT/lib/commands/env.sh" \
         "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
-        "$PYVE_ROOT/lib/commands/status.sh" \
+        "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
         "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
         2>&1 | grep -v '^[^:]*:[0-9]*:\s*#' || true)"
     if [[ -n "$hits" ]]; then

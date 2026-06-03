@@ -247,14 +247,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/status.sh" ]]; then
-    # shellcheck source=lib/commands/status.sh
-    source "$SCRIPT_DIR/lib/commands/status.sh"
-else
-    printf "ERROR: Cannot find lib/commands/status.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/test.sh" ]]; then
     # shellcheck source=lib/commands/test.sh
     source "$SCRIPT_DIR/lib/commands/test.sh"

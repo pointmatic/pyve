@@ -687,19 +687,27 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.1: premature when only one of four runtime hooks is relocated. The heading carries "(partial Option 1 relocation in N.s.4+)"; full rename to "(Option 1 / relocated via N.s.4–N.s.7)" lands with N.s.7.
 - **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.3; micromamba isn't installed locally. The 1435-test unit suite covers both backends.
 
-### Story N.s.5: Relocate `show_status` into the Python plugin [Planned]
+### Story N.s.5: Relocate `show_status` into the Python plugin [Done]
 
 **Motivation.** Fifth function relocation per the N.s umbrella.
 
 **Tasks**
 
-- [ ] Move `show_status` from [lib/commands/status.sh](../../lib/commands/status.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_status` shim.
-- [ ] Move every `_status_*` private helper into the plugin file.
-- [ ] Move `show_status_help` to the plugin file. (Naming note: `show_status` is the command function per the F-table; `show_status_help` is its per-command help block.)
-- [ ] Delete `lib/commands/status.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `show_status`'s row as relocated.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_5_status_relocation.bats](../../tests/unit/test_n_s_5_status_relocation.bats).
-- [ ] Behavioral regression: `pyve status` against various env states produces identical output; the N.p advisories still render; full unit suite green.
+- [x] Move `show_status` from `lib/commands/status.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `show_check_help` (continuing the end-of-file convention).
+- [x] Move every `_status_*` private helper (12 in total: `_status_row`, `_status_header`, `_status_section_project`, `_status_configured_python`, `_status_configured_python_venv`, `_status_configured_python_micromamba`, `_status_parse_env_yml_python_pin`, `_status_section_environment`, `_status_env_venv`, `_status_venv_package_count`, `_status_env_micromamba`, `_status_section_integrations`) into the plugin file. Verbatim move; no body or signature changes.
+- [x] Move `show_status_help` to the plugin file per the F-table per-command-help convention.
+- [x] Delete `lib/commands/status.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): table row for `python_pyve_plugin_status` now reads "**Relocated to plugin.sh in N.s.5**" (matching N.s.4's row shape).
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_5_status_relocation.bats](../../tests/unit/test_n_s_5_status_relocation.bats): 16 tests covering `show_status` + 12 `_status_*` helpers + `show_status_help` grep-findable in plugin.sh, `lib/commands/status.sh` non-existence, no `lib/commands/status.sh` reference in `pyve.sh`. RED confirmed against baseline (16/16 fail); GREEN after the relocation (16/16 pass).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` followed by `pyve status` on a fresh dir rendered all three sections (Project / Environment / Integrations) correctly — Project section with Path / Backend: venv / Pyve config: v2.8.0 (current) / Python: 3.14.4 (.tool-versions via asdf); Environment section with Path: .venv / Python: 3.14.4 / Packages: 4 installed / distutils shim: installed; Integrations section with direnv (.envrc missing), .env (present empty), project-guide (not installed), testenv (present, pytest not installed). Output respects the H.e.4 BOLD/DIM coloring contract. Full unit suite: **1451 ok / 0 not ok** (1435 N.s.4 baseline + 16 new N.s.5 tests).
+
+**Sidecar test-file updates.** Bulk-substituted `lib/commands/status.sh` → `lib/plugins/python/plugin.sh` in 2 test files: [test_n_p_python_plugin_runtime.bats](../../tests/unit/test_n_p_python_plugin_runtime.bats) (explicit `source` line) and [test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats) (legacy-path regression-test grep argument).
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the `_status_*` helpers themselves.** Helpers moved verbatim; bodies and signatures unchanged.
+- **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.4: two of four runtime hooks now relocated; the heading keeps "(partial Option 1 relocation in N.s.4+)" until N.s.7 completes the quartet.
+- **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.4; the 1451-test unit suite covers both backends.
 
 ### Story N.s.6: Relocate `run_command` into the Python plugin [Planned]
 
