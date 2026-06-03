@@ -1096,9 +1096,9 @@ Every existing caller (`pyve.sh:show_config`, `lib/commands/init.sh:get_backend_
 
 ---
 
-### Python plugin — lifecycle hooks (Story N.o, Option 2; partial Option 1 relocation in N.s.1+)
+### Python plugin — lifecycle hooks (Story N.o, Option 1 / relocated via N.s.1–N.s.3)
 
-N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve update`) behind the plugin contract. Per N.o's announce-gate decision (Option 2 — hook-as-shim), the implementations originally stayed in `lib/commands/{init,purge,update}.sh` while the plugin file gained thin shims that delegated to them. The N.s umbrella (Option 1) relocates each function body — plus its private helpers and `show_<cmd>_help` block — into the plugin file across three stories: N.s.1 (`init_project`), N.s.2 (`purge_project`), N.s.3 (`update_project`).
+N.o re-seated the three scaffolding commands (`pyve init`, `pyve purge`, `pyve update`) behind the plugin contract. Per N.o's announce-gate decision (Option 2 — hook-as-shim), the implementations originally stayed in `lib/commands/{init,purge,update}.sh` while the plugin file gained thin shims that delegated to them. The N.s umbrella (Option 1) relocated each function body — plus its private helpers and `show_<cmd>_help` block — into the plugin file across three stories: N.s.1 (`init_project`), N.s.2 (`purge_project`), N.s.3 (`update_project`). **As of N.s.3, the N.o triplet relocation is complete: `lib/commands/{init,purge,update}.sh` are all deleted; every function lives in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh).**
 
 **Three lifecycle shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
 
@@ -1106,7 +1106,7 @@ N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve up
 |---|---|---|
 | `python_pyve_plugin_init` | Runs `python_pyve_plugin_validate_env_blocks` (S9), runs `_python_pyve_plugin_languages_advisory_read` (S11), then calls `init_project "$@"`. | **Relocated to plugin.sh in N.s.1** (`init_project` + its 16 `_init_*` private helpers + `show_init_help`; `lib/commands/init.sh` deleted; `pyve.sh` source line removed). |
 | `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. | **Relocated to plugin.sh in N.s.2** (`purge_project` + its 6 `_purge_*` private helpers + `show_purge_help`; `lib/commands/purge.sh` deleted; `pyve.sh` source line removed). |
-| `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. | Still in `lib/commands/update.sh` (pending N.s.3). |
+| `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. | **Relocated to plugin.sh in N.s.3** (`update_project` + `_update_migrate_legacy_layout` + `show_update_help`; `lib/commands/update.sh` deleted; `pyve.sh` source line removed). |
 
 **Public-boundary dispatch** in `pyve.sh`'s case dispatcher:
 

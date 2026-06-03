@@ -8,7 +8,7 @@
 #   - resolve_env_path testenv triggers migration as a side effect
 #     when only the legacy layout is present (opportunistic fallback).
 #   - resolve_env_path on any name is otherwise a pure pretty-printer.
-#   - lib/commands/update.sh exposes a private migration wrapper that
+#   - lib/plugins/python/plugin.sh exposes a private migration wrapper that
 #     update_project invokes (verified by sourcing + grep).
 #   - env_paths in lib/utils.sh emits the new paths (.pyve/envs/testenv/...).
 #   - purge_env_dir in lib/utils.sh removes the new layout.
@@ -22,7 +22,7 @@ load ../helpers/test_helper
 setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"
-    source "$PYVE_ROOT/lib/commands/update.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 }
@@ -127,7 +127,7 @@ teardown() {
 # pyve update wiring — private wrapper exists and is referenced
 # ============================================================
 
-@test "_update_migrate_legacy_layout: wrapper exists in lib/commands/update.sh" {
+@test "_update_migrate_legacy_layout: wrapper exists in lib/plugins/python/plugin.sh" {
     type -t _update_migrate_legacy_layout | grep -q "function"
 }
 
@@ -143,7 +143,7 @@ teardown() {
     # things that need a fully-initialized project). Source-level grep
     # gives a brittle-but-accurate "the wiring is present" signal.
     grep -qE "_update_migrate_legacy_layout|migrate_legacy_env_layout" \
-        "$PYVE_ROOT/lib/commands/update.sh"
+        "$PYVE_ROOT/lib/plugins/python/plugin.sh"
 }
 
 # ============================================================

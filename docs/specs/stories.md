@@ -641,19 +641,29 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Smoke-testing `--keep-testenv`.** The branch is exercised by unit tests (`test_purge_keep_testenv.bats` and related; covered by the 1423-test green suite). Manual smoke kept to the default-purge round-trip for brevity.
 - **Smoke-testing the micromamba branch.** Same rationale as N.s.1; micromamba isn't installed in this workspace. Unit-suite coverage spans both backends.
 
-### Story N.s.3: Relocate `update_project` into the Python plugin [Planned]
+### Story N.s.3: Relocate `update_project` into the Python plugin [Done]
 
 **Motivation.** Third function relocation per the N.s umbrella — completes the N.o triplet (init / purge / update).
 
 **Tasks**
 
-- [ ] Move `update_project` from [lib/commands/update.sh](../../lib/commands/update.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.o `python_pyve_plugin_update` shim.
-- [ ] Move every `_update_*` private helper into the plugin file.
-- [ ] Move `show_update_help` to the plugin file.
-- [ ] Delete `lib/commands/update.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): mark `update_project`'s row as relocated and add the closing note that the N.o triplet relocation is complete.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_3_update_relocation.bats](../../tests/unit/test_n_s_3_update_relocation.bats).
-- [ ] Behavioral regression: `pyve update` on a fresh-after-`pyve init` dir refreshes managed files (`.envrc`, `.gitignore`, `.vscode/settings.json`, `.pyve/config`); the `.project-guide.yml` gate from project-essentials still routes project-guide refresh correctly; full unit suite green.
+- [x] Move `update_project` from `lib/commands/update.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `show_purge_help` (continuing the end-of-file convention from N.s.1/N.s.2).
+- [x] Move `_update_migrate_legacy_layout` (the only `_update_*` private helper — a thin grep-visible wrapper around `migrate_legacy_env_layout` per the M.h.3 wiring contract) into the plugin file.
+- [x] Move `show_update_help` to the plugin file per the F-table per-command-help convention.
+- [x] Delete `lib/commands/update.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): table row for `python_pyve_plugin_update` now reads "**Relocated to plugin.sh in N.s.3**" (matching N.s.1/N.s.2's row shape); the heading was renamed from "(Story N.o, Option 2; partial Option 1 relocation in N.s.1+)" to "(Story N.o, Option 1 / relocated via N.s.1–N.s.3)" and the lead-in paragraph now records the triplet completion ("As of N.s.3, the N.o triplet relocation is complete").
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_3_update_relocation.bats](../../tests/unit/test_n_s_3_update_relocation.bats): 5 tests covering `update_project` + `_update_migrate_legacy_layout` + `show_update_help` grep-findable in plugin.sh, `lib/commands/update.sh` non-existence, no `lib/commands/update.sh` reference in `pyve.sh`. RED confirmed against baseline (5/5 fail); GREEN after the relocation (5/5 pass).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` followed by `pyve update --no-project-guide` on a fresh dir rendered the full 4-step output ("[1/4] pyve_version: 2.8.0 (already current)" through "[4/4] project-guide refresh skipped"), left `.pyve/config` byte-identical to its post-init state (idempotent — the version-bump step is a no-op write when already current), and exited 0. Full unit suite: **1428 ok / 0 not ok** (1423 N.s.2 baseline + 5 new N.s.3 tests).
+
+**Sidecar test-file updates.** Bulk-substituted `lib/commands/update.sh` → `lib/plugins/python/plugin.sh` in 2 test files: [test_n_o_python_plugin_lifecycle.bats](../../tests/unit/test_n_o_python_plugin_lifecycle.bats) (explicit `source` line) and [test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats) (file-overview comment at line 11, explicit `source` line at line 25, test title at line 130 saying "exists in lib/commands/update.sh", and the source-grep at line 146 that probes for `_update_migrate_legacy_layout` wiring).
+
+**N.o triplet completion milestone.** As of N.s.3, all three N.o lifecycle command implementations (`init_project`, `purge_project`, `update_project`) plus their private helpers and help blocks live in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh). The corresponding files `lib/commands/{init,purge,update}.sh` are all deleted; `pyve.sh`'s sourcing block lost 21 lines total (three 7-line if-blocks across N.s.1–N.s.3). The tech-spec.md heading and lead-in paragraph have been updated to reflect the completed triplet. The N.p quartet (`check_environment`, `show_status`, `run_command`, `test_tests`) is next, starting with N.s.4.
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the wrapper or the migration helper.** `_update_migrate_legacy_layout` stays a thin grep-visible wrapper around `migrate_legacy_env_layout` (in `lib/envs.sh`). The wrapper's whole reason to exist is M.h.3's source-grep contract that the unit test in `test_testenvs_activate.bats` keys off — collapsing it into a direct call would break that contract.
+- **Smoke-testing project-guide refresh.** The 4/4 step ran with `--no-project-guide` to keep the smoke fast and reproducible. The path-resolution branches (venv vs micromamba `env_path` derivation) are exercised by the unit suite.
+- **Smoke-testing the version-bump path.** The test ran with the in-tree pyve at v2.8.0 against a config also at v2.8.0, so step 1/4 reported "already current" rather than exercising the actual version-bump-write. The mismatch path is covered by `test_update_*.bats` and related unit tests within the 1428-test green suite.
 
 ### Story N.s.4: Relocate `check_environment` into the Python plugin [Planned]
 

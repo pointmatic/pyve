@@ -279,14 +279,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/update.sh" ]]; then
-    # shellcheck source=lib/commands/update.sh
-    source "$SCRIPT_DIR/lib/commands/update.sh"
-else
-    printf "ERROR: Cannot find lib/commands/update.sh\n" >&2
-    exit 1
-fi
-
 #============================================================
 # Help and Information Commands
 #============================================================
