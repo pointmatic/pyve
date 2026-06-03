@@ -25,7 +25,7 @@ setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/manifest.sh"
-    source "$PYVE_ROOT/lib/commands/run.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"

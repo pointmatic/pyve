@@ -709,19 +709,27 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.4: two of four runtime hooks now relocated; the heading keeps "(partial Option 1 relocation in N.s.4+)" until N.s.7 completes the quartet.
 - **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.4; the 1451-test unit suite covers both backends.
 
-### Story N.s.6: Relocate `run_command` into the Python plugin [Planned]
+### Story N.s.6: Relocate `run_command` into the Python plugin [Done]
 
 **Motivation.** Sixth function relocation per the N.s umbrella.
 
 **Tasks**
 
-- [ ] Move `run_command` from [lib/commands/run.sh](../../lib/commands/run.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_run` shim.
-- [ ] Move every `_run_*` private helper into the plugin file.
-- [ ] Move `show_run_help` to the plugin file.
-- [ ] Delete `lib/commands/run.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `run_command`'s row as relocated.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_6_run_relocation.bats](../../tests/unit/test_n_s_6_run_relocation.bats).
-- [ ] Behavioral regression: `pyve run python --version` against venv and micromamba backends produces identical output; the N.j.1 config-first backend detection still routes correctly (regression-test from N.j.1 stays green); full unit suite green.
+- [x] Move `run_command` from `lib/commands/run.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `show_status_help` (continuing the end-of-file convention).
+- [x] No `_run_*` private helpers exist — `run_command` is a single ~107-line function with all logic inline. **The original N.s.6 task list anticipated helpers; in reality the source has none.** This is a structural fact about run.sh, not a story scoping miss — `pyve run` is small enough that no factoring was warranted in the original H.e implementation.
+- [x] No `show_run_help` function exists in run.sh either. `pyve run --help` is handled by the global help dispatcher in `pyve.sh`, not by a per-command help block. The N.s.6 task list anticipated one for symmetry with init/purge/update/check/status; reality differs and there's nothing to move.
+- [x] Delete `lib/commands/run.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): table row for `python_pyve_plugin_run` now reads "**Relocated to plugin.sh in N.s.6**" (with a parenthetical noting "no private helpers, no help-block function" so the row's brevity vs N.s.4/N.s.5 is self-explanatory).
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_6_run_relocation.bats](../../tests/unit/test_n_s_6_run_relocation.bats): 3 tests covering `run_command` grep-findable in plugin.sh, `lib/commands/run.sh` non-existence, no `lib/commands/run.sh` reference in `pyve.sh`. RED confirmed against baseline (3/3 fail); GREEN after the relocation (3/3 pass). Smaller test count than N.s.1–N.s.5 reflects the smaller surface (one function, no helpers).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` followed by `pyve run python --version` returned `Python 3.14.4`, and `pyve run python -c 'import sys; print(sys.prefix)'` returned the project's `.venv` prefix — confirming the N.j.1 config-first backend detection still routes correctly through the relocated function. Full unit suite: **1454 ok / 0 not ok** (1451 N.s.5 baseline + 3 new N.s.6 tests).
+
+**Sidecar test-file updates.** Bulk-substituted `lib/commands/run.sh` → `lib/plugins/python/plugin.sh` in 9 test files (the most touched in this sub-phase so far): [test_test_env_lazy_autoprovision.bats](../../tests/unit/test_test_env_lazy_autoprovision.bats), [test_env_purpose_gate.bats](../../tests/unit/test_env_purpose_gate.bats), [test_n_j_1_run_backend_detection.bats](../../tests/unit/test_n_j_1_run_backend_detection.bats) (4 `source_pyve_fn` callsites + 1 file-overview comment), [test_n_p_python_plugin_runtime.bats](../../tests/unit/test_n_p_python_plugin_runtime.bats), [test_test_command.bats](../../tests/unit/test_test_command.bats), [test_test_env_matrix.bats](../../tests/unit/test_test_env_matrix.bats), [test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats) (3 `source_pyve_fn` callsites + 1 file-overview comment), [test_test_env_advisory.bats](../../tests/unit/test_test_env_advisory.bats), [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats). The high count reflects how foundational `pyve run` is — many test files exercise it indirectly via the testenv resolver layer.
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring `run_command` into smaller helpers.** The function is ~107 lines but coherently linear (arg parse → backend detect → asdf guard → exec). Splitting it for the sake of relocation would be a refactor masquerading as a move; deferred to whoever has a behavioral reason to split it.
+- **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.4/N.s.5: three of four runtime hooks now relocated; the heading keeps "(partial Option 1 relocation in N.s.4+)" until N.s.7 completes the quartet.
+- **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.5; the 1454-test unit suite covers both backends (the N.j.1 regression-tests in particular exercise the micromamba `mm_env_name` resolution against the config-first vs glob-fallback paths).
 
 ### Story N.s.7: Relocate `test_tests` into the Python plugin [Planned]
 

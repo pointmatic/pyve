@@ -1141,7 +1141,7 @@ N.p mirrored N.o for the four runtime-side commands (`pyve check`, `pyve status`
 |---|---|---|
 | `python_pyve_plugin_check` | Calls `_python_pyve_plugin_render_advisories`, then `check_environment "$@"`. | **Relocated to plugin.sh in N.s.4** (`check_environment` + its 3 `_check_*` private helpers + `show_check_help`; `lib/commands/check.sh` deleted; `pyve.sh` source line removed). |
 | `python_pyve_plugin_status` | Calls `_python_pyve_plugin_render_advisories`, then `show_status "$@"`. | **Relocated to plugin.sh in N.s.5** (`show_status` + its 12 `_status_*` private helpers + `show_status_help`; `lib/commands/status.sh` deleted; `pyve.sh` source line removed). |
-| `python_pyve_plugin_run` | Calls `run_command "$@"`. | Still in `lib/commands/run.sh` (pending N.s.6). |
+| `python_pyve_plugin_run` | Calls `run_command "$@"`. | **Relocated to plugin.sh in N.s.6** (`run_command` only — no private helpers, no help-block function; `lib/commands/run.sh` deleted; `pyve.sh` source line removed). |
 | `python_pyve_plugin_test` | Calls `test_tests "$@"`. | Still in `lib/commands/test.sh` (pending N.s.7). |
 
 `run` and `test` are pure forwarders — no advisory rendering, since those commands are execution paths, not diagnostic surfaces.

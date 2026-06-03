@@ -29,7 +29,7 @@ load ../helpers/test_helper
 setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"   # M.h.3: test.sh now reads paths via resolve_env_path
-    source "$PYVE_ROOT/lib/commands/run.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/test.sh"
     create_test_dir
 

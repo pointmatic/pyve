@@ -7,7 +7,7 @@
 # state-dir relocation.
 #
 # After Story N.f moved testenv state and venv-backed testenvs under
-# .pyve/envs/<name>/, the heuristic in lib/commands/run.sh ("if
+# .pyve/envs/<name>/, the heuristic in lib/plugins/python/plugin.sh ("if
 # .pyve/envs/* has any children, it's micromamba") falsely fires on
 # pure-venv projects that happen to have a testenv. The fix consults
 # `.pyve/config:backend` first (authoritative for v3.0), only falling
@@ -111,7 +111,7 @@ EOF
 # ────────────────────────────────────────────────────────────────────
 
 @test "N.j.1: venv project with .pyve/envs/testenv/ uses venv (not micromamba)" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     setup_post_nf_venv_project
 
     run run_command python --version
@@ -120,7 +120,7 @@ EOF
 }
 
 @test "N.j.1: micromamba project picks main env from config, not the testenv sibling" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     setup_post_nf_micromamba_project
 
     run run_command python --version
@@ -131,7 +131,7 @@ EOF
 }
 
 @test "N.j.1: no env present → error, exit 1" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     DEFAULT_VENV_DIR=".venv"
     source_shell_profiles() { :; }
     detect_version_manager() { :; }
@@ -142,7 +142,7 @@ EOF
 }
 
 @test "N.j.1: legacy project (no .pyve/config) with .venv/ falls back to venv" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     DEFAULT_VENV_DIR=".venv"
 
     mkdir -p .venv/bin

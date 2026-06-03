@@ -231,14 +231,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/run.sh" ]]; then
-    # shellcheck source=lib/commands/run.sh
-    source "$SCRIPT_DIR/lib/commands/run.sh"
-else
-    printf "ERROR: Cannot find lib/commands/run.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/self.sh" ]]; then
     # shellcheck source=lib/commands/self.sh
     source "$SCRIPT_DIR/lib/commands/self.sh"

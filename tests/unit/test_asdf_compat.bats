@@ -90,7 +90,7 @@ teardown() {
 # Phase K extracted top-level commands into lib/commands/<name>.sh, so
 # the source file is now a parameter. After K.l, the J.b/J.c tests
 # pass `lib/plugins/python/plugin.sh` (`_init_direnv_venv`, `_init_direnv_micromamba`)
-# and `lib/commands/run.sh` (`run_command`); the default `pyve.sh` is
+# and `lib/plugins/python/plugin.sh` (`run_command`); the default `pyve.sh` is
 # kept for any helper that ever lives at the top level.
 #
 # Usage: source_pyve_fn <function_name> [<file>]
@@ -229,7 +229,7 @@ EOF
 }
 
 @test "J.c: pyve run exports ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="asdf"
@@ -241,7 +241,7 @@ EOF
 }
 
 @test "J.c: PYVE_NO_ASDF_COMPAT=1 suppresses the guard even when asdf is active" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="asdf"
@@ -253,7 +253,7 @@ EOF
 }
 
 @test "J.c: pyve run does not export the guard when asdf is not active (VERSION_MANAGER=pyenv)" {
-    source_pyve_fn run_command "$PYVE_ROOT/lib/commands/run.sh"
+    source_pyve_fn run_command "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     setup_pyve_run_venv_fixture
 
     VERSION_MANAGER="pyenv"
