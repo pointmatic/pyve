@@ -166,8 +166,20 @@ _manifest_synthesize_from_legacy() {
     fi
 
     if [[ "$should_read_testenvs" == "1" ]]; then
-        read_env_config
-        local n=${#PYVE_TESTENVS_NAMES[@]}
+        # read_env_config may fail when the python helper can't be
+        # resolved (e.g. asdf shim trap with no .tool-versions). Swallow
+        # the failure so the synthesis still produces the [env.root]
+        # entry from .pyve/config alone — the legacy testenvs are
+        # synthesized only when read_env_config succeeds.
+        read_env_config 2>/dev/null || true
+        # Defensive: PYVE_TESTENVS_NAMES may still be unset if
+        # read_env_config short-circuited. Treat the zero-testenv case
+        # as "no testenvs to synthesize" rather than crashing under
+        # `set -u` on the array-length read.
+        local n=0
+        if [[ -n "${PYVE_TESTENVS_NAMES+x}" ]]; then
+            n=${#PYVE_TESTENVS_NAMES[@]}
+        fi
         local i default_idx=-1
         for ((i=0; i<n; i++)); do
             if [[ "${PYVE_TESTENVS_NAMES[$i]}" == "testenv" ]]; then

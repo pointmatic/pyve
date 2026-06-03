@@ -21,6 +21,16 @@ setup_pyve_env() {
     # so every test file inherits it without per-file source bloat.
     source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
+    # Story N.n: backend_detect.sh's detect_backend_from_files now
+    # delegates to the Python plugin's detect hook via plugin_dispatch.
+    # Source the plugin chain before backend_detect so every existing
+    # test that calls detect_backend_from_files inherits the new chain
+    # without per-file source bloat (mirrors the N.d note for
+    # manifest_resolve_purpose).
+    source "$PYVE_ROOT/lib/plugins/contract.sh"
+    source "$PYVE_ROOT/lib/plugins/registry.sh"
+    source "$PYVE_ROOT/lib/plugins/backend_registry.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"

@@ -1031,6 +1031,71 @@ Inside the double-quoted value, parameter expansions (`$VAR`, `${VAR}`) are allo
 
 ---
 
+### `lib/plugins/python/plugin.sh` — Python plugin (Story N.n, Subphase N-2)
+
+The first reference plugin behind the contract from N.k. Re-seats the Python ecosystem as a plugin file owning its own backend registrations, file-signal detection, and (eventually, in N.o–N.r) its lifecycle / activate / gitignore / purge-inventory hooks.
+
+**Hooks delivered in N.n** (the rest stay as no-op defaults from contract.sh):
+
+| Hook | Purpose |
+|---|---|
+| `python_pyve_plugin_manifest_namespace` | Returns `"python"`. |
+| `python_pyve_plugin_register_backends` | Calls `bp_register python venv virtualized` + `bp_register python micromamba virtualized`. Idempotent. |
+| `python_pyve_plugin_detect` | Scaffold-time file-signal scan. Returns one of `venv` / `micromamba` / `ambiguous` / `none`. |
+
+Plus the backend-provider activate shims absorbed from N.l's transition state:
+
+| Function | Purpose |
+|---|---|
+| `venv_pyve_bp_activate <env_path> <env_name>` | Forwards to `_init_direnv_venv "$1"` (env_name ignored — venv's helper derives the project name from cwd). |
+| `micromamba_pyve_bp_activate <env_path> <env_name>` | Forwards to `_init_direnv_micromamba "$2" "$1"`. |
+
+**Detection contract.** The detect hook probes the project root for the following signals:
+
+- **Python signals**: `pyproject.toml` | `requirements*.txt` (glob) | `setup.py` | `*.py` (glob)
+- **Conda signals**: `environment*.yml` (glob) | `conda-lock.yml`
+
+Then maps presence to backend default:
+
+- both classes present → `ambiguous`
+- only conda → `micromamba`
+- only Python → `venv`
+- neither → `none`
+
+This broadens the signal set vs. the pre-N.n `detect_backend_from_files` (which only checked the narrow `pyproject.toml`/`requirements.txt`/`environment.yml`/`conda-lock.yml` four-file set). Every existing test fixture either has the narrow signal too or doesn't have any Python signal at all, so the broader detect produces the same backend selection for every fixture — behavior unchanged end-to-end.
+
+**Sourcing in `pyve.sh`** (replaces the N.l-era inline `bp_register` calls):
+
+```sh
+source "$SCRIPT_DIR/lib/plugins/python/plugin.sh"
+python_pyve_plugin_register_backends   # eager source-time call
+```
+
+The eager source-time `register_backends` call means `bp_register` lands on every invocation regardless of whether `plugin_load_all_from_manifest` has run yet. Later in `main()`:
+
+```sh
+manifest_load 2>/dev/null || true
+plugin_load_all_from_manifest 2>/dev/null || true
+```
+
+Errors are silenced here so a malformed `pyve.toml` (or a python interpreter that can't be resolved) does not break informational commands like `--version` / `--help`. Commands that actually require a valid manifest re-invoke `manifest_load` themselves and report errors at their own level.
+
+**Drop-in refactor of `detect_backend_from_files`.** The existing public API in `lib/backend_detect.sh` is now a thin one-liner:
+
+```sh
+detect_backend_from_files() {
+    plugin_dispatch python detect
+}
+```
+
+Every existing caller (`pyve.sh:show_config`, `lib/commands/init.sh:get_backend_priority` via two callsites) is unchanged. N.o+ can drop them in favor of `plugin_dispatch python detect` directly, but the wrapper keeps churn out of N.n.
+
+**Sidecar bug fix in `_manifest_synthesize_from_legacy`.** The earlier "synthesize from `[tool.pyve.testenvs.*]`" path called `read_env_config` (which invokes the Python helper to parse `pyproject.toml`) and then read `${#PYVE_TESTENVS_NAMES[@]}` unconditionally. When the python interpreter can't be resolved (asdf shim with no `.tool-versions`), `read_env_config` failed and the array stayed unset; `${#…}` then crashed under `set -u`. The latent bug never fired in v3.0 production because nothing called `manifest_load` eagerly in a v2-only project without python — but the N.n `main()` wiring does. Fix: swallow `read_env_config` failures and treat the unset array as zero testenvs to synthesize (the `[env.root]` entry from `.pyve/config` is still emitted on the success path). See [lib/manifest.sh:168](../../lib/manifest.sh#L168).
+
+**What N.n does NOT do.** The plugin's lifecycle hooks (`init`, `purge`, `update`, `check`, `status`, `run`, `test`) and its activation / gitignore / purge_inventory hooks stay as no-op defaults from contract.sh. N.o re-seats `pyve init` / `purge` / `update`; N.p re-seats `check` / `status` / `run` / `test`; N.q wires the activation composer; N.r wires gitignore + smart-purge.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

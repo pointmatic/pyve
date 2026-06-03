@@ -186,14 +186,6 @@ else
     exit 1
 fi
 
-# Story N.l: register pyve's built-in Python-ecosystem backends.
-# Both are project-virtualized (per-project env dir; PATH activation).
-# Story N.n will move these registrations into the Python plugin's
-# `register_backends` hook; for now they live here so bp_dispatch is
-# usable from every code path on every invocation.
-bp_register python venv virtualized
-bp_register python micromamba virtualized
-
 # Story N.m: PC-1 plugin input safety validators. Pure functions; no
 # wiring beyond sourcing. Consumed by the activation composer (N.q)
 # and the gitignore composer (N.r).
@@ -204,6 +196,20 @@ else
     printf "ERROR: Cannot find lib/envrc_safety.sh\n" >&2
     exit 1
 fi
+
+# Story N.n: Python plugin — first reference plugin. Defines
+# python_pyve_plugin_* hooks plus the venv/micromamba bp_activate
+# shims absorbed from N.l's transition state. Fired eagerly at
+# source-time so bp_register lands on every invocation regardless
+# of whether main()'s plugin_load_all_from_manifest has run yet.
+if [[ -f "$SCRIPT_DIR/lib/plugins/python/plugin.sh" ]]; then
+    # shellcheck source=lib/plugins/python/plugin.sh
+    source "$SCRIPT_DIR/lib/plugins/python/plugin.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/python/plugin.sh\n" >&2
+    exit 1
+fi
+python_pyve_plugin_register_backends
 
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
@@ -618,6 +624,15 @@ main() {
     if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
         printf 'VERBOSE:%s\n' "${PYVE_VERBOSE:-0}"
     fi
+
+    # Story N.n: load the v3 manifest and register plugins. Run early
+    # so plugin_dispatch is usable in every subcommand path. Errors
+    # are silenced here so a malformed pyve.toml does not break
+    # informational commands like --version / --help; commands that
+    # actually require a valid manifest re-invoke manifest_load
+    # themselves and report errors there.
+    manifest_load 2>/dev/null || true
+    plugin_load_all_from_manifest 2>/dev/null || true
 
     # No arguments - show help
     if [[ $# -eq 0 ]]; then

@@ -1207,24 +1207,6 @@ _init_direnv_micromamba() {
     write_envrc_template "$env_path/bin" "CONDA_PREFIX" "$env_path" "micromamba" "$env_name"
 }
 
-# Story N.l backend-provider shims. Forward `bp_dispatch <backend>
-# activate <env_path> <env_name>` to the legacy `_init_direnv_*`
-# helpers above. The unified signature lets callers dispatch generically
-# without knowing the backend. N.n absorbs these into the Python
-# plugin's `register_backends` hook (`lib/plugins/python/plugin.sh`);
-# until then, they live here adjacent to the helpers they wrap so the
-# move stays a single file-relocation.
-venv_pyve_bp_activate() {
-    # Args: <env_path> <env_name>. env_name is ignored — venv's
-    # _init_direnv_venv derives the project name from cwd.
-    _init_direnv_venv "$1"
-}
-
-micromamba_pyve_bp_activate() {
-    # Args: <env_path> <env_name>.
-    _init_direnv_micromamba "$2" "$1"
-}
-
 _init_dotenv() {
     local use_local_env="$1"
 
