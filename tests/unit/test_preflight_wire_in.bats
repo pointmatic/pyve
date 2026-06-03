@@ -7,7 +7,7 @@
 # wired into the two additional `python` invocation sites that were
 # flagged out-of-scope in the initial N.d.1 fix and then folded in:
 #
-#   1) `_init_venv` (lib/commands/init.sh) — venv-backend `pyve init`'s
+#   1) `_init_venv` (lib/plugins/python/plugin.sh) — venv-backend `pyve init`'s
 #      `python -m venv "$venv_dir"` call. Same asdf-shim trap class.
 #
 #   2) `ensure_env_exists` (lib/utils.sh) drift-check block — the
@@ -27,7 +27,7 @@ setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"
     source "$PYVE_ROOT/lib/commands/env.sh"
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
 }

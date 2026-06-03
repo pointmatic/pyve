@@ -560,20 +560,210 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Placement note.** Authored in document order as N.r, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
-### Story N.s: End-to-end regression sweep + tech-spec / features doc updates [Planned]
+### Story N.s: Plugin code locus — function relocation umbrella (Option 1) [Done]
 
-**Motivation.** Verify the full N-2 refactor preserves behavior end-to-end before declaring the subphase done. Update spec docs to reflect the new architecture; N-6 will revisit holistically but this story captures the immediate updates so the docs don't lie between N-2 and N-6.
+**Motivation.** N.o / N.p / N.q / N.r shipped under **Option 2** (hook-as-shim re-seat: public-boundary `plugin_dispatch` arms in [pyve.sh](../../pyve.sh), implementations still in `lib/commands/*.sh`). Per the carry-over decision recorded at N.o's announce gate and re-confirmed at N.s's announce gate, the file structure must now match the architectural claim — relocate the Python-specific command implementations into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) and delete the now-empty `lib/commands/*.sh` files.
 
-**Carry-over from N.o announce gate — plugin code locus decision.** N.o was executed under Option 2 of the announce-gate question: hook-as-shim re-seat (public-boundary `plugin_dispatch` calls; the existing `init_project` / `purge_project` / `update_project` implementations stay in [lib/commands/init.sh](../../lib/commands/init.sh) / [lib/commands/purge.sh](../../lib/commands/purge.sh) / [lib/commands/update.sh](../../lib/commands/update.sh)). The developer chose this to "take gradual steps to secure the boundaries of change" and explicitly deferred the deeper Option-1 question — whole-function relocation into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — to N.s. Re-decide here: keep the current shim shape, or relocate the implementations into the plugin file so the file structure matches the architectural claim. Same call applies to anything N.p / N.q / N.r ship under the same Option-2 pattern.
+**Breakdown decision (this story).** Eight function-relocation stories (one per top-level command function, plus the `python` namespace dispatcher) and four "other work" stories (verification + docs). Twelve sub-stories total — each scoped tight enough to ship in one developer commit per the project-guide's "one coherent unit of work → one story" rule. Execution order is `pyve.sh`'s case-arm order followed by docs:
+
+| # | Story | What it relocates / does |
+|---|---|---|
+| 1 | N.s.1 | `init_project` (from N.o) |
+| 2 | N.s.2 | `purge_project` (from N.o) |
+| 3 | N.s.3 | `update_project` (from N.o) |
+| 4 | N.s.4 | `check_environment` (from N.p) |
+| 5 | N.s.5 | `show_status` (from N.p) |
+| 6 | N.s.6 | `run_command` (from N.p) |
+| 7 | N.s.7 | `test_tests` (from N.p) |
+| 8 | N.s.8 | `python_command` namespace dispatcher (from N.p Option (a)) |
+| 9 | N.s.9 | End-to-end regression sweep (Bats + integration + manual smoke) |
+| 10 | N.s.10 | Update [tech-spec.md](tech-spec.md) (plugin contract architecture) |
+| 11 | N.s.11 | Update [features.md](features.md) (v3 env model) |
+| 12 | N.s.12 | Update [brand-descriptions.md](brand-descriptions.md) (brief annotation) |
+
+**Per-story shape (N.s.1 through N.s.8).** Each function-relocation story follows the same template, varying only by which function and helpers move: move the function body + its `_<cmd>_*` private helpers + the `show_<cmd>_help` block from `lib/commands/<cmd>.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh); delete the now-empty `lib/commands/<cmd>.sh`; remove the corresponding `source lib/commands/<cmd>.sh` line from [pyve.sh](../../pyve.sh)'s explicit sourcing block; update the matching "Python plugin — ... (Story N.x, Option 2)" subsection in [tech-spec.md](tech-spec.md) to mark it relocated; ship Bats coverage asserting the function definition lives in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), `lib/commands/<cmd>.sh` does not exist, the source line is gone from `pyve.sh`, and the full unit suite stays green (1393 ok / 0 not ok baseline from N.r, plus +N for the new in-location / not-in-old-location tests).
+
+**Explicit non-relocations (architecture rules out, even under Option 1).** `write_envrc_template` and `write_gitignore_template` in [lib/utils.sh](../../lib/utils.sh) stay composer-owned: both emit infrastructure lines (header comments, dotenv conditional, asdf compat block in `.envrc`; macOS infrastructure block, Pyve-managed section in `.gitignore`) that apply to every plugin regardless of language. The Python plugin already contributes its language-specific snippet (`_python_pyve_plugin_envrc_snippet` from N.q; `python_pyve_plugin_gitignore_entries` from N.r); relocating the composer itself into a single language plugin breaks the boundary the moment N-3's Node plugin lands.
+
+**Out of scope (flagged, kept out).**
+
+- **`lock_environment`, `env_command`, `self_command`.** These commands are NOT yet behind the plugin contract — no `python_pyve_plugin_lock` / `env` / `self` hook exists, no shim, no Option-2-vs-Option-1 carry-over. Relocating them would require first adding the contract hooks (a separate scope expansion). `env` and `self` are namespace commands that span the framework (env manages all plugins' envs; self manages pyve itself), so they likely stay composer-owned indefinitely. `lock` is a Python/conda-specific surface but adding it to the plugin contract is a future story (N-4 or N-5 candidate).
+- **Splitting `lib/plugins/python/plugin.sh` into multiple files.** After N.s.1–N.s.8 land, the plugin file holds ~14 hook implementations + 8 command function bodies + their private helpers + their help blocks — a large but coherent file. A future structural refactor (e.g., `lib/plugins/python/{plugin.sh,commands.sh,lifecycle.sh}`) is plausible but not in scope for the Option 1 cutover. First move everything to one place, then split if the file becomes unwieldy.
+- **Internal cross-command callsite refactor.** `init_project --force` continues to call `purge_project --keep-testenv --yes` directly. After N.s.2 lands, both functions live in the same plugin file — the cross-call is internal to the file, no structural change required.
+- **Relocating shared helpers** in `lib/utils.sh`, `lib/env_detect.sh`, `lib/backend_detect.sh`, `lib/envs.sh`. These are shared helpers (per the "called from two or more commands" rule in [project-essentials.md](project-essentials.md)), not command implementations. They stay where they are.
+
+**Placement note.** Authored as the planning header for the N.s.1–N.s.12 breakdown. The breakdown decision itself is the work captured by this story; status is `[Done]` on the diff that adds the twelve sub-stories below. Implementation work happens in N.s.1 onward.
+
+### Story N.s.1: Relocate `init_project` into the Python plugin [Done]
+
+**Motivation.** First function relocation per the N.s umbrella. Move `pyve init`'s implementation into the plugin file so the file structure matches N.o's architectural claim.
 
 **Tasks**
 
-- [ ] Run the full Bats unit suite + integration suite against the post-N-2 codebase. Zero regressions expected (every existing behavior preserved by the re-seat).
-- [ ] Run `pyve init`, `pyve update`, `pyve check`, `pyve status`, `pyve test`, `pyve env install`, `pyve env run` against a fresh v3-shape project and a migrated-from-v2 project. Verify identical output to today.
-- [ ] Update [tech-spec.md](tech-spec.md): add sections on the plugin contract (8 hooks per N.k), the backend-provider three-category taxonomy (per revised S6), and the implicit-Python rule (per S5).
-- [ ] Update [features.md](features.md): note the env-as-materialization framing (S1), the `languages` advisory axis (S11), the `manual_steps` advisory (S7). Per S11, no behavior change for users in v3.0 — these are schema/diagnostic additions.
-- [ ] Update [brand-descriptions.md](brand-descriptions.md) — brief annotation only, marking the relevant **NEEDS REVISION for Pyve 3.0** sections to reference the new identity ("orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems"). Full revision lands in N-6 via `refactor_document`.
-- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+- [x] Move `init_project` from `lib/commands/init.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `python_show` (mirroring the N.p Option (a) placement precedent — same end-of-file convention used for `python_set` / `python_show`).
+- [x] Move every `_init_*` private helper (16 in total: `_init_run_project_guide_hooks`, `_init_detect_backend_default`, `_init_detect_version_managers_available`, `_init_list_installed_python_versions`, `_init_detect_project_guide_present`, `_init_write_pyve_toml`, `_init_validate_existing_manifest`, `_init_list_available_python_versions`, `_init_wizard`, `_init_python_version`, `_init_venv`, `_init_direnv_venv`, `_init_direnv_micromamba`, `_init_dotenv`, `_init_gitignore`, `_init_print_next_steps`) into the plugin file alongside `init_project`. Verbatim move; no body or signature changes.
+- [x] Move `show_init_help` to the plugin file per the "Per-command help blocks live with their commands" rule in [project-essentials.md](project-essentials.md).
+- [x] Delete `lib/commands/init.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block (former [pyve.sh:226-232](../../pyve.sh)) from `pyve.sh`'s explicit sourcing block.
+- [x] Update the "Python plugin — lifecycle hooks (Story N.o, Option 2)" subsection in [tech-spec.md](tech-spec.md): heading annotated "(partial Option 1 relocation in N.s.1+)"; the shim table grew an "Implementation locus" column marking `init_project` relocated and `purge_project` / `update_project` pending N.s.2/N.s.3.
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_1_init_relocation.bats](../../tests/unit/test_n_s_1_init_relocation.bats): 20 tests covering `init_project` + 16 `_init_*` helpers + `show_init_help` grep-findable in plugin.sh, `lib/commands/init.sh` non-existence, no `lib/commands/init.sh` reference in `pyve.sh`. RED confirmed against baseline (20/20 fail); GREEN after the relocation (20/20 pass).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` against a fresh dir produced expected `.pyve/config` (pyve_version + backend + venv.directory + python.version), `pyve.toml` (v3.0 schema + `[project]` + `[env.root]` + `[env.testenv]`), and composed `.gitignore` (macOS + Python ecosystem + Jupyter + Pyve-managed sections). Full unit suite: **1413 ok / 0 not ok** (1393 N.r baseline + 20 new N.s.1 tests).
+
+**Sidecar test-file updates.** 8 existing test files sourced `lib/commands/init.sh` directly; all bulk-updated to source `lib/plugins/python/plugin.sh` instead: [test_preflight_wire_in.bats](../../tests/unit/test_preflight_wire_in.bats), [test_n_l_backend_dispatch_envrc.bats](../../tests/unit/test_n_l_backend_dispatch_envrc.bats), [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats), [test_init_pyve_toml.bats](../../tests/unit/test_init_pyve_toml.bats) (including two `grep -cE` paths that probe the source for wiring counts), [test_n_o_python_plugin_lifecycle.bats](../../tests/unit/test_n_o_python_plugin_lifecycle.bats), [test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats), [test_asdf_compat.bats](../../tests/unit/test_asdf_compat.bats) (6 `source_pyve_fn` path arguments), [test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats). Since N.n already updated [test_helper.bash](../../tests/helpers/test_helper.bash)'s `setup_pyve_env` to source `lib/plugins/python/plugin.sh`, the explicit per-test sources become idempotent re-sources of the now-larger plugin file — no behavioral change.
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the `_init_*` helpers themselves.** Helpers moved verbatim; bodies and signatures unchanged.
+- **Routing `init_project --force`'s internal call to `purge_project` through `plugin_dispatch`.** Cross-call stays direct; bash resolves `purge_project` through the global function table regardless of which file the caller lives in. After N.s.2 lands, both functions co-exist in the plugin file.
+- **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Premature — only `init_project` is relocated; `purge_project` and `update_project` are still in `lib/commands/`. The heading carries a parenthetical "(partial Option 1 relocation in N.s.1+)" instead so the doc accurately reflects the intermediate state. Full rename lands when N.s.3 completes the triplet.
+- **Smoke-testing the micromamba branch.** The `pyve init --backend micromamba` path was not exercised in this story's manual smoke (micromamba isn't installed in this workspace), but the unit suite covers both backends — 1413/1413 ok includes the micromamba-side coverage that would surface any structural breakage from the relocation.
+
+### Story N.s.2: Relocate `purge_project` into the Python plugin [Planned]
+
+**Motivation.** Second function relocation per the N.s umbrella — `pyve purge`'s implementation follows `init_project` into the plugin file.
+
+**Tasks**
+
+- [ ] Move `purge_project` from [lib/commands/purge.sh](../../lib/commands/purge.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.o `python_pyve_plugin_purge` shim.
+- [ ] Move every `_purge_*` private helper (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`, plus any others currently in `lib/commands/purge.sh`) into the plugin file.
+- [ ] Move `show_purge_help` to the plugin file.
+- [ ] Delete `lib/commands/purge.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): mark `purge_project`'s row as relocated.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_2_purge_relocation.bats](../../tests/unit/test_n_s_2_purge_relocation.bats): same shape as N.s.1.
+- [ ] Behavioral regression: `pyve purge --yes` on a fresh-after-`pyve init` dir removes `.venv`, `.pyve/`, `.envrc`, `.env` and leaves user-authored files untouched; `pyve --verbose purge --yes` still surfaces the N.r purge_inventory; full unit suite green.
+
+### Story N.s.3: Relocate `update_project` into the Python plugin [Planned]
+
+**Motivation.** Third function relocation per the N.s umbrella — completes the N.o triplet (init / purge / update).
+
+**Tasks**
+
+- [ ] Move `update_project` from [lib/commands/update.sh](../../lib/commands/update.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.o `python_pyve_plugin_update` shim.
+- [ ] Move every `_update_*` private helper into the plugin file.
+- [ ] Move `show_update_help` to the plugin file.
+- [ ] Delete `lib/commands/update.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): mark `update_project`'s row as relocated and add the closing note that the N.o triplet relocation is complete.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_3_update_relocation.bats](../../tests/unit/test_n_s_3_update_relocation.bats).
+- [ ] Behavioral regression: `pyve update` on a fresh-after-`pyve init` dir refreshes managed files (`.envrc`, `.gitignore`, `.vscode/settings.json`, `.pyve/config`); the `.project-guide.yml` gate from project-essentials still routes project-guide refresh correctly; full unit suite green.
+
+### Story N.s.4: Relocate `check_environment` into the Python plugin [Planned]
+
+**Motivation.** Fourth function relocation per the N.s umbrella — first of the N.p runtime quartet (check / status / run / test).
+
+**Tasks**
+
+- [ ] Move `check_environment` from [lib/commands/check.sh](../../lib/commands/check.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_check` shim.
+- [ ] Move every `_check_*` private helper into the plugin file.
+- [ ] Move `show_check_help` to the plugin file.
+- [ ] Delete `lib/commands/check.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the "Python plugin — runtime hooks (Story N.p, Option 2)" subsection in [tech-spec.md](tech-spec.md): rename to "Option 1 / relocated"; mark `check_environment`'s row as relocated.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_4_check_relocation.bats](../../tests/unit/test_n_s_4_check_relocation.bats).
+- [ ] Behavioral regression: `pyve check` against fresh / drifted / no-env states produces identical output and CI-safe 0/1/2 exit codes; the N.p `manual_steps` and `languages` advisories still render at the top of the output; full unit suite green.
+
+### Story N.s.5: Relocate `show_status` into the Python plugin [Planned]
+
+**Motivation.** Fifth function relocation per the N.s umbrella.
+
+**Tasks**
+
+- [ ] Move `show_status` from [lib/commands/status.sh](../../lib/commands/status.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_status` shim.
+- [ ] Move every `_status_*` private helper into the plugin file.
+- [ ] Move `show_status_help` to the plugin file. (Naming note: `show_status` is the command function per the F-table; `show_status_help` is its per-command help block.)
+- [ ] Delete `lib/commands/status.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `show_status`'s row as relocated.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_5_status_relocation.bats](../../tests/unit/test_n_s_5_status_relocation.bats).
+- [ ] Behavioral regression: `pyve status` against various env states produces identical output; the N.p advisories still render; full unit suite green.
+
+### Story N.s.6: Relocate `run_command` into the Python plugin [Planned]
+
+**Motivation.** Sixth function relocation per the N.s umbrella.
+
+**Tasks**
+
+- [ ] Move `run_command` from [lib/commands/run.sh](../../lib/commands/run.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_run` shim.
+- [ ] Move every `_run_*` private helper into the plugin file.
+- [ ] Move `show_run_help` to the plugin file.
+- [ ] Delete `lib/commands/run.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `run_command`'s row as relocated.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_6_run_relocation.bats](../../tests/unit/test_n_s_6_run_relocation.bats).
+- [ ] Behavioral regression: `pyve run python --version` against venv and micromamba backends produces identical output; the N.j.1 config-first backend detection still routes correctly (regression-test from N.j.1 stays green); full unit suite green.
+
+### Story N.s.7: Relocate `test_tests` into the Python plugin [Planned]
+
+**Motivation.** Seventh function relocation per the N.s umbrella — completes the N.p runtime quartet (check / status / run / test).
+
+**Tasks**
+
+- [ ] Move `test_tests` from [lib/commands/test.sh](../../lib/commands/test.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_test` shim.
+- [ ] Move every `_test_*` private helper into the plugin file.
+- [ ] Move `show_test_help` to the plugin file.
+- [ ] Delete `lib/commands/test.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `test_tests`'s row as relocated and add the closing note that the N.p quartet relocation is complete.
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_7_test_relocation.bats](../../tests/unit/test_n_s_7_test_relocation.bats).
+- [ ] Behavioral regression: `pyve test` (default env), `pyve test --env <name>`, and the root-env short-circuit at [lib/commands/test.sh:211](../../lib/commands/test.sh#L211) (which now becomes an internal-to-plugin call to `run_command`) produce identical output; full unit suite green.
+
+### Story N.s.8: Relocate `python_command` namespace dispatcher into the Python plugin [Planned]
+
+**Motivation.** Eighth and final function-relocation story. The `pyve python <sub>` namespace dispatcher is the last piece of Python-specific command-table code outside the plugin file. N.p's Option (a) already moved the leaf functions (`python_set` / `python_show`); N.s.8 completes the relocation by moving the dispatcher itself.
+
+**Tasks**
+
+- [ ] Move `python_command` from [lib/commands/python.sh](../../lib/commands/python.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh). Place after the existing leaf functions (`python_set` / `python_show` relocated in N.p Option (a)).
+- [ ] Move `show_python_help` and any sub-command help blocks (`show_python_set_help`, `show_python_show_help` — if present in `lib/commands/python.sh`) to the plugin file per the F-table per-command-help convention.
+- [ ] Delete `lib/commands/python.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
+- [ ] Verify [pyve.sh](../../pyve.sh)'s `python)` case arm — currently calls `python_command "$@"` directly; bash function-name resolution is global, so the call site continues to work after relocation. No change expected; confirm by smoke test.
+- [ ] Update [tech-spec.md](tech-spec.md): add a short note in the runtime-hooks subsection that the `python` namespace dispatcher and its leaves now live in the plugin file (completing the N.p Option (a) sweep).
+- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_8_python_dispatcher_relocation.bats](../../tests/unit/test_n_s_8_python_dispatcher_relocation.bats).
+- [ ] Behavioral regression: `pyve python set <ver>`, `pyve python show`, `pyve python --help` produce identical output; full unit suite green.
+
+### Story N.s.9: End-to-end regression sweep [Planned]
+
+**Motivation.** With all eight relocations landed (N.s.1–N.s.8), verify behavior end-to-end before declaring the structural cutover complete. This is the load-bearing verification gate before the doc updates in N.s.10–N.s.12.
+
+**Tasks**
+
+- [ ] Run the full Bats unit suite — expect ~1400+ ok / 0 not ok (1393 baseline from N.r + relocation tests landed in N.s.1–N.s.8). Capture exact count in the story body.
+- [ ] Run the integration suite under [tests/integration/](../../tests/integration/) — zero regressions expected. Surface any pre-existing failures (the "Fix pre-existing integration test failures" Future story referenced from N.g) but do not fix them as part of N.s.9.
+- [ ] Manual smoke against a fresh v3 project: `pyve init --backend venv`, `pyve check`, `pyve status`, `pyve run python --version`, `pyve test`, `pyve env install`, `pyve env run`, `pyve update`, `pyve purge --yes`. Verify identical output to pre-relocation baseline.
+- [ ] Manual smoke against a v2-migrated project (`pyve self migrate` from a v2.8 source): same command sequence. Verify the read-compat layer and v2-banner still fire correctly.
+- [ ] Document any deviations / pre-existing failures in the story body as a "verification log" subsection (not a fix list — those become their own stories if surfaced).
+
+**Out of scope (flagged, kept out).**
+
+- **Fixing any regressions surfaced.** If the sweep finds regressions caused by N.s.1–N.s.8, each fix is its own story (debug mode) — N.s.9 documents the failure mode and yields control to debug. The "no regression by construction" claim of each relocation story is what gets tested here; any failure means the relocation story missed something.
+
+### Story N.s.10: Update tech-spec.md for the plugin architecture [Planned]
+
+**Motivation.** Surface the full plugin architecture in the canonical tech-spec document. N.k / N.l / N.m / N.n / N.o / N.p / N.q / N.r each added their own subsections incrementally; N.s.10 adds the top-level "how the contract fits together" narrative that's been deferred until the Option 1 cutover is complete.
+
+**Tasks**
+
+- [ ] Add a new top-level "Plugin contract architecture" section to [tech-spec.md](tech-spec.md) covering the 14 hooks per N.k (manifest_namespace, register_backends, detect, lifecycle init/purge/update/check/status/run/test, activate, diagnostics, gitignore_entries, purge_inventory), how `plugin_dispatch` routes, and how `bp_dispatch` mediates backend selection within a plugin.
+- [ ] Document the backend-provider three-category taxonomy per revised S6 (project-virtualized, cache-backed, check-only) with the v3.0 ship-list (Python's venv + micromamba both `virtualized`).
+- [ ] Document the implicit-Python rule per S5 (`plugin_load_all_from_manifest` registers `python` at `path = "."` when no `[plugins.*]` is declared).
+- [ ] Audit the per-story subsections added in N.k–N.r: ensure each remains accurate post-relocation; rename "Option 2" → "Option 1 / relocated" where N.s.1–N.s.8 changed the locus (most rows already updated incrementally; this is the consistency-check pass).
+- [ ] No content removal beyond the Option-2 / Option-1 fixup — N-6's `refactor_document` pass owns the holistic doc reorganization. N.s.10 is targeted additions + consistency only.
+
+### Story N.s.11: Update features.md for the v3 env model [Planned]
+
+**Motivation.** Surface the v3 env-as-materialization framing and the new advisory axes in the canonical features document.
+
+**Tasks**
+
+- [ ] Add an "Env-as-materialization" subsection per S1: every declared env is a materialized dependency closure, not a run surface; backends are how the closure materializes (virtualized / cache-backed / check-only).
+- [ ] Document the `languages` structured attribute per S11 as advisory in v3.0 (declared but not enforced; surfaced via the N.p advisory warn for `python` mismatch).
+- [ ] Document the `manual_steps` field per S7 as advisory in v3.0 (declared but not enforced; surfaced at the top of `pyve check` / `pyve status`).
+- [ ] No behavior-change claims for users — v3.0 ships these as schema additions, not enforced semantics. v3.1 / future phases may add enforcement.
+- [ ] Cross-link to [tech-spec.md](tech-spec.md)'s plugin contract section (added in N.s.10) for the implementation details.
+
+### Story N.s.12: Update brand-descriptions.md for v3.0 [Planned]
+
+**Motivation.** Brief annotation pass on [brand-descriptions.md](brand-descriptions.md) so the **NEEDS REVISION for Pyve 3.0** flagged sections reference the new identity. Full revision lands in N-6 via `refactor_document`.
+
+**Tasks**
+
+- [ ] Add a short header note at the top of each flagged section: "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems."
+- [ ] No deep rewrite — N-6 owns the holistic prose reflow. N.s.12 is the placeholder note so the document doesn't lie between N-2 and N-6.
+- [ ] No `CHANGELOG.md` entry — Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release.
 
 ### Story N.t: Append project-essentials entries for N-2 [Planned]
 

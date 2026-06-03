@@ -27,7 +27,7 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     # Capture an absolute path to a working python BEFORE create_test_dir
     # changes cwd — same asdf-shim trap as N.d.1, but here we just need a
     # stable interpreter for manifest_load's helper invocation. Mirrors
@@ -191,7 +191,7 @@ EOF
     # own line); each call site adds another. Expect ≥3 — the
     # function header plus the venv and micromamba backend branches.
     local count
-    count="$(grep -cE '_init_write_pyve_toml' "$PYVE_ROOT/lib/commands/init.sh")"
+    count="$(grep -cE '_init_write_pyve_toml' "$PYVE_ROOT/lib/plugins/python/plugin.sh")"
     [ "$count" -ge 3 ]
 }
 
@@ -199,6 +199,6 @@ EOF
     # Definition contributes 1 hit; expect ≥2 — the function header
     # plus a single call site inside init_project before the wizard.
     local count
-    count="$(grep -cE '_init_validate_existing_manifest' "$PYVE_ROOT/lib/commands/init.sh")"
+    count="$(grep -cE '_init_validate_existing_manifest' "$PYVE_ROOT/lib/plugins/python/plugin.sh")"
     [ "$count" -ge 2 ]
 }

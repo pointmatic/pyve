@@ -15,7 +15,7 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
     export NO_COLOR=1
     unset PYVE_VERBOSE

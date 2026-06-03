@@ -1096,17 +1096,17 @@ Every existing caller (`pyve.sh:show_config`, `lib/commands/init.sh:get_backend_
 
 ---
 
-### Python plugin — lifecycle hooks (Story N.o, Option 2)
+### Python plugin — lifecycle hooks (Story N.o, Option 2; partial Option 1 relocation in N.s.1+)
 
-N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve update`) behind the plugin contract. Per the announce-gate decision (Option 2 — hook-as-shim), the existing implementations in [lib/commands/init.sh](../../lib/commands/init.sh), [lib/commands/purge.sh](../../lib/commands/purge.sh), [lib/commands/update.sh](../../lib/commands/update.sh) stay where they are; the plugin file gains thin shims that delegate to them. Whole-function relocation is revisited in Story N.s.
+N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve update`) behind the plugin contract. Per N.o's announce-gate decision (Option 2 — hook-as-shim), the implementations originally stayed in `lib/commands/{init,purge,update}.sh` while the plugin file gained thin shims that delegated to them. The N.s umbrella (Option 1) relocates each function body — plus its private helpers and `show_<cmd>_help` block — into the plugin file across three stories: N.s.1 (`init_project`), N.s.2 (`purge_project`), N.s.3 (`update_project`).
 
 **Three lifecycle shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
 
-| Hook | Behavior |
-|---|---|
-| `python_pyve_plugin_init` | Runs `python_pyve_plugin_validate_env_blocks` (S9), runs `_python_pyve_plugin_languages_advisory_read` (S11), then calls `init_project "$@"`. |
-| `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. |
-| `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. |
+| Hook | Behavior | Implementation locus |
+|---|---|---|
+| `python_pyve_plugin_init` | Runs `python_pyve_plugin_validate_env_blocks` (S9), runs `_python_pyve_plugin_languages_advisory_read` (S11), then calls `init_project "$@"`. | **Relocated to plugin.sh in N.s.1** (`init_project` + its 16 `_init_*` private helpers + `show_init_help`; `lib/commands/init.sh` deleted; `pyve.sh` source line removed). |
+| `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. | Still in `lib/commands/purge.sh` (pending N.s.2). |
+| `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. | Still in `lib/commands/update.sh` (pending N.s.3). |
 
 **Public-boundary dispatch** in `pyve.sh`'s case dispatcher:
 
@@ -1116,7 +1116,7 @@ purge)  plugin_dispatch python purge "$@"  ;;
 update) plugin_dispatch python update "$@" ;;
 ```
 
-The dispatcher's `--help` / `PYVE_DISPATCH_TRACE` short-circuits stay above the dispatch call so they're unaffected. Internal cross-command callsites (e.g., `init_project --force` calls `purge_project --keep-testenv --yes` from `lib/commands/init.sh`) remain direct — Option 2 only refactors public entry points.
+The dispatcher's `--help` / `PYVE_DISPATCH_TRACE` short-circuits stay above the dispatch call so they're unaffected. Internal cross-command callsites (e.g., `init_project --force` calls `purge_project --keep-testenv --yes` — now from inside the plugin file for the init side, still from `lib/commands/purge.sh` for the purge side, both resolved through bash's global function table) remain direct.
 
 **S9 env-block validation.** `python_pyve_plugin_validate_env_blocks` iterates `PYVE_ENV_NAMES[]` (populated by `manifest_load`) and checks:
 

@@ -23,7 +23,7 @@ setup() {
     # are available for direct invocation. init.sh's external deps
     # (log_error, header_box, etc.) come from ui/core.sh and utils.sh,
     # both sourced by setup_pyve_env.
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
     # Default: stub asdf so wizard tests that exercise the venv +
     # --python-version flag-driven path don't hard-fail on Linux CI
@@ -345,7 +345,7 @@ EOF
     mkdir -p "$TEST_DIR/.emptybin"
     run /bin/bash -c "set -euo pipefail; \
         source '$PYVE_ROOT/lib/ui/core.sh'; \
-        source '$PYVE_ROOT/lib/commands/init.sh'; \
+        source '$PYVE_ROOT/lib/plugins/python/plugin.sh'; \
         PATH='$TEST_DIR/.emptybin' _init_detect_version_managers_available"
     [ "$status" -eq 0 ]
     [[ "$output" != *"unbound variable"* ]]

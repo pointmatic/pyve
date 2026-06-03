@@ -18,7 +18,7 @@ load ../helpers/test_helper.bash
 setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/plugins/backend_registry.sh"
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
     bp_registry_reset
     # The pyve.sh library-load block calls these on real invocations.

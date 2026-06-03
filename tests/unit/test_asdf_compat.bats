@@ -89,7 +89,7 @@ teardown() {
 #
 # Phase K extracted top-level commands into lib/commands/<name>.sh, so
 # the source file is now a parameter. After K.l, the J.b/J.c tests
-# pass `lib/commands/init.sh` (`_init_direnv_venv`, `_init_direnv_micromamba`)
+# pass `lib/plugins/python/plugin.sh` (`_init_direnv_venv`, `_init_direnv_micromamba`)
 # and `lib/commands/run.sh` (`run_command`); the default `pyve.sh` is
 # kept for any helper that ever lives at the top level.
 #
@@ -107,7 +107,7 @@ source_pyve_fn() {
 }
 
 @test "J.b: venv .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
-    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="asdf"
 
     run _init_direnv_venv ".venv"
@@ -119,7 +119,7 @@ source_pyve_fn() {
 }
 
 @test "J.b: micromamba .envrc includes ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
-    source_pyve_fn _init_direnv_micromamba "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_micromamba "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="asdf"
 
     run _init_direnv_micromamba "test-env" "$TEST_DIR/envs/test-env"
@@ -131,7 +131,7 @@ source_pyve_fn() {
 }
 
 @test "J.b: venv .envrc omits the compat block when asdf is not active (VERSION_MANAGER=pyenv)" {
-    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="pyenv"
 
     run _init_direnv_venv ".venv"
@@ -146,7 +146,7 @@ source_pyve_fn() {
 }
 
 @test "J.b: venv .envrc omits the compat block when PYVE_NO_ASDF_COMPAT=1" {
-    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="asdf"
     PYVE_NO_ASDF_COMPAT=1
 
@@ -165,7 +165,7 @@ source_pyve_fn() {
     # H.a pattern: run the generator twice with the same inputs and asdf
     # active; the file must be byte-identical between runs (md5 match) and
     # the sentinel comment must appear exactly once.
-    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="asdf"
 
     _init_direnv_venv ".venv"
@@ -188,7 +188,7 @@ source_pyve_fn() {
     # Upgrade-path coverage: user has an .envrc from pyve < v2.3.0 (no
     # asdf guard). On the next `pyve init`, the generator should append
     # the guard to the existing file without touching its other content.
-    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/commands/init.sh"
+    source_pyve_fn _init_direnv_venv "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     VERSION_MANAGER="asdf"
 
     cat > .envrc << 'EOF'

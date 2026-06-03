@@ -223,14 +223,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/init.sh" ]]; then
-    # shellcheck source=lib/commands/init.sh
-    source "$SCRIPT_DIR/lib/commands/init.sh"
-else
-    printf "ERROR: Cannot find lib/commands/init.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/lock.sh" ]]; then
     # shellcheck source=lib/commands/lock.sh
     source "$SCRIPT_DIR/lib/commands/lock.sh"
