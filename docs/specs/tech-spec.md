@@ -899,6 +899,63 @@ Parallel indexed arrays keyed by position in `PYVE_ENV_NAMES`. Bash-3.2-safe (no
 
 ---
 
+### `lib/plugins/contract.sh` + `lib/plugins/registry.sh` — Plugin contract & registry (Story N.k, Subphase N-2)
+
+The plugin layer is the seam through which N-2 onwards re-seats Python (and later Node, etc.) as registered plugins. Two files, two responsibilities:
+
+**`lib/plugins/contract.sh` — the no-op defaults.**
+
+Defines `pyve_plugin_default_<hook>()` for every documented hook. Plugins implementing a subset of hooks rely on these defaults; the dispatcher never errors on a missing implementation. The hook groups (per concept doc § 5; spike conclusions S1–S11):
+
+1. **`manifest_namespace`** — the plugin's manifest key (e.g., `"python"`).
+2. **`register_backends`** — register backend providers via the backend registry (Story N.l).
+3. **`detect`** — scaffold-time detection.
+4. **Lifecycle**: `init`, `purge`, `update`, `check`, `status`, `run`, `test`.
+5. **`activate`** — `.envrc` snippet emission (PC-1 input safety landing in N.m).
+6. **`diagnostics`** — plugin-internal health checks.
+7. **`gitignore_entries`** — patterns this plugin owns in the project's `.gitignore`.
+8. **`purge_inventory`** — created-vs-authored inventory for `pyve purge`.
+
+Each default is silent: prints nothing, returns 0.
+
+**`lib/plugins/registry.sh` — registration + dispatch.**
+
+Maintains `PYVE_PLUGIN_REGISTERED[]` (an indexed array of active plugin names) and exposes:
+
+| Function | Purpose |
+|---|---|
+| `plugin_register <name>` | Add a plugin to the active list. Idempotent. |
+| `plugin_list_active` | Print active plugin names, one per line, in registration order. |
+| `plugin_load_all_from_manifest` | Read `[plugins.*]` from `pyve.toml` via the manifest accessors; register each declared plugin; apply the implicit-Python rule (S5) when no plugins are declared; enforce the cardinality check (S4). |
+| `plugin_dispatch <name> <hook> [args...]` | Call `<name>_pyve_plugin_<hook>` if defined; else `pyve_plugin_default_<hook>`. Args forwarded. |
+| `plugin_registry_reset` | Clear the registered list. Used by tests; not called from production code. |
+
+**Activation paths (S4, S5).** Two ways a plugin becomes active:
+
+- **Explicit declaration** — `[plugins.<name>]` block in `pyve.toml`. Default `path = "."` per the schema; provider-private attributes preserved.
+- **Implicit Python** — when `[plugins.*]` is absent entirely, the registry registers `python` at `path = "."`. This is the migration shape for every v2-vintage project, which had no `[plugins.*]` blocks.
+
+**Cardinality (S4).** At most one plugin may resolve to `path = "."`. Two declarations both claiming the project root is a manifest error and `plugin_load_all_from_manifest` returns non-zero with a precise diagnostic. The check applies after both explicit registration and implicit-Python expansion, so an explicit `[plugins.node]\npath = "."` plus an implicit Python cannot collide (the implicit only fires when no plugins are declared at all).
+
+**`[plugins.<name>]` schema (Story N.k.1 folded into N.k).**
+
+The only core key is `path` (default `"."`). Every other key is provider-private per S9 and preserved verbatim for the plugin to interpret. There is no `role` field (spike S3 explicitly rejected it; the spatial owner is inferred from `path`). The bats test `test_n_k_plugin_schema.bats`'s "no role field" assertion enforces this against future contributors.
+
+```toml
+[plugins.python]
+path = "."
+
+[plugins.svelte]
+path = "frontend"
+app_type = "spa"     # provider-private; available via manifest_get_plugin_attr
+```
+
+**Sourcing order** (in `pyve.sh`): after `lib/manifest.sh` (the registry reads `PYVE_PLUGIN_NAMES` etc.) and before per-command modules (commands may dispatch hooks). Per the project-essentials rule, both files are sourced explicitly — no glob.
+
+**What N.k does NOT do.** No plugin implementations exist yet — `lib/plugins/python/plugin.sh` lands in Story N.n. The backend-provider abstraction is a separate registry — Story N.l. PC-1 input safety validation — Story N.m. Re-seating today's `pyve init` / `purge` / `check` / `status` / `run` / `test` behind the contract — Stories N.o–N.r. v3.0 shipping behavior is preserved through this whole window via the read-compat layer (Story N.i) and the unchanged direct callsites in `lib/commands/*.sh` (which dispatch through the contract starting in N.o).
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

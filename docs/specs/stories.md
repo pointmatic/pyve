@@ -333,30 +333,49 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Design source:** [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) — the architectural spike for N-2 (drafted 2026-06-02) that establishes the design decisions referenced as **S1–S11** in the story bodies below. Synthesis section of that doc is the canonical record for the env/backend/plugin model; story bodies cite individual S-numbers rather than re-explaining the decisions.
 
-### Story N.k: Plugin contract + registry skeleton with root-loader [Planned]
+### Story N.k: Plugin contract + registry skeleton with root-loader [Done]
 
 **Motivation.** Define the 8-hook plugin/backend-provider contract and the registry that loads plugins from `pyve.toml`. Establishes the seam every subsequent N-2 story builds against. No behavior change yet — the registry loads plugins but the Python plugin doesn't exist until N.n; v2-shape behavior is preserved via the read-compat layer until then.
 
-**Tasks**
-
-- [ ] New `lib/plugins/contract.sh`: 8 hook signatures with documented stubs — `pyve_plugin_manifest_namespace`, `pyve_plugin_register_backends`, `pyve_plugin_detect`, `pyve_plugin_init` / `pyve_plugin_purge` / `pyve_plugin_update` / `pyve_plugin_check` / `pyve_plugin_status` / `pyve_plugin_run` / `pyve_plugin_test` (lifecycle), `pyve_plugin_activate`, `pyve_plugin_diagnostics`, `pyve_plugin_gitignore_entries`, `pyve_plugin_purge_inventory`. Per concept doc § 5.
-- [ ] New `lib/plugins/registry.sh`: `plugin_register <name>`, `plugin_load_all_from_manifest`, `plugin_list_active`, `plugin_dispatch <name> <hook> [args...]`. Reads `[plugins.*]` blocks from `pyve.toml` via [lib/manifest.sh](../../lib/manifest.sh).
-- [ ] No-op default implementations for every hook so plugins implementing a subset don't error.
-- [ ] **Implicit-Python rule (S5):** when `[plugins.*]` is absent from `pyve.toml`, the registry treats Python as the implicit plugin at `path = "."`. Covers the migration target (v2-shape projects with only Python surfaces).
-- [ ] **`path = "."` cardinality validation (S4):** registry errors if two plugins both omit `path` (or both set `path = "."`). Single source of truth: at most one plugin owns the project root.
-- [ ] Explicit `source lib/plugins/contract.sh` and `source lib/plugins/registry.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule.
-- [ ] Bats unit tests: registry loads explicit `[plugins.*]`; implicit-Python default; cardinality error; hook dispatch invokes the right plugin.
-
-### Story N.k.1: `[plugins.*]` schema in `pyve.toml` [Planned]
-
-**Motivation.** Pre-implementation split of N.k (per the [Sub-numbered stories rule](../project-guide/templates/modes/_phase-letters.md)). N.k's registry needs the manifest schema in place; this story lands the schema before N.k consumes it.
+**Execution note (folding N.k.1).** Per developer direction at the announce gate ("go" on "Work N.k as written"), this story was executed with the original N.k.1 schema tasks folded in. Implementation order was N.k.1's schema work first, then N.k's registry on top — same sequencing as the pre-implementation split, just landed in a single story rather than two. N.k.1 remains in this file (below) marked `[Done]` with a pointer back to N.k for the actual implementation; the split's documentation value (calling out *why* the schema is a prerequisite) is preserved without splitting the diff.
 
 **Tasks**
 
-- [ ] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to parse `[plugins.<name>]` blocks. Per S3, the schema has just `path` (default `"."`) — **no `role` field**.
-- [ ] Extend [lib/manifest.sh](../../lib/manifest.sh) with `manifest_list_plugins`, `manifest_get_plugin_path <name>`, `manifest_get_plugin_attr <name> <key>`.
-- [ ] Bats unit tests: parse explicit `[plugins.*]`; parse implicit (no `[plugins.*]`) → empty list; reject `[plugins.<name>]` with unrecognized core keys (provider-private keys per S9 stay free-form for the plugin to interpret).
-- [ ] Update [tech-spec.md](tech-spec.md) with the `[plugins.*]` schema section.
+- [x] New [lib/plugins/contract.sh](../../lib/plugins/contract.sh): 14 hook default no-ops, grouped per concept doc § 5 — `pyve_plugin_default_manifest_namespace`, `_register_backends`, `_detect`, lifecycle (`_init` / `_purge` / `_update` / `_check` / `_status` / `_run` / `_test`), `_activate`, `_diagnostics`, `_gitignore_entries`, `_purge_inventory`. Each returns 0 silently.
+- [x] New [lib/plugins/registry.sh](../../lib/plugins/registry.sh): `plugin_register <name>`, `plugin_list_active`, `plugin_load_all_from_manifest`, `plugin_dispatch <name> <hook> [args...]`, plus `plugin_registry_reset` for test isolation. Reads `[plugins.*]` via [lib/manifest.sh](../../lib/manifest.sh)'s new accessors.
+- [x] No-op default implementations for every hook — covered by the bats invariant "every documented hook has a default no-op" which iterates the hook-name list and `declare -f` checks each `pyve_plugin_default_<hook>` exists.
+- [x] **Implicit-Python rule (S5):** `plugin_load_all_from_manifest` registers `python` at `path = "."` when no `[plugins.*]` is declared at all. Behavioral test: empty `[plugins.*]` → `plugin_list_active` outputs `python`. The implicit-Python expansion does NOT fire when ANY explicit `[plugins.*]` is present (covered by the "explicit overrides implicit" test — a `[plugins.node]` declaration alone yields just `node`, not `node\npython`).
+- [x] **`path = "."` cardinality validation (S4):** `plugin_load_all_from_manifest` collects every active plugin whose path resolves to `.`, errors with a precise diagnostic naming the offending plugin pair when count > 1. Two-plugin-at-root manifests fail the load; one-plugin-at-root + one-plugin-elsewhere pass; one explicit Python at `.` passes (the implicit-Python expansion is gated on no-explicit-plugins-at-all, so it can't duplicate).
+- [x] Explicit `source lib/plugins/contract.sh` and `source lib/plugins/registry.sh` in [pyve.sh](../../pyve.sh) — sourced after `lib/manifest.sh` (registry reads `PYVE_PLUGIN_NAMES` etc.) and before per-command modules. Per the project-essentials "Library sourcing is explicit, not glob-based" rule.
+- [x] Bats unit tests: **13 tests** in [tests/unit/test_n_k_plugin_registry.bats](../../tests/unit/test_n_k_plugin_registry.bats) covering contract defaults (3), registration + dispatch (5), and `plugin_load_all_from_manifest` (5: empty-implicit, explicit-overrides-implicit, explicit-python-at-root, cardinality-violation, distinct-paths). **9 additional tests** in [tests/unit/test_n_k_plugin_schema.bats](../../tests/unit/test_n_k_plugin_schema.bats) covering the manifest schema layer (N.k.1's piece). Full unit suite: 1249 ok / 0 not ok (1236 prior + 22 new across both N.k files).
+
+**Schema tasks (folded from N.k.1)**
+
+- [x] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to parse `[plugins.<name>]` blocks — `_normalize_plugin` preserves `path` (default `"."`) and bundles every other key as a free-form provider-private attribute dict. No `role` field.
+- [x] Extend [lib/manifest.sh](../../lib/manifest.sh) with `manifest_list_plugins`, `manifest_get_plugin_path <name>`, `manifest_get_plugin_attr <name> <key>`. Internal state: `PYVE_PLUGIN_NAMES[]`, `PYVE_PLUGIN_PATHS[]`, `PYVE_PLUGIN_<idx>_ATTRS[]` (per-plugin key=value arrays — avoids bash-4 associative-array dependency).
+- [x] Bats schema tests cover: empty `[plugins.*]` → empty list, explicit declaration order preserved, declared path returned, default `.` for unset path, unknown plugin returns 1, provider-private attr round-trip, missing attr returns empty string on known plugin, unknown plugin returns 1 on attr lookup, AND the **structural invariant** "no `PYVE_PLUGIN_ROLE[S]` identifier appears in either the helper or manifest.sh" — a grep-based guard so a future contributor who tries to add `role` fails the build at code-review time.
+- [x] Updated [tech-spec.md](tech-spec.md) with a new "`lib/plugins/contract.sh` + `lib/plugins/registry.sh`" subsection covering the contract, the registry, the activation paths, the cardinality rule, and the `[plugins.<name>]` schema (including the no-`role` invariant). Placed adjacent to the existing `lib/manifest.sh` section since they share the manifest seam.
+
+**Out of scope (flagged, kept out)**
+
+- **The Python plugin itself.** `lib/plugins/python/plugin.sh` lands in Story N.n. The registry can load it; nothing yet hooks pyve commands into the contract.
+- **Backend-provider registry.** `lib/plugins/backend_registry.sh` (the three-category abstraction) is Story N.l. The contract's `register_backends` hook exists as a no-op default; nothing calls it yet.
+- **PC-1 input safety.** The activation hook's `.envrc` snippet validator is Story N.m. The contract's `activate` hook exists as a no-op default; no real snippet emission yet.
+- **Re-seating today's `pyve init` / `purge` / `check` / `status` / `run` / `test` behind the contract.** Stories N.o through N.r. Direct callsites in `lib/commands/*.sh` are untouched in this story.
+- **`bash-4` cleanup.** `manifest_get_plugin_attr` uses an `eval`-based lookup over a per-plugin indexed array because pyve supports macOS-system bash 3.2 (per project-essentials' "Bash 3.2 empty-array reads" rule). Once pyve drops bash 3.2 support (no concrete timeline), switching to a single associative array `declare -A PYVE_PLUGIN_ATTRS` would simplify the implementation; until then, the indexed-array approach is the correct shape.
+
+**Placement note.** Authored in document order as N.k. The original pre-implementation split (N.k → N.k.1) was a hint about implementation sequencing rather than a hard constraint; the developer's choice to fold N.k.1 into N.k preserves the same end-state (schema landed before the registry consumed it) without the split's diff/PR overhead. Both N.k and N.k.1 share this one developer commit and one approval gate.
+
+### Story N.k.1: `[plugins.*]` schema in `pyve.toml` [Done]
+
+**Folded into [Story N.k](#story-nk-plugin-contract--registry-skeleton-with-root-loader) per developer direction at the announce gate.** All N.k.1 tasks (schema parsing in `lib/pyve_toml_helper.py`, manifest accessors in `lib/manifest.sh`, schema-section update in tech-spec.md, schema tests in `test_n_k_plugin_schema.bats`) landed in the same diff as N.k's registry work. This entry remains in document order so the pre-implementation split's *rationale* (N.k's registry depends on the schema, so the schema lands first) stays discoverable; the implementation lives in N.k's tasks above.
+
+**See N.k for:**
+
+- The `[plugins.<name>]` schema definition (core `path` + free-form provider-private keys per S9; no `role` per S3).
+- The Python-helper and manifest.sh accessors.
+- The 9 schema bats tests including the "no role field" structural invariant.
+- The tech-spec.md schema subsection.
 
 ### Story N.l: Backend-provider registry + abstraction (three-category) [Planned]
 

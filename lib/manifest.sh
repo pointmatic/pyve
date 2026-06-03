@@ -345,3 +345,68 @@ manifest_get_requirements() {
     out_var="$2"
     eval "$out_var=( ${PYVE_ENV_REQUIREMENTS_Q[$i]} )"
 }
+
+# ────────────────────────────────────────────────────────────────────
+# Plugin accessors (Story N.k, folding N.k.1).
+#
+# `[plugins.<name>]` blocks expose one core key (`path`, default ".")
+# plus any provider-private attributes per spike S9. The Python helper
+# emits parallel arrays:
+#
+#   PYVE_PLUGIN_NAMES[]                   — declared plugin names
+#   PYVE_PLUGIN_PATHS[]                   — corresponding paths
+#   PYVE_PLUGIN_<idx>_ATTRS[]             — per-plugin "key=value" list
+#                                           (idx = position in NAMES)
+#
+# No `role` field (spike S3). The cardinality check on `path = "."`
+# (spike S4) is a registry concern, not a parser concern; see
+# lib/plugins/registry.sh.
+# ────────────────────────────────────────────────────────────────────
+
+# Private: index lookup for plugin names. Mirrors _manifest_name_to_index.
+_manifest_plugin_name_to_index() {
+    local target="$1" i
+    [[ -n "${PYVE_PLUGIN_NAMES+x}" ]] || return 1
+    for ((i=0; i<${#PYVE_PLUGIN_NAMES[@]}; i++)); do
+        if [[ "${PYVE_PLUGIN_NAMES[$i]}" == "$target" ]]; then
+            printf '%d' "$i"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Print declared plugin names, one per line. Empty when no plugins declared.
+manifest_list_plugins() {
+    [[ -n "${PYVE_PLUGIN_NAMES+x}" ]] || return 0
+    local n
+    for n in "${PYVE_PLUGIN_NAMES[@]+"${PYVE_PLUGIN_NAMES[@]}"}"; do
+        printf '%s\n' "$n"
+    done
+}
+
+# Print the plugin's `path`. Returns 1 (no output) for unknown plugins.
+manifest_get_plugin_path() {
+    local i; i="$(_manifest_plugin_name_to_index "$1")" || return 1
+    printf '%s' "${PYVE_PLUGIN_PATHS[$i]}"
+}
+
+# Print the value of a provider-private attribute, or empty string if
+# unset on a known plugin. Returns 1 (no output) for unknown plugins.
+manifest_get_plugin_attr() {
+    local i; i="$(_manifest_plugin_name_to_index "$1")" || return 1
+    local key="$2"
+    local arr_name="PYVE_PLUGIN_${i}_ATTRS"
+    local item
+    eval "
+        if [[ -n \"\${${arr_name}+x}\" ]]; then
+            for item in \"\${${arr_name}[@]+\"\${${arr_name}[@]}\"}\"; do
+                if [[ \"\$item\" == \"\$key=\"* ]]; then
+                    printf '%s' \"\${item#*=}\"
+                    return 0
+                fi
+            done
+        fi
+    "
+    return 0
+}

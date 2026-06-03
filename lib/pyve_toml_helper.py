@@ -62,7 +62,18 @@ def _empty_cfg():
         "schema_version": SCHEMA_VERSION,
         "project_name": "",
         "envs": {},
+        "plugins": {},
     }
+
+
+def _normalize_plugin(name, decl):
+    # Per spike S3: the only core schema key is `path` (default ".").
+    # Per S9: every other key is provider-private and preserved as-is.
+    # The `role` field was explicitly rejected by the spike and must
+    # not be added here.
+    path = decl.get("path") or "."
+    attrs = {k: v for k, v in decl.items() if k != "path"}
+    return {"name": name, "path": path, "attrs": attrs}
 
 
 def load(manifest_path):
@@ -76,10 +87,15 @@ def load(manifest_path):
     for name, decl in data.get("env", {}).items():
         if isinstance(decl, dict):
             envs[name] = _normalize_env(name, decl)
+    plugins = {}
+    for name, decl in data.get("plugins", {}).items():
+        if isinstance(decl, dict):
+            plugins[name] = _normalize_plugin(name, decl)
     return {
         "schema_version": schema,
         "project_name": project_name,
         "envs": envs,
+        "plugins": plugins,
     }
 
 
@@ -151,6 +167,19 @@ def emit(cfg, out):
     for var, key in list_fields:
         vals_q = [_quote_array(cfg["envs"][n][key]) for n in names]
         print(f"{var}=({_quote_array(vals_q)})", file=out)
+    # Plugins (Story N.k): per-plugin attrs are exposed as per-index
+    # arrays so manifest_get_plugin_attr can iterate without resorting
+    # to bash-4 associative arrays.
+    plugin_names = list(cfg.get("plugins", {}).keys())
+    print(f"PYVE_PLUGIN_NAMES=({_quote_array(plugin_names)})", file=out)
+    plugin_paths = [cfg["plugins"][n]["path"] for n in plugin_names]
+    print(f"PYVE_PLUGIN_PATHS=({_quote_array(plugin_paths)})", file=out)
+    for idx, name in enumerate(plugin_names):
+        attrs = cfg["plugins"][name].get("attrs", {})
+        # Encode each attr as a single "key=value" entry. TOML keys are
+        # ASCII identifier-safe; values are stringified.
+        pairs = [f"{k}={v}" for k, v in attrs.items()]
+        print(f"PYVE_PLUGIN_{idx}_ATTRS=({_quote_array(pairs)})", file=out)
 
 
 def main():

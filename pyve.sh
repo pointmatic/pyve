@@ -157,6 +157,25 @@ else
     exit 1
 fi
 
+# Story N.k: plugin contract + registry. Sourced AFTER lib/manifest.sh
+# (registry consumes manifest_list_plugins / manifest_get_plugin_path)
+# and BEFORE per-command modules (commands may dispatch plugin hooks).
+if [[ -f "$SCRIPT_DIR/lib/plugins/contract.sh" ]]; then
+    # shellcheck source=lib/plugins/contract.sh
+    source "$SCRIPT_DIR/lib/plugins/contract.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/contract.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/plugins/registry.sh" ]]; then
+    # shellcheck source=lib/plugins/registry.sh
+    source "$SCRIPT_DIR/lib/plugins/registry.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/registry.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
