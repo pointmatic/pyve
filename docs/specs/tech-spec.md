@@ -1189,6 +1189,59 @@ status) plugin_dispatch python status "$@" ;;
 
 ---
 
+### Python plugin — activate hook with PC-1 validation gate (Story N.q)
+
+N.q closes the loop on PC-1: the plugin's `activate` hook composes the plugin-owned `.envrc` snippet, runs it through `validate_envrc_snippet` (N.m), and only then delegates the actual file write. A malicious or buggy plugin emission can't reach disk.
+
+**Three-layer call chain.**
+
+```
+lib/commands/init.sh
+    plugin_dispatch python activate <backend> <env_path> <env_name>
+        python_pyve_plugin_activate                     ← N.q (PC-1 gate)
+            _python_pyve_plugin_envrc_snippet  ── PC-1 ─→ validate_envrc_snippet
+            bp_dispatch <backend> activate              ← N.l (backend shape)
+                {venv,micromamba}_pyve_bp_activate
+                    _init_direnv_{venv,micromamba}      ← write_envrc_template
+```
+
+Each layer owns one concern:
+
+| Layer | Owns |
+|---|---|
+| `plugin_dispatch python activate` | Public boundary; routes to the plugin's `activate` hook. |
+| `python_pyve_plugin_activate` | PC-1 validation gate. Aborts before write on failure. |
+| `bp_dispatch <backend> activate` | Backend-specific shape (sentinel var, bin dir). |
+| `{venv,micromamba}_pyve_bp_activate` | Backend-shim forwarder (N.l/N.n shape). |
+| `_init_direnv_{venv,micromamba}` | The actual `write_envrc_template` call. |
+
+**Boundary between plugin-emitted and infrastructure lines.** The validator's strict allow-list applies only to the **5 plugin-emitted lines** the Python plugin contributes:
+
+```
+PATH_add "$rel_bin_dir"
+export $sentinel_var="$env_root_expr"
+export PYVE_BACKEND="$backend"
+export PYVE_ENV_NAME="$env_name"
+export PYVE_PROMPT_PREFIX="($backend:$env_name) "
+```
+
+These are exactly what `_python_pyve_plugin_envrc_snippet` composes and `validate_envrc_snippet` checks. Infrastructure lines around them (the `# pyve-managed direnv configuration` header, the `if [[ -f ".env" ]]; then dotenv; fi` block, the asdf compat block) are composer-owned and emitted by `write_envrc_template` directly — never validated, because they're not plugin-emitted. This matches N.m's "out of scope" note explicitly: *"infrastructure lines that the validator was never meant to police."*
+
+Result: the strict N.m allow-list is usable for plugins **without retroactively rewriting the existing template**. Byte-equivalent `.envrc` output for every existing fixture (verified by the "direct call vs dispatched call" byte-diff tests in [tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats)).
+
+**Validation failure mode.** If the composed snippet fails validation, `python_pyve_plugin_activate`:
+
+1. Logs `python plugin: activate: snippet failed PC-1 validation` via `log_error`.
+2. The validator itself prints the offending line on stderr (`envrc_safety: rejected line: ...`).
+3. Returns non-zero. The `bp_dispatch` call never fires; no file is written.
+4. A pre-existing `.envrc` (from a prior `pyve init`) is left byte-identical.
+
+**Callsite re-seat.** Two `bp_dispatch ... activate` callsites in [lib/commands/init.sh](../../lib/commands/init.sh) — the venv-backend init at [init.sh:1117](../../lib/commands/init.sh#L1117) and the micromamba-backend init at [init.sh:1012](../../lib/commands/init.sh#L1012) — now route through `plugin_dispatch python activate <backend> ...`. The bp_dispatch path stays alive: the plugin's hook delegates to it after the validation gate.
+
+**What N.q does NOT do.** `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). The legacy `_init_direnv_*` helpers stay in [lib/commands/init.sh](../../lib/commands/init.sh) — Option 1 (whole-function relocation into the plugin file) is on N.s's docket. The infrastructure lines in `write_envrc_template` are not validated and not refactored; they're outside the plugin contract.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

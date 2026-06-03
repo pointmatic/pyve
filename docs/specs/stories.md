@@ -506,17 +506,32 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Placement note.** Authored in document order as N.p, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
-### Story N.q: Python plugin — activation hook (`.envrc` emission) [Planned]
+### Story N.q: Python plugin — activation hook (`.envrc` emission) [Done]
 
 **Motivation.** Move `.envrc` template emission into the Python plugin's activation hook. The PC-1 validator from N.m runs on the output before it gets written.
 
+**Execution mode (announce-gate decision — Option (a)).** The strict N.m allow-list rejects two strings the existing template emits (`if [[ -f ".env" ]]; then dotenv; fi`, `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` unquoted). Three resolutions were on the table at the announce gate: (a) validate only the plugin's per-env contribution; (b) relax the validator; (c) rewrite the existing template to conform. Executed under **(a)** — the validator policies plugin-emitted lines, NOT composer-owned infrastructure lines. This matches N.m's own "out of scope" note that explicitly called out infrastructure lines as outside the validator's scope. Byte-equivalent `.envrc` for every fixture is preserved.
+
 **Tasks**
 
-- [ ] Implement `pyve_plugin_activate` in the Python plugin — wraps today's `write_envrc_template` in [lib/utils.sh](../../lib/utils.sh).
-- [ ] Output from the activation hook passes through `validate_envrc_snippet` (N.m) before being written to disk. Invalid output halts with a precise error pointing at the offending snippet line.
-- [ ] Preserve the existing uniform `.envrc` template shape per [project-essentials.md](project-essentials.md) (the *Uniform `.envrc` template* rule).
-- [ ] Re-seat callsites in [lib/commands/init.sh](../../lib/commands/init.sh) (and anywhere else that emits `.envrc`) to dispatch through `plugin_dispatch python pyve_plugin_activate`.
-- [ ] Bats + integration regression: emitted `.envrc` is byte-equivalent to today's output for every existing fixture.
+- [x] `python_pyve_plugin_activate <backend> <env_path> <env_name>` in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — composes the plugin-owned snippet via `_python_pyve_plugin_envrc_snippet`, runs it through `validate_envrc_snippet`, and on success delegates the actual write to `bp_dispatch <backend> activate "$env_path" "$env_name"` (the N.l backend-shape chain that still calls `write_envrc_template`).
+- [x] **PC-1 gate** — validation failure aborts with non-zero exit, logs `python plugin: activate: snippet failed PC-1 validation` via `log_error`, AND the validator's own per-line rejection message (`envrc_safety: rejected line: ...`) hits stderr. No file write happens. A pre-existing `.envrc` is left byte-identical (verified by the test `PC-1: validation failure does NOT touch a pre-existing .envrc`).
+- [x] **Uniform `.envrc` template shape preserved.** `write_envrc_template` is unchanged. The plugin-emitted lines (5: `PATH_add` + 4 `export VAR=...`) match the corresponding region of the existing template byte-for-byte. Infrastructure lines (header comments, dotenv conditional, asdf compat) are composer-owned and not policed by the validator — which is the clean boundary that lets the strict N.m allow-list be usable for plugins without retroactively rewriting the existing template.
+- [x] **Callsite re-seat** — two `bp_dispatch ... activate` callsites in [lib/commands/init.sh](../../lib/commands/init.sh) now route through `plugin_dispatch python activate <backend> ...`: the venv-backend init at [init.sh:1117](../../lib/commands/init.sh#L1117) and the micromamba-backend init at [init.sh:1012](../../lib/commands/init.sh#L1012). bp_dispatch stays alive; the plugin's hook delegates to it after the validation gate.
+- [x] Bats + integration regression: **11 tests** in [tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats) — hook existence (1), `plugin_dispatch` routing (1), byte-equivalence vs legacy bp_dispatch for both backends (2), snippet composer shape + validator round-trip (3), PC-1 catches plugin-side smuggling (2), pre-existing `.envrc` is untouched on validation failure (1), unknown backend rejected (1). Full unit suite: **1375 ok / 0 not ok** (1364 prior + 11 new). End-to-end smoke (`pyve init --backend venv` on fresh dir): `.envrc` byte-equivalent to today, now produced through the PC-1-validated dispatch path.
+- [x] Updated [tech-spec.md](tech-spec.md) with a new "Python plugin — activate hook with PC-1 validation gate (Story N.q)" subsection — covers the three-layer call chain table, the plugin-emitted vs infrastructure boundary, the failure mode, the callsite re-seat, and the "what N.q does NOT do" boundary.
+
+**Out of scope (flagged, kept out)**
+
+- **Validating infrastructure lines** (the dotenv conditional, the asdf compat block). Not plugin-emitted; the validator was never meant to police them. Per N.m's explicit "out of scope" note. The boundary is structural.
+- **Relaxing the N.m validator** to accept unquoted `export VAR=1` or the `if/then/dotenv/fi` block. Considered as Option (b) at the announce gate and rejected — defeats the strict allow-list for a one-off historical case.
+- **Rewriting the existing template** to conform to the strict allow-list. Considered as Option (c) at the announce gate and rejected — byte-equivalence would break, and the dotenv conditional is genuinely useful infrastructure that has no plugin-allow-list shape.
+- **Refactoring `write_envrc_template`.** The function stays in [lib/utils.sh](../../lib/utils.sh) unchanged. Whole-function relocation into the plugin file is on the Option 1 path — revisited in Story N.s.
+- **Validating the snippet AFTER `write_envrc_template`** (post-write check on the .envrc file). Considered: would catch any accidental drift between the snippet composer and `write_envrc_template`, but is redundant (the composer is the source of truth for plugin-emitted content) and adds an exec-after-write check that complicates the failure mode (rollback? leave it? the file is on disk). The pre-write validation is the right seam.
+- **Removing the now-redundant bp_dispatch activate path.** It's the layer that owns backend-specific shape (sentinel var, bin dir); plugin_dispatch routes ABOVE it, not in place of it. Both layers stay.
+- **Wiring the validator into `pyve update`.** `pyve update` may re-emit `.envrc` (or just top up the asdf compat guard); the activate hook covers the fresh-init path. If a future story finds update's emission path bypasses the validator, it's a natural follow-up — but `update_project` today calls `_init_direnv_*` directly only via the `pyve init --force` rebuild path, which now goes through this hook.
+
+**Placement note.** Authored in document order as N.q, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
 ### Story N.r: Python plugin — `.gitignore` + smart-purge hooks [Planned]
 

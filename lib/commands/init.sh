@@ -1007,7 +1007,9 @@ init_project() {
         # path is uniform across backends.
         local env_path=".pyve/envs/$env_name"
         if [[ "$no_direnv" == false ]]; then
-            bp_dispatch micromamba activate "$env_path" "$env_name"
+            # Story N.q: route through plugin_dispatch so PC-1 validation
+            # runs on the plugin-owned snippet before write.
+            plugin_dispatch python activate micromamba "$env_path" "$env_name"
         else
             info "Skipping .envrc creation (--no-direnv)"
         fi
@@ -1112,7 +1114,9 @@ EOF
     if [[ "$no_direnv" == false ]]; then
         local _venv_project_name
         _venv_project_name="$(basename "$(pwd)")"
-        bp_dispatch venv activate "$venv_dir" "$_venv_project_name"
+        # Story N.q: route through plugin_dispatch so PC-1 validation
+        # runs on the plugin-owned snippet before write.
+        plugin_dispatch python activate venv "$venv_dir" "$_venv_project_name"
     else
         info "Skipping .envrc creation (--no-direnv)"
     fi

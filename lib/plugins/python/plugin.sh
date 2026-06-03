@@ -296,6 +296,97 @@ python_pyve_plugin_test() {
 }
 
 #------------------------------------------------------------
+# Plugin contract — activate (Story N.q)
+#
+# Plugin-level activation: compose the plugin-owned `.envrc` snippet
+# (the 5 lines the Python plugin contributes — PATH_add + four
+# `export VAR=...` lines), run it through validate_envrc_snippet
+# (Story N.m's PC-1 allow-list), then delegate the actual file write
+# to bp_dispatch <backend> activate.
+#
+# The infrastructure lines around the plugin snippet (the
+# `# pyve-managed direnv configuration` header, the
+# `if [[ -f ".env" ]]; then dotenv; fi` block, the asdf compat block)
+# are composer-owned and not validated — they're never plugin-emitted.
+# That boundary keeps the strict N.m allow-list usable for plugins
+# without retroactively rewriting the existing template.
+#------------------------------------------------------------
+
+# Compose the plugin-owned `.envrc` snippet (5 lines: PATH_add +
+# 4 exports). Output is byte-equivalent to the corresponding region
+# of write_envrc_template's emission, modulo whitespace at the end.
+# Mirrors write_envrc_template's `env_root_expr` rule: absolute paths
+# pass through; relative paths get prefixed with `$PWD/`.
+_python_pyve_plugin_envrc_snippet() {
+    local backend="$1"
+    local env_path="$2"
+    local env_name="$3"
+
+    local sentinel_var rel_bin_dir
+    case "$backend" in
+        venv)
+            sentinel_var="VIRTUAL_ENV"
+            rel_bin_dir="$env_path/bin"
+            ;;
+        micromamba)
+            sentinel_var="CONDA_PREFIX"
+            rel_bin_dir="$env_path/bin"
+            ;;
+        *)
+            printf "error: python plugin: snippet: unknown backend '%s'\n" "$backend" >&2
+            return 1
+            ;;
+    esac
+
+    local env_root_expr
+    if [[ "$env_path" == /* ]]; then
+        env_root_expr="$env_path"
+    else
+        env_root_expr="\$PWD/$env_path"
+    fi
+
+    cat <<EOF
+PATH_add "$rel_bin_dir"
+export $sentinel_var="$env_root_expr"
+export PYVE_BACKEND="$backend"
+export PYVE_ENV_NAME="$env_name"
+export PYVE_PROMPT_PREFIX="($backend:$env_name) "
+EOF
+}
+
+# Plugin activate hook. Unified signature across backends:
+#   python_pyve_plugin_activate <backend> <env_path> <env_name>
+#
+# Compose → validate → delegate. On validation failure, aborts with
+# non-zero exit and the offending line on stderr; no file write.
+python_pyve_plugin_activate() {
+    local backend="$1"
+    local env_path="$2"
+    local env_name="$3"
+
+    case "$backend" in
+        venv|micromamba) ;;
+        *)
+            log_error "python plugin: activate: unknown backend '$backend'"
+            return 1
+            ;;
+    esac
+
+    # PC-1 gate.
+    local snippet
+    snippet="$(_python_pyve_plugin_envrc_snippet "$backend" "$env_path" "$env_name")" || return $?
+    if ! validate_envrc_snippet "$snippet"; then
+        log_error "python plugin: activate: snippet failed PC-1 validation"
+        return 1
+    fi
+
+    # Delegate the actual write to the backend-provider. bp_dispatch
+    # routes to <backend>_pyve_bp_activate which calls today's
+    # _init_direnv_* helpers in lib/commands/init.sh.
+    bp_dispatch "$backend" activate "$env_path" "$env_name"
+}
+
+#------------------------------------------------------------
 # `pyve python set` / `pyve python show` (Story N.p, Option (a))
 #
 # These are not standard plugin-contract hooks — they're
