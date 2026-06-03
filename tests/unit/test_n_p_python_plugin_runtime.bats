@@ -18,7 +18,7 @@ setup() {
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/commands/test.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/python.sh"
     create_test_dir
     bp_registry_reset

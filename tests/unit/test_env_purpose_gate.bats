@@ -27,7 +27,7 @@ setup() {
     source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/env.sh"
-    source "$PYVE_ROOT/lib/commands/test.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
     export TESTENV_DIR_NAME="testenv"

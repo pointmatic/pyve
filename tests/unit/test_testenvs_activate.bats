@@ -157,7 +157,7 @@ teardown() {
     local hits
     hits="$(grep -rnE '\.pyve/(\$TESTENV_DIR_NAME|testenv[^s])' \
         "$PYVE_ROOT/lib/utils.sh" \
-        "$PYVE_ROOT/lib/commands/test.sh" \
+        "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
         "$PYVE_ROOT/lib/commands/env.sh" \
         "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
         "$PYVE_ROOT/lib/plugins/python/plugin.sh" \

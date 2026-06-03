@@ -731,19 +731,31 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.4/N.s.5: three of four runtime hooks now relocated; the heading keeps "(partial Option 1 relocation in N.s.4+)" until N.s.7 completes the quartet.
 - **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.5; the 1454-test unit suite covers both backends (the N.j.1 regression-tests in particular exercise the micromamba `mm_env_name` resolution against the config-first vs glob-fallback paths).
 
-### Story N.s.7: Relocate `test_tests` into the Python plugin [Planned]
+### Story N.s.7: Relocate `test_tests` into the Python plugin [Done]
 
 **Motivation.** Seventh function relocation per the N.s umbrella — completes the N.p runtime quartet (check / status / run / test).
 
 **Tasks**
 
-- [ ] Move `test_tests` from [lib/commands/test.sh](../../lib/commands/test.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_test` shim.
-- [ ] Move every `_test_*` private helper into the plugin file.
-- [ ] Move `show_test_help` to the plugin file.
-- [ ] Delete `lib/commands/test.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): mark `test_tests`'s row as relocated and add the closing note that the N.p quartet relocation is complete.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_7_test_relocation.bats](../../tests/unit/test_n_s_7_test_relocation.bats).
-- [ ] Behavioral regression: `pyve test` (default env), `pyve test --env <name>`, and the root-env short-circuit at [lib/commands/test.sh:211](../../lib/commands/test.sh#L211) (which now becomes an internal-to-plugin call to `run_command`) produce identical output; full unit suite green.
+- [x] Move `test_tests` from `lib/commands/test.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `run_command` (continuing the end-of-file convention).
+- [x] Move every `_test_*` private helper (4 in total: `_test_has_pytest`, `_test_env_has_pytest`, `_test_install_pytest_into_testenv`, `_test_run_one_env`) into the plugin file. Verbatim move; no body or signature changes.
+- [x] No `show_test_help` function exists in the source — same as N.s.6 for `pyve run`, `pyve test --help` is handled by the global help dispatcher in `pyve.sh`, not by a per-command help block.
+- [x] Delete `lib/commands/test.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the runtime-hooks subsection in [tech-spec.md](tech-spec.md): table row for `python_pyve_plugin_test` now reads "**Relocated to plugin.sh in N.s.7**"; the heading was renamed from "(Story N.p, Option 2; partial Option 1 relocation in N.s.4+)" to "(Story N.p, Option 1 / relocated via N.s.4–N.s.7)" and the lead-in paragraph now records the quartet completion ("As of N.s.7, the N.p quartet relocation is complete").
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_7_test_relocation.bats](../../tests/unit/test_n_s_7_test_relocation.bats): 7 tests covering `test_tests` + 4 `_test_*` helpers grep-findable in plugin.sh, `lib/commands/test.sh` non-existence, no `lib/commands/test.sh` reference in `pyve.sh`. **Naming note:** initially authored as `test_test_tests_relocation.bats` (story-free per a too-strict reading of the feedback-memory rule) and renamed back to the `test_n_s_7_*` convention used by N.s.1–N.s.6. Reasoning: these per-story relocation tests are deliberately transient placeholders with a scheduled cleanup in N.s.9; a story-ID name is contextually meaningful while the story is fresh and obviously throwaway, whereas the story-free attempt (`test_test_tests_relocation`) was immediately meaningless (stutter on the command name plus the narrative word "relocation") and stayed that way. The feedback-memory rule has been refined to distinguish durable tests (name by what is tested) from transient placeholders (story-ID name is honest about the impermanence). RED confirmed against baseline (7/7 fail); GREEN after the relocation (7/7 pass).
+- [x] Behavioral regression: end-to-end smoke against a fresh dir — `pyve init --backend venv --no-direnv`, then write `tests/test_smoke.py` with `def test_a(): assert 1 + 1 == 2`, then `CI=1 PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT=1 pyve test`. Result: auto-installed pytest into the testenv via `_test_install_pytest_into_testenv`, executed `_test_run_one_env`'s exec path, ran one test, returned exit 0. Full path through `test_tests` → `_test_run_one_env` → `ensure_env_exists` → install + exec pytest is wired correctly. Full unit suite: **1461 ok / 0 not ok** (1454 N.s.6 baseline + 7 new N.s.7 tests).
+
+**Sidecar test-file updates.** Bulk-substituted `lib/commands/test.sh` → `lib/plugins/python/plugin.sh` in 8 test files + 1 helper: [test_test_env_lazy_autoprovision.bats](../../tests/unit/test_test_env_lazy_autoprovision.bats), [test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats), [test_env_purpose_gate.bats](../../tests/unit/test_env_purpose_gate.bats), [test_test_command.bats](../../tests/unit/test_test_command.bats), [test_n_p_python_plugin_runtime.bats](../../tests/unit/test_n_p_python_plugin_runtime.bats), [test_test_env_matrix.bats](../../tests/unit/test_test_env_matrix.bats), [test_test_env_advisory.bats](../../tests/unit/test_test_env_advisory.bats), [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats), and a comment reference in [test_helper.bash](../../tests/helpers/test_helper.bash).
+
+**Cross-command callsite.** The `--env root` short-circuit (formerly `lib/commands/test.sh:211`, now inside `_test_run_one_env` in `plugin.sh`) calls `run_command python -m pytest "$@"`. Both functions now live in the same file post-N.s.6+N.s.7; bash global function resolution handles the cross-call identically.
+
+**N.p quartet completion milestone.** With N.s.7, all four N.p runtime command implementations (`check_environment`, `show_status`, `run_command`, `test_tests`) plus their private helpers live in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh). The corresponding files `lib/commands/{check,status,run,test}.sh` are all deleted; `pyve.sh`'s sourcing block lost another 28 lines (four 7-line if-blocks across N.s.4–N.s.7). Combined with N.s.1–N.s.3's N.o triplet, `pyve.sh` has lost **49 lines** of explicit sourcing across the seven function relocations. Only `python_command` (the namespace dispatcher) remains in `lib/commands/python.sh` — N.s.8 completes the relocation arc.
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the `_test_*` helpers themselves.** Helpers moved verbatim; bodies and signatures unchanged. The `_test_run_one_env` extraction (originally Story M.r) and the M.o silent-skip advisory wiring are preserved as-is.
+- **Sweeping pre-existing `Story M.x` / `Story N.d` / `Story N.i` markers** in the relocated comment bodies. Per the feedback-memory rule, narrative story-ID references in code are pre-existing debt; the N.s.9 consolidation pass is the right place to evaluate which references are load-bearing (contract documentation) vs strippable (narrative). Forward-looking: my new section header for `pyve test` is story-free.
+- **Smoke-testing the matrix mode (`--env a,b`) or named-env routing.** These paths are exercised by `test_test_env_matrix.bats`, `test_test_env_resolver.bats`, and `test_test_env_advisory.bats` (29+ unit tests collectively) — all green in the 1461-test suite.
 
 ### Story N.s.8: Relocate `python_command` namespace dispatcher into the Python plugin [Planned]
 

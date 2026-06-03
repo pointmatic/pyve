@@ -239,14 +239,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/test.sh" ]]; then
-    # shellcheck source=lib/commands/test.sh
-    source "$SCRIPT_DIR/lib/commands/test.sh"
-else
-    printf "ERROR: Cannot find lib/commands/test.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/env.sh" ]]; then
     # shellcheck source=lib/commands/env.sh
     source "$SCRIPT_DIR/lib/commands/env.sh"
