@@ -458,6 +458,45 @@ The gate sits in [lib/commands/test.sh:_test_run_one_env](../../lib/commands/tes
 
 **Consumers (this story).** `pyve test --env <name>` — the only purpose-gating selector in N.d. Future stories layer additional gates (e.g. `pyve env run <name>` may reject `test` envs in a symmetric direction; deferred to a later subphase if a need surfaces).
 
+### FR-11c: Env-as-Materialization Model + Advisory Attributes (Subphase N-2)
+
+Phase N's plugin spike (S1–S11) reframes what an env *is* and adds two advisory `[env.<name>]` attributes that ship as schema in v3.0 without enforced semantics. The framing and attributes are documented here so the canonical features doc reflects the v3 env model; the wire-level rules and accessors live in [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture).
+
+**Env-as-materialization (S1).** Every declared `[env.<name>]` is a **materialized dependency closure**, not a run surface. The `purpose:` attribute (FR-11b) labels what the closure is for; `backend:` declares how the closure materializes. Three backend categories are recognized:
+
+| Category | How the closure materializes | v3.0 implementations |
+|---|---|---|
+| `virtualized` | Per-project env directory; PATH-activated for project-pinned binaries. | `venv`, `micromamba` |
+| `cache-backed` | Shared user-level dep cache + project lockfile. | None in v3.0 (designed-in; candidates: Rust, Go). |
+| `check-only` | Pyve verifies presence + version; no install action. | None in v3.0 (designed-in; candidates: mobile toolchains, Docker, Homebrew). |
+
+The shift from v2's "venv-or-conda" duality to a three-category model is what lets future plugins (Node, Rust, Go, …) plug into the same composition layer (`.envrc` emission, `pyve check`, `pyve status`, `pyve purge`) without further framework changes. Each plugin's hooks declare which category its backends belong to at registration time; the framework routes `init` / `purge` / `activate` accordingly.
+
+**`languages` (S11) — advisory in v3.0.** The structured `[env.<name>].languages` attribute (string list, default `[]`) declares the language flavors the env materializes:
+
+```toml
+[env.web]
+purpose   = "run"
+backend   = "pnpm"
+languages = ["typescript", "javascript"]
+```
+
+In v3.0 the attribute is **declared but not enforced**. The only surfaced behavior is a conservative advisory warning in `pyve check`: when `languages` is declared AND the list does NOT include `"python"`, the Python plugin prints `warning: env '<name>' declares languages = [<list>] without 'python' — the Python plugin manages this env`. All other shapes (`languages = ["python"]`, `languages = ["python", "rust"]`, attribute omitted) are silent. Richer cross-checks (language-to-backend compatibility, multi-plugin coordination) defer to v3.1 or later phases.
+
+**`manual_steps` (S7) — advisory in v3.0.** The structured `[env.<name>].manual_steps` attribute (string list, default `[]`) declares one-time setup actions that pyve does **not** automate but that a contributor must perform manually:
+
+```toml
+[env.root]
+manual_steps = [
+    "Open Xcode and accept license",
+    "Configure signing identity",
+]
+```
+
+In v3.0 the attribute is **declared but not enforced** — pyve never executes or verifies these steps. The only surfaced behavior is a render at the top of `pyve check` and `pyve status`: for each env with non-empty `manual_steps`, a "Manual steps (advisory — pyve does not run these):" header (once total) followed by per-env bullets. Silent when no env declares any steps. Advisory rendering NEVER affects exit code.
+
+**No behavior change for users in v3.0.** Both attributes ship as schema additions plus the two advisory surfaces above. No env is created, modified, validated, or rejected on the basis of `languages` / `manual_steps`. The wire-level acceptance, accessor surface, and renderer placement are documented in [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture). v3.1 / future phases may add enforcement; this story does not commit to a specific enforcement shape.
+
 ### FR-12: Smart Re-Initialization
 
 Handle `pyve init` on already-initialized projects.

@@ -845,17 +845,19 @@ These slot into the existing "Fix pre-existing integration test failures" Future
 - **Stripping `Story N.X` markers from production code.** Code-side narrative refs in plugin.sh and other lib/ files are pre-existing debt. Per the feedback-memory rule, distinguishing contract refs from narrative refs requires reading each comment in context — a separate sweep, not a doc-update story.
 - **Sweeping `Story N.X` markers from features.md / brand-descriptions.md.** Those docs get their own touch-up stories (N.s.11 / N.s.12).
 
-### Story N.s.11: Update features.md for the v3 env model [Planned]
+### Story N.s.11: Update features.md for the v3 env model [Done]
 
 **Motivation.** Surface the v3 env-as-materialization framing and the new advisory axes in the canonical features document.
 
 **Tasks**
 
-- [ ] Add an "Env-as-materialization" subsection per S1: every declared env is a materialized dependency closure, not a run surface; backends are how the closure materializes (virtualized / cache-backed / check-only).
-- [ ] Document the `languages` structured attribute per S11 as advisory in v3.0 (declared but not enforced; surfaced via the N.p advisory warn for `python` mismatch).
-- [ ] Document the `manual_steps` field per S7 as advisory in v3.0 (declared but not enforced; surfaced at the top of `pyve check` / `pyve status`).
-- [ ] No behavior-change claims for users — v3.0 ships these as schema additions, not enforced semantics. v3.1 / future phases may add enforcement.
-- [ ] Cross-link to [tech-spec.md](tech-spec.md)'s plugin contract section (added in N.s.10) for the implementation details.
+- [x] Add an "Env-as-materialization" subsection per S1: every declared env is a materialized dependency closure, not a run surface; backends are how the closure materializes (virtualized / cache-backed / check-only).
+- [x] Document the `languages` structured attribute per S11 as advisory in v3.0 (declared but not enforced; surfaced via the N.p advisory warn for `python` mismatch).
+- [x] Document the `manual_steps` field per S7 as advisory in v3.0 (declared but not enforced; surfaced at the top of `pyve check` / `pyve status`).
+- [x] No behavior-change claims for users — v3.0 ships these as schema additions, not enforced semantics. v3.1 / future phases may add enforcement.
+- [x] Cross-link to [tech-spec.md](tech-spec.md)'s plugin contract section (added in N.s.10) for the implementation details.
+
+**Landing.** New `### FR-11c: Env-as-Materialization Model + Advisory Attributes (Subphase N-2)` subsection added to [features.md](features.md) between FR-11b and FR-12. Covers the three-backend-category framing (virtualized / cache-backed / check-only), `languages` as v3.0 advisory (surfaced via the N.p `pyve check` warn), `manual_steps` as v3.0 advisory (surfaced at the top of `pyve check` / `pyve status`), and an explicit "No behavior change for users in v3.0" closer. Cross-links into [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture) for wire-level accessor / renderer details. No CLI surface change; no `CHANGELOG.md` entry (Phase N runs unversioned until N-7's v3.0.0 cut).
 
 ### Story N.s.12: Update brand-descriptions.md for v3.0 [Planned]
 
