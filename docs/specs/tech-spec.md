@@ -1131,6 +1131,64 @@ Empty `purpose` and empty `backend` are both allowed — `manifest_resolve_purpo
 
 ---
 
+### Python plugin — runtime hooks (Story N.p, Option 2)
+
+N.p mirrors N.o for the four runtime-side commands (`pyve check`, `pyve status`, `pyve run`, `pyve test`) plus three cross-cutting additions: the `manual_steps` (S7) schema extension and advisory rendering, the `languages` (S11) advisory in `check`, and the `pyve python set` / `pyve python show` relocation into the plugin file.
+
+**Four runtime shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
+
+| Hook | Behavior |
+|---|---|
+| `python_pyve_plugin_check` | Calls `_python_pyve_plugin_render_advisories`, then `check_environment "$@"`. |
+| `python_pyve_plugin_status` | Calls `_python_pyve_plugin_render_advisories`, then `show_status "$@"`. |
+| `python_pyve_plugin_run` | Calls `run_command "$@"`. |
+| `python_pyve_plugin_test` | Calls `test_tests "$@"`. |
+
+`run` and `test` are pure forwarders — no advisory rendering, since those commands are execution paths, not diagnostic surfaces.
+
+**Render-before-delegate.** `check_environment` ends with `_check_summary_and_exit` which exits the process; `show_status` is similarly terminal. So advisories must print BEFORE the delegate runs. UX-wise, this puts setup context above the diagnostic body — appropriate for "things to know before reading the results."
+
+**S7 `manual_steps` schema extension.** Added a list field on `[env.<name>]`:
+
+```toml
+[env.root]
+manual_steps = [
+    "Open Xcode and accept license",
+    "Configure signing identity",
+]
+```
+
+- Parsed by `_normalize_env` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py); emitted as `PYVE_ENV_MANUAL_STEPS_Q[]` (parallel to other list fields).
+- Accessor: `manifest_get_manual_steps <env> <out_array>` in [lib/manifest.sh](../../lib/manifest.sh) — defensive against unset array (the v2 read-compat synthesis path doesn't emit `manual_steps`; the accessor returns an empty array on that path rather than crashing under `set -u`).
+
+**S7 + S11 advisory rendering.** `_python_pyve_plugin_render_advisories` iterates `PYVE_ENV_NAMES[]`:
+
+1. For each env with non-empty `manual_steps`: print a "Manual steps (advisory — pyve does not run these):" header (once total), then per-env header `env '<name>':` and a bullet per step.
+2. For each env with `languages` declared AND the list does NOT include `"python"`: print `warning: env '<name>' declares languages = [<list>] without 'python' — the Python plugin manages this env`.
+
+Silent (no output, exit 0) when no env triggers either rule. The advisory render NEVER affects exit code — advisories are informational.
+
+**Defensive behavior when `manifest_load` fails.** The renderer is a no-op when `PYVE_ENV_NAMES` is unset (e.g., manifest_load couldn't resolve python via asdf shim trap in an artificial test fixture). Better to miss advisories than to crash. In real usage `pyve init` sets up python before `check` / `status` are reached.
+
+**S11 advisory rule.** Conservative: warn only when `languages` is declared AND `"python"` is absent. Other shapes (`languages = ["python"]`, `languages = ["python", "rust"]`, no `languages` field at all) are silent. Richer cross-checks defer to a future phase.
+
+**Public-boundary dispatch** in `pyve.sh`'s case dispatcher:
+
+```sh
+run)    plugin_dispatch python run "$@"    ;;
+test)   plugin_dispatch python test "$@"   ;;
+check)  plugin_dispatch python check "$@"  ;;
+status) plugin_dispatch python status "$@" ;;
+```
+
+`--help` / `PYVE_DISPATCH_TRACE` short-circuits above each arm preserved unchanged. Internal cross-command callsites (e.g., `test_tests` calling `run_command` in its non-root short-circuit at `lib/commands/test.sh:211`) stay direct — Option 2 only refactors public entry points.
+
+**`pyve python set` / `pyve python show` relocation (Option (a)).** The two Python-version-management commands move from [lib/commands/python.sh](../../lib/commands/python.sh) to [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) as ordinary functions (not contract hooks — they're plugin-private extensions). The `python_command` dispatcher in `lib/commands/python.sh` still calls `python_set` / `python_show` by name; bash function-name lookup is global, so the relocation is invisible to the dispatcher. Behavior unchanged.
+
+**What N.p does NOT do.** The plugin's `activate` hook still uses the legacy `_init_direnv_*` path via the bp_activate shims (Story N.q replaces with composed snippets through `validate_envrc_snippet`). `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). Whole-function relocation of `check_environment` / `show_status` / `run_command` / `test_tests` into the plugin file is on the Option 1 path — revisited in Story N.s. The `python_command` dispatcher itself stays in `lib/commands/python.sh`; if a future story wants to move that too, it's a minor follow-up.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

@@ -767,9 +767,10 @@ main() {
             ;;
 
         # Unchanged subcommands (already subcommand-form pre-v1.11.0)
+        # Story N.p: public-boundary plugin dispatch for runtime hooks.
         run)
             shift
-            run_command "$@"
+            plugin_dispatch python run "$@"
             ;;
         env)
             shift
@@ -793,7 +794,7 @@ main() {
             ;;
         test)
             shift
-            test_tests "$@"
+            plugin_dispatch python test "$@"
             ;;
         lock)
             shift
@@ -813,7 +814,7 @@ main() {
                 printf 'DISPATCH:check %s\n' "$*"
                 exit 0
             fi
-            check_environment "$@"
+            plugin_dispatch python check "$@"
             ;;
         status)
             shift
@@ -825,7 +826,7 @@ main() {
                 printf 'DISPATCH:status %s\n' "$*"
                 exit 0
             fi
-            show_status "$@"
+            plugin_dispatch python status "$@"
             ;;
 
         *)

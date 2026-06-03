@@ -54,6 +54,9 @@ def _normalize_env(name, decl):
         "requirements": list(decl.get("requirements", [])),
         "frameworks": list(decl.get("frameworks", [])),
         "languages": list(decl.get("languages", [])),
+        # S7: manual_steps is an advisory list. v3.0 surfaces it in
+        # `pyve check` / `pyve status`; no automated execution.
+        "manual_steps": list(decl.get("manual_steps", [])),
     }
 
 
@@ -163,6 +166,8 @@ def emit(cfg, out):
         ("PYVE_ENV_REQUIREMENTS_Q", "requirements"),
         ("PYVE_ENV_FRAMEWORKS_Q", "frameworks"),
         ("PYVE_ENV_LANGUAGES_Q", "languages"),
+        # S7 (Story N.p): manual_steps advisory list.
+        ("PYVE_ENV_MANUAL_STEPS_Q", "manual_steps"),
     ]
     for var, key in list_fields:
         vals_q = [_quote_array(cfg["envs"][n][key]) for n in names]

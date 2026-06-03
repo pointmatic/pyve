@@ -358,6 +358,23 @@ manifest_get_requirements() {
     eval "$out_var=( ${PYVE_ENV_REQUIREMENTS_Q[$i]} )"
 }
 
+# Story N.p (S7): manual_steps advisory accessor. Mirrors
+# manifest_get_languages's contract — populate the caller's named
+# array. Returns 1 (no assignment) for unknown env names. Reads
+# PYVE_ENV_MANUAL_STEPS_Q only when it's been populated (the v2
+# read-compat synthesis path doesn't emit this array).
+manifest_get_manual_steps() {
+    local i out_var
+    i="$(_manifest_name_to_index "$1")" || return 1
+    out_var="$2"
+    if [[ -n "${PYVE_ENV_MANUAL_STEPS_Q+x}" ]] \
+       && [[ "$i" -lt "${#PYVE_ENV_MANUAL_STEPS_Q[@]}" ]]; then
+        eval "$out_var=( ${PYVE_ENV_MANUAL_STEPS_Q[$i]} )"
+    else
+        eval "$out_var=()"
+    fi
+}
+
 # ────────────────────────────────────────────────────────────────────
 # Plugin accessors (Story N.k, folding N.k.1).
 #

@@ -211,3 +211,153 @@ python_pyve_plugin_purge() {
 python_pyve_plugin_update() {
     update_project "$@"
 }
+
+#------------------------------------------------------------
+# Plugin contract — runtime hooks (Story N.p, Option 2)
+#
+# Hook-as-shim: check / status / run / test delegate to today's
+# implementations in lib/commands/{check,status,run,test}.sh.
+# check and status additionally render the S7 manual_steps advisory
+# and the S11 languages advisory before delegating; run and test
+# are pure forwarders.
+#
+# Render-before-delegate placement: advisories print at the top so
+# the user sees relevant setup context before the diagnostic body.
+# `check_environment` and `show_status` exit the process from their
+# summary functions, so render-AFTER-delegate isn't reachable.
+#------------------------------------------------------------
+
+# S7 + S11 advisory renderer. Iterates declared envs and prints:
+#   - "Manual steps" section listing each env's non-empty manual_steps
+#   - "Warning: env '<name>' declares languages without 'python'"
+# Silent when no env has manual_steps and no env has a mismatched
+# languages list. Exit code always 0 — advisories are informational.
+_python_pyve_plugin_render_advisories() {
+    [[ -n "${PYVE_ENV_NAMES+x}" ]] || return 0
+    local n=${#PYVE_ENV_NAMES[@]}
+    [[ "$n" -eq 0 ]] && return 0
+
+    local i name
+    local -a steps langs
+    local manual_header_printed=0
+    local manual_count step
+
+    for ((i=0; i<n; i++)); do
+        name="${PYVE_ENV_NAMES[$i]}"
+
+        # S7: manual_steps
+        steps=()
+        manifest_get_manual_steps "$name" steps 2>/dev/null || true
+        manual_count="${#steps[@]}"
+        if [[ "$manual_count" -gt 0 ]]; then
+            if [[ "$manual_header_printed" -eq 0 ]]; then
+                printf "Manual steps (advisory — pyve does not run these):\n"
+                manual_header_printed=1
+            fi
+            printf "  env '%s':\n" "$name"
+            for step in "${steps[@]}"; do
+                printf "    - %s\n" "$step"
+            done
+        fi
+
+        # S11: languages declared but no 'python' present.
+        langs=()
+        manifest_get_languages "$name" langs 2>/dev/null || true
+        if [[ "${#langs[@]}" -gt 0 ]]; then
+            local found_python=0 lang
+            for lang in "${langs[@]}"; do
+                [[ "$lang" == "python" ]] && { found_python=1; break; }
+            done
+            if [[ "$found_python" -eq 0 ]]; then
+                printf "warning: env '%s' declares languages = [%s] without 'python' — the Python plugin manages this env\n" \
+                    "$name" "${langs[*]}"
+            fi
+        fi
+    done
+    return 0
+}
+
+python_pyve_plugin_check() {
+    _python_pyve_plugin_render_advisories
+    check_environment "$@"
+}
+
+python_pyve_plugin_status() {
+    _python_pyve_plugin_render_advisories
+    show_status "$@"
+}
+
+python_pyve_plugin_run() {
+    run_command "$@"
+}
+
+python_pyve_plugin_test() {
+    test_tests "$@"
+}
+
+#------------------------------------------------------------
+# `pyve python set` / `pyve python show` (Story N.p, Option (a))
+#
+# These are not standard plugin-contract hooks — they're
+# Python-version-management commands that logically belong to the
+# Python plugin. Moved here from lib/commands/python.sh; the
+# `python_command` dispatcher there still calls them by name (bash
+# function lookup is global). Behavior unchanged.
+#------------------------------------------------------------
+
+python_set() {
+    if [[ $# -lt 1 ]]; then
+        log_error "pyve python set requires a version argument"
+        log_error "Usage: pyve python set <version>"
+        log_error "Example: pyve python set 3.13.7"
+        exit 1
+    fi
+
+    local version="$1"
+
+    header_box "pyve python set"
+
+    if ! validate_python_version "$version"; then
+        exit 1
+    fi
+
+    banner "Setting Python version to $version"
+
+    source_shell_profiles
+
+    if ! detect_version_manager; then
+        exit 1
+    fi
+
+    if ! ensure_python_version_installed "$version"; then
+        exit 1
+    fi
+
+    set_local_python_version "$version"
+
+    local version_file
+    version_file="$(get_version_file_name)"
+    success "Set Python $version in $version_file"
+    footer_box
+}
+
+python_show() {
+    local version="" source=""
+    if [[ -f ".tool-versions" ]]; then
+        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
+        source=".tool-versions"
+    elif [[ -f ".python-version" ]]; then
+        version="$(cat .python-version 2>/dev/null | head -1)"
+        source=".python-version"
+    else
+        version="$(read_config_value "python.version" 2>/dev/null || true)"
+        source=".pyve/config"
+    fi
+
+    if [[ -z "$version" ]]; then
+        printf "No Python version pinned in this project.\n"
+        printf "  (not pinned — use 'pyve python set <version>' to pin one)\n"
+        return 0
+    fi
+    printf "Python %s (from %s)\n" "$version" "$source"
+}

@@ -477,18 +477,34 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Placement note.** Authored in document order as N.o, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
-### Story N.p: Python plugin — check / status / run / test hooks [Planned]
+### Story N.p: Python plugin — check / status / run / test hooks [Done]
 
 **Motivation.** Re-seat the diagnostic and execution commands. Same shape as N.o but for the runtime-side commands. Adds the `manual_steps` (S7) and `languages` (S11) surfacing — both advisory in v3.0.
 
+**Execution mode.** Continuing under **Option 2** from N.o (hook-as-shim re-seat; whole-function relocation question carried to N.s). Plus **Option (a)** from N.p's announce-gate for `pyve python set/show` — plugin-private extensions moved to the plugin file as ordinary functions; the `python_command` dispatcher in [lib/commands/python.sh](../../lib/commands/python.sh) still calls them by name (bash function lookup is global).
+
 **Tasks**
 
-- [ ] Implement `pyve_plugin_check`, `pyve_plugin_status`, `pyve_plugin_run`, `pyve_plugin_test` in the Python plugin — delegate to today's command implementations.
-- [ ] **`manual_steps` surfacing (S7):** if any active env has a non-empty `manual_steps` list, render those entries in `pyve check` and `pyve status` output as advisories (no failure exit code — they're informational).
-- [ ] **`languages` advisory in `check`** (S11): when `languages` is set on an env, the Python plugin's `check` hook can warn on simple gaps (e.g., `languages = ["python"]` is the default; richer cross-checks defer to a future phase).
-- [ ] Re-seat [lib/commands/check.sh](../../lib/commands/check.sh), [lib/commands/status.sh](../../lib/commands/status.sh), [lib/commands/run.sh](../../lib/commands/run.sh), [lib/commands/test.sh](../../lib/commands/test.sh) to dispatch through the plugin contract.
-- [ ] `pyve python set` and `pyve python show` (the per-Python-version commands in [lib/commands/python.sh](../../lib/commands/python.sh)) re-seat into the Python plugin alongside the other hooks. Behavior unchanged; just moves the implementation locus.
-- [ ] Bats + integration regression: every existing check/status/run/test fixture passes unchanged.
+- [x] **Schema extension for S7.** `manual_steps` added as a list field on `[env.<name>]` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) (parsed in `_normalize_env`; emitted as `PYVE_ENV_MANUAL_STEPS_Q[]` parallel to other list fields). Accessor `manifest_get_manual_steps <env> <out_array>` in [lib/manifest.sh](../../lib/manifest.sh) — defensive against unset array so the v2 read-compat synthesis path returns an empty list rather than crashing under `set -u`.
+- [x] **Four runtime shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh): `python_pyve_plugin_check` and `_status` render advisories first then delegate; `_run` and `_test` are pure forwarders. Render-before-delegate is required because `check_environment` and `show_status` exit the process from their summary functions, so render-after-delegate is not reachable.
+- [x] **S7 manual_steps surfacing.** `_python_pyve_plugin_render_advisories` iterates `PYVE_ENV_NAMES[]` and prints a "Manual steps (advisory — pyve does not run these):" header (once), then per-env `env '<name>':` headers with bulleted steps. Silent when no env has manual_steps. UX-wise the advisories surface at the TOP of `pyve check` / `pyve status` output — appropriate for "setup context the user should see before reading the diagnostic body."
+- [x] **S11 languages advisory in check.** Same renderer emits `warning: env '<name>' declares languages = [<list>] without 'python' — the Python plugin manages this env` when an env has `languages` declared AND the list does not include `"python"`. Other shapes (no `languages` at all, `["python"]`, `["python", "rust"]`) are silent. Conservative rule by design; richer cross-checks defer to a future phase.
+- [x] **Public-boundary dispatch** in [pyve.sh](../../pyve.sh): four arms now call `plugin_dispatch python <hook> "$@"` (`run`, `test`, `check`, `status`). `--help` and `PYVE_DISPATCH_TRACE` short-circuits preserved unchanged. **Internal cross-command callsites kept direct** — e.g., `test_tests` at [lib/commands/test.sh:211](../../lib/commands/test.sh#L211) still calls `run_command` directly for the root-env short-circuit; routing through `plugin_dispatch` would create a circular-dispatch path (test → plugin → test_tests → plugin → run_command).
+- [x] **`pyve python set` / `pyve python show` relocation (Option (a)).** The two function bodies move from [lib/commands/python.sh](../../lib/commands/python.sh) to [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) verbatim. `lib/commands/python.sh` now has a comment pointer where the bodies used to be. The `python_command` dispatcher in `lib/commands/python.sh` still calls `python_set` / `python_show` by name; bash function-name resolution is global, so the relocation is invisible to the dispatcher. Behavior unchanged — verified by smoke test `pyve python show` after init.
+- [x] Bats unit tests: **23 tests** in [tests/unit/test_n_p_python_plugin_runtime.bats](../../tests/unit/test_n_p_python_plugin_runtime.bats) — S7 schema (3: declared/empty/unknown-env), shim existence (4), `plugin_dispatch` arg-forwarding round-trip with stubbed targets (4), S7 advisory rendering (4: prints/names-env/silent/exit-0), S11 advisory rule (3: no-languages/with-python/without-python), relocation invariants (5: in-plugin-file × 2, NOT-in-old-file × 2, still-resolvable-by-dispatcher). Full unit suite: **1364 ok / 0 not ok** (1341 prior + 23 new). End-to-end smoke (`pyve check` after init with a pyve.toml containing manual_steps + languages without python): advisories correctly surface before the diagnostic body, attributed to the owning env.
+- [x] Updated [tech-spec.md](tech-spec.md) with a new "Python plugin — runtime hooks (Story N.p, Option 2)" subsection — covers the shim table, render-before-delegate rationale, S7 schema + accessor + rendering, S11 advisory rule, the defensive behavior when `manifest_load` fails (renderer is a no-op so check still works), the public-boundary dispatch sketch, the Option (a) relocation, and the "what N.p does NOT do" boundary.
+
+**Out of scope (flagged, kept out)**
+
+- **Whole-function relocation (Option 1) for check / status / run / test.** Deferred to N.s with the rest of the Option-1 question.
+- **Internal cross-command dispatch.** Same reasoning as N.o — circular-dispatch risk + diff widening for no architectural benefit at this stage.
+- **`pyve_plugin_activate`** — Story N.q replaces the legacy `_init_direnv_*` path with composed snippets through `validate_envrc_snippet`.
+- **`pyve_plugin_gitignore_entries` / `pyve_plugin_purge_inventory`** — Story N.r.
+- **Moving `python_command` (the dispatcher) into the plugin file.** Option (a) only moved the leaf functions (`python_set`, `python_show`). Moving the dispatcher would require touching `pyve.sh`'s case arm to call the new location, which isn't necessary for the implementation-locus goal. Possible follow-up in N.s.
+- **Richer `languages` cross-checks.** The conservative "warn iff languages declared without python" rule covers the obvious case (user marked an env as Rust but it's still being managed by the Python plugin — likely a configuration error). Richer checks (e.g., "warn if languages includes a language for which no plugin is registered") defer to a future phase.
+- **Validating the `[env.<name>].languages` field against a registered-languages list.** No such list exists yet — Phase N's polyglot ambitions are forward-looking. When N-3 lands the Node plugin and the surface starts to actually need per-language validation, that's the natural place to add it.
+
+**Placement note.** Authored in document order as N.p, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
 ### Story N.q: Python plugin — activation hook (`.envrc` emission) [Planned]
 
