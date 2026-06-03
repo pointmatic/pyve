@@ -998,6 +998,39 @@ These live in `pyve.sh` because N.l does not yet have a Python plugin to own the
 
 ---
 
+### `lib/envrc_safety.sh` — PC-1 plugin input safety validators (Story N.m, Subphase N-2)
+
+Pure validators that guard the boundary between plugin-emitted text and pyve's composed `.envrc` / `.gitignore` files. PC-1 (the security risk that a malicious or buggy plugin could smuggle arbitrary shell into a file that direnv later sources) is closed by restricting plugin contributions to two narrow allow-lists.
+
+**`validate_envrc_snippet <text>`** — direnv-stdlib allow-list:
+
+| Accept (per line) | Notes |
+|---|---|
+| Blank line (whitespace only) | Including indented blanks |
+| Comment line | `^[[:space:]]*#.*` — anything after `#` is opaque |
+| `PATH_add "<value>"` | Value is double-quoted; no `$(` or backticks anywhere on the line |
+| `export VAR="<value>"` | VAR is a shell identifier (`[A-Za-z_][A-Za-z_0-9]*`); value double-quoted; no `$(` or backticks |
+
+Inside the double-quoted value, parameter expansions (`$VAR`, `${VAR}`) are allowed — they're parsed by the shell from inside double quotes, not command substitution. Everything else (unquoted values, `dotenv`/`source` directives, shell control flow, raw commands) is rejected.
+
+**`validate_gitignore_snippet <text>`** — simple-pattern allow-list:
+
+| Accept (per line) | Notes |
+|---|---|
+| Blank line | |
+| Comment line | `^[[:space:]]*#.*` |
+| Plain glob pattern | Anything that isn't a blank/comment and contains no `$` (param expansion or command sub) and no backticks |
+
+`.gitignore` patterns never legitimately need a literal `$` — over-rejection is the safe tradeoff against any downstream tool that might shell-interpret a `.gitignore` line.
+
+**Failure mode.** Both validators are line-oriented: one bad line invalidates the whole snippet. The offending line is echoed to stderr (`envrc_safety: rejected line: ...`) so the composer can surface where the violation came from.
+
+**No composer integration in N.m.** The validators ship as defensive primitives with no behavior change. Story N.q wires `validate_envrc_snippet` into the activation composer; Story N.r wires `validate_gitignore_snippet` into the gitignore composer.
+
+**Test corpus.** [tests/unit/test_n_m_envrc_safety.bats](../../tests/unit/test_n_m_envrc_safety.bats) ships 38 tests grouped into "accept" and "reject" subsets for each validator. Every smuggling pattern considered (command substitution outside quotes, command substitution inside quotes, backticks, unquoted parameter expansion, non-allow-listed direnv directives, raw shell commands, control flow, identifier-illegal names, mixed-valid-with-one-bad-line) has its own regression test.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

@@ -194,6 +194,17 @@ fi
 bp_register python venv virtualized
 bp_register python micromamba virtualized
 
+# Story N.m: PC-1 plugin input safety validators. Pure functions; no
+# wiring beyond sourcing. Consumed by the activation composer (N.q)
+# and the gitignore composer (N.r).
+if [[ -f "$SCRIPT_DIR/lib/envrc_safety.sh" ]]; then
+    # shellcheck source=lib/envrc_safety.sh
+    source "$SCRIPT_DIR/lib/envrc_safety.sh"
+else
+    printf "ERROR: Cannot find lib/envrc_safety.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================

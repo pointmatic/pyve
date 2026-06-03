@@ -399,16 +399,27 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Placement note.** Authored in document order as N.l, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
-### Story N.m: PC-1 — plugin input safety validator [Planned]
+### Story N.m: PC-1 — plugin input safety validator [Done]
 
 **Motivation.** Resolves **PC-1** from the Phase N plan. Plugin-emitted text (going into composed `.envrc` and `.gitignore`) must not smuggle shell-evaluable content. Central validator enforces a strict allow-list before composition.
 
 **Tasks**
 
-- [ ] New `lib/envrc_safety.sh`: `validate_envrc_snippet <text>` enforces the direnv-stdlib allow-list — only `PATH_add "<quoted>"`, `export VAR="<quoted>"`, comment lines, and blank lines accepted. Reject backticks, `$(...)`, unquoted `${VAR}` in dangerous positions.
-- [ ] `validate_gitignore_snippet <text>` enforces simple pattern lines (no shell interpolation).
-- [ ] Wire validators into the activation-hook composer (used in N.q) and the smart-purge inventory composer (used in N.r). For N.m itself, ship the validators with their own test suite; composer integration lands in N.q / N.r.
-- [ ] Bats unit tests covering each allow-list rule and each rejection case (a regression test for every smuggling pattern considered).
+- [x] New [lib/envrc_safety.sh](../../lib/envrc_safety.sh): `validate_envrc_snippet <text>` enforces the direnv-stdlib allow-list — only blank, comment, `PATH_add "<quoted>"`, and `export VAR="<quoted>"` lines accepted. Parameter expansions (`$VAR`, `${VAR}`) inside the double-quoted value are allowed (safe inside double quotes). Anything else — including backticks, `$(...)`, unquoted values, `dotenv`/`source` directives, shell control flow, raw commands — is rejected with the offending line printed to stderr.
+- [x] `validate_gitignore_snippet <text>` enforces simple-pattern lines: blank, comment, or pattern with no `$` (covers both `$VAR` and `$(...)`) and no backticks. `.gitignore` never legitimately needs a literal `$`; over-rejection is the safe tradeoff against any downstream tool that might shell-interpret a `.gitignore` line.
+- [x] **Scope clarification on composer wiring.** The task list said "Wire validators into the activation-hook composer (used in N.q) and the smart-purge inventory composer (used in N.r). For N.m itself, ship the validators with their own test suite; composer integration lands in N.q / N.r." Followed exactly: N.m ships defensive primitives with **no composer integration and no behavior change**. The validators are sourced from [pyve.sh](../../pyve.sh) so they're available for N.q/N.r to call; nothing in v3.0's existing flow runs through them yet.
+- [x] Bats unit tests: **38 tests** in [tests/unit/test_n_m_envrc_safety.bats](../../tests/unit/test_n_m_envrc_safety.bats) — 25 covering `validate_envrc_snippet` (10 accept across blank/comment/PATH_add/export with literal/parameter-expansion values, mixed multi-line; 15 reject across command-sub inside/outside quotes, backticks inside/outside quotes, unquoted values, non-allow-listed directives, control flow, identifier-illegal names, mixed-valid-with-one-bad-line; plus the "smuggling-inside-a-comment is fine" carve-out since comments are textually inert) + 13 covering `validate_gitignore_snippet` (9 accept across blank/comment/glob/directory/nested/bracket-class/negation/multi-line; 5 reject across `$VAR` / `${VAR}` / `$(...)` / backticks / mixed-with-one-bad-line). Every smuggling pattern considered has its own regression test.
+- [x] Updated [tech-spec.md](tech-spec.md) with a new "`lib/envrc_safety.sh`" subsection — covers both allow-lists in tabular form, the line-oriented failure mode, the "no composer integration in N.m" boundary, and a pointer to the test-corpus structure.
+
+**Verification.** Full unit suite: **1305 ok / 0 not ok** (1267 prior + 38 new). Sourcing wired into [pyve.sh](../../pyve.sh) after `bp_register` calls; `pyve --version` smoke test confirms the source chain still resolves cleanly.
+
+**Out of scope (flagged, kept out)**
+
+- **Composer integration.** Per the task list, calling these validators from the actual `.envrc` and `.gitignore` composition paths is **N.q** (activation) and **N.r** (gitignore). Wiring them in N.m would defeat the staging — N.q first needs to introduce the plugin-snippet composition shape, and N.r needs the `purge_inventory` / `gitignore_entries` plugin hooks.
+- **Validating the EXISTING `.envrc` template.** Today's [write_envrc_template](../../lib/utils.sh) in lib/utils.sh emits content that the strict allow-list would reject (e.g., `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` has an unquoted value; the conditional `if [[ -f ".env" ]]; then dotenv; fi` is control flow). That content is **pyve infrastructure, not plugin-emitted**, and the validator's contract is "rejects PLUGIN snippets that don't conform." The composer in N.q will write infrastructure lines directly and run only plugin contributions through the validator. No retroactive validation of the existing template is needed in N.m.
+- **A `validate_full_envrc` or `validate_full_gitignore` for the composed output.** Some teams add an end-to-end validator on the assembled file. Skipped: the per-snippet validation is the right seam (it tells the composer which plugin contributed bad content), and N.q's composer will write its own infrastructure lines directly. A full-file validator would either duplicate the per-snippet check or risk false positives on infrastructure lines the validator was never meant to police.
+
+**Placement note.** Authored in document order as N.m, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
 ### Story N.n: Python plugin module + scaffold-time detection hook [Planned]
 
