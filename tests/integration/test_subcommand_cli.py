@@ -59,13 +59,14 @@ class TestNewSubcommandRouting:
         """`pyve purge --keep-testenv` preserves the dev/test runner env."""
         pyve.init(backend="venv")
         pyve.run("testenv", "init")
-        # Post-M.h.3 layout: `.pyve/testenvs/<name>/{venv,conda}/`.
-        # `--keep-testenv` preserves the whole `.pyve/testenvs/` tree (M.i.4).
-        assert (pyve.cwd / ".pyve" / "testenvs" / "testenv").exists()
+        # v3 layout (Story N.f): `.pyve/envs/<name>/{venv,conda}/`.
+        # `--keep-testenv` preserves the `.pyve/envs/` tree, surgically
+        # deleting only the main-env subdir.
+        assert (pyve.cwd / ".pyve" / "envs" / "testenv").exists()
 
         result = pyve.run("purge", "--keep-testenv", input="y\n")
         assert result.returncode == 0
-        assert (pyve.cwd / ".pyve" / "testenvs" / "testenv").exists()
+        assert (pyve.cwd / ".pyve" / "envs" / "testenv").exists()
 
     def test_python_version_subcommand_is_rejected(self, pyve, test_project):
         """`pyve python-version <ver>` is no longer a routable subcommand (Story J.d)."""

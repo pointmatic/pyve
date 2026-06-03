@@ -296,6 +296,35 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 **Placement note.** Authored as **N.j.2** per developer direction during the debug cycle, slotted after N.j.1 (the run-backend-detection fix). Both N.j.1 and N.j.2 are CI-hardening debt that surfaced from N-1's architectural moves (N.f and N.d.1 respectively); they are kept as separate stories rather than bundled because they have distinct root causes and distinct fixes — splitting honors the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
+### Story N.j.3: CI hardening — stale `.pyve/testenvs/` path assertions sweep [Done]
+
+**Report.** After N.j.2 unblocked another CI batch, three more integration-test failures surfaced — all the same root cause as N.j.2 fix (1), distributed across two more test files:
+
+1. **[tests/integration/test_subcommand_cli.py:58](../../tests/integration/test_subcommand_cli.py#L58) `test_purge_with_keep_testenv_flag`** — venv-side mirror of the N.j.2 fix's micromamba test; same `.pyve/testenvs/testenv` → `.pyve/envs/testenv` substitution.
+2. **[tests/integration/test_testenv.py:37](../../tests/integration/test_testenv.py#L37) `test_testenv_run_before_init_shows_error`** — simulated "testenv not initialized" by `shutil.rmtree('.pyve/testenvs/testenv/venv')`, which post-N.f is a no-op. The actual testenv at `.pyve/envs/testenv/venv` survived; `pyve testenv run python --version` then succeeded (returncode=0, "Python 3.12.10") instead of erroring with the expected "not initialized" exit 1.
+3. **[tests/integration/test_testenv.py:105](../../tests/integration/test_testenv.py#L105) `test_testenv_rebuilt_when_python_version_stale`** — asserts `.pyve/testenvs/testenv/venv` exists after `pyve init`; same stale path.
+
+**Why this is a pyve bug.** N.j.2's "Out of scope" already flagged that a broader sweep of `tests/integration/` for stale `.pyve/testenvs/` paths was likely needed — CI surfaced the next batch as predicted. The N.j.2 fix was scoped to the single failing test ("only fix what CI failed on") for deliberate reasons (avoid speculative rewriting), but with three more test files now exhibiting the same shape on a single CI run, the sweep is justified rather than speculative. The N.f path constructors made these tests stale; pyve owns the migration.
+
+**Fix.** Updated 5 stale-path assertions across 3 test files. All targeted lines were the same `.pyve/testenvs/testenv` → `.pyve/envs/testenv` substitution; comments updated from "v2.8+ layout" / "Post-M.h.3 layout" to "v3 layout (Story N.f)" so the next reader sees the load-bearing story citation.
+
+**Tasks**
+
+- [x] Update [tests/integration/test_subcommand_cli.py:62-68](../../tests/integration/test_subcommand_cli.py#L62-L68) — venv `--keep-testenv` test (2 path lines + comment).
+- [x] Update [tests/integration/test_testenv.py:42-46](../../tests/integration/test_testenv.py#L42-L46) — `test_testenv_run_before_init_shows_error`'s rmtree target (1 path line + comment).
+- [x] Update [tests/integration/test_testenv.py:82-83](../../tests/integration/test_testenv.py#L82-L83) — `test_testenv_survives_force_reinit`'s `testenv_python` path (1 path line + comment). **Proactively fixed** even though it didn't appear in this CI report — same stale-path shape, currently passes only because the test's marker config likely deselected it from this run; left in place it would fail on the next run that included it.
+- [x] Update [tests/integration/test_testenv.py:118-120](../../tests/integration/test_testenv.py#L118-L120) — `test_testenv_rebuilt_when_python_version_stale`'s testenv assertion (1 path line + comment).
+- [x] Full unit suite: **1227 ok / 0 not ok** (no unit changes; baseline preserved).
+- [x] Local pytest run of all 3 CI-failing tests + the proactively-fixed `test_testenv_survives_force_reinit`: 4/4 PASSED locally.
+
+**Out of scope (flagged, kept out)**
+
+- **`.gitignore` content assertions referencing `.pyve/testenvs`** — [test_micromamba_workflow.py:223](../../tests/integration/test_micromamba_workflow.py#L223), [test_venv_workflow.py:182,238,255](../../tests/integration/test_venv_workflow.py). These assert the **string** `.pyve/testenvs` appears in `.gitignore` content; the [lib/utils.sh:859](../../lib/utils.sh#L859) writer still emits it defensively for the v3 transition window, so the tests pass and the assertions are still load-bearing. Removing them would silently regress the transition-window guarantee. Left in place.
+- **Removing the defensive `.pyve/testenvs` line from `.gitignore`** — natural N-8 cleanup task once the v3.0-only transition window closes and the soft banner becomes a hard gate; not in scope for N-1 polish. Flagged for the N-8 sweep checklist that already lives in [tech-spec.md](tech-spec.md)'s "v3.0-only read-compat layer" subsection.
+- **Pre-existing v2.7-era `.pyve/testenv` (singular) references** — `rg "\.pyve/testenv[^s]"` of `tests/integration/` is clean; this batch was the last of the v2.8 plural-but-pre-N.f references. No further sweep needed.
+
+**Placement note.** Authored as **N.j.3** per developer direction during the debug cycle, slotted after N.j.2 (the first CI hardening batch). Together N.j.1 / N.j.2 / N.j.3 close out the CI debt that surfaced from N-1's architectural moves: N.f's state-directory relocation (N.j.1 fixed `run.sh`, N.j.2/N.j.3 fixed integration test paths) and N.d.1's pre-flight check (N.j.2 fixed the PATH-leak fragility). The three are kept as separate stories — distinct root causes, distinct surfaces, distinct fixes — per the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+
 ---
 
 ## Subphase N-2: Plugin / backend-provider contract — Python as first reference plugin
