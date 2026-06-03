@@ -15,11 +15,6 @@ load ../helpers/test_helper.bash
 setup() {
     setup_pyve_env
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
-    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/commands/python.sh"
     create_test_dir
     bp_registry_reset
     plugin_registry_reset
@@ -274,13 +269,14 @@ EOF
     [[ "$output" == *"languages"* ]]
 }
 
-# ════════════════════════════════════════════════════════════════════
+## ════════════════════════════════════════════════════════════════════
 # python_set / python_show relocation (Option (a)).
 # ════════════════════════════════════════════════════════════════════
 #
-# Functions move into lib/plugins/python/plugin.sh; the python_command
-# dispatcher in lib/commands/python.sh still calls them by name (bash
-# resolves globally).
+# Functions live in lib/plugins/python/plugin.sh alongside the
+# python_command dispatcher. The single-owner claim (functions not
+# defined in lib/plugins/python/plugin.sh) is implicitly covered by N.s.8's
+# assertion that lib/plugins/python/plugin.sh does not exist at all.
 
 @test "relocation: python_set is defined in lib/plugins/python/plugin.sh" {
     grep -q '^python_set()' "$PYVE_ROOT/lib/plugins/python/plugin.sh"
@@ -290,17 +286,10 @@ EOF
     grep -q '^python_show()' "$PYVE_ROOT/lib/plugins/python/plugin.sh"
 }
 
-@test "relocation: python_set is NOT in lib/commands/python.sh (single owner)" {
-    ! grep -q '^python_set()' "$PYVE_ROOT/lib/commands/python.sh"
-}
-
-@test "relocation: python_show is NOT in lib/commands/python.sh (single owner)" {
-    ! grep -q '^python_show()' "$PYVE_ROOT/lib/commands/python.sh"
-}
-
 @test "relocation: python_command dispatcher still resolves python_show by name" {
-    # Sanity: python_show is callable from the dispatcher (which is
-    # in lib/commands/python.sh) after the relocation.
+    # Sanity: python_show is callable from the dispatcher after the
+    # relocation. Both now live in lib/plugins/python/plugin.sh
+    # (dispatcher relocated in Story N.s.8).
     declare -F python_show >/dev/null
     declare -F python_set >/dev/null
 }

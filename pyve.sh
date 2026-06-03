@@ -223,14 +223,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/python.sh" ]]; then
-    # shellcheck source=lib/commands/python.sh
-    source "$SCRIPT_DIR/lib/commands/python.sh"
-else
-    printf "ERROR: Cannot find lib/commands/python.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/self.sh" ]]; then
     # shellcheck source=lib/commands/self.sh
     source "$SCRIPT_DIR/lib/commands/self.sh"

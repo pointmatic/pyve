@@ -448,13 +448,21 @@ python_pyve_plugin_activate() {
 }
 
 #------------------------------------------------------------
-# `pyve python set` / `pyve python show` (Story N.p, Option (a))
+# `pyve python <sub>` — Python-version-management namespace
 #
-# These are not standard plugin-contract hooks — they're
-# Python-version-management commands that logically belong to the
-# Python plugin. Moved here from lib/commands/python.sh; the
-# `python_command` dispatcher there still calls them by name (bash
-# function lookup is global). Behavior unchanged.
+# The namespace dispatcher (`python_command`) and its leaves
+# (`python_set`, `python_show`) form a single-file namespace per the
+# project-essentials "Namespace commands are single files" rule.
+# These are not plugin-contract hooks — they're Python-specific
+# version-pin management surfaces. The dispatcher is invoked by
+# pyve.sh's case arm as `python_command "$@"`; bash function lookup
+# is global, so the leaves resolve by name regardless of file.
+#
+# Function-name note: the dispatcher is named `python_command`, NOT
+# `python`, because `python` is the bare binary name invoked by
+# `init` (and elsewhere) for venv creation. A bash function named
+# `python` would shadow the interpreter and break every internal
+# call to it. See project-essentials' "Function-name collision rule".
 #------------------------------------------------------------
 
 python_set() {
@@ -512,6 +520,60 @@ python_show() {
         return 0
     fi
     printf "Python %s (from %s)\n" "$version" "$source"
+}
+
+# Nested-subcommand dispatcher for `pyve python <action> [args]`.
+python_command() {
+    if [[ $# -lt 1 ]]; then
+        log_error "pyve python requires a subcommand"
+        log_error "Usage: pyve python set <version>"
+        log_error "       pyve python show"
+        log_error "See: pyve python --help"
+        exit 1
+    fi
+
+    local sub="$1"
+    shift
+
+    case "$sub" in
+        set)
+            python_set "$@"
+            ;;
+        show)
+            if [[ $# -gt 0 ]]; then
+                log_error "pyve python show takes no arguments (got: $1)"
+                exit 1
+            fi
+            python_show
+            ;;
+        *)
+            log_error "Unknown python subcommand: $sub"
+            log_error "Usage: pyve python set <version>"
+            log_error "       pyve python show"
+            exit 1
+            ;;
+    esac
+}
+
+show_python_help() {
+    cat << 'EOF'
+pyve python - Manage the project's Python version pin
+
+Usage:
+  pyve python set <version>
+  pyve python show
+
+Subcommands:
+  set <version>     Pin the project's Python version (format: #.#.#)
+                    Writes to .tool-versions (asdf) or .python-version (pyenv)
+  show              Print the currently pinned Python version
+
+Examples:
+  pyve python set 3.13.7
+  pyve python show
+
+See `pyve --help` for the full command list.
+EOF
 }
 
 #============================================================

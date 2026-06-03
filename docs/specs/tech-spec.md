@@ -1131,9 +1131,11 @@ Empty `purpose` and empty `backend` are both allowed — `manifest_resolve_purpo
 
 ---
 
-### Python plugin — runtime hooks (Story N.p, Option 1 / relocated via N.s.4–N.s.7)
+### Python plugin — runtime hooks (Story N.p, Option 1 / relocated via N.s.4–N.s.7) + python namespace (relocated via N.s.8)
 
 N.p mirrored N.o for the four runtime-side commands (`pyve check`, `pyve status`, `pyve run`, `pyve test`) plus three cross-cutting additions: the `manual_steps` (S7) schema extension and advisory rendering, the `languages` (S11) advisory in `check`, and the `pyve python set` / `pyve python show` relocation into the plugin file. The N.s umbrella (Option 1) relocated each function body — plus its private helpers and `show_<cmd>_help` block — into the plugin file across four stories: N.s.4 (`check_environment`), N.s.5 (`show_status`), N.s.6 (`run_command`), N.s.7 (`test_tests`). **As of N.s.7, the N.p quartet relocation is complete: `lib/commands/{check,status,run,test}.sh` are all deleted; every function lives in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh).**
+
+**N.s.8 completes the `python` namespace sweep.** N.p Option (a) originally moved only the leaves (`python_set` / `python_show`) into the plugin file, leaving the `python_command` dispatcher and `show_python_help` behind in `lib/commands/python.sh`. N.s.8 relocates those two functions, deletes `lib/commands/python.sh`, and removes the `pyve.sh` source block. The namespace (`pyve python <sub>`) is now end-to-end inside the plugin file; bash's global function resolution handles the dispatcher → leaf calls unchanged.
 
 **Four runtime shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
 
