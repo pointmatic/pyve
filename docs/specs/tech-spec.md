@@ -1131,18 +1131,18 @@ Empty `purpose` and empty `backend` are both allowed — `manifest_resolve_purpo
 
 ---
 
-### Python plugin — runtime hooks (Story N.p, Option 2)
+### Python plugin — runtime hooks (Story N.p, Option 2; partial Option 1 relocation in N.s.4+)
 
-N.p mirrors N.o for the four runtime-side commands (`pyve check`, `pyve status`, `pyve run`, `pyve test`) plus three cross-cutting additions: the `manual_steps` (S7) schema extension and advisory rendering, the `languages` (S11) advisory in `check`, and the `pyve python set` / `pyve python show` relocation into the plugin file.
+N.p mirrored N.o for the four runtime-side commands (`pyve check`, `pyve status`, `pyve run`, `pyve test`) plus three cross-cutting additions: the `manual_steps` (S7) schema extension and advisory rendering, the `languages` (S11) advisory in `check`, and the `pyve python set` / `pyve python show` relocation into the plugin file. The N.s umbrella (Option 1) relocates each function body — plus its private helpers and `show_<cmd>_help` block — into the plugin file across four stories: N.s.4 (`check_environment`), N.s.5 (`show_status`), N.s.6 (`run_command`), N.s.7 (`test_tests`).
 
 **Four runtime shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
 
-| Hook | Behavior |
-|---|---|
-| `python_pyve_plugin_check` | Calls `_python_pyve_plugin_render_advisories`, then `check_environment "$@"`. |
-| `python_pyve_plugin_status` | Calls `_python_pyve_plugin_render_advisories`, then `show_status "$@"`. |
-| `python_pyve_plugin_run` | Calls `run_command "$@"`. |
-| `python_pyve_plugin_test` | Calls `test_tests "$@"`. |
+| Hook | Behavior | Implementation locus |
+|---|---|---|
+| `python_pyve_plugin_check` | Calls `_python_pyve_plugin_render_advisories`, then `check_environment "$@"`. | **Relocated to plugin.sh in N.s.4** (`check_environment` + its 3 `_check_*` private helpers + `show_check_help`; `lib/commands/check.sh` deleted; `pyve.sh` source line removed). |
+| `python_pyve_plugin_status` | Calls `_python_pyve_plugin_render_advisories`, then `show_status "$@"`. | Still in `lib/commands/status.sh` (pending N.s.5). |
+| `python_pyve_plugin_run` | Calls `run_command "$@"`. | Still in `lib/commands/run.sh` (pending N.s.6). |
+| `python_pyve_plugin_test` | Calls `test_tests "$@"`. | Still in `lib/commands/test.sh` (pending N.s.7). |
 
 `run` and `test` are pure forwarders — no advisory rendering, since those commands are execution paths, not diagnostic surfaces.
 

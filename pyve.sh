@@ -215,14 +215,6 @@ python_pyve_plugin_register_backends
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
 
-if [[ -f "$SCRIPT_DIR/lib/commands/check.sh" ]]; then
-    # shellcheck source=lib/commands/check.sh
-    source "$SCRIPT_DIR/lib/commands/check.sh"
-else
-    printf "ERROR: Cannot find lib/commands/check.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/lock.sh" ]]; then
     # shellcheck source=lib/commands/lock.sh
     source "$SCRIPT_DIR/lib/commands/lock.sh"

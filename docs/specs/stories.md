@@ -665,19 +665,27 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Smoke-testing project-guide refresh.** The 4/4 step ran with `--no-project-guide` to keep the smoke fast and reproducible. The path-resolution branches (venv vs micromamba `env_path` derivation) are exercised by the unit suite.
 - **Smoke-testing the version-bump path.** The test ran with the in-tree pyve at v2.8.0 against a config also at v2.8.0, so step 1/4 reported "already current" rather than exercising the actual version-bump-write. The mismatch path is covered by `test_update_*.bats` and related unit tests within the 1428-test green suite.
 
-### Story N.s.4: Relocate `check_environment` into the Python plugin [Planned]
+### Story N.s.4: Relocate `check_environment` into the Python plugin [Done]
 
 **Motivation.** Fourth function relocation per the N.s umbrella — first of the N.p runtime quartet (check / status / run / test).
 
 **Tasks**
 
-- [ ] Move `check_environment` from [lib/commands/check.sh](../../lib/commands/check.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.p `python_pyve_plugin_check` shim.
-- [ ] Move every `_check_*` private helper into the plugin file.
-- [ ] Move `show_check_help` to the plugin file.
-- [ ] Delete `lib/commands/check.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the "Python plugin — runtime hooks (Story N.p, Option 2)" subsection in [tech-spec.md](tech-spec.md): rename to "Option 1 / relocated"; mark `check_environment`'s row as relocated.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_4_check_relocation.bats](../../tests/unit/test_n_s_4_check_relocation.bats).
-- [ ] Behavioral regression: `pyve check` against fresh / drifted / no-env states produces identical output and CI-safe 0/1/2 exit codes; the N.p `manual_steps` and `languages` advisories still render at the top of the output; full unit suite green.
+- [x] Move `check_environment` from `lib/commands/check.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `show_update_help` (continuing the end-of-file convention).
+- [x] Move every `_check_*` private file-scope helper (3 in total: `_check_venv_backend`, `_check_micromamba_backend`, `_check_summary_and_exit`) into the plugin file. The three nested closures defined inside `check_environment` (`_check_pass`, `_check_warn`, `_check_fail`) move with the function body — they're lexically nested, not file-scope, so they ride along automatically. Verbatim move; the closure-via-dynamic-scoping pattern documented in the file header is preserved as the project-essentials "Do not refactor to file-scope counters" invariant for the helpers.
+- [x] Move `show_check_help` to the plugin file per the F-table per-command-help convention.
+- [x] Delete `lib/commands/check.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the "Python plugin — runtime hooks (Story N.p, Option 2)" subsection in [tech-spec.md](tech-spec.md): heading annotated "(partial Option 1 relocation in N.s.4+)"; lead-in paragraph re-tensed to past where the relocation roadmap was; shim table grew an "Implementation locus" column marking `check_environment` relocated and `show_status` / `run_command` / `test_tests` pending N.s.5/N.s.6/N.s.7. (Same shape as the N.o lifecycle subsection's interim state at the N.s.1 milestone.)
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_4_check_relocation.bats](../../tests/unit/test_n_s_4_check_relocation.bats): 7 tests covering `check_environment` + 3 `_check_*` file-scope helpers + `show_check_help` grep-findable in plugin.sh, `lib/commands/check.sh` non-existence, no `lib/commands/check.sh` reference in `pyve.sh`. RED confirmed against baseline (7/7 fail); GREEN after the relocation (7/7 pass).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` followed by `pyve check` on a fresh dir rendered the expected diagnostic body — 6 passes (Configuration / Backend: venv / Pyve version: current / Environment: .venv / Python: 3.14.4 / .env present), 2 warnings (.envrc missing because of --no-direnv; testenv lacking pytest), 0 errors — with the H.e.3 severity-ladder summary line "6 passed, 2 warnings, 0 errors" and the expected exit code 2 for warnings. Full unit suite: **1435 ok / 0 not ok** (1428 N.s.3 baseline + 7 new N.s.4 tests).
+
+**Sidecar test-file updates.** Bulk-substituted `lib/commands/check.sh` → `lib/plugins/python/plugin.sh` in 2 test files: [test_n_p_python_plugin_runtime.bats](../../tests/unit/test_n_p_python_plugin_runtime.bats) (explicit `source` line) and [test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats) (legacy-path regression-test grep argument). The accumulated duplication in `test_testenvs_activate.bats` (which now lists plugin.sh four times — once per relocated file) will be cleaned up after N.s.7 completes the runtime quartet.
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the closure-via-dynamic-scoping pattern.** The `_check_pass` / `_check_warn` / `_check_fail` nested functions and the `errors` / `warnings` / `passed` / `exit_code` locals form the H.e.3 severity-ladder contract. The "Do not refactor to file-scope counters" warning in the file header carries over verbatim to its new home.
+- **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Same rationale as N.s.1: premature when only one of four runtime hooks is relocated. The heading carries "(partial Option 1 relocation in N.s.4+)"; full rename to "(Option 1 / relocated via N.s.4–N.s.7)" lands with N.s.7.
+- **Smoke-testing the micromamba branch.** Same rationale as N.s.1–N.s.3; micromamba isn't installed locally. The 1435-test unit suite covers both backends.
 
 ### Story N.s.5: Relocate `show_status` into the Python plugin [Planned]
 
