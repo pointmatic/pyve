@@ -1002,10 +1002,12 @@ init_project() {
             pyve_install_distutils_shim_for_micromamba_prefix "$micromamba_path" "$env_prefix"
         fi
 
-        # Configure direnv for micromamba (unless --no-direnv)
+        # Configure direnv for micromamba (unless --no-direnv).
+        # Story N.l: dispatch through bp_dispatch so the activation
+        # path is uniform across backends.
         local env_path=".pyve/envs/$env_name"
         if [[ "$no_direnv" == false ]]; then
-            _init_direnv_micromamba "$env_name" "$env_path"
+            bp_dispatch micromamba activate "$env_path" "$env_name"
         else
             info "Skipping .envrc creation (--no-direnv)"
         fi
@@ -1104,9 +1106,13 @@ EOF
         pyve_install_distutils_shim_for_python "$venv_dir/bin/python"
     fi
 
-    # Configure direnv (unless --no-direnv)
+    # Configure direnv (unless --no-direnv).
+    # Story N.l: dispatch through bp_dispatch so the activation path
+    # is uniform across backends.
     if [[ "$no_direnv" == false ]]; then
-        _init_direnv_venv "$venv_dir"
+        local _venv_project_name
+        _venv_project_name="$(basename "$(pwd)")"
+        bp_dispatch venv activate "$venv_dir" "$_venv_project_name"
     else
         info "Skipping .envrc creation (--no-direnv)"
     fi
@@ -1199,6 +1205,24 @@ _init_direnv_micromamba() {
     local env_path="$2"
 
     write_envrc_template "$env_path/bin" "CONDA_PREFIX" "$env_path" "micromamba" "$env_name"
+}
+
+# Story N.l backend-provider shims. Forward `bp_dispatch <backend>
+# activate <env_path> <env_name>` to the legacy `_init_direnv_*`
+# helpers above. The unified signature lets callers dispatch generically
+# without knowing the backend. N.n absorbs these into the Python
+# plugin's `register_backends` hook (`lib/plugins/python/plugin.sh`);
+# until then, they live here adjacent to the helpers they wrap so the
+# move stays a single file-relocation.
+venv_pyve_bp_activate() {
+    # Args: <env_path> <env_name>. env_name is ignored — venv's
+    # _init_direnv_venv derives the project name from cwd.
+    _init_direnv_venv "$1"
+}
+
+micromamba_pyve_bp_activate() {
+    # Args: <env_path> <env_name>.
+    _init_direnv_micromamba "$2" "$1"
 }
 
 _init_dotenv() {

@@ -956,6 +956,48 @@ app_type = "spa"     # provider-private; available via manifest_get_plugin_attr
 
 ---
 
+### `lib/plugins/backend_registry.sh` — Backend-provider registry (Story N.l, Subphase N-2)
+
+Backends are first-class registered providers inside their plugin. Where the plugin registry (N.k) tracks *which plugins are active*, the backend registry tracks *which backends are registered, who owns them, and what category they belong to* — and routes backend-specific operations through a uniform dispatcher.
+
+**Three categories (spike S6).**
+
+| Category | Semantics | Examples (v3.0 + future) |
+|---|---|---|
+| `virtualized` | Per-project env dir (`.venv/`, `.pyve/envs/<name>/`, `node_modules/`); PATH activation required for project-pinned binaries. `init` creates the dir; `purge` removes it; `activate` adds `bin/` to PATH. | venv, micromamba (v3.0); pnpm, npm, yarn (N-3); future |
+| `cache-backed` | Shared user-level dep cache (`~/.cargo/registry/`, `~/go/pkg/mod/`) + project lockfile (`Cargo.lock`, `go.sum`). `init` populates the cache + writes the lockfile; `purge` removes only project-local build dirs (NEVER the shared cache); `activate` contributes nothing to PATH. | Designed-in for v3.0; first impl post-v3.0 (Rust or Go) |
+| `check-only` | Pyve verifies presence and version; no install action. `init` verifies + errors loudly if missing; `purge` is a no-op; `activate` contributes nothing. | Designed-in for v3.0; first impl when mobile / Docker / Homebrew plugins arrive |
+
+**v3.0 ships only `virtualized`.** The other two categories are designed-in but unexercised — schema and dispatcher accommodate them.
+
+**API:**
+
+| Function | Purpose |
+|---|---|
+| `bp_register <plugin> <backend_name> <category>` | Record the (plugin, backend, category) triple. Idempotent for identical re-registration; errors on conflicting re-registration (different plugin or category) or unknown category. |
+| `bp_lookup <backend_name>` | Print the owning plugin name. Exit 1 (no output) if unknown. |
+| `bp_category <backend_name>` | Print the registered category. Exit 1 if unknown. |
+| `bp_list` | Print all registered backend names, one per line, in registration order. |
+| `bp_dispatch <backend_name> <hook> [args...]` | Call `<backend>_pyve_bp_<hook>` if defined; else `pyve_bp_default_<cat_sanitized>_<hook>` (category default, hyphens → underscores); else silent return 0. |
+| `bp_registry_reset` | Clear all registrations. Used by tests. |
+
+**Internal state:** parallel indexed arrays `PYVE_BP_NAMES[]`, `PYVE_BP_PLUGINS[]`, `PYVE_BP_CATEGORIES[]`. Bash 3.2-safe (no associative arrays).
+
+**v3.0 registrations** (in `pyve.sh`'s library-load block, immediately after sourcing `lib/plugins/backend_registry.sh`):
+
+```sh
+bp_register python venv virtualized
+bp_register python micromamba virtualized
+```
+
+These live in `pyve.sh` because N.l does not yet have a Python plugin to own them. Story N.n moves the registrations into `lib/plugins/python/plugin.sh`'s `register_backends` hook.
+
+**N.l refactor (the half-2 piece).** N.l also refactors the two `.envrc`-emission callsites in [`lib/commands/init.sh`](../../lib/commands/init.sh) (for venv-backend init and micromamba-backend init) to route through `bp_dispatch <backend> activate <env_path> <env_name>` instead of calling `_init_direnv_venv` / `_init_direnv_micromamba` directly. Two thin shim functions at the bottom of `init.sh` (`venv_pyve_bp_activate`, `micromamba_pyve_bp_activate`) forward to the legacy helpers; N.n absorbs them into the Python plugin module. Behavior is byte-identical — verified by an explicit "direct call vs dispatched call" diff test ([tests/unit/test_n_l_backend_dispatch_envrc.bats](../../tests/unit/test_n_l_backend_dispatch_envrc.bats)) that asserts the two paths produce the same `.envrc` content.
+
+**What N.l does NOT do.** No refactor of the other backend conditionals yet — `install_project_guide_in_env`, `run_project_guide_*_in_env`, `pyve_create_env`'s micromamba branch, the `env.sh:562` testenv branch, the `utils.sh:1556` ensure-env branch. These need a richer hook set (`run`, possibly `pip_cmd`) and land naturally as Stories N.o (init/purge/update) and N.p (check/status/run/test) re-seat the matching commands behind the plugin contract. The activate-only refactor in N.l proves the abstraction without churning the larger surface.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

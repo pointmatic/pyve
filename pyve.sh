@@ -176,6 +176,24 @@ else
     exit 1
 fi
 
+# Story N.l: backend-provider registry. Sourced alongside the plugin
+# registry — plugins register their backends via bp_register on load.
+if [[ -f "$SCRIPT_DIR/lib/plugins/backend_registry.sh" ]]; then
+    # shellcheck source=lib/plugins/backend_registry.sh
+    source "$SCRIPT_DIR/lib/plugins/backend_registry.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/backend_registry.sh\n" >&2
+    exit 1
+fi
+
+# Story N.l: register pyve's built-in Python-ecosystem backends.
+# Both are project-virtualized (per-project env dir; PATH activation).
+# Story N.n will move these registrations into the Python plugin's
+# `register_backends` hook; for now they live here so bp_dispatch is
+# usable from every code path on every invocation.
+bp_register python venv virtualized
+bp_register python micromamba virtualized
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
