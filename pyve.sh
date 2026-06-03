@@ -705,6 +705,10 @@ main() {
             ;;
 
         # New subcommand surface (v1.11.0+)
+        # Story N.o: public-boundary plugin dispatch. The hooks
+        # forward to init_project / purge_project / update_project
+        # in lib/commands/*.sh; env-block validation (S9) and the
+        # languages advisory read (S11) run inside the init hook.
         init)
             shift
             if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
@@ -715,7 +719,7 @@ main() {
                 printf 'DISPATCH:init %s\n' "$*"
                 exit 0
             fi
-            init_project "$@"
+            plugin_dispatch python init "$@"
             ;;
         purge)
             shift
@@ -727,7 +731,7 @@ main() {
                 printf 'DISPATCH:purge %s\n' "$*"
                 exit 0
             fi
-            purge_project "$@"
+            plugin_dispatch python purge "$@"
             ;;
         validate)
             # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
@@ -743,7 +747,7 @@ main() {
                 printf 'DISPATCH:update %s\n' "$*"
                 exit 0
             fi
-            update_project "$@"
+            plugin_dispatch python update "$@"
             ;;
         python)
             shift

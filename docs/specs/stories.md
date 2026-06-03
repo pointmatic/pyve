@@ -448,19 +448,34 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 
 **Placement note.** Authored in document order as N.n, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
-### Story N.o: Python plugin — init / purge / update hooks [Planned]
+### Story N.o: Python plugin — init / purge / update hooks [Done]
 
 **Motivation.** Re-seat the scaffolding commands behind the plugin contract. `pyve init` / `pyve purge` / `pyve update` dispatch into the Python plugin's lifecycle hooks; existing behavior preserved exactly.
 
+**Execution mode (announce-gate decision).** Executed under **Option 2** — hook-as-shim re-seat. The plugin file gains thin shims that delegate to today's `init_project` / `purge_project` / `update_project` in [lib/commands/init.sh](../../lib/commands/init.sh) / [lib/commands/purge.sh](../../lib/commands/purge.sh) / [lib/commands/update.sh](../../lib/commands/update.sh); the public dispatcher arms in [pyve.sh](../../pyve.sh) route through `plugin_dispatch python <hook>`. The deeper Option-1 question (whole-function relocation into the plugin file so the file structure literally matches the architectural claim) is **deferred to Story N.s** per the developer's "take gradual steps to secure the boundaries of change" — see the N.s entry's Carry-over note.
+
 **Tasks**
 
-- [ ] Implement `pyve_plugin_init` in `lib/plugins/python/plugin.sh` — delegates to today's `init_project` logic for the Python plugin's contribution (venv creation, `.envrc` template emission via the activation hook from N.q, etc.).
-- [ ] Implement `pyve_plugin_purge` — delegates to today's `purge_project` Python-specific paths.
-- [ ] Implement `pyve_plugin_update` — delegates to today's `update_project` Python-specific paths.
-- [ ] **Env-block validation per S9**: the `init` hook receives the entire `[env.<name>]` block and validates `purpose` ∈ {run, test, utility, temp} and `backend` is a registered name; everything else is provider-private and passed through to the backend-provider.
-- [ ] **Read the `languages` advisory attribute** (S11) but treat it as informational only in v3.0 for Python — no behavior change. Storing the read sets up the diagnostics task in N.p.
-- [ ] Refactor [lib/commands/init.sh](../../lib/commands/init.sh), [lib/commands/purge.sh](../../lib/commands/purge.sh), and [lib/commands/update.sh](../../lib/commands/update.sh) to dispatch through the plugin contract instead of calling Python-specific helpers directly.
-- [ ] Bats + integration regression: every existing init/purge/update fixture passes unchanged.
+- [x] `python_pyve_plugin_init` shim in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — runs `python_pyve_plugin_validate_env_blocks` (S9 pre-flight), runs `_python_pyve_plugin_languages_advisory_read` (S11 data-flow probe), delegates to `init_project "$@"`. Returns non-zero on validation failure; otherwise forwards `init_project`'s exit code.
+- [x] `python_pyve_plugin_purge` — delegates to `purge_project "$@"`. No env-block validation: purge operates on the state directory, not on manifest declarations.
+- [x] `python_pyve_plugin_update` — delegates to `update_project "$@"`. Validation deferred to the next `init` cycle.
+- [x] **Env-block validation (S9)** — `python_pyve_plugin_validate_env_blocks` iterates `PYVE_ENV_NAMES[]` and checks `purpose` ∈ {run, test, utility, temp} (defense-in-depth; the Python helper already enforces this at parse time) and `backend` ∈ registered names via `bp_lookup` when non-empty. Empty purpose / empty backend are allowed — `manifest_resolve_purpose` and per-command default-backend logic handle them elsewhere. Diagnostics name the offending env and value.
+- [x] **`languages` advisory read (S11)** — `_python_pyve_plugin_languages_advisory_read` iterates declared envs and calls `manifest_get_languages` for each. v3.0 is read-only; the values are intentionally unused so N.p can surface them in `pyve check` / `pyve status` without a schema change. The read confirms the data-flow seam exists.
+- [x] **Refactor scope (Option 2 boundary).** Public-boundary refactor only: the three dispatcher arms in [pyve.sh](../../pyve.sh) (`init` / `purge` / `update`) now call `plugin_dispatch python <hook> "$@"`. The `--help` / `PYVE_DISPATCH_TRACE` short-circuits above each arm are preserved unchanged. **Internal cross-command callsites kept direct** — e.g., `init_project --force` still calls `purge_project --keep-testenv --yes` directly from inside `lib/commands/init.sh`; routing those through the dispatcher would widen the diff and re-introduces a circular-dispatch risk (init → plugin_dispatch python init → init_project → purge_project, where adding a dispatcher layer for the internal call would put init_project in the middle of its own dispatch chain).
+- [x] **Sidecar test update**: [tests/unit/test_n_k_plugin_registry.bats](../../tests/unit/test_n_k_plugin_registry.bats)'s "plugin_dispatch falls back to the default when hook not defined" test used `python_pyve_plugin_init` (which N.o now defines) as the "undefined hook" probe. Repointed at `python_pyve_plugin_diagnostics` (still no-op until later in the phase) so the test's intent (verify fallback to `pyve_plugin_default_<hook>` for undefined hooks) is preserved without false-positive failure.
+- [x] Bats unit tests: **13 tests** in [tests/unit/test_n_o_python_plugin_lifecycle.bats](../../tests/unit/test_n_o_python_plugin_lifecycle.bats) — shim existence (3), `plugin_dispatch` arg-forwarding round-trip with stubbed targets (3), S9 validation (5: valid pass-through, helper-level unknown purpose, plugin-level unregistered backend, empty backend allowed, multi-env iteration), S11 read probe (2). Full unit suite: **1341 ok / 0 not ok** (1328 prior + 13 new). End-to-end smoke (`pyve init --backend venv && pyve purge --yes` on fresh dir): init/purge round-trip cleanly through the dispatcher — `.venv` and `.envrc` created, then removed; user-authored files left alone.
+- [x] Updated [tech-spec.md](tech-spec.md) with a new "Python plugin — lifecycle hooks (Story N.o, Option 2)" subsection covering the shim table, the public-boundary dispatch sketch, the S9/S11 contracts, and the "what N.o does NOT do" boundary.
+
+**Out of scope (flagged, kept out)**
+
+- **Whole-function relocation (Option 1).** Moving `init_project` / `purge_project` / `update_project` into the plugin file. Deferred to Story N.s per the announce-gate decision — see the Carry-over note in N.s's body.
+- **Internal cross-command dispatch.** `init_project --force` → `purge_project --keep-testenv --yes` (and similar internal links) stay direct. Re-routing them through `plugin_dispatch` would introduce circular-dispatch risk and widens the diff without architectural benefit at this stage.
+- **`check` / `status` / `run` / `test` hooks.** Story N.p.
+- **Composed-snippet `.envrc` emission.** Story N.q (replaces today's `_init_direnv_*` path with PC-1-validated snippets through the activation hook).
+- **`.gitignore` / `pyve purge` plugin hooks.** Story N.r.
+- **Surfacing the `languages` read in user-visible output.** Story N.p (the diagnostics surfacing in `pyve check` / `pyve status`).
+
+**Placement note.** Authored in document order as N.o, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
 
 ### Story N.p: Python plugin — check / status / run / test hooks [Planned]
 
@@ -501,6 +516,8 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 ### Story N.s: End-to-end regression sweep + tech-spec / features doc updates [Planned]
 
 **Motivation.** Verify the full N-2 refactor preserves behavior end-to-end before declaring the subphase done. Update spec docs to reflect the new architecture; N-6 will revisit holistically but this story captures the immediate updates so the docs don't lie between N-2 and N-6.
+
+**Carry-over from N.o announce gate — plugin code locus decision.** N.o was executed under Option 2 of the announce-gate question: hook-as-shim re-seat (public-boundary `plugin_dispatch` calls; the existing `init_project` / `purge_project` / `update_project` implementations stay in [lib/commands/init.sh](../../lib/commands/init.sh) / [lib/commands/purge.sh](../../lib/commands/purge.sh) / [lib/commands/update.sh](../../lib/commands/update.sh)). The developer chose this to "take gradual steps to secure the boundaries of change" and explicitly deferred the deeper Option-1 question — whole-function relocation into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — to N.s. Re-decide here: keep the current shim shape, or relocate the implementations into the plugin file so the file structure matches the architectural claim. Same call applies to anything N.p / N.q / N.r ship under the same Option-2 pattern.
 
 **Tasks**
 

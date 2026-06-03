@@ -112,9 +112,12 @@ plant_fake_plugin() {
 }
 
 @test "registry: plugin_dispatch falls back to the default when hook not defined" {
-    # No plant_fake_plugin call — python_pyve_plugin_init is undefined.
+    # Use a hook the Python plugin still doesn't implement at this
+    # point in the phase (`diagnostics` lands later). Story N.o made
+    # `init` / `purge` / `update` concrete on the Python plugin, so
+    # they're no longer suitable for the fallback assertion.
     plugin_register python
-    run plugin_dispatch python init
+    run plugin_dispatch python diagnostics
     [ "$status" -eq 0 ]
     [ -z "$output" ]
 }

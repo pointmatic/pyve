@@ -1096,6 +1096,41 @@ Every existing caller (`pyve.sh:show_config`, `lib/commands/init.sh:get_backend_
 
 ---
 
+### Python plugin — lifecycle hooks (Story N.o, Option 2)
+
+N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve update`) behind the plugin contract. Per the announce-gate decision (Option 2 — hook-as-shim), the existing implementations in [lib/commands/init.sh](../../lib/commands/init.sh), [lib/commands/purge.sh](../../lib/commands/purge.sh), [lib/commands/update.sh](../../lib/commands/update.sh) stay where they are; the plugin file gains thin shims that delegate to them. Whole-function relocation is revisited in Story N.s.
+
+**Three lifecycle shims** in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh):
+
+| Hook | Behavior |
+|---|---|
+| `python_pyve_plugin_init` | Runs `python_pyve_plugin_validate_env_blocks` (S9), runs `_python_pyve_plugin_languages_advisory_read` (S11), then calls `init_project "$@"`. |
+| `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. |
+| `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. |
+
+**Public-boundary dispatch** in `pyve.sh`'s case dispatcher:
+
+```sh
+init)   plugin_dispatch python init "$@"   ;;
+purge)  plugin_dispatch python purge "$@"  ;;
+update) plugin_dispatch python update "$@" ;;
+```
+
+The dispatcher's `--help` / `PYVE_DISPATCH_TRACE` short-circuits stay above the dispatch call so they're unaffected. Internal cross-command callsites (e.g., `init_project --force` calls `purge_project --keep-testenv --yes` from `lib/commands/init.sh`) remain direct — Option 2 only refactors public entry points.
+
+**S9 env-block validation.** `python_pyve_plugin_validate_env_blocks` iterates `PYVE_ENV_NAMES[]` (populated by `manifest_load`) and checks:
+
+- `purpose` ∈ {`run`, `test`, `utility`, `temp`} when non-empty (the Python helper already rejects unknown purposes at parse time; this is defense-in-depth against synthesized v2 read-compat shapes).
+- `backend` ∈ registered backend-provider names (via `bp_lookup`) when non-empty. Unregistered backends produce a precise error naming the offending env and backend.
+
+Empty `purpose` and empty `backend` are both allowed — `manifest_resolve_purpose` and the per-command default-backend logic handle them elsewhere.
+
+**S11 `languages` advisory read.** `_python_pyve_plugin_languages_advisory_read` iterates declared envs and calls `manifest_get_languages` for each. v3.0 is read-only: the read confirms the data flow is wired so Story N.p can surface the values in `pyve check` / `pyve status` without a schema change. The values are intentionally unused in N.o.
+
+**What N.o does NOT do.** The Python plugin's `check` / `status` / `run` / `test` hooks stay as no-op defaults (Story N.p). The `activate` hook still uses the legacy `_init_direnv_*` path via the bp_activate shims (Story N.q replaces with composed snippets through `validate_envrc_snippet`). `gitignore_entries` / `purge_inventory` stay as no-op defaults (Story N.r). Whole-function relocation of `init_project` / `purge_project` / `update_project` into the plugin file is the Option 1 path — revisited in Story N.s.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.
