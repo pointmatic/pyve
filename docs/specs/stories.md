@@ -859,15 +859,28 @@ These slot into the existing "Fix pre-existing integration test failures" Future
 
 **Landing.** New `### FR-11c: Env-as-Materialization Model + Advisory Attributes (Subphase N-2)` subsection added to [features.md](features.md) between FR-11b and FR-12. Covers the three-backend-category framing (virtualized / cache-backed / check-only), `languages` as v3.0 advisory (surfaced via the N.p `pyve check` warn), `manual_steps` as v3.0 advisory (surfaced at the top of `pyve check` / `pyve status`), and an explicit "No behavior change for users in v3.0" closer. Cross-links into [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture) for wire-level accessor / renderer details. No CLI surface change; no `CHANGELOG.md` entry (Phase N runs unversioned until N-7's v3.0.0 cut).
 
-### Story N.s.12: Update brand-descriptions.md for v3.0 [Planned]
+### Story N.s.12: Update brand-descriptions.md for v3.0 [Done]
 
 **Motivation.** Brief annotation pass on [brand-descriptions.md](brand-descriptions.md) so the **NEEDS REVISION for Pyve 3.0** flagged sections reference the new identity. Full revision lands in N-6 via `refactor_document`.
 
+**Scope decision (Option D, made during execution).** The spec's prescribed mechanism — a verbatim "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems." header note inserted above each flagged section — was reconsidered before any edit. Three concerns: (1) the phrase exposes internal taxonomy (S6 backend categories) into consumer-facing copy, (2) inserting the same boilerplate four times degrades signal, (3) it doesn't fix the underlying misrepresentation — the body text under each flagged section still describes a Python-only tool with venv/micromamba duality, which a reader who reads the body comes away with regardless of the header sticky. The story's stated intent ("the document doesn't lie between N-2 and N-6") is the right intent; the mechanism was inadequate.
+
+**Adopted approach.** Light copy-edit pass on the four flagged sections — multi-language framing, pluggable backends, `pyve check`/`pyve status` instead of removed `doctor`/`validate`, additive keywords, one new Declarative Manifest card. Each section's flag marker rewritten from "**NEEDS REVISION for Pyve 3.0**" to "*v3 baseline — comprehensive narrative reflow deferred to N-6.*" so the doc stops misrepresenting v3 without preempting the holistic refactor scoped to N-6. No deep narrative reflow; no exposure of internal taxonomy in user-facing copy; the five already-revised sections (Name through Two-clause Technical Description) untouched; the Usage Notes file-mapping table at the bottom untouched (already correct for v3).
+
 **Tasks**
 
-- [ ] Add a short header note at the top of each flagged section: "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems."
-- [ ] No deep rewrite — N-6 owns the holistic prose reflow. N.s.12 is the placeholder note so the document doesn't lie between N-2 and N-6.
-- [ ] No `CHANGELOG.md` entry — Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release.
+- [x] ~~Add a short header note at the top of each flagged section: "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems."~~ **Superseded by Option D (above).** Each flagged section's marker now reads "*v3 baseline — comprehensive narrative reflow deferred to N-6.*"
+- [x] No deep rewrite — N-6 owns the holistic prose reflow. N.s.12 is the placeholder note so the document doesn't lie between N-2 and N-6. **Held.** Light copy edits on four sections only; no narrative reflow; ~10 line diff.
+- [x] No `CHANGELOG.md` entry — Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release.
+
+**Landing.** [brand-descriptions.md](brand-descriptions.md) four sections edited:
+
+- **Benefits** (line ~38): swapped "Dual backend support — venv (pip) and micromamba (conda-compatible)" → "Pluggable backends — venv, micromamba, pnpm, and a contract for adding more." Added "Declarative `pyve.toml` with named envs (`run`, `test`, `utility`, `temp`)." Reworded "Automatic Python version management via asdf or pyenv" → "Language version management — plugin-owned (asdf / pyenv on the Python side)."
+- **Technical Description** (line ~50): "Python virtual environments on macOS and Linux" → "project environments across multiple language ecosystems on macOS and Linux." Body sentence reworked to "language-version management, environment materialization (per-project virtualized, shared cache-backed, or check-only via plugins), and direnv-driven activation."
+- **Keywords** (line ~56): additive — added `nodejs`, `sveltekit`, `pnpm`, `plugin-architecture`, `polyglot`, `named-environments`. No removals.
+- **Feature Cards** (line ~66): Card 1 generalized off "Python version"; Card 2 renamed "Dual Backends" → "Pluggable Backends"; Card 6 swapped removed `pyve doctor` / `pyve validate` for v2.0+ `pyve check` / `pyve status`; Card 7 renamed "Isolated Test Runner" → "Named Test Environments" with `[env.<name>]` framing; new Card 8 "Declarative Manifest" added (referencing `pyve self migrate`); old Card 8 (Zero Dependencies) renumbered to Card 9.
+
+No CLI surface change; no test sweep needed (docs-only); no `CHANGELOG.md` entry.
 
 ### Story N.t: Append project-essentials entries for N-2 [Planned]
 
