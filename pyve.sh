@@ -239,14 +239,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/commands/purge.sh" ]]; then
-    # shellcheck source=lib/commands/purge.sh
-    source "$SCRIPT_DIR/lib/commands/purge.sh"
-else
-    printf "ERROR: Cannot find lib/commands/purge.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/commands/run.sh" ]]; then
     # shellcheck source=lib/commands/run.sh
     source "$SCRIPT_DIR/lib/commands/run.sh"

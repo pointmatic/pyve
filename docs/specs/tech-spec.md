@@ -1105,7 +1105,7 @@ N.o re-seats the three scaffolding commands (`pyve init`, `pyve purge`, `pyve up
 | Hook | Behavior | Implementation locus |
 |---|---|---|
 | `python_pyve_plugin_init` | Runs `python_pyve_plugin_validate_env_blocks` (S9), runs `_python_pyve_plugin_languages_advisory_read` (S11), then calls `init_project "$@"`. | **Relocated to plugin.sh in N.s.1** (`init_project` + its 16 `_init_*` private helpers + `show_init_help`; `lib/commands/init.sh` deleted; `pyve.sh` source line removed). |
-| `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. | Still in `lib/commands/purge.sh` (pending N.s.2). |
+| `python_pyve_plugin_purge` | Calls `purge_project "$@"`. No env-block validation — purge runs against the state directory, not the manifest. | **Relocated to plugin.sh in N.s.2** (`purge_project` + its 6 `_purge_*` private helpers + `show_purge_help`; `lib/commands/purge.sh` deleted; `pyve.sh` source line removed). |
 | `python_pyve_plugin_update` | Calls `update_project "$@"`. Validation deferred to next `init` cycle. | Still in `lib/commands/update.sh` (pending N.s.3). |
 
 **Public-boundary dispatch** in `pyve.sh`'s case dispatcher:

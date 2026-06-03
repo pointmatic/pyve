@@ -25,7 +25,7 @@ setup() {
     setup_pyve_env
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
-    source "$PYVE_ROOT/lib/commands/purge.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/update.sh"
     create_test_dir
     bp_registry_reset

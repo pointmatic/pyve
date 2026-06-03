@@ -397,7 +397,8 @@ EOF
 #
 # v3.0 ships this as a data interface — `purge_project` reads but
 # does not consume it for removal decisions. The existing hardcoded
-# removal calls in lib/commands/purge.sh stay direct. The seam is in
+# removal calls inside `purge_project` (relocated into this file in
+# N.s.2) stay direct. The seam is in
 # place for future plugins (Node, etc.) that need to declare their
 # own creation/authorship surfaces.
 #------------------------------------------------------------
@@ -528,9 +529,9 @@ python_show() {
 # .pyve/config, configures direnv, etc.).
 #
 # Cross-command callsite: `init_project --force` calls
-# `purge_project --keep-testenv --yes` (still in lib/commands/purge.sh
-# until Story N.s.2 relocates it). Bash resolves the call at runtime
-# via the global function table.
+# `purge_project --keep-testenv --yes` — both functions now live in
+# this file (init_project relocated in N.s.1, purge_project in N.s.2).
+# Bash resolves the call at runtime via the global function table.
 #
 # Init-private helpers (per project-essentials F): `_init_` prefix
 # on all single-caller helpers. Includes
@@ -1871,6 +1872,275 @@ Examples:
   pyve init --force                        # Purge and rebuild
   pyve init --project-guide                # Install project-guide without prompting
   pyve init --no-project-guide             # Skip project-guide entirely
+
+See `pyve --help` for the full command list.
+EOF
+}
+
+#============================================================
+# pyve purge — remove pyve-managed environment artifacts
+# (Story N.s.2, Option 1 relocation from lib/commands/purge.sh)
+#
+# Removes the venv / micromamba env, version manager files, .envrc,
+# .env (only if empty — v0.6.0 smart purge), pyve-managed sections of
+# .gitignore, and the .pyve/ directory. Optionally preserves
+# .pyve/envs/ via --keep-testenv (used by `init --force` to avoid
+# rebuilding the dev/test runner across re-inits).
+#
+# Function-name note: this function is named `purge_project` per the
+# project-essentials "Function naming convention: verb_<operand>"
+# rule — `pyve purge` operates on the project.
+#
+# Cross-command callsite: `init_project --force` calls
+# `purge_project --keep-testenv --yes` from its --force pre-flight
+# and from the interactive option-2 (purge-and-rebuild) path. Both
+# functions now live in this file (N.s.1 + N.s.2); bash resolves the
+# call at runtime via the global function table.
+#============================================================
+
+purge_project() {
+    local venv_dir="$DEFAULT_VENV_DIR"
+    local keep_testenv=false
+    local venv_dir_explicit=false
+    local skip_confirm=false
+
+    # Parse arguments
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --keep-testenv)
+                keep_testenv=true
+                shift
+                ;;
+            --yes|-y)
+                skip_confirm=true
+                shift
+                ;;
+            -*)
+                unknown_flag_error "purge" "$1" --keep-testenv --yes --help
+                ;;
+            *)
+                venv_dir="$1"
+                venv_dir_explicit=true
+                shift
+                ;;
+        esac
+    done
+
+    header_box "pyve purge"
+
+    # Story N.r: pull the active plugin's purge_inventory as a data
+    # interface. v3.0 reads the inventory for diagnostic / verbose
+    # surfacing only — the actual removal calls below stay direct.
+    # Future stories can extend the composer to consume the inventory
+    # for path-level removal decisions; for now the seam is in place.
+    if declare -F plugin_dispatch >/dev/null 2>&1; then
+        local _plugin_inventory
+        _plugin_inventory="$(plugin_dispatch python purge_inventory 2>/dev/null || true)"
+        if [[ -n "${PYVE_VERBOSE:-}" ]] && [[ -n "$_plugin_inventory" ]]; then
+            info "Plugin purge inventory (Story N.r):"
+            while IFS= read -r _inv_line; do
+                [[ -n "$_inv_line" ]] && info "  $_inv_line"
+            done <<< "$_plugin_inventory"
+        fi
+    fi
+
+    # Destructive-confirmation prompt. Skipped when:
+    #   --yes / -y passed (e.g., by `init --force`), CI=1, or PYVE_FORCE_YES=1.
+    if [[ "$skip_confirm" != true ]] && [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
+        warn "This will remove pyve-managed environment artifacts from the current project."
+        if ! ask_yn "Proceed"; then
+            info "Aborted — no changes made"
+            exit 0
+        fi
+    fi
+
+    # Source shell profiles to detect version manager
+    source_shell_profiles
+    detect_version_manager 2>/dev/null || true
+
+    # Remove version file
+    _purge_version_file
+
+    # If a project config exists, prefer its venv directory when the user did not
+    # explicitly pass a venv dir to purge.
+    if [[ "$venv_dir_explicit" == false ]] && config_file_exists; then
+        local configured_venv_dir
+        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
+        if [[ -n "$configured_venv_dir" ]]; then
+            venv_dir="$configured_venv_dir"
+        fi
+    fi
+
+    # Remove virtual environment
+    _purge_venv "$venv_dir"
+
+    # Remove .pyve directory (config and micromamba envs).
+    # N.f: in v3 the named-env tree lives at `.pyve/envs/<name>/<backend>/`
+    # and shares its parent with the micromamba main env (pre-N.g layout
+    # at `.pyve/envs/<configured_name>/` — no /conda subdir). `--keep-testenv`
+    # therefore preserves `.pyve/envs/` as a whole and surgically deletes
+    # only the micromamba main-env subdir (identified from `.pyve/config`).
+    # The legacy `.pyve/testenvs/` directory is also preserved defensively
+    # in case the opportunistic migrator (`migrate_legacy_env_layout`)
+    # hasn't run yet on a v2.8 project. Granular per-`purpose` preservation
+    # is N.g's deterministic-migrator territory.
+    if [[ "$keep_testenv" == true ]]; then
+        if [[ -d ".pyve" ]]; then
+            if [[ -d ".pyve/envs" ]] || [[ -d ".pyve/testenvs" ]]; then
+                local main_env_subdir=""
+                if [[ -f ".pyve/config" ]]; then
+                    local cfg_backend
+                    cfg_backend="$(read_config_value backend 2>/dev/null || true)"
+                    if [[ "$cfg_backend" == "micromamba" ]]; then
+                        main_env_subdir="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+                    fi
+                fi
+                rm -rf ".pyve/config" 2>/dev/null || true
+                if [[ -n "$main_env_subdir" ]] && [[ -d ".pyve/envs/$main_env_subdir" ]]; then
+                    rm -rf ".pyve/envs/$main_env_subdir" 2>/dev/null || true
+                fi
+                find ".pyve" -mindepth 1 -maxdepth 1 \
+                    ! -name "envs" ! -name "testenvs" \
+                    -exec rm -rf {} + 2>/dev/null || true
+                success "Removed .pyve directory contents (preserved .pyve/envs/ test environments)"
+            else
+                rm -rf ".pyve"
+                success "Removed .pyve directory (config and micromamba environments)"
+            fi
+        fi
+    else
+        _purge_pyve_dir
+        purge_env_dir
+    fi
+
+    # Remove .envrc
+    _purge_envrc
+
+    # Remove .env (only if empty - v0.6.0 smart purge)
+    _purge_dotenv
+
+    # Clean .gitignore
+    _purge_gitignore "$venv_dir"
+
+    footer_box
+}
+
+_purge_version_file() {
+    local version_file
+
+    # Try to remove both possible version files
+    for version_file in ".tool-versions" ".python-version"; do
+        if [[ -f "$version_file" ]]; then
+            rm -f "$version_file"
+            success "Removed $version_file"
+        fi
+    done
+}
+
+_purge_venv() {
+    local venv_dir="$1"
+
+    if [[ -d "$venv_dir" ]]; then
+        rm -rf "$venv_dir"
+        success "Removed $venv_dir"
+    else
+        info "No virtual environment found at '$venv_dir'"
+    fi
+}
+
+_purge_pyve_dir() {
+    if [[ -d ".pyve" ]]; then
+        # Check if micromamba environments exist
+        if [[ -d ".pyve/envs" ]]; then
+            # Try to remove micromamba environment(s) properly first
+            local micromamba_path
+            micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
+
+            if [[ -n "$micromamba_path" ]] && [[ -x "$micromamba_path" ]]; then
+                # Get environment name from config if it exists
+                local env_name
+                if config_file_exists; then
+                    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+                fi
+
+                # If we have an env name, try to remove it
+                if [[ -n "$env_name" ]]; then
+                    info "Removing micromamba environment '$env_name'..."
+                    if "$micromamba_path" env remove -n "$env_name" -y 2>/dev/null; then
+                        success "Removed micromamba environment '$env_name'"
+                    else
+                        # If named removal fails, try prefix-based removal
+                        info "Named removal failed, trying prefix-based removal..."
+                        "$micromamba_path" env remove -p ".pyve/envs/$env_name" -y 2>/dev/null || true
+                    fi
+                else
+                    # No env name in config, try to find and remove any environments in .pyve/envs
+                    for env_dir in .pyve/envs/*; do
+                        if [[ -d "$env_dir" ]]; then
+                            info "Removing micromamba environment at '$env_dir'..."
+                            "$micromamba_path" env remove -p "$env_dir" -y 2>/dev/null || true
+                        fi
+                    done
+                fi
+            else
+                info "Micromamba not found, will force-remove .pyve directory"
+            fi
+        fi
+
+        # Now remove the .pyve directory
+        rm -rf ".pyve"
+        success "Removed .pyve directory (config and micromamba environments)"
+    fi
+}
+
+_purge_envrc() {
+    if [[ -f ".envrc" ]]; then
+        rm -f ".envrc"
+        success "Removed .envrc"
+    fi
+}
+
+_purge_dotenv() {
+    if [[ -f "$ENV_FILE_NAME" ]]; then
+        if is_file_empty "$ENV_FILE_NAME"; then
+            rm -f "$ENV_FILE_NAME"
+            success "Removed $ENV_FILE_NAME (was empty)"
+        else
+            warn "$ENV_FILE_NAME preserved (contains data). Delete manually if desired."
+        fi
+    fi
+}
+
+_purge_gitignore() {
+    local venv_dir="$1"
+
+    if [[ -f ".gitignore" ]]; then
+        remove_pattern_from_gitignore "$venv_dir"
+        remove_pattern_from_gitignore "$ENV_FILE_NAME"
+        remove_pattern_from_gitignore ".envrc"
+        success "Cleaned .gitignore"
+    fi
+}
+show_purge_help() {
+    cat << 'EOF'
+pyve purge - Remove all Python environment artifacts
+
+Usage:
+  pyve purge [<dir>] [options]
+
+Arguments:
+  <dir>                       Custom venv directory name (default: .venv)
+
+Options:
+  --keep-testenv              Preserve .pyve/envs/ (all dev/test runner envs)
+  --yes, -y                   Skip the destructive-confirmation prompt.
+                              Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
+
+Examples:
+  pyve purge                               # Remove .pyve and the venv (prompts)
+  pyve purge --yes                         # Remove without the prompt
+  pyve purge --keep-testenv                # Preserve the testenv across purge
+  pyve purge custom_venv                   # Remove a custom-named venv
 
 See `pyve --help` for the full command list.
 EOF

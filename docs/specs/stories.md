@@ -617,19 +617,29 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Renaming the tech-spec subsection to "Option 1 / relocated" outright.** Premature — only `init_project` is relocated; `purge_project` and `update_project` are still in `lib/commands/`. The heading carries a parenthetical "(partial Option 1 relocation in N.s.1+)" instead so the doc accurately reflects the intermediate state. Full rename lands when N.s.3 completes the triplet.
 - **Smoke-testing the micromamba branch.** The `pyve init --backend micromamba` path was not exercised in this story's manual smoke (micromamba isn't installed in this workspace), but the unit suite covers both backends — 1413/1413 ok includes the micromamba-side coverage that would surface any structural breakage from the relocation.
 
-### Story N.s.2: Relocate `purge_project` into the Python plugin [Planned]
+### Story N.s.2: Relocate `purge_project` into the Python plugin [Done]
 
 **Motivation.** Second function relocation per the N.s umbrella — `pyve purge`'s implementation follows `init_project` into the plugin file.
 
 **Tasks**
 
-- [ ] Move `purge_project` from [lib/commands/purge.sh](../../lib/commands/purge.sh) into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), placed after the existing N.o `python_pyve_plugin_purge` shim.
-- [ ] Move every `_purge_*` private helper (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`, plus any others currently in `lib/commands/purge.sh`) into the plugin file.
-- [ ] Move `show_purge_help` to the plugin file.
-- [ ] Delete `lib/commands/purge.sh`; remove its explicit `source` line from [pyve.sh](../../pyve.sh).
-- [ ] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): mark `purge_project`'s row as relocated.
-- [ ] Bats coverage (RED first) in [tests/unit/test_n_s_2_purge_relocation.bats](../../tests/unit/test_n_s_2_purge_relocation.bats): same shape as N.s.1.
-- [ ] Behavioral regression: `pyve purge --yes` on a fresh-after-`pyve init` dir removes `.venv`, `.pyve/`, `.envrc`, `.env` and leaves user-authored files untouched; `pyve --verbose purge --yes` still surfaces the N.r purge_inventory; full unit suite green.
+- [x] Move `purge_project` from `lib/commands/purge.sh` into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), appended after `show_init_help` (continuing the end-of-file convention from N.s.1).
+- [x] Move every `_purge_*` private helper (6 in total: `_purge_version_file`, `_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`) into the plugin file. Verbatim move; no body or signature changes.
+- [x] Move `show_purge_help` to the plugin file per the F-table per-command-help convention.
+- [x] Delete `lib/commands/purge.sh`; remove the 7-line `if [[ -f ... ]]; then source ...; fi` block from `pyve.sh`'s explicit sourcing block.
+- [x] Update the lifecycle-hooks subsection in [tech-spec.md](tech-spec.md): table row for `python_pyve_plugin_purge` now reads "**Relocated to plugin.sh in N.s.2**" (matching N.s.1's row shape for init).
+- [x] Bats coverage (RED first) in [tests/unit/test_n_s_2_purge_relocation.bats](../../tests/unit/test_n_s_2_purge_relocation.bats): 10 tests covering `purge_project` + 6 `_purge_*` helpers + `show_purge_help` grep-findable in plugin.sh, `lib/commands/purge.sh` non-existence, no `lib/commands/purge.sh` reference in `pyve.sh`. RED confirmed against baseline (10/10 fail); GREEN after the relocation (10/10 pass).
+- [x] Behavioral regression: smoke test `pyve init --backend venv --no-direnv` followed by `pyve purge --yes` on a fresh dir correctly removed `.venv`, `.pyve/`, `.tool-versions`, `.env` and stripped Pyve sections from `.gitignore`, leaving `pyve.toml` (user-authored) and the now-empty `.gitignore` untouched — exactly the pre-relocation behavior. Full unit suite: **1423 ok / 0 not ok** (1413 N.s.1 baseline + 10 new N.s.2 tests).
+
+**Sidecar test-file and comment updates.** Bulk-substituted `lib/commands/purge.sh` → `lib/plugins/python/plugin.sh` in 2 test files: [test_n_o_python_plugin_lifecycle.bats](../../tests/unit/test_n_o_python_plugin_lifecycle.bats) (explicit `source` line) and [test_testenvs_activate.bats](../../tests/unit/test_testenvs_activate.bats) (legacy-path regression test that greps multiple lib/commands files). Two comment lines inside plugin.sh that referenced "lib/commands/purge.sh" as the home of purge_project — one in the N.r purge_inventory header comment, one inside N.s.1's relocated init_project header — updated to reflect that purge_project now co-lives in plugin.sh.
+
+**Cross-command callsite check.** `init_project --force` calls `purge_project --keep-testenv --yes`. Both functions now live in plugin.sh; the call is internal to the file. Bash function-name resolution is global (not source-file-scoped), so the cross-call works identically pre- and post-relocation. Verified by the round-trip smoke test (which exercises the `--force` path via destructive-confirmation skip; not the bypass-only path, but the function-resolution semantics are the same).
+
+**Out of scope (flagged, kept out).**
+
+- **Refactoring the `_purge_*` helpers themselves.** Helpers moved verbatim; bodies and signatures unchanged.
+- **Smoke-testing `--keep-testenv`.** The branch is exercised by unit tests (`test_purge_keep_testenv.bats` and related; covered by the 1423-test green suite). Manual smoke kept to the default-purge round-trip for brevity.
+- **Smoke-testing the micromamba branch.** Same rationale as N.s.1; micromamba isn't installed in this workspace. Unit-suite coverage spans both backends.
 
 ### Story N.s.3: Relocate `update_project` into the Python plugin [Planned]
 
