@@ -56,33 +56,15 @@ teardown() {
 # sentinel-wrapped snippet EMITTER (stdout), self-resolving from
 # `.pyve/config`. The emitter contract (self-resolution, no-write, PC-1
 # gate, dispatch routing) is owned by
-# tests/unit/test_n_ae_2_python_activate_emitter.bats. The former
-# byte-equivalence-via-`.envrc` tests were retired with that change: the
-# legacy file-write path now lives in the bp shims (exercised directly
-# below), and the composed `.envrc` byte-equivalence target moves to
-# compose_envrc (N.ae.4).
+# tests/unit/test_n_ae_2_python_activate_emitter.bats. The composed
+# `.envrc` byte-equivalence target lives in compose_envrc (N.ae.4).
 #
-# What remains pinned here: the bp shims still write the same legacy
-# `.envrc` (the interim init path calls them directly), and the snippet
-# composer is unchanged.
+# Story N.al retired the legacy file-write path entirely — the
+# `bp_dispatch <backend> activate` shims (`{venv,micromamba}_pyve_bp_activate`)
+# and `write_envrc_template` are gone; the composer is the only `.envrc`
+# emitter now. The bp-shim `.envrc`-write tests that lived here were
+# removed with them. What remains: the snippet composer below.
 # ════════════════════════════════════════════════════════════════════
-
-@test "bp shim (venv): bp_dispatch venv activate writes the legacy .envrc" {
-    VERSION_MANAGER=""
-    rm -f .envrc
-    bp_dispatch venv activate ".venv" "demo"
-    [ -f .envrc ]
-    grep -qF 'PATH_add ".venv/bin"' .envrc
-    grep -qF 'export VIRTUAL_ENV="$PWD/.venv"' .envrc
-}
-
-@test "bp shim (micromamba): bp_dispatch micromamba activate writes the legacy .envrc" {
-    VERSION_MANAGER=""
-    rm -f .envrc
-    bp_dispatch micromamba activate ".pyve/envs/test-env" "test-env"
-    [ -f .envrc ]
-    grep -qF 'export CONDA_PREFIX="$PWD/.pyve/envs/test-env"' .envrc
-}
 
 # ════════════════════════════════════════════════════════════════════
 # Snippet composer — the lines that go through validate_envrc_snippet.
@@ -108,6 +90,8 @@ teardown() {
 @test "snippet: micromamba shape passes validation too" {
     local snippet
     snippet="$(_python_pyve_plugin_envrc_snippet micromamba ".pyve/envs/test-env" "test-env")"
+    # CONDA_PREFIX shape (migrated from the retired bp-shim .envrc test, N.al).
+    [[ "$snippet" == *'export CONDA_PREFIX="$PWD/.pyve/envs/test-env"'* ]]
     run validate_envrc_snippet "$snippet"
     [ "$status" -eq 0 ]
 }

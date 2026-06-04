@@ -109,21 +109,6 @@ teardown() {
 }
 
 # ============================================================
-# gitignore template ignores the new layout (.pyve/envs)
-# ============================================================
-
-@test "gitignore template: pyve-managed section ignores .pyve/envs (not .pyve/testenv)" {
-    # write_gitignore_template writes to ./.gitignore in cwd.
-    write_gitignore_template
-    grep -qxF ".pyve/envs" .gitignore
-    # Legacy entry not written for new projects.
-    if grep -qxF ".pyve/testenv" .gitignore; then
-        echo "stale legacy entry '.pyve/testenv' present in fresh .gitignore" >&2
-        false
-    fi
-}
-
-# ============================================================
 # pyve update wiring — private wrapper exists and is referenced
 # ============================================================
 

@@ -192,6 +192,18 @@ EOF
     [[ "$output" == *"export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1"* ]]
 }
 
+# Migrated from test_asdf_compat.bats J.b (Story N.al) — the opt-out is now
+# enforced on the composed `.envrc` path. is_asdf_active honors
+# PYVE_NO_ASDF_COMPAT, so the guard is suppressed even when asdf is active.
+@test "composer: asdf guard absent when PYVE_NO_ASDF_COMPAT=1 (asdf otherwise active)" {
+    _config_venv
+    _load_pure_python
+    VERSION_MANAGER="asdf"
+    PYVE_NO_ASDF_COMPAT=1
+    run _compose_envrc_body
+    [[ "$output" != *"ASDF_PYTHON_PLUGIN_DISABLE_RESHIM"* ]]
+}
+
 # ════════════════════════════════════════════════════════════════════
 # Wiring: explicit source in pyve.sh.
 # ════════════════════════════════════════════════════════════════════

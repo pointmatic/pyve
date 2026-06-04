@@ -71,18 +71,6 @@ teardown() {
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Backend-provider activate shims (absorbed from N.l).
-# ════════════════════════════════════════════════════════════════════
-
-@test "python plugin: venv_pyve_bp_activate is defined" {
-    declare -F venv_pyve_bp_activate >/dev/null
-}
-
-@test "python plugin: micromamba_pyve_bp_activate is defined" {
-    declare -F micromamba_pyve_bp_activate >/dev/null
-}
-
-# ════════════════════════════════════════════════════════════════════
 # Plugin contract — detect hook.
 # ════════════════════════════════════════════════════════════════════
 #

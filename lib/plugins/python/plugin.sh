@@ -6,14 +6,17 @@
 #
 # First reference implementation of the plugin contract from N.k.
 # Re-seats the Python ecosystem behind the contract. This story
-# implements three hooks plus the backend-provider activate shims
-# absorbed from N.l's transition state:
+# implements the plugin-contract hooks:
 #
 #   python_pyve_plugin_manifest_namespace   — returns "python"
 #   python_pyve_plugin_register_backends    — bp_register venv + micromamba
 #   python_pyve_plugin_detect               — scaffold-time file-signal scan
-#   venv_pyve_bp_activate                   — backend-provider activate shim
-#   micromamba_pyve_bp_activate             — backend-provider activate shim
+#
+# (The N.l-era backend-provider activate shims `venv_pyve_bp_activate` /
+# `micromamba_pyve_bp_activate` and the legacy `write_envrc_template` /
+# `write_gitignore_template` writer chains were retired in Story N.al once
+# the composition layer (N.ae/N.af) fully superseded them; activation now
+# flows through `python_pyve_plugin_activate` → `_python_pyve_plugin_envrc_snippet`.)
 #
 # Lifecycle hooks (init / purge / update / check / status / run /
 # test) stay as no-op defaults from contract.sh in N.n; they land in
@@ -95,24 +98,6 @@ python_pyve_plugin_detect() {
     else
         printf 'none'
     fi
-}
-
-#------------------------------------------------------------
-# Backend-provider activate shims (absorbed from lib/commands/init.sh
-# per N.n; previously written into init.sh as N.l transition state).
-#
-# The shims forward `bp_dispatch <backend> activate <env_path> <env_name>`
-# to the existing `_init_direnv_*` helpers. The signature is unified
-# across backends — venv ignores env_name (uses cwd basename via
-# _init_direnv_venv); micromamba uses both.
-#------------------------------------------------------------
-
-venv_pyve_bp_activate() {
-    _init_direnv_venv "$1"
-}
-
-micromamba_pyve_bp_activate() {
-    _init_direnv_micromamba "$2" "$1"
 }
 
 #------------------------------------------------------------
@@ -420,10 +405,10 @@ python_pyve_plugin_test() {
 #------------------------------------------------------------
 
 # Compose the plugin-owned `.envrc` snippet (5 lines: PATH_add +
-# 4 exports). Output is byte-equivalent to the corresponding region
-# of write_envrc_template's emission, modulo whitespace at the end.
-# Mirrors write_envrc_template's `env_root_expr` rule: absolute paths
-# pass through; relative paths get prefixed with `$PWD/`.
+# 4 exports). `env_root_expr` rule: absolute env-root paths pass through;
+# relative paths get prefixed with `$PWD/` so direnv resolves them against
+# the `.envrc` directory rather than the caller's cwd. (This snippet
+# replaced the retired `write_envrc_template`'s emission — Story N.al.)
 _python_pyve_plugin_envrc_snippet() {
     local backend="$1"
     local env_path="$2"
@@ -468,7 +453,7 @@ EOF
 # `.gitignore`. Output flows through validate_gitignore_snippet
 # (Story N.m PC-1 gate) before being written. Composer-owned lines
 # (macOS `.DS_Store`, Pyve-managed `.pyve/envs`, the dynamic venv
-# directory) stay in `write_gitignore_template` — same plugin-vs-
+# directory) are emitted by `lib/gitignore_composer.sh` — same plugin-vs-
 # infrastructure boundary as N.q used for `.envrc`.
 #------------------------------------------------------------
 
@@ -734,10 +719,11 @@ EOF
 #
 # Init-private helpers (per project-essentials F): `_init_` prefix
 # on all single-caller helpers. Includes
-# `_init_run_project_guide_hooks` (per audit F-10) and the six
-# config-writers (`_init_python_version`, `_init_venv`,
-# `_init_direnv_venv`, `_init_direnv_micromamba`, `_init_dotenv`,
-# `_init_gitignore`).
+# `_init_run_project_guide_hooks` (per audit F-10) and the surviving
+# config-writers (`_init_python_version`, `_init_venv`, `_init_dotenv`).
+# The `.envrc` / `.gitignore` writers (`_init_direnv_*`, `_init_gitignore`)
+# were retired in Story N.al — `init_project` composes those files through
+# `compose_project_envrc` / `compose_project_gitignore` instead.
 #============================================================
 
 # Run the project-guide post-init hooks: install the package into the
@@ -2088,21 +2074,6 @@ _init_venv() {
     fi
 }
 
-_init_direnv_venv() {
-    local venv_dir="$1"
-    local project_name
-    project_name="$(basename "$(pwd)")"
-
-    write_envrc_template "$venv_dir/bin" "VIRTUAL_ENV" "$venv_dir" "venv" "$project_name"
-}
-
-_init_direnv_micromamba() {
-    local env_name="$1"
-    local env_path="$2"
-
-    write_envrc_template "$env_path/bin" "CONDA_PREFIX" "$env_path" "micromamba" "$env_name"
-}
-
 _init_dotenv() {
     local use_local_env="$1"
 
@@ -2127,19 +2098,6 @@ _init_dotenv() {
     chmod 600 "$ENV_FILE_NAME"
 }
 
-_init_gitignore() {
-    local venv_dir="$1"
-    local section="# Pyve virtual environment"
-
-    # Rebuild .gitignore: Pyve-managed template at top, user entries below.
-    # Since H.e.2a, the template bakes in .pyve/envs, .pyve/testenvs, .envrc,
-    # .env, and .vscode/settings.json — the only pattern still inserted
-    # dynamically is the user-overridable venv directory name.
-    write_gitignore_template
-    insert_pattern_in_gitignore_section "$venv_dir" "$section"
-
-    success "Updated .gitignore"
-}
 # End-of-init "Next steps:" summary (Story L.l).
 #
 # Replaces the ad-hoc trailing `info` lines with a single coherent

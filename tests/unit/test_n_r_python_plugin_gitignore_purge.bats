@@ -15,9 +15,12 @@
 #     behavior is unchanged.
 #
 # Re-seat in N.r:
-#   - write_gitignore_template pulls Python-ecosystem patterns from
-#     the plugin and validates them; macOS / pyve-managed lines stay
-#     composer-owned (same Option-(a) boundary as N.q used for .envrc).
+#   - the Python plugin's gitignore_entries hook supplies the
+#     Python-ecosystem patterns (validated via PC-1); macOS / pyve-managed
+#     lines stay composer-owned (same Option-(a) boundary as N.q used for
+#     .envrc). The composed write itself lives in lib/gitignore_composer.sh
+#     (the legacy write_gitignore_template was retired in N.al; its
+#     emission is covered by test_n_af_gitignore_composer.bats).
 #   - purge_project pulls the inventory as a data interface (no
 #     removal-decision change in v3.0; the seam is in place for
 #     future plugins).
@@ -130,59 +133,3 @@ teardown() {
     [[ "$output" == *"authored"* ]]
 }
 
-# ════════════════════════════════════════════════════════════════════
-# .gitignore re-seat: write_gitignore_template pulls from the plugin.
-#
-# Byte-equivalence: the file write_gitignore_template produces
-# should match the legacy hardcoded template line-for-line (modulo
-# the documented boundary — pyve-managed + macOS lines stay
-# composer-owned).
-# ════════════════════════════════════════════════════════════════════
-
-@test ".gitignore re-seat: write_gitignore_template still emits Python patterns" {
-    write_gitignore_template
-    run cat .gitignore
-    [[ "$output" == *"__pycache__"* ]]
-    [[ "$output" == *"*.pyc"* ]]
-    [[ "$output" == *".pytest_cache/"* ]]
-}
-
-@test ".gitignore re-seat: write_gitignore_template still emits Jupyter patterns" {
-    write_gitignore_template
-    run cat .gitignore
-    [[ "$output" == *".ipynb_checkpoints/"* ]]
-}
-
-@test ".gitignore re-seat: write_gitignore_template still emits macOS infrastructure" {
-    write_gitignore_template
-    run cat .gitignore
-    [[ "$output" == *".DS_Store"* ]]
-}
-
-@test ".gitignore re-seat: write_gitignore_template still emits Pyve-managed infrastructure" {
-    write_gitignore_template
-    run cat .gitignore
-    [[ "$output" == *".pyve/envs"* ]]
-    [[ "$output" == *".envrc"* ]]
-    [[ "$output" == *".vscode/settings.json"* ]]
-}
-
-@test ".gitignore re-seat: malicious plugin emission is rejected (PC-1)" {
-    # Override the gitignore hook with one that emits a smuggling
-    # pattern. write_gitignore_template must catch it via
-    # validate_gitignore_snippet and abort (or skip the plugin
-    # contribution) BEFORE writing.
-    python_pyve_plugin_gitignore_entries() {
-        printf '$(rm -rf /)\n'
-    }
-    rm -f .gitignore
-    # Either abort (non-zero exit, no .gitignore) OR write without
-    # the rejected line. Test the latter: the file is created with
-    # infrastructure but no plugin smuggling content.
-    write_gitignore_template 2>&1 || true
-    if [[ -f .gitignore ]]; then
-        run cat .gitignore
-        [[ "$output" != *'rm -rf'* ]]
-        [[ "$output" != *'$('* ]]
-    fi
-}
