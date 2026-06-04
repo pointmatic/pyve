@@ -1116,19 +1116,67 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Document user options for unconventional paths in [features.md](features.md): (a) type a custom path at the interactive prompt, (b) pass `--node-path=<path>` for non-interactive, (c) edit `pyve.toml` after init.
 - [x] Bats unit + integration tests: 0-match prompt path; 1-match informational message; 2+ match prompt; `--node-path` non-interactive; round-trip idempotence (re-running `pyve init` on a scaffolded polyglot project is a no-op). ([tests/unit/test_n_ad_polyglot_scaffold.bats](../../tests/unit/test_n_ad_polyglot_scaffold.bats), [tests/integration/test_node_detection.py](../../tests/integration/test_node_detection.py))
 
-### Story N.ae: `lib/envrc_composer.sh` + PC-2 atomic-write safety [Planned]
+### Story N.ae: `lib/envrc_composer.sh` + PC-2 atomic-write safety (umbrella) [Done]
 
 **Motivation.** Resolves **PC-2** from the Phase N plan. Today each plugin emits its own `.envrc` snippet (per N.q / N.y); N.ae stands up the central composer that gathers all active plugins' snippets, merges them into one `.envrc` body with sentinel-marked plugin sections, and writes atomically with `.envrc.prev` backup. User-authored content below the managed section is preserved.
 
+**Integration spike (completed first, per developer direction at the announce gate).** The composer ↔ plugin-`activate` boundary was unproven: Node's `activate` emits a sentinel-wrapped snippet to stdout while Python's *writes* the whole `.envrc` (N.q byte-equiv tests pin that), and the main `.venv` is not named by any `[env.<name>]` block. A time-boxed integration spike probed the contract against all three project shapes and recorded the decision in [spike-n-ae-envrc-composer-contract.md](spike-n-ae-envrc-composer-contract.md). **Contract decided (shared context for N.ae.2–N.ae.5):** (1) uniform `activate` = sentinel-wrapped snippet emitter taking a single optional `<path>` (Node conforms; Python refactored to self-resolve backend/env_path/env_name from the loaded manifest + `.venv` convention, no file write); (2) `compose_envrc` enumerates `plugin_list_active`, dispatches `activate "$(manifest_get_plugin_path)"`, validates **plugin sections only** (composer infra — dotenv block, asdf guard — is added after validation since it cannot pass PC-1), assembles the `# >>> pyve:managed:start >>>` … `# <<< pyve:managed:end <<<` envelope, and atomic-writes with `.envrc.prev`; (3) `init`/`update` must `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest` *after* writing `pyve.toml`, then call `compose_envrc` (because `main()` loaded the pre-init empty manifest). **Known limitation L1:** custom `pyve init <dir>` venv name is not in the manifest; composer assumes `.venv` (recording it is a follow-up).
+
+**Placement note — split into N.ae.1–N.ae.5.** Authored as the planning header for the breakdown below; the breakdown decision itself is the work captured by this umbrella story (status `[Done]` on the diff that adds the five sub-stories). The surface bundles three distinct concerns with different risk profiles — a plugin contract refactor (touches N.q tests), a self-contained new primitive, and surgery on the heavily-tested `pyve init` path — so it splits into one-concern-per-commit sub-stories rather than one large diff. Implementation happens in N.ae.1 onward.
+
+### Story N.ae.1: Integration spike — envrc-composer ↔ activate contract [Done]
+
+**Motivation.** Prove the composer ↔ plugin-`activate` integration boundary before committing a refactor of the heavily-tested `pyve init` path. Deliverable is a documented contract decision, not production code (throwaway probes deleted after capturing findings).
+
 **Tasks**
 
-- [ ] New `lib/envrc_composer.sh` with `compose_envrc <output_path>`: enumerates active plugins via `plugin_list_active` (N.k), dispatches each plugin's `pyve_plugin_activate` hook, concatenates the snippets with sentinel markers (`# >>> pyve:plugin:<name>:activate >>>` … `# <<< pyve:plugin:<name>:activate <<<`).
-- [ ] **Atomic write pattern**: compose to `<output_path>.tmp` first; validate the entire body parses via PC-1's `validate_envrc_snippet` (N.m); if valid, `mv -f <output_path>.tmp <output_path>`; if invalid, halt with a precise per-plugin error and leave the existing `.envrc` untouched.
-- [ ] **`.envrc.prev` backup**: before the `mv`, copy the current `.envrc` to `.envrc.prev`. One-step rollback path: `mv -f .envrc.prev .envrc`.
-- [ ] **User-content preservation**: read the existing `.envrc`, identify content below the managed-section sentinels (`# <<< pyve:managed:end <<<` marker), preserve it verbatim in the new body. Initial scaffold (no existing `.envrc`) emits the managed section plus a trailing comment block inviting user additions below the end marker.
+- [x] Probe `plugin_list_active` + `manifest_get_plugin_path` + per-fixture arg reconstruction against Python-only / Node-only / polyglot shapes; confirm the PC-1 validation boundary (plugin sections pass; composer infra fails → excluded) and the user-content-preservation / atomic-write / `.envrc.prev` mechanics empirically.
+- [x] Record the contract decision + known limitations in [spike-n-ae-envrc-composer-contract.md](spike-n-ae-envrc-composer-contract.md). Six open questions (enumeration, dispatch args, Python reconstruction, validation boundary, PC-2 mechanics, init/update ordering) answered.
+
+### Story N.ae.2: Activate-contract unification — Python `activate` → snippet emitter [Planned]
+
+**Motivation.** Spike decision 1. Today `python_pyve_plugin_activate` *writes* the whole `.envrc` via `bp_dispatch`; Node's emits a sentinel-wrapped snippet to stdout. Unify on the snippet-emitter contract so the composer (N.ae.3) can assemble both uniformly.
+
+**Tasks**
+
+- [ ] Refactor `python_pyve_plugin_activate` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)) into a sentinel-wrapped snippet emitter (`# >>> pyve:plugin:python:activate >>>` … `# <<< pyve:plugin:python:activate <<<`) on stdout — **no file write**. Self-resolve backend (default/root env from the loaded manifest), `env_path` (`.venv` for venv by convention; `resolve_env_path root` for micromamba), and `env_name` (`PYVE_PROJECT_NAME`).
+- [ ] Keep the `*_pyve_bp_activate` shims + `_init_direnv_*` helpers in place for any non-composer caller, but remove the file-write from the *activate hook* path.
+- [ ] Update N.q's byte-equivalence tests ([tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats)) to the snippet-emitter contract: assert the emitted section shape (venv + micromamba) and PC-1-clean output, rather than a written `.envrc`.
+- [ ] Confirm N.y (Node activate) tests still pass unchanged.
+
+### Story N.ae.3: `compose_envrc` body assembly + PC-1 validation [Planned]
+
+**Motivation.** The composer's pure assembly half: gather active plugins' sections into one composed body with the managed-section envelope, validating plugin contributions through PC-1. No filesystem writes yet (that's N.ae.4) — the body is produced to stdout so it is testable without side effects.
+
+**Tasks**
+
+- [ ] New `lib/envrc_composer.sh` with `_compose_envrc_body`: enumerate `plugin_list_active` (N.k); for each, `plugin_dispatch <name> activate "$(manifest_get_plugin_path <name>)"`; concatenate the sentinel-wrapped sections.
+- [ ] **PC-1 boundary** (spike finding): validate the concatenated **plugin sections** via `validate_envrc_snippet` (N.m). On failure, return non-zero with the offending plugin/line. Composer-owned infrastructure (header, `if [[ -f ".env" ]]; then dotenv; fi`, the asdf reshim guard when `is_asdf_active`) is appended *after* validation — it cannot pass the PC-1 allow-list and is static pyve text.
+- [ ] Assemble the envelope: header → `# >>> pyve:managed:start >>>` → plugin sections → composer infra → `# <<< pyve:managed:end <<<`. Emit to stdout.
 - [ ] Explicit `source lib/envrc_composer.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule.
-- [ ] Retire today's direct callsites in [lib/commands/init.sh](../../lib/commands/init.sh) and [lib/commands/update.sh](../../lib/commands/update.sh) that emit `.envrc` per-plugin; they now call `compose_envrc` instead.
-- [ ] Bats + integration tests: composition succeeds with one plugin; with two plugins (polyglot); atomic-write failure leaves the existing `.envrc` untouched; `.envrc.prev` rollback restores prior state; user content below the managed section round-trips verbatim.
+- [ ] Bats tests: one-plugin (python) body; two-plugin (polyglot python+node) body with both sections present and correctly ordered; invalid plugin section → non-zero + offending line on stderr; composer infra present and outside the validated region.
+
+### Story N.ae.4: PC-2 write safety — atomic write, `.envrc.prev`, user-content preservation [Planned]
+
+**Motivation.** Resolves **PC-2** proper: the durable write half of the composer. `compose_envrc <output_path>` wraps `_compose_envrc_body` (N.ae.3) with crash-safe write semantics and preserves user-authored content below the managed end-marker.
+
+**Tasks**
+
+- [ ] `compose_envrc <output_path>`: write `_compose_envrc_body` output to `<output_path>.tmp`; on body/validation failure, halt and leave the existing `<output_path>` **untouched** (no `.tmp` promotion).
+- [ ] **`.envrc.prev` backup**: before promotion, copy the current `<output_path>` to `<output_path>.prev`. Document the one-step rollback (`mv -f .envrc.prev .envrc`). Promote with `mv -f <output_path>.tmp <output_path>`.
+- [ ] **User-content preservation**: read the existing `<output_path>`, capture content below the `# <<< pyve:managed:end <<<` marker (`awk` below-marker pattern), re-emit it verbatim below the new managed section. Fresh scaffold (no existing file) emits the managed section plus a trailing comment block inviting user additions below the end marker.
+- [ ] Bats + integration tests: atomic-write failure (mock plugin emits an invalid section) leaves the existing `.envrc` untouched; `.envrc.prev` rollback restores prior state; user content below the managed section round-trips verbatim; fresh-scaffold invitation block present.
+
+### Story N.ae.5: Init/update rewiring — retire direct `.envrc` callsites [Planned]
+
+**Motivation.** Spike decision 3. Replace the per-plugin direct `.envrc` emission in the live `init`/`update` paths with the composer. The riskiest integration (heavily-tested init flow), isolated to its own commit.
+
+**Tasks**
+
+- [ ] Retire the direct per-plugin `.envrc` emission in `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), both the venv and micromamba branches — `lib/commands/init.sh` was relocated here by N.s) and `update_project` ([lib/commands/update.sh](../../lib/commands/update.sh)).
+- [ ] At each callsite, after the `pyve.toml` write: `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest` → `compose_envrc .envrc` (the post-write reload is required because `main()` loaded the pre-init empty manifest). Preserve the `--no-direnv` skip (composer not called on that path).
+- [ ] Integration tests across the three project shapes (Python-only, Node-only, polyglot): `.envrc` composed correctly; polyglot `.envrc` carries both plugin sections; re-run idempotence; user content preserved on refresh.
+- [ ] Verify the full bats + integration suites stay green (init flow is the highest-regression-risk surface in Phase N).
 
 ### Story N.af: Composed `.gitignore` self-heal across plugins [Planned]
 
