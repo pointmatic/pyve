@@ -1211,22 +1211,22 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Sentinel markers `# >>> pyve:managed:gitignore >>>` … `# <<< pyve:managed:gitignore <<<`. The start marker is the **first** emitted line (header comment lives inside the section) so re-compose doesn't capture composer text as "user content above" — `compose_gitignore` preserves content **above and below** the markers verbatim.
 - [x] **PC-1 safety**: each plugin's contribution passes through `validate_gitignore_snippet` (N.m); a failing contribution halts the compose (non-zero).
 - [x] **Atomic write + `.gitignore.prev` backup** (`compose_gitignore`): `.tmp` → `.prev` → `mv`; compose failure leaves the file untouched. Legacy file (no markers) is carried below the managed section minus managed-duplicate lines (preserves user ignores without regressing today's `write_gitignore_template` dedup-append behavior) and backed up. (Multi-line awk input passed via process substitution, not `-v`, to dodge BSD awk's "newline in string".)
-- [x] Retire the direct `.gitignore` self-heal callsites. `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — relocated here by N.s; both venv and micromamba branches) and `update_project` now call `compose_project_gitignore` (reload manifest/registry, then compose — mirrors N.ae.5's `compose_project_envrc`) *after* `.pyve/config` + `pyve.toml` exist. The composer reads `venv.directory` from `.pyve/config` to ignore a custom venv dir. **Note:** `write_gitignore_template` + `_init_gitignore` are now unused by the init/update path but remain (still directly unit-tested in `test_utils.bats` / `test_n_r_*`); removing them is a separate cleanup to avoid churning those suites.
+- [x] Retire the direct `.gitignore` self-heal callsites. `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — relocated here by N.s; both venv and micromamba branches) and `update_project` now call `compose_project_gitignore` (reload manifest/registry, then compose — mirrors N.ae.5's `compose_project_envrc`) *after* `.pyve/config` + `pyve.toml` exist. The composer reads `venv.directory` from `.pyve/config` to ignore a custom venv dir. **Note:** `write_gitignore_template` + `_init_gitignore` are now unused by the init/update path but remain (still directly unit-tested in `test_utils.bats` / `test_n_r_*`). Their removal — together with the `.envrc` side's analogously-orphaned `write_envrc_template` / `_init_direnv_*` / activate shims — is planned as **[Story N.al](#story-nal-retire-the-pre-composer-template-writers--their-now-stale-tests-planned)** (late in N-4, after the composed check/status/purge consumers land).
 - [x] Bats tests ([tests/unit/test_n_af_gitignore_composer.bats](../../tests/unit/test_n_af_gitignore_composer.bats), 15): one-plugin body; polyglot (python + node path-prefixed); cross-source dedupe; PC-1 rejection; fresh scaffold; above/below preservation; legacy-file preservation + dedup; `.gitignore.prev` backup; idempotence; `compose_project_gitignore` reload. Integration ([tests/integration/test_envrc_composition.py](../../tests/integration/test_envrc_composition.py)): real `pyve init` composes a managed `.gitignore` (markers + `__pycache__`); `pyve update` refreshes it. Full bats suite green (**1614 tests**); composer shellcheck-clean.
 
-### Story N.ag: Composed `pyve check` with severity roll-up [Planned]
+### Story N.ag: Composed `pyve check` with severity roll-up [Done]
 
 **Motivation.** Today `pyve check` only knows the Python plugin's diagnostics (per N.p); N.ag stands up the central composer that dispatches `pyve_plugin_check` against every active plugin/env, aggregates per-plugin sections in the output, and computes the worst-severity exit code per the **pass / warn / error** ladder.
 
 **Tasks**
 
-- [ ] In [lib/commands/check.sh](../../lib/commands/check.sh), replace today's direct Python check with `compose_check` that iterates `plugin_list_active`, dispatches `pyve_plugin_check` per plugin, and emits per-plugin sections in the output.
-- [ ] **Severity ladder**: `pass` (clean), `warn` (advisory; e.g., `manual_steps` present, TypeScript advisory from N.x, etc.), `error` (genuine failure). Each plugin's hook returns the worst severity across its checks; the composer aggregates by taking the worst across all plugins.
-- [ ] **Exit code semantics**: `error` → nonzero exit (code 2); `warn` → zero exit with advisory text; `pass` → zero exit, clean output.
-- [ ] **No-Python noise suppression seam**: when no Python surface is declared in `pyve.toml` AND no Python files detected, the Python plugin's check hook contributes nothing (full implementation lands in N.aj — N.ag exposes the seam by routing through the active-plugin gate).
-- [ ] **Path-aware**: when a visitor plugin (path != ".") is active, its check section labels are prefixed with the path (e.g., `[Node @ src/frontend]`) for cross-plugin disambiguation in monorepo output.
-- [ ] Reference [Story N.d.1](#story-nd1-pre-flight-assert_python_resolvable--convert-asdf-shim-trap-into-an-actionable-pyve-error-done): its `assert_python_resolvable` pre-flight diagnostic is already plumbed into the Python plugin's check surface; N.ag's composer surfaces its output through the new severity ladder.
-- [ ] Bats + integration tests: composition with one plugin pass; two plugins one-pass-one-warn (exit 0, warning text); one-pass-one-error (nonzero exit); severity roll-up correctness across all pairwise combinations.
+- [x] New [lib/check_composer.sh](../../lib/check_composer.sh) — `compose_check` iterates `plugin_list_active`, dispatches `pyve_plugin_check` per plugin, and emits per-plugin sections. (The story named `lib/commands/check.sh`, but `check_environment` was relocated into the Python plugin in Story N.s.4; the composer lives in its own `lib/check_composer.sh`, a sibling of `lib/envrc_composer.sh` / `lib/gitignore_composer.sh`. Wired into the `check)` arm in [pyve.sh](../../pyve.sh).)
+- [x] **Severity ladder**: `pass` (clean), `warn` (advisory; e.g., version drift, missing `.env`), `error` (genuine failure). A plugin's hook return code maps to a severity (rc 0 → pass, rc 2 → warn, rc 1/other → error — matching `check_environment`'s long-standing 0/1/2 and the Node hook's 0/1); the composer takes the worst across all plugins.
+- [x] **Exit code semantics**: `error` → exit 2; `warn` → exit 0 with advisory text; `pass` → exit 0. (Deliberate divergence from the pre-composition single-plugin contract of error → 1 / warn → 2; the composed surface is authoritative from v3.0. `show_check_help` + `tests/unit/test_check.bats` updated accordingly.)
+- [x] **No-Python noise suppression seam**: the composer only runs checks for plugins in `plugin_list_active`, so a Node-only project that declares `[plugins.node]` never registers Python and its check contributes nothing. (File-level detection refinement lands in N.aj.)
+- [x] **Path-aware**: visitor plugins (path != ".") get a path-prefixed section label (`[node @ src/frontend]`) via `manifest_get_plugin_path`; root plugins get a bare label.
+- [x] Reference [Story N.d.1](#story-nd1-pre-flight-assert_python_resolvable--convert-asdf-shim-trap-into-an-actionable-pyve-error-done): its `assert_python_resolvable` pre-flight diagnostic is already plumbed into the Python plugin's check surface; N.ag's composer surfaces its output through the new severity ladder.
+- [x] Bats + integration tests ([tests/unit/test_n_ag_compose_check.bats](../../tests/unit/test_n_ag_compose_check.bats)): single-plugin pass/warn/error; two-plugin pairwise roll-up; worst-severity escalation; path-aware labels; active-plugin gate; plus two `bash pyve.sh check` e2e tests (single-banner, polyglot python+node sections with path label + error roll-up).
 
 ### Story N.ah: Composed `pyve status` aggregation [Planned]
 
@@ -1277,7 +1277,24 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [ ] **CI hook**: regression test runs as part of `make test-perf` (new target) and as part of `make test` (composed default). Failing latency test fails CI.
 - [ ] Update [tech-spec.md](tech-spec.md) with the latency budget contract: "Every plugin's `pyve_plugin_activate` must complete within 50ms p95 over 15 timed runs; budget enforced by [tests/perf/test_plugin_activation_latency.bats](../../tests/perf/test_plugin_activation_latency.bats)."
 
-### Story N.al: End-to-end regression sweep — polyglot test matrix [Planned]
+### Story N.al: Retire the pre-composer template writers + their now-stale tests [Planned]
+
+**Motivation.** Stories N.ae (`.envrc`) and N.af (`.gitignore`) replaced the per-backend template writers with the composition layer. Their whole call chains are now **production-orphaned** (verified: no caller in `lib/commands/`, `lib/testenvs.sh`, `lib/envs.sh`, `init_project`, or `update_project` — only the functions themselves and their tests reference them). Keeping parallel, unit-tested-but-unused writers is ongoing maintenance burden with zero production value; retire them.
+
+**Dependency / placement.** Runs after the composed `check` / `status` / `purge` stories (N.ag–N.ai) so the removal can't strand a function a later N-4 consumer turns out to need, and **before/with N.am's regression sweep**, which re-proves the three project shapes end-to-end after the deletion. Pure deletion + test rework — no behavior change.
+
+**Scope guard — what STAYS.** The backend-provider **registry** (`bp_register`, `bp_category_is_valid`, the registered-provider list) is still consumed by env-block backend validation (`validate_env_blocks` in the Python/Node plugins) and must **not** be removed. Only the now-dead `activate` shims + the writer chain go. (`activate` is currently the only verb ever sent through `bp_dispatch`; determine during implementation whether `bp_dispatch` itself + the `activate` backend-provider category are fully vestigial and removable, or should stay as the contract seam for future providers — decide explicitly, don't remove by reflex.)
+
+**Tasks**
+
+- [ ] **`.envrc` side.** Remove `write_envrc_template` ([lib/utils.sh](../../lib/utils.sh)), `_init_direnv_venv` / `_init_direnv_micromamba`, and the `venv_pyve_bp_activate` / `micromamba_pyve_bp_activate` activate shims ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)). Confirm the composer (`lib/envrc_composer.sh`) already reproduces every behavior they carried (PATH_add + exports, the `.env` dotenv block, the asdf reshim guard).
+- [ ] **`.gitignore` side.** Remove `write_gitignore_template` ([lib/utils.sh](../../lib/utils.sh)), `_init_gitignore`, and `insert_pattern_in_gitignore_section`. Confirm the composer (`lib/gitignore_composer.sh`) covers the macOS/Pyve infra lines + the custom-venv-dir ignore.
+- [ ] **Test rework (the bulk of this story).** Migrate still-valuable behavior assertions onto the composer test suites where not already covered (e.g. the asdf-guard / dotenv-block assertions in `test_asdf_compat.bats` / `test_envrc_template.bats`; gitignore-template behavior in `test_utils.bats` / `test_n_r_*`), and delete the tests whose only purpose was to pin a removed function (the `bp_dispatch … activate` byte-equivalence arcs in `test_n_l_backend_dispatch_envrc.bats` / `test_n_l_backend_registry.bats` / `test_n_q_*`, etc.). Update `tests/helpers/test_helper.bash`'s sourcing rationale if a removed function was the reason for a source line. The referencing files today: `test_n_l_backend_registry`, `test_n_l_backend_dispatch_envrc`, `test_envrc_template`, `test_asdf_compat`, `test_utils`, `test_n_r_python_plugin_gitignore_purge`, `test_n_n_python_plugin`, `test_testenvs_activate`, plus `test_helper.bash`.
+- [ ] **Verification.** Add/keep a grep-sentinel asserting the removed names have no callers in `lib/` / `pyve.sh` (mirrors the existing stale-path sentinels, e.g. [test_n_f_state_layout.bats](../../tests/unit/test_n_f_state_layout.bats)). Full bats + integration suites green; shellcheck clean.
+
+**Note.** If the test rework balloons, this is a legitimate split point (e.g. `N.al.1` `.envrc`-side, `N.al.2` `.gitignore`-side) — but the default is one coherent "retire the dead writers" commit.
+
+### Story N.am: End-to-end regression sweep — polyglot test matrix [Planned]
 
 **Motivation.** Verify the full N-4 composition layer works against the matrix of project shapes Phase N targets — Python-only, Node-only, polyglot Python+Node — before declaring the subphase complete. Documents any composition-design holes surfaced during the sweep per the N-3 precedent (N.ab.4).
 
@@ -1291,7 +1308,7 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [ ] **Composition correctness**: composed `.envrc`, `.gitignore`, `pyve check`, `pyve status`, `pyve purge` output match expected per-fixture snapshots.
 - [ ] Document any contract / composition-design holes surfaced during the sweep. If none surface, that's a positive result; record it explicitly per the N-3 precedent (N.ab.4's "exactly one hole" finding).
 
-### Story N.am: Doc updates — composition layer in tech-spec.md / features.md [Planned]
+### Story N.an: Doc updates — composition layer in tech-spec.md / features.md [Planned]
 
 **Motivation.** Capture the N-4 composition layer in the spec docs so the codebase and the docs agree post-N-4.
 
@@ -1444,3 +1461,4 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 - [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
 
 ---
+

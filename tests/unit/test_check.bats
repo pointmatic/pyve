@@ -41,11 +41,12 @@ teardown() {
     [[ "$output" == *"pyve check"* ]]
 }
 
-@test "check: --help documents 0/1/2 exit codes" {
+# Story N.ag — composed `pyve check` collapses the ladder to two outcomes:
+# 0 (no errors; pass or warn-only) and 2 (one or more errors).
+@test "check: --help documents the 0 / 2 exit codes" {
     run "$PYVE_SCRIPT" check --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"0"* ]]
-    [[ "$output" == *"1"* ]]
     [[ "$output" == *"2"* ]]
 }
 
@@ -79,46 +80,48 @@ teardown() {
 }
 
 #============================================================
-# Exit code 1 — errors (environment broken for pyve run / pyve test)
+# Exit code 2 — errors (environment broken for pyve run / pyve test).
+# Story N.ag: the composed check uses exit 2 for any error (was 1).
 #============================================================
 
-@test "check: exit 1 when .pyve/config is missing" {
+@test "check: exit 2 when .pyve/config is missing" {
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"✗"* ]] || [[ "$output" == *".pyve/config"* ]]
     [[ "$output" == *"pyve init"* ]]
 }
 
-@test "check: exit 1 when .pyve/config lacks backend" {
+@test "check: exit 2 when .pyve/config lacks backend" {
     create_pyve_config 'pyve_version: "1.0.0"'
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"backend"* ]] || [[ "$output" == *"Backend"* ]]
 }
 
-@test "check: exit 1 when venv directory missing" {
+@test "check: exit 2 when venv directory missing" {
     create_pyve_config "backend: venv" "pyve_version: \"1.0.0\""
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *".venv"* ]]
     [[ "$output" == *"pyve init"* ]]
 }
 
-@test "check: exit 1 when venv has no bin/python" {
+@test "check: exit 2 when venv has no bin/python" {
     create_pyve_config "backend: venv" "pyve_version: \"1.0.0\""
     mkdir -p .venv
     # No bin/python
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
 }
 
 #============================================================
-# Exit code 2 — warnings (environment usable but drifting)
+# Exit code 0 — warnings only (environment usable but drifting).
+# Story N.ag: the composed check no longer fails CI on warnings.
 #============================================================
 
-@test "check: exit 2 when pyve_version differs from current (drift)" {
+@test "check: exit 0 when pyve_version differs from current (drift)" {
     # Set up a functional-looking venv + config, with stale version
     create_pyve_config "backend: venv" "pyve_version: \"0.1.0\""
     mkdir -p .venv/bin
@@ -135,11 +138,11 @@ EOF
     touch .envrc .env
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 2 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *"0.1.0"* ]] || [[ "$output" == *"pyve update"* ]]
 }
 
-@test "check: exit 2 when .env is missing but otherwise OK" {
+@test "check: exit 0 when .env is missing but otherwise OK" {
     create_pyve_config "backend: venv" "pyve_version: \"$(grep '^VERSION=' "$PYVE_SCRIPT" | cut -d'"' -f2)\""
     mkdir -p .venv/bin
     cat > .venv/bin/python << 'PY'
@@ -156,12 +159,12 @@ EOF
     # No .env
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 2 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *".env"* ]]
     [[ "$output" == *"touch .env"* ]] || [[ "$output" == *"warn"* ]] || [[ "$output" == *"⚠"* ]]
 }
 
-@test "check: exit 2 when .envrc is missing" {
+@test "check: exit 0 when .envrc is missing" {
     create_pyve_config "backend: venv" "pyve_version: \"$(grep '^VERSION=' "$PYVE_SCRIPT" | cut -d'"' -f2)\""
     mkdir -p .venv/bin
     cat > .venv/bin/python << 'PY'
@@ -178,7 +181,7 @@ EOF
     # No .envrc
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 2 ]
+    [ "$status" -eq 0 ]
     [[ "$output" == *".envrc"* ]]
 }
 
@@ -187,11 +190,11 @@ EOF
 #============================================================
 
 @test "check: error status is not downgraded by subsequent warnings" {
-    # Missing venv (error) + missing .env (warning) → status 1, not 2.
+    # Missing venv (error) + missing .env (warning) → error wins: exit 2.
     create_pyve_config "backend: venv" "pyve_version: \"1.0.0\""
     # No .venv, no .env
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
 }
 
 #============================================================
@@ -211,7 +214,7 @@ EOF
 
 @test "check: failure output contains at least one actionable command" {
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
     # Actionable command signature: "pyve init", "pyve update", "touch ...", etc.
     [[ "$output" == *"pyve "* ]] || [[ "$output" == *"touch"* ]] || [[ "$output" == *"Run:"* ]]
 }
@@ -225,7 +228,7 @@ EOF
     # No environment.yml
 
     run "$PYVE_SCRIPT" check
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 2 ]
     [[ "$output" == *"environment.yml"* ]] || [[ "$output" == *"micromamba"* ]]
 }
 

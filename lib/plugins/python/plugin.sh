@@ -278,6 +278,12 @@ _python_pyve_plugin_render_advisories() {
 }
 
 python_pyve_plugin_check() {
+    # Story N.ag: the composer (compose_check) passes the plugin's declared
+    # path as $1. Python always operates at the project root, so consume and
+    # ignore it; forwarding it to check_environment would trip its
+    # "takes no positional arguments" guard. User flags (`pyve check --x`)
+    # are validated upstream in compose_check before any hook runs.
+    [[ $# -gt 0 ]] && shift
     _python_pyve_plugin_render_advisories
     check_environment "$@"
 }
@@ -2734,8 +2740,14 @@ check_environment() {
         exit_code=1
     }
 
-    printf "Pyve Environment Check\n"
-    printf "======================\n\n"
+    # Story N.ag: the composer (compose_check) owns the top-level banner
+    # when it dispatches this hook as a per-plugin section, so suppress the
+    # duplicate here. Standalone invocations (PYVE_CHECK_COMPOSED unset)
+    # still print it.
+    if [[ -z "${PYVE_CHECK_COMPOSED:-}" ]]; then
+        printf "Pyve Environment Check\n"
+        printf "======================\n\n"
+    fi
 
     # --- Check 1: .pyve/config present ------------------------------------
     if ! config_file_exists; then
@@ -2976,9 +2988,10 @@ Description:
   'pyve status'.
 
 Exit codes:
-  0    All checks passed.
-  1    One or more errors — environment is broken for 'pyve run' / 'pyve test'.
-  2    Warnings only — environment works but is drifting.
+  0    No errors — all checks passed, or warnings only (environment
+       works but is drifting; advisory text is still printed).
+  2    One or more errors — environment is broken for 'pyve run' /
+       'pyve test'.
 
 Notes:
   - pyve check is safe to run in CI (no side effects, stable exit codes).

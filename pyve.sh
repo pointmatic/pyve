@@ -258,6 +258,17 @@ else
     exit 1
 fi
 
+# Story N.ag: composed `pyve check` builder. Depends on the plugin
+# registry (plugin_list_active / plugin_dispatch) and the manifest
+# (manifest_get_plugin_path for path-aware section labels).
+if [[ -f "$SCRIPT_DIR/lib/check_composer.sh" ]]; then
+    # shellcheck source=lib/check_composer.sh
+    source "$SCRIPT_DIR/lib/check_composer.sh"
+else
+    printf "ERROR: Cannot find lib/check_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
@@ -797,7 +808,10 @@ main() {
                 printf 'DISPATCH:check %s\n' "$*"
                 exit 0
             fi
-            plugin_dispatch python check "$@"
+            # Story N.ag: composed check across every active plugin with
+            # worst-severity exit roll-up (error → 2, warn → 0, pass → 0).
+            compose_check "$@"
+            exit $?
             ;;
         status)
             shift
