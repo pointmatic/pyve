@@ -86,3 +86,61 @@ _compose_envrc_body() {
 
     printf '%s\n' "$ENVRC_MANAGED_END"
 }
+
+# Compose the managed `.envrc` body (via _compose_envrc_body) and write it
+# to <output_path> with PC-2 crash-safe semantics (Story N.ae.4):
+#
+#   1. Capture user-authored content below the `# <<< pyve:managed:end <<<`
+#      marker of the existing file (if any), to re-emit verbatim.
+#   2. Compose the body. On failure (a plugin smuggled, or PC-1 rejected
+#      the sections), HALT — leave the existing <output_path> untouched and
+#      do not create a backup or leave a half-written tmp.
+#   3. Write `<body> + <user tail>` to `<output_path>.tmp`. A fresh scaffold
+#      (no prior user tail) gets a trailing invitation comment instead.
+#   4. Back the current file up to `<output_path>.prev` (one-step rollback:
+#      `mv -f <output_path>.prev <output_path>`), then promote the tmp with
+#      `mv -f`.
+#
+# Legacy note: a pre-composer `.envrc` (no managed end marker) has no
+# delimitable user region, so it is fully replaced — but the `.prev` backup
+# is the recovery path. Files the composer itself wrote carry the marker and
+# round-trip their user tail cleanly thereafter.
+#
+# Usage: compose_envrc [<output_path>]   (default: .envrc)
+compose_envrc() {
+    local output_path="${1:-.envrc}"
+    local tmp="${output_path}.tmp"
+
+    # 1. Capture the user region (content strictly below the end marker).
+    local user_tail=""
+    if [[ -f "$output_path" ]]; then
+        user_tail="$(awk -v m="$ENVRC_MANAGED_END" 'f{print} $0==m{f=1}' "$output_path")"
+    fi
+
+    # 2. Compose the managed body; halt without side effects on failure.
+    local body
+    if ! body="$(_compose_envrc_body)"; then
+        log_error "envrc_composer: compose failed — '$output_path' left unchanged"
+        return 1
+    fi
+
+    # 3. Write the new content to a temp file first (atomic-write pattern).
+    if ! {
+        printf '%s\n' "$body"
+        if [[ -n "$user_tail" ]]; then
+            printf '%s\n' "$user_tail"
+        else
+            printf '\n# Add your own direnv configuration below this line.\n'
+        fi
+    } > "$tmp"; then
+        log_error "envrc_composer: failed to write '$tmp' — '$output_path' left unchanged"
+        rm -f "$tmp"
+        return 1
+    fi
+
+    # 4. Back up the current file, then atomically promote the temp.
+    if [[ -f "$output_path" ]]; then
+        cp -p "$output_path" "${output_path}.prev"
+    fi
+    mv -f "$tmp" "$output_path"
+}

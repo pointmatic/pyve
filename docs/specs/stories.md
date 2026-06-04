@@ -1158,16 +1158,17 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Explicit `source lib/envrc_composer.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule (sourced after the registry / manifest / envrc_safety / plugins).
 - [x] Bats tests ([tests/unit/test_n_ae_3_envrc_composer.bats](../../tests/unit/test_n_ae_3_envrc_composer.bats), 11 tests): one-plugin (python) body; two-plugin (polyglot) body with both sections present and python-before-node ordering; plugin sections inside the managed envelope; smuggling section → non-zero halt; composer infra present and outside the validated region; asdf guard gated by `is_asdf_active`.
 
-### Story N.ae.4: PC-2 write safety — atomic write, `.envrc.prev`, user-content preservation [Planned]
+### Story N.ae.4: PC-2 write safety — atomic write, `.envrc.prev`, user-content preservation [Done]
 
 **Motivation.** Resolves **PC-2** proper: the durable write half of the composer. `compose_envrc <output_path>` wraps `_compose_envrc_body` (N.ae.3) with crash-safe write semantics and preserves user-authored content below the managed end-marker.
 
 **Tasks**
 
-- [ ] `compose_envrc <output_path>`: write `_compose_envrc_body` output to `<output_path>.tmp`; on body/validation failure, halt and leave the existing `<output_path>` **untouched** (no `.tmp` promotion).
-- [ ] **`.envrc.prev` backup**: before promotion, copy the current `<output_path>` to `<output_path>.prev`. Document the one-step rollback (`mv -f .envrc.prev .envrc`). Promote with `mv -f <output_path>.tmp <output_path>`.
-- [ ] **User-content preservation**: read the existing `<output_path>`, capture content below the `# <<< pyve:managed:end <<<` marker (`awk` below-marker pattern), re-emit it verbatim below the new managed section. Fresh scaffold (no existing file) emits the managed section plus a trailing comment block inviting user additions below the end marker.
-- [ ] Bats + integration tests: atomic-write failure (mock plugin emits an invalid section) leaves the existing `.envrc` untouched; `.envrc.prev` rollback restores prior state; user content below the managed section round-trips verbatim; fresh-scaffold invitation block present.
+- [x] `compose_envrc <output_path>`: write `_compose_envrc_body` output to `<output_path>.tmp`; on body/validation failure, halt and leave the existing `<output_path>` **untouched** (no `.tmp` promotion, no backup created).
+- [x] **`.envrc.prev` backup**: before promotion, copy the current `<output_path>` to `<output_path>.prev` (one-step rollback: `mv -f .envrc.prev .envrc`). Promote with `mv -f <output_path>.tmp <output_path>`.
+- [x] **User-content preservation**: capture content below the `# <<< pyve:managed:end <<<` marker (`awk` below-marker pattern) and re-emit it verbatim. Fresh scaffold emits the managed section plus a trailing invitation comment below the end marker.
+- [x] **Legacy `.envrc` handling** (edge surfaced during implementation): a pre-composer `.envrc` has no managed end marker, so no user region can be delimited — it is fully replaced, but backed up to `.envrc.prev` as the recovery path. Composer-written files carry the marker and round-trip their user tail cleanly thereafter.
+- [x] Bats tests ([tests/unit/test_n_ae_4_compose_envrc_write.bats](../../tests/unit/test_n_ae_4_compose_envrc_write.bats), 10 tests): fresh-scaffold (managed section + invitation, no spurious `.prev`); user content round-trips; `.prev` backup on overwrite + rollback restores; idempotent re-compose; atomic-write failure leaves the existing `.envrc` untouched (no `.tmp`/`.prev`); legacy-file replace-with-backup. End-to-end integration lands in N.ae.5 (init/update rewiring).
 
 ### Story N.ae.5: Init/update rewiring — retire direct `.envrc` callsites [Planned]
 
