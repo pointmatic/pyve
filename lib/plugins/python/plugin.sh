@@ -869,34 +869,173 @@ _init_validate_existing_manifest() {
     return 0
 }
 
-# Story N.t (Task 4) — scaffold-time Node detection consult.
+# Story N.ad — polyglot `pyve.toml` writer.
 #
-# `pyve init` consults the Node plugin's detection hook alongside Python's.
-# When `package.json` is present, surface an advisory and STOP there:
-# pyve.toml is left unchanged. Auto-writing a `[plugins.node]` block is
-# deferred to the composed-activation subphase, because a root-level
-# package.json next to a Python project can't be expressed as a valid
-# polyglot manifest — declaring any plugin switches off the implicit-Python
-# rule (registry S5), and two plugins both at path = "." is an S4
-# cardinality error. The two ecosystems must live at distinct paths, which
-# root-only detection has no way to discover. So we advise, not mutate.
+# Emits the canonical manifest with explicit `[plugins.python]` (root) and
+# `[plugins.node]` (sub-path) blocks. Per spike S3 there is no `role` field;
+# per S4 Python alone owns the root, so `[plugins.python]` carries NO `path`
+# line (the helper defaults it to "."), and Node lives at the distinct
+# `<node_path>`. The two Python env blocks ([env.root] / [env.testenv])
+# match the plain `_init_write_pyve_toml` shape so purpose-keyed selectors
+# resolve identically on polyglot projects.
 #
-# No-op (and silent) for pure-Python projects, preserving today's behavior.
-_init_maybe_advise_node_plugin() {
+# Idempotent: silent no-op when `pyve.toml` already exists (refresh path),
+# mirroring `_init_write_pyve_toml`.
+_init_write_pyve_toml_polyglot() {
+    local project_name="$1"
+    local node_path="$2"
+    if [[ -f pyve.toml ]]; then
+        return 0
+    fi
+    cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "${project_name}"
+
+[env.root]
+purpose = "utility"
+
+[env.testenv]
+purpose = "test"
+default = true
+
+[plugins.python]
+
+[plugins.node]
+path = "${node_path}"
+EOF
+}
+
+# Story N.ad — interactivity gate for the Node sub-path prompt. Mirrors the
+# wizard's gate: prompt only when stdin is a TTY and the non-interactive
+# bypass is not set. `--node-path` (the scripted override) sidesteps this
+# entirely by short-circuiting the resolver before the gate is consulted.
+_init_node_path_interactive() {
+    [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]
+}
+
+# Story N.ad — resolve the Node sub-path for a polyglot scaffold.
+#
+# Usage: _init_resolve_node_path <flag> <interactive>
+#   <flag>:        the --node-path value ("" if unset). Non-empty wins
+#                  unconditionally (the scripted-override contract).
+#   <interactive>: "true" if prompting is allowed, else "false".
+#
+# Output contract: the resolved path is the ONLY thing written to stdout,
+# so callers can capture it via command substitution. Branch rationale and
+# prompts go to stderr (still visible on the terminal, but out of the
+# captured value).
+#
+# Convention walk (in this precedence order): src/frontend, frontend, web,
+# client, ui — each tested for existence as a directory.
+#   0 matches → prompt (default src/frontend); non-interactive → default.
+#   1 match   → use it; print an informational "only convention matched" note.
+#   2+ matches→ prompt with the list + custom option (default first match);
+#               non-interactive → first match.
+_init_resolve_node_path() {
+    local flag="$1"
+    local interactive="$2"
+    local default_path="src/frontend"
+    local conventions=(src/frontend frontend web client ui)
+
+    # Scripted override wins unconditionally.
+    if [[ -n "$flag" ]]; then
+        printf '%s' "$flag"
+        return 0
+    fi
+
+    local matches=() c
+    for c in "${conventions[@]}"; do
+        [[ -d "$c" ]] && matches+=("$c")
+    done
+    local n=${#matches[@]}
+
+    if (( n == 0 )); then
+        if [[ "$interactive" == "true" ]]; then
+            local reply
+            printf '  %sNode detected; where should it live? [%s]%s ' \
+                "${Y}" "$default_path" "${RESET}" >&2
+            read -r reply
+            [[ -z "$reply" ]] && reply="$default_path"
+            printf '%s' "$reply"
+        else
+            printf '%s' "$default_path"
+        fi
+        return 0
+    fi
+
+    if (( n == 1 )); then
+        info "Node sub-path: ${matches[0]} (using existing directory; only convention matched)" >&2
+        printf '%s' "${matches[0]}"
+        return 0
+    fi
+
+    # 2+ matches.
+    local joined
+    joined="$(IFS=', '; printf '%s' "${matches[*]}")"
+    if [[ "$interactive" == "true" ]]; then
+        local reply
+        printf '  %sMultiple Node sub-path conventions found: %s. Choose one or type a different path: [%s]%s ' \
+            "${Y}" "$joined" "${matches[0]}" "${RESET}" >&2
+        read -r reply
+        [[ -z "$reply" ]] && reply="${matches[0]}"
+        printf '%s' "$reply"
+    else
+        printf '%s' "${matches[0]}"
+    fi
+}
+
+# Story N.ad — manifest scaffold orchestrator (replaces N.t's advisory-only
+# `_init_maybe_advise_node_plugin`). Consults the Node plugin's detection
+# hook alongside Python's:
+#
+#   - `pyve.toml` already present → silent no-op (refresh path).
+#   - Node detected at root → resolve the Node sub-path (flag / convention
+#     walk / prompt), print the chosen path, and write a polyglot manifest
+#     with `[plugins.python]` (root) + `[plugins.node]` (sub-path). Closes
+#     the S4+S5 root-collision hole N.t deferred.
+#   - Pure-Python project → plain `_init_write_pyve_toml`, unchanged.
+#
+# `node_path_flag` carries the `--node-path` value ("" if unset).
+_init_scaffold_manifest() {
+    local project_name="$1"
+    local node_path_flag="$2"
+
+    if [[ -f pyve.toml ]]; then
+        return 0
+    fi
+
     local node_signal
     node_signal="$(plugin_dispatch node detect 2>/dev/null || true)"
-    [[ "$node_signal" == "node" ]] || return 0
 
-    banner "Node project detected"
-    info "Found package.json. pyve left pyve.toml unchanged."
-    info "To manage Node alongside Python, add a [plugins.node] block with"
-    info "its own sub-path (distinct from the Python root \".\")."
+    if [[ "$node_signal" != "node" ]]; then
+        _init_write_pyve_toml "$project_name"
+        success "Created pyve.toml"
+        return 0
+    fi
+
+    banner "Polyglot project detected (Python + Node)"
+
+    local interactive="false"
+    _init_node_path_interactive && interactive="true"
+
+    local node_path
+    node_path="$(_init_resolve_node_path "$node_path_flag" "$interactive")"
+
+    # Always announce the chosen path before writing (whether inferred,
+    # prompted, or flag-supplied) so the user knows what landed.
+    info "Node sub-path: ${node_path}"
+    info "Manifest: Python at \".\", Node at \"${node_path}\"."
+
+    _init_write_pyve_toml_polyglot "$project_name" "$node_path"
+    success "Created pyve.toml (polyglot: python + node)"
 
     # Story N.aa: surface a SvelteKit framework hint when detected.
     local node_framework
     node_framework="$(node_detect_framework 2>/dev/null || true)"
     if [[ "$node_framework" == "sveltekit" ]]; then
-        info "SvelteKit detected — consider adding frameworks = [\"sveltekit\"] to the env block."
+        info "SvelteKit detected — consider adding frameworks = [\"sveltekit\"] to the Node env block."
     fi
 }
 
@@ -1194,6 +1333,9 @@ init_project() {
     local no_direnv=false
     local lock_preflight_done=false
     local preflight_backend=""
+    # Story N.ad — explicit Node sub-path for polyglot scaffolds. Empty
+    # means "infer / prompt"; a value overrides all detection.
+    local node_path_flag=""
 
     # project-guide integration (Story G.c / FR-G2) — tri-state:
     # "" (unset — use env vars / prompt / CI default), "yes" (force install),
@@ -1262,6 +1404,22 @@ init_project() {
                 no_direnv=true
                 shift
                 ;;
+            --node-path)
+                if [[ -z "${2:-}" ]]; then
+                    log_error "--node-path requires a path argument"
+                    exit 1
+                fi
+                node_path_flag="$2"
+                shift 2
+                ;;
+            --node-path=*)
+                node_path_flag="${1#*=}"
+                if [[ -z "$node_path_flag" ]]; then
+                    log_error "--node-path requires a non-empty path argument"
+                    exit 1
+                fi
+                shift
+                ;;
             --auto-install-deps)
                 export PYVE_AUTO_INSTALL_DEPS=1
                 shift
@@ -1320,7 +1478,8 @@ init_project() {
             -*)
                 unknown_flag_error "init" "$1" \
                     --python-version --backend --auto-bootstrap --bootstrap-to \
-                    --strict --no-lock --env-name --no-direnv --auto-install-deps \
+                    --strict --no-lock --env-name --no-direnv --node-path \
+                    --auto-install-deps \
                     --no-install-deps --local-env --force --allow-synced-dir \
                     --project-guide --no-project-guide \
                     --project-guide-completion --no-project-guide-completion \
@@ -1627,17 +1786,14 @@ micromamba:
 EOF
         success "Created .pyve/config"
 
-        # Story N.e — write the v3.0 canonical manifest. No-op if it
-        # already exists (refresh path). `.pyve/config` continues to
-        # be written above; the YAML removal lands in Story N.i with
-        # the read-compat sweep.
-        if [[ ! -f pyve.toml ]]; then
-            _init_write_pyve_toml "$(basename "$(pwd)")"
-            success "Created pyve.toml"
-        fi
-
-        # Story N.t: consult Node detection (advisory only; no manifest write).
-        _init_maybe_advise_node_plugin
+        # Story N.e / N.ad — write the v3.0 canonical manifest. No-op if
+        # it already exists (refresh path). When Node is detected at root
+        # alongside Python, this writes a polyglot manifest with explicit
+        # [plugins.python] + [plugins.node] blocks; pure-Python projects
+        # get the plain manifest. `.pyve/config` continues to be written
+        # above; the YAML removal lands in Story N.i with the read-compat
+        # sweep.
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
@@ -1734,17 +1890,13 @@ python:
 EOF
     success "Created .pyve/config"
 
-    # Story N.e — write the v3.0 canonical manifest. No-op if it
-    # already exists (refresh path). `.pyve/config` continues to
-    # be written above; the YAML removal lands in Story N.i with
-    # the read-compat sweep.
-    if [[ ! -f pyve.toml ]]; then
-        _init_write_pyve_toml "$(basename "$(pwd)")"
-        success "Created pyve.toml"
-    fi
-
-    # Story N.t: consult Node detection (advisory only; no manifest write).
-    _init_maybe_advise_node_plugin
+    # Story N.e / N.ad — write the v3.0 canonical manifest. No-op if it
+    # already exists (refresh path). Polyglot Python+Node projects get
+    # explicit [plugins.python] + [plugins.node] blocks; pure-Python
+    # projects get the plain manifest. `.pyve/config` continues to be
+    # written above; the YAML removal lands in Story N.i with the
+    # read-compat sweep.
+    _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists
@@ -1926,6 +2078,9 @@ Options:
   --no-lock                          Bypass missing conda-lock.yml error (not recommended)
   --env-name <name>                  Environment name (micromamba backend)
   --no-direnv                        Skip .envrc creation (for CI/CD)
+  --node-path <path>                 Node sub-path for polyglot Python+Node
+                                     projects (overrides convention detection;
+                                     e.g. src/frontend)
   --auto-install-deps                Auto-install from pyproject.toml / requirements.txt
   --no-install-deps                  Skip dependency installation prompt (for CI/CD)
   --local-env                        Copy ~/.local/.env template
@@ -1968,6 +2123,7 @@ Examples:
   pyve init --backend micromamba           # Force micromamba backend
   pyve init --python-version 3.13.7        # Pin Python version
   pyve init --no-direnv                    # Skip direnv (CI/CD)
+  pyve init --node-path src/frontend       # Polyglot: place Node at src/frontend
   pyve init --force                        # Purge and rebuild
   pyve init --project-guide                # Install project-guide without prompting
   pyve init --no-project-guide             # Skip project-guide entirely

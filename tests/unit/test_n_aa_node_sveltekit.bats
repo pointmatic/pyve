@@ -141,23 +141,29 @@ backend = "pnpm"
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Scaffold-time advisory extension (the Node consult from N.t).
+# Scaffold-time SvelteKit hint (the Node consult from N.t, generalized by
+# N.ad into the polyglot scaffold orchestrator `_init_scaffold_manifest`).
+#
+# The SvelteKit hint now rides along with the polyglot manifest write:
+# when a Python+Node project at root has a SvelteKit signal, the scaffold
+# surfaces the frameworks hint after writing pyve.toml. A Python+Node
+# project without a SvelteKit signal gets no hint.
 # ════════════════════════════════════════════════════════════════════
 
-@test "advise: SvelteKit project adds a frameworks hint to the Node advisory" {
+@test "scaffold: SvelteKit project adds a frameworks hint" {
+    : > pyproject.toml
     : > package.json
     : > svelte.config.js
-    run _init_maybe_advise_node_plugin
+    run _init_scaffold_manifest "demo" "src/frontend"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Node project detected"* ]]
     [[ "$output" == *"SvelteKit"* ]]
     [[ "$output" == *"sveltekit"* ]]
 }
 
-@test "advise: pure-Node project gets no SvelteKit hint" {
+@test "scaffold: non-SvelteKit Node project gets no SvelteKit hint" {
+    : > pyproject.toml
     : > package.json
-    run _init_maybe_advise_node_plugin
+    run _init_scaffold_manifest "demo" "src/frontend"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Node project detected"* ]]
     [[ "$output" != *"SvelteKit"* ]]
 }

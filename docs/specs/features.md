@@ -510,6 +510,15 @@ Phase N ships **Node** as the second reference plugin behind the contract from F
 - **SvelteKit framework detection (advisory).** Pyve recognizes SvelteKit (`@sveltejs/kit` / `svelte.config.js`) and surfaces an env's `frameworks` attribute in `check` / `status`. Recognition is advisory metadata — SvelteKit is **not** specially provisioned beyond the standard Node lifecycle.
 - **Polyglot.** Python and Node coexist when declared at **distinct paths** (e.g. Python at `.`, Node at `src/frontend`); each plugin's hooks confine to their own sub-tree. v3.0 exercises this at the hook level; CLI-level routing of `pyve <cmd>` across all declared envs lands in **Subphase N-4**.
 
+**Polyglot scaffold on `pyve init` (Subphase N-4).** When `pyve init` detects **both** a Python signal and a `package.json` at the project root, it writes a polyglot `pyve.toml` with explicit `[plugins.python]` (root; no `path`, defaults to `.`) and `[plugins.node]` blocks. Because two plugins can't both own `.` (an S4 cardinality error), Node is placed at a distinct sub-path resolved as follows:
+
+- **Convention walk.** Pyve checks the conventional Node sub-paths in order — `src/frontend`, `frontend`, `web`, `client`, `ui` — for an existing directory. Exactly one match is used and announced (`Node sub-path: <path> (using existing directory; only convention matched)`). Two or more matches prompt the user with the list (default: the first match). Zero matches prompt for a path, defaulting to `src/frontend`. The chosen path is always printed before `pyve.toml` is written.
+- **Unconventional paths — three ways to choose:**
+  1. **Type a custom path at the interactive prompt** (the 0-match and 2+-match prompts both accept any non-empty path).
+  2. **Pass `--node-path=<path>`** (or `--node-path <path>`) for fully non-interactive / scripted use — this overrides all detection and prompting.
+  3. **Edit `pyve.toml` after `init`** — change the `[plugins.node]` `path` value directly.
+- **Non-interactive fallback.** With no TTY (CI) and no `--node-path`, the resolver takes the deterministic path: the single convention match if exactly one exists, the first match if several exist, otherwise the `src/frontend` default — never blocking on a prompt.
+
 **No behavior change for existing Python users.** Node support is additive: a pure-Python project with no `[plugins.node]` declaration behaves exactly as in v2 (the implicit-Python rule never auto-loads Node). Per S11, the new surfaces are advisory.
 
 ### FR-12: Smart Re-Initialization

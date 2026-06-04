@@ -190,31 +190,13 @@ EOF
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Task 4 — scaffold-time Node consult (advisory only, no manifest write).
+# Task 4 — scaffold-time Node consult.
 #
-# `_init_maybe_advise_node_plugin` (in the Python plugin's init module)
-# consults `plugin_dispatch node detect`. When package.json is present it
-# surfaces an advisory and leaves pyve.toml untouched; for pure-Python it
-# is silent. The end-to-end wiring into `pyve init` is covered by the
-# integration test; these pin the helper's behavior fast.
+# N.t shipped this as advisory-only (`_init_maybe_advise_node_plugin`
+# surfaced a note but never mutated `pyve.toml`), deferring the real
+# polyglot scaffold to Subphase N-4. **Story N.ad superseded that helper**
+# with `_init_scaffold_manifest`, which now writes a polyglot manifest
+# (`[plugins.python]` + `[plugins.node]`) when Node is detected at root.
+# The behavior is owned by tests/unit/test_n_ad_polyglot_scaffold.bats; the
+# advisory-only tests that lived here were removed when N.ad landed.
 # ════════════════════════════════════════════════════════════════════
-
-@test "advise: package.json present → surfaces 'Node project detected'" {
-    : > package.json
-    run _init_maybe_advise_node_plugin
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Node project detected"* ]]
-}
-
-@test "advise: package.json present → does NOT create or mutate pyve.toml" {
-    : > package.json
-    _init_maybe_advise_node_plugin
-    [ ! -f pyve.toml ]
-}
-
-@test "advise: pure-Python project (no package.json) → silent no-op" {
-    : > pyproject.toml
-    run _init_maybe_advise_node_plugin
-    [ "$status" -eq 0 ]
-    [ -z "$output" ]
-}
