@@ -160,9 +160,10 @@ class TestVenvWorkflow:
         gitignore_content = gitignore_path.read_text()
         lines = gitignore_content.splitlines()
         
-        # Template section headers
+        # Template section headers (N.af composed-gitignore format: the legacy
+        # "# Pyve virtual environment" header is now "# Pyve-managed").
         assert '# Python build and test artifacts' in lines
-        assert '# Pyve virtual environment' in lines
+        assert '# Pyve-managed' in lines
         
         # Template entries
         assert '__pycache__' in lines

@@ -208,9 +208,10 @@ dependencies:
         gitignore_content = gitignore_path.read_text()
         lines = gitignore_content.splitlines()
         
-        # Template section headers and entries should be present
+        # Template section headers and entries should be present (N.af composed-
+        # gitignore format: legacy "# Pyve virtual environment" → "# Pyve-managed").
         assert '# Python build and test artifacts' in lines
-        assert '# Pyve virtual environment' in lines
+        assert '# Pyve-managed' in lines
         assert '__pycache__' in lines
         assert '*.egg-info' in lines
         

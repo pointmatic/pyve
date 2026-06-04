@@ -36,6 +36,8 @@ environment condition quickly rather than hanging.
 # PYVE_NO_INSTALL_DEPS), so this is inert there.
 _DECLINE = "n\n" * 5
 
+import shutil
+
 import pytest
 
 MANAGED_START = "# >>> pyve:managed:start >>>"
@@ -62,8 +64,18 @@ def _skip_if_python_unresolvable(result):
 
 
 @pytest.mark.venv
+@pytest.mark.skipif(
+    shutil.which("direnv") is None,
+    reason="direnv not installed on this runner",
+)
 class TestComposedEnvrc:
-    """End-to-end `.envrc` composition through `pyve init` / `pyve update`."""
+    """End-to-end `.envrc` composition through `pyve init` / `pyve update`.
+
+    These tests deliberately run *without* ``--no-direnv`` to exercise the
+    composed ``.envrc`` path; ``pyve init`` aborts when direnv is absent, so
+    the whole class is skipped on runners that lack it (mirrors
+    test_envrc_template.py).
+    """
 
     def test_venv_init_composes_managed_envrc(self, pyve, project_builder):
         """`pyve init --backend venv` writes a composed, sentinel-marked .envrc."""
