@@ -1032,15 +1032,18 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Result — no contract hole surfaced.** The full lifecycle composed cleanly on the first pass; all hooks (built in N.t–N.aa) drive end-to-end against a realistic SvelteKit fixture with no production-code changes needed. A clean result is the intended positive finding for this slice of N-3's proof.
 
-### Story N.ab.2: Polyglot Python+Node fixture — independent hook firing [Planned]
+### Story N.ab.2: Polyglot Python+Node fixture — independent hook firing [Done]
 
 **Motivation.** The canonical multi-plugin case (spike Example 4). Prove both plugins load and their hooks fire independently against their own paths.
 
 **Tasks**
 
-- [ ] Build the polyglot fixture: Python at root (`pyproject.toml`), Node at `src/frontend` (`package.json`, `svelte.config.js`), and `pyve.toml` declaring `[plugins.python]` (`path = "."`) + `[plugins.node]` (`path = "src/frontend"`).
-- [ ] Registry: `plugin_load_all_from_manifest` loads both (`python`, `node`) with no S4 cardinality error (distinct paths).
-- [ ] Independent hook firing: Python `detect` resolves at root; Node `detect` / `node_detect_framework` resolve at `src/frontend`; Node `init` creates `src/frontend/node_modules/` without touching the project root; Node `check`/`purge` operate on the sub-path; the Python side is unaffected.
+- [x] Build the polyglot fixture: Python at root (`pyproject.toml` + `src/my_saas/`), Node at `src/frontend` (`package.json`, `svelte.config.js`, `src/routes/`), and `pyve.toml` declaring `[plugins.python]` (`path = "."`) + `[plugins.node]` (`path = "src/frontend"`) plus `[env.web]` (`backend = "pnpm"`, `path = "src/frontend"`, `frameworks = ["sveltekit"]`).
+- [x] Registry: `plugin_load_all_from_manifest` loads both (`python`, `node`, in order) with no S4 cardinality error (distinct paths); `manifest_get_plugin_path` returns `.` / `src/frontend`.
+- [x] Independent hook firing: Python `detect` resolves `venv` at root; Node `detect`/`node_detect_framework` return `none` at root and `node`/`sveltekit` at `src/frontend`; Node `init` creates `src/frontend/node_modules/` and **leaves the project root clean** (no root `node_modules/`); Node `check` operates on the sub-path and surfaces the framework; Node `purge` cleans `src/frontend` while `pyproject.toml` / `src/my_saas/` stay untouched.
+- [x] Bats test file. *([tests/unit/test_n_ab_2_polyglot_e2e.bats](../../tests/unit/test_n_ab_2_polyglot_e2e.bats), 7 cases.)*
+
+**Result — no contract hole surfaced.** Both plugins coexist and their hooks fire independently on the first pass; path-awareness (built into the Node hooks from N.t onward) confines the Node lifecycle to `src/frontend` with no production-code changes. Activation-section composition is verified separately in N.ab.3.
 - [ ] Bats test file.
 
 ### Story N.ab.3: Composed `.envrc` non-interference + visitor-path activation [Planned]
