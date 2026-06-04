@@ -983,18 +983,21 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Contract note — emit, don't write.** Unlike the Python `activate` hook (which delegates the actual `.envrc` write to `bp_dispatch <backend> activate` via the legacy `write_envrc_template` path), `node_pyve_plugin_activate` **emits its validated section to stdout**. The single-file `.envrc` composition across multiple plugins' sections is **Subphase N-4**'s job; N.y produces the Node section that composer will assemble. This also makes N.x's stopgap `run` PATH-prepend redundant once N-4 wires the composed `.envrc`.
 
-### Story N.z: Node plugin — `.gitignore` + smart-purge hooks [Planned]
+### Story N.z: Node plugin — `.gitignore` + smart-purge hooks [Done]
 
 **Motivation.** Re-seat the remaining template / inventory hooks for the Node plugin. Mirrors N.r for Python.
 
 **Tasks**
 
-- [ ] `pyve_plugin_gitignore_entries` returns Node ecosystem patterns: `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`, `.parcel-cache/`, `npm-debug.log*`, `yarn-debug.log*`, `pnpm-debug.log*`. Output passes through `validate_gitignore_snippet` (N.m).
-- [ ] `pyve_plugin_purge_inventory` declares the Node ecosystem's created-vs-authored split:
-  - **Created** (Pyve / package-manager generated, safe to remove): `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`.
-  - **Authored** (user-written, never touch): `package.json`, all lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`), `tsconfig.json`, `svelte.config.js`, source files.
-- [ ] When Node is at a sub-path, both hooks return entries relative to that sub-path; the composer (lands in N-4) handles root-vs-subpath placement.
-- [ ] Bats + integration tests: `.gitignore` self-heal output includes all entries; `pyve purge` removes created artifacts only; user-authored files untouched.
+- [x] `node_pyve_plugin_gitignore_entries [path]` returns Node ecosystem patterns: `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`, `.parcel-cache/`, `npm-debug.log*`, `yarn-debug.log*`, `pnpm-debug.log*`. Designed to pass `validate_gitignore_snippet` (N.m) — verified by test, not self-validated inside the hook (mirrors Python's N.r `gitignore_entries`, which the composer validates).
+- [x] `node_pyve_plugin_purge_inventory [path]` declares the Node ecosystem's created-vs-authored split:
+  - **Created** (package-manager / build generated, safe to remove): `node_modules`, `.svelte-kit`, `dist`, `build`, `.next`, `.turbo`, `*.tsbuildinfo`.
+  - **Authored** (user-written, never touch): `package.json`, all lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`), `tsconfig.json`, `svelte.config.js`.
+- [x] When Node is at a sub-path, both hooks prefix their entries with that sub-path (comment / blank lines are never prefixed; trailing slash normalized); the composer (N-4) handles root-vs-subpath placement.
+- [x] **Remover alignment:** `_node_purge_at` (the N.w remover) now also removes `.turbo/` and `*.tsbuildinfo` (local `nullglob`-guarded), keeping the actual removal consistent with the `purge_inventory` `created` declaration.
+- [x] Bats tests: gitignore output includes all entries + validates (root and sub-path); inventory declares created/authored with sub-path prefixing; purge removes the created artifacts (incl. the newly-aligned `.turbo`/`*.tsbuildinfo`) while authored files survive. *([tests/unit/test_n_z_node_plugin_gitignore_purge.bats](../../tests/unit/test_n_z_node_plugin_gitignore_purge.bats), 11 cases; N.w's purge tests stay green.)*
+
+**Note — `purge_inventory` is a declarative data interface (mirrors N.r).** Per the Python precedent, the inventory is the *declaration* of created/authored surfaces; the actual remover is `_node_purge_at`. N.z keeps the two **consistent** (rather than letting the inventory be a superset): the remover was extended to the full created set so "purge removes created artifacts" holds end-to-end.
 
 ### Story N.aa: SvelteKit detection + `frameworks` attribute support [Planned]
 

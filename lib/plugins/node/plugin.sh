@@ -262,17 +262,28 @@ _node_provider_run_install() {
     )
 }
 
-# Smart-purge: remove only the dirs a Node env generates. Never touches
-# package.json, lockfiles, or source (S9 / N.r smart-purge rule). N.z
-# adds the formal created-vs-authored purge_inventory declaration.
+# Smart-purge: remove only the artifacts a Node env generates. Never
+# touches package.json, lockfiles, or source (S9 / N.r smart-purge rule).
+# The removed set is kept consistent with node_pyve_plugin_purge_inventory's
+# "created" declaration (N.z).
 _node_purge_at() {
     local path="$1"
     local d
-    for d in node_modules .svelte-kit dist build .next; do
+    for d in node_modules .svelte-kit dist build .next .turbo; do
         if [[ -e "$path/$d" ]]; then
             rm -rf "${path:?}/$d"
         fi
     done
+
+    # *.tsbuildinfo (TypeScript incremental build info) — file glob. Use a
+    # local nullglob so a no-match expands to nothing instead of a literal.
+    local f had_nullglob=0
+    shopt -q nullglob && had_nullglob=1
+    shopt -s nullglob
+    for f in "$path"/*.tsbuildinfo; do
+        rm -f "$f"
+    done
+    [[ "$had_nullglob" -eq 0 ]] && shopt -u nullglob
     return 0
 }
 
@@ -517,4 +528,80 @@ node_pyve_plugin_activate() {
         return 1
     fi
     printf '%s\n' "$snippet"
+}
+
+#------------------------------------------------------------
+# Plugin contract — gitignore_entries (Story N.z)
+#
+# Returns the Node-ecosystem patterns the plugin contributes to
+# `.gitignore`. Output flows through validate_gitignore_snippet (N.m
+# PC-1 gate) at the composer; it is designed to pass that allow-list
+# (plain globs, no `$`/backticks). Path-aware: a sub-path plugin prefixes
+# each pattern with its path so the entry anchors to that sub-tree;
+# comment / blank lines are never prefixed.
+#------------------------------------------------------------
+
+_node_gitignore_patterns() {
+    cat <<'EOF'
+# Node ecosystem artifacts
+node_modules/
+.svelte-kit/
+dist/
+build/
+.next/
+*.tsbuildinfo
+.turbo/
+.parcel-cache/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+EOF
+}
+
+node_pyve_plugin_gitignore_entries() {
+    local path="${1:-.}"
+    local prefix=""
+    [[ -n "$path" && "$path" != "." ]] && prefix="${path%/}/"
+    _node_gitignore_patterns | awk -v p="$prefix" '
+        /^[[:space:]]*$/ { print; next }
+        /^[[:space:]]*#/ { print; next }
+        { print p $0 }
+    '
+}
+
+#------------------------------------------------------------
+# Plugin contract — purge_inventory (Story N.z)
+#
+# Declares the Node ecosystem's created-vs-authored split:
+#   created <path>   — package-manager / build generated; safe to remove.
+#   authored <path>  — user-written; never touch on purge.
+# Like the Python plugin's (N.r), this is a declarative data interface;
+# the actual remover is _node_purge_at, kept consistent with the
+# `created` list here. Path-aware: a sub-path plugin prefixes the path
+# token of each entry.
+#------------------------------------------------------------
+
+_node_purge_inventory_lines() {
+    cat <<'EOF'
+created node_modules
+created .svelte-kit
+created dist
+created build
+created .next
+created .turbo
+created *.tsbuildinfo
+authored package.json
+authored pnpm-lock.yaml
+authored package-lock.json
+authored yarn.lock
+authored tsconfig.json
+authored svelte.config.js
+EOF
+}
+
+node_pyve_plugin_purge_inventory() {
+    local path="${1:-.}"
+    local prefix=""
+    [[ -n "$path" && "$path" != "." ]] && prefix="${path%/}/"
+    _node_purge_inventory_lines | awk -v p="$prefix" '{ print $1, p $2 }'
 }
