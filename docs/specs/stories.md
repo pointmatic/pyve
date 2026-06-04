@@ -940,17 +940,19 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Each helper has its own `PYVE_NO_NVM_COMPAT=1` / `PYVE_NO_FNM_COMPAT=1` / `PYVE_NO_VOLTA_COMPAT=1` opt-out per the asdf-compat precedent. **asdf tier:** a private `_is_asdf_node_active()` (asdf has a *nodejs* plugin) honoring the shared `PYVE_NO_ASDF_COMPAT` — deliberately **not** the Python-context `is_asdf_active()`, which gates on `VERSION_MANAGER == "asdf"` and would never fire for a Node-only project (S10: each plugin owns its precedence chain).
 - [x] Bats unit tests: each detector's detected/not-detected/opt-out branches; precedence returns the highest-priority active manager; PATH fallback resolves when no manager is active; loud failure when no node present. *([tests/unit/test_n_v_node_runtime_detect.bats](../../tests/unit/test_n_v_node_runtime_detect.bats), 21 cases — hermetic: setup clears any manager env leaked from the dev shell, `node` is a real PATH stub, manager binaries are mocked.)*
 
-### Story N.w: Node plugin — init / purge / update hooks [Planned]
+### Story N.w: Node plugin — init / purge / update hooks [Done]
 
 **Motivation.** Implement the scaffolding lifecycle for Node envs. Mirrors N.o's shape; the only new shape is Node's dep-installation flow (no `python -m venv` analog — install runs directly against `node_modules/` via the provider).
 
 **Tasks**
 
-- [ ] `pyve_plugin_init` in `lib/plugins/node/plugin.sh`: dispatches to `node_provider_install <provider>` per the env's `backend`. Resolves the Node runtime via N.v's `node_runtime_resolve` before invoking the package manager.
-- [ ] `pyve_plugin_purge`: removes `node_modules/`, `.svelte-kit/` (when present), `dist/`, `build/`, `.next/` from the env's `path`. Never touches `package.json`, lockfiles, or source files (S9 / smart-purge rule from N.r).
-- [ ] `pyve_plugin_update`: re-runs install with refresh semantics per provider (`pnpm install --frozen-lockfile` for CI, `pnpm install` otherwise — provider-internal detail).
-- [ ] Env-block validation per S9: `init` hook receives the entire `[env.<name>]` block, validates `purpose` and `backend`; provider-private fields (`languages`, `frameworks`, future `node_version`, etc.) pass through to the provider untouched.
-- [ ] Bats + integration tests: init on a fresh fixture creates `node_modules/`; purge removes it; update re-runs install. Covers all three providers.
+- [x] `node_pyve_plugin_init <path> [<backend>]` in `lib/plugins/node/plugin.sh`: detects the provider (`node_provider_detect`, N.u) per the env's `backend`, resolves the Node runtime via N.v's `node_runtime_resolve` (fails loudly when absent) **before** invoking the package manager, then runs the install in `<path>`.
+- [x] `node_pyve_plugin_purge <path>`: removes `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/` from the env's `path` (only those present). Never touches `package.json`, lockfiles, or source files (S9 / smart-purge rule from N.r). `${path:?}`-guarded against an empty-path `rm`.
+- [x] `node_pyve_plugin_update <path> [<backend>]`: re-runs install with refresh semantics per provider — CI-aware: `pnpm install --frozen-lockfile`, `npm ci`, `yarn install --frozen-lockfile` when `CI` is set; a plain `<pm> install` otherwise.
+- [x] Env-block validation per S9 (`node_pyve_plugin_validate_env_blocks`, run by init/update): validates `purpose` ∈ {run,test,utility,temp} and that a non-empty `backend` is a registered provider; provider-private fields (`languages`, `frameworks`, future `node_version`) pass through untouched.
+- [x] Bats + integration tests: init runs the right `<pm> install` and creates `node_modules/` (pnpm/npm/yarn, via a recording stub); init infers the provider from a lockfile; init fails loudly with no runtime; purge removes generated dirs but keeps `package.json`/lockfiles/source; update uses the CI frozen form per provider; **a real `npm` end-to-end test** (asserts `package-lock.json`, skipped when npm absent). *([tests/unit/test_n_w_node_plugin_lifecycle.bats](../../tests/unit/test_n_w_node_plugin_lifecycle.bats), 17 cases.)*
+
+**Implementation note — hooks take explicit `<path> [<backend>]`; not yet CLI-routed.** The Node lifecycle hooks are exercised directly / via `plugin_dispatch`, not from a `pyve` command — `pyve init`/`purge`/`update` still dispatch to the Python plugin ([pyve.sh](../../pyve.sh)). Wiring `pyve init` to materialize **all** declared envs across plugins (resolving each env's path/backend from the manifest and dispatching to the owning plugin) is **Subphase N-4** (composed activation). The explicit-arg signatures are the seam N-4 calls into; until then the default `path` is `.`. The install/purge logic lives in parameterized workers (`_node_provider_run_install`, `_node_purge_at`) so it is testable hermetically apart from the manifest wiring.
 
 ### Story N.x: Node plugin — check / status / run / test hooks (test → `package.json` `test` script) [Planned]
 

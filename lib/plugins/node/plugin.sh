@@ -170,3 +170,141 @@ node_pyve_plugin_detect() {
         printf 'none'
     fi
 }
+
+#------------------------------------------------------------
+# Plugin contract — env-block validation (Story N.w, S9)
+#
+# Mirrors the Python plugin's validate_env_blocks: iterates declared
+# envs, checks `purpose` ∈ {run, test, utility, temp} (defense-in-depth;
+# the manifest helper already rejects unknown purposes at parse time)
+# and, when non-empty, that `backend` is a registered backend-provider.
+# Provider-private fields (languages, frameworks, future node_version)
+# are NOT inspected — they pass through to the provider untouched (S9).
+#------------------------------------------------------------
+
+node_pyve_plugin_validate_env_blocks() {
+    [[ -n "${PYVE_ENV_NAMES+x}" ]] || return 0
+    local n=${#PYVE_ENV_NAMES[@]}
+    [[ "$n" -eq 0 ]] && return 0
+
+    local i name purpose backend
+    for ((i=0; i<n; i++)); do
+        name="${PYVE_ENV_NAMES[$i]}"
+        purpose="${PYVE_ENV_PURPOSE[$i]}"
+        backend="${PYVE_ENV_BACKEND[$i]}"
+
+        if [[ -n "$purpose" ]]; then
+            case "$purpose" in
+                run|test|utility|temp) ;;
+                *)
+                    printf "error: node plugin: env '%s' has unknown purpose '%s' (expected one of: run, test, utility, temp)\n" \
+                        "$name" "$purpose" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+
+        if [[ -n "$backend" ]]; then
+            if ! bp_lookup "$backend" >/dev/null 2>&1; then
+                printf "error: node plugin: env '%s' declares unregistered backend '%s'\n" \
+                    "$name" "$backend" >&2
+                return 1
+            fi
+        fi
+    done
+    return 0
+}
+
+#------------------------------------------------------------
+# Lifecycle workers (Story N.w)
+#
+# Parameterized by <path> + <provider>; the contract hooks below resolve
+# the env's path/backend and call these. Kept separate so the install /
+# purge logic is testable hermetically (mocked package manager) apart
+# from the manifest-driven hook wrappers.
+#------------------------------------------------------------
+
+# Run the provider's install in <path>. mode: "install" | "refresh".
+# Confirms a Node runtime first (every provider needs node) via N.v's
+# node_runtime_resolve, which fails loudly when none is reachable. The
+# refresh mode uses each provider's CI frozen-lockfile form when CI is
+# set (pnpm/yarn `--frozen-lockfile`, npm `ci`).
+_node_provider_run_install() {
+    local path="$1"
+    local provider="$2"
+    local mode="${3:-install}"
+
+    if ! node_runtime_resolve >/dev/null; then
+        return 1
+    fi
+
+    (
+        cd "$path" || exit 1
+        if [[ "$mode" == "refresh" && -n "${CI:-}" ]]; then
+            case "$provider" in
+                pnpm) pnpm install --frozen-lockfile ;;
+                npm)  npm ci ;;
+                yarn) yarn install --frozen-lockfile ;;
+                *)
+                    printf "error: node plugin: unknown provider '%s'\n" "$provider" >&2
+                    exit 1
+                    ;;
+            esac
+        else
+            case "$provider" in
+                pnpm|npm|yarn) "$provider" install ;;
+                *)
+                    printf "error: node plugin: unknown provider '%s'\n" "$provider" >&2
+                    exit 1
+                    ;;
+            esac
+        fi
+    )
+}
+
+# Smart-purge: remove only the dirs a Node env generates. Never touches
+# package.json, lockfiles, or source (S9 / N.r smart-purge rule). N.z
+# adds the formal created-vs-authored purge_inventory declaration.
+_node_purge_at() {
+    local path="$1"
+    local d
+    for d in node_modules .svelte-kit dist build .next; do
+        if [[ -e "$path/$d" ]]; then
+            rm -rf "${path:?}/$d"
+        fi
+    done
+    return 0
+}
+
+#------------------------------------------------------------
+# Plugin contract — lifecycle hooks (Story N.w)
+#
+# Signatures take an explicit <path> [<backend>]. N-4's composed init
+# resolves these per declared env from the manifest and dispatches here;
+# until then the hooks are driven directly. Default path is "." (the
+# single-plugin-at-root case). init/update validate env blocks (S9)
+# first, mirroring the Python plugin.
+#------------------------------------------------------------
+
+node_pyve_plugin_init() {
+    node_pyve_plugin_validate_env_blocks || return $?
+    local path="${1:-.}"
+    local backend="${2:-}"
+    local provider
+    provider="$(node_provider_detect "$backend" "$path")"
+    _node_provider_run_install "$path" "$provider" install
+}
+
+node_pyve_plugin_purge() {
+    local path="${1:-.}"
+    _node_purge_at "$path"
+}
+
+node_pyve_plugin_update() {
+    node_pyve_plugin_validate_env_blocks || return $?
+    local path="${1:-.}"
+    local backend="${2:-}"
+    local provider
+    provider="$(node_provider_detect "$backend" "$path")"
+    _node_provider_run_install "$path" "$provider" refresh
+}
