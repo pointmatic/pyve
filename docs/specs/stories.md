@@ -1146,17 +1146,17 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Update N.q's byte-equivalence tests ([tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats)) to the snippet-emitter contract: the file-write byte-equiv tests became bp-shim write assertions; PC-1 / dispatch / unknown-backend tests now exercise the self-resolving emitter. New emitter contract pinned in [tests/unit/test_n_ae_2_python_activate_emitter.bats](../../tests/unit/test_n_ae_2_python_activate_emitter.bats) (12 tests).
 - [x] Confirm N.y (Node activate) tests still pass unchanged.
 
-### Story N.ae.3: `compose_envrc` body assembly + PC-1 validation [Planned]
+### Story N.ae.3: `compose_envrc` body assembly + PC-1 validation [Done]
 
 **Motivation.** The composer's pure assembly half: gather active plugins' sections into one composed body with the managed-section envelope, validating plugin contributions through PC-1. No filesystem writes yet (that's N.ae.4) — the body is produced to stdout so it is testable without side effects.
 
 **Tasks**
 
-- [ ] New `lib/envrc_composer.sh` with `_compose_envrc_body`: enumerate `plugin_list_active` (N.k); for each, `plugin_dispatch <name> activate "$(manifest_get_plugin_path <name>)"`; concatenate the sentinel-wrapped sections.
-- [ ] **PC-1 boundary** (spike finding): validate the concatenated **plugin sections** via `validate_envrc_snippet` (N.m). On failure, return non-zero with the offending plugin/line. Composer-owned infrastructure (header, `if [[ -f ".env" ]]; then dotenv; fi`, the asdf reshim guard when `is_asdf_active`) is appended *after* validation — it cannot pass the PC-1 allow-list and is static pyve text.
-- [ ] Assemble the envelope: header → `# >>> pyve:managed:start >>>` → plugin sections → composer infra → `# <<< pyve:managed:end <<<`. Emit to stdout.
-- [ ] Explicit `source lib/envrc_composer.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule.
-- [ ] Bats tests: one-plugin (python) body; two-plugin (polyglot python+node) body with both sections present and correctly ordered; invalid plugin section → non-zero + offending line on stderr; composer infra present and outside the validated region.
+- [x] New `lib/envrc_composer.sh` with `_compose_envrc_body`: enumerate `plugin_list_active` (N.k); for each, `plugin_dispatch <name> activate "$(manifest_get_plugin_path <name>)"`; concatenate the sentinel-wrapped sections. (A failing plugin hook halts the compose.)
+- [x] **PC-1 boundary** (spike finding): validate the concatenated **plugin sections** via `validate_envrc_snippet` (N.m). On failure, return non-zero. Composer-owned infrastructure (header, `if [[ -f ".env" ]]; then dotenv; fi`, the asdf reshim guard when `is_asdf_active`) is appended *after* validation — it cannot pass the PC-1 allow-list and is static pyve text. Sentinels exported as `ENVRC_MANAGED_START` / `ENVRC_MANAGED_END`.
+- [x] Assemble the envelope: header → `# >>> pyve:managed:start >>>` → plugin sections → composer infra → `# <<< pyve:managed:end <<<`. Emit to stdout.
+- [x] Explicit `source lib/envrc_composer.sh` in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule (sourced after the registry / manifest / envrc_safety / plugins).
+- [x] Bats tests ([tests/unit/test_n_ae_3_envrc_composer.bats](../../tests/unit/test_n_ae_3_envrc_composer.bats), 11 tests): one-plugin (python) body; two-plugin (polyglot) body with both sections present and python-before-node ordering; plugin sections inside the managed envelope; smuggling section → non-zero halt; composer infra present and outside the validated region; asdf guard gated by `is_asdf_active`.
 
 ### Story N.ae.4: PC-2 write safety — atomic write, `.envrc.prev`, user-content preservation [Planned]
 

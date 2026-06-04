@@ -237,6 +237,17 @@ else
 fi
 node_pyve_plugin_register_backends
 
+# Story N.ae: composed `.envrc` builder. Depends on the plugin registry,
+# manifest accessors, envrc_safety (PC-1), is_asdf_active, and the plugin
+# activate hooks — sourced after all of them.
+if [[ -f "$SCRIPT_DIR/lib/envrc_composer.sh" ]]; then
+    # shellcheck source=lib/envrc_composer.sh
+    source "$SCRIPT_DIR/lib/envrc_composer.sh"
+else
+    printf "ERROR: Cannot find lib/envrc_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
