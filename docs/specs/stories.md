@@ -954,18 +954,20 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Implementation note — hooks take explicit `<path> [<backend>]`; not yet CLI-routed.** The Node lifecycle hooks are exercised directly / via `plugin_dispatch`, not from a `pyve` command — `pyve init`/`purge`/`update` still dispatch to the Python plugin ([pyve.sh](../../pyve.sh)). Wiring `pyve init` to materialize **all** declared envs across plugins (resolving each env's path/backend from the manifest and dispatching to the owning plugin) is **Subphase N-4** (composed activation). The explicit-arg signatures are the seam N-4 calls into; until then the default `path` is `.`. The install/purge logic lives in parameterized workers (`_node_provider_run_install`, `_node_purge_at`) so it is testable hermetically apart from the manifest wiring.
 
-### Story N.x: Node plugin — check / status / run / test hooks (test → `package.json` `test` script) [Planned]
+### Story N.x: Node plugin — check / status / run / test hooks (test → `package.json` `test` script) [Done]
 
 **Motivation.** Implement the diagnostic and execution lifecycle. `pyve_plugin_test` delegates to the user's `package.json` `test` script via the provider — honest passthrough; user controls what "test" means. Adds the TypeScript advisory surfacing per S11.
 
 **Tasks**
 
-- [ ] `pyve_plugin_check`: verifies Node binary resolves (via N.v), `package.json` present, `node_modules/` present and non-empty. **TypeScript advisory:** when `languages = ["typescript"]` is set on the env but `typescript` is not in `package.json`'s `dependencies` / `devDependencies`, surface a `pyve check` warning. No failure exit code; advisory only.
-- [ ] `pyve_plugin_status`: parallels the Python plugin's status output — env name, backend, lockfile state, last-modified, manual_steps if any.
-- [ ] `pyve_plugin_run`: passthrough — `pyve run <cmd>` from a Node env activates `node_modules/.bin` on PATH (via N.y) and invokes `<cmd>`.
-- [ ] `pyve_plugin_test`: runs `<provider> test` (i.e., `pnpm test` / `npm test` / `yarn test`). The user's `package.json` defines what test means — vitest, jest, playwright, mocha, etc. Honest delegation.
-- [ ] `manual_steps` advisory (S7): if the env has a non-empty `manual_steps` list, surface in `pyve check` and `pyve status` output (same pattern as Python's N.p).
-- [ ] Bats + integration tests: check passes on a fully provisioned env; check warns on the TypeScript-attribute-without-dep case; test delegates correctly per provider; run passthrough works.
+- [x] `node_pyve_plugin_check <path>`: verifies the Node runtime resolves (via N.v), `package.json` present, `node_modules/` present and non-empty — these drive the exit code (non-zero on any failure). **TypeScript advisory (S11):** when an env declares `languages` including `typescript` but `package.json` at `<path>` has no `typescript` dep, surface a warning. No failure exit code; advisory only.
+- [x] `node_pyve_plugin_status <path> [<backend>]`: backend/provider, lockfile state, `node_modules` state, `package.json` last-modified (portable `_node_mtime`), plus the advisories.
+- [x] `node_pyve_plugin_run <path> <cmd> [args...]`: passthrough — prepends `<path>/node_modules/.bin` to PATH so locally-installed tools resolve, then runs `<cmd>`. *(Stopgap PATH activation; N.y moves this into the env's `.envrc`.)*
+- [x] `node_pyve_plugin_test <path> [<backend>]`: runs `<provider> test` (`pnpm`/`npm`/`yarn test`) — the user's `package.json` defines what "test" means (vitest, jest, playwright, mocha, …). Honest delegation. *(Resolves the N.u `node_provider_test` "revisit in N.x" pointer: delegation is `<pm> test`, no script-name rewriting needed.)*
+- [x] `manual_steps` advisory (S7): non-empty `manual_steps` surfaced in both check and status via the shared `_node_pyve_plugin_render_advisories` (same pattern as Python's N.p).
+- [x] Bats tests: check pass/fail on each hard check; the TypeScript warn / no-warn cases; manual_steps surfacing; status summary; run executes a `node_modules/.bin` binary with args; test delegates per provider + lockfile inference. *([tests/unit/test_n_x_node_plugin_runtime.bats](../../tests/unit/test_n_x_node_plugin_runtime.bats), 14 cases.)*
+
+**Note — TS dependency check is advisory-grade.** The S11 typescript probe is a `grep '"typescript"'` on `package.json`, not a full JSON parse — sufficient for an advisory (it matches `typescript` in `dependencies` / `devDependencies`). Same not-CLI-routed posture as N.w: hooks take explicit `<path> [<backend>]`; N-4 threads them from the manifest. The real-package-manager `test`/`run` execution is covered structurally (mocked PM records the delegated command); a CLI-level integration test lands with N-4's routing.
 
 ### Story N.y: Node plugin — activation hook (`.envrc` emission with `node_modules/.bin` PATH_add) [Planned]
 

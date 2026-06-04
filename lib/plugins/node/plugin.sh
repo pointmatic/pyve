@@ -308,3 +308,165 @@ node_pyve_plugin_update() {
     provider="$(node_provider_detect "$backend" "$path")"
     _node_provider_run_install "$path" "$provider" refresh
 }
+
+#------------------------------------------------------------
+# Plugin contract — runtime hooks (Story N.x)
+#
+# check / status / run / test for Node envs. Signatures take an explicit
+# <path> [<backend>] (not yet CLI-routed; N-4 threads them from the
+# manifest). check and status render the S7 (manual_steps) and S11
+# (typescript) advisories before/after their body; test honestly
+# delegates to the user's package.json `test` script via the provider.
+#------------------------------------------------------------
+
+# Portable file mtime: BSD/macOS `stat -f`, then GNU `stat -c`.
+_node_mtime() {
+    stat -f '%Sm' "$1" 2>/dev/null || stat -c '%y' "$1" 2>/dev/null || printf 'unknown'
+}
+
+# S7 + S11 advisory renderer (parallels the Python plugin's). Iterates
+# declared envs and prints:
+#   - a "Manual steps" section for each env's non-empty manual_steps (S7)
+#   - a typescript warning when an env declares languages including
+#     "typescript" but package.json at <path> has no typescript dep (S11)
+# Always returns 0 — advisories never fail.
+_node_pyve_plugin_render_advisories() {
+    local path="${1:-.}"
+    [[ -n "${PYVE_ENV_NAMES+x}" ]] || return 0
+    local n=${#PYVE_ENV_NAMES[@]}
+    [[ "$n" -eq 0 ]] && return 0
+
+    local i name step
+    local -a steps langs
+    local manual_header_printed=0
+
+    for ((i=0; i<n; i++)); do
+        name="${PYVE_ENV_NAMES[$i]}"
+
+        # S7: manual_steps
+        steps=()
+        manifest_get_manual_steps "$name" steps 2>/dev/null || true
+        if [[ "${#steps[@]}" -gt 0 ]]; then
+            if [[ "$manual_header_printed" -eq 0 ]]; then
+                printf "Manual steps (advisory — pyve does not run these):\n"
+                manual_header_printed=1
+            fi
+            printf "  env '%s':\n" "$name"
+            for step in "${steps[@]}"; do
+                printf "    - %s\n" "$step"
+            done
+        fi
+
+        # S11: typescript declared but not a package.json dependency.
+        langs=()
+        manifest_get_languages "$name" langs 2>/dev/null || true
+        if [[ "${#langs[@]}" -gt 0 ]]; then
+            local lang has_ts=0
+            for lang in "${langs[@]}"; do
+                [[ "$lang" == "typescript" ]] && { has_ts=1; break; }
+            done
+            if [[ "$has_ts" -eq 1 ]] \
+               && ! grep -q '"typescript"' "$path/package.json" 2>/dev/null; then
+                warn "env '$name' declares typescript but 'typescript' is not in package.json dependencies"
+            fi
+        fi
+    done
+    return 0
+}
+
+# Verify the env is healthy. Hard checks (runtime, package.json,
+# node_modules) drive the exit code; the S7/S11 advisories are
+# informational and never change it.
+node_pyve_plugin_check() {
+    local path="${1:-.}"
+    local failed=0
+
+    _node_pyve_plugin_render_advisories "$path"
+
+    if node_runtime_resolve >/dev/null 2>&1; then
+        success "Node runtime: $(node_runtime_resolve 2>/dev/null) (manager: $(node_runtime_manager))"
+    else
+        log_error "No Node runtime detected — install via Homebrew or your preferred version manager (nvm / fnm / volta)"
+        failed=1
+    fi
+
+    if [[ -f "$path/package.json" ]]; then
+        success "package.json present"
+    else
+        log_error "package.json not found at '$path'"
+        failed=1
+    fi
+
+    if [[ -d "$path/node_modules" ]] && [[ -n "$(ls -A "$path/node_modules" 2>/dev/null)" ]]; then
+        success "node_modules present"
+    else
+        log_error "node_modules missing or empty — run init to install dependencies"
+        failed=1
+    fi
+
+    return "$failed"
+}
+
+# Summarize the Node env: backend/provider, lockfile state, node_modules
+# state, package.json mtime, plus the S7/S11 advisories.
+node_pyve_plugin_status() {
+    local path="${1:-.}"
+    local backend="${2:-}"
+    local provider
+    provider="$(node_provider_detect "$backend" "$path")"
+
+    info "Backend: $provider"
+
+    local lockfile
+    lockfile="$(node_provider_lockfile "$provider" 2>/dev/null)"
+    if [[ -n "$lockfile" && -f "$path/$lockfile" ]]; then
+        info "Lockfile: $lockfile (present)"
+    else
+        info "Lockfile: none"
+    fi
+
+    if [[ -d "$path/node_modules" ]] && [[ -n "$(ls -A "$path/node_modules" 2>/dev/null)" ]]; then
+        info "node_modules: present"
+    else
+        info "node_modules: missing"
+    fi
+
+    if [[ -f "$path/package.json" ]]; then
+        info "package.json last modified: $(_node_mtime "$path/package.json")"
+    fi
+
+    _node_pyve_plugin_render_advisories "$path"
+    return 0
+}
+
+# Passthrough execution. Puts the env's node_modules/.bin on PATH so
+# locally-installed tools (vitest, tsc, eslint, …) resolve, then runs the
+# command. N.y moves this PATH activation into the env's `.envrc`; this
+# hook is the direct-invocation path.
+node_pyve_plugin_run() {
+    local path="$1"
+    shift
+    (
+        cd "$path" || exit 1
+        PATH="$PWD/node_modules/.bin:$PATH" "$@"
+    )
+}
+
+# Honest delegation: run `<provider> test`, which forwards to the user's
+# package.json `test` script (vitest / jest / playwright / mocha / …).
+node_pyve_plugin_test() {
+    local path="${1:-.}"
+    local backend="${2:-}"
+    local provider
+    provider="$(node_provider_detect "$backend" "$path")"
+    (
+        cd "$path" || exit 1
+        case "$provider" in
+            pnpm|npm|yarn) "$provider" test ;;
+            *)
+                printf "error: node plugin: unknown provider '%s'\n" "$provider" >&2
+                exit 1
+                ;;
+        esac
+    )
+}
