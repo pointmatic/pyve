@@ -248,6 +248,16 @@ else
     exit 1
 fi
 
+# Story N.af: composed `.gitignore` builder. Same dependencies as the
+# `.envrc` composer (registry, manifest, envrc_safety PC-1, plugin hooks).
+if [[ -f "$SCRIPT_DIR/lib/gitignore_composer.sh" ]]; then
+    # shellcheck source=lib/gitignore_composer.sh
+    source "$SCRIPT_DIR/lib/gitignore_composer.sh"
+else
+    printf "ERROR: Cannot find lib/gitignore_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================

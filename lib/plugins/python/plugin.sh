@@ -1790,13 +1790,9 @@ init_project() {
         # Create .env file
         _init_dotenv "$use_local_env"
 
-        # Update .gitignore — since H.e.2a the template bakes in every
-        # pyve-managed ignore pattern (.pyve/envs, .pyve/testenvs, .envrc,
-        # .env, .vscode/settings.json), so the micromamba path needs no
-        # per-backend dynamic inserts.
-        write_gitignore_template
-
-        success "Updated .gitignore"
+        # .gitignore is composed below (Story N.af), after .pyve/config +
+        # pyve.toml exist, via compose_project_gitignore (gathers every
+        # active plugin's ignore entries through the managed section).
 
         # Create .pyve/config with version tracking
         mkdir -p .pyve
@@ -1824,6 +1820,10 @@ EOF
         else
             info "Skipping .envrc creation (--no-direnv)"
         fi
+
+        # Story N.af: compose `.gitignore` from all active plugins (always —
+        # not gated by --no-direnv).
+        compose_project_gitignore ".gitignore" && success "Updated .gitignore"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
@@ -1897,8 +1897,9 @@ EOF
     # Create .env file
     _init_dotenv "$use_local_env"
 
-    # Update .gitignore
-    _init_gitignore "$venv_dir"
+    # .gitignore is composed below (Story N.af), after .pyve/config +
+    # pyve.toml exist (the composer reads venv.directory from .pyve/config
+    # to ignore a custom venv dir, and enumerates plugins from pyve.toml).
 
     # Create .pyve/config with version tracking
     mkdir -p .pyve
@@ -1928,6 +1929,9 @@ EOF
     else
         info "Skipping .envrc creation (--no-direnv)"
     fi
+
+    # Story N.af: compose `.gitignore` from all active plugins (always).
+    compose_project_gitignore ".gitignore" && success "Updated .gitignore"
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists
@@ -2526,10 +2530,16 @@ update_project() {
     fi
     step_end_ok
 
-    # Step 2/5 — refresh Pyve-managed sections of .gitignore.
-    step_begin "[2/5] Refresh .gitignore (Pyve-managed sections)"
-    write_gitignore_template >/dev/null 2>&1
-    step_end_ok
+    # Step 2/5 — refresh the composed .gitignore managed section across all
+    # active plugins (Story N.af). User content above/below the managed
+    # markers is preserved; prior file backed up to .gitignore.prev.
+    step_begin "[2/5] Refresh .gitignore (Pyve-managed section)"
+    if run_quiet compose_project_gitignore ".gitignore"; then
+        step_end_ok
+    else
+        step_end_fail
+        log_warning "  .gitignore refresh failed; existing file left intact."
+    fi
 
     # Step 3/5 — refresh the composed .envrc managed section IF it exists.
     # Story N.ae.5: like the .vscode step, NEVER create one (that respects

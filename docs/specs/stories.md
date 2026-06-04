@@ -1201,18 +1201,18 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Updated the N.ae.5 integration tests' comments to note EOF no longer hangs (the `_DECLINE` stdin is now belt-and-suspenders; the `_skip_if_python_unresolvable` guard stays — it covers the *separate* "Python not installable non-interactively" condition, which this fix turns into a clean fast decline rather than a hang).
 - [x] Full bats suite green (**1600 tests**); shellcheck on `lib/utils.sh` unchanged (2 pre-existing findings at lines 576 / 805, far from the edit).
 
-### Story N.af: Composed `.gitignore` self-heal across plugins [Planned]
+### Story N.af: Composed `.gitignore` self-heal across plugins [Done]
 
 **Motivation.** Today each plugin declares `.gitignore` entries (per N.r / N.z); N.af stands up the central composer that gathers all active plugins' entries and merges them into the managed section of the project's `.gitignore`, preserving user-authored content above and below.
 
 **Tasks**
 
-- [ ] New `lib/gitignore_composer.sh` with `compose_gitignore <output_path>`: enumerates active plugins, dispatches each plugin's `pyve_plugin_gitignore_entries` hook, deduplicates entries across plugins (e.g., `.env` may appear from multiple plugins; emit once).
-- [ ] Sentinel markers for the managed section: `# >>> pyve:managed:gitignore >>>` … `# <<< pyve:managed:gitignore <<<`. Content outside the sentinels is user-authored and preserved verbatim.
-- [ ] **PC-1 safety**: each plugin's contribution passes through `validate_gitignore_snippet` (N.m) before composition.
-- [ ] **Atomic write + `.gitignore.prev` backup**: same pattern as N.ae but for `.gitignore`.
-- [ ] Retire today's direct `.gitignore` self-heal callsites in [lib/commands/init.sh](../../lib/commands/init.sh) and [lib/commands/update.sh](../../lib/commands/update.sh) in favor of `compose_gitignore`.
-- [ ] Bats + integration tests: composition with one plugin; with two plugins (Python + Node — overlap on `.env`); user content above/below the managed section preserved verbatim; idempotent re-run.
+- [x] New [lib/gitignore_composer.sh](../../lib/gitignore_composer.sh): `_compose_gitignore_body` (pure assembly, stdout) enumerates `plugin_list_active`, dispatches each `pyve_plugin_gitignore_entries "$(manifest_get_plugin_path)"`, and dedupes entries across plugins + composer infra (pattern lines emitted once via an awk `seen[]`; comment headers pass through; blank runs collapse). `.env` from multiple sources appears once.
+- [x] Sentinel markers `# >>> pyve:managed:gitignore >>>` … `# <<< pyve:managed:gitignore <<<`. The start marker is the **first** emitted line (header comment lives inside the section) so re-compose doesn't capture composer text as "user content above" — `compose_gitignore` preserves content **above and below** the markers verbatim.
+- [x] **PC-1 safety**: each plugin's contribution passes through `validate_gitignore_snippet` (N.m); a failing contribution halts the compose (non-zero).
+- [x] **Atomic write + `.gitignore.prev` backup** (`compose_gitignore`): `.tmp` → `.prev` → `mv`; compose failure leaves the file untouched. Legacy file (no markers) is carried below the managed section minus managed-duplicate lines (preserves user ignores without regressing today's `write_gitignore_template` dedup-append behavior) and backed up. (Multi-line awk input passed via process substitution, not `-v`, to dodge BSD awk's "newline in string".)
+- [x] Retire the direct `.gitignore` self-heal callsites. `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — relocated here by N.s; both venv and micromamba branches) and `update_project` now call `compose_project_gitignore` (reload manifest/registry, then compose — mirrors N.ae.5's `compose_project_envrc`) *after* `.pyve/config` + `pyve.toml` exist. The composer reads `venv.directory` from `.pyve/config` to ignore a custom venv dir. **Note:** `write_gitignore_template` + `_init_gitignore` are now unused by the init/update path but remain (still directly unit-tested in `test_utils.bats` / `test_n_r_*`); removing them is a separate cleanup to avoid churning those suites.
+- [x] Bats tests ([tests/unit/test_n_af_gitignore_composer.bats](../../tests/unit/test_n_af_gitignore_composer.bats), 15): one-plugin body; polyglot (python + node path-prefixed); cross-source dedupe; PC-1 rejection; fresh scaffold; above/below preservation; legacy-file preservation + dedup; `.gitignore.prev` backup; idempotence; `compose_project_gitignore` reload. Integration ([tests/integration/test_envrc_composition.py](../../tests/integration/test_envrc_composition.py)): real `pyve init` composes a managed `.gitignore` (markers + `__pycache__`); `pyve update` refreshes it. Full bats suite green (**1614 tests**); composer shellcheck-clean.
 
 ### Story N.ag: Composed `pyve check` with severity roll-up [Planned]
 

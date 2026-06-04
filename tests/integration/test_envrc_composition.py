@@ -92,6 +92,17 @@ class TestComposedEnvrc:
             f"python section must export VIRTUAL_ENV; got:\n{text}"
         )
 
+        # Story N.af: init also composes a managed .gitignore section.
+        gitignore = pyve.cwd / ".gitignore"
+        assert gitignore.exists(), "init must compose .gitignore"
+        gtext = gitignore.read_text()
+        assert "# >>> pyve:managed:gitignore >>>" in gtext, (
+            f"composed .gitignore must carry the managed markers; got:\n{gtext}"
+        )
+        assert "__pycache__" in gtext, (
+            f"composed .gitignore must carry the python plugin entries; got:\n{gtext}"
+        )
+
     # (Polyglot composition — both Python + Node sections in one .envrc — is
     # covered at the unit level; see the module docstring for why it is not a
     # real-`pyve init` test here.)
