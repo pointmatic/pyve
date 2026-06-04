@@ -289,6 +289,11 @@ python_pyve_plugin_check() {
 }
 
 python_pyve_plugin_status() {
+    # Story N.ah: the composer (compose_status) passes the plugin's declared
+    # path as $1. Python operates at the project root, so consume and ignore
+    # it (forwarding it would trip show_status's positional-arg guard). User
+    # flags are validated upstream in compose_status before any hook runs.
+    [[ $# -gt 0 ]] && shift
     _python_pyve_plugin_render_advisories
     show_status "$@"
 }
@@ -3036,8 +3041,14 @@ show_status() {
     done
 
     # Title + divider. BOLD for the title, DIM for the rule — per H.c §4.4.
-    printf "\n%sPyve project status%s\n" "${BOLD}" "${RESET}"
-    printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
+    # Story N.ah: the composer (compose_status) owns the top-level title when
+    # it dispatches this hook as a per-plugin section, so suppress the
+    # duplicate here. Standalone invocations (PYVE_STATUS_COMPOSED unset)
+    # still print it.
+    if [[ -z "${PYVE_STATUS_COMPOSED:-}" ]]; then
+        printf "\n%sPyve project status%s\n" "${BOLD}" "${RESET}"
+        printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
+    fi
 
     if ! config_file_exists; then
         # Non-project fallback. Don't treat it as an error; status reports

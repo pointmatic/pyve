@@ -269,6 +269,16 @@ else
     exit 1
 fi
 
+# Story N.ah: composed `pyve status` builder. Same dependencies as the
+# check composer; informational (always exit 0, no severity ladder).
+if [[ -f "$SCRIPT_DIR/lib/status_composer.sh" ]]; then
+    # shellcheck source=lib/status_composer.sh
+    source "$SCRIPT_DIR/lib/status_composer.sh"
+else
+    printf "ERROR: Cannot find lib/status_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
@@ -823,7 +833,10 @@ main() {
                 printf 'DISPATCH:status %s\n' "$*"
                 exit 0
             fi
-            plugin_dispatch python status "$@"
+            # Story N.ah: composed status across every active plugin
+            # (informational; always exit 0).
+            compose_status "$@"
+            exit $?
             ;;
 
         *)

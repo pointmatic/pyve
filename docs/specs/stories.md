@@ -1228,16 +1228,16 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Reference [Story N.d.1](#story-nd1-pre-flight-assert_python_resolvable--convert-asdf-shim-trap-into-an-actionable-pyve-error-done): its `assert_python_resolvable` pre-flight diagnostic is already plumbed into the Python plugin's check surface; N.ag's composer surfaces its output through the new severity ladder.
 - [x] Bats + integration tests ([tests/unit/test_n_ag_compose_check.bats](../../tests/unit/test_n_ag_compose_check.bats)): single-plugin pass/warn/error; two-plugin pairwise roll-up; worst-severity escalation; path-aware labels; active-plugin gate; plus two `bash pyve.sh check` e2e tests (single-banner, polyglot python+node sections with path label + error roll-up).
 
-### Story N.ah: Composed `pyve status` aggregation [Planned]
+### Story N.ah: Composed `pyve status` aggregation [Done]
 
 **Motivation.** Same shape as N.ag but for `pyve status` — informational rather than diagnostic, so no severity ladder, just aggregated output.
 
 **Tasks**
 
-- [ ] In [lib/commands/status.sh](../../lib/commands/status.sh), replace the Python-only status with `compose_status` that iterates active plugins/envs, dispatches `pyve_plugin_status`, emits per-plugin sections.
-- [ ] Output format: per-plugin section labeled with plugin name + path (e.g., `[Python @ .]` or `[Node @ src/frontend]`); each env listed under its plugin with backend, last-materialized timestamp, lockfile state, `manual_steps` (if any), `languages` / `frameworks` advisory.
-- [ ] Always-zero exit code (status is informational; failures are caught by `check`).
-- [ ] Bats + integration tests: composition with one plugin; with two plugins (polyglot); env count + ordering deterministic across runs.
+- [x] New [lib/status_composer.sh](../../lib/status_composer.sh) — `compose_status` iterates `plugin_list_active`, dispatches `pyve_plugin_status` per plugin, emits per-plugin sections. (The story named `lib/commands/status.sh`, but `show_status` was relocated into the Python plugin in Story N.s.5; the composer lives in its own `lib/status_composer.sh`, a sibling of `lib/check_composer.sh`. Wired into the `status)` arm in [pyve.sh](../../pyve.sh).)
+- [x] Output format: per-plugin section labeled with plugin name + path (`[python]` for root plugins, `[node @ src/frontend]` for visitors) via `manifest_get_plugin_path`; each plugin's status hook reports its own backend / lockfile / materialization / advisory detail under that label. (The composer owns the single top-level `Pyve project status` title; the Python plugin's `show_status` gates its own title under `PYVE_STATUS_COMPOSED` so it isn't doubled.)
+- [x] Always-zero exit code: `compose_status` returns 0 regardless of any hook's return code (status is informational; failures are `pyve check`'s job). Usage errors (unknown flag / positional arg) still exit 1 via the shared helpers.
+- [x] Bats + integration tests ([tests/unit/test_n_ah_compose_status.bats](../../tests/unit/test_n_ah_compose_status.bats)): single-plugin; two-plugin aggregation; deterministic registration-order sectioning; always-exit-0 even when a hook returns nonzero; path-aware labels; active-plugin gate; plus two `bash pyve.sh status` e2e tests (single-title, polyglot python+node sections with path label).
 
 ### Story N.ai: Composed `pyve purge` with composed inventory [Planned]
 
