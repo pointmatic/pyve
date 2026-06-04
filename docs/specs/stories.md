@@ -1046,16 +1046,18 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 **Result — no contract hole surfaced.** Both plugins coexist and their hooks fire independently on the first pass; path-awareness (built into the Node hooks from N.t onward) confines the Node lifecycle to `src/frontend` with no production-code changes. Activation-section composition is verified separately in N.ab.3.
 - [ ] Bats test file.
 
-### Story N.ab.3: Composed `.envrc` non-interference + visitor-path activation [Planned]
+### Story N.ab.3: Composed `.envrc` non-interference + visitor-path activation [Done]
 
 **Motivation.** N-3's closest look at N-4's composition concern: verify the two plugins' activation sections concatenate into one `.envrc` body cleanly. (Full composition — ordering, dedup, single-file emission — is N-4.)
 
 **Tasks**
 
-- [ ] Compose: the Python plugin's activation section (root env) + the Node plugin's activation section (`src/frontend`) concatenated into one `.envrc` body.
-- [ ] Assert: both sections present; each passes its validator (`validate_envrc_snippet`); the Node section is sentinel-delimited (`# >>> pyve:plugin:node:activate >>>` … `<<<`); the two `PATH_add`s are distinct and do not interfere.
-- [ ] **Visitor-path activation:** Node-at-subpath emits `PATH_add "src/frontend/node_modules/.bin"` (project-root-relative, so direnv resolves the absolute dir from the project root, not from `src/frontend`). Regression test asserts the exact path string.
-- [ ] Bats test file.
+- [x] Compose: the Python plugin's activation section (root env) + the Node plugin's activation section (`src/frontend`) concatenated into one `.envrc` body.
+- [x] Assert: both sections present; each passes its validator (`validate_envrc_snippet`); the Node section is sentinel-delimited (`# >>> pyve:plugin:node:activate >>>` … `<<<`); the two `PATH_add`s are distinct and do not interfere.
+- [x] **Visitor-path activation:** Node-at-subpath emits `PATH_add "src/frontend/node_modules/.bin"` (project-root-relative, so direnv resolves the absolute dir from the project root, not from `src/frontend`). Regression test asserts the exact path string.
+- [x] Bats test file. *([tests/unit/test_n_ab_3_composed_envrc.bats](../../tests/unit/test_n_ab_3_composed_envrc.bats), 9 cases.)*
+
+**Result — no contract hole surfaced.** The Python root snippet (`_python_pyve_plugin_envrc_snippet`) and the Node visitor section (`node_pyve_plugin_activate src/frontend`) concatenate into one `.envrc` body with no production-code changes: both sections present, each passes PC-1 (`validate_envrc_snippet`) individually and as a composed body, the Node section stays sentinel-delimited, and the two `PATH_add`s (`.venv/bin` vs `src/frontend/node_modules/.bin`) are distinct with no hand-rolled `export PATH=`. Visitor-path activation emits the exact project-root-relative `PATH_add "src/frontend/node_modules/.bin"`. A clean compose is the intended positive finding for N-3's composition slice; full single-file composition (ordering, dedup, emission) is N-4.
 
 ### Story N.ab.4: Spike S10 update + contract-holes synthesis [Planned]
 
