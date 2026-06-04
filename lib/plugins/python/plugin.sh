@@ -277,6 +277,97 @@ _python_pyve_plugin_render_advisories() {
     return 0
 }
 
+#------------------------------------------------------------
+# Plugin contract — PC-4a no-Python noise suppression (Story N.aj)
+#
+# `python_plugin_is_active_in_project` gates the Python plugin's
+# diagnostic hooks (check / status). Pyve defaults to Python, so the
+# gate is deliberately generous:
+#
+#   ACTIVE (return 0) on ANY Python signal:
+#     - `[plugins.python]` declared in pyve.toml
+#     - any declared env with a Python backend (venv / micromamba) or
+#       `languages` containing `python` (catches the project-guide-
+#       hosting `root` `utility` venv)
+#     - `.project-guide.yml` present (project-guide is a Python package
+#       ⇒ a Python root env hosts it — a real cross-repo contract)
+#     - `.pyve/config` present (v2 Python project marker)
+#     - root-scoped Python application files
+#       (pyproject.toml / setup.py / requirements*.txt /
+#        environment*.yml / *.py). Root-scoped via `compgen -G` so
+#       `node_modules/**/*.py` and a hosting `.venv/**/*.py` never
+#       false-trigger.
+#   ACTIVE on a bare dir with NO competing stack — Pyve treats an
+#     otherwise-empty project as Python-by-default, so `pyve check`
+#     keeps its "config missing → run pyve init" nudge.
+#   SUPPRESS (return 1) ONLY when there is no Python signal at all AND a
+#     competing non-Python stack is present (e.g. a `package.json`, or an
+#     active non-Python plugin) — the Node-only-declined-project case.
+#
+# Scope: the gate is applied to check / status — the hooks that emit
+# user-facing diagnostic output. The composition hooks (activate /
+# gitignore_entries / purge_inventory) are already excluded for declared
+# non-Python projects by the active-plugin registry (a project that
+# declares `[plugins.node]` never registers Python); the lifecycle/action
+# hooks (init / update / run / test / purge) are explicit user intent and
+# not gated. So check / status are the precise PC-4a safety net for the
+# implicit-Python edge.
+#------------------------------------------------------------
+
+# True (0) when a competing non-Python stack is present. Today the marker
+# is Node's `package.json`; extend as plugins are added. Also treats any
+# active plugin other than `python` as a competing stack.
+_python_plugin_competing_stack_present() {
+    [[ -f "package.json" ]] && return 0
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" && "$p" != "python" ]] && return 0
+    done < <(plugin_list_active 2>/dev/null)
+    return 1
+}
+
+python_plugin_is_active_in_project() {
+    # 1. Declared Python plugin.
+    if manifest_list_plugins 2>/dev/null | grep -qx 'python'; then
+        return 0
+    fi
+
+    # 2. Any declared env with a Python backend or `languages: python`.
+    local env backend
+    while IFS= read -r env; do
+        [[ -z "$env" ]] && continue
+        backend="$(manifest_get_backend "$env" 2>/dev/null || true)"
+        if [[ "$backend" == "venv" || "$backend" == "micromamba" ]]; then
+            return 0
+        fi
+        local -a _langs=()
+        manifest_get_languages "$env" _langs 2>/dev/null || true
+        local l
+        for l in "${_langs[@]+"${_langs[@]}"}"; do
+            [[ "$l" == "python" ]] && return 0
+        done
+    done < <(manifest_list_envs 2>/dev/null)
+
+    # 3. project-guide install marker (⇒ Python utility root) / v2 config.
+    [[ -f ".project-guide.yml" ]] && return 0
+    [[ -f ".pyve/config" ]] && return 0
+
+    # 4. Root-scoped Python application files (no recursion — `compgen -G`).
+    if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] \
+        || compgen -G "requirements*.txt" >/dev/null 2>&1 \
+        || compgen -G "environment*.yml" >/dev/null 2>&1 \
+        || compgen -G "*.py" >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # No Python signal. Suppress ONLY with a competing non-Python stack;
+    # otherwise stay active (Pyve defaults to Python on a bare project).
+    if _python_plugin_competing_stack_present; then
+        return 1
+    fi
+    return 0
+}
+
 python_pyve_plugin_check() {
     # Story N.ag: the composer (compose_check) passes the plugin's declared
     # path as $1. Python always operates at the project root, so consume and
@@ -284,6 +375,9 @@ python_pyve_plugin_check() {
     # "takes no positional arguments" guard. User flags (`pyve check --x`)
     # are validated upstream in compose_check before any hook runs.
     [[ $# -gt 0 ]] && shift
+    # Story N.aj: PC-4a — suppress all Python diagnostic output when there
+    # is no Python surface and a competing stack is present.
+    python_plugin_is_active_in_project || return 0
     _python_pyve_plugin_render_advisories
     check_environment "$@"
 }
@@ -294,6 +388,8 @@ python_pyve_plugin_status() {
     # it (forwarding it would trip show_status's positional-arg guard). User
     # flags are validated upstream in compose_status before any hook runs.
     [[ $# -gt 0 ]] && shift
+    # Story N.aj: PC-4a — see python_pyve_plugin_check.
+    python_plugin_is_active_in_project || return 0
     _python_pyve_plugin_render_advisories
     show_status "$@"
 }

@@ -104,20 +104,9 @@ compose_check() {
 
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
-        count=$((count + 1))
 
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || true)"
         [[ -z "$path" ]] && path="."
-
-        # Path-aware section header: visitor plugins (path != ".") are
-        # prefixed with their path so monorepo output disambiguates which
-        # tree a finding belongs to (e.g. `[node @ src/frontend]`).
-        if [[ "$path" == "." ]]; then
-            label="$name"
-        else
-            label="$name @ $path"
-        fi
-        printf '[%s]\n' "$label"
 
         # Run the hook in a subshell (command substitution) for two
         # reasons: (1) the Python plugin's check hook calls `exit` via
@@ -129,7 +118,25 @@ compose_check() {
         # the failure code is captured rather than propagated.
         rc=0
         out="$(plugin_dispatch "$name" check "$path" 2>&1)" || rc=$?
-        [[ -n "$out" ]] && printf '%s\n' "$out"
+
+        # Story N.aj: a plugin that contributes nothing (e.g. the Python
+        # plugin suppressed by the PC-4a gate) gets no section at all — the
+        # composed output stays free of empty `[plugin]` headers.
+        if [[ -z "$out" ]]; then
+            continue
+        fi
+        count=$((count + 1))
+
+        # Path-aware section header: visitor plugins (path != ".") are
+        # prefixed with their path so monorepo output disambiguates which
+        # tree a finding belongs to (e.g. `[node @ src/frontend]`).
+        if [[ "$path" == "." ]]; then
+            label="$name"
+        else
+            label="$name @ $path"
+        fi
+        printf '[%s]\n' "$label"
+        printf '%s\n' "$out"
 
         sev="$(_compose_check_rc_to_severity "$rc")"
         (( sev > worst )) && worst="$sev"

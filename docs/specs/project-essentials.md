@@ -200,10 +200,13 @@ When reading an array with `"${arr[*]}"` or `"${arr[@]}"`, **always** provide a 
 
 When pyve needs to detect "is project-guide installed in this project?", check **`.project-guide.yml`** in the project root — not the `docs/project-guide/` directory. The YAML file is project-guide's own state record (`installed_version`, `target_dir`, `current_mode`, `pyve_version`, etc.) and is the source-of-truth signal upstream `project-guide` writes on init / update. The `docs/project-guide/` directory is configurable via the YAML's `target_dir` field, so its presence at the default path is neither necessary nor sufficient.
 
-Two consumers today:
+Three consumers today:
 
 - [lib/commands/update.sh:123](../../lib/commands/update.sh#L123) — `pyve update` refreshes project-guide artifacts only when `.project-guide.yml` is present.
 - [lib/commands/init.sh](../../lib/commands/init.sh) — the wizard's project-guide prompt (Story L.k.5) renders "refresh (already installed)" iff `.project-guide.yml` is present, then defers to the post-env hook for the actual update.
+- [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — `python_plugin_is_active_in_project` (Story N.aj, PC-4a) treats `.project-guide.yml` as a **Python-active signal**: project-guide is a Python package installed via `pip` into a venv-backed `root` `utility` env, so its presence means Python is legitimately part of the project (even a Node app), and the Python plugin's `check`/`status` must NOT be suppressed.
+
+**`.project-guide.yml` is a load-bearing cross-repo dependency contract.** pyve keys real behavior off this exact filename, so a rename or shape change in upstream `project-guide` is a coordinated breaking change: the project-guide side of it must resolve the pyve contract (per the "Cross-repo coordination with project-guide" entry). Story N.ao formalizes the contract + rename protocol alongside the wizard project-guide-provisioning design.
 
 **Why:** picking the directory as the signal looked simpler at first but creates two failure modes: (1) the directory exists for unrelated reasons (the user's own `docs/project-guide.md` file inside a vendored docs structure, an empty placeholder dir, etc.); (2) the user has relocated project-guide artifacts via `target_dir`, so the directory at the default path doesn't exist while project-guide is in fact installed and active.
 

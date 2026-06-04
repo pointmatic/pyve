@@ -63,19 +63,24 @@ compose_status() {
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || true)"
         [[ -z "$path" ]] && path="."
 
+        # Capture in a subshell so a hook that calls `exit` (defensive: some
+        # plugin status paths may) cannot tear down the composer, and so the
+        # composer owns the per-section framing. Status is informational, so
+        # the hook's return code is intentionally ignored.
+        out="$(plugin_dispatch "$name" status "$path" 2>&1)" || true
+
+        # Story N.aj: a plugin that contributes nothing (e.g. the Python
+        # plugin suppressed by the PC-4a gate) gets no section — no empty
+        # `[plugin]` header in the composed status output.
+        [[ -z "$out" ]] && continue
+
         if [[ "$path" == "." ]]; then
             label="$name"
         else
             label="$name @ $path"
         fi
         printf '[%s]\n' "$label"
-
-        # Capture in a subshell so a hook that calls `exit` (defensive: some
-        # plugin status paths may) cannot tear down the composer, and so the
-        # composer owns the per-section framing. Status is informational, so
-        # the hook's return code is intentionally ignored.
-        out="$(plugin_dispatch "$name" status "$path" 2>&1)" || true
-        [[ -n "$out" ]] && printf '%s\n' "$out"
+        printf '%s\n' "$out"
 
         printf '\n'
     done < <(plugin_list_active)
