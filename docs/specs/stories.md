@@ -999,17 +999,17 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Note — `purge_inventory` is a declarative data interface (mirrors N.r).** Per the Python precedent, the inventory is the *declaration* of created/authored surfaces; the actual remover is `_node_purge_at`. N.z keeps the two **consistent** (rather than letting the inventory be a superset): the remover was extended to the full created set so "purge removes created artifacts" holds end-to-end.
 
-### Story N.aa: SvelteKit detection + `frameworks` attribute support [Planned]
+### Story N.aa: SvelteKit detection + `frameworks` attribute support [Done]
 
 **Motivation.** Layer SvelteKit-specific detection on top of the Node plugin. Per S11, `frameworks = ["sveltekit"]` is structured metadata on `[env.<name>]` (concept doc § 4.1) — advisory, no behavior change beyond detection in v3.0.
 
 **Tasks**
 
-- [ ] Extend the Node plugin's `pyve_plugin_detect` (from N.t) with framework detection: when `package.json` is present AND (`svelte.config.js` is present OR `@sveltejs/kit` appears in `package.json`'s `devDependencies` / `dependencies`), the framework signal is `sveltekit`.
-- [ ] `pyve init` scaffold-time wizard, when the framework signal fires, offers to add `frameworks = ["sveltekit"]` to the generated `[env.<name>]` block.
-- [ ] [lib/manifest.sh](../../lib/manifest.sh) exposes `manifest_get_env_frameworks <env>` returning the list; consumed advisory-only by `pyve check` / `pyve status` in v3.0.
-- [ ] Surfacing in `pyve check`: when `frameworks` is set, print the framework(s) in the status output (no failure exit code). Deeper framework-aware behavior deferred to a Future story (parallel to TypeScript's advisory-only treatment).
-- [ ] Bats + integration tests: detection positive on a SvelteKit fixture (svelte.config.js present); detection negative on a pure-Node fixture; `manifest_get_env_frameworks` returns the right list; check surfaces the framework name.
+- [x] Framework detection on the Node plugin: `node_detect_framework [path]` returns `sveltekit` when `package.json` is present AND (a `svelte.config.{js,mjs,ts}` is present OR `@sveltejs/kit` appears in `package.json`'s deps/devDeps); `none` otherwise. **Implemented as a sibling helper, not a mutation of `node_pyve_plugin_detect`** — that hook's `node`/`none` contract (N.t) and its tests stay intact. The `package.json` probe is advisory-grade `grep` (matches the typescript posture).
+- [x] `pyve init` scaffold-time consult: the Node advisory (`_init_maybe_advise_node_plugin`, N.t) now appends a **"SvelteKit detected — consider adding `frameworks = [\"sveltekit\"]`"** hint when the signal fires. Advisory-only — no `pyve.toml` mutation (same deferral as N.t; manifest mutation for Node envs lands with N-4 composition).
+- [x] Manifest accessor: **already present** — `manifest_get_frameworks <env> <out_var>` ([manifest.sh:340](../../lib/manifest.sh#L340)) reads `PYVE_ENV_FRAMEWORKS_Q`, which the TOML helper already parses ([pyve_toml_helper.py:55](../../lib/pyve_toml_helper.py#L55)). No new accessor added (the task's `manifest_get_env_frameworks` would have duplicated it); N.aa consumes the existing one.
+- [x] Surfacing in `pyve check` / `pyve status`: `_node_pyve_plugin_render_advisories` now prints `env '<name>' frameworks: <list>` when `frameworks` is declared (no failure exit code). Deeper framework-aware behavior deferred to a Future story (parallel to the TypeScript advisory-only treatment).
+- [x] Bats tests: detection positive (svelte.config.js / .mjs / `@sveltejs/kit` dep) and negative (pure-Node, no package.json); path-aware sub-path detection; check + status surface a declared `frameworks`; no line when none declared; scaffold advisory adds / omits the SvelteKit hint. *([tests/unit/test_n_aa_node_sveltekit.bats](../../tests/unit/test_n_aa_node_sveltekit.bats), 11 cases; N.t's 15 stay green.)*
 
 ### Story N.ab: End-to-end test — Node-only + polyglot Python+Node (contract generalization proof) [Planned]
 

@@ -891,6 +891,13 @@ _init_maybe_advise_node_plugin() {
     info "Found package.json. pyve left pyve.toml unchanged."
     info "To manage Node alongside Python, add a [plugins.node] block with"
     info "its own sub-path (distinct from the Python root \".\")."
+
+    # Story N.aa: surface a SvelteKit framework hint when detected.
+    local node_framework
+    node_framework="$(node_detect_framework 2>/dev/null || true)"
+    if [[ "$node_framework" == "sveltekit" ]]; then
+        info "SvelteKit detected — consider adding frameworks = [\"sveltekit\"] to the env block."
+    fi
 }
 
 # List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..

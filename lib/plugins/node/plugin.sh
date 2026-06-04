@@ -172,6 +172,39 @@ node_pyve_plugin_detect() {
 }
 
 #------------------------------------------------------------
+# Framework detection (Story N.aa)
+#
+# Sibling to node_pyve_plugin_detect — kept separate so detect's
+# node/none contract (N.t) stays intact. Returns the framework signal
+# for <path> (default "."): "sveltekit" when package.json is present AND
+# (a svelte.config.{js,mjs,ts} is present OR @sveltejs/kit appears in
+# package.json's deps/devDeps); "none" otherwise. The package.json probe
+# is advisory-grade (grep, not a JSON parse), matching the typescript
+# advisory's posture. `frameworks` is S11 structured metadata — advisory
+# only in v3.0 (no behavior change beyond detection).
+#------------------------------------------------------------
+
+node_detect_framework() {
+    local path="${1:-.}"
+    [[ -f "${path}/package.json" ]] || { printf 'none'; return 0; }
+
+    local cfg
+    for cfg in svelte.config.js svelte.config.mjs svelte.config.ts; do
+        if [[ -f "${path}/${cfg}" ]]; then
+            printf 'sveltekit'
+            return 0
+        fi
+    done
+
+    if grep -q '"@sveltejs/kit"' "${path}/package.json" 2>/dev/null; then
+        printf 'sveltekit'
+        return 0
+    fi
+
+    printf 'none'
+}
+
+#------------------------------------------------------------
 # Plugin contract — env-block validation (Story N.w, S9)
 #
 # Mirrors the Python plugin's validate_env_blocks: iterates declared
@@ -380,6 +413,14 @@ _node_pyve_plugin_render_advisories() {
                && ! grep -q '"typescript"' "$path/package.json" 2>/dev/null; then
                 warn "env '$name' declares typescript but 'typescript' is not in package.json dependencies"
             fi
+        fi
+
+        # S11 (Story N.aa): frameworks attribute — advisory surfacing only.
+        local -a fws
+        fws=()
+        manifest_get_frameworks "$name" fws 2>/dev/null || true
+        if [[ "${#fws[@]}" -gt 0 ]]; then
+            info "env '$name' frameworks: ${fws[*]}"
         fi
     done
     return 0
