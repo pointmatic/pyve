@@ -33,7 +33,7 @@ end
 # Unset irrelevant variables.
 deactivate nondestructive
 
-set -gx VIRTUAL_ENV /Users/michaelsmith/Developer/Pointmatic/pyve/.pyve/testenv/venv
+set -gx VIRTUAL_ENV /Users/michaelsmith/Developer/Pointmatic/pyve/.pyve/testenvs/testenv/venv
 
 set -gx _OLD_VIRTUAL_PATH $PATH
 set -gx PATH "$VIRTUAL_ENV/"bin $PATH

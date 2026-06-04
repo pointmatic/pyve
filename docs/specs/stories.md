@@ -882,32 +882,148 @@ These slot into the existing "Fix pre-existing integration test failures" Future
 
 No CLI surface change; no test sweep needed (docs-only); no `CHANGELOG.md` entry.
 
-### Story N.t: Append project-essentials entries for N-2 [Planned]
-
-**Motivation.** Capture the spike's S1–S11 conclusions plus the embedded-`purpose:` gap as Phase N invariants so future contributors (and future LLM sessions) don't re-derive them.
-
-**Tasks**
-
-- [ ] Append to [project-essentials.md](project-essentials.md) the following invariants from the spike (cite the spike doc for full reasoning):
-  - **S1**: env = materialization (distinct dependency closure), not a run surface.
-  - **S2**: `backend` is a singleton per env; layering is internal to the provider.
-  - **S3**: no `role` field; spatial owner inferred from `path`.
-  - **S4**: zero-or-one host (zero-or-one plugin with `path = "."`).
-  - **S5**: implicit-Python rule when `[plugins.*]` is absent.
-  - **S6 (revised)**: three backend categories (project-virtualized / cache-backed / check-only) with differing `init` / `purge` / `activation` semantics.
-  - **S7**: `manual_steps` as optional advisory `[env.*]` field.
-  - **S8**: deploy lives in `[deploy.<env-name>]`, not as a `purpose:` value.
-  - **S9**: `[env.*]` core fields (`purpose`, `backend`) + provider-private extension space.
-  - **S10**: runtime version resolution is plugin-internal; each plugin owns its own precedence chain (no framework-level asdf-first rule).
-  - **S11**: language flavors via `languages` structured attribute (orthogonal to backend / plugin).
-- [ ] Append the **embedded-`purpose:` gap** as a documented limitation: `purpose: embedded` is the future-phase candidate for hardware-deployment ecosystems; not a v3.0 schema change. See the *Known partial fits* section of the spike doc.
-- [ ] Skip the story entirely if N-2 introduced no new invariants beyond what's already captured (extremely unlikely given S1–S11).
-
 ---
 
 ## Subphase N-3: Node/SvelteKit second reference plugin
 
-Implement the Node plugin with `pnpm`/`npm`/`yarn` backend-providers and a SvelteKit detection rule. Proves the contract generalizes beyond Python. Story breakdown deferred. Bundles into **v3.0.0**.
+Implement the Node plugin with `pnpm`/`npm`/`yarn` backend-providers and a SvelteKit detection rule. Proves the contract generalizes beyond Python. Bundles into **v3.0.0**.
+
+**Phase-specific insights for this subphase** (per the working agreement to keep N-3-specific essentials in this subphase description rather than `project-essentials.md`):
+
+- **N-3 is the contract-generalization proof.** Every design hole in the contract from N-2 gets surfaced when implementing a non-Python ecosystem against the same hook signatures. If a lifecycle assumption was implicit-Python-shaped (e.g., assuming runtime resolution always reads `.tool-versions`), N-3 will expose it. Treat any contract change in N-3 as a signal that N-2's spec-doc claims need a follow-up correction.
+- **Node version-manager precedence chain** (revised S10): `nvm > fnm > volta > asdf > Homebrew/system PATH`. Homebrew is the common macOS PATH fallback (the dev machine for this work uses Homebrew-installed Node, per `brew list` / `which node`); per-project pinning tools (nvm via `.nvmrc`, fnm via `.node-version`, volta via `package.json` `volta` block) win when present and active.
+- **TypeScript is a language flavor (S11), not a backend.** `languages = ["typescript"]` is advisory metadata; backend stays `pnpm` / `npm` / `yarn`. v3.0 surfaces TypeScript only in `pyve check` (warn if attribute set but `typescript` not in `package.json` deps). Deeper TypeScript integration deferred to a Future story.
+- **SvelteKit is a framework, not a backend.** `frameworks = ["sveltekit"]` per concept doc § 4.1. Story N.aa lands the detection.
+- **Node plugin must be path-aware from the start.** The contract supports `path = "."` (root plugin) and `path = "src/frontend"` (visitor at sub-path). N-3 tests both shapes (in N.ab) so N-4's composition work has working fixtures from day one.
+
+### Story N.t: Node plugin module + scaffold-time detection hook [Done]
+
+**Motivation.** Stand up the Node plugin against the contract from N.k. Mirror the shape of [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) (per N.n) so reviewers can diff the two side-by-side and see contract symmetry. Detection runs at scaffold-time only — once `pyve.toml` declares `[plugins.node]`, the manifest is the runtime source of truth.
+
+**Tasks**
+
+- [x] New `lib/plugins/node/plugin.sh` registering the Node plugin with the contract (N.k's `pyve_plugin_*` hook signatures). All hooks except `pyve_plugin_detect` may be no-op stubs in this story — subsequent N-3 stories fill them in. *(Ships `node_pyve_plugin_manifest_namespace` → `"node"`, a documented no-op `register_backends` stub for N.u, and `detect`; all other hooks fall back to the `contract.sh` defaults.)*
+- [x] `pyve_plugin_detect` returns positive when `package.json` exists at the plugin's `path` (default `.`). Negative otherwise. *(`node_pyve_plugin_detect [path]` prints `"node"` / `"none"`; path-aware from the start per N-3 insight #5, so N.ab's monorepo fixtures have a working primitive.)*
+- [x] Explicit `source lib/plugins/node/plugin.sh` line in [pyve.sh](../../pyve.sh) per the *Library sourcing is explicit, not glob-based* rule. Sourcing order: after the Python plugin (alphabetical isn't load-bearing here; consistency with the existing list is).
+- [x] **`pyve init` consults the Node plugin's detection hook alongside Python's — advisory only (decision below).** When `package.json` is present, init surfaces a "Node project detected" advisory and **leaves `pyve.toml` unchanged**; pure-Python projects are unaffected. The consult lives in `_init_maybe_advise_node_plugin` (in the Python plugin's init module, where `init_project` now lives — the task's original `lib/commands/init.sh` pointer predates the N.s relocation).
+- [x] Bats unit + integration tests: detection positive/negative on canned fixtures; Node plugin loads when explicitly declared in `[plugins.node]`; Node plugin does not load implicitly in pure-Python projects (the implicit-Python rule from N.k only covers Python, never Node). *([tests/unit/test_n_t_node_plugin.bats](../../tests/unit/test_n_t_node_plugin.bats), 16 cases; [tests/integration/test_node_detection.py](../../tests/integration/test_node_detection.py) for the end-to-end init consult + no-mutation guarantee.)*
+
+**Decision note — Task 4 is advisory-only; the auto-write of `[plugins.node]` is a contract hole deferred to N-4.** The task as first drafted ("offers to add `[plugins.node]` to the scaffolded `pyve.toml`") cannot produce a *valid* manifest from root-level detection, and surfacing that is exactly N-3's job (insight #1). Two N.k registry rules collide:
+
+- **Declaring any plugin switches off implicit-Python (S5).** The registry implicit-loads Python only when **zero** `[plugins.*]` are declared ([lib/plugins/registry.sh](../../lib/plugins/registry.sh)). The moment init writes `[plugins.node]`, Python must *also* be declared explicitly or the Python plugin stops loading on every later `pyve` command — even though init just built a venv.
+- **Python + Node both at `path = "."` is a hard S4 cardinality error.** Root-level `package.json` sits at `.`, where Python already lives; writing both at `.` makes `plugin_load_all_from_manifest` error out on every command. The spike's polyglot model assumes the two ecosystems live at **distinct** paths (Node at `src/frontend`, `desktop/`, …) — which root-only detection has no way to discover.
+
+So a root-level `package.json` next to a Python project is not expressible as a valid polyglot manifest today. N.t therefore *consults and advises* rather than mutating. The composed multi-plugin scaffold (prompt for / infer a distinct Node sub-path, emit explicit `[plugins.python]` + `[plugins.node]`) belongs to **Subphase N-4** (composed activation), with **N.ab** proving the polyglot shape end-to-end.
+
+### Story N.u: Node backend-providers — `pnpm`, `npm`, `yarn` [Planned]
+
+**Motivation.** Register three project-virtualized backend-providers inside the Node plugin via the registry from N.l. Each provider handles its package manager's lockfile shape and install command; the contract abstracts the difference behind `bp_dispatch`.
+
+**Tasks**
+
+- [ ] In `lib/plugins/node/plugin.sh`, call `bp_register node pnpm virtualized`, `bp_register node npm virtualized`, `bp_register node yarn virtualized` during the plugin's contract registration.
+- [ ] Per-provider helpers: `node_provider_install <provider>` runs the right command (`pnpm install` / `npm install` / `yarn install`); `node_provider_lockfile <provider>` returns the lockfile name (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock`); `node_provider_test <provider>` returns the test invocation (`pnpm test` etc., per the package.json-script-delegation decision in N.x).
+- [ ] Provider-detection helper: when an env declares `backend = "pnpm"` (or `npm` / `yarn`), the provider name is the source of truth. When the user omits `backend` in a scaffold-time wizard, infer the provider from lockfile presence (`pnpm-lock.yaml` → pnpm, etc.); if no lockfile, default to `pnpm`.
+- [ ] Bats unit tests: registration succeeds; `bp_dispatch node:pnpm <hook>` routes to the right helpers; lockfile/install/test commands return the expected strings per provider.
+
+### Story N.v: Node runtime-resolution helpers (nvm / fnm / volta + PATH fallback) [Planned]
+
+**Motivation.** Implement Node's version-manager precedence per revised S10. Helpers live with the Node plugin (per the *lib/commands/<name>.sh is for command implementations only* rule's spirit — Node-specific detection belongs in `lib/plugins/node/`, not in shared `lib/env_detect.sh`).
+
+**Tasks**
+
+- [ ] New `lib/plugins/node/runtime_detect.sh`. Helpers: `is_nvm_active()`, `is_fnm_active()`, `is_volta_active()`, `node_runtime_resolve()`.
+- [ ] `is_nvm_active`: returns 0 when `NVM_DIR` is set and nvm is loadable. Mirrors the `is_asdf_active()` contract per [project-essentials.md](project-essentials.md).
+- [ ] `is_fnm_active`: returns 0 when `fnm --version` succeeds and `FNM_DIR` (or equivalent env signal) is set.
+- [ ] `is_volta_active`: returns 0 when `VOLTA_HOME` is set and volta is loadable.
+- [ ] `node_runtime_resolve` walks the precedence chain (nvm > fnm > volta > asdf > PATH) and returns the resolved `node` binary path, or fails loudly with a precise "no Node runtime detected; install via Homebrew or your preferred manager" message.
+- [ ] Each helper has its own `PYVE_NO_NVM_COMPAT=1` (etc.) opt-out env var per the asdf-compat precedent, so users can disable a detected manager when needed.
+- [ ] Bats unit tests: each helper detected/not-detected branches; precedence chain returns the highest-priority active manager; PATH fallback resolves when no manager is active.
+
+### Story N.w: Node plugin — init / purge / update hooks [Planned]
+
+**Motivation.** Implement the scaffolding lifecycle for Node envs. Mirrors N.o's shape; the only new shape is Node's dep-installation flow (no `python -m venv` analog — install runs directly against `node_modules/` via the provider).
+
+**Tasks**
+
+- [ ] `pyve_plugin_init` in `lib/plugins/node/plugin.sh`: dispatches to `node_provider_install <provider>` per the env's `backend`. Resolves the Node runtime via N.v's `node_runtime_resolve` before invoking the package manager.
+- [ ] `pyve_plugin_purge`: removes `node_modules/`, `.svelte-kit/` (when present), `dist/`, `build/`, `.next/` from the env's `path`. Never touches `package.json`, lockfiles, or source files (S9 / smart-purge rule from N.r).
+- [ ] `pyve_plugin_update`: re-runs install with refresh semantics per provider (`pnpm install --frozen-lockfile` for CI, `pnpm install` otherwise — provider-internal detail).
+- [ ] Env-block validation per S9: `init` hook receives the entire `[env.<name>]` block, validates `purpose` and `backend`; provider-private fields (`languages`, `frameworks`, future `node_version`, etc.) pass through to the provider untouched.
+- [ ] Bats + integration tests: init on a fresh fixture creates `node_modules/`; purge removes it; update re-runs install. Covers all three providers.
+
+### Story N.x: Node plugin — check / status / run / test hooks (test → `package.json` `test` script) [Planned]
+
+**Motivation.** Implement the diagnostic and execution lifecycle. `pyve_plugin_test` delegates to the user's `package.json` `test` script via the provider — honest passthrough; user controls what "test" means. Adds the TypeScript advisory surfacing per S11.
+
+**Tasks**
+
+- [ ] `pyve_plugin_check`: verifies Node binary resolves (via N.v), `package.json` present, `node_modules/` present and non-empty. **TypeScript advisory:** when `languages = ["typescript"]` is set on the env but `typescript` is not in `package.json`'s `dependencies` / `devDependencies`, surface a `pyve check` warning. No failure exit code; advisory only.
+- [ ] `pyve_plugin_status`: parallels the Python plugin's status output — env name, backend, lockfile state, last-modified, manual_steps if any.
+- [ ] `pyve_plugin_run`: passthrough — `pyve run <cmd>` from a Node env activates `node_modules/.bin` on PATH (via N.y) and invokes `<cmd>`.
+- [ ] `pyve_plugin_test`: runs `<provider> test` (i.e., `pnpm test` / `npm test` / `yarn test`). The user's `package.json` defines what test means — vitest, jest, playwright, mocha, etc. Honest delegation.
+- [ ] `manual_steps` advisory (S7): if the env has a non-empty `manual_steps` list, surface in `pyve check` and `pyve status` output (same pattern as Python's N.p).
+- [ ] Bats + integration tests: check passes on a fully provisioned env; check warns on the TypeScript-attribute-without-dep case; test delegates correctly per provider; run passthrough works.
+
+### Story N.y: Node plugin — activation hook (`.envrc` emission with `node_modules/.bin` PATH_add) [Planned]
+
+**Motivation.** Emit the Node plugin's `.envrc` contribution. Adds `node_modules/.bin` to PATH so binaries installed by the env (vitest, tsc, eslint, etc.) resolve without explicit `<provider> exec` prefixing. Output passes through the PC-1 validator from N.m.
+
+**Tasks**
+
+- [ ] `pyve_plugin_activate` emits a sentinel-marked `.envrc` snippet: `PATH_add "node_modules/.bin"` plus any provider-specific env vars (`PNPM_HOME` etc. — provider-internal detail).
+- [ ] **Path-aware emission:** when the Node plugin is at `path = "src/frontend"`, the snippet emits `PATH_add "src/frontend/node_modules/.bin"` so the absolute resolution at direnv-eval time is correct. Per the *Uniform `.envrc` template* rule in [project-essentials.md](project-essentials.md), uses `PATH_add` (never hand-rolled `export PATH=`).
+- [ ] Output passes through `validate_envrc_snippet` (N.m). Invalid output halts with a precise error.
+- [ ] Sentinel markers follow the per-plugin convention established in N.q (e.g., `# >>> pyve:plugin:node:activate >>>` … `# <<< pyve:plugin:node:activate <<<`).
+- [ ] Bats + integration tests: emitted snippet for Node-at-root and Node-at-subpath both validate and produce direnv-resolvable PATH entries; PC-1 validator catches malformed output.
+
+### Story N.z: Node plugin — `.gitignore` + smart-purge hooks [Planned]
+
+**Motivation.** Re-seat the remaining template / inventory hooks for the Node plugin. Mirrors N.r for Python.
+
+**Tasks**
+
+- [ ] `pyve_plugin_gitignore_entries` returns Node ecosystem patterns: `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`, `.parcel-cache/`, `npm-debug.log*`, `yarn-debug.log*`, `pnpm-debug.log*`. Output passes through `validate_gitignore_snippet` (N.m).
+- [ ] `pyve_plugin_purge_inventory` declares the Node ecosystem's created-vs-authored split:
+  - **Created** (Pyve / package-manager generated, safe to remove): `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`.
+  - **Authored** (user-written, never touch): `package.json`, all lockfiles (`pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`), `tsconfig.json`, `svelte.config.js`, source files.
+- [ ] When Node is at a sub-path, both hooks return entries relative to that sub-path; the composer (lands in N-4) handles root-vs-subpath placement.
+- [ ] Bats + integration tests: `.gitignore` self-heal output includes all entries; `pyve purge` removes created artifacts only; user-authored files untouched.
+
+### Story N.aa: SvelteKit detection + `frameworks` attribute support [Planned]
+
+**Motivation.** Layer SvelteKit-specific detection on top of the Node plugin. Per S11, `frameworks = ["sveltekit"]` is structured metadata on `[env.<name>]` (concept doc § 4.1) — advisory, no behavior change beyond detection in v3.0.
+
+**Tasks**
+
+- [ ] Extend the Node plugin's `pyve_plugin_detect` (from N.t) with framework detection: when `package.json` is present AND (`svelte.config.js` is present OR `@sveltejs/kit` appears in `package.json`'s `devDependencies` / `dependencies`), the framework signal is `sveltekit`.
+- [ ] `pyve init` scaffold-time wizard, when the framework signal fires, offers to add `frameworks = ["sveltekit"]` to the generated `[env.<name>]` block.
+- [ ] [lib/manifest.sh](../../lib/manifest.sh) exposes `manifest_get_env_frameworks <env>` returning the list; consumed advisory-only by `pyve check` / `pyve status` in v3.0.
+- [ ] Surfacing in `pyve check`: when `frameworks` is set, print the framework(s) in the status output (no failure exit code). Deeper framework-aware behavior deferred to a Future story (parallel to TypeScript's advisory-only treatment).
+- [ ] Bats + integration tests: detection positive on a SvelteKit fixture (svelte.config.js present); detection negative on a pure-Node fixture; `manifest_get_env_frameworks` returns the right list; check surfaces the framework name.
+
+### Story N.ab: End-to-end test — Node-only + polyglot Python+Node (contract generalization proof) [Planned]
+
+**Motivation.** The proof obligation for "the contract generalizes beyond Python." Tests N-3's full hook surface against two fixture shapes — Node at root (pure-Node project) and Node as a visitor at `src/frontend` (polyglot Python+Node monorepo from spike Example 4). Includes a final pass updating the spike's S10 with Homebrew added (deferred from the Node-VM-precedence discussion).
+
+**Tasks**
+
+- [ ] **Node-at-root fixture**: pure SvelteKit project, `pyve.toml` declares `[plugins.node]` (path defaults to `.`). Run `pyve init`, `pyve env install`, `pyve check`, `pyve env run pnpm dev` (smoke), `pyve test`, `pyve purge`. Every command exits clean; outputs match expectations.
+- [ ] **Polyglot Python+Node fixture**: Python plugin at root, Node plugin at `src/frontend` per spike Example 4. `pyve.toml` declares both `[plugins.python]` and `[plugins.node]` with explicit `path = "src/frontend"` for Node. Run the same command sequence. Verify Python and Node hooks fire independently; activation snippets compose into one `.envrc` (full composition work lands in N-4 — for N-3 we verify per-plugin snippets are correct and don't interfere when concatenated).
+- [ ] **Visitor-path activation verification**: Node-at-subpath's `PATH_add "src/frontend/node_modules/.bin"` resolves correctly at direnv-eval time from the project root, not from `src/frontend`. Regression test asserts the absolute path.
+- [ ] **Update [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) S10**: add `Homebrew / system PATH` as the final tier of the Node row in the precedence-chain table. (Spike doc continues to be the canonical design record; we keep it accurate as N-3 evidence lands.)
+- [ ] Document any contract design holes surfaced during the proof (the load-bearing N-3 deliverable). If none surface, that's a positive result and should be noted in the story body before marking [Done].
+
+### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Planned]
+
+**Motivation.** Capture the Node plugin in the spec docs so the codebase and the docs agree post-N-3. Brand-descriptions gets a brief annotation; full revision lands in N-6 via `refactor_document`.
+
+**Tasks**
+
+- [ ] [tech-spec.md](tech-spec.md): add a "Node plugin" section mirroring the existing "Python plugin" section (which landed in N.s.10). Cover: backend-providers (pnpm/npm/yarn), runtime-resolution precedence (nvm > fnm > volta > asdf > Homebrew/system), hook implementations, activation pattern (`node_modules/.bin` PATH_add), path-awareness (root vs visitor).
+- [ ] [features.md](features.md): note Node + SvelteKit support; TypeScript advisory; SvelteKit framework detection (advisory). Per S11, no behavior change for users beyond the additions.
+- [ ] [brand-descriptions.md](brand-descriptions.md): brief annotation under the relevant **NEEDS REVISION for Pyve 3.0** sections noting that Node/SvelteKit are now supported (the "polyglot orchestration" framing). Full revision still tracked for N-6.
+- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
 
 ---
 
@@ -946,6 +1062,22 @@ Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and g
 ---
 
 ## Future
+
+### Story ?.?: Deeper TypeScript integration for the Node plugin [Planned]
+
+**Motivation**: Phase N's Subphase N-3 shipped the Node plugin with **advisory-only** TypeScript support — `languages = ["typescript"]` is read and surfaced in `pyve check` (warn if the attribute is set but `typescript` is not in `package.json` deps), but Pyve does no deeper TS-aware behavior. The deferral was deliberate (avoid bogging N-3 in scope) but the richer integration is the natural next step once N-3 ships.
+
+**Why deferred**: in N-3, the contract-generalization proof was the priority — implementing the Node plugin against the contract Python uses, with one new ecosystem and one framework (SvelteKit) as the scope. TypeScript-specific behavior (tsconfig.json detection, suggested `tsc --noEmit` invocations, type-check hooks, etc.) would have stretched N-3 substantially. Picking it up as a standalone story after N-3 ships keeps each subphase tight.
+
+**Tasks** (sketched; refine when picked up):
+
+- [ ] Detect `tsconfig.json` in the Node plugin's `pyve_plugin_detect` hook; surface presence as a structured signal (e.g., a `typescript` framework attribute, or extend the `languages` semantics).
+- [ ] Suggested type-check invocations in `pyve check`: if `tsconfig.json` present, advise `pyve env run <provider> tsc --noEmit` for type-checking; advisory only, no enforcement.
+- [ ] Optional `pyve test` enrichment: when TS is configured, optionally pre-flight `tsc --noEmit` before delegating to the user's test script. Gate behind an opt-in flag or env field (e.g., `[env.web] typescript_check_before_test = true`) so the existing honest-passthrough behavior from N.x stays the default.
+- [ ] Update [features.md](features.md) and [tech-spec.md](tech-spec.md) for the deeper TS handling.
+- [ ] Decide whether this is a Node-plugin-internal change (TS lives inside the Node plugin's hooks) or a generalized "language flavor advisory" pattern that future plugins (Kotlin on JVM, mypy on Python, etc.) inherit. The latter generalizes; the former is tighter scope.
+
+---
 
 ### Story ?.?: Per-leaf help functions for namespace commands (`testenv`, `python`, `self`) [Planned]
 

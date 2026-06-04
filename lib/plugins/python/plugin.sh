@@ -869,6 +869,30 @@ _init_validate_existing_manifest() {
     return 0
 }
 
+# Story N.t (Task 4) — scaffold-time Node detection consult.
+#
+# `pyve init` consults the Node plugin's detection hook alongside Python's.
+# When `package.json` is present, surface an advisory and STOP there:
+# pyve.toml is left unchanged. Auto-writing a `[plugins.node]` block is
+# deferred to the composed-activation subphase, because a root-level
+# package.json next to a Python project can't be expressed as a valid
+# polyglot manifest — declaring any plugin switches off the implicit-Python
+# rule (registry S5), and two plugins both at path = "." is an S4
+# cardinality error. The two ecosystems must live at distinct paths, which
+# root-only detection has no way to discover. So we advise, not mutate.
+#
+# No-op (and silent) for pure-Python projects, preserving today's behavior.
+_init_maybe_advise_node_plugin() {
+    local node_signal
+    node_signal="$(plugin_dispatch node detect 2>/dev/null || true)"
+    [[ "$node_signal" == "node" ]] || return 0
+
+    banner "Node project detected"
+    info "Found package.json. pyve left pyve.toml unchanged."
+    info "To manage Node alongside Python, add a [plugins.node] block with"
+    info "its own sub-path (distinct from the Python root \".\")."
+}
+
 # List manager-reported AVAILABLE Python versions (full catalog), filtered to ^3\..
 # Output: one version per line.
 # Args: $1 = "asdf" | "pyenv"
@@ -1605,6 +1629,9 @@ EOF
             success "Created pyve.toml"
         fi
 
+        # Story N.t: consult Node detection (advisory only; no manifest write).
+        _init_maybe_advise_node_plugin
+
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
 
@@ -1708,6 +1735,9 @@ EOF
         _init_write_pyve_toml "$(basename "$(pwd)")"
         success "Created pyve.toml"
     fi
+
+    # Story N.t: consult Node detection (advisory only; no manifest write).
+    _init_maybe_advise_node_plugin
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists

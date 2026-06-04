@@ -211,6 +211,21 @@ else
 fi
 python_pyve_plugin_register_backends
 
+# Story N.t: Node plugin — second reference plugin (first non-Python
+# ecosystem). Defines node_pyve_plugin_* hooks; backend-providers
+# (pnpm/npm/yarn) land in N.u. Sourced after the Python plugin for
+# consistency with the existing list (path/alphabetical order isn't
+# load-bearing here). The eager register_backends call is a no-op stub
+# in N.t and becomes live once N.u fills it in — mirroring Python.
+if [[ -f "$SCRIPT_DIR/lib/plugins/node/plugin.sh" ]]; then
+    # shellcheck source=lib/plugins/node/plugin.sh
+    source "$SCRIPT_DIR/lib/plugins/node/plugin.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/node/plugin.sh\n" >&2
+    exit 1
+fi
+node_pyve_plugin_register_backends
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
