@@ -915,16 +915,16 @@ Implement the Node plugin with `pnpm`/`npm`/`yarn` backend-providers and a Svelt
 
 So a root-level `package.json` next to a Python project is not expressible as a valid polyglot manifest today. N.t therefore *consults and advises* rather than mutating. The composed multi-plugin scaffold (prompt for / infer a distinct Node sub-path, emit explicit `[plugins.python]` + `[plugins.node]`) belongs to **Subphase N-4** (composed activation), with **N.ab** proving the polyglot shape end-to-end.
 
-### Story N.u: Node backend-providers — `pnpm`, `npm`, `yarn` [Planned]
+### Story N.u: Node backend-providers — `pnpm`, `npm`, `yarn` [Done]
 
 **Motivation.** Register three project-virtualized backend-providers inside the Node plugin via the registry from N.l. Each provider handles its package manager's lockfile shape and install command; the contract abstracts the difference behind `bp_dispatch`.
 
 **Tasks**
 
-- [ ] In `lib/plugins/node/plugin.sh`, call `bp_register node pnpm virtualized`, `bp_register node npm virtualized`, `bp_register node yarn virtualized` during the plugin's contract registration.
-- [ ] Per-provider helpers: `node_provider_install <provider>` runs the right command (`pnpm install` / `npm install` / `yarn install`); `node_provider_lockfile <provider>` returns the lockfile name (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock`); `node_provider_test <provider>` returns the test invocation (`pnpm test` etc., per the package.json-script-delegation decision in N.x).
-- [ ] Provider-detection helper: when an env declares `backend = "pnpm"` (or `npm` / `yarn`), the provider name is the source of truth. When the user omits `backend` in a scaffold-time wizard, infer the provider from lockfile presence (`pnpm-lock.yaml` → pnpm, etc.); if no lockfile, default to `pnpm`.
-- [ ] Bats unit tests: registration succeeds; `bp_dispatch node:pnpm <hook>` routes to the right helpers; lockfile/install/test commands return the expected strings per provider.
+- [x] In `lib/plugins/node/plugin.sh`, call `bp_register node pnpm virtualized`, `bp_register node npm virtualized`, `bp_register node yarn virtualized` during the plugin's contract registration. *(Replaces N.t's no-op stub; fired eagerly at source-time from [pyve.sh](../../pyve.sh), mirroring Python's `venv`/`micromamba` registration.)*
+- [x] Per-provider helpers: `node_provider_install <provider>` returns the right command (`pnpm install` / `npm install` / `yarn install`); `node_provider_lockfile <provider>` returns the lockfile name (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock`); `node_provider_test <provider>` returns the test invocation (`pnpm test` etc.). *Each is a pure string-map that the lifecycle hooks (N.w/N.x) consume so per-tool differences live in one place; unknown providers error.* **N.x revisits `node_provider_test`** per the package.json-script-delegation decision — N.u ships the conventional `<pm> test` form.
+- [x] Provider-detection helper `node_provider_detect [declared_backend] [path]`: an explicit `backend = "pnpm"` (or `npm` / `yarn`) is the source of truth and wins over any lockfile; otherwise infer from lockfile presence (`pnpm-lock.yaml` → pnpm, `package-lock.json` → npm, `yarn.lock` → yarn); if no lockfile, default to `pnpm`. Path-aware (default `.`).
+- [x] Bats unit tests: registration (owner `node`, category `virtualized`, idempotent, coexists with Python providers); `bp_dispatch <provider> <hook>` resolves a registered provider and still errors on an unregistered one; install/lockfile/test maps + the detection helper. *([tests/unit/test_n_u_node_backend_providers.bats](../../tests/unit/test_n_u_node_backend_providers.bats), 21 cases. Note: the registry keys backends by bare name (`pnpm`) with the owning plugin as metadata — the task's `bp_dispatch node:pnpm` is conceptual shorthand for "the `pnpm` backend owned by `node`".)*
 
 ### Story N.v: Node runtime-resolution helpers (nvm / fnm / volta + PATH fallback) [Planned]
 

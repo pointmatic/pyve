@@ -12,13 +12,14 @@
 # Deliberately mirrors the shape of lib/plugins/python/plugin.sh (N.n)
 # so reviewers can diff the two side-by-side and see contract symmetry.
 #
-# N.t ships only:
-#   node_pyve_plugin_manifest_namespace   — returns "node"
-#   node_pyve_plugin_register_backends    — no-op stub (providers in N.u)
-#   node_pyve_plugin_detect               — scaffold-time file-signal scan
+# Hooks shipped so far:
+#   node_pyve_plugin_manifest_namespace   — returns "node"            (N.t)
+#   node_pyve_plugin_detect               — scaffold-time file scan    (N.t)
+#   node_pyve_plugin_register_backends    — pnpm / npm / yarn providers (N.u)
+#   node_provider_install / _lockfile / _test / _detect — per-provider
+#                                            string maps + resolution   (N.u)
 #
 # Everything else falls back to the no-op defaults in contract.sh:
-#   - backend-providers (pnpm / npm / yarn)        → N.u
 #   - runtime-resolution (nvm / fnm / volta + PATH) → N.v
 #   - lifecycle (init / purge / update)             → N.w
 #   - check / status / run / test                   → N.x
@@ -52,16 +53,104 @@ node_pyve_plugin_manifest_namespace() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — register_backends (no-op stub in N.t)
+# Plugin contract — register_backends (Story N.u)
 #
-# The three project-virtualized backend-providers (pnpm / npm / yarn)
-# register here in Story N.u via bp_register. The stub keeps the hook
-# signature present from N.t so N.u has an obvious insertion point and
-# the Node plugin's shape matches the Python plugin's from day one.
+# The three Node package managers register as project-virtualized
+# backend-providers (spike S6): each materializes per-project state
+# (node_modules/) and contributes node_modules/.bin to PATH on
+# activation (the activation hook itself lands in N.y). bp_register is
+# idempotent for identical re-registration, so this hook is safe to
+# call multiple times (the eager source-time call in pyve.sh and any
+# later contract-driven re-fire both land on a consistent registry).
 #------------------------------------------------------------
 
 node_pyve_plugin_register_backends() {
-    : # providers land in N.u
+    bp_register node pnpm virtualized
+    bp_register node npm  virtualized
+    bp_register node yarn virtualized
+}
+
+#------------------------------------------------------------
+# Per-provider string-mapping helpers.
+#
+# Pure mappings from a provider name to that package manager's
+# install command, lockfile name, and test invocation. The lifecycle
+# hooks (N.w init/update, N.x test) consume these so the per-tool
+# differences live in exactly one place. Unknown providers error.
+#------------------------------------------------------------
+
+# Print the install command for <provider>.
+node_provider_install() {
+    case "$1" in
+        pnpm) printf 'pnpm install' ;;
+        npm)  printf 'npm install' ;;
+        yarn) printf 'yarn install' ;;
+        *)
+            printf "error: node_provider_install: unknown provider '%s' (expected: pnpm, npm, yarn)\n" "$1" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Print the lockfile name for <provider>.
+node_provider_lockfile() {
+    case "$1" in
+        pnpm) printf 'pnpm-lock.yaml' ;;
+        npm)  printf 'package-lock.json' ;;
+        yarn) printf 'yarn.lock' ;;
+        *)
+            printf "error: node_provider_lockfile: unknown provider '%s' (expected: pnpm, npm, yarn)\n" "$1" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Print the test invocation for <provider>. N.x revisits this per the
+# package.json-script-delegation decision; N.u returns the conventional
+# `<pm> test` form (each package manager forwards to the package.json
+# "test" script).
+node_provider_test() {
+    case "$1" in
+        pnpm) printf 'pnpm test' ;;
+        npm)  printf 'npm test' ;;
+        yarn) printf 'yarn test' ;;
+        *)
+            printf "error: node_provider_test: unknown provider '%s' (expected: pnpm, npm, yarn)\n" "$1" >&2
+            return 1
+            ;;
+    esac
+}
+
+# Resolve the Node provider for an env. Explicit backend wins; else
+# infer from lockfile presence at <path>; else default to pnpm.
+#
+# Usage: node_provider_detect [declared_backend] [path]
+#   declared_backend: the env's `backend = "..."` value, or "" if unset
+#   path:             the plugin's path (default ".")
+node_provider_detect() {
+    local declared="${1:-}"
+    local path="${2:-.}"
+
+    # Explicit declaration is the source of truth.
+    case "$declared" in
+        pnpm|npm|yarn)
+            printf '%s' "$declared"
+            return 0
+            ;;
+    esac
+
+    # Infer from lockfile presence (pnpm > npm > yarn probe order is
+    # arbitrary — at most one lockfile is normally present).
+    if [[ -f "${path}/pnpm-lock.yaml" ]]; then
+        printf 'pnpm'
+    elif [[ -f "${path}/package-lock.json" ]]; then
+        printf 'npm'
+    elif [[ -f "${path}/yarn.lock" ]]; then
+        printf 'yarn'
+    else
+        # No lockfile → default to pnpm.
+        printf 'pnpm'
+    fi
 }
 
 #------------------------------------------------------------

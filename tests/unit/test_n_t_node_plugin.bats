@@ -50,22 +50,16 @@ teardown() {
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Plugin contract — register_backends is a no-op stub in N.t.
+# Plugin contract — register_backends hook is present.
 #
-# The three Node backend-providers (pnpm / npm / yarn) register in N.u;
-# the stub exists so the hook signature is present from N.t and N.u has
-# an obvious insertion point. It must not register anything yet.
+# N.t introduced this as a no-op stub; N.u filled it with the pnpm /
+# npm / yarn providers. The provider-registration behavior is owned by
+# tests/unit/test_n_u_node_backend_providers.bats; here we only assert
+# the hook exists so the plugin's contract shape is complete.
 # ════════════════════════════════════════════════════════════════════
 
 @test "node plugin: register_backends is defined" {
     declare -F node_pyve_plugin_register_backends >/dev/null
-}
-
-@test "node plugin: register_backends registers no providers in N.t" {
-    node_pyve_plugin_register_backends
-    run bp_list
-    [ "$status" -eq 0 ]
-    [ -z "$output" ]
 }
 
 # ════════════════════════════════════════════════════════════════════
