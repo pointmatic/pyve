@@ -63,7 +63,13 @@ prompt_yes_no() {
     
     while true; do
         printf "%s [y/n]: " "$prompt"
-        read -r response
+        # EOF (closed/empty stdin — e.g. a non-interactive caller) returns
+        # non-zero from `read`. Treat it as a decline rather than looping
+        # forever on the "invalid answer" arm (Story N.ae.6). Matches the
+        # default-negative semantics of ask_yn in lib/ui/core.sh.
+        if ! read -r response; then
+            return 1
+        fi
         case "$response" in
             [Yy]|[Yy][Ee][Ss])
                 return 0
