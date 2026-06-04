@@ -415,25 +415,57 @@ authored environment.yml
 EOF
 }
 
-# Plugin activate hook. Unified signature across backends:
-#   python_pyve_plugin_activate <backend> <env_path> <env_name>
+# Plugin activate hook (Story N.ae.2 — snippet emitter).
 #
-# Compose → validate → delegate. On validation failure, aborts with
-# non-zero exit and the offending line on stderr; no file write.
+# Uniform composer-facing contract (spike N.ae.1, decision 1): the hook
+# takes a single optional `<path>` (the plugin's manifest path — always
+# "." for Python, which owns the project root) and emits a sentinel-wrapped
+# `.envrc` section to STDOUT, matching node_pyve_plugin_activate. It performs
+# NO file write — the composed `.envrc` is assembled and atomically written
+# by compose_envrc (Stories N.ae.3 / N.ae.4).
+#
+# Self-resolution: backend / env_path / env_name come from `.pyve/config`
+# (the authoritative backend record init writes), with manifest + convention
+# fallbacks:
+#   - backend:  .pyve/config `backend` → manifest default-env backend → "venv"
+#   - venv:     env_path = .pyve/config `venv.directory` (honors a custom
+#               `pyve init <dir>`) → ".venv"; env_name = basename "$PWD"
+#   - micromamba: env_name = .pyve/config `micromamba.env_name` → basename;
+#               env_path = ".pyve/envs/<env_name>"
+#
+# Compose → PC-1 validate → emit. On validation failure (a buggy/malicious
+# snippet composer), aborts non-zero with the offending line on stderr and
+# emits no section.
 python_pyve_plugin_activate() {
-    local backend="$1"
-    local env_path="$2"
-    local env_name="$3"
+    # <path> accepted for uniform composer dispatch; Python owns root, so
+    # the value is not consulted (the venv/micromamba env paths are
+    # resolved from project state below).
+    local _path="${1:-.}"
 
+    local backend
+    backend="$(read_config_value "backend")"
+    [[ -z "$backend" ]] && backend="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$backend" ]] && backend="venv"
+
+    local env_path env_name
     case "$backend" in
-        venv|micromamba) ;;
+        venv)
+            env_path="$(read_config_value "venv.directory")"
+            [[ -z "$env_path" ]] && env_path=".venv"
+            env_name="$(basename "$PWD")"
+            ;;
+        micromamba)
+            env_name="$(read_config_value "micromamba.env_name")"
+            [[ -z "$env_name" ]] && env_name="$(basename "$PWD")"
+            env_path=".pyve/envs/$env_name"
+            ;;
         *)
             log_error "python plugin: activate: unknown backend '$backend'"
             return 1
             ;;
     esac
 
-    # PC-1 gate.
+    # PC-1 gate over the plugin-owned snippet (the five PATH_add/export lines).
     local snippet
     snippet="$(_python_pyve_plugin_envrc_snippet "$backend" "$env_path" "$env_name")" || return $?
     if ! validate_envrc_snippet "$snippet"; then
@@ -441,10 +473,8 @@ python_pyve_plugin_activate() {
         return 1
     fi
 
-    # Delegate the actual write to the backend-provider. bp_dispatch
-    # routes to <backend>_pyve_bp_activate which calls today's
-    # _init_direnv_* helpers in lib/commands/init.sh.
-    bp_dispatch "$backend" activate "$env_path" "$env_name"
+    # Emit the sentinel-wrapped section (composer-ready; matches Node).
+    printf '# >>> pyve:plugin:python:activate >>>\n%s\n# <<< pyve:plugin:python:activate <<<\n' "$snippet"
 }
 
 #------------------------------------------------------------
@@ -1758,9 +1788,11 @@ init_project() {
         # path is uniform across backends.
         local env_path=".pyve/envs/$env_name"
         if [[ "$no_direnv" == false ]]; then
-            # Story N.q: route through plugin_dispatch so PC-1 validation
-            # runs on the plugin-owned snippet before write.
-            plugin_dispatch python activate micromamba "$env_path" "$env_name"
+            # Story N.ae.2 (interim): the python activate hook is now a
+            # snippet emitter (no write), so call the backend-provider
+            # writer directly to keep `init` emitting `.envrc` unchanged.
+            # Story N.ae.5 replaces this callsite with compose_envrc.
+            bp_dispatch micromamba activate "$env_path" "$env_name"
         else
             info "Skipping .envrc creation (--no-direnv)"
         fi
@@ -1865,9 +1897,11 @@ EOF
     if [[ "$no_direnv" == false ]]; then
         local _venv_project_name
         _venv_project_name="$(basename "$(pwd)")"
-        # Story N.q: route through plugin_dispatch so PC-1 validation
-        # runs on the plugin-owned snippet before write.
-        plugin_dispatch python activate venv "$venv_dir" "$_venv_project_name"
+        # Story N.ae.2 (interim): the python activate hook is now a
+        # snippet emitter (no write), so call the backend-provider writer
+        # directly to keep `init` emitting `.envrc` unchanged. Story
+        # N.ae.5 replaces this callsite with compose_envrc.
+        bp_dispatch venv activate "$venv_dir" "$_venv_project_name"
     else
         info "Skipping .envrc creation (--no-direnv)"
     fi

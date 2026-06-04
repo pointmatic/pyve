@@ -40,46 +40,48 @@ teardown() {
 
 @test "activate: plugin_dispatch python activate routes to the hook" {
     plugin_register python
-    rm -f .envrc
-    run plugin_dispatch python activate venv ".venv" "demo"
+    # N.ae.2: the hook emits a sentinel-wrapped section to stdout (no
+    # write) and self-resolves from .pyve/config.
+    mkdir -p .pyve
+    printf 'backend: venv\nvenv:\n  directory: .venv\n' > .pyve/config
+    run plugin_dispatch python activate "."
     [ "$status" -eq 0 ]
-    [ -f .envrc ]
+    [[ "$output" == *"# >>> pyve:plugin:python:activate >>>"* ]]
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Byte-equivalence: every existing fixture still emits the same .envrc.
+# Activate-contract change (Story N.ae.2).
+#
+# `python_pyve_plugin_activate` is no longer a file writer — it is a
+# sentinel-wrapped snippet EMITTER (stdout), self-resolving from
+# `.pyve/config`. The emitter contract (self-resolution, no-write, PC-1
+# gate, dispatch routing) is owned by
+# tests/unit/test_n_ae_2_python_activate_emitter.bats. The former
+# byte-equivalence-via-`.envrc` tests were retired with that change: the
+# legacy file-write path now lives in the bp shims (exercised directly
+# below), and the composed `.envrc` byte-equivalence target moves to
+# compose_envrc (N.ae.4).
+#
+# What remains pinned here: the bp shims still write the same legacy
+# `.envrc` (the interim init path calls them directly), and the snippet
+# composer is unchanged.
 # ════════════════════════════════════════════════════════════════════
 
-@test "byte-equiv (venv): plugin_dispatch activate matches legacy bp_dispatch output" {
+@test "bp shim (venv): bp_dispatch venv activate writes the legacy .envrc" {
     VERSION_MANAGER=""
-
     rm -f .envrc
     bp_dispatch venv activate ".venv" "demo"
-    local direct
-    direct="$(<.envrc)"
-
-    rm -f .envrc
-    plugin_dispatch python activate venv ".venv" "demo"
-    local dispatched
-    dispatched="$(<.envrc)"
-
-    [ "$direct" = "$dispatched" ]
+    [ -f .envrc ]
+    grep -qF 'PATH_add ".venv/bin"' .envrc
+    grep -qF 'export VIRTUAL_ENV="$PWD/.venv"' .envrc
 }
 
-@test "byte-equiv (micromamba): plugin_dispatch activate matches legacy bp_dispatch output" {
+@test "bp shim (micromamba): bp_dispatch micromamba activate writes the legacy .envrc" {
     VERSION_MANAGER=""
-
     rm -f .envrc
     bp_dispatch micromamba activate ".pyve/envs/test-env" "test-env"
-    local direct
-    direct="$(<.envrc)"
-
-    rm -f .envrc
-    plugin_dispatch python activate micromamba ".pyve/envs/test-env" "test-env"
-    local dispatched
-    dispatched="$(<.envrc)"
-
-    [ "$direct" = "$dispatched" ]
+    [ -f .envrc ]
+    grep -qF 'export CONDA_PREFIX="$PWD/.pyve/envs/test-env"' .envrc
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -114,61 +116,41 @@ teardown() {
 # PC-1 validation gate: plugin-side smuggling is caught before write.
 # ════════════════════════════════════════════════════════════════════
 
-@test "PC-1: malicious snippet composer is rejected; no .envrc written" {
+@test "PC-1: malicious snippet composer is rejected; no section emitted" {
     # Override the snippet composer with one that injects $(...).
-    # The plugin's activate hook must catch this via
-    # validate_envrc_snippet and abort BEFORE the write happens.
+    # The emitter must catch this via validate_envrc_snippet and abort
+    # before emitting any section.
+    mkdir -p .pyve; printf 'backend: venv\n' > .pyve/config
     _python_pyve_plugin_envrc_snippet() {
         printf 'export EVIL="$(whoami)"\n'
     }
 
     rm -f .envrc
-    run python_pyve_plugin_activate venv ".venv" "demo"
+    run python_pyve_plugin_activate
     [ "$status" -ne 0 ]
     [ ! -f .envrc ]
+    [[ "$output" != *"# >>> pyve:plugin:python:activate >>>"* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"PC-1"* ]]
 }
 
 @test "PC-1: validation failure surfaces the offending line on stderr" {
+    mkdir -p .pyve; printf 'backend: venv\n' > .pyve/config
     _python_pyve_plugin_envrc_snippet() {
         printf 'PATH_add `pwd`\n'
     }
 
-    rm -f .envrc
-    run python_pyve_plugin_activate venv ".venv" "demo"
+    run python_pyve_plugin_activate
     [ "$status" -ne 0 ]
-    [[ "$output" == *'`pwd`'* ]] || [[ "$output" == *"rejected"* ]]
-}
-
-@test "PC-1: validation failure does NOT touch a pre-existing .envrc" {
-    # If .envrc already exists, write_envrc_template preserves it.
-    # The validation guard should never even reach the write call,
-    # but verify the file is byte-identical pre/post failure.
-    cat > .envrc << 'EOF'
-# pre-existing pyve .envrc
-PATH_add ".venv/bin"
-EOF
-    local before
-    before="$(<.envrc)"
-
-    _python_pyve_plugin_envrc_snippet() {
-        printf 'export EVIL="$(whoami)"\n'
-    }
-
-    run python_pyve_plugin_activate venv ".venv" "demo"
-    [ "$status" -ne 0 ]
-
-    local after
-    after="$(<.envrc)"
-    [ "$before" = "$after" ]
+    [[ "$output" == *'`pwd`'* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"PC-1"* ]]
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Unknown backend rejection.
+# Unknown backend rejection (resolved from .pyve/config).
 # ════════════════════════════════════════════════════════════════════
 
-@test "activate: unknown backend → error, no write" {
+@test "activate: unknown backend → error, no section" {
+    mkdir -p .pyve; printf 'backend: quantum-foo\n' > .pyve/config
     rm -f .envrc
-    run python_pyve_plugin_activate quantum-foo ".venv" "demo"
+    run python_pyve_plugin_activate
     [ "$status" -ne 0 ]
     [ ! -f .envrc ]
 }

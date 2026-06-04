@@ -1133,16 +1133,18 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Probe `plugin_list_active` + `manifest_get_plugin_path` + per-fixture arg reconstruction against Python-only / Node-only / polyglot shapes; confirm the PC-1 validation boundary (plugin sections pass; composer infra fails → excluded) and the user-content-preservation / atomic-write / `.envrc.prev` mechanics empirically.
 - [x] Record the contract decision + known limitations in [spike-n-ae-envrc-composer-contract.md](spike-n-ae-envrc-composer-contract.md). Six open questions (enumeration, dispatch args, Python reconstruction, validation boundary, PC-2 mechanics, init/update ordering) answered.
 
-### Story N.ae.2: Activate-contract unification — Python `activate` → snippet emitter [Planned]
+### Story N.ae.2: Activate-contract unification — Python `activate` → snippet emitter [Done]
 
 **Motivation.** Spike decision 1. Today `python_pyve_plugin_activate` *writes* the whole `.envrc` via `bp_dispatch`; Node's emits a sentinel-wrapped snippet to stdout. Unify on the snippet-emitter contract so the composer (N.ae.3) can assemble both uniformly.
 
+**Spike-refinement (recorded during implementation).** The N.ae.1 contract said Python self-resolves backend "from the loaded manifest." Reality: `_init_write_pyve_toml` emits **no `backend` line** (env blocks carry only `purpose`/`default`), and `resolve_env_path root` returns `.venv` regardless of backend — so the manifest is *not* the authoritative backend record. The emitter resolves from **`.pyve/config`** (`read_config_value`, which init always writes) with a manifest-backend fallback. Bonus: reading `.pyve/config`'s `venv.directory` lets the emitter honor a custom `pyve init <dir>` (partially retiring spike limitation L1 for the config-present case). The spike doc's § *Decision* and L1 note were updated to match.
+
 **Tasks**
 
-- [ ] Refactor `python_pyve_plugin_activate` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)) into a sentinel-wrapped snippet emitter (`# >>> pyve:plugin:python:activate >>>` … `# <<< pyve:plugin:python:activate <<<`) on stdout — **no file write**. Self-resolve backend (default/root env from the loaded manifest), `env_path` (`.venv` for venv by convention; `resolve_env_path root` for micromamba), and `env_name` (`PYVE_PROJECT_NAME`).
-- [ ] Keep the `*_pyve_bp_activate` shims + `_init_direnv_*` helpers in place for any non-composer caller, but remove the file-write from the *activate hook* path.
-- [ ] Update N.q's byte-equivalence tests ([tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats)) to the snippet-emitter contract: assert the emitted section shape (venv + micromamba) and PC-1-clean output, rather than a written `.envrc`.
-- [ ] Confirm N.y (Node activate) tests still pass unchanged.
+- [x] Refactor `python_pyve_plugin_activate` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)) into a sentinel-wrapped snippet emitter (`# >>> pyve:plugin:python:activate >>>` … `# <<< pyve:plugin:python:activate <<<`) on stdout — **no file write**. Takes a single optional `<path>` (uniform composer dispatch). Self-resolves backend (`.pyve/config` `backend` → manifest default-env backend → `venv`), `env_path` (venv → `.pyve/config` `venv.directory` else `.venv`; micromamba → `.pyve/envs/<config micromamba.env_name>`), and `env_name`.
+- [x] Keep the `*_pyve_bp_activate` shims + `_init_direnv_*` helpers in place for any non-composer caller, but remove the file-write from the *activate hook* path. **Interim wiring:** the two `init_project` callsites now call `bp_dispatch <backend> activate` directly (byte-identical `.envrc` output) so `init` stays green until N.ae.5 swaps them to `compose_envrc`.
+- [x] Update N.q's byte-equivalence tests ([tests/unit/test_n_q_python_plugin_activate.bats](../../tests/unit/test_n_q_python_plugin_activate.bats)) to the snippet-emitter contract: the file-write byte-equiv tests became bp-shim write assertions; PC-1 / dispatch / unknown-backend tests now exercise the self-resolving emitter. New emitter contract pinned in [tests/unit/test_n_ae_2_python_activate_emitter.bats](../../tests/unit/test_n_ae_2_python_activate_emitter.bats) (12 tests).
+- [x] Confirm N.y (Node activate) tests still pass unchanged.
 
 ### Story N.ae.3: `compose_envrc` body assembly + PC-1 validation [Planned]
 

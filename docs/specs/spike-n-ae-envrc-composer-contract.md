@@ -62,7 +62,9 @@ export VAR="…"
 ```
 
 - **Node** already conforms.
-- **Python** is refactored to conform: it self-resolves `backend` (default/root env from the loaded manifest), `env_path` (`.venv` for venv by convention; `resolve_env_path root` for micromamba), and `env_name` (`PYVE_PROJECT_NAME`), then emits its existing five-line snippet wrapped in `# >>> pyve:plugin:python:activate >>>` markers. The `bp_dispatch <backend> activate` file-write path is removed from the *activate hook* (the `*_pyve_bp_activate` shims and `_init_direnv_*` helpers remain for any non-composer caller, but the hook no longer writes).
+- **Python** is refactored to conform: it self-resolves `backend`, `env_path`, and `env_name`, then emits its existing five-line snippet wrapped in `# >>> pyve:plugin:python:activate >>>` markers. The `bp_dispatch <backend> activate` file-write path is removed from the *activate hook* (the `*_pyve_bp_activate` shims and `_init_direnv_*` helpers remain for any non-composer caller, but the hook no longer writes).
+
+  > **Refinement applied during N.ae.2 implementation.** The resolution source is **`.pyve/config`** (via `read_config_value`), *not* the manifest: `_init_write_pyve_toml` emits no `backend` line, and `resolve_env_path root` returns `.venv` regardless of backend, so the manifest is not the authoritative backend record. Resolution chain: `backend` = `.pyve/config` `backend` → manifest default-env backend → `venv`; venv `env_path` = `.pyve/config` `venv.directory` (honors a custom `pyve init <dir>` — partially retires **L1** below) → `.venv`; micromamba `env_path` = `.pyve/envs/<config micromamba.env_name>`; `env_name` = basename for venv, the micromamba env name for micromamba. `.pyve/config` is reliably present at compose time given the N.ae.5 ordering (write config → reload manifest → `compose_envrc`).
 
 **2. Composer = assembler + PC-2 writer.** `compose_envrc <output_path>`:
 1. enumerate `plugin_list_active`;
@@ -79,7 +81,7 @@ export VAR="…"
 
 ### Known limitations (documented, deferred)
 
-- **L1 — custom venv dir.** `pyve init <custom-dir>` is not recorded in `pyve.toml`; the composer assumes `.venv` for the venv backend. The overwhelmingly common case (`.venv`) is covered. Recording the main env's directory/bin-path in the manifest schema is a **follow-up** (out of N.ae scope) and would make Python's activate fully manifest-driven.
+- **L1 — custom venv dir.** *(Largely retired in N.ae.2.)* `pyve init <custom-dir>` is not recorded in `pyve.toml`, but it **is** recorded in `.pyve/config` (`venv.directory`), which the emitter reads — so a custom venv dir is honored whenever `.pyve/config` is present. The residual gap is only a project with a custom venv dir and no `.pyve/config` (not a state init produces). Recording the main env in the `pyve.toml` schema would make activation fully manifest-driven and is still a reasonable **follow-up**, but is no longer load-bearing for N.ae.
 - **L2 — `--no-direnv`.** Unchanged: when `--no-direnv` is set, `init` skips `.envrc` emission entirely; `compose_envrc` is simply not called on that path.
 
 ### Test-contract impact (for the N.ae implementation that follows)
