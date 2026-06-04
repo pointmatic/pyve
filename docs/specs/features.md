@@ -508,7 +508,7 @@ Phase N ships **Node** as the second reference plugin behind the contract from F
 - **`test` is honest delegation.** `pyve`'s Node `test` hook runs the provider's `test` script (`pnpm test`, …); the user's `package.json` `test` script defines what "test" means (vitest, jest, playwright, …). Pyve does not impose a test runner.
 - **TypeScript advisory (S11).** When an env declares `languages` including `typescript` but `package.json` has no `typescript` dependency, `pyve check` warns — advisory only, never a failure exit.
 - **SvelteKit framework detection (advisory).** Pyve recognizes SvelteKit (`@sveltejs/kit` / `svelte.config.js`) and surfaces an env's `frameworks` attribute in `check` / `status`. Recognition is advisory metadata — SvelteKit is **not** specially provisioned beyond the standard Node lifecycle.
-- **Polyglot.** Python and Node coexist when declared at **distinct paths** (e.g. Python at `.`, Node at `src/frontend`); each plugin's hooks confine to their own sub-tree. v3.0 exercises this at the hook level; CLI-level routing of `pyve <cmd>` across all declared envs lands in **Subphase N-4**.
+- **Polyglot.** Python and Node coexist when declared at **distinct paths** (e.g. Python at `.`, Node at `src/frontend`); each plugin's hooks confine to their own sub-tree. CLI-level routing of `pyve <cmd>` across all declared plugins is the **composition layer** — see [FR-11e](#fr-11e-composition-layer-subphase-n-4).
 
 **Polyglot scaffold on `pyve init` (Subphase N-4).** When `pyve init` detects **both** a Python signal and a `package.json` at the project root, it writes a polyglot `pyve.toml` with explicit `[plugins.python]` (root; no `path`, defaults to `.`) and `[plugins.node]` blocks. Because two plugins can't both own `.` (an S4 cardinality error), Node is placed at a distinct sub-path resolved as follows:
 
@@ -520,6 +520,19 @@ Phase N ships **Node** as the second reference plugin behind the contract from F
 - **Non-interactive fallback.** With no TTY (CI) and no `--node-path`, the resolver takes the deterministic path: the single convention match if exactly one exists, the first match if several exist, otherwise the `src/frontend` default — never blocking on a prompt.
 
 **No behavior change for existing Python users.** Node support is additive: a pure-Python project with no `[plugins.node]` declaration behaves exactly as in v2 (the implicit-Python rule never auto-loads Node). Per S11, the new surfaces are advisory.
+
+### FR-11e: Composition Layer (Subphase N-4)
+
+The composition layer is what turns one `pyve <cmd>` into a fan-out across **every** active plugin, composing the results into one coherent artifact or report. It is the CLI-level realization of the multi-plugin promise from FR-11c/d. Implementation detail lives in [tech-spec.md § "Composition layer (Subphase N-4)"](tech-spec.md); the user-facing behavior:
+
+- **Polyglot manifests on `pyve init`.** A root with both a Python signal and a `package.json` scaffolds a polyglot `pyve.toml` with `[plugins.python]` (root) and `[plugins.node]` at a prompted-or-inferred sub-path — the convention walk / `--node-path` / post-init edit mechanics in FR-11d's scaffold note.
+- **Composed `.envrc` and `.gitignore`.** `pyve init` / `pyve update` assemble every active plugin's activation snippet (`.venv/bin`, `node_modules/.bin`, …) into one managed `.envrc` section, and every plugin's ignore entries into one managed `.gitignore` section — each path-prefixed for sub-tree plugins. User-authored content outside the managed markers round-trips verbatim.
+- **Failure-safe writes (PC-2).** Composed-file writes are atomic and non-destructive: pyve composes to a temp file, backs the current file up to `.envrc.prev` / `.gitignore.prev`, and promotes with an atomic rename. If any plugin emits an unsafe snippet, the existing file is left **untouched** (no half-write, no spurious backup) and the command exits nonzero. One-step rollback is `mv -f .envrc.prev .envrc`.
+- **Aggregated `pyve check`.** One run reports a per-plugin section (path-labelled, e.g. `[node @ src/frontend]`) and rolls the per-plugin results up to a single worst-severity exit: any plugin error → exit 2 (CI-failing); warnings are advisory and non-failing.
+- **Aggregated `pyve status`.** A per-plugin read-only snapshot across all plugins; always exits 0.
+- **Aggregated `pyve purge`.** One confirmation lists what every plugin will remove, grouped by plugin; a path any plugin marks user-authored is never removed (even cross-plugin). Removal is delete-only and resumable — a failed purge can be safely re-run.
+- **No-Python noise on non-Python projects.** A Node-only project produces **zero** Python output from `check` / `status`; pyve still defaults to Python for bare directories and polyglot/project-guide projects, so the helpful "run `pyve init`" nudge is never lost where it belongs.
+- **Latency budget.** Each plugin's activation stays within ≤ 50ms p95, enforced across all three project shapes.
 
 ### FR-12: Smart Re-Initialization
 

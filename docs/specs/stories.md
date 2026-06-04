@@ -1318,16 +1318,16 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Execution note (hermetic-bats scope + zero-holes finding).** Per developer direction at the announce gate, the sweep was built as a hermetic bats matrix ([tests/unit/test_n_am_polyglot_matrix.bats](../../tests/unit/test_n_am_polyglot_matrix.bats), 18 tests) focused on the N-4 *composition* surface (`check` / `status` / `purge` / composed `.envrc` / `.gitignore` / PC-2 / PC-4a), rather than a full subprocess pytest sweep that re-drives `init`/`env install`/`env run`/`test` (those need real venv builds + a Node package manager and are already covered per-plugin). The composition layer surfaced **zero design holes** — the only correction was to an over-strict assertion in the new test (the `Backend:` ambiguity noted above), which is a test-authoring nit, not a composition contract gap. This matches the N.ab.4 precedent of recording the hole count explicitly; here the count is zero.
 
-### Story N.an: Doc updates — composition layer in tech-spec.md / features.md [Planned]
+### Story N.an: Doc updates — composition layer in tech-spec.md / features.md [Done]
 
 **Motivation.** Capture the N-4 composition layer in the spec docs so the codebase and the docs agree post-N-4.
 
 **Tasks**
 
-- [ ] [tech-spec.md](tech-spec.md): add a "Composition layer (Subphase N-4)" section covering `lib/envrc_composer.sh`, `lib/gitignore_composer.sh`, the composed check / status / purge architecture, the pass/warn/error severity ladder, the PC-2 atomic-write protocol, and the PC-4 invariants (no-Python noise gate + latency budget).
-- [ ] [features.md](features.md): note that `pyve init` now writes polyglot manifests with prompted/inferred sub-paths; composed `.envrc` and `.gitignore` survive plugin failures; aggregated `check` / `status` / `purge` work across plugins.
-- [ ] [brand-descriptions.md](brand-descriptions.md): brief annotation noting the composition layer is now real (full revision still tracked for N-6).
-- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+- [x] [tech-spec.md](tech-spec.md): added a "Composition layer (Subphase N-4)" section covering the five composer modules (`envrc_composer` / `gitignore_composer` / `check_composer` / `status_composer` / `purge_composer`) + their entry points, the CLI wiring (incl. the `compose_project_*` reload path called from the Python init/update hook), the pass/warn/error severity ladder, the PC-2 atomic-write protocol (tmp → `.prev` → `mv`, untouched-on-failure, user-content preservation), the managed-section sentinels, path-aware labels, the PC-4a no-Python gate + PC-4b latency budget, and Option-B purge. Also corrected the now-stale "Not yet CLI-routed (v3.0)" note in the Node-plugin section (check/status/purge/.envrc/.gitignore are composed post-N-4; only the per-env runtime commands remain Python-routed).
+- [x] [features.md](features.md): added **FR-11e: Composition Layer (Subphase N-4)** — polyglot manifests on init, composed `.envrc`/`.gitignore`, failure-safe writes (PC-2), aggregated `check`/`status`/`purge`, no-Python noise gate, latency budget; and updated FR-11d's stale forward-reference to point at FR-11e.
+- [x] [brand-descriptions.md](brand-descriptions.md): added an *N-4 note* under the Two-clause Technical Description noting the cross-stack orchestration claim is now real at the CLI level (full revision still tracked for N-6).
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
 
 ### Story N.ao: Investigation spike — project-guide wizard integration + Python-`utility`-`root` provisioning [Planned]
 

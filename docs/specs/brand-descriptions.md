@@ -33,6 +33,8 @@ A command-line tool that simplifies setting up and managing just about any stack
 
 *N-3 note: the "polyglot orchestration" framing is now backed by **two implemented reference plugins** — Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn). The other languages/backends named above remain aspirational examples of the plugin contract's reach. Comprehensive narrative reflow deferred to N-6.*
 
+*N-4 note: the "all activated seamlessly" / cross-stack orchestration claim is now **real at the CLI level** — `pyve init` / `check` / `status` / `purge` compose across every declared plugin into one `.envrc` / `.gitignore` / report (failure-safe, atomic writes). The composition layer is implemented, not aspirational. Comprehensive narrative reflow deferred to N-6.*
+
 ## Benefits
 
 *v3 baseline — comprehensive narrative reflow deferred to N-6.*

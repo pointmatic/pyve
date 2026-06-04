@@ -1385,7 +1385,7 @@ The actual removal calls (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_pu
 
 The **second reference plugin** behind the contract from N.k — the proof that the plugin contract generalizes beyond Python. Unlike the Python plugin (which was *relocated* from `lib/commands/` into the plugin file via the N.s umbrella), the Node plugin was authored fresh against the contract; its hooks mirror the Python plugin's signatures so reviewers can diff [lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh) against [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) side-by-side. Runtime-version detection lives in a sibling module, [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh).
 
-**Not yet CLI-routed (v3.0).** Every top-level `pyve` command still dispatches only to the Python plugin (`plugin_dispatch python <hook>` in [pyve.sh](../../pyve.sh)). The Node hooks take explicit `<path> [<backend>]` arguments and are exercised directly / via `plugin_dispatch node <hook>`. Wiring `pyve <cmd>` to materialize **all** declared envs across plugins — routing each env to its owning plugin and aggregating results — is **Subphase N-4** (composed activation). The explicit-arg signatures are the seam N-4 calls into; until then the default `path` is `.`.
+**CLI-routing status (post-N-4).** As of Subphase N-4, the **composed** commands fan across every active plugin: `pyve check` / `status` / `purge` aggregate all plugins (the composers below), and `pyve init` / `update` compose `.envrc` + `.gitignore` across all plugins (the Python init/update hook calls `compose_project_envrc` / `compose_project_gitignore`, which reload the registry and iterate every active plugin). The **per-env runtime** commands — `init`'s env *materialization*, `run`, `test`, `update`'s installs — still dispatch only to the Python plugin (`plugin_dispatch python <hook>` in [pyve.sh](../../pyve.sh)); the Node hooks for those take explicit `<path> [<backend>]` arguments and are exercised directly / via `plugin_dispatch node <hook>`. Wiring those per-env commands to materialize **all** declared envs across plugins is deferred beyond N-4. The explicit-arg signatures are the seam that future wiring calls into; until then the default `path` is `.`.
 
 **Path-awareness (root vs visitor).** Every Node hook takes a leading `<path>` so the plugin works both as the project's root ecosystem (`path = "."`, pure-Node) and as a *visitor* at a sub-tree (`path = "src/frontend"`, the polyglot Python+Node monorepo). Sub-path hooks confine all reads/writes to that sub-tree and emit **project-root-relative** paths (so direnv resolves absolute dirs from where `.envrc` lives, not from the sub-tree). This was designed in from N.t (insight #5) so the N.ab monorepo fixtures had a working primitive.
 
@@ -1456,6 +1456,54 @@ Unlike the Python plugin (venv→`VIRTUAL_ENV` vs micromamba→`CONDA_PREFIX`), 
 - `node_pyve_plugin_purge_inventory [path]` → `created` set (`node_modules`, `.svelte-kit`, `dist`, `build`, `.next`, `.turbo`, `*.tsbuildinfo`) kept consistent with `_node_purge_at`'s remover; `authored` set (`package.json`, the three lockfiles, `tsconfig.json`, `svelte.config.js`) never touched on purge.
 
 **SvelteKit detection + `frameworks` attribute (Story N.aa).** `node_detect_framework` (above) plus the `frameworks` structured-metadata attribute on `[env.<name>]` (S11) — advisory-only, surfaced in `check` / `status` via `manifest_get_frameworks`. No behavior change beyond the surfacing; SvelteKit is recognized, not specially provisioned.
+
+---
+
+### Composition layer (Subphase N-4) — composed activation, diagnostics, and purge
+
+The plugin contract (N-2) and the second reference plugin (N-3) proved a single plugin could own a command and that the contract generalizes. **N-4 is the layer that fans one `pyve <cmd>` across *every* active plugin** and composes the results into one coherent artifact or report. Five composer modules, one per composed surface, all driven off `plugin_list_active` (the no-Python-noise seam, below):
+
+| Module | Entry points | Composed surface |
+|---|---|---|
+| [lib/envrc_composer.sh](../../lib/envrc_composer.sh) | `_compose_envrc_body` → `compose_envrc <path>` → `compose_project_envrc <path>` | `.envrc` — each plugin's `pyve_plugin_activate` snippet assembled into one managed section |
+| [lib/gitignore_composer.sh](../../lib/gitignore_composer.sh) | `_compose_gitignore_body` → `compose_gitignore <path>` → `compose_project_gitignore <path>` | `.gitignore` — each plugin's `pyve_plugin_gitignore_entries`, deduped, in one managed section |
+| [lib/check_composer.sh](../../lib/check_composer.sh) | `compose_check [args]` | `pyve check` — per-plugin `pyve_plugin_check` sections + worst-severity roll-up |
+| [lib/status_composer.sh](../../lib/status_composer.sh) | `compose_status [args]` | `pyve status` — per-plugin `pyve_plugin_status` sections (always exit 0) |
+| [lib/purge_composer.sh](../../lib/purge_composer.sh) | `compose_purge_inventory` / `compose_purge_removals` / `compose_purge [args]` | `pyve purge` — composed inventory + authored guard + delegated removal |
+
+**CLI wiring** ([pyve.sh](../../pyve.sh) dispatcher): `check` → `compose_check`, `status` → `compose_status`, `purge` → `compose_purge`. The two file composers are reached through the **`compose_project_*` reload entry points**, called from inside the Python plugin's `init` / `update` hooks (and the gitignore self-heal): `compose_project_envrc` / `compose_project_gitignore` reload the manifest + registry first, then iterate *every* active plugin — so even though `pyve init` enters via `plugin_dispatch python init`, the resulting `.envrc` / `.gitignore` carry all plugins' sections. The `_compose_*_body` halves are pure assembly (stdout, no write) for hermetic testing; the `compose_*` halves add the atomic writer.
+
+**Severity ladder (`pyve check`).** Each plugin's check hook returns a code; the composer maps it to a severity ordinal and takes the **worst across all plugins**:
+
+| Hook rc | Severity | Process exit (roll-up) |
+|---|---|---|
+| `0` | pass (clean) | `0` |
+| `2` | warn (advisory — version drift, missing `.env`) | `0` (advisory text, non-failing) |
+| `1` / other nonzero | error (env broken for run/test) | `2` (CI fails the build) |
+
+This preserves `check_environment`'s historical 0/1/2 internal codes and the Node plugin's 0/1 convention without rewriting either hook. `pyve status` has **no** ladder — it reports reality and always exits 0 (a broken reading is `check`'s job).
+
+**PC-2 — atomic-write safety** (`compose_envrc` / `compose_gitignore`). Composition writes are crash-safe and non-destructive:
+
+1. Compose the new body to `<path>.tmp`.
+2. If composition fails (e.g. a plugin emits an unsafe snippet that trips the PC-1 validator), **leave the existing file untouched** — no half-written `.tmp`, no spurious `.prev`, nonzero exit.
+3. Back the current file up to `<path>.prev`.
+4. Promote with `mv -f` (atomic rename).
+
+User-authored content round-trips verbatim: `.envrc` preserves everything below the `# <<< pyve:managed:end <<<` marker; `.gitignore` preserves content both above and below its managed envelope. A legacy file with no markers is replaced by the managed section but backed up to `.prev` for recovery. One-step rollback is documented as `mv -f <path>.prev <path>`.
+
+**Managed-section sentinels.** `.envrc`: `# >>> pyve:managed:start >>>` … `# <<< pyve:managed:end <<<`, with each plugin's contribution wrapped in its own `# >>> pyve:plugin:<name>:activate >>>` … `<<<` block. `.gitignore`: `# >>> pyve:managed:gitignore >>>` … `# <<< pyve:managed:gitignore <<<`. All plugin contributions pass through the PC-1 validators ([lib/envrc_safety.sh](../../lib/envrc_safety.sh) — `validate_envrc_snippet` / `validate_gitignore_snippet`) before they reach the file; composer-owned infrastructure lines (macOS `.DS_Store`, the `# Pyve-managed` state block) are appended after validation.
+
+**Path-aware labels.** Visitor plugins (manifest `path != "."`) are path-prefixed for monorepo disambiguation — `[node @ src/frontend]` in `check` / `status` sections, `src/frontend/node_modules/` in `.gitignore`, `src/frontend/node_modules/.bin` in `.envrc`. Root plugins (`path = "."`) get a bare label.
+
+**PC-4 invariants.**
+
+- **PC-4a — no-Python noise gate.** All composers dispatch only plugins in `plugin_list_active`, and the Python plugin's check/status hooks short-circuit to a silent no-op when `python_plugin_is_active_in_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)) returns inactive. Pyve defaults to Python (a bare directory keeps the "run `pyve init`" nudge), so the gate suppresses the Python section **only** when there is no Python signal anywhere *and* a competing non-Python stack (e.g. `package.json`) is present — so a Node-only project produces zero Python output, while a polyglot or project-guide-bearing project keeps it. (Story N.aj.)
+- **PC-4b — per-plugin latency budget.** Each plugin's activation stays within **≤ 50ms p95**. The `compose_envrc` body emits optional `# pyve:bench:<plugin>:activate_ms=` lines under `PYVE_LATENCY_BENCH=1` (helpers `_pyve_bench_mark` / `_pyve_bench_now_ms`); the budget is enforced for all three matrix fixtures in [tests/perf/test_plugin_activation_latency.bats](../../tests/perf/test_plugin_activation_latency.bats). (Story N.ak.)
+
+**`pyve purge` composition (Option B).** `compose_purge` owns the inventory, the authored guard, and the grouped confirmation; the per-plugin `pyve_plugin_purge` hooks remain the authoritative removers so their smart-purge nuance (`.env`-if-empty, `.gitignore`-section-only, `--keep-testenv` surgery) survives. `compose_purge_inventory` aggregates each plugin's `created` / `authored` declarations keyed by `(plugin, path)`; `compose_purge_removals` is the created set minus authored-guard matches (a path declared `authored` by *any* plugin — even cross-plugin, even via glob — is never removed). Removal is delete-only and convergent, so the composer dispatches **all** plugins even if one fails, reports the failures, notes that re-running `pyve purge` is safe, and exits nonzero.
+
+**Matrix verification.** The full N-4 layer is swept against all three project shapes (pure-Python, Node-only, polyglot) in [tests/unit/test_n_am_polyglot_matrix.bats](../../tests/unit/test_n_am_polyglot_matrix.bats) (Story N.am) — composed `check`/`status`/`purge` + composed `.envrc`/`.gitignore` + PC-2 + PC-4a, with PC-4b owned by the perf suite. That sweep recorded **zero composition-design holes**.
 
 ---
 
