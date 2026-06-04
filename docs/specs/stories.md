@@ -1011,17 +1011,58 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Surfacing in `pyve check` / `pyve status`: `_node_pyve_plugin_render_advisories` now prints `env '<name>' frameworks: <list>` when `frameworks` is declared (no failure exit code). Deeper framework-aware behavior deferred to a Future story (parallel to the TypeScript advisory-only treatment).
 - [x] Bats tests: detection positive (svelte.config.js / .mjs / `@sveltejs/kit` dep) and negative (pure-Node, no package.json); path-aware sub-path detection; check + status surface a declared `frameworks`; no line when none declared; scaffold advisory adds / omits the SvelteKit hint. *([tests/unit/test_n_aa_node_sveltekit.bats](../../tests/unit/test_n_aa_node_sveltekit.bats), 11 cases; N.t's 15 stay green.)*
 
-### Story N.ab: End-to-end test — Node-only + polyglot Python+Node (contract generalization proof) [Planned]
+### Story N.ab: End-to-end test — Node-only + polyglot Python+Node (contract generalization proof) [Done]
 
 **Motivation.** The proof obligation for "the contract generalizes beyond Python." Tests N-3's full hook surface against two fixture shapes — Node at root (pure-Node project) and Node as a visitor at `src/frontend` (polyglot Python+Node monorepo from spike Example 4). Includes a final pass updating the spike's S10 with Homebrew added (deferred from the Node-VM-precedence discussion).
 
+**Placement note — split into N.ab.1–N.ab.4.** Authored as the planning header for the breakdown below; the breakdown decision itself is the work captured by this story (status `[Done]` on the diff that adds the four sub-stories). Implementation happens in N.ab.1 onward.
+
+**Scoping decision — hook-level e2e, not CLI-level (developer-confirmed).** Every top-level `pyve` command (`init`/`purge`/`update`/`run`/`test`/`check`/`status`) dispatches **only** to the Python plugin today ([pyve.sh](../../pyve.sh) `plugin_dispatch python <hook>`); there is no Node routing and no multi-plugin iteration. Routing `pyve <cmd>` to the owning plugin per declared env — and aggregating across plugins — is **Subphase N-4**'s composed-activation work. So the original task list's *"run `pyve init` / `pyve check` / `pyve test`"* cannot exercise the Node hooks through the CLI in N-3: `pyve init` on a pure-Node project would build a Python venv. The contract-generalization claim is fundamentally a **hook-level** claim — same hook signatures, non-Python ecosystem — and N.t–N.aa already prove each hook in isolation. N.ab.1–N.ab.4 therefore drive the Node hooks **directly** (`plugin_dispatch node <hook>` / direct calls) against realistic multi-file fixtures and prove non-interference in composition. The CLI-level end-to-end (real `pyve <cmd>` against these fixtures) lands with N-4's routing.
+
+### Story N.ab.1: Node-at-root fixture — hook-level lifecycle drive [Done]
+
+**Motivation.** Prove the full Node hook surface works end-to-end against a realistic pure-Node (SvelteKit) project, driven directly (CLI routing is N-4).
+
 **Tasks**
 
-- [ ] **Node-at-root fixture**: pure SvelteKit project, `pyve.toml` declares `[plugins.node]` (path defaults to `.`). Run `pyve init`, `pyve env install`, `pyve check`, `pyve env run pnpm dev` (smoke), `pyve test`, `pyve purge`. Every command exits clean; outputs match expectations.
-- [ ] **Polyglot Python+Node fixture**: Python plugin at root, Node plugin at `src/frontend` per spike Example 4. `pyve.toml` declares both `[plugins.python]` and `[plugins.node]` with explicit `path = "src/frontend"` for Node. Run the same command sequence. Verify Python and Node hooks fire independently; activation snippets compose into one `.envrc` (full composition work lands in N-4 — for N-3 we verify per-plugin snippets are correct and don't interfere when concatenated).
-- [ ] **Visitor-path activation verification**: Node-at-subpath's `PATH_add "src/frontend/node_modules/.bin"` resolves correctly at direnv-eval time from the project root, not from `src/frontend`. Regression test asserts the absolute path.
-- [ ] **Update [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) S10**: add `Homebrew / system PATH` as the final tier of the Node row in the precedence-chain table. (Spike doc continues to be the canonical design record; we keep it accurate as N-3 evidence lands.)
-- [ ] Document any contract design holes surfaced during the proof (the load-bearing N-3 deliverable). If none surface, that's a positive result and should be noted in the story body before marking [Done].
+- [x] Build a pure-Node SvelteKit fixture: `package.json` (with `@sveltejs/kit` in `devDependencies` + a `test` script), `svelte.config.js`, a minimal `src/`, and `pyve.toml` declaring `[plugins.node]` (path defaults to `.`) plus an `[env.web]` carrying `frameworks = ["sveltekit"]` / `languages = ["typescript"]`.
+- [x] Registry: `plugin_load_all_from_manifest` loads `node` only (implicit-Python does **not** fire because `[plugins.node]` is declared).
+- [x] Drive the lifecycle directly and assert each step: `detect`→`node`; `node_detect_framework`→`sveltekit`; `init` creates `node_modules/` (deterministic PM stub for the with-deps shape; a separate guarded test drives a real `npm` on a zero-dep project, offline-safe, mirroring N.w); `check` passes on the provisioned env and surfaces the framework; `test` delegates to `pnpm test`; `activate` emits a PC-1-valid section; `purge` removes generated dirs and keeps `package.json`/`svelte.config.js`/source.
+- [x] Bats integration-style test file. *([tests/unit/test_n_ab_1_node_root_e2e.bats](../../tests/unit/test_n_ab_1_node_root_e2e.bats), 4 cases.)*
+
+**Result — no contract hole surfaced.** The full lifecycle composed cleanly on the first pass; all hooks (built in N.t–N.aa) drive end-to-end against a realistic SvelteKit fixture with no production-code changes needed. A clean result is the intended positive finding for this slice of N-3's proof.
+
+### Story N.ab.2: Polyglot Python+Node fixture — independent hook firing [Planned]
+
+**Motivation.** The canonical multi-plugin case (spike Example 4). Prove both plugins load and their hooks fire independently against their own paths.
+
+**Tasks**
+
+- [ ] Build the polyglot fixture: Python at root (`pyproject.toml`), Node at `src/frontend` (`package.json`, `svelte.config.js`), and `pyve.toml` declaring `[plugins.python]` (`path = "."`) + `[plugins.node]` (`path = "src/frontend"`).
+- [ ] Registry: `plugin_load_all_from_manifest` loads both (`python`, `node`) with no S4 cardinality error (distinct paths).
+- [ ] Independent hook firing: Python `detect` resolves at root; Node `detect` / `node_detect_framework` resolve at `src/frontend`; Node `init` creates `src/frontend/node_modules/` without touching the project root; Node `check`/`purge` operate on the sub-path; the Python side is unaffected.
+- [ ] Bats test file.
+
+### Story N.ab.3: Composed `.envrc` non-interference + visitor-path activation [Planned]
+
+**Motivation.** N-3's closest look at N-4's composition concern: verify the two plugins' activation sections concatenate into one `.envrc` body cleanly. (Full composition — ordering, dedup, single-file emission — is N-4.)
+
+**Tasks**
+
+- [ ] Compose: the Python plugin's activation section (root env) + the Node plugin's activation section (`src/frontend`) concatenated into one `.envrc` body.
+- [ ] Assert: both sections present; each passes its validator (`validate_envrc_snippet`); the Node section is sentinel-delimited (`# >>> pyve:plugin:node:activate >>>` … `<<<`); the two `PATH_add`s are distinct and do not interfere.
+- [ ] **Visitor-path activation:** Node-at-subpath emits `PATH_add "src/frontend/node_modules/.bin"` (project-root-relative, so direnv resolves the absolute dir from the project root, not from `src/frontend`). Regression test asserts the exact path string.
+- [ ] Bats test file.
+
+### Story N.ab.4: Spike S10 update + contract-holes synthesis [Planned]
+
+**Motivation.** Keep the spike doc accurate as N-3 evidence lands, and capture any contract holes surfaced (the load-bearing N-3 deliverable).
+
+**Tasks**
+
+- [ ] Update [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) S10: add `Homebrew / system PATH` as the final tier of the Node row in the precedence-chain table (matching the implemented `node_runtime_manager` chain from N.v).
+- [ ] Document any contract design holes surfaced across N-3 (N.t–N.ab.3). If none beyond those already captured (e.g. N.t's root-collision S4/S5 hole, recorded in N.t's decision note), say so explicitly — a clean result is a positive finding worth recording.
+- [ ] Doc-only; no code or test changes.
 
 ### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Planned]
 
