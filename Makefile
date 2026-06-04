@@ -1,7 +1,7 @@
 # Pyve Test Makefile
 # Provides convenient targets for running tests
 
-.PHONY: test test-unit test-integration test-integration-ci test-all coverage coverage-kcov clean help
+.PHONY: test test-unit test-integration test-perf test-integration-ci test-all coverage coverage-kcov clean help
 
 PYTHON ?= python3
 
@@ -10,6 +10,7 @@ help:
 	@echo "Pyve Test Targets:"
 	@echo "  make test                          - Run all tests (unit + integration)"
 	@echo "  make test-unit                     - Run only Bats unit tests"
+	@echo "  make test-perf                     - Run only the Bats latency budget regression (PC-4b)"
 	@echo "  make test-integration              - Run only pytest integration tests"
 	@echo "  make test-integration-ci           - Run venv tests with CI=true (simulates CI)"
 	@echo "  make test-integration-micromamba-ci - Run micromamba tests with CI=true"
@@ -23,8 +24,8 @@ help:
 	@echo "  - pytest: $(PYTHON) -m pip install -r requirements-dev.txt"
 	@echo "  make test-deps                     - Install Python dev/test dependencies"
 
-# Run all tests (unit + integration)
-test: test-unit test-integration
+# Run all tests (unit + integration + perf)
+test: test-unit test-integration test-perf
 
 # Install Python dev/test dependencies
 test-deps:
@@ -39,6 +40,24 @@ test-unit:
 			bats tests/unit/*.bats; \
 		else \
 			echo "No Bats tests found in tests/unit/"; \
+		fi \
+	else \
+		echo "Error: Bats not installed. Install with:"; \
+		echo "  macOS: brew install bats-core"; \
+		echo "  Linux: sudo apt-get install bats"; \
+		exit 1; \
+	fi
+
+# Run only the perf/latency regression (Bats). Story N.ak (PC-4b): enforces
+# the per-plugin activation latency budget (p95 <= 50ms). Skips gracefully
+# when no precise timer is available.
+test-perf:
+	@echo "Running Bats perf/latency tests..."
+	@if command -v bats >/dev/null 2>&1; then \
+		if [ -n "$$(find tests/perf -name '*.bats' 2>/dev/null)" ]; then \
+			bats tests/perf/*.bats; \
+		else \
+			echo "No Bats tests found in tests/perf/"; \
 		fi \
 	else \
 		echo "Error: Bats not installed. Install with:"; \

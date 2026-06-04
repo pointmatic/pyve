@@ -50,16 +50,66 @@ ENVRC_MANAGED_END="# <<< pyve:managed:end <<<"
 #
 # Returns non-zero (emitting nothing usable) when any plugin hook fails
 # or the composed plugin sections fail PC-1.
+# Story N.ak (PC-4b): portable wall-clock marker, microsecond resolution.
+# Sets REPLY to "now" in integer MICROSECONDS — by design it does NOT use
+# command substitution, so when bash 5 `$EPOCHREALTIME` is available the read
+# is fork-free and adds no measurable overhead to the timed region. Falls back
+# to GNU `date +%s%N`; sets REPLY=-1 and returns 1 when no precise timer exists
+# (e.g. clean macOS bash 3.2 + BSD `date`, which has no `%N`).
+_pyve_bench_mark() {
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local _er="$EPOCHREALTIME"
+        # EPOCHREALTIME is "<seconds>.<6-digit-microseconds>".
+        REPLY=$(( ${_er%.*} * 1000000 + 10#${_er#*.} ))
+        return 0
+    fi
+    local ns
+    ns="$(date +%s%N 2>/dev/null)"
+    if [[ "$ns" =~ ^[0-9]{16,}$ ]]; then
+        REPLY=$(( ns / 1000 ))
+        return 0
+    fi
+    REPLY=-1
+    return 1
+}
+
+# Thin millisecond wrapper used by the perf test's timer-availability probe
+# (`_require_precise_timer`). Prints ms, or -1 (and returns 1) when no precise
+# timer exists.
+_pyve_bench_now_ms() {
+    _pyve_bench_mark || { printf '%s' '-1'; return 1; }
+    printf '%s' $(( REPLY / 1000 ))
+}
+
 _compose_envrc_body() {
     local name path section
     local plugin_body=""
+    # Story N.ak (PC-4b): optional per-plugin activate timing. Gated by
+    # PYVE_LATENCY_BENCH=1; emits a `# pyve:bench:<plugin>:activate_ms=<n>`
+    # trailer line per plugin (after the managed end marker) for the latency
+    # regression in tests/perf/. Off by default — zero overhead and no output
+    # change for production `pyve init` / `update`.
+    local bench=0 bench_lines="" _t0 _t1
+    [[ "${PYVE_LATENCY_BENCH:-}" == "1" ]] && bench=1
 
     while IFS= read -r name; do
         [[ -z "$name" ]] && continue
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || true)"
+        # Fork-free clock read (REPLY in microseconds) brackets ONLY the
+        # activate dispatch, so the sample reflects the plugin's contribution
+        # plus the composer's inherent capture, not timer overhead.
+        _t0=-1; (( bench )) && { _pyve_bench_mark || true; _t0=$REPLY; }
         if ! section="$(plugin_dispatch "$name" activate "$path")"; then
             log_error "envrc_composer: plugin '$name' activate hook failed — no .envrc composed"
             return 1
+        fi
+        if (( bench )); then
+            _pyve_bench_mark || true; _t1=$REPLY
+            if (( _t0 < 0 || _t1 < 0 )); then
+                bench_lines+="# pyve:bench:${name}:activate_ms=-1"$'\n'
+            else
+                bench_lines+="# pyve:bench:${name}:activate_ms=$(( (_t1 - _t0) / 1000 ))"$'\n'
+            fi
         fi
         plugin_body+="${section}"$'\n'
     done < <(plugin_list_active)
@@ -85,6 +135,13 @@ _compose_envrc_body() {
     fi
 
     printf '%s\n' "$ENVRC_MANAGED_END"
+
+    # Story N.ak (PC-4b): bench trailer, emitted only under PYVE_LATENCY_BENCH=1
+    # and read by tests/perf/. It sits below the managed end marker, so it is
+    # NOT part of the managed section; production writers never set the flag,
+    # so the on-disk `.envrc` is unaffected.
+    (( bench )) && printf '%s' "$bench_lines"
+    return 0
 }
 
 # Compose the managed `.envrc` body (via _compose_envrc_body) and write it

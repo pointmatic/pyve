@@ -1268,17 +1268,19 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Recorded the `.project-guide.yml`-is-a-Python-active-signal rule + the load-bearing cross-repo contract in [project-essentials.md](project-essentials.md), extending the existing install-marker entry (third consumer + contract/rename-protocol note pointing at Story N.ao).
 - [x] Bats + integration tests ([tests/unit/test_n_aj_python_active_gate.bats](../../tests/unit/test_n_aj_python_active_gate.bats)): gate predicate per signal (pyproject/`*.py`/`requirements`/`.pyve/config`/`.project-guide.yml`/`[plugins.python]`/venv-env → active; bare dir → active; `package.json`+no-Python → suppress; `package.json`+Python-signal → active); check/status hook silence-when-suppressed; plus `bash pyve.sh` e2e (Node-declined → zero Python output in `check`/`status`; bare dir keeps the init nudge; Node + `.project-guide.yml` → Python active).
 
-### Story N.ak: PC-4b — per-plugin latency budget (≤ 50ms p95) [Planned]
+### Story N.ak: PC-4b — per-plugin latency budget (≤ 50ms p95) [Done]
 
 **Motivation.** Resolves the second half of **PC-4**. The composed `.envrc` evaluates on every shell / direnv reload; each plugin's activation contribution must stay under 50ms p95 or it ruins the user experience. Instrumented benchmark in a Bats regression test fails CI on overage.
 
+**Measurement integrity (implementation finding).** Two traps had to be defended against to make the budget meaningful: (1) the timer itself must be **fork-free** — a `$(date)` or even a `$(timer_fn)` command-substitution per sample inflated readings ~5×; the instrumentation uses a fork-free `$EPOCHREALTIME` read (REPLY-based, GNU `date +%s%N` fallback). (2) The benchmark must run in a **clean `bash -c` subprocess, not the bats-instrumented shell** — bats' per-command bookkeeping inflated the same `activate` from ~8ms to ~40ms. With both fixed, true p95 is python ≈ 8ms / node ≈ 3ms — comfortable headroom under the 50ms budget (no CI-flake risk).
+
 **Tasks**
 
-- [ ] In [lib/envrc_composer.sh](../../lib/envrc_composer.sh) (from N.ae), add optional per-plugin timing instrumentation gated by `PYVE_LATENCY_BENCH=1`: emits `# pyve:bench:<plugin>:activate_ms=<n>` lines into the composed output's comment trailer when set.
-- [ ] New `tests/perf/test_plugin_activation_latency.bats` regression: runs the composer in benchmark mode against canned fixtures (Python-only, Node-only, polyglot) for **N=20 runs per plugin**; computes p95; fails when any plugin's p95 > 50ms.
-- [ ] **First N=5 runs discarded** (warm-up); p95 computed over the remaining 15. Documents the methodology in the test header so future drift in test runners is debuggable.
-- [ ] **CI hook**: regression test runs as part of `make test-perf` (new target) and as part of `make test` (composed default). Failing latency test fails CI.
-- [ ] Update [tech-spec.md](tech-spec.md) with the latency budget contract: "Every plugin's `pyve_plugin_activate` must complete within 50ms p95 over 15 timed runs; budget enforced by [tests/perf/test_plugin_activation_latency.bats](../../tests/perf/test_plugin_activation_latency.bats)."
+- [x] In [lib/envrc_composer.sh](../../lib/envrc_composer.sh), added `PYVE_LATENCY_BENCH=1`-gated per-plugin `activate` timing (`_pyve_bench_mark`, fork-free microsecond clock) that emits `# pyve:bench:<plugin>:activate_ms=<n>` trailer lines below the managed end marker. Off by default — zero output/overhead for production `pyve init` / `update`.
+- [x] New [tests/perf/test_plugin_activation_latency.bats](../../tests/perf/test_plugin_activation_latency.bats): drives the composer in bench mode against Python-only / Node-only / polyglot fixtures for **N=20 runs**; nearest-rank p95; fails when any plugin's p95 > 50ms. Runs the composer in a clean subprocess for accurate numbers.
+- [x] **First N=5 runs discarded** (warm-up); p95 over the remaining 15. Methodology + timer-source documented in the test header so runner drift is debuggable.
+- [x] **CI hook**: new `make test-perf` target (Bats over `tests/perf/`), added to the `test` aggregate (`test: test-unit test-integration test-perf`) and `.PHONY` + help. Skips gracefully when no precise timer is available (so a clean macOS bash-3.2/BSD-date box doesn't false-fail; CI Linux/bash-5 is the enforcement point).
+- [x] Updated [tech-spec.md](tech-spec.md) with the latency budget contract under the `activate` hook description (50ms p95 over 15 runs; enforced by the perf test; bench-mode + clean-subprocess + fork-free-timer methodology noted).
 
 ### Story N.al: Retire the pre-composer template writers + their now-stale tests [Planned]
 

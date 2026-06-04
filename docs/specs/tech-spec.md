@@ -968,7 +968,7 @@ Defines `pyve_plugin_default_<hook>()` for every documented hook. Plugins implem
 2. **`register_backends`** — register backend providers via the backend registry (Story N.l).
 3. **`detect`** — scaffold-time detection.
 4. **Lifecycle**: `init`, `purge`, `update`, `check`, `status`, `run`, `test`.
-5. **`activate`** — `.envrc` snippet emission (PC-1 input safety landing in N.m).
+5. **`activate`** — `.envrc` snippet emission (PC-1 input safety landing in N.m). **Latency budget (PC-4b, Story N.ak):** every plugin's `pyve_plugin_activate` must complete within **50ms p95 over 15 timed runs** — the composed `.envrc` re-evaluates on every shell / direnv reload, so a slow plugin degrades every prompt. The budget is enforced by [`tests/perf/test_plugin_activation_latency.bats`](../../tests/perf/test_plugin_activation_latency.bats): it drives `_compose_envrc_body` in bench mode (`PYVE_LATENCY_BENCH=1`, which emits `# pyve:bench:<plugin>:activate_ms=<n>` trailer lines) for N=20 runs per fixture, discards the first 5 as warm-up, and fails when any plugin's nearest-rank p95 exceeds 50ms. The benchmark runs in a clean `bash -c` subprocess (bats' per-command instrumentation inflates fork costs ~5×) and times each `activate` with a fork-free `$EPOCHREALTIME` read (GNU `date +%s%N` fallback; skips when neither is available). Runs via `make test-perf` and as part of `make test`.
 6. **`diagnostics`** — plugin-internal health checks.
 7. **`gitignore_entries`** — patterns this plugin owns in the project's `.gitignore`.
 8. **`purge_inventory`** — created-vs-authored inventory for `pyve purge`.
