@@ -926,19 +926,19 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Provider-detection helper `node_provider_detect [declared_backend] [path]`: an explicit `backend = "pnpm"` (or `npm` / `yarn`) is the source of truth and wins over any lockfile; otherwise infer from lockfile presence (`pnpm-lock.yaml` → pnpm, `package-lock.json` → npm, `yarn.lock` → yarn); if no lockfile, default to `pnpm`. Path-aware (default `.`).
 - [x] Bats unit tests: registration (owner `node`, category `virtualized`, idempotent, coexists with Python providers); `bp_dispatch <provider> <hook>` resolves a registered provider and still errors on an unregistered one; install/lockfile/test maps + the detection helper. *([tests/unit/test_n_u_node_backend_providers.bats](../../tests/unit/test_n_u_node_backend_providers.bats), 21 cases. Note: the registry keys backends by bare name (`pnpm`) with the owning plugin as metadata — the task's `bp_dispatch node:pnpm` is conceptual shorthand for "the `pnpm` backend owned by `node`".)*
 
-### Story N.v: Node runtime-resolution helpers (nvm / fnm / volta + PATH fallback) [Planned]
+### Story N.v: Node runtime-resolution helpers (nvm / fnm / volta + PATH fallback) [Done]
 
 **Motivation.** Implement Node's version-manager precedence per revised S10. Helpers live with the Node plugin (per the *lib/commands/<name>.sh is for command implementations only* rule's spirit — Node-specific detection belongs in `lib/plugins/node/`, not in shared `lib/env_detect.sh`).
 
 **Tasks**
 
-- [ ] New `lib/plugins/node/runtime_detect.sh`. Helpers: `is_nvm_active()`, `is_fnm_active()`, `is_volta_active()`, `node_runtime_resolve()`.
-- [ ] `is_nvm_active`: returns 0 when `NVM_DIR` is set and nvm is loadable. Mirrors the `is_asdf_active()` contract per [project-essentials.md](project-essentials.md).
-- [ ] `is_fnm_active`: returns 0 when `fnm --version` succeeds and `FNM_DIR` (or equivalent env signal) is set.
-- [ ] `is_volta_active`: returns 0 when `VOLTA_HOME` is set and volta is loadable.
-- [ ] `node_runtime_resolve` walks the precedence chain (nvm > fnm > volta > asdf > PATH) and returns the resolved `node` binary path, or fails loudly with a precise "no Node runtime detected; install via Homebrew or your preferred manager" message.
-- [ ] Each helper has its own `PYVE_NO_NVM_COMPAT=1` (etc.) opt-out env var per the asdf-compat precedent, so users can disable a detected manager when needed.
-- [ ] Bats unit tests: each helper detected/not-detected branches; precedence chain returns the highest-priority active manager; PATH fallback resolves when no manager is active.
+- [x] New `lib/plugins/node/runtime_detect.sh`. Helpers: `is_nvm_active()`, `is_fnm_active()`, `is_volta_active()`, plus `node_runtime_manager()` (the precedence walk) and `node_runtime_resolve()` (the binary path). Sourced explicitly from [pyve.sh](../../pyve.sh) after the Node plugin.
+- [x] `is_nvm_active`: returns 0 when `NVM_DIR` is set and nvm is loadable (`$NVM_DIR/nvm.sh` present — nvm is a shell function, not a binary). Mirrors the `is_asdf_active()` contract per [project-essentials.md](project-essentials.md).
+- [x] `is_fnm_active`: returns 0 when the `fnm` binary resolves and an fnm shell-integration signal is set (`FNM_DIR` or the per-shell `FNM_MULTISHELL_PATH`).
+- [x] `is_volta_active`: returns 0 when `VOLTA_HOME` is set and volta is loadable (on PATH or at `$VOLTA_HOME/bin/volta`).
+- [x] Precedence chain (nvm > fnm > volta > asdf > PATH) and `node` resolution. **Decomposed** into `node_runtime_manager()` (prints the governing manager, or `path`) and `node_runtime_resolve()` (prints the resolved `node` path; every manager shims `node` onto PATH when active, so `command -v node` is the resolution). `node_runtime_resolve` fails loudly with the "no Node runtime detected; install via Homebrew or your preferred manager" message when no node is reachable. *(Split so the "highest-priority active manager" is observable from a subshell/`run`, which a side-effect global is not.)*
+- [x] Each helper has its own `PYVE_NO_NVM_COMPAT=1` / `PYVE_NO_FNM_COMPAT=1` / `PYVE_NO_VOLTA_COMPAT=1` opt-out per the asdf-compat precedent. **asdf tier:** a private `_is_asdf_node_active()` (asdf has a *nodejs* plugin) honoring the shared `PYVE_NO_ASDF_COMPAT` — deliberately **not** the Python-context `is_asdf_active()`, which gates on `VERSION_MANAGER == "asdf"` and would never fire for a Node-only project (S10: each plugin owns its precedence chain).
+- [x] Bats unit tests: each detector's detected/not-detected/opt-out branches; precedence returns the highest-priority active manager; PATH fallback resolves when no manager is active; loud failure when no node present. *([tests/unit/test_n_v_node_runtime_detect.bats](../../tests/unit/test_n_v_node_runtime_detect.bats), 21 cases — hermetic: setup clears any manager env leaked from the dev shell, `node` is a real PATH stub, manager binaries are mocked.)*
 
 ### Story N.w: Node plugin — init / purge / update hooks [Planned]
 

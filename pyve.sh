@@ -224,6 +224,17 @@ else
     printf "ERROR: Cannot find lib/plugins/node/plugin.sh\n" >&2
     exit 1
 fi
+# Story N.v: Node runtime resolution (nvm/fnm/volta/asdf/PATH per S10).
+# Plugin-internal detection — kept beside the Node plugin, not in the
+# Python/asdf-oriented lib/env_detect.sh. Consumed by the Node lifecycle
+# hooks (N.w) before invoking a package manager.
+if [[ -f "$SCRIPT_DIR/lib/plugins/node/runtime_detect.sh" ]]; then
+    # shellcheck source=lib/plugins/node/runtime_detect.sh
+    source "$SCRIPT_DIR/lib/plugins/node/runtime_detect.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/node/runtime_detect.sh\n" >&2
+    exit 1
+fi
 node_pyve_plugin_register_backends
 
 #============================================================
