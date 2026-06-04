@@ -1059,15 +1059,15 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Result — no contract hole surfaced.** The Python root snippet (`_python_pyve_plugin_envrc_snippet`) and the Node visitor section (`node_pyve_plugin_activate src/frontend`) concatenate into one `.envrc` body with no production-code changes: both sections present, each passes PC-1 (`validate_envrc_snippet`) individually and as a composed body, the Node section stays sentinel-delimited, and the two `PATH_add`s (`.venv/bin` vs `src/frontend/node_modules/.bin`) are distinct with no hand-rolled `export PATH=`. Visitor-path activation emits the exact project-root-relative `PATH_add "src/frontend/node_modules/.bin"`. A clean compose is the intended positive finding for N-3's composition slice; full single-file composition (ordering, dedup, emission) is N-4.
 
-### Story N.ab.4: Spike S10 update + contract-holes synthesis [Planned]
+### Story N.ab.4: Spike S10 update + contract-holes synthesis [Done]
 
 **Motivation.** Keep the spike doc accurate as N-3 evidence lands, and capture any contract holes surfaced (the load-bearing N-3 deliverable).
 
 **Tasks**
 
-- [ ] Update [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) S10: add `Homebrew / system PATH` as the final tier of the Node row in the precedence-chain table (matching the implemented `node_runtime_manager` chain from N.v).
-- [ ] Document any contract design holes surfaced across N-3 (N.t–N.ab.3). If none beyond those already captured (e.g. N.t's root-collision S4/S5 hole, recorded in N.t's decision note), say so explicitly — a clean result is a positive finding worth recording.
-- [ ] Doc-only; no code or test changes.
+- [x] Update [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) S10: add `Homebrew / system PATH` as the final tier of the Node row in the precedence-chain table (matching the implemented `node_runtime_manager` chain from N.v). *(Node row updated to `nvm > fnm > volta > asdf > Homebrew / system PATH`; added a note anchoring the row to the shipped `node_runtime_manager()` in [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh), clarifying the Python + Node rows are the only implemented chains and the rest are illustrative.)*
+- [x] Document any contract design holes surfaced across N-3 (N.t–N.ab.3). If none beyond those already captured (e.g. N.t's root-collision S4/S5 hole, recorded in N.t's decision note), say so explicitly — a clean result is a positive finding worth recording. *(New "N-3 evidence: contract-holes synthesis" section in the spike doc: exactly one hole — N.t's root-collision S4/S5 auto-write, deferred to N-4 by design — every other N-3 story (N.u–N.ab.3) composed with zero production-code changes. Clean result recorded explicitly.)*
+- [x] Doc-only; no code or test changes.
 
 ### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Planned]
 

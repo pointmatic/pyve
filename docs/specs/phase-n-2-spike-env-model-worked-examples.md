@@ -705,11 +705,13 @@ Pyve does not impose a single runtime-version-manager precedence at the framewor
 |---|---|
 | Python | asdf > pyenv > system |
 | Rust | **rustup** > asdf > system |
-| Node | **nvm / fnm / volta** > asdf > system |
+| Node | **nvm** > **fnm** > **volta** > asdf > Homebrew / system PATH |
 | Java / Scala | **SDKMAN** > asdf > system |
 | C# / .NET | asdf > system (Microsoft installer) |
 | Go | asdf > gvm > system |
 | Ruby | **rbenv** > asdf > system |
+
+The **Node row is the one chain v3.0 actually ships** — implemented as `node_runtime_manager()` in [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh) (Story N.v): `nvm > fnm > volta > asdf > Homebrew / system PATH`, where the final tier is the bare-`command -v node` fallback (any active manager shims `node` onto PATH; absent all of them, a Homebrew/system install resolves the same way). Each manager tier honors its own `PYVE_NO_{NVM,FNM,VOLTA}_COMPAT` opt-out, and the asdf tier uses a Node-specific `_is_asdf_node_active()` rather than the Python-context `is_asdf_active()`. The Python row ships via `lib/env_detect.sh`; every other row in the table is illustrative of a future plugin, not yet implemented.
 
 asdf is one widely-applicable manager (asdf-plugins exist for most ecosystems) and is a common second-tier fallback because of that universality — but it isn't privileged at the framework level. The canonical tool per ecosystem (rustup, SDKMAN, nvm, rbenv) is what the plugin tries first.
 
@@ -807,6 +809,28 @@ The spike's conclusions update the N-2 plan from what was sketched before this s
 - None required. The spike's conclusions slot into existing N-2 stories. `manual_steps` (S7), the deploy table (S8), the `languages` attribute (S11), and the cache-backed / check-only backend categories (S6 revised) are *schema or design additions* that the manifest helper and contract already accommodate; no new stories needed for them in N-2 because v3.0 only exercises the project-virtualized Python providers (`venv` + `micromamba`).
 - The `[deploy.<env-name>]` table per S8 belongs to **N-5** (`pyve deploy` lifecycle hook); v3.0 just reserves the schema slot.
 - First cache-backed plugin (Rust or Go candidates) and first check-only plugin (mobile / Docker / Homebrew) land in **post-v3.0 phases**, not Phase N. Phase N's scope is the architectural contract that accommodates them, not the implementation of them.
+
+---
+
+## N-3 evidence: contract-holes synthesis (Story N.ab.4)
+
+Subphase N-3 stood up the Node/SvelteKit plugin as the second reference plugin — the proof obligation that the N-2 contract generalizes beyond Python. This section synthesizes the contract-design holes surfaced across the whole subphase (N.t–N.ab.3) so the record is in one place. The load-bearing finding: **exactly one hole surfaced, it was caught at the first story (N.t) and deferred to N-4 by design; every subsequent N-3 story composed cleanly with no new holes.**
+
+**Hole 1 — root-collision: a root-level `package.json` beside a Python project is not expressible as a valid polyglot manifest (N.t).** Surfaced in [stories.md](stories.md) Story N.t's decision note. Two N.k registry rules collide when `pyve init` tries to auto-write `[plugins.node]` from root-level detection:
+
+- **S5 (implicit-Python):** the registry implicit-loads Python only when *zero* `[plugins.*]` are declared. The moment init writes `[plugins.node]`, Python must *also* be declared explicitly or it stops loading on every later command.
+- **S4 (host cardinality = zero-or-one):** Python and Node both at `path = "."` is a hard cardinality error — `plugin_load_all_from_manifest` errors on every command. The polyglot model assumes distinct paths (Node at `src/frontend`, …), which root-only detection can't discover.
+
+**Resolution:** N.t made `pyve init`'s Node consult *advisory-only* (detect + advise, never mutate `pyve.toml`). The composed multi-plugin scaffold — prompt for / infer a distinct Node sub-path, emit explicit `[plugins.python]` + `[plugins.node]` — is **Subphase N-4** (composed activation) work. This is a deliberate scope boundary, not an unresolved defect: N-3's job was to *surface* it, which it did at the earliest possible story.
+
+**No further holes — the lifecycle and composition proofs came back clean.** Every other N-3 story drove its hook surface against realistic fixtures with **zero production-code changes**:
+
+- **N.u–N.aa** (backend-providers, runtime resolution, init/purge/update, check/status/run/test, activation, `.gitignore`/smart-purge, SvelteKit detection) — each hook implemented against the N.k contract signatures with the same shape as the Python plugin; reviewers can diff the two side-by-side.
+- **N.ab.1** (Node-at-root lifecycle drive) — the full Node hook surface composed end-to-end against a SvelteKit fixture; no contract hole.
+- **N.ab.2** (polyglot Python+Node, distinct paths) — both plugins loaded with no S4 error and fired their hooks independently against their own paths; no contract hole.
+- **N.ab.3** (composed `.envrc` non-interference + visitor-path activation) — the Python root snippet and the Node `src/frontend` section concatenate into one `.envrc` body, each passing PC-1 individually and composed, with distinct non-interfering `PATH_add`s; no contract hole.
+
+A clean result across N.u–N.ab.3 is the intended positive finding: the N-2 contract (hook signatures, backend-provider registry, PC-1 activation gate, path-awareness) generalizes to a non-Python ecosystem without amendment. The single hole (root-collision auto-write) is a *composition* concern, which is precisely what N-4 owns.
 
 ---
 
