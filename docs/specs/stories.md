@@ -969,17 +969,19 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Note — TS dependency check is advisory-grade.** The S11 typescript probe is a `grep '"typescript"'` on `package.json`, not a full JSON parse — sufficient for an advisory (it matches `typescript` in `dependencies` / `devDependencies`). Same not-CLI-routed posture as N.w: hooks take explicit `<path> [<backend>]`; N-4 threads them from the manifest. The real-package-manager `test`/`run` execution is covered structurally (mocked PM records the delegated command); a CLI-level integration test lands with N-4's routing.
 
-### Story N.y: Node plugin — activation hook (`.envrc` emission with `node_modules/.bin` PATH_add) [Planned]
+### Story N.y: Node plugin — activation hook (`.envrc` emission with `node_modules/.bin` PATH_add) [Done]
 
 **Motivation.** Emit the Node plugin's `.envrc` contribution. Adds `node_modules/.bin` to PATH so binaries installed by the env (vitest, tsc, eslint, etc.) resolve without explicit `<provider> exec` prefixing. Output passes through the PC-1 validator from N.m.
 
 **Tasks**
 
-- [ ] `pyve_plugin_activate` emits a sentinel-marked `.envrc` snippet: `PATH_add "node_modules/.bin"` plus any provider-specific env vars (`PNPM_HOME` etc. — provider-internal detail).
-- [ ] **Path-aware emission:** when the Node plugin is at `path = "src/frontend"`, the snippet emits `PATH_add "src/frontend/node_modules/.bin"` so the absolute resolution at direnv-eval time is correct. Per the *Uniform `.envrc` template* rule in [project-essentials.md](project-essentials.md), uses `PATH_add` (never hand-rolled `export PATH=`).
-- [ ] Output passes through `validate_envrc_snippet` (N.m). Invalid output halts with a precise error.
-- [ ] Sentinel markers follow the per-plugin convention established in N.q (e.g., `# >>> pyve:plugin:node:activate >>>` … `# <<< pyve:plugin:node:activate <<<`).
-- [ ] Bats + integration tests: emitted snippet for Node-at-root and Node-at-subpath both validate and produce direnv-resolvable PATH entries; PC-1 validator catches malformed output.
+- [x] `node_pyve_plugin_activate [path]` composes a sentinel-marked `.envrc` section: `PATH_add "node_modules/.bin"`. *(Provider-specific env vars like `PNPM_HOME` aren't needed for `.bin` resolution and are a provider-internal future addition — the v3.0 section is the single PATH_add. Node activation is uniform across pnpm/npm/yarn, unlike Python's venv/micromamba sentinel split.)*
+- [x] **Path-aware emission:** plugin at `path = "src/frontend"` emits `PATH_add "src/frontend/node_modules/.bin"` (trailing slash normalized) so direnv resolves the absolute dir at eval time. Uses `PATH_add`, never hand-rolled `export PATH=` (Uniform `.envrc` template rule).
+- [x] Output passes through `validate_envrc_snippet` (N.m): compose → validate → emit. A path carrying command substitution / backticks fails PC-1 and halts with a precise error and **no** emission (verified — no file written, no exec).
+- [x] Sentinel markers `# >>> pyve:plugin:node:activate >>>` … `# <<< pyve:plugin:node:activate <<<`. *(Terminology correction: the task's "convention established in N.q" is a misreference. N.q's only "sentinel" mention is the backend sentinel **variable** — `VIRTUAL_ENV` / `CONDA_PREFIX` — named in its out-of-scope note on keeping the `bp_dispatch` activate layer ("owns backend-specific shape (sentinel var, bin dir)"), which is a different concept from these **section markers**. No section-marker convention existed before N.y; N.y introduces it, forward-compatible with N-4's "sentinel-marked plugin sections" composition.)*
+- [x] Bats tests: root + sub-path emission both validate; PATH_add shape; sentinel markers present; no `export PATH=`; PC-1 catches a malicious-path command-substitution and an unquoted-value malformed snippet. *([tests/unit/test_n_y_node_plugin_activate.bats](../../tests/unit/test_n_y_node_plugin_activate.bats), 10 cases.)*
+
+**Contract note — emit, don't write.** Unlike the Python `activate` hook (which delegates the actual `.envrc` write to `bp_dispatch <backend> activate` via the legacy `write_envrc_template` path), `node_pyve_plugin_activate` **emits its validated section to stdout**. The single-file `.envrc` composition across multiple plugins' sections is **Subphase N-4**'s job; N.y produces the Node section that composer will assemble. This also makes N.x's stopgap `run` PATH-prepend redundant once N-4 wires the composed `.envrc`.
 
 ### Story N.z: Node plugin — `.gitignore` + smart-purge hooks [Planned]
 

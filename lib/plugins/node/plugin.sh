@@ -470,3 +470,51 @@ node_pyve_plugin_test() {
         esac
     )
 }
+
+#------------------------------------------------------------
+# Plugin contract — activate (Story N.y)
+#
+# Compose → validate → emit. The Node plugin's `.envrc` contribution is
+# a single `PATH_add` for the env's node_modules/.bin so locally-installed
+# tools (vitest, tsc, eslint, …) resolve. Unlike the Python plugin
+# (venv→VIRTUAL_ENV vs micromamba→CONDA_PREFIX), Node activation is
+# uniform across providers (pnpm/npm/yarn) — no per-provider branch.
+#
+# Path-aware: a sub-path plugin (path = "src/frontend") emits
+# `PATH_add "src/frontend/node_modules/.bin"` so direnv resolves the
+# absolute dir correctly at eval time. Uses PATH_add — never a
+# hand-rolled `export PATH=` — per the Uniform .envrc template rule.
+#
+# The section is wrapped in per-plugin sentinel markers and emitted to
+# stdout: N-4's composer assembles each plugin's section into one
+# `.envrc`. PC-1 (validate_envrc_snippet, N.m) gates the output — a
+# path carrying command substitution / backticks halts with no emission.
+#------------------------------------------------------------
+
+# Compose the sentinel-wrapped Node `.envrc` section for <path>.
+_node_pyve_plugin_envrc_snippet() {
+    local path="${1:-.}"
+    local bin_dir
+    if [[ -z "$path" || "$path" == "." ]]; then
+        bin_dir="node_modules/.bin"
+    else
+        # Strip a trailing slash so we don't emit a double slash.
+        bin_dir="${path%/}/node_modules/.bin"
+    fi
+    cat <<EOF
+# >>> pyve:plugin:node:activate >>>
+PATH_add "$bin_dir"
+# <<< pyve:plugin:node:activate <<<
+EOF
+}
+
+node_pyve_plugin_activate() {
+    local path="${1:-.}"
+    local snippet
+    snippet="$(_node_pyve_plugin_envrc_snippet "$path")" || return $?
+    if ! validate_envrc_snippet "$snippet"; then
+        log_error "node plugin: activate: snippet failed PC-1 validation"
+        return 1
+    fi
+    printf '%s\n' "$snippet"
+}
