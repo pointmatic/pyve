@@ -279,6 +279,17 @@ else
     exit 1
 fi
 
+# Story N.ai: composed `pyve purge` builder. Aggregates each plugin's
+# purge_inventory, enforces the authored guard, confirms, then delegates
+# removal to the per-plugin purge hooks.
+if [[ -f "$SCRIPT_DIR/lib/purge_composer.sh" ]]; then
+    # shellcheck source=lib/purge_composer.sh
+    source "$SCRIPT_DIR/lib/purge_composer.sh"
+else
+    printf "ERROR: Cannot find lib/purge_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
@@ -735,7 +746,10 @@ main() {
                 printf 'DISPATCH:purge %s\n' "$*"
                 exit 0
             fi
-            plugin_dispatch python purge "$@"
+            # Story N.ai: composed purge across every active plugin
+            # (inventory + authored guard + confirmation; delegated removal).
+            compose_purge "$@"
+            exit $?
             ;;
         validate)
             # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.

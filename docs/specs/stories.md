@@ -1239,17 +1239,19 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Always-zero exit code: `compose_status` returns 0 regardless of any hook's return code (status is informational; failures are `pyve check`'s job). Usage errors (unknown flag / positional arg) still exit 1 via the shared helpers.
 - [x] Bats + integration tests ([tests/unit/test_n_ah_compose_status.bats](../../tests/unit/test_n_ah_compose_status.bats)): single-plugin; two-plugin aggregation; deterministic registration-order sectioning; always-exit-0 even when a hook returns nonzero; path-aware labels; active-plugin gate; plus two `bash pyve.sh status` e2e tests (single-title, polyglot python+node sections with path label).
 
-### Story N.ai: Composed `pyve purge` with composed inventory [Planned]
+### Story N.ai: Composed `pyve purge` with composed inventory [Done]
 
 **Motivation.** Today `pyve purge` only removes Python plugin artifacts; N.ai stands up the central composer that gathers `pyve_plugin_purge_inventory` from every active plugin, composes the created-vs-authored map, presents the user with a clear confirmation, and removes created artifacts only.
 
+**Design decision (Option B).** The composer owns inventory + authored-guard + confirmation, then **delegates actual removal to each plugin's `pyve_plugin_purge` hook** (rather than `rm`-ing inventory paths itself). This preserves the per-plugin smart-purge nuance the flat `created <path>` inventory can't express (`.env`-only-if-empty, `.gitignore`-section-only, `--keep-testenv` surgical micromamba deletion). **Failure recovery:** removal is delete-only (idempotent/convergent), so the composer dispatches *all* plugins even if one fails, reports which failed, notes re-running is safe (resumes; already-removed artifacts are no-ops), and exits nonzero — never a corrupt half-state.
+
 **Tasks**
 
-- [ ] In [lib/commands/purge.sh](../../lib/commands/purge.sh), introduce `compose_purge_inventory` that iterates active plugins, dispatches each plugin's `pyve_plugin_purge_inventory` (per N.r / N.z), and merges the results into one composed inventory keyed by (plugin, path).
-- [ ] **User-authored guard**: the composer cross-checks the inventory against user-authored entries (per S9 / smart-purge rule); any overlap between created and authored is treated as authored (never removed). Regression test for this safety property.
-- [ ] **Path-aware**: visitor-plugin inventory entries are resolved relative to the plugin's path (e.g., Node at `src/frontend` purges `src/frontend/node_modules/`).
-- [ ] **Confirmation prompt**: present the full list of items to be removed grouped by plugin/path; require `--force` for non-interactive removal (preserving the existing `pyve purge --force` semantics from pre-N-2).
-- [ ] Bats + integration tests: composition with one plugin; with two plugins (polyglot); user-authored guard regression; confirmation prompt; `--force` non-interactive path.
+- [x] New [lib/purge_composer.sh](../../lib/purge_composer.sh) — `compose_purge_inventory` iterates active plugins, dispatches each plugin's `pyve_plugin_purge_inventory` (per N.r / N.z), and emits one composed inventory keyed by `<plugin> <class> <path>`. (The story named `lib/commands/purge.sh`, but `purge_project` was relocated into the Python plugin in Story N.s.2; the composer lives in its own `lib/purge_composer.sh`, a sibling of the check/status composers. Wired into the `purge)` arm in [pyve.sh](../../pyve.sh).)
+- [x] **User-authored guard** (`compose_purge_removals`): every `created` entry whose path matches an `authored` declaration anywhere in the composed inventory (cross-plugin, glob-aware) is dropped from the removal set — authored always wins. Regression tests cover same-plugin overlap, cross-plugin protection, and glob patterns (`requirements*.txt`).
+- [x] **Path-aware**: visitor-plugin inventory entries carry the plugin's path prefix (Node at `src/frontend` → `src/frontend/node_modules`), via the plugin hooks' existing prefixing + `manifest_get_plugin_path`.
+- [x] **Confirmation prompt**: grouped by plugin before removal; `--yes` / `-y` / `--force` (plus `CI=1` / `PYVE_FORCE_YES=1`) skip it for non-interactive use. The composer owns the single header/footer frame and the prompt; `purge_project`'s own frame + prompt are gated under `PYVE_PURGE_COMPOSED` / `PYVE_FORCE_YES`.
+- [x] Bats + integration tests ([tests/unit/test_n_ai_compose_purge.bats](../../tests/unit/test_n_ai_compose_purge.bats)): inventory aggregation; path-prefixing; authored guard (3 cases); `--yes` dispatch of every active plugin; `n`-abort dispatches nothing; grouped confirmation; failure-recovery (continue-on-failure, nonzero exit, re-run-safe note, all-success → 0); plus `bash pyve.sh purge` e2e (polyglot `--yes` removes Node `node_modules` at the visitor path while preserving authored `package.json` / `pyproject.toml`; single composed frame). Existing [test_purge_ui.bats](../../tests/unit/test_purge_ui.bats) (header/footer/`--yes`/`n`-abort/✔-glyph) all still pass through the composed path.
 
 ### Story N.aj: PC-4a — no-Python noise suppression on Node-only projects [Planned]
 

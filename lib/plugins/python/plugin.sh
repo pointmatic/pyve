@@ -2227,7 +2227,13 @@ purge_project() {
         esac
     done
 
-    header_box "pyve purge"
+    # Story N.ai: when invoked as a composed-purge section, the composer
+    # (compose_purge) owns the header/footer frame and the confirmation, so
+    # suppress the duplicate here. Standalone / init --force callers
+    # (PYVE_PURGE_COMPOSED unset) keep the original frame.
+    if [[ -z "${PYVE_PURGE_COMPOSED:-}" ]]; then
+        header_box "pyve purge"
+    fi
 
     # Story N.r: pull the active plugin's purge_inventory as a data
     # interface. v3.0 reads the inventory for diagnostic / verbose
@@ -2323,7 +2329,13 @@ purge_project() {
     # Clean .gitignore
     _purge_gitignore "$venv_dir"
 
-    footer_box
+    if [[ -z "${PYVE_PURGE_COMPOSED:-}" ]]; then
+        footer_box
+    fi
+    # Explicit success: the composed-purge orchestrator (N.ai) keys its
+    # failure-recovery roll-up on this function's return code, so it must
+    # not leak the status of the gating test above.
+    return 0
 }
 
 _purge_version_file() {
