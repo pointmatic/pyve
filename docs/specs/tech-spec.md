@@ -1381,6 +1381,84 @@ The actual removal calls (`_purge_venv`, `_purge_pyve_dir`, `_purge_envrc`, `_pu
 
 ---
 
+### `lib/plugins/node/plugin.sh` — Node plugin (Stories N.t–N.aa, Subphase N-3)
+
+The **second reference plugin** behind the contract from N.k — the proof that the plugin contract generalizes beyond Python. Unlike the Python plugin (which was *relocated* from `lib/commands/` into the plugin file via the N.s umbrella), the Node plugin was authored fresh against the contract; its hooks mirror the Python plugin's signatures so reviewers can diff [lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh) against [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) side-by-side. Runtime-version detection lives in a sibling module, [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh).
+
+**Not yet CLI-routed (v3.0).** Every top-level `pyve` command still dispatches only to the Python plugin (`plugin_dispatch python <hook>` in [pyve.sh](../../pyve.sh)). The Node hooks take explicit `<path> [<backend>]` arguments and are exercised directly / via `plugin_dispatch node <hook>`. Wiring `pyve <cmd>` to materialize **all** declared envs across plugins — routing each env to its owning plugin and aggregating results — is **Subphase N-4** (composed activation). The explicit-arg signatures are the seam N-4 calls into; until then the default `path` is `.`.
+
+**Path-awareness (root vs visitor).** Every Node hook takes a leading `<path>` so the plugin works both as the project's root ecosystem (`path = "."`, pure-Node) and as a *visitor* at a sub-tree (`path = "src/frontend"`, the polyglot Python+Node monorepo). Sub-path hooks confine all reads/writes to that sub-tree and emit **project-root-relative** paths (so direnv resolves absolute dirs from where `.envrc` lives, not from the sub-tree). This was designed in from N.t (insight #5) so the N.ab monorepo fixtures had a working primitive.
+
+**Detection + namespace (Story N.t).**
+
+| Hook | Behavior |
+|---|---|
+| `node_pyve_plugin_manifest_namespace` | Returns `"node"`. |
+| `node_pyve_plugin_detect [path]` | Prints `"node"` when `package.json` exists at `<path>`, else `"none"`. Scaffold-time only — once `pyve.toml` declares `[plugins.node]`, the manifest is the runtime source of truth. |
+| `node_detect_framework [path]` | Prints `"sveltekit"` when `package.json` + `@sveltejs/kit` (or `svelte.config.js`) are present, else `"none"` (Story N.aa). |
+
+`pyve init` consults the detect hook **advisory-only** — a root-level `package.json` next to a Python project surfaces a "Node project detected" advisory but **never mutates `pyve.toml`**. The auto-write is a deferred contract hole (the S4/S5 root-collision, recorded in N.t's decision note and synthesized in [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) § "N-3 evidence"); the composed multi-plugin scaffold belongs to N-4.
+
+**Backend-providers — `pnpm` / `npm` / `yarn` (Story N.u).** Three project-virtualized providers registered via N.l's `bp_register node <pm> virtualized` (fired eagerly at source-time from [pyve.sh](../../pyve.sh), mirroring Python's venv/micromamba). Per-tool differences live in pure string-maps so the lifecycle hooks consume one place:
+
+| Helper | pnpm | npm | yarn |
+|---|---|---|---|
+| `node_provider_install` | `pnpm install` | `npm install` | `yarn install` |
+| `node_provider_lockfile` | `pnpm-lock.yaml` | `package-lock.json` | `yarn.lock` |
+| `node_provider_test` | `pnpm test` | `npm test` | `yarn test` |
+
+`node_provider_detect [declared_backend] [path]`: an explicit `backend = "pnpm"` (or `npm`/`yarn`) wins over any lockfile; otherwise infer from lockfile presence; with no lockfile, default to `pnpm`.
+
+**Runtime-resolution precedence (Story N.v).** Node's version-manager precedence per spike S10 (revised), implemented in [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh):
+
+```
+nvm  >  fnm  >  volta  >  asdf  >  Homebrew / system PATH
+```
+
+- `node_runtime_manager()` — the precedence walk; prints the governing manager, or `path` when none is active (the bare-`command -v node` fallback).
+- `node_runtime_resolve()` — prints the resolved `node` path (every manager shims `node` onto PATH when active, so `command -v node` is the resolution); fails loudly with "no Node runtime detected; install via Homebrew or your preferred manager" when no node is reachable.
+- Each detector (`is_nvm_active` / `is_fnm_active` / `is_volta_active`) has its own `PYVE_NO_{NVM,FNM,VOLTA}_COMPAT` opt-out, mirroring the `is_asdf_active()` contract. The asdf tier uses a Node-specific private `_is_asdf_node_active()` (asdf has a *nodejs* plugin) honoring the shared `PYVE_NO_ASDF_COMPAT` — deliberately **not** the Python-context `is_asdf_active()`, which gates on `VERSION_MANAGER == "asdf"` and would never fire for a Node-only project. These helpers live with the Node plugin, never in the Python/asdf-oriented `lib/env_detect.sh`.
+
+**Lifecycle hooks — init / purge / update (Story N.w).**
+
+| Hook | Behavior |
+|---|---|
+| `node_pyve_plugin_init <path> [<backend>]` | Detects the provider (`node_provider_detect`), resolves the Node runtime (`node_runtime_resolve`, fails loudly when absent) **before** invoking the package manager, then runs the install in `<path>`. Runs `node_pyve_plugin_validate_env_blocks` (S9) first. |
+| `node_pyve_plugin_purge <path>` | Smart-purge: removes `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/` from `<path>` (only those present); never touches `package.json`, lockfiles, or source (S9). `${path:?}`-guarded against an empty-path `rm`. |
+| `node_pyve_plugin_update <path> [<backend>]` | CI-aware refresh: `pnpm install --frozen-lockfile` / `npm ci` / `yarn install --frozen-lockfile` when `CI` is set; plain `<pm> install` otherwise. |
+
+Install/purge logic lives in parameterized workers (`_node_provider_run_install`, `_node_purge_at`) so it's testable hermetically apart from manifest wiring. `node_pyve_plugin_validate_env_blocks` checks `purpose ∈ {run,test,utility,temp}` and that a non-empty `backend` is a registered provider; provider-private fields (`languages`, `frameworks`, future `node_version`) pass through untouched.
+
+**Runtime hooks — check / status / run / test (Story N.x).**
+
+| Hook | Behavior |
+|---|---|
+| `node_pyve_plugin_check <path>` | Verifies Node runtime resolves, `package.json` present, `node_modules/` present + non-empty (these drive the exit code). **TypeScript advisory (S11):** when an env declares `languages` including `typescript` but `package.json` has no `typescript` dep, warn (advisory only — no failure exit). Surfaces the env's `frameworks`. |
+| `node_pyve_plugin_status <path> [<backend>]` | Backend/provider, lockfile state, `node_modules` state, `package.json` mtime (portable `_node_mtime`), plus advisories. |
+| `node_pyve_plugin_run <path> <cmd> [args...]` | Passthrough: prepends `<path>/node_modules/.bin` to PATH, then runs `<cmd>` (stopgap PATH activation; N.y moves this into `.envrc`). |
+| `node_pyve_plugin_test <path> [<backend>]` | Honest delegation to `<provider> test` — the user's `package.json` `test` script defines what "test" means (vitest, jest, playwright, …). |
+
+`manual_steps` (S7) and the framework/TypeScript advisories surface through the shared `_node_pyve_plugin_render_advisories`, the same pattern as the Python plugin's N.p renderer.
+
+**Activation hook — `node_modules/.bin` PATH_add (Story N.y).** `node_pyve_plugin_activate <path>` composes a single sentinel-wrapped `.envrc` section, runs it through `validate_envrc_snippet` (N.m PC-1 gate), and emits it to stdout (N-4's composer assembles each plugin's section into one `.envrc`):
+
+```
+# >>> pyve:plugin:node:activate >>>
+PATH_add "node_modules/.bin"            ← root; or "src/frontend/node_modules/.bin" for a visitor
+# <<< pyve:plugin:node:activate <<<
+```
+
+Unlike the Python plugin (venv→`VIRTUAL_ENV` vs micromamba→`CONDA_PREFIX`), Node activation is **uniform across providers** — just the `node_modules/.bin` PATH_add, no per-provider branch. Uses direnv's `PATH_add` primitive, never a hand-rolled `export PATH=` (the Uniform `.envrc` template rule). Story N.ab.3 proves the Python root section and the Node visitor section concatenate into one `.envrc` body with no interference.
+
+**`.gitignore` + smart-purge hooks (Story N.z).** Both ship as data interfaces (like the Python plugin's N.r), and both are **path-aware** — a sub-path plugin prefixes each pattern / path token with its `path`, while comment and blank lines are never prefixed.
+
+- `node_pyve_plugin_gitignore_entries [path]` → `node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`, `*.tsbuildinfo`, `.turbo/`, `.parcel-cache/`, `*-debug.log*`. Flows through `validate_gitignore_snippet` (PC-1) at the composer.
+- `node_pyve_plugin_purge_inventory [path]` → `created` set (`node_modules`, `.svelte-kit`, `dist`, `build`, `.next`, `.turbo`, `*.tsbuildinfo`) kept consistent with `_node_purge_at`'s remover; `authored` set (`package.json`, the three lockfiles, `tsconfig.json`, `svelte.config.js`) never touched on purge.
+
+**SvelteKit detection + `frameworks` attribute (Story N.aa).** `node_detect_framework` (above) plus the `frameworks` structured-metadata attribute on `[env.<name>]` (S11) — advisory-only, surfaced in `check` / `status` via `manifest_get_frameworks`. No behavior change beyond the surfacing; SvelteKit is recognized, not specially provisioned.
+
+---
+
 ### `lib/ui/core.sh` — Unified UI Helpers (Phase H / v2.0+; relocated to `lib/ui/` in Phase L)
 
 Core module of the extractable `lib/ui/` library. Provides the shared terminal UX primitives used across every pyve command. Introduced as `lib/ui.sh` in H.e (first sub-story), adopted during H.e and H.f, and relocated to `lib/ui/core.sh` in Phase L (Story L.e) so sibling modules (`lib/ui/run.sh`, `lib/ui/progress.sh`, `lib/ui/select.sh` — landing in L.g–L.i) have a coherent home.

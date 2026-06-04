@@ -31,6 +31,8 @@ Pyve orchestrates virtual environments with any stack combo (init, auto-activate
 
 A command-line tool that simplifies setting up and managing just about any stack combination in virtual environments on macOS and Linux, orchestrating many languages (Python, Node.js, Ruby, etc.) with a broad choice of backends (venv, micromamba, pnpm, Docker/Podman, Homebrew, apt, etc.) all activated seamlessly with direnv.
 
+*N-3 note: the "polyglot orchestration" framing is now backed by **two implemented reference plugins** — Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn). The other languages/backends named above remain aspirational examples of the plugin contract's reach. Comprehensive narrative reflow deferred to N-6.*
+
 ## Benefits
 
 *v3 baseline — comprehensive narrative reflow deferred to N-6.*

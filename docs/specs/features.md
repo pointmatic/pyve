@@ -497,6 +497,21 @@ In v3.0 the attribute is **declared but not enforced** — pyve never executes o
 
 **No behavior change for users in v3.0.** Both attributes ship as schema additions plus the two advisory surfaces above. No env is created, modified, validated, or rejected on the basis of `languages` / `manual_steps`. The wire-level acceptance, accessor surface, and renderer placement are documented in [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture). v3.1 / future phases may add enforcement; this story does not commit to a specific enforcement shape.
 
+### FR-11d: Node / SvelteKit Support (Subphase N-3)
+
+Phase N ships **Node** as the second reference plugin behind the contract from FR-11c — the proof that the plugin model generalizes beyond Python. A `[plugins.node]` declaration in `pyve.toml` brings a JavaScript/TypeScript ecosystem under the same composition layer (`.envrc` emission, `pyve check` / `pyve status` / `pyve purge`) as Python. The plugin lives at [lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh); the full wire-level surface is in [tech-spec.md § `lib/plugins/node/plugin.sh`](tech-spec.md).
+
+- **Backends — `pnpm` / `npm` / `yarn`.** Three project-virtualized backend-providers. An explicit `backend = "pnpm"` (or `npm`/`yarn`) wins; otherwise pyve infers from the lockfile present (`pnpm-lock.yaml` / `package-lock.json` / `yarn.lock`), defaulting to `pnpm` when none exists.
+- **Runtime resolution.** Node's version manager is resolved by the precedence chain **nvm > fnm > volta > asdf > Homebrew / system PATH**, each tier honoring a `PYVE_NO_*_COMPAT` opt-out. Pyve does not install a Node runtime — it resolves whichever is active and fails loudly when none is reachable (consistent with the asdf/pyenv Non-Goal for Python).
+- **Lifecycle.** `init` installs into `node_modules/` via the resolved provider; `purge` smart-removes generated dirs (`node_modules/`, `.svelte-kit/`, `dist/`, `build/`, `.next/`) while never touching `package.json`, lockfiles, or source; `update` uses the CI-frozen install form (`pnpm install --frozen-lockfile` / `npm ci` / `yarn install --frozen-lockfile`) when `CI` is set.
+- **Activation.** The plugin's `.envrc` contribution is a single `PATH_add "node_modules/.bin"` (path-prefixed for sub-tree projects) so locally-installed tools (vitest, tsc, eslint) resolve — uniform across providers, no `export PATH=`.
+- **`test` is honest delegation.** `pyve`'s Node `test` hook runs the provider's `test` script (`pnpm test`, …); the user's `package.json` `test` script defines what "test" means (vitest, jest, playwright, …). Pyve does not impose a test runner.
+- **TypeScript advisory (S11).** When an env declares `languages` including `typescript` but `package.json` has no `typescript` dependency, `pyve check` warns — advisory only, never a failure exit.
+- **SvelteKit framework detection (advisory).** Pyve recognizes SvelteKit (`@sveltejs/kit` / `svelte.config.js`) and surfaces an env's `frameworks` attribute in `check` / `status`. Recognition is advisory metadata — SvelteKit is **not** specially provisioned beyond the standard Node lifecycle.
+- **Polyglot.** Python and Node coexist when declared at **distinct paths** (e.g. Python at `.`, Node at `src/frontend`); each plugin's hooks confine to their own sub-tree. v3.0 exercises this at the hook level; CLI-level routing of `pyve <cmd>` across all declared envs lands in **Subphase N-4**.
+
+**No behavior change for existing Python users.** Node support is additive: a pure-Python project with no `[plugins.node]` declaration behaves exactly as in v2 (the implicit-Python rule never auto-loads Node). Per S11, the new surfaces are advisory.
+
 ### FR-12: Smart Re-Initialization
 
 Handle `pyve init` on already-initialized projects.

@@ -1069,16 +1069,16 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] Document any contract design holes surfaced across N-3 (N.t–N.ab.3). If none beyond those already captured (e.g. N.t's root-collision S4/S5 hole, recorded in N.t's decision note), say so explicitly — a clean result is a positive finding worth recording. *(New "N-3 evidence: contract-holes synthesis" section in the spike doc: exactly one hole — N.t's root-collision S4/S5 auto-write, deferred to N-4 by design — every other N-3 story (N.u–N.ab.3) composed with zero production-code changes. Clean result recorded explicitly.)*
 - [x] Doc-only; no code or test changes.
 
-### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Planned]
+### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Done]
 
 **Motivation.** Capture the Node plugin in the spec docs so the codebase and the docs agree post-N-3. Brand-descriptions gets a brief annotation; full revision lands in N-6 via `refactor_document`.
 
 **Tasks**
 
-- [ ] [tech-spec.md](tech-spec.md): add a "Node plugin" section mirroring the existing "Python plugin" section (which landed in N.s.10). Cover: backend-providers (pnpm/npm/yarn), runtime-resolution precedence (nvm > fnm > volta > asdf > Homebrew/system), hook implementations, activation pattern (`node_modules/.bin` PATH_add), path-awareness (root vs visitor).
-- [ ] [features.md](features.md): note Node + SvelteKit support; TypeScript advisory; SvelteKit framework detection (advisory). Per S11, no behavior change for users beyond the additions.
-- [ ] [brand-descriptions.md](brand-descriptions.md): brief annotation under the relevant **NEEDS REVISION for Pyve 3.0** sections noting that Node/SvelteKit are now supported (the "polyglot orchestration" framing). Full revision still tracked for N-6.
-- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+- [x] [tech-spec.md](tech-spec.md): add a "Node plugin" section mirroring the existing "Python plugin" section (which landed in N.s.10). Cover: backend-providers (pnpm/npm/yarn), runtime-resolution precedence (nvm > fnm > volta > asdf > Homebrew/system), hook implementations, activation pattern (`node_modules/.bin` PATH_add), path-awareness (root vs visitor). *(New `### lib/plugins/node/plugin.sh — Node plugin (Stories N.t–N.aa, Subphase N-3)` section, slotted directly after the Python plugin's N.r section; covers namespace/detection, providers, runtime precedence, lifecycle + runtime hooks, activation, gitignore/smart-purge, SvelteKit detection, path-awareness, and the not-yet-CLI-routed posture.)*
+- [x] [features.md](features.md): note Node + SvelteKit support; TypeScript advisory; SvelteKit framework detection (advisory). Per S11, no behavior change for users beyond the additions. *(New `### FR-11d: Node / SvelteKit Support (Subphase N-3)` after FR-11c.)*
+- [x] [brand-descriptions.md](brand-descriptions.md): brief annotation noting Node/SvelteKit are now supported (the "polyglot orchestration" framing). Full revision still tracked for N-6. *(Note: the file was already brought to a "v3 baseline" state by Story N.s.12 — the **NEEDS REVISION for Pyve 3.0** flags the task anticipated had already been replaced with "v3 baseline — deferred to N-6" annotations, and Node/sveltekit/pnpm/polyglot already appeared throughout. Discharged as a single italic N-3 annotation under the Two-clause Technical Description recording that the polyglot framing is now backed by two implemented reference plugins, rather than a redundant revision. N-6's subphase description still references the stale "NEEDS REVISION" flag state — flagged for the N-6 planning session.)*
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
 
 ---
 
