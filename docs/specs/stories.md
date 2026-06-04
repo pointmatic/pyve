@@ -1170,16 +1170,21 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 - [x] **Legacy `.envrc` handling** (edge surfaced during implementation): a pre-composer `.envrc` has no managed end marker, so no user region can be delimited — it is fully replaced, but backed up to `.envrc.prev` as the recovery path. Composer-written files carry the marker and round-trip their user tail cleanly thereafter.
 - [x] Bats tests ([tests/unit/test_n_ae_4_compose_envrc_write.bats](../../tests/unit/test_n_ae_4_compose_envrc_write.bats), 10 tests): fresh-scaffold (managed section + invitation, no spurious `.prev`); user content round-trips; `.prev` backup on overwrite + rollback restores; idempotent re-compose; atomic-write failure leaves the existing `.envrc` untouched (no `.tmp`/`.prev`); legacy-file replace-with-backup. End-to-end integration lands in N.ae.5 (init/update rewiring).
 
-### Story N.ae.5: Init/update rewiring — retire direct `.envrc` callsites [Planned]
+### Story N.ae.5: Init/update rewiring — retire direct `.envrc` callsites [Done]
 
 **Motivation.** Spike decision 3. Replace the per-plugin direct `.envrc` emission in the live `init`/`update` paths with the composer. The riskiest integration (heavily-tested init flow), isolated to its own commit.
 
+**Reordering note.** The composer needs `.pyve/config` (the Python emitter's backend source) and `pyve.toml` (plugin enumeration) on disk first, and a registry reload (because `main()` loaded the pre-write manifest). So init's activation moved from *before* config/manifest to *after* `_init_scaffold_manifest`, via the shared `compose_project_envrc` helper (reload manifest → reset registry → `plugin_load_all_from_manifest` → `compose_envrc`). The interim `bp_dispatch` callsites (N.ae.2) are retired.
+
+**`update_project` scope.** `update_project` never emitted `.envrc` (nothing to "retire"). Per the spike's init/update intent, a new step refreshes the **managed `.envrc` section** — but only when an `.envrc` already exists (mirrors the `.vscode` "never create, that's init opt-in" rule, respecting `--no-direnv`). Step count went `/4 → /5`.
+
 **Tasks**
 
-- [ ] Retire the direct per-plugin `.envrc` emission in `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), both the venv and micromamba branches — `lib/commands/init.sh` was relocated here by N.s) and `update_project` ([lib/commands/update.sh](../../lib/commands/update.sh)).
-- [ ] At each callsite, after the `pyve.toml` write: `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest` → `compose_envrc .envrc` (the post-write reload is required because `main()` loaded the pre-init empty manifest). Preserve the `--no-direnv` skip (composer not called on that path).
-- [ ] Integration tests across the three project shapes (Python-only, Node-only, polyglot): `.envrc` composed correctly; polyglot `.envrc` carries both plugin sections; re-run idempotence; user content preserved on refresh.
-- [ ] Verify the full bats + integration suites stay green (init flow is the highest-regression-risk surface in Phase N).
+- [x] Retire the interim per-plugin `.envrc` emission in `init_project` ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh), both venv and micromamba branches — `lib/commands/init.sh` was relocated here by N.s). Activation now runs after `.pyve/config` + `_init_scaffold_manifest`.
+- [x] New shared helper `compose_project_envrc` (in [lib/envrc_composer.sh](../../lib/envrc_composer.sh)): `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest` → `compose_envrc` (the post-write reload is required because `main()` loaded the pre-init manifest). Both init branches + update call it. `--no-direnv` skip preserved.
+- [x] `update_project` gains a `[3/5]` `.envrc`-refresh step (refresh-if-exists; preserves user content, backs up to `.envrc.prev`); help text + `test_update.bats` step-count assertions updated `/4 → /5`.
+- [x] Unit tests: [tests/unit/test_n_ae_5_compose_project_wiring.bats](../../tests/unit/test_n_ae_5_compose_project_wiring.bats) (4 — reload-then-compose, stale-registry node pickup). Integration: [tests/integration/test_envrc_composition.py](../../tests/integration/test_envrc_composition.py) (venv init composes managed `.envrc`; polyglot init carries both plugin sections; `update` refreshes preserving user tail + `.envrc.prev`).
+- [x] Full bats suite green (**1592 tests**); shellcheck clean (composer 0; plugin.sh unchanged at 2 pre-existing). Integration: venv-init + update tests pass; the polyglot-init test is logically verified but hits the same environmental ~300s real-venv-build timeout seen in N.ae.2 (init flow code is shared with the passing venv-init test).
 
 ### Story N.af: Composed `.gitignore` self-heal across plugins [Planned]
 

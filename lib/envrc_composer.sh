@@ -144,3 +144,25 @@ compose_envrc() {
     fi
     mv -f "$tmp" "$output_path"
 }
+
+# Init/update entry point (Story N.ae.5): reload the manifest + plugin
+# registry from the on-disk pyve.toml, THEN compose `.envrc`.
+#
+# The reload is required because pyve.sh's main() loads the manifest +
+# registers plugins BEFORE the subcommand runs — but `pyve init` writes /
+# `pyve update` may change pyve.toml + .pyve/config afterward. Without
+# re-loading, plugin_list_active is stale (e.g. implicit-Python only,
+# missing a freshly-scaffolded [plugins.node]). See spike decision 3 in
+# docs/specs/spike-n-ae-envrc-composer-contract.md.
+#
+# Usage: compose_project_envrc [<output_path>]   (default: .envrc)
+compose_project_envrc() {
+    local output_path="${1:-.envrc}"
+    manifest_load >/dev/null 2>&1 || true
+    plugin_registry_reset
+    if ! plugin_load_all_from_manifest; then
+        log_error "envrc_composer: could not load plugins from pyve.toml"
+        return 1
+    fi
+    compose_envrc "$output_path"
+}

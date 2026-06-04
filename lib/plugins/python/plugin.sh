@@ -1783,19 +1783,9 @@ init_project() {
             pyve_install_distutils_shim_for_micromamba_prefix "$micromamba_path" "$env_prefix"
         fi
 
-        # Configure direnv for micromamba (unless --no-direnv).
-        # Story N.l: dispatch through bp_dispatch so the activation
-        # path is uniform across backends.
+        # .envrc is composed below (Story N.ae.5), AFTER .pyve/config and
+        # pyve.toml exist (see the venv branch for the rationale).
         local env_path=".pyve/envs/$env_name"
-        if [[ "$no_direnv" == false ]]; then
-            # Story N.ae.2 (interim): the python activate hook is now a
-            # snippet emitter (no write), so call the backend-provider
-            # writer directly to keep `init` emitting `.envrc` unchanged.
-            # Story N.ae.5 replaces this callsite with compose_envrc.
-            bp_dispatch micromamba activate "$env_path" "$env_name"
-        else
-            info "Skipping .envrc creation (--no-direnv)"
-        fi
 
         # Create .env file
         _init_dotenv "$use_local_env"
@@ -1826,6 +1816,14 @@ EOF
         # above; the YAML removal lands in Story N.i with the read-compat
         # sweep.
         _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+
+        # Configure direnv (unless --no-direnv). Story N.ae.5: compose the
+        # `.envrc` now that .pyve/config + pyve.toml exist.
+        if [[ "$no_direnv" == false ]]; then
+            compose_project_envrc ".envrc" && success "Created .envrc"
+        else
+            info "Skipping .envrc creation (--no-direnv)"
+        fi
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
@@ -1891,20 +1889,10 @@ EOF
         pyve_install_distutils_shim_for_python "$venv_dir/bin/python"
     fi
 
-    # Configure direnv (unless --no-direnv).
-    # Story N.l: dispatch through bp_dispatch so the activation path
-    # is uniform across backends.
-    if [[ "$no_direnv" == false ]]; then
-        local _venv_project_name
-        _venv_project_name="$(basename "$(pwd)")"
-        # Story N.ae.2 (interim): the python activate hook is now a
-        # snippet emitter (no write), so call the backend-provider writer
-        # directly to keep `init` emitting `.envrc` unchanged. Story
-        # N.ae.5 replaces this callsite with compose_envrc.
-        bp_dispatch venv activate "$venv_dir" "$_venv_project_name"
-    else
-        info "Skipping .envrc creation (--no-direnv)"
-    fi
+    # .envrc is composed below (Story N.ae.5), AFTER .pyve/config and
+    # pyve.toml exist — the composer's Python activate hook resolves the
+    # backend / env path from .pyve/config, and plugin enumeration reads
+    # the freshly-written manifest.
 
     # Create .env file
     _init_dotenv "$use_local_env"
@@ -1931,6 +1919,15 @@ EOF
     # written above; the YAML removal lands in Story N.i with the
     # read-compat sweep.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+
+    # Configure direnv (unless --no-direnv). Story N.ae.5: compose the
+    # `.envrc` from all active plugins now that .pyve/config + pyve.toml
+    # exist (compose_project_envrc reloads the manifest/registry first).
+    if [[ "$no_direnv" == false ]]; then
+        compose_project_envrc ".envrc" && success "Created .envrc"
+    else
+        info "Skipping .envrc creation (--no-direnv)"
+    fi
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists
@@ -2515,11 +2512,11 @@ update_project() {
     # even when already at current version, simplifying the happy path).
     local step1_label
     if [[ -z "$previous_version" ]]; then
-        step1_label="[1/4] pyve_version: (not recorded) → $VERSION"
+        step1_label="[1/5] pyve_version: (not recorded) → $VERSION"
     elif [[ "$previous_version" == "$VERSION" ]]; then
-        step1_label="[1/4] pyve_version: $VERSION (already current)"
+        step1_label="[1/5] pyve_version: $VERSION (already current)"
     else
-        step1_label="[1/4] pyve_version: $previous_version → $VERSION"
+        step1_label="[1/5] pyve_version: $previous_version → $VERSION"
     fi
     step_begin "$step1_label"
     if ! update_config_version >/dev/null 2>&1; then
@@ -2529,38 +2526,56 @@ update_project() {
     fi
     step_end_ok
 
-    # Step 2/4 — refresh Pyve-managed sections of .gitignore.
-    step_begin "[2/4] Refresh .gitignore (Pyve-managed sections)"
+    # Step 2/5 — refresh Pyve-managed sections of .gitignore.
+    step_begin "[2/5] Refresh .gitignore (Pyve-managed sections)"
     write_gitignore_template >/dev/null 2>&1
     step_end_ok
 
-    # Step 3/4 — refresh .vscode/settings.json IF it already exists.
+    # Step 3/5 — refresh the composed .envrc managed section IF it exists.
+    # Story N.ae.5: like the .vscode step, NEVER create one (that respects
+    # the --no-direnv opt-out from init). compose_project_envrc reloads the
+    # manifest/registry, preserves user content below the managed end
+    # marker, and backs the prior file up to .envrc.prev.
+    if [[ -f ".envrc" ]]; then
+        step_begin "[3/5] Refresh .envrc (Pyve-managed section)"
+        if run_quiet compose_project_envrc ".envrc"; then
+            step_end_ok
+        else
+            step_end_fail
+            log_warning "  .envrc refresh failed; existing file left intact."
+        fi
+    else
+        step_begin "[3/5] .envrc: absent — skipped (use 'pyve init' to opt into direnv)"
+        step_end_ok
+    fi
+
+    # Step 4/5 — refresh .vscode/settings.json IF it already exists.
     # Never create — that's user opt-in at init time.
     if [[ -f ".vscode/settings.json" ]] && [[ "$backend" == "micromamba" ]]; then
         local env_name
         env_name="$(read_config_value "micromamba.env_name")"
         if [[ -n "$env_name" ]]; then
-            step_begin "[3/4] Refresh .vscode/settings.json"
+            step_begin "[4/5] Refresh .vscode/settings.json"
             PYVE_REINIT_MODE=force write_vscode_settings "$env_name" >/dev/null 2>&1
             step_end_ok
         else
-            step_begin "[3/4] .vscode/settings.json: micromamba env_name missing — skipped"
+            step_begin "[4/5] .vscode/settings.json: micromamba env_name missing — skipped"
             step_end_ok
         fi
     elif [[ -f ".vscode/settings.json" ]]; then
-        step_begin "[3/4] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
+        step_begin "[4/5] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
         step_end_ok
     else
-        step_begin "[3/4] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
+        step_begin "[4/5] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
         step_end_ok
     fi
 
     # Ensure .pyve/ exists (should already, by precondition).
     mkdir -p .pyve
 
-    # Step 4/4 — refresh project-guide scaffolding if present and allowed.
+    # Step 5/5 — refresh project-guide scaffolding if present and allowed.
     if [[ "$pg_mode" == "no" ]]; then
-        step_begin "[4/4] project-guide refresh skipped (--no-project-guide)"
+        step_begin "[5/5] project-guide refresh skipped (--no-project-guide)"
         step_end_ok
     elif [[ -f ".project-guide.yml" ]]; then
         local env_path=""
@@ -2577,7 +2592,7 @@ update_project() {
             fi
         fi
         if [[ -n "$env_path" ]] && [[ -d "$env_path" ]]; then
-            step_begin "[4/4] Refresh project-guide artifacts"
+            step_begin "[5/5] Refresh project-guide artifacts"
             if run_quiet run_project_guide_update_in_env "$backend" "$env_path"; then
                 step_end_ok
             else
@@ -2585,12 +2600,12 @@ update_project() {
                 log_warning "  Run 'project-guide update' manually to retry."
             fi
         else
-            step_begin "[4/4] project-guide: environment not found — skipped"
+            step_begin "[5/5] project-guide: environment not found — skipped"
             step_end_ok
             log_warning "  (Run 'pyve init --force' to rebuild the environment.)"
         fi
     else
-        step_begin "[4/4] project-guide: .project-guide.yml absent — skipped"
+        step_begin "[5/5] project-guide: .project-guide.yml absent — skipped"
         step_end_ok
     fi
 
@@ -2612,12 +2627,14 @@ Description:
   Refreshes:
     - pyve_version in .pyve/config
     - Pyve-managed sections of .gitignore
+    - .envrc managed section (only if it already exists; user content
+      below the managed end marker is preserved, prior file → .envrc.prev)
     - .vscode/settings.json (only if it already exists)
     - project-guide scaffolding (via 'project-guide update --no-input')
 
   Does NOT:
     - rebuild the virtual environment (use 'pyve init --force' for that)
-    - create .env or .envrc (those are user state)
+    - create .env or .envrc when absent (those are user opt-in at init)
     - re-prompt for backend (the recorded backend is preserved)
 
 Options:
