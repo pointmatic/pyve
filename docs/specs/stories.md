@@ -1497,7 +1497,7 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Preserved G.* behavior — [tests/unit/test_project_guide.bats](../../tests/unit/test_project_guide.bats) (leaves untouched in utils.sh) + [tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) pass; updated the two welded-name comment references in the wizard test. New [tests/unit/test_n_au_project_guide_locus.bats](../../tests/unit/test_n_au_project_guide_locus.bats) (6 tests) pins the seam: orchestration reachable without the Python plugin, welded definition gone, no non-comment callsite of the old name.
 - [x] Added explicit `source lib/project_guide.sh` to [pyve.sh](../../pyve.sh) (after `utils.sh`/`envrc_safety.sh`, before the plugins) + to [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash). Full suite **1698/1698**.
 
-### Story N.av: Composed-init materialization core — each plugin materializes its own env [Planned]
+### Story N.av: Composed-init materialization core — each plugin materializes its own env [Done] (umbrella — see N.av.1–N.av.5)
 
 **Motivation.** The umbrella refactor: replace the monolithic Python-first `init` dispatch (always a Python env) with a composed flow that `manifest_load`s, loads all declared plugins, and dispatches each plugin's init/materialize hook — so a Node-only project gets `node_modules` (not an unwanted `.venv`) and polyglot projects materialize both at distinct paths. This is the structural change that closes the N-3 scope-note gap and that F2/F3 build on. Grounded by the N.at spike contract.
 
@@ -1551,15 +1551,15 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Python app env + Node `node_modules` at the sub-path coexist; the N-4 composers already emit both `.envrc`/`.gitignore` sections.
 - [x] Tests: [tests/unit/test_n_av_4_polyglot_init.bats](../../tests/unit/test_n_av_4_polyglot_init.bats) — 4 tests (both materialized, node at declared sub-path, python-only no-secondary, no python double-materialize). **End-to-end smoke validated**: real `pyve init` on python-root + `src/frontend` node → `.venv` *and* `src/frontend/node_modules` (pnpm) both materialized, polyglot `pyve.toml`. Full suite **1719/1719**; shellcheck clean.
 
-### Story N.av.5: Integration matrix + N-4 composition regression sweep [Planned]
+### Story N.av.5: Integration matrix + N-4 composition regression sweep [Done]
 
 **Motivation.** End-to-end proof across the three shapes, and confirmation that the N-4 composed `check`/`status`/`purge`/`.envrc` still hold on composed-init output (not just on hand-built fixtures).
 
 **Tasks**
 
-- [ ] Integration tests: Python-only / Node-only / polyglot `pyve init` end-to-end, asserting the right envs + composed files.
-- [ ] Run composed `pyve check` / `status` / `purge` against each composed-init result; confirm parity with the N-4 fixture-driven expectations.
-- [ ] Consolidate any throwaway/duplicate init tests the refactor obsoleted.
+- [x] Integration matrix [tests/unit/test_n_av_5_composed_matrix.bats](../../tests/unit/test_n_av_5_composed_matrix.bats) — drives **real** `pyve init` across all three shapes (guarded `skip` when python-tomllib / node-npm absent, per the N.ab e2e precedent): Python-only → `.venv` + plain manifest; Node-only → `node_modules`, **no** `.venv`, `[plugins.node]`-only; polyglot → `.venv` + `src/frontend/node_modules`.
+- [x] Composed `check` / `status` / `purge` run against the actual init output: python-only check covers python (no node); node-only check covers node, **python suppressed** (PC-4a); status exit 0; polyglot check covers both `[python]` + `[node @ src/frontend]`; polyglot `purge --yes` removes both the venv and the sub-path `node_modules`. Confirms the N-4 composers behave on composed-init output, not just hand-built fixtures.
+- [x] No tests obsoleted/duplicated: the refactor moved the orchestration tail from `init_project` to `compose_init`, but `init_project` survives as the Python materializer and no test pinned the tail's location or ran `init_project` to completion (verified during N.av.2). The N.av.* tests are complementary (composer layer), not duplicative. Full suite **1723/1723**.
 
 ### Story N.aw: F2 — Python `utility` `root` provisioning on non-Python stacks [Planned]
 
