@@ -1416,7 +1416,7 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Scope boundary — what is *not* in this subphase (deferred post-v3.0).** The `pyve lint` verb (and `--fix`) per **O3** is post-v3.0 — v3.0 only *recognizes* lint-kind frameworks as advisory no-ops surfaced in `check` / `status` (via F6); the aggregating verb itself ships later. Materialization of advisory backends (`cargo`, `bundler`, `xcode`, …) lands when each ecosystem gets its own plugin, also post-v3.0. F6's hard-error enforcement is only meaningful once F4 is writing the new fields, so if `plan_envs` slips past v3.0, F4+F6 slip with it and v3.0 ships with today's lenient validation (only `purpose` closed-set-validated).
 
-### Story N.at: Integration spike — composed-init seam across stacks [Planned]
+### Story N.at: Integration spike — composed-init seam across stacks [Done]
 
 **Type:** integration + architectural (per `developer/best-practices-guide.md` § "Hello World First"). Deliverable is a documented contract decision; throwaway probes deleted after capture (no production `lib/` code), mirroring N.ae.1.
 
@@ -1424,10 +1424,63 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Tasks**
 
-- [ ] Probe composed-init dispatch against three fixtures: Python-only (materializes root/`.venv` as today), Node-only (materializes `node_modules` via the Node plugin; **no** Python app env), polyglot (both at distinct paths). Confirm `plugin_load_all_from_manifest` + per-plugin init-hook dispatch yields the right envs with no S4 cardinality error.
-- [ ] Probe the project-guide prompt at orchestration level (before per-plugin materialization, per N.ao §3): the accept decision drives whether `[env.root] backend = "venv"` is written and a `utility` `root` is provisioned at `.pyve/envs/root/venv/` (`resolve_env_path "root"`) on a Node-only stack with no Python app env.
-- [ ] Probe F3's risk: with `[env.root] backend = "venv"` present but no `[plugins.python]`, confirm the N.aj gate makes Python active and `compose_check`/`compose_status` dispatch the Python hooks — capture exactly what those hooks assume (`.venv` lookups) so F3 knows the surface to change.
-- [ ] Record the contract decision + sequencing (where the accept decision runs relative to `compose_project_envrc` / manifest finalization) + known limitations in `spike-n-at-composed-init-seam.md`. No production code.
+- [x] Probe composed-init dispatch against three fixtures: Python-only (materializes root/`.venv` as today), Node-only (materializes `node_modules` via the Node plugin; **no** Python app env), polyglot (both at distinct paths). Confirm `plugin_load_all_from_manifest` + per-plugin init-hook dispatch yields the right envs with no S4 cardinality error. **Result:** seam enumerates correctly for all four shapes (incl. S4 hard error). **Finding:** Python's `init` hook is monolithic (wraps `init_project`); Node's is path-based + composed-ready. No uniform `materialize` hook in the contract — N.av must refactor Python's hook to a per-env materializer.
+- [x] Probe the project-guide prompt at orchestration level (before per-plugin materialization, per N.ao §3): the accept decision drives whether `[env.root] backend = "venv"` is written and a `utility` `root` is provisioned at `.pyve/envs/root/venv/` (`resolve_env_path "root"`) on a Node-only stack with no Python app env. **Correction:** `resolve_env_path "root"` returns **`.venv`**, not `.pyve/envs/root/venv/` (hard special-case in `lib/envs.sh`; `state_path root` disagrees). N.aw (F2) must place the utility root explicitly — see spike Decision §3.
+- [x] Probe F3's risk: with `[env.root] backend = "venv"` present but no `[plugins.python]`, confirm the N.aj gate makes Python active and `compose_check`/`compose_status` dispatch the Python hooks — capture exactly what those hooks assume (`.venv` lookups) so F3 knows the surface to change. **Finding (inverted):** `plugin_list_active` returns `[node]` only — the Python plugin is **not registered** (registration keys off `[plugins.*]`, not `[env.*] backend`), so the Python check/status hooks are **never dispatched** and the utility root gets **zero** coverage. N.aj's `python_plugin_is_active_in_project` returns ACTIVE but is an in-hook guard that's never reached. F3 (N.ax) grows to a **registration-gate alignment** + manifest-sourced (`.pyve/config`-free) utility-root mode.
+- [x] Record the contract decision + sequencing (where the accept decision runs relative to `compose_project_envrc` / manifest finalization) + known limitations in `spike-n-at-composed-init-seam.md`. No production code. **Also (developer-directed, widened scope):** Part 2 records the toolchain-interpreter decision — Pyve owns a hidden venv tracking `DEFAULT_PYTHON_VERSION`, stops borrowing the dev's PATH `python`. Broken out into the N.at.1–N.at.4 bundle below.
+
+### Stories N.at.1–N.at.4: Pyve-owned toolchain Python (umbrella)
+
+**Developer-directed insert (2026-06-05).** The N.at spike (Part 2) proved that Pyve's own manifest parse depends on a developer-environment `python` (`${PYVE_PYTHON:-python}` → bare PATH `python`), which fails on a clean non-Python stack — a version-manager shim with no pinned version errors (`No version is set for command python`), `manifest_load` silently falls back to implicit-Python, and a **Node-only project mis-enumerates as Python**. The fix, decided by the developer: **Pyve owns its toolchain interpreter in a hidden venv that exists independently of the developer's environment**, built on Pyve's `DEFAULT_PYTHON_VERSION` ([pyve.sh](../../pyve.sh)). When the developer's environment already uses that version the shim resolves to the same binaries (zero duplication); otherwise Pyve still has a reliable interpreter. This bundle is a **prerequisite for N-6's cross-stack robustness** (composed init on a Node-only stack must parse `pyve.toml` reliably) and is therefore sequenced ahead of the composed-init core (N.av). Full analysis: [spike-n-at-composed-init-seam.md](spike-n-at-composed-init-seam.md) Part 2.
+
+**Scope boundary.** This bundle changes only the **Pyve-internal toolchain interpreter** (the one that runs `lib/pyve_toml_helper.py` and siblings). It does **not** touch *project*-facing Python resolution (`pyve run python`, version-manager activation, `_init_venv`) — that stays the developer's environment. `assert_python_resolvable` ([lib/env_detect.sh](../../lib/env_detect.sh)) keeps its current role guarding *project* python; the new resolver serves Pyve's own helper calls only.
+
+### Story N.at.1: Toolchain-venv resolver + provisioning core [Planned]
+
+**Motivation.** Establish the single source of truth for "Pyve's interpreter": a resolver that returns a reliable, Pyve-owned Python and an idempotent provisioner that builds the hidden venv. Every later story rewires onto this seam.
+
+**Implementation note — locus + layout.** New shared module `lib/toolchain_python.sh` (called from ≥2 commands/helpers → `lib/`, per the "`lib/commands/<name>.sh` is for command implementations only" essential). Hidden venv lives at a version-keyed XDG path — `${XDG_DATA_HOME:-$HOME/.local/share}/pyve/toolchain/<DEFAULT_PYTHON_VERSION>/venv` — so a `DEFAULT_PYTHON_VERSION` bump lands a fresh dir (old GC-able) rather than mutating in place. Bootstrap reuses Pyve's existing version-manager path (`ensure_python_version_installed "$DEFAULT_PYTHON_VERSION"` → `<that python> -m venv <dir>`); best-effort with a precise error when no bootstrap python is resolvable.
+
+**Tasks**
+
+- [ ] Decide + document the on-disk location and version-keying (lead task — fold the small design decision in, the mechanism is already spike-proven; no separate throwaway spike).
+- [ ] `lib/toolchain_python.sh` (copyright/license header) exposing `pyve_toolchain_python` (prints the resolved interpreter path; resolution order **`PYVE_PYTHON` → toolchain venv if present → bare `python`**) and `pyve_toolchain_python_ensure` (idempotent build/refresh of the hidden venv on `DEFAULT_PYTHON_VERSION`).
+- [ ] Add an explicit `source lib/toolchain_python.sh` line to `pyve.sh` (helpers block; before the libs that call it — manifest/envs/env).
+- [ ] Tests: resolver prints the venv path when present; honors `PYVE_PYTHON` override (highest priority); falls back to bare `python` when no venv; `ensure` is idempotent (second call is a no-op) and version-keys the path. Cover the Bash 3.2 `set -u` empty-array path per the project essential.
+
+### Story N.at.2: Rewire Pyve-internal callsites to the resolver [Planned]
+
+**Motivation.** Route every Pyve-internal `${PYVE_PYTHON:-python}` helper call through the resolver so the toolchain venv (not the dev's PATH `python`) parses `pyve.toml` — closing the mis-enumeration bug the spike found.
+
+**Tasks**
+
+- [ ] Replace `local py="${PYVE_PYTHON:-python}"` with the resolver in [lib/manifest.sh:73](../../lib/manifest.sh#L73), [lib/envs.sh:66](../../lib/envs.sh#L66), [lib/commands/env.sh:144](../../lib/commands/env.sh#L144), and the helper-invocation in [lib/env_detect.sh:336](../../lib/env_detect.sh#L336) (the *internal* TOML-helper call, not the project-python guard).
+- [ ] Confirm `assert_python_resolvable`'s project-facing role is untouched; add a comment delimiting "Pyve toolchain python" vs "project python" so the boundary doesn't drift.
+- [ ] **Regression test (the canonical motivator):** a Node-only project on a machine with no resolvable PATH `python` (shim with no pinned version) parses `pyve.toml` and enumerates `[node]` — not implicit-Python. Build it from a fresh `/bin/bash -c "set -euo pipefail; ..."` shell with PATH cleaned, mirroring the existing empty-array regression pattern.
+- [ ] Full suite — no regressions in the manifest/envs/env bats tests that set `PYVE_PYTHON` in their setup (the override must still win).
+
+### Story N.at.3: Install / update / uninstall lifecycle + version-tracking rebuild [Planned]
+
+**Motivation.** The hidden venv must come into being without the user thinking about it, track `DEFAULT_PYTHON_VERSION` as it moves, and be removed on uninstall.
+
+**Tasks**
+
+- [ ] `pyve self install` ([lib/commands/self.sh](../../lib/commands/self.sh)) calls `pyve_toolchain_python_ensure` (best-effort; a build failure warns but does not abort the install — Pyve still falls back to PATH `python`).
+- [ ] Rebuild trigger when `DEFAULT_PYTHON_VERSION` changes (the version-keyed path makes this a presence check on the new dir; wire it into `pyve self install` re-runs and/or `pyve update`).
+- [ ] `pyve self uninstall` removes the Pyve toolchain tree (`${XDG_DATA_HOME:-$HOME/.local/share}/pyve/toolchain/`), preserving the v2-banner state dir semantics already in place.
+- [ ] Homebrew formula adoption: `depends_on` a Python (or post-install `ensure`) so the brew channel gets the same reliable interpreter — coordinate via [docs/specs/project-guide-requests/](../../docs/specs/project-guide-requests/) only if the change is upstream; the formula itself lives in the tap repo (note the dependency in the story, ship in the tap).
+- [ ] Tests: install creates the venv; a simulated `DEFAULT_PYTHON_VERSION` bump provisions a new keyed dir; uninstall removes the tree.
+
+### Story N.at.4: Docs + project-essentials + tech-spec for the toolchain interpreter [Planned]
+
+**Motivation.** Make the "Pyve owns its interpreter" contract discoverable so future contributors don't reintroduce a bare-`python` callsite.
+
+**Tasks**
+
+- [ ] tech-spec.md: document `lib/toolchain_python.sh`, the hidden-venv location/version-keying, and the resolution order.
+- [ ] features.md: a short user-facing note (Pyve provisions its own interpreter; `PYVE_PYTHON` overrides; uninstall removes it).
+- [ ] Add a project-essentials entry: "Pyve's toolchain Python is the hidden venv, not the dev's PATH — route internal helper calls through `pyve_toolchain_python`, never inline `${PYVE_PYTHON:-python}`" (mirrors the `is_asdf_active()` single-gate essential).
+- [ ] CHANGELOG note folded into the Phase N (v3.0.0) bundle entry.
 
 ### Story N.au: F1 — Lift project-guide orchestration to a stack-agnostic `lib/project_guide.sh` [Planned]
 
