@@ -83,6 +83,17 @@ else
     exit 1
 fi
 
+# Pyve-owned toolchain Python (Story N.at.1). After env_detect.sh
+# because its build seam references detect_version_manager /
+# ensure_python_version_installed; before the libs that resolve the
+# interpreter at runtime (manifest, envs, env) — rewired in N.at.2.
+if [[ -f "$SCRIPT_DIR/lib/toolchain_python.sh" ]]; then
+    source "$SCRIPT_DIR/lib/toolchain_python.sh"
+else
+    printf "ERROR: Cannot find lib/toolchain_python.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/backend_detect.sh"
 else

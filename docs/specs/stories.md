@@ -1435,7 +1435,7 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Scope boundary.** This bundle changes only the **Pyve-internal toolchain interpreter** (the one that runs `lib/pyve_toml_helper.py` and siblings). It does **not** touch *project*-facing Python resolution (`pyve run python`, version-manager activation, `_init_venv`) — that stays the developer's environment. `assert_python_resolvable` ([lib/env_detect.sh](../../lib/env_detect.sh)) keeps its current role guarding *project* python; the new resolver serves Pyve's own helper calls only.
 
-### Story N.at.1: Toolchain-venv resolver + provisioning core [Planned]
+### Story N.at.1: Toolchain-venv resolver + provisioning core [Done]
 
 **Motivation.** Establish the single source of truth for "Pyve's interpreter": a resolver that returns a reliable, Pyve-owned Python and an idempotent provisioner that builds the hidden venv. Every later story rewires onto this seam.
 
@@ -1443,10 +1443,10 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Tasks**
 
-- [ ] Decide + document the on-disk location and version-keying (lead task — fold the small design decision in, the mechanism is already spike-proven; no separate throwaway spike).
-- [ ] `lib/toolchain_python.sh` (copyright/license header) exposing `pyve_toolchain_python` (prints the resolved interpreter path; resolution order **`PYVE_PYTHON` → toolchain venv if present → bare `python`**) and `pyve_toolchain_python_ensure` (idempotent build/refresh of the hidden venv on `DEFAULT_PYTHON_VERSION`).
-- [ ] Add an explicit `source lib/toolchain_python.sh` line to `pyve.sh` (helpers block; before the libs that call it — manifest/envs/env).
-- [ ] Tests: resolver prints the venv path when present; honors `PYVE_PYTHON` override (highest priority); falls back to bare `python` when no venv; `ensure` is idempotent (second call is a no-op) and version-keys the path. Cover the Bash 3.2 `set -u` empty-array path per the project essential.
+- [x] Decide + document the on-disk location and version-keying (lead task — fold the small design decision in, the mechanism is already spike-proven; no separate throwaway spike). **Decided:** `${XDG_DATA_HOME:-$HOME/.local/share}/pyve/toolchain/<DEFAULT_PYTHON_VERSION>/venv` (XDG *data* — the venv is durable data, contrast the v2-banner XDG_STATE sentinel). Documented in the module header.
+- [x] `lib/toolchain_python.sh` (copyright/license header) exposing `pyve_toolchain_python` (prints the resolved interpreter path; resolution order **`PYVE_PYTHON` → toolchain venv if present → bare `python`**) and `pyve_toolchain_python_ensure` (idempotent build/refresh of the hidden venv on `DEFAULT_PYTHON_VERSION`). Build factored behind `_pyve_toolchain_build` / `_pyve_toolchain_bootstrap_python` seams (deep version-manager wiring deferred to N.at.3 lifecycle).
+- [x] Add an explicit `source lib/toolchain_python.sh` line to `pyve.sh` (helpers block; after `env_detect.sh` so the build seam's helpers exist, before the libs that resolve at runtime — manifest/envs/env, rewired in N.at.2).
+- [x] Tests: resolver prints the venv path when present; honors `PYVE_PYTHON` override (highest priority); falls back to bare `python` when no venv; `ensure` is idempotent (second call is a no-op) and version-keys the path. 11 bats tests in [tests/unit/test_n_at_1_toolchain_python.bats](../../tests/unit/test_n_at_1_toolchain_python.bats); functions array-free so the Bash 3.2 `set -u` empty-array trap does not apply.
 
 ### Story N.at.2: Rewire Pyve-internal callsites to the resolver [Planned]
 
