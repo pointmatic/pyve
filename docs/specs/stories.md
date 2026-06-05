@@ -1412,9 +1412,113 @@ Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve dep
 
 Closes the last structural gap left by N-4: `pyve init` is still **monolithic Python-first** — the dispatcher routes `init` → `plugin_dispatch python init` → `init_project`, which materializes a Python env (`.venv` / `.pyve/envs/<name>`) for *every* project regardless of stack, and runs the project-guide hooks against it at the tail. N-4 made `check` / `status` / `purge` / `.envrc` / `.gitignore` compose across all plugins, but **env materialization at init time does not**: a Node-only project still gets a Python venv it never asked for, and there is no path to stand up a non-Python app env (or a Python `utility` `root`) from the composed flow. This subphase refactors `init` into a composed, cross-stack flow where each declared plugin materializes its own env(s), and lifts the stack-agnostic project-guide orchestration (prompt + install + scaffold + completion) out of the Python plugin into a shared `lib/` locus.
 
-Design + follow-up breakdown already done by the **N.ao investigation spike** ([spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md)) and the cross-repo contract ([project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md)): F1 (lift project-guide orchestration to `lib/project_guide.sh`), F2 (Python `utility` `root` provisioning at `.pyve/envs/root/venv/` when project-guide is accepted on a non-Python stack), F3 (Python check/status utility-root-only mode — highest risk), F4 (`plan_envs` ↔ wizard hand-off, gated on the upstream release), F5 (`.project-guide.yml` contract guard + min-version pin), **F6** (closed-vocabulary + no-op trichotomy — the `VALID_*` sets in `pyve_toml_helper.py`, recognition of the advisory fields `packaging` / `require_min_version` / `manual_steps`, advisory recording + surfacing in `check` / `status`, and hard-error on unknown values; this is the validation layer **F4** depends on and shares F4's upstream `plan_envs` gating — see [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §A–§B). The composed-init materialization itself (each plugin builds its own env from the manifest) is the umbrella the F-stories sit under. Story breakdown is `plan_production_phase`'s job. Bundles into **v3.0.0**.
+Design + follow-up breakdown already done by the **N.ao investigation spike** ([spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md)) and the cross-repo contract ([project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md)): F1 (lift project-guide orchestration to `lib/project_guide.sh`), F2 (Python `utility` `root` provisioning at `.pyve/envs/root/venv/` when project-guide is accepted on a non-Python stack), F3 (Python check/status utility-root-only mode — highest risk), F4 (`plan_envs` ↔ wizard hand-off, gated on the upstream release), F5 (`.project-guide.yml` contract guard + min-version pin), **F6** (closed-vocabulary + no-op trichotomy — the `VALID_*` sets in `pyve_toml_helper.py`, recognition of the advisory fields `packaging` / `require_min_version` / `manual_steps`, advisory recording + surfacing in `check` / `status`, and hard-error on unknown values; this is the validation layer **F4** depends on and shares F4's upstream `plan_envs` gating — see [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §A–§B). The composed-init materialization itself (each plugin builds its own env from the manifest) is the umbrella the F-stories sit under. **Story breakdown drafted 2026-06-05 (spike-first): N.at–N.ba below.** F4 + F6 are drafted but **blocked on the upstream `plan_envs` release**. Bundles into **v3.0.0**.
 
 **Scope boundary — what is *not* in this subphase (deferred post-v3.0).** The `pyve lint` verb (and `--fix`) per **O3** is post-v3.0 — v3.0 only *recognizes* lint-kind frameworks as advisory no-ops surfaced in `check` / `status` (via F6); the aggregating verb itself ships later. Materialization of advisory backends (`cargo`, `bundler`, `xcode`, …) lands when each ecosystem gets its own plugin, also post-v3.0. F6's hard-error enforcement is only meaningful once F4 is writing the new fields, so if `plan_envs` slips past v3.0, F4+F6 slip with it and v3.0 ships with today's lenient validation (only `purpose` closed-set-validated).
+
+### Story N.at: Integration spike — composed-init seam across stacks [Planned]
+
+**Type:** integration + architectural (per `developer/best-practices-guide.md` § "Hello World First"). Deliverable is a documented contract decision; throwaway probes deleted after capture (no production `lib/` code), mirroring N.ae.1.
+
+**Motivation.** N-6 refactors the heavily-tested `pyve init` path from monolithic Python-first (N.ao finding #1: `init` → `plugin_dispatch python init` → `init_project`, which always builds a Python env) into a composed flow where each declared plugin materializes its own env(s) from the manifest. Before that surgery, prove the seam in code: that `init` can `manifest_load` → `plugin_load_all_from_manifest` → dispatch each active plugin's init/materialize hook, across Python-only / Node-only / polyglot fixtures, with the project-guide prompt lifted to orchestration level and the `utility` `root` provisioning (F2) hanging off the accept decision. N.ao analyzed this on paper; this proves it before the refactor is committed.
+
+**Tasks**
+
+- [ ] Probe composed-init dispatch against three fixtures: Python-only (materializes root/`.venv` as today), Node-only (materializes `node_modules` via the Node plugin; **no** Python app env), polyglot (both at distinct paths). Confirm `plugin_load_all_from_manifest` + per-plugin init-hook dispatch yields the right envs with no S4 cardinality error.
+- [ ] Probe the project-guide prompt at orchestration level (before per-plugin materialization, per N.ao §3): the accept decision drives whether `[env.root] backend = "venv"` is written and a `utility` `root` is provisioned at `.pyve/envs/root/venv/` (`resolve_env_path "root"`) on a Node-only stack with no Python app env.
+- [ ] Probe F3's risk: with `[env.root] backend = "venv"` present but no `[plugins.python]`, confirm the N.aj gate makes Python active and `compose_check`/`compose_status` dispatch the Python hooks — capture exactly what those hooks assume (`.venv` lookups) so F3 knows the surface to change.
+- [ ] Record the contract decision + sequencing (where the accept decision runs relative to `compose_project_envrc` / manifest finalization) + known limitations in `spike-n-at-composed-init-seam.md`. No production code.
+
+### Story N.au: F1 — Lift project-guide orchestration to a stack-agnostic `lib/project_guide.sh` [Planned]
+
+**Motivation.** Today the project-guide install decision is welded to the Python env and fires at the *tail* of `init_project` (`_init_run_project_guide_hooks`), passing the Python app env path; the `[Y/n]` prompt (`prompt_install_project_guide`, `lib/utils.sh`) is reachable only from inside the Python hook. For a composed cross-stack `init`, the prompt must move *up* to orchestration level and *early* (before per-plugin materialization) so it can be answered identically for Python-only / Node-only / polyglot and can drive whether a `utility` `root` is written. Pure relocation + seam — no behavior change for Python-only.
+
+**Implementation note — locus.** Extract `lib/project_guide.sh` owning the prompt + accept→provision decision + install/scaffold/completion against a *resolved host env path*; source it explicitly in `pyve.sh`. Per the "`lib/commands/<name>.sh` is for command implementations only" essential + the cross-stack nature, project-guide orchestration is shared infrastructure → `lib/`, not a plugin. The Python-plugin-private `_init_run_project_guide_hooks` / `install_project_guide` / `prompt_install_project_guide` are the lift source.
+
+**Tasks**
+
+- [ ] Create `lib/project_guide.sh` (copyright/license header); move the prompt + accept-decision + install/scaffold/completion out of [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)'s tail and [lib/utils.sh](../../lib/utils.sh).
+- [ ] Resolve the host env path at accept-time: Python app env present (`.venv`/micromamba) → host there (today's behavior, no regression); no Python app env → provision the `utility` `root` (F2, N.aw).
+- [ ] Rewire `init_project` (and the composed-init core, N.av) to call the lifted orchestration instead of `_init_run_project_guide_hooks`.
+- [ ] Preserve the project-guide G.* test behavior for Python-only; update tests that pinned the welded placement.
+- [ ] Add an explicit `source lib/project_guide.sh` line to `pyve.sh`.
+
+### Story N.av: Composed-init materialization core — each plugin materializes its own env [Planned]
+
+**Motivation.** The umbrella refactor: replace the monolithic Python-first `init` dispatch (always a Python env) with a composed flow that `manifest_load`s, loads all declared plugins, and dispatches each plugin's init/materialize hook — so a Node-only project gets `node_modules` (not an unwanted `.venv`) and polyglot projects materialize both at distinct paths. This is the structural change that closes the N-3 scope-note gap and that F2/F3 build on. Grounded by the N.at spike contract.
+
+**Implementation note.** Surgery on the heavily-tested `init` path — the green integration suite (Python-only / Node-only / polyglot) is the safety net (same posture as N.ae). May split into sub-stories during implementation if one commit's diff is too large.
+
+**Tasks**
+
+- [ ] Refactor the `init` dispatcher: after writing `pyve.toml`, `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest`, then dispatch each active plugin's init/materialize hook against its `path` (reusing the N.ae init/update ordering).
+- [ ] Python-only path materializes the same envs as today (no regression — byte-equivalence where feasible).
+- [ ] Node-only path materializes `node_modules` via the Node plugin; **no** Python app env is created.
+- [ ] Polyglot path materializes both plugins' envs at distinct paths, no S4 collision.
+- [ ] Sequence the project-guide accept decision (N.au) before `compose_project_envrc` / manifest finalization so the `[env.root]` block is present when the composers + the N.aj gate read the manifest.
+- [ ] Integration tests across all three shapes; confirm the N-4 composed `check`/`status`/`purge`/`.envrc` still pass on composed-init output.
+
+### Story N.aw: F2 — Python `utility` `root` provisioning on non-Python stacks [Planned]
+
+**Motivation.** When project-guide is accepted on a stack with no Python *application* env (Node-only / Node-rooted polyglot), stand up a dedicated `utility` `root` venv to host it — the write side of the N.aj read gate. Per N.ao §2: write `[env.root] purpose = "utility" / backend = "venv"` (do **not** add `[plugins.python]` — the project is not a Python app), materialize at `.pyve/envs/root/venv/` via `resolve_env_path "root"`, install project-guide there.
+
+**Tasks**
+
+- [ ] On accept with no Python app env: ensure `[env.root] backend = "venv"` in `pyve.toml` (upgrades the always-scaffolded `[env.root] purpose = "utility"` with an explicit backend); do **not** write `[plugins.python]`.
+- [ ] Materialize the utility root at `.pyve/envs/root/venv/` via `resolve_env_path "root"` (not `.venv` — that's the app env a Node-rooted project lacks).
+- [ ] Point `install_project_guide "venv" ".pyve/envs/root/venv"` at the utility root; scaffold (`project-guide init|update --no-input`) + completion wiring follow (env-path-agnostic).
+- [ ] Confirm composition with a Node app: `[plugins.node]` (app) + `[env.root] backend = "venv"` (utility) coexist with no S4 path contention (the utility root is an env, not a plugin-at-root).
+- [ ] Tests: Node-only accept → utility root materialized + project-guide installed there; Python app present → hosts in the app env (no regression); decline → no root provisioned.
+
+### Story N.ax: F3 — Python plugin utility-root-only check/status mode [Planned] — **highest risk**
+
+**Motivation.** The one real behavioral change the provisioning implies (N.ao §2 subtlety). With `[env.root] backend = "venv"` present but **no** `[plugins.python]`, the N.aj gate makes Python *active*, so `compose_check` / `compose_status` dispatch the Python plugin's hooks — which today assume an *application* env (look for `.venv`, report an app backend). They must learn a **utility-root-only** mode: report the health of `.pyve/envs/root/venv/` (and the hosted project-guide), **not** complain about a missing `.venv`.
+
+**Tasks**
+
+- [ ] In the Python plugin's `check`/`status` hooks, detect the utility-root-only condition (`[env.root] backend = "venv"` present, `[plugins.python]` absent) and branch to a utility-root report: health of `.pyve/envs/root/venv/` + the hosted project-guide install.
+- [ ] Suppress the "missing `.venv`" / app-backend diagnostics in that mode (no false errors on a Node-only project that legitimately has no Python app env).
+- [ ] Keep the existing app-env reporting unchanged when `[plugins.python]` IS present.
+- [ ] Tests: Node-only + project-guide → check/status report the utility root cleanly (no `.venv` complaint); Python app → unchanged; rides the N-4 severity ladder (warn/pass, not error).
+
+### Story N.ay: F5 — `.project-guide.yml` contract guard + `env_spec_path` discovery [Planned]
+
+**Motivation.** Formalize the load-bearing cross-repo dependency: pyve keys behavior off `.project-guide.yml`'s *presence* (install marker; N.aj Python-active signal). A pyve-side guard test makes an unannounced upstream rename/reshape trip a red build (the breaking-change tripwire), and `env_spec_path` discovery lets pyve find the env-dependencies spec via the tool-state pointer. Per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §E.
+
+**Tasks**
+
+- [ ] Add a contract-guard test asserting the gate's `.project-guide.yml` dependency is intact (filename + the presence-as-Python-active-signal behavior from N.aj) — fails loudly if the marker contract drifts.
+- [ ] Document the minimum `project-guide` version pin (alongside the existing `--no-input ≥ 2.2.3` precedent) for the wizard integration.
+- [ ] `env_spec_path` discovery: read it from `.project-guide.yml` (tool-state pointer), defaulting to `docs/specs/env-dependencies.md` (per the contract §D). Basic YAML `key: value` parse, no new dependency.
+
+### Story N.az: F4 — `pyve env sync` (ingest §4 → diff → `[Y/n]`-apply) [Planned] — **blocked on upstream `plan_envs`**
+
+**Motivation.** Developer-initiated reconciliation of the project-guide-authored env spec into `pyve.toml`. Per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §C–§D: ingest §4 of the env-dependencies doc, validate against `pyve_schema` (F6), present a stateless live diff vs the current `pyve.toml`, and `[Y/n]`-apply (writes `pyve.toml` only — never materializes; default `Y`; destructive diffs default `N`).
+
+**Blocked-on:** the upstream `plan_envs` release (which authors the §4 doc) + the cross-repo contract. The §4 *spec* is Pyve-owned/stable so this is drafted now, but end-to-end validation + the min-version pin wait on `plan_envs`; if it slips past v3.0, this story slips with it (v3.0 falls back to lenient validation).
+
+**Tasks**
+
+- [ ] `pyve env sync`: discover the spec (`env_spec_path`, F5/N.ay), parse §4, project to the `[env.*]` shape (projectable subset only: `purpose`/`backend`/`default`/`path`/`languages`/`frameworks`/`packaging`).
+- [ ] Validate against `pyve_schema` via F6 (N.ba): unknown value → hard error/abort; advisory value → accepted.
+- [ ] Stateless live diff vs the current `pyve.toml` (no baseline/fingerprint — `pyve.toml` *is* the baseline); present it; confirm `[Y/n]` (default `Y`).
+- [ ] Writes `pyve.toml` only — does **not** materialize. Destructive diffs (dropping an `[env.*]` whose env exists on disk; a `backend` flip implying rebuild) default `N` / require explicit confirm.
+- [ ] `pyve check` surfaces a non-empty live diff at **warn** severity (exit 0) — a spec-ahead project is a legitimate steady state.
+- [ ] Tests against fixture §4 docs (advisory backend, unknown value, destructive diff, clean).
+
+### Story N.ba: F6 — closed-vocabulary + no-op trichotomy enforcement [Planned] — **blocked on upstream `plan_envs`**
+
+**Motivation.** The validation layer F4 depends on, and the runtime realization of the O4 / S12–S16 vocabulary. Today only `purpose` is closed-set-validated (`VALID_PURPOSES`); extend to all axes with the implemented / advisory / unknown trichotomy. Per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §A–§B.
+
+**Blocked-on:** pairs with F4 (N.az) — both gated on `plan_envs`. F6's hard-error enforcement is only exercised once F4 is writing the new fields, so it lands alongside F4.
+
+**Tasks**
+
+- [ ] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) with `VALID_BACKENDS` / `VALID_LANGUAGES` / `VALID_FRAMEWORKS` / `VALID_PACKAGING` / `VALID_APP_TYPES` (implemented + advisory sets, versioned; the machine mirror of [env-dependencies-template.md](project-guide-requests/env-dependencies-template.md) §2 — kept in lockstep).
+- [ ] Recognize the advisory fields `require_min_version` / `manual_steps` on `[env.<name>]` (parse, store, never materialize).
+- [ ] Implement the trichotomy: known-implemented → normal; known-advisory → record + surface in `check`/`status`, skip materialization; unknown → hard error + abort (in both `pyve.toml` validation and `pyve env sync` ingestion).
+- [ ] Frameworks carry intrinsic `kind` (app/test/lint, S14); backends carry an S6 category (S16) — used for advisory messaging.
+- [ ] Tests: each axis's closed set; advisory recording + surfacing; hard-error on unknown; the template ↔ `VALID_*` lockstep assertion.
 
 ---
 
