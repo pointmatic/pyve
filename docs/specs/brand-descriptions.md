@@ -21,7 +21,7 @@ Wrangle all your virtual environments.
 
 ## One-liner
 
-A single, easy entry point for managing virtual environments.
+A single, easy entry point for managing all your virtual environments.
 
 ### Friendly Brief Description (follows one-liner)
 

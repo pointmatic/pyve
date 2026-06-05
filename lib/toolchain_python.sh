@@ -93,17 +93,28 @@ _pyve_toolchain_build() {
 
 # Resolve a bootstrap interpreter capable of building the toolchain venv.
 # Prints the interpreter path on success; non-zero / empty on failure.
-# Kept separate from _pyve_toolchain_build so N.at.3 can deepen the
-# version-manager wiring without touching the build orchestration.
+#
+# Order (version-tracking fidelity — Story N.at.3):
+#   1. the version manager's install for the EXACT DEFAULT_PYTHON_VERSION
+#      (so Pyve's toolchain tracks that version, per the developer's
+#      decision), installing it first if absent;
+#   2. a PATH python3 / python (legacy fallback — the version may differ;
+#      best-effort so a venv is still built when no version manager exists).
 _pyve_toolchain_bootstrap_python() {
     local version="$1"
-    # Prefer the version manager's install for the pinned version.
     if declare -F detect_version_manager >/dev/null 2>&1; then
         detect_version_manager >/dev/null 2>&1 || true
     fi
     if declare -F ensure_python_version_installed >/dev/null 2>&1 \
        && [[ -n "$version" ]]; then
         ensure_python_version_installed "$version" >/dev/null 2>&1 || true
+    fi
+    # Exact-version interpreter via the active version manager.
+    local exact
+    exact="$(_pyve_toolchain_versioned_python "$version")"
+    if [[ -n "$exact" && -x "$exact" ]]; then
+        printf '%s' "$exact"
+        return 0
     fi
     # Fall back to a PATH python3 / python (the legacy bootstrap source).
     local cand
@@ -114,6 +125,27 @@ _pyve_toolchain_bootstrap_python() {
         fi
     done
     return 1
+}
+
+# Resolve the on-disk interpreter path for a specific Python version via
+# the active version manager. Prints the path (the caller checks `-x`);
+# empty when there is no version manager or no version. Mirrors the
+# version-manager dispatch in lib/env_detect.sh.
+_pyve_toolchain_versioned_python() {
+    local version="$1"
+    [[ -n "$version" ]] || return 0
+    local d
+    case "${VERSION_MANAGER:-}" in
+        asdf)
+            d="$(asdf where python "$version" 2>/dev/null)" || return 0
+            [[ -n "$d" ]] && printf '%s' "$d/bin/python"
+            ;;
+        pyenv)
+            d="$(pyenv prefix "$version" 2>/dev/null)" || return 0
+            [[ -n "$d" ]] && printf '%s' "$d/bin/python"
+            ;;
+    esac
+    return 0
 }
 
 # Idempotently ensure the toolchain venv exists. No-op when already

@@ -122,6 +122,9 @@ self_install() {
     # Create local .env template
     _self_install_local_env_template
 
+    # Provision Pyve's own toolchain Python (Story N.at.3) — best-effort.
+    _self_install_toolchain_python
+
     printf "\n✓ pyve v%s installed successfully!\n" "$VERSION"
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
@@ -270,6 +273,55 @@ _self_install_local_env_template() {
 }
 
 #------------------------------------------------------------
+# Private helper: provision (and version-track) Pyve's own toolchain
+# Python during `self install` (Story N.at.3).
+#
+# Best-effort by contract: a build failure WARNS but never aborts the
+# install — the resolver (pyve_toolchain_python) falls back to PATH
+# `python`, so Pyve still works without the hidden venv. The
+# version-keyed layout makes a DEFAULT_PYTHON_VERSION bump a no-op
+# presence check on the new dir; ensure builds it, then stale sibling
+# versions are pruned.
+#------------------------------------------------------------
+
+_self_install_toolchain_python() {
+    if ! declare -F pyve_toolchain_python_ensure >/dev/null 2>&1; then
+        return 0
+    fi
+    if pyve_toolchain_python_ensure; then
+        log_success "Provisioned Pyve toolchain Python (${DEFAULT_PYTHON_VERSION:-unknown})"
+        _self_prune_stale_toolchain_versions
+    else
+        log_warning "Could not provision Pyve toolchain Python — Pyve will fall back to 'python' on PATH."
+        log_warning "  Set PYVE_PYTHON to pin an interpreter, or re-run 'pyve self install' later."
+    fi
+    return 0
+}
+
+#------------------------------------------------------------
+# Private helper: remove toolchain version dirs other than the current
+# DEFAULT_PYTHON_VERSION. The version-keyed layout means a default bump
+# lands a fresh dir; the old one is dead weight (Story N.at.3).
+#------------------------------------------------------------
+
+_self_prune_stale_toolchain_versions() {
+    declare -F pyve_toolchain_root >/dev/null 2>&1 || return 0
+    local root current d ver
+    root="$(pyve_toolchain_root)"
+    current="${DEFAULT_PYTHON_VERSION:-}"
+    [[ -d "$root" ]] || return 0
+    [[ -n "$current" ]] || return 0
+    for d in "$root"/*/; do
+        [[ -d "$d" ]] || continue
+        ver="$(basename "$d")"
+        if [[ "$ver" != "$current" ]]; then
+            rm -rf "$d"
+            log_info "Pruned stale toolchain Python: $ver"
+        fi
+    done
+}
+
+#------------------------------------------------------------
 # Leaf: pyve self uninstall
 #------------------------------------------------------------
 
@@ -330,7 +382,25 @@ self_uninstall() {
     # (Story G.c / FR-G2)
     _self_uninstall_project_guide_completion
 
+    # Remove Pyve's own toolchain Python tree (Story N.at.3).
+    _self_uninstall_toolchain_python
+
     printf "\n✓ pyve uninstalled.\n"
+}
+
+#------------------------------------------------------------
+# Private helper: remove the entire Pyve-owned toolchain Python tree on
+# `self uninstall` (Story N.at.3). Safe no-op when absent.
+#------------------------------------------------------------
+
+_self_uninstall_toolchain_python() {
+    declare -F pyve_toolchain_root >/dev/null 2>&1 || return 0
+    local root
+    root="$(pyve_toolchain_root)"
+    if [[ -d "$root" ]]; then
+        rm -rf "$root"
+        log_success "Removed Pyve toolchain Python tree ($root)"
+    fi
 }
 
 #------------------------------------------------------------
