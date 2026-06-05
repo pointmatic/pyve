@@ -41,6 +41,10 @@ setup_pyve_env() {
     # the gitignore composer. Source envrc_safety.sh before the plugin so
     # the validator is available when the plugin file is sourced/called.
     source "$PYVE_ROOT/lib/envrc_safety.sh"
+    # Story N.au: init_project calls run_project_guide_orchestration
+    # (lib/project_guide.sh). Source it before the Python plugin so tests
+    # that drive init_project have the orchestration defined.
+    source "$PYVE_ROOT/lib/project_guide.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"

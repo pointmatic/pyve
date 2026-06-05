@@ -718,156 +718,15 @@ EOF
 # Bash resolves the call at runtime via the global function table.
 #
 # Init-private helpers (per project-essentials F): `_init_` prefix
-# on all single-caller helpers. Includes
-# `_init_run_project_guide_hooks` (per audit F-10) and the surviving
-# config-writers (`_init_python_version`, `_init_venv`, `_init_dotenv`).
-# The `.envrc` / `.gitignore` writers (`_init_direnv_*`, `_init_gitignore`)
-# were retired in Story N.al — `init_project` composes those files through
+# on all single-caller helpers — the surviving config-writers
+# (`_init_python_version`, `_init_venv`, `_init_dotenv`). The
+# project-guide orchestration (formerly `_init_run_project_guide_hooks`)
+# was lifted to the stack-agnostic `lib/project_guide.sh` in Story N.au
+# (`run_project_guide_orchestration`). The `.envrc` / `.gitignore`
+# writers (`_init_direnv_*`, `_init_gitignore`) were retired in Story
+# N.al — `init_project` composes those files through
 # `compose_project_envrc` / `compose_project_gitignore` instead.
 #============================================================
-
-# Run the project-guide post-init hooks: install the package into the
-# project env, then optionally add shell completion to the user rc file.
-#
-# Both steps are failure-non-fatal — pyve init continues even on errors.
-# Respects CLI-flag overrides via the "mode" arguments (pre-resolved by
-# init() from --project-guide / --no-project-guide and their completion
-# siblings). When mode is empty, falls through to the env-var / CI /
-# interactive logic inside the prompt helpers.
-#
-# Usage: _init_run_project_guide_hooks <backend> <env_path> <pg_mode> <comp_mode>
-#   backend:   "venv" | "micromamba"
-#   env_path:  path to the project environment
-#   pg_mode:   "" | "yes" | "no"  (from --project-guide / --no-project-guide)
-#   comp_mode: "" | "yes" | "no"  (from --project-guide-completion / etc.)
-_init_run_project_guide_hooks() {
-    local backend="$1"
-    local env_path="$2"
-    local pg_mode="$3"
-    local comp_mode="$4"
-
-    # Resolve CLI flag overrides into a tri-state.
-    local should_install=0  # 0 = unknown (consult env vars / prompt), 1 = yes, 2 = no
-    case "$pg_mode" in
-        yes) should_install=1 ;;
-        no)  should_install=2 ;;
-    esac
-
-    local should_add_completion=0
-    case "$comp_mode" in
-        yes) should_add_completion=1 ;;
-        no)  should_add_completion=2 ;;
-    esac
-
-    #--- Install decision -------------------------------------------------
-    # Priority order:
-    #   1. --no-project-guide flag                  → skip silent
-    #   2. --project-guide flag                     → install (overrides auto-skip)
-    #   3. PYVE_NO_PROJECT_GUIDE=1 / PYVE_PROJECT_GUIDE=1 → handled by prompt_install_project_guide
-    #   4. project-guide already in project deps    → AUTO-SKIP with INFO message
-    #   5. CI / PYVE_FORCE_YES                      → install (CI default)
-    #   6. interactive                              → prompt, default Y
-    #---------------------------------------------------------------------
-    if [[ $should_install -eq 2 ]]; then
-        log_info "Skipping project-guide install (--no-project-guide)"
-        return 0
-    fi
-
-    local do_install=false
-    if [[ $should_install -eq 1 ]]; then
-        do_install=true
-    else
-        # Auto-skip safety: if project-guide is already declared as a project
-        # dependency, do not let pyve manage it. The user's pin wins; pyve's
-        # install/upgrade would just create a version conflict at the next
-        # `pip install -e .`.
-        if project_guide_in_project_deps; then
-            log_info "Detected 'project-guide' in your project dependencies."
-            log_info "Pyve will not auto-install or run 'project-guide init' to avoid a version conflict."
-            log_info "Project-guide will be installed when your project dependencies are installed."
-            log_info "To override and let pyve manage it anyway, pass --project-guide."
-            log_info "To suppress this message, pass --no-project-guide."
-            return 0
-        fi
-
-        if prompt_install_project_guide; then
-            do_install=true
-        fi
-    fi
-
-    if [[ "$do_install" != true ]]; then
-        return 0
-    fi
-
-    #--- Step 1: pip install --upgrade project-guide ----------------------
-    install_project_guide "$backend" "$env_path" || true
-
-    # If install actually failed, don't proceed to step 2 or 3 — running
-    # `project-guide init` against a missing binary or adding a completion
-    # eval for a missing tool would just leave dead state.
-    if ! is_project_guide_installed "$backend" "$env_path"; then
-        return 0
-    fi
-
-    #--- Step 2: scaffold or refresh managed artifacts --------------------
-    # Branch on `.project-guide.yml` presence (Story G.h):
-    #   - absent → first-time scaffolding: `project-guide init --no-input`
-    #   - present → refresh: `project-guide update --no-input` — preserves
-    #     user state (current_mode, overrides, test_first, pyve_version)
-    #     and creates `.bak.<ts>` siblings for modified managed files.
-    # Pyve never auto-runs `project-guide init --force` because it is
-    # destructive (resets config, no backups); that remains user-initiated.
-    if [[ -f ".project-guide.yml" ]]; then
-        run_project_guide_update_in_env "$backend" "$env_path"
-    else
-        run_project_guide_init_in_env "$backend" "$env_path"
-    fi
-
-    #--- Step 3: shell completion wiring ----------------------------------
-    if [[ $should_add_completion -eq 2 ]]; then
-        log_info "Skipping project-guide completion wiring (--no-project-guide-completion)"
-        return 0
-    fi
-
-    local do_completion=false
-    if [[ $should_add_completion -eq 1 ]]; then
-        do_completion=true
-    elif prompt_install_project_guide_completion; then
-        do_completion=true
-    fi
-
-    if [[ "$do_completion" != true ]]; then
-        return 0
-    fi
-
-    local user_shell
-    user_shell="$(detect_user_shell)"
-    if [[ "$user_shell" == "unknown" ]]; then
-        log_warning "Unknown shell — skipping project-guide completion wiring."
-        log_warning "  For manual setup, add to your shell rc file:"
-        log_warning "    eval \"\$(_PROJECT_GUIDE_COMPLETE=<shell>_source project-guide)\""
-        return 0
-    fi
-
-    local rc_path
-    rc_path="$(get_shell_rc_path "$user_shell")"
-    if [[ -z "$rc_path" ]]; then
-        log_warning "Could not determine rc file for shell '$user_shell' — skipping completion wiring"
-        return 0
-    fi
-
-    if is_project_guide_completion_present "$rc_path"; then
-        log_info "project-guide completion already present in $rc_path"
-        return 0
-    fi
-
-    if add_project_guide_completion "$rc_path" "$user_shell"; then
-        log_success "Added project-guide completion to $rc_path"
-        log_info "  Reload your shell or run: source $rc_path"
-    else
-        log_warning "Failed to write project-guide completion to $rc_path (continuing)"
-    fi
-}
 
 # Repo-signal helper: detect the default backend for this project.
 #
@@ -1926,8 +1785,8 @@ EOF
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
 
-        # project-guide hook (Story G.c / FR-G2)
-        _init_run_project_guide_hooks "micromamba" "$env_path" \
+        # project-guide hook (Story G.c / FR-G2; lifted to lib/project_guide.sh in N.au)
+        run_project_guide_orchestration "micromamba" "$env_path" \
             "$project_guide_mode" "$project_guide_completion_mode"
 
         _init_print_next_steps "micromamba" "$no_direnv" "$env_path"
@@ -2036,8 +1895,8 @@ EOF
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
     prompt_install_pip_dependencies "venv" "$_venv_abs"
 
-    # project-guide hook (Story G.c / FR-G2)
-    _init_run_project_guide_hooks "venv" "$_venv_abs" \
+    # project-guide hook (Story G.c / FR-G2; lifted to lib/project_guide.sh in N.au)
+    run_project_guide_orchestration "venv" "$_venv_abs" \
         "$project_guide_mode" "$project_guide_completion_mode"
 
     _init_print_next_steps "venv" "$no_direnv" "$_venv_abs"

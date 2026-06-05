@@ -220,6 +220,16 @@ else
     exit 1
 fi
 
+# Story N.au (F1): stack-agnostic project-guide orchestration, lifted out
+# of the Python plugin's init tail. After utils.sh (whose leaf helpers it
+# calls); before the plugins (whose init_project calls it).
+if [[ -f "$SCRIPT_DIR/lib/project_guide.sh" ]]; then
+    source "$SCRIPT_DIR/lib/project_guide.sh"
+else
+    printf "ERROR: Cannot find lib/project_guide.sh\n" >&2
+    exit 1
+fi
+
 # Story N.n: Python plugin — first reference plugin. Defines
 # python_pyve_plugin_* hooks plus the venv/micromamba bp_activate
 # shims absorbed from N.l's transition state. Fired eagerly at

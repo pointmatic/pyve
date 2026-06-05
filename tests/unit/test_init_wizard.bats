@@ -558,7 +558,7 @@ EOF
 
 @test "_init_wizard: project-guide-in-deps leaves project_guide_mode unset (hook runs auto-skip-from-deps)" {
     # The wizard renders the summary line but does NOT pre-set pg_mode —
-    # leaving it empty so the post-env `_init_run_project_guide_hooks`
+    # leaving it empty so the post-env `run_project_guide_orchestration`
     # runs its detailed "Detected 'project-guide'..." auto-skip path.
     # Pre-setting "no" here would short-circuit that message and emit
     # the misleading "Skipping project-guide install (--no-project-guide)"
@@ -584,7 +584,7 @@ EOF
     # pg_mode. The post-env hook then consults
     # PYVE_NO_PROJECT_GUIDE / PYVE_PROJECT_GUIDE / CI / PYVE_FORCE_YES
     # to decide. Pre-setting "no" here would break the documented
-    # CI-default-install behavior (`_init_run_project_guide_hooks`
+    # CI-default-install behavior (`run_project_guide_orchestration`
     # priority 5).
     local backend_flag="venv" project_guide_mode=""
     PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1
