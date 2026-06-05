@@ -314,6 +314,16 @@ else
     exit 1
 fi
 
+# Story N.ar: `pyve package` — artifact-materialization verb. Reserved in
+# v3.0 (no provider materializes); consults the N.aq packaging registry.
+if [[ -f "$SCRIPT_DIR/lib/commands/package.sh" ]]; then
+    # shellcheck source=lib/commands/package.sh
+    source "$SCRIPT_DIR/lib/commands/package.sh"
+else
+    printf "ERROR: Cannot find lib/commands/package.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/commands/self.sh" ]]; then
     # shellcheck source=lib/commands/self.sh
     source "$SCRIPT_DIR/lib/commands/self.sh"
@@ -370,6 +380,9 @@ COMMANDS:
                               Subcommands: init | install [-r <req>] | purge | run <cmd>
                               (Legacy flag forms --init / --install / --purge still accepted)
                               See `pyve testenv --help` for details
+    package [--env <name>]    Materialize an env's packaging artifact
+                              Reserved in v3.0 (no provider materializes yet)
+                              See `pyve package --help` for details
 
   Diagnostics:
     check                     Diagnose environment problems and suggest fixes
@@ -829,6 +842,13 @@ main() {
         lock)
             shift
             lock_environment "$@"
+            ;;
+        package)
+            # Story N.ar: artifact-materialization verb. Reserved in v3.0 —
+            # consults the packaging registry and emits a clean advisory
+            # when no provider is registered (always, in v3.0).
+            shift
+            package_environment "$@"
             ;;
         doctor)
             # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.

@@ -45,7 +45,7 @@ _complete() {
 @test "completion: 'pyve <TAB>' lists all v2.0 top-level subcommands" {
     _complete "pyve "
     [ "$status" -eq 0 ]
-    for sub in init purge lock run test testenv check status update python self; do
+    for sub in init purge lock package run test testenv check status update python self; do
         [[ " $output " == *" $sub "* ]] || {
             echo "Missing subcommand: $sub" >&2
             echo "Got: $output" >&2

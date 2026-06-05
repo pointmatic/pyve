@@ -1382,7 +1382,7 @@ Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve dep
 - [x] Provider-private keys on `[env.<name>]` (e.g. `dockerfile`) now survive the manifest parse into the per-env attr space (S9) via `PYVE_ENV_<idx>_ATTRS` (mirrors the plugin-attr passthrough) + a new `manifest_get_env_attr <env> <key>` accessor. The parser previously dropped unrecognized env keys; `KNOWN_ENV_KEYS` in the helper now gates core-vs-passthrough.
 - [x] Bats tests: empty registry returns no provider; `manifest_get_packaging` reads the value + returns 1 on unknown env; provider-private keys round-trip through parse; core keys are never exposed as passthrough attrs. ([tests/unit/test_n_aq_packaging_registry.bats](../../tests/unit/test_n_aq_packaging_registry.bats) + additions to [tests/unit/test_manifest.bats](../../tests/unit/test_manifest.bats)).
 
-### Story N.ar: `pyve package [--env <name>]` verb — reserved-verb behavior [Planned]
+### Story N.ar: `pyve package [--env <name>]` verb — reserved-verb behavior [Done]
 
 **Motivation.** Establish the `pyve package` CLI surface so the verb, its help, and its env-resolution + advisory behavior exist in v3.0 even though no provider materializes yet. Accepting a declared `packaging` and emitting a clean "reserved" advisory (rather than "unknown command") is what lets a post-v3.0 provider drop in transparently.
 
@@ -1390,14 +1390,11 @@ Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve dep
 
 **Tasks**
 
-- [ ] Create `lib/commands/package.sh` with `package_environment()` + `show_package_help()` (copyright/license header).
-- [ ] Register `package` in `pyve.sh`'s dispatcher + an explicit `source lib/commands/package.sh` line (alphabetical position in the sourcing block).
-- [ ] Resolve the target env: `--env <name>` flag, else the default env (reuse the test-command resolution helper). Hard-error on an unknown/nonexistent env.
-- [ ] Read `packaging` via `manifest_get_packaging` (N.aq) and consult the registry:
-  - provider registered → dispatch its `package` hook (no providers in v3.0 — this path is exercised only by a test stub);
-  - **no provider** → clean advisory, **exit 0**: *"env `<name>` declares packaging `<X>`; no packaging provider is registered yet — reserved for a future release."*;
-  - `packaging` absent / `none` → informational: *"env `<name>` declares no packaging artifact."*
-- [ ] Bats unit + integration tests: `--env` resolution, default-env, packaging-present-but-no-provider (advisory, exit 0), packaging `none`, bad env (hard error), `--help`. Use a test-only stub provider to exercise the registered-provider dispatch path.
+- [x] Created [lib/commands/package.sh](../../lib/commands/package.sh) with `package_environment()` + `show_package_help()` (copyright/license header; direct-exec guard).
+- [x] Registered `package` in [pyve.sh](../../pyve.sh)'s dispatcher arm + an explicit `source lib/commands/package.sh` line (after `lock`, alphabetical). Also added `package` to both completion files ([pyve.bash](../../lib/completion/pyve.bash) `top_subcommands` + `package_flags`; [_pyve](../../lib/completion/_pyve) zsh arm + description) and the top-level `show_help` COMMANDS list, so the verb is a first-class CLI citizen rather than an orphan.
+- [x] Resolve the target env: `--env <name>` / `--env=<name>` flag, else the default env via the private `_package_default_env` (the env marked `default = true` → `root` → sole env → fail). Reuses the manifest default-env concept `pyve test --env` keys off, but **not** purpose-gated (package operates on any declared env). Hard-errors on unknown/nonexistent env, listing declared envs.
+- [x] Reads `packaging` via `manifest_get_packaging` (N.aq) and consults the registry — three branches implemented exactly per spec: provider registered → `pp_dispatch <value> package <env>` (v3.0: stub-only); **no provider** → advisory, **exit 0** (*"…reserved for a future release."*); `packaging` absent/`none` → informational (*"…no packaging artifact."*).
+- [x] Bats unit + integration tests in [tests/unit/test_n_ar_package.bats](../../tests/unit/test_n_ar_package.bats) (13): `--env`/`--env=`/default-env resolution, advisory exit 0, packaging `none`, unknown-env hard error, `--help`/`-h`, a test-only stub provider exercising the registered-provider dispatch path, + 3 integration tests driving the real `pyve.sh` binary (dispatch wiring, `--help`, unknown-env). Completion coverage extended in [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats).
 
 ### Story N.as: Document `pyve package` — features.md + reserved-verb semantics [Planned]
 
