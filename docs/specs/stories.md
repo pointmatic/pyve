@@ -1541,15 +1541,15 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] **Robustness fix (caught by smoke):** when `manifest_load` fails (Pyve's toolchain Python unavailable), the registry's implicit-Python fallback would have materialized a `.venv` on a Node-only project. Now the node-only path hard-errors with a clear "run `pyve self install` / set `PYVE_PYTHON`" message and creates no `.venv`.
 - [x] Tests: [tests/unit/test_n_av_3_node_only_init.bats](../../tests/unit/test_n_av_3_node_only_init.bats) — 8 tests (node materializer not python, no `.venv`, node-only manifest, composed `.envrc`/`.gitignore`, `--no-direnv`, node next-steps, manifest-failure robustness, python-routing regression). **End-to-end smoke validated**: real `pyve init` on a `package.json`-only dir → `node_modules` via pnpm, no `.venv`, node-only `pyve.toml`. Full suite **1715/1715**; shellcheck clean.
 
-### Story N.av.4: Polyglot composed-init path [Planned]
+### Story N.av.4: Polyglot composed-init path [Done]
 
 **Motivation.** Both plugins materialize at distinct paths from one composed flow.
 
 **Tasks**
 
-- [ ] Polyglot (`[plugins.python]` + `[plugins.node] path=<sub>`) → `compose_init` dispatches both materializers at their declared paths; no S4 root collision.
-- [ ] Python app env + Node `node_modules` at the sub-path coexist; composed `.envrc`/`.gitignore` carry both sections.
-- [ ] Tests: polyglot `pyve init` → both envs at distinct paths; composed surfaces correct.
+- [x] Polyglot → after the Python materializer scaffolds the `[plugins.python]` + `[plugins.node] path=<sub>` manifest + builds the venv, `compose_init` runs `_compose_init_materialize_secondary_plugins`: reload the manifest, then dispatch every *other* active plugin (skipping python, already done) at its declared path — `node init <sub>`. No S4 collision (python at `.`, node at the sub-path). Python-only is a no-op (only python active).
+- [x] Python app env + Node `node_modules` at the sub-path coexist; the N-4 composers already emit both `.envrc`/`.gitignore` sections.
+- [x] Tests: [tests/unit/test_n_av_4_polyglot_init.bats](../../tests/unit/test_n_av_4_polyglot_init.bats) — 4 tests (both materialized, node at declared sub-path, python-only no-secondary, no python double-materialize). **End-to-end smoke validated**: real `pyve init` on python-root + `src/frontend` node → `.venv` *and* `src/frontend/node_modules` (pnpm) both materialized, polyglot `pyve.toml`. Full suite **1719/1719**; shellcheck clean.
 
 ### Story N.av.5: Integration matrix + N-4 composition regression sweep [Planned]
 

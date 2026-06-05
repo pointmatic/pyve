@@ -53,12 +53,40 @@ compose_init() {
         # and gets NO Python app env.
         _compose_init_node_only "$@" || return $?
     else
-        # Python / polyglot: today's monolithic Python materializer (which
-        # also scaffolds the manifest). Node materialization for polyglot
-        # lands in N.av.4.
+        # Python / polyglot: the monolithic Python materializer builds the
+        # Python app env AND scaffolds the manifest (plain or polyglot).
         plugin_dispatch python init "$@" || return $?
+        # Story N.av.4: now materialize any OTHER declared plugins (e.g.
+        # node at its sub-path) from the freshly-scaffolded manifest.
+        _compose_init_materialize_secondary_plugins
     fi
     _compose_init_run_tail
+}
+
+# After the Python materializer has run + scaffolded the manifest,
+# materialize every OTHER active plugin against its declared path (Python
+# is already done). For a Python-only project this is a no-op; for a
+# polyglot project it dispatches `node init <sub-path>`.
+_compose_init_materialize_secondary_plugins() {
+    # Skip when nothing materialized (update-in-place / early-return path):
+    # there is no fresh manifest to read and no env was built.
+    [[ -z "${PYVE_INIT_TAIL_BACKEND:-}" ]] && return 0
+
+    # The Python materializer succeeded, so pyve.toml parsed once already
+    # (init validates it) — manifest_load here will too. A failure leaves
+    # the project Python-functional; just skip secondary materialization.
+    manifest_load >/dev/null 2>&1 || return 0
+    plugin_registry_reset
+    plugin_load_all_from_manifest
+
+    local name path
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        [[ "$name" == "python" ]] && continue   # already materialized above
+        path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
+        [[ -z "$path" ]] && path="."
+        plugin_dispatch "$name" init "$path"
+    done < <(plugin_list_active)
 }
 
 # True for a FRESH Node-only project: no pyve.toml yet, Node detected at
