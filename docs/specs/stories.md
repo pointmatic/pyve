@@ -1501,16 +1501,62 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Motivation.** The umbrella refactor: replace the monolithic Python-first `init` dispatch (always a Python env) with a composed flow that `manifest_load`s, loads all declared plugins, and dispatches each plugin's init/materialize hook — so a Node-only project gets `node_modules` (not an unwanted `.venv`) and polyglot projects materialize both at distinct paths. This is the structural change that closes the N-3 scope-note gap and that F2/F3 build on. Grounded by the N.at spike contract.
 
-**Implementation note.** Surgery on the heavily-tested `init` path — the green integration suite (Python-only / Node-only / polyglot) is the safety net (same posture as N.ae). May split into sub-stories during implementation if one commit's diff is too large.
+**Implementation note.** Surgery on the heavily-tested `init` path — the green integration suite (Python-only / Node-only / polyglot) is the safety net (same posture as N.ae). **Split into the N.av.1–N.av.5 bundle below** (the `init_project` monolith is ~600 lines, the most heavily-tested path in the repo; one commit's diff would be unreviewable). The umbrella's collective deliverable: `init` becomes a composed flow (`manifest_load` → registry → per-plugin materialize dispatch) where Python-only is byte-equivalent, Node-only gets no `.venv`, polyglot materializes both, and the N-4 composed `check`/`status`/`purge`/`.envrc` still hold.
+
+### Story N.av.1: Composed-init orchestrator skeleton + seam wiring [Done]
+
+**Motivation.** Establish the stack-agnostic orchestrator seam with **zero behavior change** before any untangling. Wire `pyve init` to a new `compose_init` that, for now, delegates to today's monolithic Python `init` hook — proving the dispatch seam without touching `init_project`'s body.
+
+**Implementation note — locus.** New `lib/init_composer.sh` exposing `compose_init`, mirroring the existing composer family (`lib/check_composer.sh` / `lib/purge_composer.sh` / …) — composed `init` is cross-stack infra → `lib/`, not a plugin. Source it explicitly in `pyve.sh`.
 
 **Tasks**
 
-- [ ] Refactor the `init` dispatcher: after writing `pyve.toml`, `manifest_load` → `plugin_registry_reset` → `plugin_load_all_from_manifest`, then dispatch each active plugin's init/materialize hook against its `path` (reusing the N.ae init/update ordering).
-- [ ] Python-only path materializes the same envs as today (no regression — byte-equivalence where feasible).
-- [ ] Node-only path materializes `node_modules` via the Node plugin; **no** Python app env is created.
-- [ ] Polyglot path materializes both plugins' envs at distinct paths, no S4 collision.
-- [ ] Sequence the project-guide accept decision (N.au) before `compose_project_envrc` / manifest finalization so the `[env.root]` block is present when the composers + the N.aj gate read the manifest.
-- [ ] Integration tests across all three shapes; confirm the N-4 composed `check`/`status`/`purge`/`.envrc` still pass on composed-init output.
+- [x] Created [lib/init_composer.sh](../../lib/init_composer.sh) (copyright/license header) with `compose_init` delegating to `plugin_dispatch python init "$@"` (today's exact behavior — zero change).
+- [x] Wired `pyve.sh`'s `init` arm to `compose_init "$@"` (replacing the direct `plugin_dispatch python init`); added the explicit `source lib/init_composer.sh` line (after the plugins + sibling composers). **No test-helper source needed** — the helper doesn't source composers (they're sourced by `pyve.sh`; tests source directly, mirroring the other composers).
+- [x] Tests: [tests/unit/test_n_av_1_init_composer.bats](../../tests/unit/test_n_av_1_init_composer.bats) — 5 seam tests (defined, locus, delegates+forwards args, dispatch wired, sourced). Full suite **1703/1703**; `pyve init --help` smoke OK; shellcheck clean.
+
+### Story N.av.2: Extract the Python env-materializer; lift the orchestration tail [Planned] — **highest risk**
+
+**Motivation.** The core untangling. Split `init_project` into (a) a **pure Python env-materializer** (the venv/micromamba creation + distutils shim) that becomes the plugin's materialize-hook body, and (b) the **stack-agnostic orchestration tail** (`.pyve/config` write, `_init_scaffold_manifest`, `compose_project_envrc`/`compose_project_gitignore`, vscode settings, dep prompt, `run_project_guide_orchestration`, next-steps) that moves up into `compose_init`. Flag parsing / wizard / force-handling are orchestration-level (parse once). Python-only must stay **byte-equivalent**.
+
+**Tasks**
+
+- [ ] Move the arg parse / wizard / force-handling / backend resolution to `compose_init` (orchestration-level, runs once).
+- [ ] Reduce the Python `init`/materialize hook to env creation only (venv + micromamba branches → just the env + distutils shim), dispatched per-plugin against the resolved env path.
+- [ ] Lift the orchestration tail into `compose_init`, run **after** materialization in the N.ae ordering: write `.pyve/config` → `_init_scaffold_manifest` → `manifest_load`/`plugin_registry_reset`/`plugin_load_all_from_manifest` → project-guide accept decision (N.au) → `compose_project_envrc` → `compose_project_gitignore` → next-steps.
+- [ ] Sequence the project-guide accept decision **before** `compose_project_envrc` / manifest finalization so `[env.root]` is present when the composers + the N.aj gate read the manifest.
+- [ ] Python-only byte-equivalence: the full existing `init` test surface (wizard, force, backends, project-guide G.*) passes unchanged — the regression gate.
+
+### Story N.av.3: Node-only composed-init path [Planned]
+
+**Motivation.** With the tail lifted, `compose_init` can dispatch a non-Python materializer. Node-only project → `compose_init` dispatches the Node plugin's materializer (`node_modules` via the provider) and creates **no** Python app env / `.venv` / Python `.pyve/config`.
+
+**Tasks**
+
+- [ ] `compose_init` enumerates `plugin_list_active` and dispatches each plugin's init/materialize hook against `manifest_get_plugin_path`; Node-only → only `node_pyve_plugin_init "."`.
+- [ ] No `.venv`, no Python `.pyve/config` backend write on a Node-only stack; `.envrc`/`.gitignore` composed from the Node plugin's snippets (N-4 composers already handle this).
+- [ ] Next-steps output is stack-aware (no Python activation hints on Node-only).
+- [ ] Tests: Node-only `pyve init` → `node_modules` materialized, no `.venv`, composed `.envrc` has the Node section only.
+
+### Story N.av.4: Polyglot composed-init path [Planned]
+
+**Motivation.** Both plugins materialize at distinct paths from one composed flow.
+
+**Tasks**
+
+- [ ] Polyglot (`[plugins.python]` + `[plugins.node] path=<sub>`) → `compose_init` dispatches both materializers at their declared paths; no S4 root collision.
+- [ ] Python app env + Node `node_modules` at the sub-path coexist; composed `.envrc`/`.gitignore` carry both sections.
+- [ ] Tests: polyglot `pyve init` → both envs at distinct paths; composed surfaces correct.
+
+### Story N.av.5: Integration matrix + N-4 composition regression sweep [Planned]
+
+**Motivation.** End-to-end proof across the three shapes, and confirmation that the N-4 composed `check`/`status`/`purge`/`.envrc` still hold on composed-init output (not just on hand-built fixtures).
+
+**Tasks**
+
+- [ ] Integration tests: Python-only / Node-only / polyglot `pyve init` end-to-end, asserting the right envs + composed files.
+- [ ] Run composed `pyve check` / `status` / `purge` against each composed-init result; confirm parity with the N-4 fixture-driven expectations.
+- [ ] Consolidate any throwaway/duplicate init tests the refactor obsoleted.
 
 ### Story N.aw: F2 — Python `utility` `root` provisioning on non-Python stacks [Planned]
 

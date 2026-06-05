@@ -323,6 +323,15 @@ else
     exit 1
 fi
 
+# Story N.av: composed `pyve init` orchestrator. After the plugins (it
+# dispatches their init hooks) and the other composers (sibling surface).
+if [[ -f "$SCRIPT_DIR/lib/init_composer.sh" ]]; then
+    source "$SCRIPT_DIR/lib/init_composer.sh"
+else
+    printf "ERROR: Cannot find lib/init_composer.sh\n" >&2
+    exit 1
+fi
+
 #============================================================
 # Source per-command modules (Phase K — alphabetical)
 #============================================================
@@ -780,7 +789,9 @@ main() {
                 printf 'DISPATCH:init %s\n' "$*"
                 exit 0
             fi
-            plugin_dispatch python init "$@"
+            # Story N.av: composed cross-stack init. N.av.1 delegates to the
+            # Python init hook unchanged; later sub-stories compose per-plugin.
+            compose_init "$@"
             ;;
         purge)
             shift
