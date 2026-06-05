@@ -1396,15 +1396,15 @@ Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve dep
 - [x] Reads `packaging` via `manifest_get_packaging` (N.aq) and consults the registry — three branches implemented exactly per spec: provider registered → `pp_dispatch <value> package <env>` (v3.0: stub-only); **no provider** → advisory, **exit 0** (*"…reserved for a future release."*); `packaging` absent/`none` → informational (*"…no packaging artifact."*).
 - [x] Bats unit + integration tests in [tests/unit/test_n_ar_package.bats](../../tests/unit/test_n_ar_package.bats) (13): `--env`/`--env=`/default-env resolution, advisory exit 0, packaging `none`, unknown-env hard error, `--help`/`-h`, a test-only stub provider exercising the registered-provider dispatch path, + 3 integration tests driving the real `pyve.sh` binary (dispatch wiring, `--help`, unknown-env). Completion coverage extended in [tests/unit/test_completion_bash.bats](../../tests/unit/test_completion_bash.bats).
 
-### Story N.as: Document `pyve package` — features.md + reserved-verb semantics [Planned]
+### Story N.as: Document `pyve package` — features.md + reserved-verb semantics [Done]
 
 **Motivation.** Capture the new verb in the user-facing surface so the reserved-in-v3.0 semantics, the O8 config location, and the post-v3.0 provider roadmap are discoverable — and so N-8's holistic docs refresh has the source material. Sequential-documentation rule: the verb that lands in N.ar gets its `features.md` entry now, not deferred wholesale to N-8.
 
 **Tasks**
 
-- [ ] [features.md](features.md): add `pyve package [--env <name>]` — purpose (materializes an env's `packaging` artifact), the O8 config model (`packaging` + provider-private fields on `[env.<name>]`), reserved-verb status in v3.0 (no provider materializes; clean advisory), and that `deploy` is reserved for a future ship step (O1).
-- [ ] Cross-reference the post-v3.0 provider roadmap (docker/podman, `lock_bundle`, `binary`) and note that materialization + advisory surfacing are gated on F6 closed-vocab validation (N-6).
-- [ ] Verify `show_package_help()` text matches the `features.md` description (single source of truth for the CLI contract).
+- [x] [features.md](features.md): added **FR-11f: Packaging Lifecycle Hook (`pyve package`, Subphase N-5)** in the FR-11x env-model cluster (after FR-11e) — purpose (artifact-materialization verb), the O8 config model (core `packaging` + provider-private fields on `[env.<name>]`; `[deploy.*]` retired, S9 stored-not-interpreted), `--env`/default-env resolution (non-purpose-gated), reserved-verb v3.0 status with all three live branches + the quoted advisory strings, and `deploy` reserved separately (O1).
+- [x] Cross-referenced the post-v3.0 provider roadmap (`docker`/`podman`, `lock_bundle`, `binary`) and noted that provider materialization + closed-vocab validation are gated on F6 (N-6); until F6 the verb reads `packaging` leniently.
+- [x] Verified `show_package_help()` ↔ features.md ↔ runtime consistency across five contract dimensions (advisory strings byte-identical incl. em-dash; no-artifact string; deploy-reserved; default-env resolution; provider-private stored-not-interpreted). No contradictions; help text is a non-conflicting subset of the features.md contract.
 
 ---
 

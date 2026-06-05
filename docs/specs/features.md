@@ -534,6 +534,34 @@ The composition layer is what turns one `pyve <cmd>` into a fan-out across **eve
 - **No-Python noise on non-Python projects.** A Node-only project produces **zero** Python output from `check` / `status`; pyve still defaults to Python for bare directories and polyglot/project-guide projects, so the helpful "run `pyve init`" nudge is never lost where it belongs.
 - **Latency budget.** Each plugin's activation stays within ≤ 50ms p95, enforced across all three project shapes.
 
+### FR-11f: Packaging Lifecycle Hook (`pyve package`, Subphase N-5)
+
+`pyve package [--env <name>]` is the **artifact-materialization** verb: it builds the packaging artifact an environment declares — e.g. a container image — by dispatching to a registered packaging provider. It is the second lifecycle seam (after backend-provider env materialization, FR-11c) and follows the same registry-and-dispatch shape. The registry lives at [lib/plugins/packaging_registry.sh](../../lib/plugins/packaging_registry.sh); the verb at [lib/commands/package.sh](../../lib/commands/package.sh).
+
+**Config model (decision O8) — packaging config lives on `[env.<name>]`.** An env declares the kind of artifact it materializes via a core `packaging` attribute, alongside any packaging-provider-private fields the provider reads. There is no separate `[deploy.*]` table (S8 retired); core stores the provider-private fields but never interprets them (S9):
+
+```toml
+[env.web]
+purpose    = "run"
+backend    = "pnpm"
+packaging  = "docker"        # core: artifact kind, read by `pyve package`
+dockerfile = "ops/Dockerfile"  # provider-private: stored, never interpreted by core
+```
+
+`pyve package` resolves its target env from `--env <name>`, or the default env when omitted (the env marked `default = true`, else `root`, else the sole declared env). The resolution is **not** purpose-gated — unlike `pyve test --env`, `package` operates on any declared env. An unknown env name hard-errors with the list of declared envs.
+
+**Reserved verb in v3.0 — no provider materializes yet (concept Q6 / v3.0-window).** v3.0 ships the verb + the packaging-provider contract and registry, but registers **zero** providers. The three live branches are:
+
+- **packaging declared, no provider** → a clean advisory, **exit 0**: *"env `<name>` declares packaging `<X>`; no packaging provider is registered yet — reserved for a future release."* This is the v3.0 path for every declared `packaging` value.
+- **packaging absent / `none`** → informational, exit 0: *"env `<name>` declares no packaging artifact."*
+- **provider registered** → the provider's `package` hook is dispatched (no providers ship in v3.0 — exercised only by a test stub).
+
+Accepting a declared `packaging` and emitting a "reserved" advisory (rather than "unknown command") is exactly what lets a post-v3.0 provider drop in transparently with no breaking change.
+
+**Provider roadmap (post-v3.0).** The first providers — `docker` / `podman` (container images), `lock_bundle` (a frozen dependency bundle), `binary` (a self-contained executable) — land after v3.0, each registering against its `packaging` value. Provider **materialization** and the closed-vocabulary *validation* of the `packaging` value (hard-error on unknown) are gated on **F6** (closed-vocab validation, Subphase N-6); until F6, `pyve package` reads the `packaging` value **leniently** (any string is accepted and surfaced in the advisory).
+
+**`deploy` is reserved separately (decision O1).** `package` materializes the artifact; it does **not** ship it. A future `deploy` verb owns the ship step (push image, upload bundle, release binary). The two stay distinct so artifact-build and artifact-ship can evolve and be invoked independently.
+
 ### FR-12: Smart Re-Initialization
 
 Handle `pyve init` on already-initialized projects.
