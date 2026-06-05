@@ -65,6 +65,8 @@ app_type = "spa"
 frameworks = ["sveltekit"]
 languages = ["typescript"]
 lazy = true
+packaging = "docker"
+dockerfile = "Dockerfile"
 TOML
 }
 
@@ -156,6 +158,58 @@ TOML
     manifest_load
     [ "$(manifest_get_app_type web)" = "spa" ]
     [ -z "$(manifest_get_app_type root)" ]
+}
+
+# Story N.aq — packaging accessor + provider-private env-key passthrough.
+# `packaging` (S15) is a core key read by `pyve package`; arbitrary other
+# keys (e.g. `dockerfile`) are packaging-provider-private (S9) — core
+# stores them but never interprets them. Closed-set validation of the
+# `packaging` vocabulary is F6 in N-6, not here; N-5 reads leniently.
+
+@test "manifest_get_packaging: returns declared packaging, empty otherwise" {
+    _fixture_full_manifest
+    manifest_load
+    [ "$(manifest_get_packaging web)" = "docker" ]
+    [ -z "$(manifest_get_packaging root)" ]
+}
+
+@test "manifest_get_packaging: returns 1 for unknown env" {
+    _fixture_full_manifest
+    manifest_load
+    run manifest_get_packaging nonexistent
+    [ "$status" -ne 0 ]
+    [ -z "$output" ]
+}
+
+@test "manifest_get_env_attr: provider-private env key round-trips through parse" {
+    _fixture_full_manifest
+    manifest_load
+    [ "$(manifest_get_env_attr web dockerfile)" = "Dockerfile" ]
+}
+
+@test "manifest_get_env_attr: empty string for unset attr (status 0)" {
+    _fixture_full_manifest
+    manifest_load
+    run manifest_get_env_attr root dockerfile
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "manifest_get_env_attr: returns 1 for unknown env" {
+    _fixture_full_manifest
+    manifest_load
+    run manifest_get_env_attr nonexistent dockerfile
+    [ "$status" -ne 0 ]
+}
+
+@test "manifest_get_env_attr: core keys are not exposed as provider-private attrs" {
+    _fixture_full_manifest
+    manifest_load
+    # `packaging` is a core key (its own accessor), not a passthrough attr.
+    [ -z "$(manifest_get_env_attr web packaging)" ]
+    # `backend` / `purpose` are core scalars, never in the attr space.
+    [ -z "$(manifest_get_env_attr web backend)" ]
+    [ -z "$(manifest_get_env_attr web purpose)" ]
 }
 
 @test "manifest_is_default: 0 for env with default=true, 1 otherwise" {

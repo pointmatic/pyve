@@ -186,6 +186,18 @@ else
     exit 1
 fi
 
+# Story N.aq: packaging-provider registry. Parallel to the backend
+# registry but for artifact materialization (`pyve package`). v3.0
+# registers zero providers; the scaffold lets a post-v3.0 provider drop
+# in with no breaking change.
+if [[ -f "$SCRIPT_DIR/lib/plugins/packaging_registry.sh" ]]; then
+    # shellcheck source=lib/plugins/packaging_registry.sh
+    source "$SCRIPT_DIR/lib/plugins/packaging_registry.sh"
+else
+    printf "ERROR: Cannot find lib/plugins/packaging_registry.sh\n" >&2
+    exit 1
+fi
+
 # Story N.m: PC-1 plugin input safety validators. Pure functions; no
 # wiring beyond sourcing. Consumed by the activation composer (N.q)
 # and the gitignore composer (N.r).

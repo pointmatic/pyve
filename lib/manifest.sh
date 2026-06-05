@@ -23,6 +23,8 @@
 #   PYVE_ENV_EXTRA[]            — pyproject extra name | ""
 #   PYVE_ENV_MANIFEST[]         — conda/pip manifest path | ""
 #   PYVE_ENV_APP_TYPE[]         — structured attr | ""
+#   PYVE_ENV_PACKAGING[]        — packaging artifact kind (S15) | ""
+#   PYVE_ENV_<idx>_ATTRS[]      — per-env provider-private "key=value" list (S9)
 #   PYVE_ENV_REQUIREMENTS_Q[]   — shell-quoted requirements list per env
 #   PYVE_ENV_FRAMEWORKS_Q[]     — shell-quoted frameworks list per env
 #   PYVE_ENV_LANGUAGES_Q[]      — shell-quoted languages list per env
@@ -92,6 +94,7 @@ _manifest_reset_state() {
     PYVE_ENV_EXTRA=()
     PYVE_ENV_MANIFEST=()
     PYVE_ENV_APP_TYPE=()
+    PYVE_ENV_PACKAGING=()
     PYVE_ENV_REQUIREMENTS_Q=()
     PYVE_ENV_FRAMEWORKS_Q=()
     PYVE_ENV_LANGUAGES_Q=()
@@ -150,6 +153,7 @@ _manifest_synthesize_from_legacy() {
     PYVE_ENV_EXTRA+=("")
     PYVE_ENV_MANIFEST+=("")
     PYVE_ENV_APP_TYPE+=("")
+    PYVE_ENV_PACKAGING+=("")
     PYVE_ENV_REQUIREMENTS_Q+=("")
     PYVE_ENV_FRAMEWORKS_Q+=("")
     PYVE_ENV_LANGUAGES_Q+=("")
@@ -204,6 +208,7 @@ _manifest_synthesize_from_legacy() {
             PYVE_ENV_EXTRA+=("${PYVE_TESTENV_EXTRA[$i]}")
             PYVE_ENV_MANIFEST+=("${PYVE_TESTENV_MANIFEST[$i]}")
             PYVE_ENV_APP_TYPE+=("")
+            PYVE_ENV_PACKAGING+=("")
             PYVE_ENV_REQUIREMENTS_Q+=("${PYVE_TESTENV_REQUIREMENTS_Q[$i]}")
             PYVE_ENV_FRAMEWORKS_Q+=("")
             PYVE_ENV_LANGUAGES_Q+=("")
@@ -321,6 +326,44 @@ manifest_get_path() {
 manifest_get_app_type() {
     local i; i="$(_manifest_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_ENV_APP_TYPE[$i]}"
+}
+
+# Story N.aq (S15): the env's `packaging` value (artifact kind read by
+# `pyve package`), or empty string when undeclared. Returns 1 (no output)
+# for unknown env names. The v2 read-compat synthesis path doesn't populate
+# PYVE_ENV_PACKAGING with declared values (v2 had no packaging concept), so
+# guard the read for bash-3.2 `set -u` safety when the array is shorter.
+manifest_get_packaging() {
+    local i; i="$(_manifest_name_to_index "$1")" || return 1
+    if [[ -n "${PYVE_ENV_PACKAGING+x}" ]] \
+       && [[ "$i" -lt "${#PYVE_ENV_PACKAGING[@]}" ]]; then
+        printf '%s' "${PYVE_ENV_PACKAGING[$i]}"
+    fi
+}
+
+# Story N.aq (S9): read a packaging-/backend-provider-private attribute
+# declared on `[env.<name>]` (e.g. `dockerfile`). Core stores these but
+# never interprets them; this accessor exists so a provider's `package`
+# hook can read its own config. Prints empty string for an unset attr on a
+# known env; returns 1 (no output) for unknown envs. Mirrors
+# manifest_get_plugin_attr. The v2 read-compat synthesis path doesn't emit
+# PYVE_ENV_<idx>_ATTRS, so the read is guarded.
+manifest_get_env_attr() {
+    local i; i="$(_manifest_name_to_index "$1")" || return 1
+    local key="$2"
+    local arr_name="PYVE_ENV_${i}_ATTRS"
+    local item
+    eval "
+        if [[ -n \"\${${arr_name}+x}\" ]]; then
+            for item in \"\${${arr_name}[@]+\"\${${arr_name}[@]}\"}\"; do
+                if [[ \"\$item\" == \"\$key=\"* ]]; then
+                    printf '%s' \"\${item#*=}\"
+                    return 0
+                fi
+            done
+        fi
+    "
+    return 0
 }
 
 # Boolean predicates: 0 / 1.

@@ -39,6 +39,30 @@ from pathlib import Path
 SCHEMA_VERSION = "3.0"
 VALID_PURPOSES = ("run", "test", "utility", "temp")
 
+# Core `[env.<name>]` keys interpreted by pyve. Every other key is
+# packaging-/backend-provider-private (spike S9): core stores it but
+# never interprets it, and it round-trips through the manifest unchanged
+# into the per-env attr space. `packaging` (S15) is core — it has a
+# dedicated accessor read by `pyve package`; provider-private fields like
+# `dockerfile` are NOT core.
+KNOWN_ENV_KEYS = frozenset(
+    {
+        "purpose",
+        "backend",
+        "path",
+        "default",
+        "lazy",
+        "extra",
+        "manifest",
+        "app_type",
+        "packaging",
+        "requirements",
+        "frameworks",
+        "languages",
+        "manual_steps",
+    }
+)
+
 
 def _normalize_env(name, decl):
     return {
@@ -51,12 +75,20 @@ def _normalize_env(name, decl):
         "extra": decl.get("extra") or "",
         "manifest": decl.get("manifest") or "",
         "app_type": decl.get("app_type") or "",
+        # S15: `packaging` is a core scalar read by `pyve package`. v3.0
+        # reads it leniently — closed-set validation is F6 in N-6.
+        "packaging": decl.get("packaging") or "",
         "requirements": list(decl.get("requirements", [])),
         "frameworks": list(decl.get("frameworks", [])),
         "languages": list(decl.get("languages", [])),
         # S7: manual_steps is an advisory list. v3.0 surfaces it in
         # `pyve check` / `pyve status`; no automated execution.
         "manual_steps": list(decl.get("manual_steps", [])),
+        # S9: packaging-/backend-provider-private keys (e.g. `dockerfile`)
+        # are preserved as-is. Core never interprets them; they exist so a
+        # provider's `package` hook can read its own config from
+        # `[env.<name>]`.
+        "attrs": {k: v for k, v in decl.items() if k not in KNOWN_ENV_KEYS},
     }
 
 
@@ -158,6 +190,8 @@ def emit(cfg, out):
         ("PYVE_ENV_EXTRA", "extra"),
         ("PYVE_ENV_MANIFEST", "manifest"),
         ("PYVE_ENV_APP_TYPE", "app_type"),
+        # Story N.aq (S15): packaging artifact kind, read by `pyve package`.
+        ("PYVE_ENV_PACKAGING", "packaging"),
     ]
     for var, key in scalar_fields:
         vals = [cfg["envs"][n][key] for n in names]
@@ -172,6 +206,14 @@ def emit(cfg, out):
     for var, key in list_fields:
         vals_q = [_quote_array(cfg["envs"][n][key]) for n in names]
         print(f"{var}=({_quote_array(vals_q)})", file=out)
+    # Story N.aq (S9): per-env packaging-/backend-provider-private attrs.
+    # Same per-index-array shape as the plugin attrs below: each attr is a
+    # single "key=value" entry so manifest_get_env_attr can iterate without
+    # bash-4 associative arrays. Core stores these but never interprets them.
+    for idx, name in enumerate(names):
+        attrs = cfg["envs"][name].get("attrs", {})
+        pairs = [f"{k}={v}" for k, v in attrs.items()]
+        print(f"PYVE_ENV_{idx}_ATTRS=({_quote_array(pairs)})", file=out)
     # Plugins (Story N.k): per-plugin attrs are exposed as per-index
     # arrays so manifest_get_plugin_attr can iterate without resorting
     # to bash-4 associative arrays.

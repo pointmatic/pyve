@@ -1368,7 +1368,7 @@ Spike deliverable: **[spike-n-ao-project-guide-provisioning.md](spike-n-ao-proje
 
 Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve deploy` per **O1**) as the **artifact-materialization** verb — it builds the env's declared `packaging` form; it does **not** ship (`deploy` reserved for a future ship step). **Decisions settled 2026-06-05 (developer-ratified):** *(O8)* package config lives **on `[env.<name>]`** — the `packaging` attribute (S15) plus packaging-provider-private fields (e.g. `dockerfile`), read by `pyve package`; S8's separate `[deploy.*]` table is **retired**, consistent with S9's core-vs-provider-private split. *(concept Q6 / v3.0-window)* v3.0 **reserves the verb + scaffolds the packaging-provider contract**; **no provider materializes** — `pyve package` emits a clean advisory when no provider is registered (exactly like the `pyve lint` verb, O3), and providers land post-v3.0 with no breaking change. Test consolidation is **N-7**. Bundles into **v3.0.0**.
 
-### Story N.aq: Packaging-provider contract + registry skeleton (zero providers in v3.0) [Planned]
+### Story N.aq: Packaging-provider contract + registry skeleton (zero providers in v3.0) [Done]
 
 **Motivation.** `pyve package` (N.ar) needs an extensibility seam so artifact-materialization providers (docker, `lock_bundle`, `binary`, …) can register and be dispatched by `packaging` value — exactly parallel to the backend-provider contract/registry N-2 stood up for env materialization. v3.0 ships the contract + registry with **zero** providers (per the Q6 / v3.0-window decision: reserve + scaffold, materialize nothing); the first provider lands post-v3.0 with no breaking change. This story also lands the minimal manifest plumbing N.ar reads.
 
@@ -1376,11 +1376,11 @@ Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve dep
 
 **Tasks**
 
-- [ ] Define the packaging-provider hook contract (signature + lifecycle) parallel to the backend-provider contract from N-2; document the `package` hook (input: resolved `[env.<name>]` block; output: materialized artifact / advisory). Locus: a new `lib/packaging_registry.sh` or an extension of the existing provider-registry infra — match whatever N-2/N-3 established. Copyright/license header on any new file.
-- [ ] Stand up the packaging-provider **registry**: map a `packaging` value → a registered provider; v3.0 registers **none**. A lookup (`packaging_provider_for <value>`) returns empty when unregistered.
-- [ ] Add a `manifest_get_packaging <env>` accessor to [lib/manifest.sh](../../lib/manifest.sh) (+ the Python helper if the value isn't already surfaced); returns the env's `packaging` value or empty.
-- [ ] Confirm packaging-provider-private keys on `[env.<name>]` (e.g. `dockerfile`) survive the manifest parse into the provider-private extension space (S9) — add a passthrough accessor if the current parser drops unrecognized keys.
-- [ ] Bats tests: empty registry returns no provider; `manifest_get_packaging` reads the value; provider-private keys round-trip through parse.
+- [x] Define the packaging-provider hook contract (signature + lifecycle) parallel to the backend-provider contract from N-2; document the `package` hook (input: resolved `[env.<name>]` block; output: materialized artifact / advisory). Locus: new [lib/plugins/packaging_registry.sh](../../lib/plugins/packaging_registry.sh) alongside the N-2 backend registry. Copyright/license header present. Dispatch convention `pp_dispatch <value> <hook>` → `<value>_pyve_pp_<hook>` mirrors `bp_dispatch`; no category abstraction (packaging is artifact-materialization, not env-materialization).
+- [x] Stand up the packaging-provider **registry**: `pp_register` / `pp_list` / `pp_dispatch` map a `packaging` value → a registered provider; v3.0 registers **none**. `packaging_provider_for <value>` returns empty (status 1) when unregistered — the signal `pyve package` (N.ar) keys its "reserved" advisory off.
+- [x] Add a `manifest_get_packaging <env>` accessor to [lib/manifest.sh](../../lib/manifest.sh) + `PYVE_ENV_PACKAGING` emission in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py); returns the env's `packaging` value or empty. Read leniently (no closed-set validation — that is F6 in N-6).
+- [x] Provider-private keys on `[env.<name>]` (e.g. `dockerfile`) now survive the manifest parse into the per-env attr space (S9) via `PYVE_ENV_<idx>_ATTRS` (mirrors the plugin-attr passthrough) + a new `manifest_get_env_attr <env> <key>` accessor. The parser previously dropped unrecognized env keys; `KNOWN_ENV_KEYS` in the helper now gates core-vs-passthrough.
+- [x] Bats tests: empty registry returns no provider; `manifest_get_packaging` reads the value + returns 1 on unknown env; provider-private keys round-trip through parse; core keys are never exposed as passthrough attrs. ([tests/unit/test_n_aq_packaging_registry.bats](../../tests/unit/test_n_aq_packaging_registry.bats) + additions to [tests/unit/test_manifest.bats](../../tests/unit/test_manifest.bats)).
 
 ### Story N.ar: `pyve package [--env <name>]` verb — reserved-verb behavior [Planned]
 
