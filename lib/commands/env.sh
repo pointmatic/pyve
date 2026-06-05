@@ -141,7 +141,10 @@ _env_install_venv() {
 _env_resolve_extra_packages() {
     local extra_name="$1"
     local out_var="$2"
-    local py="${PYVE_PYTHON:-python}"
+    # Pyve toolchain python (Story N.at.2) — see lib/manifest.sh's note
+    # (incl. the self-sufficient fallback + the `local` split rationale).
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
     local pyproject="${PYVE_PYPROJECT:-pyproject.toml}"
     local pkg_lines rc=0
     pkg_lines="$("$py" "$_PYVE_TESTENVS_HELPER" --resolve-extra "$pyproject" "$extra_name")" || rc=$?

@@ -21,6 +21,12 @@ setup_pyve_env() {
     # so every test file inherits it without per-file source bloat.
     source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
+    # Story N.at.2: manifest_load / read_env_config now resolve Pyve's
+    # toolchain interpreter via pyve_toolchain_python. Source it here (after
+    # env_detect, mirroring pyve.sh) so every helper-using suite has the
+    # resolver defined; without it the rewired callsites hit "command not
+    # found". The override path (PYVE_PYTHON) is unaffected.
+    source "$PYVE_ROOT/lib/toolchain_python.sh"
     # Story N.n: backend_detect.sh's detect_backend_from_files now
     # delegates to the Python plugin's detect hook via plugin_dispatch.
     # Source the plugin chain before backend_detect so every existing

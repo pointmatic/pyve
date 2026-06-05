@@ -328,10 +328,15 @@ check_direnv_installed() {
 # first; it probes `python` directly. Callers can invoke it pre-flight
 # without ordering concerns.
 assert_python_resolvable() {
+    # BOUNDARY (Story N.at.2): this guards the *project* python — the
+    # developer's interpreter for `pyve run python`, version-manager
+    # activation, the project venv. It is deliberately NOT routed through
+    # pyve_toolchain_python (that resolves Pyve's *own* toolchain
+    # interpreter, a different concern). Keep this on `${PYVE_PYTHON:-python}`.
+    #
     # Respect PYVE_PYTHON for callers that have already resolved a
     # specific interpreter (the tests' setup pre-resolves this before
-    # cd'ing to a tmp dir, mirroring `local py="${PYVE_PYTHON:-python}"`
-    # used throughout lib/). Fall back to bare `python` otherwise —
+    # cd'ing to a tmp dir). Fall back to bare `python` otherwise —
     # which is exactly where the asdf-shim trap bites.
     local py="${PYVE_PYTHON:-python}"
 

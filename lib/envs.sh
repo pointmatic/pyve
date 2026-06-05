@@ -63,7 +63,10 @@ read_env_config() {
         PYVE_TESTENV_REQUIREMENTS_Q=("")
         return 0
     fi
-    local py="${PYVE_PYTHON:-python}"
+    # Pyve toolchain python (Story N.at.2) — see lib/manifest.sh's note
+    # (incl. the self-sufficient fallback + the `local` split rationale).
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
     local kv
     kv="$("$py" "$_PYVE_TESTENVS_HELPER" "$pyproject")" || return $?
     eval "$kv"

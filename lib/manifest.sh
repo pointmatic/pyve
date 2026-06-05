@@ -70,7 +70,17 @@ manifest_load() {
         _manifest_reset_state
         return 0
     fi
-    local py="${PYVE_PYTHON:-python}"
+    # Pyve toolchain python (Story N.at.2): resolve Pyve's own interpreter
+    # (PYVE_PYTHON → hidden toolchain venv → bare `python`), not the dev's
+    # PATH `python`. Closes the Node-only mis-enumeration the N.at spike
+    # found (a shim with no pinned version killed the manifest parse).
+    # The `|| ${PYVE_PYTHON:-python}` fallback keeps this self-sufficient
+    # when lib/toolchain_python.sh isn't sourced (piecemeal test subshells)
+    # — the override path still wins. `local py` is split from the
+    # assignment so the command-substitution exit status isn't masked by
+    # `local` (the classic bash gotcha).
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
     local kv
     kv="$("$py" "$_PYVE_MANIFEST_HELPER" "$manifest")" || return $?
     eval "$kv"

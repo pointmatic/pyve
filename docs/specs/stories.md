@@ -1448,16 +1448,16 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Add an explicit `source lib/toolchain_python.sh` line to `pyve.sh` (helpers block; after `env_detect.sh` so the build seam's helpers exist, before the libs that resolve at runtime — manifest/envs/env, rewired in N.at.2).
 - [x] Tests: resolver prints the venv path when present; honors `PYVE_PYTHON` override (highest priority); falls back to bare `python` when no venv; `ensure` is idempotent (second call is a no-op) and version-keys the path. 11 bats tests in [tests/unit/test_n_at_1_toolchain_python.bats](../../tests/unit/test_n_at_1_toolchain_python.bats); functions array-free so the Bash 3.2 `set -u` empty-array trap does not apply.
 
-### Story N.at.2: Rewire Pyve-internal callsites to the resolver [Planned]
+### Story N.at.2: Rewire Pyve-internal callsites to the resolver [Done]
 
 **Motivation.** Route every Pyve-internal `${PYVE_PYTHON:-python}` helper call through the resolver so the toolchain venv (not the dev's PATH `python`) parses `pyve.toml` — closing the mis-enumeration bug the spike found.
 
 **Tasks**
 
-- [ ] Replace `local py="${PYVE_PYTHON:-python}"` with the resolver in [lib/manifest.sh:73](../../lib/manifest.sh#L73), [lib/envs.sh:66](../../lib/envs.sh#L66), [lib/commands/env.sh:144](../../lib/commands/env.sh#L144), and the helper-invocation in [lib/env_detect.sh:336](../../lib/env_detect.sh#L336) (the *internal* TOML-helper call, not the project-python guard).
-- [ ] Confirm `assert_python_resolvable`'s project-facing role is untouched; add a comment delimiting "Pyve toolchain python" vs "project python" so the boundary doesn't drift.
-- [ ] **Regression test (the canonical motivator):** a Node-only project on a machine with no resolvable PATH `python` (shim with no pinned version) parses `pyve.toml` and enumerates `[node]` — not implicit-Python. Build it from a fresh `/bin/bash -c "set -euo pipefail; ..."` shell with PATH cleaned, mirroring the existing empty-array regression pattern.
-- [ ] Full suite — no regressions in the manifest/envs/env bats tests that set `PYVE_PYTHON` in their setup (the override must still win).
+- [x] Replace `local py="${PYVE_PYTHON:-python}"` with the resolver at the three *internal TOML-helper* callsites: [lib/manifest.sh:73](../../lib/manifest.sh#L73), [lib/envs.sh:66](../../lib/envs.sh#L66), [lib/commands/env.sh:144](../../lib/commands/env.sh#L144). **Correction to the original task wording:** [lib/env_detect.sh:336](../../lib/env_detect.sh#L336) is *not* a TOML-helper call — it is the `assert_python_resolvable` **project-python guard**, so it is deliberately left on `${PYVE_PYTHON:-python}` (see next task). **Self-sufficiency:** the rewired callsites use `py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"` (with `local py` split from the assignment to dodge the `local`-masks-exit-status gotcha) so they keep working — and still honor the override — when `lib/toolchain_python.sh` isn't sourced (piecemeal test subshells).
+- [x] Confirm `assert_python_resolvable`'s project-facing role is untouched; added a **BOUNDARY** comment delimiting "Pyve toolchain python" (the resolver) vs "project python" (this guard) so the distinction doesn't drift.
+- [x] **Regression test (the canonical motivator):** [tests/unit/test_n_at_2_resolver_rewire.bats](../../tests/unit/test_n_at_2_resolver_rewire.bats) — a Node-only project parses `pyve.toml` and enumerates `[node]` (not implicit-Python) in a fresh `/bin/bash -c` shell with `PATH=/usr/bin:/bin` (coreutils present, bare `python` unresolvable) when only a Pyve-owned toolchain venv is reachable; plus a test that the `PYVE_PYTHON` override still wins. Both green.
+- [x] Full suite — **1684/1684 pass.** Caught + fixed one regression along the way: `test_testenv_purge_name.bats`'s inline `bash -c` subshell sources `envs.sh` without `toolchain_python.sh`; the self-sufficient fallback (above) is what resolves it without touching ~27 direct-sourcing test files. Also added `source lib/toolchain_python.sh` to [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) so helper-using suites exercise the real resolver.
 
 ### Story N.at.3: Install / update / uninstall lifecycle + version-tracking rebuild [Planned]
 
