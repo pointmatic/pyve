@@ -1515,17 +1515,19 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Wired `pyve.sh`'s `init` arm to `compose_init "$@"` (replacing the direct `plugin_dispatch python init`); added the explicit `source lib/init_composer.sh` line (after the plugins + sibling composers). **No test-helper source needed** — the helper doesn't source composers (they're sourced by `pyve.sh`; tests source directly, mirroring the other composers).
 - [x] Tests: [tests/unit/test_n_av_1_init_composer.bats](../../tests/unit/test_n_av_1_init_composer.bats) — 5 seam tests (defined, locus, delegates+forwards args, dispatch wired, sourced). Full suite **1703/1703**; `pyve init --help` smoke OK; shellcheck clean.
 
-### Story N.av.2: Extract the Python env-materializer; lift the orchestration tail [Planned] — **highest risk**
+### Story N.av.2: Extract the Python env-materializer; lift the orchestration tail [Done]
+
+**NOTE: highest risk**
 
 **Motivation.** The core untangling. Split `init_project` into (a) a **pure Python env-materializer** (the venv/micromamba creation + distutils shim) that becomes the plugin's materialize-hook body, and (b) the **stack-agnostic orchestration tail** (`.pyve/config` write, `_init_scaffold_manifest`, `compose_project_envrc`/`compose_project_gitignore`, vscode settings, dep prompt, `run_project_guide_orchestration`, next-steps) that moves up into `compose_init`. Flag parsing / wizard / force-handling are orchestration-level (parse once). Python-only must stay **byte-equivalent**.
 
 **Tasks**
 
-- [ ] Move the arg parse / wizard / force-handling / backend resolution to `compose_init` (orchestration-level, runs once).
-- [ ] Reduce the Python `init`/materialize hook to env creation only (venv + micromamba branches → just the env + distutils shim), dispatched per-plugin against the resolved env path.
-- [ ] Lift the orchestration tail into `compose_init`, run **after** materialization in the N.ae ordering: write `.pyve/config` → `_init_scaffold_manifest` → `manifest_load`/`plugin_registry_reset`/`plugin_load_all_from_manifest` → project-guide accept decision (N.au) → `compose_project_envrc` → `compose_project_gitignore` → next-steps.
-- [ ] Sequence the project-guide accept decision **before** `compose_project_envrc` / manifest finalization so `[env.root]` is present when the composers + the N.aj gate read the manifest.
-- [ ] Python-only byte-equivalence: the full existing `init` test surface (wizard, force, backends, project-guide G.*) passes unchanged — the regression gate.
+- [x] **Tail hand-off via result globals (revised approach).** Rather than move the heavily-Python-specific arg-parse/wizard/force/backend-resolution out of `init_project` (high risk, and those flags *are* Python-specific), `init_project` stays the Python materializer (parse → wizard → force → materialize env → `.pyve/config` → `_init_scaffold_manifest` → Python-specific setup: vscode / `ensure_env_exists` / pip-deps), then hands the **stack-agnostic composition tail** up to `compose_init` via plain `PYVE_INIT_TAIL_*` globals (no cross-file function dependency — robust to piecemeal sourcing, per the N.at.2 lesson). The agnostic tail now runs once at orchestration level.
+- [x] `compose_init` owns the tail: resets the hand-off → dispatches the Python materializer → `_compose_init_run_tail` runs `compose_project_envrc` (unless `--no-direnv`) → `compose_project_gitignore` → `run_project_guide_orchestration` → `_init_print_next_steps` → `footer_box`. Skips the tail when `PYVE_INIT_TAIL_BACKEND` is empty (update-in-place / early-return paths).
+- [x] **Output-order note:** the Python-specific steps (vscode / `ensure_env_exists` / pip-deps) now print *before* the `.envrc`/`.gitignore` messages (they moved into the materializer ahead of the lifted tail). **Files produced are byte-identical** for Python-only; only message order shifts — tests assert final state, not order, so no breakage. Validated by an **end-to-end smoke** (`pyve init --backend venv --no-direnv --no-project-guide` → correct `.venv` / `pyve.toml` / `.pyve/config` / `.gitignore` / testenv / next-steps, no `.envrc`).
+- [x] **Project-guide reorder DEFERRED to N.aw (F2).** The "accept decision before `compose_project_envrc`" reorder is only load-bearing for the utility-root `[env.root]` write, which is non-Python (F2). Doing it now would change Python-only output for no benefit, so project-guide stays after composition for now; N.aw moves it earlier when it actually writes `[env.root]`.
+- [x] Python-only byte-equivalence: full existing `init` surface (wizard, force, backends, project-guide G.*) passes unchanged. New [tests/unit/test_n_av_2_init_tail.bats](../../tests/unit/test_n_av_2_init_tail.bats) (4 tests — run-tail / skip-tail / reset / `--no-direnv`). Full suite **1707/1707**; shellcheck clean.
 
 ### Story N.av.3: Node-only composed-init path [Planned]
 

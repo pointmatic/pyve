@@ -1765,18 +1765,6 @@ EOF
         # sweep.
         _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
-        # Configure direnv (unless --no-direnv). Story N.ae.5: compose the
-        # `.envrc` now that .pyve/config + pyve.toml exist.
-        if [[ "$no_direnv" == false ]]; then
-            compose_project_envrc ".envrc" && success "Created .envrc"
-        else
-            info "Skipping .envrc creation (--no-direnv)"
-        fi
-
-        # Story N.af: compose `.gitignore` from all active plugins (always —
-        # not gated by --no-direnv).
-        compose_project_gitignore ".gitignore" && success "Updated .gitignore"
-
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
 
@@ -1785,12 +1773,15 @@ EOF
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
 
-        # project-guide hook (Story G.c / FR-G2; lifted to lib/project_guide.sh in N.au)
-        run_project_guide_orchestration "micromamba" "$env_path" \
-            "$project_guide_mode" "$project_guide_completion_mode"
-
-        _init_print_next_steps "micromamba" "$no_direnv" "$env_path"
-        footer_box
+        # Story N.av.2: hand the stack-agnostic composition tail (compose
+        # .envrc/.gitignore → project-guide → next-steps) up to compose_init
+        # via the result globals. The .envrc/.gitignore composition is no
+        # longer welded here — it runs once at orchestration level.
+        PYVE_INIT_TAIL_BACKEND="micromamba"
+        PYVE_INIT_TAIL_ENV_PATH="$env_path"
+        PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+        PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+        PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
 
         return 0
     fi
@@ -1873,34 +1864,24 @@ EOF
     # read-compat sweep.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
-    # Configure direnv (unless --no-direnv). Story N.ae.5: compose the
-    # `.envrc` from all active plugins now that .pyve/config + pyve.toml
-    # exist (compose_project_envrc reloads the manifest/registry first).
-    if [[ "$no_direnv" == false ]]; then
-        compose_project_envrc ".envrc" && success "Created .envrc"
-    else
-        info "Skipping .envrc creation (--no-direnv)"
-    fi
-
-    # Story N.af: compose `.gitignore` from all active plugins (always).
-    compose_project_gitignore ".gitignore" && success "Updated .gitignore"
-
     # Ensure dev/test runner environment exists (upgrade-friendly)
     ensure_env_exists
 
-    # Absolute venv path — used by both dep install and project-guide hooks
+    # Absolute venv path — used by dep install and the composition tail.
     local _venv_abs
     _venv_abs="$(cd "$venv_dir" && pwd)"
 
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
     prompt_install_pip_dependencies "venv" "$_venv_abs"
 
-    # project-guide hook (Story G.c / FR-G2; lifted to lib/project_guide.sh in N.au)
-    run_project_guide_orchestration "venv" "$_venv_abs" \
-        "$project_guide_mode" "$project_guide_completion_mode"
-
-    _init_print_next_steps "venv" "$no_direnv" "$_venv_abs"
-    footer_box
+    # Story N.av.2: hand the stack-agnostic composition tail (compose
+    # .envrc/.gitignore → project-guide → next-steps) up to compose_init
+    # via the result globals (see the micromamba branch + lib/init_composer.sh).
+    PYVE_INIT_TAIL_BACKEND="venv"
+    PYVE_INIT_TAIL_ENV_PATH="$_venv_abs"
+    PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+    PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+    PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
 }
 
 _init_python_version() {

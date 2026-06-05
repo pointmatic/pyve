@@ -31,10 +31,50 @@ fi
 
 # Composed `pyve init` entry point.
 #
-# N.av.1: delegate to the Python plugin's init hook (the existing
-# monolithic `init_project`) so behavior is byte-for-byte unchanged while
-# the dispatch seam is established. Later sub-stories replace this body
-# with the composed per-plugin flow.
+# N.av.2: the Python hook (init_project) now MATERIALIZES the env +
+# writes .pyve/config + scaffolds pyve.toml + runs the Python-specific
+# setup (vscode / testenv / pip-deps), then hands the stack-agnostic
+# COMPOSITION TAIL up to compose_init via the PYVE_INIT_TAIL_* result
+# globals. compose_init runs that tail (compose .envrc / .gitignore →
+# project-guide → next-steps), so it is owned at orchestration level
+# rather than welded inside the plugin. N.av.3 / N.av.4 dispatch the
+# per-plugin materializers for Node-only / polyglot stacks.
+#
+# Plain globals (not a helper) carry the hand-off so init_project has no
+# cross-file function dependency — it sets the globals directly; an
+# early-return path (e.g. update-in-place with no env change) leaves
+# PYVE_INIT_TAIL_BACKEND empty and the tail is skipped.
 compose_init() {
-    plugin_dispatch python init "$@"
+    # Reset the hand-off so a stale value from a prior in-process call can
+    # never trigger a spurious tail (matters for tests / library callers).
+    PYVE_INIT_TAIL_BACKEND=""
+    plugin_dispatch python init "$@" || return $?
+    _compose_init_run_tail
+}
+
+# Run the stack-agnostic composition tail using the PYVE_INIT_TAIL_*
+# result globals the Python materializer set. No-op when no env was
+# materialized (PYVE_INIT_TAIL_BACKEND empty).
+_compose_init_run_tail() {
+    local backend="${PYVE_INIT_TAIL_BACKEND:-}"
+    [[ -z "$backend" ]] && return 0
+
+    local env_path="${PYVE_INIT_TAIL_ENV_PATH:-}"
+    local no_direnv="${PYVE_INIT_TAIL_NO_DIRENV:-false}"
+    local pg_mode="${PYVE_INIT_TAIL_PG_MODE:-}"
+    local comp_mode="${PYVE_INIT_TAIL_COMP_MODE:-}"
+
+    # Compose .envrc (unless --no-direnv) + .gitignore from every active
+    # plugin (the composers reload the manifest/registry first).
+    if [[ "$no_direnv" == false ]]; then
+        compose_project_envrc ".envrc" && success "Created .envrc"
+    else
+        info "Skipping .envrc creation (--no-direnv)"
+    fi
+    compose_project_gitignore ".gitignore" && success "Updated .gitignore"
+
+    # project-guide orchestration (lifted in N.au), then next-steps.
+    run_project_guide_orchestration "$backend" "$env_path" "$pg_mode" "$comp_mode"
+    _init_print_next_steps "$backend" "$no_direnv" "$env_path"
+    footer_box
 }
