@@ -254,8 +254,8 @@ Read-only "what is this project?" snapshot. Companion to `pyve check`: state (th
 
 Install or remove the Pyve script from the user's system. Lives under the `self` namespace (mirrors `git remote`, `kubectl config`); `pyve self` with no subcommand prints the namespace help only.
 
-- **Install** (`pyve self install`): Copy script and lib/ to `~/.local/bin`, create symlink, add to PATH, create `~/.local/.env` template. Idempotent.
-- **Uninstall** (`pyve self uninstall`): Remove script, symlink, lib/, PATH entry. Preserve `~/.local/.env` if non-empty. Also removes the project-guide shell completion sentinel block from both `~/.zshrc` and `~/.bashrc` (if previously added by `pyve init --project-guide-completion`).
+- **Install** (`pyve self install`): Copy script and lib/ to `~/.local/bin`, create symlink, add to PATH, create `~/.local/.env` template. Idempotent. Also **provisions Pyve's own toolchain Python** — a hidden venv at `~/.local/share/pyve/toolchain/<version>/venv` that Pyve uses to run its internal Python helpers, so manifest parsing works even on non-Python projects (e.g. a Node-only repo) without depending on a `python` in your environment. The venv tracks Pyve's default Python version; this step is best-effort and never blocks the install (Pyve falls back to a PATH `python` if it can't build the venv). Override the interpreter with `PYVE_PYTHON`.
+- **Uninstall** (`pyve self uninstall`): Remove script, symlink, lib/, PATH entry, **and the hidden toolchain Python tree** (`~/.local/share/pyve/toolchain/`). Preserve `~/.local/.env` if non-empty. Also removes the project-guide shell completion sentinel block from both `~/.zshrc` and `~/.bashrc` (if previously added by `pyve init --project-guide-completion`).
 
 ### FR-8: Backend Auto-Detection
 
@@ -704,6 +704,7 @@ No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergono
 
 | Variable | Purpose |
 |----------|---------|
+| `PYVE_PYTHON` | Absolute path to the Python interpreter Pyve uses to run its **own** helpers (manifest/config parsing). Overrides Pyve's hidden toolchain venv. Use it to pin a specific interpreter in CI or constrained environments. Does **not** affect your project's Python. |
 | `PYVE_DISABLE_DISTUTILS_SHIM` | Set to `1` to disable the Python 3.12+ distutils shim |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Set to `1` to auto-install pytest without prompting (CI) |
 | `PYVE_NO_TESTENV_ADVISORY` | Set to `1` to suppress the `pyve test` silent-skip advisory (the nudge toward `--env root` when the root env also has pytest). For users who keep pytest in the root env deliberately. (Story M.c; renamed `main → root` in M.e v2.7.1) |

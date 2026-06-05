@@ -1469,18 +1469,19 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Rebuild trigger when `DEFAULT_PYTHON_VERSION` changes: the version-keyed path means `ensure` builds the new dir on the next `pyve self install`, then `_self_prune_stale_toolchain_versions` GCs sibling versions. **Also hardened the build bootstrap** (`_pyve_toolchain_bootstrap_python` + new `_pyve_toolchain_versioned_python` in [lib/toolchain_python.sh](../../lib/toolchain_python.sh)) to resolve the **exact** `DEFAULT_PYTHON_VERSION` interpreter via the version manager (`asdf where` / `pyenv prefix`) before the PATH fallback — the version-tracking fidelity N.at.1 deferred here.
 - [x] `pyve self uninstall` removes the Pyve toolchain tree via `_self_uninstall_toolchain_python` (`rm -rf "$(pyve_toolchain_root)"`, safe no-op when absent). The v2-banner state dir under `XDG_STATE_HOME` is a separate tree and is untouched.
 - [x] Homebrew formula adoption — **documented; formula change ships in the tap repo** (`pointmatic/homebrew-tap`, out of this repo's reach). **Required change:** add `depends_on "python@3.12"` (or newer ≥ 3.11 for `tomllib`) to the `pyve` formula, OR a `post_install` that runs the installed `pyve self install` so `_self_install_toolchain_python` provisions the venv. The brew Python only needs to be a viable *bootstrap* interpreter; the toolchain venv itself is still version-keyed to `DEFAULT_PYTHON_VERSION`. (Cross-repo coordination per the project-essential; the tap is a distinct release cadence.)
+  - [x] Hombrew formula was updated to include `depends_on "python@3.12"`
 - [x] Tests: [tests/unit/test_n_at_3_toolchain_lifecycle.bats](../../tests/unit/test_n_at_3_toolchain_lifecycle.bats) — 8 tests: install provisions (build stubbed); install non-fatal on build failure; version bump provisions a new keyed dir; stale-version prune; uninstall removes the tree (+ absent no-op); bootstrap prefers the exact-version interpreter (mocked `asdf where`); bootstrap PATH fallback. All green; full suite **1692/1692**.
 
-### Story N.at.4: Docs + project-essentials + tech-spec for the toolchain interpreter [Planned]
+### Story N.at.4: Docs + project-essentials + tech-spec for the toolchain interpreter [Done]
 
 **Motivation.** Make the "Pyve owns its interpreter" contract discoverable so future contributors don't reintroduce a bare-`python` callsite.
 
 **Tasks**
 
-- [ ] tech-spec.md: document `lib/toolchain_python.sh`, the hidden-venv location/version-keying, and the resolution order.
-- [ ] features.md: a short user-facing note (Pyve provisions its own interpreter; `PYVE_PYTHON` overrides; uninstall removes it).
-- [ ] Add a project-essentials entry: "Pyve's toolchain Python is the hidden venv, not the dev's PATH — route internal helper calls through `pyve_toolchain_python`, never inline `${PYVE_PYTHON:-python}`" (mirrors the `is_asdf_active()` single-gate essential).
-- [ ] CHANGELOG note folded into the Phase N (v3.0.0) bundle entry.
+- [x] tech-spec.md: added a `### lib/toolchain_python.sh` section (function table, hidden-venv location/version-keying, resolution order, the three consuming callsites) + a `BOUNDARY` callout under `lib/env_detect.sh` for `assert_python_resolvable`.
+- [x] features.md: added the `PYVE_PYTHON` env-var row + extended FR-7 (`self install`/`uninstall`) — install provisions the hidden toolchain venv (best-effort, version-tracked); uninstall removes the tree.
+- [x] Added the project-essentials entry "Pyve's toolchain Python is the hidden venv — route internal helper calls through `pyve_toolchain_python`" (with the `assert_python_resolvable` project-python exception), mirroring the `is_asdf_active()` single-gate format.
+- [x] CHANGELOG — **deferred to the N-9 v3.0.0 release assembly** (consistent with the phase: no Phase-N story has touched CHANGELOG.md; the top entry is still `[2.8.0]`/Phase M). **Entry text for N-9:** *"Pyve now provisions its own toolchain Python — a hidden, version-keyed venv (`~/.local/share/pyve/toolchain/<ver>/venv`) used to run Pyve's internal helpers, so manifest parsing no longer depends on a `python` in the developer's environment (fixes Node-only mis-enumeration). Provisioned by `pyve self install`, removed by `pyve self uninstall`; override with `PYVE_PYTHON`."*
 
 ### Story N.au: F1 — Lift project-guide orchestration to a stack-agnostic `lib/project_guide.sh` [Planned]
 

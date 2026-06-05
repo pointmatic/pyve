@@ -489,6 +489,29 @@ Version manager detection, Python version management, and direnv checks.
 | `get_version_file_name` | `()` → string | Returns `.tool-versions` or `.python-version` |
 | `check_direnv_installed` | `()` → 0/1 | Check if direnv is in PATH |
 
+> **Boundary (Story N.at.2):** `assert_python_resolvable` in this file guards the **project** python (the developer's interpreter for `pyve run python`, version-manager activation, the project venv). It deliberately stays on `${PYVE_PYTHON:-python}` and is **not** routed through `pyve_toolchain_python` — see `lib/toolchain_python.sh` below for the distinction.
+
+---
+
+### `lib/toolchain_python.sh` — Pyve-owned Toolchain Python (Story N.at.1–N.at.3)
+
+Resolves and provisions **Pyve's own** Python interpreter — the one that runs Pyve's Python helpers (`lib/pyve_toml_helper.py`, the testenvs helper), independent of the developer's environment. Introduced because every internal callsite previously borrowed the developer's PATH `python` (`${PYVE_PYTHON:-python}`), which fails on a clean non-Python stack (a version-manager shim with no pinned version) and silently degrades manifest parsing — surfaced by the N.at composed-init spike.
+
+**Hidden venv:** `${XDG_DATA_HOME:-$HOME/.local/share}/pyve/toolchain/<DEFAULT_PYTHON_VERSION>/venv` — XDG *data* (durable), **version-keyed** so a `DEFAULT_PYTHON_VERSION` bump lands a fresh tree (the old one is GC-able and pruned on the next `self install`). Provisioned by `pyve self install`, removed by `pyve self uninstall` (see `lib/commands/self.sh`).
+
+**Resolution order:** `PYVE_PYTHON` (explicit override) → the hidden toolchain venv (when provisioned) → bare `python` (legacy fallback).
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pyve_toolchain_root` | `()` → path | `${XDG_DATA_HOME:-$HOME/.local/share}/pyve/toolchain` |
+| `pyve_toolchain_venv_dir` | `()` → path | Version-keyed venv dir for the current `DEFAULT_PYTHON_VERSION` |
+| `pyve_toolchain_python` | `()` → path | Resolve the interpreter (the three-step order above); always prints something |
+| `pyve_toolchain_python_ensure` | `()` → 0/1 | Idempotent build/refresh of the hidden venv; 0 when present, non-zero + stderr on build failure |
+| `_pyve_toolchain_build` | `(venv_dir)` → 0/1 | Build seam (stubbable in tests) — resolves a bootstrap interpreter, `python -m venv` |
+| `_pyve_toolchain_bootstrap_python` | `(version)` → path | Prefers the version manager's **exact-version** interpreter (`asdf where` / `pyenv prefix`), else a PATH `python3`/`python` |
+
+The three internal callsites that consume the resolver: `manifest_load` (`lib/manifest.sh`), `read_env_config` (`lib/envs.sh`), `_env_resolve_extra_packages` (`lib/commands/env.sh`). Each uses `py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"` so it stays self-sufficient when the module isn't sourced (piecemeal test subshells) while honoring the override.
+
 ---
 
 ### `lib/backend_detect.sh` — Backend Detection
