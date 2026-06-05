@@ -163,7 +163,7 @@ EOF
     #     the legacy paths during detection/backup; its surface refers
     #     to .pyve/testenvs/ by name.
     #   - lib/utils.sh: the gitignore template line keeping `.pyve/testenvs`
-    #     ignored during the v3.0 transition window (removed in N-8 with
+    #     ignored during the v3.0 transition window (removed in N-10 with
     #     the rest of the read-compat layer).
     #
     # Everything else (lib/commands/*.sh other than self.sh, pyve.sh)

@@ -12,7 +12,7 @@
 # has migrated. The synthesis path emits a one-shot
 # deprecation warning per shell.
 #
-# The read-compat path is marked `# v3.0-only: remove in N-8`
+# The read-compat path is marked `# v3.0-only: remove in N-10`
 # in lib/manifest.sh so the eventual sweep is mechanical.
 
 bats_require_minimum_version 1.5.0
@@ -235,10 +235,10 @@ EOF
     [[ "$stderr" != *"legacy"* ]]
 }
 
-# ----- sentinel + N-8 cleanup marker ----------------------------
+# ----- sentinel + N-10 cleanup marker ----------------------------
 
-@test "read-compat code path: marked with 'v3.0-only: remove in N-8'" {
-    # Mechanical sweep marker so the N-8 cleanup removes everything
+@test "read-compat code path: marked with 'v3.0-only: remove in N-10'" {
+    # Mechanical sweep marker so the N-10 cleanup removes everything
     # tagged with this comment without hunting through the file.
-    grep -qE 'v3\.0-only: remove in N-8' "$PYVE_ROOT/lib/manifest.sh"
+    grep -qE 'v3\.0-only: remove in N-10' "$PYVE_ROOT/lib/manifest.sh"
 }

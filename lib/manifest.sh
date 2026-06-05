@@ -45,7 +45,7 @@ _PYVE_MANIFEST_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_toml_h
 # array state. Validation errors propagate via non-zero exit + stderr.
 #
 # Fallback paths (when the manifest file is absent):
-#   v3.0-only: remove in N-8
+#   v3.0-only: remove in N-10
 #     - If legacy v2 sources are present (`.pyve/config` and/or
 #       `[tool.pyve.testenvs.*]`), synthesize the v3 array shape from
 #       them so the rest of pyve sees a uniform model and v2-configured
@@ -54,13 +54,13 @@ _PYVE_MANIFEST_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_toml_h
 #       (memoized via the same sentinel scheme as the N.h banner).
 #   - If no legacy sources either → empty config (zero envs).
 #
-# The synthesis layer is bounded; Subphase N-8 removes everything tagged
-# `v3.0-only: remove in N-8` together with the rest of the v2
+# The synthesis layer is bounded; Subphase N-10 removes everything tagged
+# `v3.0-only: remove in N-10` together with the rest of the v2
 # deprecation surface.
 manifest_load() {
     local manifest="${1:-pyve.toml}"
     if [[ ! -f "$manifest" ]]; then
-        # v3.0-only: remove in N-8
+        # v3.0-only: remove in N-10
         if _manifest_has_legacy_sources; then
             _manifest_synthesize_from_legacy
             return 0
@@ -97,7 +97,7 @@ _manifest_reset_state() {
     PYVE_ENV_LANGUAGES_Q=()
 }
 
-# v3.0-only: remove in N-8
+# v3.0-only: remove in N-10
 #
 # Detect whether any v2 *config* source exists. Bare `.pyve/testenvs/`
 # on disk is state, not configuration, and does not by itself trigger
@@ -112,7 +112,7 @@ _manifest_has_legacy_sources() {
     return 1
 }
 
-# v3.0-only: remove in N-8
+# v3.0-only: remove in N-10
 #
 # Build the v3 array state from `.pyve/config` (YAML, for [env.root])
 # and `[tool.pyve.testenvs.*]` (TOML, for each declared test env).
@@ -213,7 +213,7 @@ _manifest_synthesize_from_legacy() {
     _manifest_deprecation_warn_legacy
 }
 
-# v3.0-only: remove in N-8
+# v3.0-only: remove in N-10
 #
 # Emit a one-shot deprecation warning per (session, cwd) when pyve
 # reads from legacy v2 sources. Memoization mirrors N.h's banner —

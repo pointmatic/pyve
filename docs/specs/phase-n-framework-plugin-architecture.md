@@ -107,9 +107,11 @@ Deployability is **architecturally in-scope** for v3.0 (Q4), but the **deploy pl
 - **In scope:** `pyve deploy` *materializes a reproducible, shippable artifact* — e.g. building a pinned `docker`/`podman` image, producing a lock/bundle — modeled as a **lifecycle hook**, not a new purpose (`run` remains the deployable/runtime surface).
 - **Out of scope:** pushing to or orchestrating cloud infrastructure (registries, clusters, secrets backends). Pyve produces the artifact; it does not manage where it runs.
 
+**Refinement (post-N-3 env-spec design — see [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md) §S15).** The materialized artifact's kind is a first-class **`packaging`** attribute on `[env.<name>]` (`container` / `static` / `server` / `serverless` / `package` / `binary` / `mobile_app` / `lock_bundle` / `none`), distinct from the build-time platform (`build_target`) and the ship destination (`deploy_target`, out of scope). Because the verb *materializes* the packaging rather than shipping it, the command is likely renamed **`pyve package`** (reserving `deploy` for an eventual ship step) — to be ratified when N-5 is planned.
+
 ## 8. `project-guide` integration
 
-`project-guide` is **not required** (Q3) — `pyve init` is fully standalone. When used, `project-guide` offers a **Q&A wizard with a new step** that determines the project's stack and which environments to build, then scaffolds a Pyve-managed repo (writing `pyve.toml` and the per-env surfaces). See <https://pointmatic.github.io/project-guide/> and [`docs/specs/project-guide/`](../project-guide/). The **env-dependencies document** (`env-dependencies-repo_<name>.md`, authored by an LLM via [`env-dependencies-prompt.md`](env-dependencies-prompt.md)) is the **planning/migration artifact** used to bring an existing repo under Pyve management — front-loaded into `project-guide` so greenfield planning initializes the manifest. It is an input to authoring `pyve.toml`, not a maintained runtime source.
+`project-guide` is **not required** (Q3) — `pyve init` is fully standalone. When used, `project-guide` offers a **Q&A wizard with a new step** that determines the project's stack and which environments to build, then scaffolds a Pyve-managed repo (writing `pyve.toml` and the per-env surfaces). See <https://pointmatic.github.io/project-guide/> and [`docs/specs/project-guide/`](../project-guide/). The **env-dependencies document** (`env-dependencies-repo_<name>.md`, authored by an LLM via [`env-dependencies-prompt.md`](project-guide-requests/env-dependencies-prompt.md)) is the **planning/migration artifact** used to bring an existing repo under Pyve management — front-loaded into `project-guide` so greenfield planning initializes the manifest. It is an input to authoring `pyve.toml`, not a maintained runtime source.
 
 ## 9. Gap analysis (Post-M → v3.0 target)
 
@@ -167,6 +169,6 @@ macOS + Linux only · pure-Bash core, no runtime deps, no daemons · **Bash-only
 - [`concept.md`](concept.md) — the charter Phase N evolves.
 - [`features.md`](features.md) / [`tech-spec.md`](tech-spec.md) — current capability + implementation discipline plugins must respect.
 - [`stories.md`](stories.md) — Phase M (baseline) and the Future "generalize testenv → named environments" story absorbed here.
-- [`env-dependencies-template.md`](env-dependencies-template.md) / [`env-dependencies-prompt.md`](env-dependencies-prompt.md) — the declarative env-dependencies model and the migration-authoring prompt.
+- [`env-dependencies-template.md`](project-guide-requests/env-dependencies-template.md) / [`env-dependencies-prompt.md`](project-guide-requests/env-dependencies-prompt.md) — the declarative env-dependencies model and the migration-authoring prompt.
 - [`brand-descriptions.md`](brand-descriptions.md) — positioning/taglines (partly Python-only, flagged for a future pass).
 - learningfoundry's [SvelteKit template](../../src/learningfoundry/sveltekit_template/) — worked-example codebase for the second reference plugin.

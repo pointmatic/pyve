@@ -234,7 +234,7 @@ Phase N ships three coordinated surfaces for the v2 → v3 transition. Don't add
 
 1. **Deterministic migrator** — `pyve self migrate` ([`lib/commands/self.sh`](../../lib/commands/self.sh)). Writes `pyve.toml` from legacy sources, moves them into `.pyve/.v2-legacy/` for one release cycle, invokes `pyve init --force` to rebuild envs at the v3 state layout. Idempotent; `--dry-run` / `--no-rebuild` flags expose intermediate states.
 2. **v3.0 soft banner** — pre-dispatch hook in [`pyve.sh`](../../pyve.sh)'s `main()` (`_pyve_maybe_show_v2_banner`). One-shot per `(PPID, cwd)` via a sentinel under `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/`. Skips `--help` / `--version` / `--config` / `self` namespace. Suppressible via `PYVE_QUIET=1`.
-3. **v3.1 hard interactive gate (Subphase N-8)** — replaces the soft banner with an interactive prompt that invokes `self_migrate()` on accept. Ships in `v3.1.0`. Removes the read-compat layer at the same time.
+3. **v3.1 hard interactive gate (Subphase N-10)** — replaces the soft banner with an interactive prompt that invokes `self_migrate()` on accept. Ships in `v3.1.0`. Removes the read-compat layer at the same time.
 
 The v3.0 read-compat in [`lib/manifest.sh`](../../lib/manifest.sh) (`_manifest_synthesize_from_legacy`) is what lets users actually defer the migration during the v3.0 window — without it, the banner would only nag without the underlying command working.
 
@@ -242,13 +242,13 @@ The v3.0 read-compat in [`lib/manifest.sh`](../../lib/manifest.sh) (`_manifest_s
 
 **How to apply:** if a future change wants to surface a migration-related message, route it through the existing banner, not a new print site. If it's an error condition (`pyve self migrate` failed; user state is inconsistent), keep the error in the command that detected it — don't escalate to the banner. The `.pyve/.v2-legacy/` directory is the single deterministic backup location; no other rollback path is supported.
 
-### `v3.0-only: remove in N-8` marker is the contract for the read-compat sweep
+### `v3.0-only: remove in N-10` marker is the contract for the read-compat sweep
 
-Every code path in [`lib/manifest.sh`](../../lib/manifest.sh) that exists solely to support v2-configured projects during the v3.0 window carries the literal comment `v3.0-only: remove in N-8`. The N-8 cleanup is mechanical: grep the marker, delete the matching helpers (and their callsites + tests), confirm `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally. A bats test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker is grep-visible so accidental removal during unrelated refactors gets caught.
+Every code path in [`lib/manifest.sh`](../../lib/manifest.sh) that exists solely to support v2-configured projects during the v3.0 window carries the literal comment `v3.0-only: remove in N-10`. The N-10 cleanup is mechanical: grep the marker, delete the matching helpers (and their callsites + tests), confirm `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally. A bats test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker is grep-visible so accidental removal during unrelated refactors gets caught.
 
-**Why:** the read-compat surface intentionally synthesizes a v3 shape from v2 sources (`.pyve/config` + `[tool.pyve.testenvs.*]`). Without the marker, an LLM or human refactoring `manifest.sh` for unrelated reasons (style, perf, accessor cleanup) can't tell which branches are load-bearing vs deprecation-window scaffolding. Tagging the boundary makes the N-8 sweep a 5-minute job; untagging would turn it into a full re-audit.
+**Why:** the read-compat surface intentionally synthesizes a v3 shape from v2 sources (`.pyve/config` + `[tool.pyve.testenvs.*]`). Without the marker, an LLM or human refactoring `manifest.sh` for unrelated reasons (style, perf, accessor cleanup) can't tell which branches are load-bearing vs deprecation-window scaffolding. Tagging the boundary makes the N-10 sweep a 5-minute job; untagging would turn it into a full re-audit.
 
-**How to apply:** when adding any new code path that exists only to bridge v2 → v3 (a fallback parser, a defensive normalization, a deprecation warning), open the change with `# v3.0-only: remove in N-8` on the function or block. If you find yourself wanting to make a v3.0-only path "permanent" (e.g., during a perf tune), that's a sign the v3 manifest schema is missing something — fix the schema, don't promote the read-compat.
+**How to apply:** when adding any new code path that exists only to bridge v2 → v3 (a fallback parser, a defensive normalization, a deprecation warning), open the change with `# v3.0-only: remove in N-10` on the function or block. If you find yourself wanting to make a v3.0-only path "permanent" (e.g., during a perf tune), that's a sign the v3 manifest schema is missing something — fix the schema, don't promote the read-compat.
 
 ### v3 state directory is `.pyve/envs/<name>/<backend>/`; route through helpers
 

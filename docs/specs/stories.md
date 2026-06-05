@@ -30,14 +30,14 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ## Phase N: Pyve 3.0 — Plugin Architecture & Named Envs
 
-**Theme.** Generalize Pyve from a Python-only virtual-environment manager into a declarative, polyglot project-environment orchestrator. Introduce the canonical root-level `pyve.toml` manifest with `[env.<name>]` blocks carrying `purpose ∈ {run, test, utility, temp}`; re-seat the Python ecosystem as the first reference plugin behind a backend-provider contract; ship Node/SvelteKit as the second reference plugin; compose `.envrc`, `pyve check`, `pyve status`, and `pyve purge` across plugins and envs; introduce `pyve deploy` as an artifact-materialization hook. Driving artifact: [phase-n-plugin-architecture-named-envs-plan.md](phase-n-plugin-architecture-named-envs-plan.md). Concept input: [phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md).
+**Theme.** Generalize Pyve from a Python-only virtual-environment manager into a declarative, polyglot project-environment orchestrator. Introduce the canonical root-level `pyve.toml` manifest with `[env.<name>]` blocks carrying `purpose ∈ {run, test, utility, temp}`; re-seat the Python ecosystem as the first reference plugin behind a backend-provider contract; ship Node/SvelteKit as the second reference plugin; compose `.envrc`, `pyve check`, `pyve status`, and `pyve purge` across plugins and envs; introduce `pyve package` as an artifact-materialization hook (materializes an env's `packaging`; `deploy` reserved for a future ship step, per O1). Driving artifact: [phase-n-plugin-architecture-named-envs-plan.md](phase-n-plugin-architecture-named-envs-plan.md). Concept input: [phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md).
 
-**Structure — read before drafting any Phase N story.** Phase N is split into **8 subphases** because of its size. Stories are authored **one subphase at a time** — each subphase's stories get drafted in its own `plan_production_phase` session immediately before that subphase's implementation begins. This planning session drafted only **Subphase N-1**; N-2 through N-8 carry descriptions only. Subphase IDs are arabic-numeral-hyphenated (`N-1`, `N-2`, …) and are **structural markers in this file, not part of the story-ID scheme**. Story letters (`N.a`, `N.b`, …) continue monotonically **across subphases** — if N-1 ends at `N.j`, N-2 starts at `N.k`. Subphase headings in this file use `##` (same level as the phase heading) per the project convention.
+**Structure — read before drafting any Phase N story.** Phase N is split into **10 subphases** because of its size. Stories are authored **one subphase at a time** — each subphase's stories get drafted in its own `plan_production_phase` session immediately before that subphase's implementation begins. This planning session drafted only **Subphase N-1**; N-2 through N-10 carry descriptions only. Subphase IDs are arabic-numeral-hyphenated (`N-1`, `N-2`, …) and are **structural markers in this file, not part of the story-ID scheme**. Story letters (`N.a`, `N.b`, …) continue monotonically **across subphases** — if N-1 ends at `N.j`, N-2 starts at `N.k`. Subphase headings in this file use `##` (same level as the phase heading) per the project convention.
 
 **Two release tags (exception to Version Cadence).** Phase N ships **two** releases — the only post-1.0 phase to do so:
 
-- **v3.0.0** at the end of Subphase N-7 (after the architectural cutover).
-- **v3.1.0** at the end of Subphase N-8 (UX visual refinement + hard migration gate).
+- **v3.0.0** at the end of Subphase N-9 (after the architectural cutover).
+- **v3.1.0** at the end of Subphase N-10 (UX visual refinement + hard migration gate).
 
 Within each subphase, stories run unversioned during work; the subphase contributes to its assigned release bundle. **No intermediate release tags between subphases within a bundle.**
 
@@ -45,7 +45,7 @@ Within each subphase, stories run unversioned during work; the subphase contribu
 
 ## Subphase N-1: Declarative `pyve.toml` manifest with `envs`/`purpose:` vocabulary
 
-Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `[env.<name>]` blocks; rename `testenvs → envs` with `purpose` attribute; ship the deterministic `pyve self migrate` command; add the v3.0 soft migration banner; preserve v3.0-only read-compat for legacy `[tool.pyve.testenvs.*]` and `.pyve/config`. This subphase is the foundation everything else builds on. Full detail per story below; bundles into **v3.0.0** with N-2 through N-7.
+Introduce root-level `pyve.toml` as the canonical, stack-neutral manifest with `[env.<name>]` blocks; rename `testenvs → envs` with `purpose` attribute; ship the deterministic `pyve self migrate` command; add the v3.0 soft migration banner; preserve v3.0-only read-compat for legacy `[tool.pyve.testenvs.*]` and `.pyve/config`. This subphase is the foundation everything else builds on. Full detail per story below; bundles into **v3.0.0** with N-2 through N-9.
 
 ### Story N.a: `pyve.toml` schema + Python TOML helper [Done]
 
@@ -189,7 +189,7 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 ### Story N.g: `pyve self migrate` — v2 → v3 migration command [Done]
 
-**Motivation.** The load-bearing migration story. Deterministic, idempotent command that brings any v2.7/v2.8 project to v3 in one invocation: writes `pyve.toml` from legacy artifacts, backs them up, runs `pyve init --force` to rebuild envs at the new state layout. This is the path the soft banner (N.h) and (eventually) the v3.1 hard gate (N-8) point users to.
+**Motivation.** The load-bearing migration story. Deterministic, idempotent command that brings any v2.7/v2.8 project to v3 in one invocation: writes `pyve.toml` from legacy artifacts, backs them up, runs `pyve init --force` to rebuild envs at the new state layout. This is the path the soft banner (N.h) and (eventually) the v3.1 hard gate (N-10) point users to.
 
 **Tasks**
 
@@ -206,28 +206,28 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 ### Story N.h: Soft migration banner on `pyve <cmd>` in v2-configured projects [Done]
 
-**Motivation.** Every `pyve <cmd>` invocation in a v2-configured project should nudge the user toward migration without forcing it. Soft in v3.0; the hard gate replaces this in N-8.
+**Motivation.** Every `pyve <cmd>` invocation in a v2-configured project should nudge the user toward migration without forcing it. Soft in v3.0; the hard gate replaces this in N-10.
 
 **Tasks**
 
 - [x] Pre-dispatch hook in [pyve.sh](../../pyve.sh)'s `main()` (before the case dispatcher). Calls `_self_migrate_detect_v2_sources` from Story N.g — already sourced via `lib/commands/self.sh` in pyve.sh's library-loading block, so no new sourcing wiring was needed. The hook is gated by a small in-`main()` case statement that skips informational verbs (`--help` / `--version` / `--config`) and the entire `self` namespace (self-install / self-uninstall / self-migrate don't act on the project; showing the banner while running `self migrate` would be off-key).
 - [x] One-shot soft banner emitted via `warn()` (stderr): *"Pyve v3 detected v2 configuration. Run 'pyve self migrate' to upgrade — legacy support ends at v3.1."* — exact wording matches the spec.
-- [x] Suppress under `PYVE_QUIET=1`. **Scope note:** the spec also referenced a `--quiet` flag and an "existing primitive in lib/ui/core.sh"; neither exists in the current codebase (the search surface is empty). Landed `PYVE_QUIET=1` only; the broader quiet primitive remains a Future-story candidate. The N-8 hard gate has its own surface and doesn't depend on this.
+- [x] Suppress under `PYVE_QUIET=1`. **Scope note:** the spec also referenced a `--quiet` flag and an "existing primitive in lib/ui/core.sh"; neither exists in the current codebase (the search surface is empty). Landed `PYVE_QUIET=1` only; the broader quiet primitive remains a Future-story candidate. The N-10 hard gate has its own surface and doesn't depend on this.
 - [x] Per-session memoization via a sentinel under `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/migrate-banner-<session>-<cksum-of-cwd>`. Session key = `$PPID` by default (the user's shell PID, stable across pyve invocations in one interactive session) with an explicit `PYVE_V2_BANNER_SESSION` override seam for test harnesses where `bats run` forks a fresh subshell per invocation and so $PPID is unstable across `run` calls. cksum (POSIX) hashes the cwd to keep filenames short and bash-3.2-safe.
 - [x] After the banner, control passes to the existing dispatcher; the command continues to execute. Pre-N.i (read-compat) commands still work because the v2 readers (`.pyve/config`, `[tool.pyve.testenvs.*]`) are still in place; N.i replaces them with synthesis from `pyve.toml`.
 - [x] Bats tests: 15 cases in [tests/unit/test_n_h_v2_banner.bats](../../tests/unit/test_n_h_v2_banner.bats) covering — fires on each of the three v2-source classes (.pyve/config; pyproject `[tool.pyve.testenvs.*]`; `.pyve/testenvs/` on disk); does NOT fire on v3 (pyve.toml present), bare directory, `PYVE_QUIET=1`, informational verbs, `self install` / `self migrate`; once-per-session memoization (second call in same shell is silent); sentinel lands under `XDG_STATE_HOME/pyve/`; sentinel key differs by cwd so two distinct projects in the same shell both fire. Full unit suite: 1208 ok / 0 fail.
 
 ### Story N.i: Read-compat layer — v3.0 reads legacy sources [Done]
 
-**Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Subphase N-8 removes the layer.
+**Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Subphase N-10 removes the layer.
 
 **Tasks**
 
 - [x] In [lib/manifest.sh](../../lib/manifest.sh): when `pyve.toml` is absent but legacy sources exist, synthesize the v3 array shape directly (no intermediate TOML text). Three new helpers: `_manifest_has_legacy_sources` (detection), `_manifest_synthesize_from_legacy` (population), `_manifest_deprecation_warn_legacy` (one-shot warn). The existing `manifest_load` empty-state setup was extracted into `_manifest_reset_state` so the "no sources at all" and "synthesis" paths both start from the same clean baseline. Synthesis mapping mirrors N.g's `pyve self migrate` render — `[env.root]` (`purpose = "utility"`, `backend` from `.pyve/config`) plus one `[env.<name>]` per declared testenv (`purpose = "test"` + per-env attrs); the env named `testenv` (or first declared) carries `default = "1"`.
 - [x] Each legacy-source read emits a one-shot `warning: pyve is reading legacy v2 sources …` line on stderr. Memoization mirrors N.h's banner — `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/legacy-read-warn-<session>-<cksum-of-cwd>`, with session key `${PYVE_V2_BANNER_SESSION:-$PPID}` so the same test override seam works for both surfaces.
-- [x] Bats tests: 15 cases in [tests/unit/test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) covering — synthesis from .pyve/config alone, from `[tool.pyve.testenvs.*]` alone, from both; purpose='test' for testenvs; default='1' on the `testenv`-named env; backend/lazy/extra/manifest preserved; v3 (pyve.toml present) takes priority over legacy; empty config on bare directory; bare `.pyve/testenvs/` on disk does NOT trigger synthesis (state, not config); deprecation warn fires once per shell; silent on second call; silent under v3; the N-8 removal marker is grep-visible. Full unit suite: 1223 ok / 0 fail.
-- [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Subphase N-8)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-8.
-- [x] The legacy-read code path is clearly marked with the literal comment `v3.0-only: remove in N-8` at every helper boundary and at the conditional inside `manifest_load`. A dedicated bats test asserts the marker is grep-visible from `lib/manifest.sh` so accidental removal during refactors gets caught.
+- [x] Bats tests: 15 cases in [tests/unit/test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) covering — synthesis from .pyve/config alone, from `[tool.pyve.testenvs.*]` alone, from both; purpose='test' for testenvs; default='1' on the `testenv`-named env; backend/lazy/extra/manifest preserved; v3 (pyve.toml present) takes priority over legacy; empty config on bare directory; bare `.pyve/testenvs/` on disk does NOT trigger synthesis (state, not config); deprecation warn fires once per shell; silent on second call; silent under v3; the N-10 removal marker is grep-visible. Full unit suite: 1223 ok / 0 fail.
+- [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Subphase N-10)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-10.
+- [x] The legacy-read code path is clearly marked with the literal comment `v3.0-only: remove in N-10` at every helper boundary and at the conditional inside `manifest_load`. A dedicated bats test asserts the marker is grep-visible from `lib/manifest.sh` so accidental removal during refactors gets caught.
 
 ### Story N.j: Append project-essentials entries for N-1 [Done]
 
@@ -239,7 +239,7 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - [x] **`purpose:` vocabulary (run/test/utility/temp) + default-purpose rules** — new entry. Rule: always call `manifest_resolve_purpose`; never inline `[[ "$name" == "testenv" ]]` checks; closed set defined in `lib/pyve_toml_helper.py`'s `VALID_PURPOSES`.
 - [x] **Category A delegation for `pyve testenv *` (the documented exception to the Category B policy)** — appended as a "Documented exception" paragraph to the existing "Deprecation removal policy — Category A vs Category B" entry rather than duplicating the whole thing. Captures the exception's bounds (high-traffic surface; hard-error replacement in v4.0) and explicitly warns against generalizing the exception.
 - [x] **v2→v3 migration model: three coordinated surfaces** — new entry covering `pyve self migrate` (deterministic) + v3.0 soft banner + v3.1 hard gate, plus `.pyve/.v2-legacy/` as the single backup location (folds task 7 in). Rule: don't add a fourth ad-hoc nudge; route through the existing banner if a future change wants to surface a migration message.
-- [x] **Read-compat window policy (v3.0 only; removed in N-8)** — new entry. Rule: every v3.0-only code path MUST carry the literal `v3.0-only: remove in N-8` comment so N-8's sweep is mechanical; a bats test enforces the marker is grep-visible.
+- [x] **Read-compat window policy (v3.0 only; removed in N-10)** — new entry. Rule: every v3.0-only code path MUST carry the literal `v3.0-only: remove in N-10` comment so N-10's sweep is mechanical; a bats test enforces the marker is grep-visible.
 - [x] **Final state-directory path decision from Story N.f** — new entry covering `.pyve/envs/<name>/<backend>/` + helper routing (`state_path` / `resolve_env_path` / `migrate_legacy_env_layout`). Rule: never hard-code `.pyve/envs/...` literals in command code; the [tests/unit/test_n_f_state_layout.bats](../../tests/unit/test_n_f_state_layout.bats) sweep test catches regressions; migrator surfaces (`lib/envs.sh`, `lib/commands/self.sh`) are exempted by location.
 - [x] **`.pyve/.v2-legacy/` backup location** — folded into the migration-model entry above; not a standalone entry. The location IS the single source of truth for v2→v3 rollback and is named in the migration entry's "How to apply" guidance.
 - [x] **Skip entirely if N-1 surfaced no new invariants beyond what's already captured** — assessed and rejected; N-1 introduced six distinct invariants worth capturing (the five new entries above plus the Category A exception). Tech-spec.md captures the architecture (the *what*); project-essentials.md now captures the constraints a future contributor would otherwise re-derive (the *what you must not do or undo*).
@@ -266,7 +266,7 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - **General `.pyve/envs/*` heuristic audit across the codebase.** [lib/commands/run.sh](../../lib/commands/run.sh) was the obvious smoking gun (CI told us). Other pyve sites may carry the same pre-N.f assumption — `pyve check`, `pyve status`, `pyve purge`'s inventory composition. A grep for `.pyve/envs/\*` outside of `lib/envs.sh` (the layout owner) and the migrator surfaces (`lib/commands/self.sh`) is a clean follow-up sweep; deferred to N-4 ("composed activation, diagnostics, and purge"), which already owns the equivalent diagnostic surfaces.
 - **Removing `.pyve/config` reads.** N.i's read-compat layer is in place but the legacy `read_config_value` call surfaces have not yet been migrated to `manifest_get_env`/`manifest_resolve_purpose`. Reading from `.pyve/config` here is the consistent v3.0 idiom for now — the migration to `pyve.toml`-first reads is N-1's outstanding cleanup, not a fix-side concern.
 
-**Placement note.** Authored as **N.j.1** per developer direction during the debug cycle, slotted after N.j (the final docs-landing story of Subphase N-1). Topically the regression was introduced by Story N.f's state-directory relocation, so the fix belongs to N-1's bundle. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored as **N.j.1** per developer direction during the debug cycle, slotted after N.j (the final docs-landing story of Subphase N-1). Topically the regression was introduced by Story N.f's state-directory relocation, so the fix belongs to N-1's bundle. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.j.2: CI hardening — stale layout assertions + PATH leak [Done]
 
@@ -294,7 +294,7 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 - **Broader integration-test layout audit.** Other integration tests under [tests/integration/](../../tests/integration/) may carry the same pre-N.f path assumptions (`.pyve/testenvs/...`, single-tenant `.pyve/envs/` assumptions). Only `test_purge_with_keep_testenv` failed on CI today, so I fixed only that test — but a clean `rg "\.pyve/testenvs"` sweep of `tests/integration/` is a natural follow-up. Deferred rather than done because (a) the existing CI cycle is the canonical signal for which tests are stale, and (b) speculatively rewriting tests that currently pass risks introducing new bugs. Captured for the broader "Fix pre-existing integration test failures" Future story already referenced from N.g.
 - **Other unit tests with PATH-leak fragility.** The `PYVE_PYTHON`-override pattern from this fix could pre-empt similar future failures across `test_env_detect.bats`. Skipped: only one test exhibited the leak today, the others either don't run python or plant their own shim. Pre-emptive rewriting is churn against speculative failure.
 
-**Placement note.** Authored as **N.j.2** per developer direction during the debug cycle, slotted after N.j.1 (the run-backend-detection fix). Both N.j.1 and N.j.2 are CI-hardening debt that surfaced from N-1's architectural moves (N.f and N.d.1 respectively); they are kept as separate stories rather than bundled because they have distinct root causes and distinct fixes — splitting honors the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored as **N.j.2** per developer direction during the debug cycle, slotted after N.j.1 (the run-backend-detection fix). Both N.j.1 and N.j.2 are CI-hardening debt that surfaced from N-1's architectural moves (N.f and N.d.1 respectively); they are kept as separate stories rather than bundled because they have distinct root causes and distinct fixes — splitting honors the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.j.3: CI hardening — stale `.pyve/testenvs/` path assertions sweep [Done]
 
@@ -320,10 +320,10 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 **Out of scope (flagged, kept out)**
 
 - **`.gitignore` content assertions referencing `.pyve/testenvs`** — [test_micromamba_workflow.py:223](../../tests/integration/test_micromamba_workflow.py#L223), [test_venv_workflow.py:182,238,255](../../tests/integration/test_venv_workflow.py). These assert the **string** `.pyve/testenvs` appears in `.gitignore` content; the [lib/utils.sh:859](../../lib/utils.sh#L859) writer still emits it defensively for the v3 transition window, so the tests pass and the assertions are still load-bearing. Removing them would silently regress the transition-window guarantee. Left in place.
-- **Removing the defensive `.pyve/testenvs` line from `.gitignore`** — natural N-8 cleanup task once the v3.0-only transition window closes and the soft banner becomes a hard gate; not in scope for N-1 polish. Flagged for the N-8 sweep checklist that already lives in [tech-spec.md](tech-spec.md)'s "v3.0-only read-compat layer" subsection.
+- **Removing the defensive `.pyve/testenvs` line from `.gitignore`** — natural N-10 cleanup task once the v3.0-only transition window closes and the soft banner becomes a hard gate; not in scope for N-1 polish. Flagged for the N-10 sweep checklist that already lives in [tech-spec.md](tech-spec.md)'s "v3.0-only read-compat layer" subsection.
 - **Pre-existing v2.7-era `.pyve/testenv` (singular) references** — `rg "\.pyve/testenv[^s]"` of `tests/integration/` is clean; this batch was the last of the v2.8 plural-but-pre-N.f references. No further sweep needed.
 
-**Placement note.** Authored as **N.j.3** per developer direction during the debug cycle, slotted after N.j.2 (the first CI hardening batch). Together N.j.1 / N.j.2 / N.j.3 close out the CI debt that surfaced from N-1's architectural moves: N.f's state-directory relocation (N.j.1 fixed `run.sh`, N.j.2/N.j.3 fixed integration test paths) and N.d.1's pre-flight check (N.j.2 fixed the PATH-leak fragility). The three are kept as separate stories — distinct root causes, distinct surfaces, distinct fixes — per the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored as **N.j.3** per developer direction during the debug cycle, slotted after N.j.2 (the first CI hardening batch). Together N.j.1 / N.j.2 / N.j.3 close out the CI debt that surfaced from N-1's architectural moves: N.f's state-directory relocation (N.j.1 fixed `run.sh`, N.j.2/N.j.3 fixed integration test paths) and N.d.1's pre-flight check (N.j.2 fixed the PATH-leak fragility). The three are kept as separate stories — distinct root causes, distinct surfaces, distinct fixes — per the "one coherent unit of work → one story" rule. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ---
 
@@ -397,7 +397,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Cache-backed and check-only backends.** v3.0 ships only `virtualized`. The dispatcher accepts the other two categories and resolves their default hooks if defined, but no in-tree plugin provides them. First cache-backed backend lands post-v3.0 (Rust or Go); first check-only when mobile / Docker / Homebrew plugins arrive.
 - **Moving `bp_register python venv virtualized` out of `pyve.sh`.** Currently lives in the library-load block. Story N.n moves it into [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)'s `register_backends` hook, alongside the rest of the Python plugin's setup. Until then the pyve.sh location is the correct transition state.
 
-**Placement note.** Authored in document order as N.l, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.l, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.m: PC-1 — plugin input safety validator [Done]
 
@@ -419,7 +419,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Validating the EXISTING `.envrc` template.** Today's [write_envrc_template](../../lib/utils.sh) in lib/utils.sh emits content that the strict allow-list would reject (e.g., `export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1` has an unquoted value; the conditional `if [[ -f ".env" ]]; then dotenv; fi` is control flow). That content is **pyve infrastructure, not plugin-emitted**, and the validator's contract is "rejects PLUGIN snippets that don't conform." The composer in N.q will write infrastructure lines directly and run only plugin contributions through the validator. No retroactive validation of the existing template is needed in N.m.
 - **A `validate_full_envrc` or `validate_full_gitignore` for the composed output.** Some teams add an end-to-end validator on the assembled file. Skipped: the per-snippet validation is the right seam (it tells the composer which plugin contributed bad content), and N.q's composer will write its own infrastructure lines directly. A full-file validator would either duplicate the per-snippet check or risk false positives on infrastructure lines the validator was never meant to police.
 
-**Placement note.** Authored in document order as N.m, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.m, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.n: Python plugin module + scaffold-time detection hook [Done]
 
@@ -446,7 +446,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Plugin-side runtime version resolution.** S10's "Python's precedence is asdf > pyenv > system" stays in [lib/env_detect.sh](../../lib/env_detect.sh) for N.n; threads through the plugin's `init` hook in N.o.
 - **Validating `pyve.toml`'s `[plugins.python]` block** (if declared). The plugin's manifest_namespace + register_backends fire eagerly at source-time. An explicit `[plugins.python]` in pyve.toml is parsed by `manifest_load` and surfaced via `manifest_list_plugins` etc., but no plugin-specific validation runs on the block's provider-private attributes. That's a Story N.o concern when env-block validation lands (per S9).
 
-**Placement note.** Authored in document order as N.n, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.n, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.o: Python plugin — init / purge / update hooks [Done]
 
@@ -475,7 +475,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **`.gitignore` / `pyve purge` plugin hooks.** Story N.r.
 - **Surfacing the `languages` read in user-visible output.** Story N.p (the diagnostics surfacing in `pyve check` / `pyve status`).
 
-**Placement note.** Authored in document order as N.o, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.o, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.p: Python plugin — check / status / run / test hooks [Done]
 
@@ -504,7 +504,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Richer `languages` cross-checks.** The conservative "warn iff languages declared without python" rule covers the obvious case (user marked an env as Rust but it's still being managed by the Python plugin — likely a configuration error). Richer checks (e.g., "warn if languages includes a language for which no plugin is registered") defer to a future phase.
 - **Validating the `[env.<name>].languages` field against a registered-languages list.** No such list exists yet — Phase N's polyglot ambitions are forward-looking. When N-3 lands the Node plugin and the surface starts to actually need per-language validation, that's the natural place to add it.
 
-**Placement note.** Authored in document order as N.p, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.p, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.q: Python plugin — activation hook (`.envrc` emission) [Done]
 
@@ -531,7 +531,7 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Removing the now-redundant bp_dispatch activate path.** It's the layer that owns backend-specific shape (sentinel var, bin dir); plugin_dispatch routes ABOVE it, not in place of it. Both layers stay.
 - **Wiring the validator into `pyve update`.** `pyve update` may re-emit `.envrc` (or just top up the asdf compat guard); the activate hook covers the fresh-init path. If a future story finds update's emission path bypasses the validator, it's a natural follow-up — but `update_project` today calls `_init_direnv_*` directly only via the `pyve init --force` rebuild path, which now goes through this hook.
 
-**Placement note.** Authored in document order as N.q, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.q, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.r: Python plugin — `.gitignore` + smart-purge hooks [Done]
 
@@ -556,9 +556,9 @@ Extract the 8-hook plugin/backend-provider contract (manifest namespace, backend
 - **Enforcing the `authored` list at purge time.** v3.0 just declares user-authored files in the inventory; no code refuses to remove them. The existing removal calls don't TRY to remove those files (the hardcoded list never includes `pyproject.toml` etc.), so the enforcement is redundant for v3.0. Future stories can add a safety check: "before removing path X, verify it's not on any plugin's `authored` list."
 - **Moving `write_gitignore_template` into the plugin file.** Composer-owned (Pyve infrastructure lines are not Python-plugin-specific — they apply to every pyve project regardless of language). Whole-function relocation is on the Option 1 path — revisited in Story N.s.
 - **The `lib/commands/init.sh` "self-healing" path.** The task said to re-seat `.gitignore` self-healing in BOTH `init.sh` and `utils.sh`. In practice `init.sh` calls `write_gitignore_template` and that's the only self-heal entry point — refactoring the entry point in utils.sh implicitly handles all callers in init.sh. No additional callsite changes needed.
-- **Stripping the legacy `.pyve/testenvs` defensive line** from the Pyve-managed gitignore section. That line is kept through the v3.0 transition window per the read-compat policy ([tech-spec.md](tech-spec.md) "v3.0-only read-compat layer"). N-8 sweep removes it as part of the broader v3.0-only cleanup.
+- **Stripping the legacy `.pyve/testenvs` defensive line** from the Pyve-managed gitignore section. That line is kept through the v3.0 transition window per the read-compat policy ([tech-spec.md](tech-spec.md) "v3.0-only read-compat layer"). N-10 sweep removes it as part of the broader v3.0-only cleanup.
 
-**Placement note.** Authored in document order as N.r, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-7's v3.0.0 cut.
+**Placement note.** Authored in document order as N.r, in Subphase N-2. No release tag impact — Phase N runs unversioned until N-9's v3.0.0 cut.
 
 ### Story N.s: Plugin code locus — function relocation umbrella (Option 1) [Done]
 
@@ -835,13 +835,13 @@ These slot into the existing "Fix pre-existing integration test failures" Future
   - N.q's "Callsite re-seat" paragraph (callsite locations are now internal to plugin.sh, line numbers and external-file references stripped)
   - N.p's "python set/show relocation" paragraph (recorded the N.s.8 dispatcher completion)
 - [x] **Subsection headings preserved verbatim.** Per the feedback-memory rule, the "(Story N.k, Subphase N-2)" / "(Story N.l, Subphase N-2)" / etc. headers in subsection titles are *contract references* — they name the architectural decision in the canonical history doc, and a future reader looking up "where did the plugin contract come from?" needs the N.k anchor to navigate stories.md. Load-bearing; not stripped.
-- [x] No content removal beyond the Option-2 / Option-1 fixup. N-6's `refactor_document` pass owns the holistic doc reorganization — N.s.10 added the synthesis section and corrected stale narratives only.
+- [x] No content removal beyond the Option-2 / Option-1 fixup. N-8's `refactor_document` pass owns the holistic doc reorganization — N.s.10 added the synthesis section and corrected stale narratives only.
 
 **Verification.** Doc-only changes; no test impact. Spot-checked the call-chain diagram against the actual plugin.sh source (`init_project` → `plugin_dispatch python activate` → `python_pyve_plugin_activate` → `_python_pyve_plugin_envrc_snippet` + `validate_envrc_snippet` + `bp_dispatch <backend> activate` → `{venv,micromamba}_pyve_bp_activate` → `_init_direnv_*` → `write_envrc_template`) — every layer present in plugin.sh + lib/utils.sh.
 
 **Out of scope (flagged, kept out).**
 
-- **Holistic tech-spec.md reflow** (e.g., consolidating the per-component N.k–N.r subsections into a single "Plugin layer" section that subsumes the new synthesis + the per-file detail). That's N-6's `refactor_document` job; N.s.10 added the synthesis as a peer that frames the per-file detail without rewriting it.
+- **Holistic tech-spec.md reflow** (e.g., consolidating the per-component N.k–N.r subsections into a single "Plugin layer" section that subsumes the new synthesis + the per-file detail). That's N-8's `refactor_document` job; N.s.10 added the synthesis as a peer that frames the per-file detail without rewriting it.
 - **Stripping `Story N.X` markers from production code.** Code-side narrative refs in plugin.sh and other lib/ files are pre-existing debt. Per the feedback-memory rule, distinguishing contract refs from narrative refs requires reading each comment in context — a separate sweep, not a doc-update story.
 - **Sweeping `Story N.X` markers from features.md / brand-descriptions.md.** Those docs get their own touch-up stories (N.s.11 / N.s.12).
 
@@ -857,21 +857,21 @@ These slot into the existing "Fix pre-existing integration test failures" Future
 - [x] No behavior-change claims for users — v3.0 ships these as schema additions, not enforced semantics. v3.1 / future phases may add enforcement.
 - [x] Cross-link to [tech-spec.md](tech-spec.md)'s plugin contract section (added in N.s.10) for the implementation details.
 
-**Landing.** New `### FR-11c: Env-as-Materialization Model + Advisory Attributes (Subphase N-2)` subsection added to [features.md](features.md) between FR-11b and FR-12. Covers the three-backend-category framing (virtualized / cache-backed / check-only), `languages` as v3.0 advisory (surfaced via the N.p `pyve check` warn), `manual_steps` as v3.0 advisory (surfaced at the top of `pyve check` / `pyve status`), and an explicit "No behavior change for users in v3.0" closer. Cross-links into [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture) for wire-level accessor / renderer details. No CLI surface change; no `CHANGELOG.md` entry (Phase N runs unversioned until N-7's v3.0.0 cut).
+**Landing.** New `### FR-11c: Env-as-Materialization Model + Advisory Attributes (Subphase N-2)` subsection added to [features.md](features.md) between FR-11b and FR-12. Covers the three-backend-category framing (virtualized / cache-backed / check-only), `languages` as v3.0 advisory (surfaced via the N.p `pyve check` warn), `manual_steps` as v3.0 advisory (surfaced at the top of `pyve check` / `pyve status`), and an explicit "No behavior change for users in v3.0" closer. Cross-links into [tech-spec.md § Plugin contract architecture](tech-spec.md#plugin-contract-architecture) for wire-level accessor / renderer details. No CLI surface change; no `CHANGELOG.md` entry (Phase N runs unversioned until N-9's v3.0.0 cut).
 
 ### Story N.s.12: Update brand-descriptions.md for v3.0 [Done]
 
-**Motivation.** Brief annotation pass on [brand-descriptions.md](brand-descriptions.md) so the **NEEDS REVISION for Pyve 3.0** flagged sections reference the new identity. Full revision lands in N-6 via `refactor_document`.
+**Motivation.** Brief annotation pass on [brand-descriptions.md](brand-descriptions.md) so the **NEEDS REVISION for Pyve 3.0** flagged sections reference the new identity. Full revision lands in N-8 via `refactor_document`.
 
-**Scope decision (Option D, made during execution).** The spec's prescribed mechanism — a verbatim "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems." header note inserted above each flagged section — was reconsidered before any edit. Three concerns: (1) the phrase exposes internal taxonomy (S6 backend categories) into consumer-facing copy, (2) inserting the same boilerplate four times degrades signal, (3) it doesn't fix the underlying misrepresentation — the body text under each flagged section still describes a Python-only tool with venv/micromamba duality, which a reader who reads the body comes away with regardless of the header sticky. The story's stated intent ("the document doesn't lie between N-2 and N-6") is the right intent; the mechanism was inadequate.
+**Scope decision (Option D, made during execution).** The spec's prescribed mechanism — a verbatim "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems." header note inserted above each flagged section — was reconsidered before any edit. Three concerns: (1) the phrase exposes internal taxonomy (S6 backend categories) into consumer-facing copy, (2) inserting the same boilerplate four times degrades signal, (3) it doesn't fix the underlying misrepresentation — the body text under each flagged section still describes a Python-only tool with venv/micromamba duality, which a reader who reads the body comes away with regardless of the header sticky. The story's stated intent ("the document doesn't lie between N-2 and N-8") is the right intent; the mechanism was inadequate.
 
-**Adopted approach.** Light copy-edit pass on the four flagged sections — multi-language framing, pluggable backends, `pyve check`/`pyve status` instead of removed `doctor`/`validate`, additive keywords, one new Declarative Manifest card. Each section's flag marker rewritten from "**NEEDS REVISION for Pyve 3.0**" to "*v3 baseline — comprehensive narrative reflow deferred to N-6.*" so the doc stops misrepresenting v3 without preempting the holistic refactor scoped to N-6. No deep narrative reflow; no exposure of internal taxonomy in user-facing copy; the five already-revised sections (Name through Two-clause Technical Description) untouched; the Usage Notes file-mapping table at the bottom untouched (already correct for v3).
+**Adopted approach.** Light copy-edit pass on the four flagged sections — multi-language framing, pluggable backends, `pyve check`/`pyve status` instead of removed `doctor`/`validate`, additive keywords, one new Declarative Manifest card. Each section's flag marker rewritten from "**NEEDS REVISION for Pyve 3.0**" to "*v3 baseline — comprehensive narrative reflow deferred to N-8.*" so the doc stops misrepresenting v3 without preempting the holistic refactor scoped to N-8. No deep narrative reflow; no exposure of internal taxonomy in user-facing copy; the five already-revised sections (Name through Two-clause Technical Description) untouched; the Usage Notes file-mapping table at the bottom untouched (already correct for v3).
 
 **Tasks**
 
-- [x] ~~Add a short header note at the top of each flagged section: "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems."~~ **Superseded by Option D (above).** Each flagged section's marker now reads "*v3 baseline — comprehensive narrative reflow deferred to N-6.*"
-- [x] No deep rewrite — N-6 owns the holistic prose reflow. N.s.12 is the placeholder note so the document doesn't lie between N-2 and N-6. **Held.** Light copy edits on four sections only; no narrative reflow; ~10 line diff.
-- [x] No `CHANGELOG.md` entry — Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release.
+- [x] ~~Add a short header note at the top of each flagged section: "v3.0 identity: orchestrates environments AND toolchains across virtualized, cache-backed, and check-only ecosystems."~~ **Superseded by Option D (above).** Each flagged section's marker now reads "*v3 baseline — comprehensive narrative reflow deferred to N-8.*"
+- [x] No deep rewrite — N-8 owns the holistic prose reflow. N.s.12 is the placeholder note so the document doesn't lie between N-2 and N-8. **Held.** Light copy edits on four sections only; no narrative reflow; ~10 line diff.
+- [x] No `CHANGELOG.md` entry — Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release.
 
 **Landing.** [brand-descriptions.md](brand-descriptions.md) four sections edited:
 
@@ -1071,14 +1071,14 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 ### Story N.ac: Doc updates — Node plugin section in tech-spec.md / features.md [Done]
 
-**Motivation.** Capture the Node plugin in the spec docs so the codebase and the docs agree post-N-3. Brand-descriptions gets a brief annotation; full revision lands in N-6 via `refactor_document`.
+**Motivation.** Capture the Node plugin in the spec docs so the codebase and the docs agree post-N-3. Brand-descriptions gets a brief annotation; full revision lands in N-8 via `refactor_document`.
 
 **Tasks**
 
 - [x] [tech-spec.md](tech-spec.md): add a "Node plugin" section mirroring the existing "Python plugin" section (which landed in N.s.10). Cover: backend-providers (pnpm/npm/yarn), runtime-resolution precedence (nvm > fnm > volta > asdf > Homebrew/system), hook implementations, activation pattern (`node_modules/.bin` PATH_add), path-awareness (root vs visitor). *(New `### lib/plugins/node/plugin.sh — Node plugin (Stories N.t–N.aa, Subphase N-3)` section, slotted directly after the Python plugin's N.r section; covers namespace/detection, providers, runtime precedence, lifecycle + runtime hooks, activation, gitignore/smart-purge, SvelteKit detection, path-awareness, and the not-yet-CLI-routed posture.)*
 - [x] [features.md](features.md): note Node + SvelteKit support; TypeScript advisory; SvelteKit framework detection (advisory). Per S11, no behavior change for users beyond the additions. *(New `### FR-11d: Node / SvelteKit Support (Subphase N-3)` after FR-11c.)*
-- [x] [brand-descriptions.md](brand-descriptions.md): brief annotation noting Node/SvelteKit are now supported (the "polyglot orchestration" framing). Full revision still tracked for N-6. *(Note: the file was already brought to a "v3 baseline" state by Story N.s.12 — the **NEEDS REVISION for Pyve 3.0** flags the task anticipated had already been replaced with "v3 baseline — deferred to N-6" annotations, and Node/sveltekit/pnpm/polyglot already appeared throughout. Discharged as a single italic N-3 annotation under the Two-clause Technical Description recording that the polyglot framing is now backed by two implemented reference plugins, rather than a redundant revision. N-6's subphase description still references the stale "NEEDS REVISION" flag state — flagged for the N-6 planning session.)*
-- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+- [x] [brand-descriptions.md](brand-descriptions.md): brief annotation noting Node/SvelteKit are now supported (the "polyglot orchestration" framing). Full revision still tracked for N-8. *(Note: the file was already brought to a "v3 baseline" state by Story N.s.12 — the **NEEDS REVISION for Pyve 3.0** flags the task anticipated had already been replaced with "v3 baseline — deferred to N-8" annotations, and Node/sveltekit/pnpm/polyglot already appeared throughout. Discharged as a single italic N-3 annotation under the Two-clause Technical Description recording that the polyglot framing is now backed by two implemented reference plugins, rather than a redundant revision. N-8's subphase description still references the stale "NEEDS REVISION" flag state — flagged for the N-8 planning session.)*
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
 
 ---
 
@@ -1326,10 +1326,10 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 - [x] [tech-spec.md](tech-spec.md): added a "Composition layer (Subphase N-4)" section covering the five composer modules (`envrc_composer` / `gitignore_composer` / `check_composer` / `status_composer` / `purge_composer`) + their entry points, the CLI wiring (incl. the `compose_project_*` reload path called from the Python init/update hook), the pass/warn/error severity ladder, the PC-2 atomic-write protocol (tmp → `.prev` → `mv`, untouched-on-failure, user-content preservation), the managed-section sentinels, path-aware labels, the PC-4a no-Python gate + PC-4b latency budget, and Option-B purge. Also corrected the now-stale "Not yet CLI-routed (v3.0)" note in the Node-plugin section (check/status/purge/.envrc/.gitignore are composed post-N-4; only the per-env runtime commands remain Python-routed).
 - [x] [features.md](features.md): added **FR-11e: Composition Layer (Subphase N-4)** — polyglot manifests on init, composed `.envrc`/`.gitignore`, failure-safe writes (PC-2), aggregated `check`/`status`/`purge`, no-Python noise gate, latency budget; and updated FR-11d's stale forward-reference to point at FR-11e.
-- [x] [brand-descriptions.md](brand-descriptions.md): added an *N-4 note* under the Two-clause Technical Description noting the cross-stack orchestration claim is now real at the CLI level (full revision still tracked for N-6).
-- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-7's v3.0.0 release).
+- [x] [brand-descriptions.md](brand-descriptions.md): added an *N-4 note* under the Two-clause Technical Description noting the cross-stack orchestration claim is now real at the CLI level (full revision still tracked for N-8).
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
 
-### Story N.ao: Investigation spike — project-guide wizard integration + Python-`utility`-`root` provisioning [Planned]
+### Story N.ao: Investigation spike — project-guide wizard integration + Python-`utility`-`root` provisioning [Done]
 
 **Motivation.** Story N.aj's gate establishes that a project-guide install implies a legitimate Python `utility` surface (the venv-backed `root` env that hosts the `pip install project-guide` package). But the **provisioning side of that contract does not exist yet**: today the wizard's project-guide install step is welded inside the Python plugin's `init` and assumes a Python application env (`$env_path/bin/pip`). For a Node-only / polyglot project whose user accepts the default-`[Y/n]` project-guide prompt, there is no defined mechanism to stand up a Python `utility` `root` env to host it. This spike scopes that gap and emits the implementation breakdown — it is **time-boxed and throwaway**; its deliverable is the design + decisions + follow-up stories, **not** production code.
 
@@ -1337,49 +1337,118 @@ So a root-level `package.json` next to a Python project is not expressible as a 
 
 **Driving context.**
 - The wizard will surface project-guide as an **early** install question defaulting to `[Y/n]` ("Use Project-Guide to help you set up and develop?"). Accepting it requires Python in the `root` env so `project-guide` can be `pip`-installed.
-- `project-guide` is gaining a `plan_envs` mode that authors a pyve environment-dependencies spec (template/prompt already drafted: [env-dependencies-template.md](env-dependencies-template.md), [env-dependencies-prompt.md](env-dependencies-prompt.md)). The wizard hand-off and that mode must agree on the env vocabulary (`purpose ∈ {run, test, utility, temp}`, backends).
+- `project-guide` is gaining a `plan_envs` mode that authors a pyve environment-dependencies spec (template/prompt already drafted: [env-dependencies-template.md](project-guide-requests/env-dependencies-template.md), [env-dependencies-prompt.md](project-guide-requests/env-dependencies-prompt.md)). The wizard hand-off and that mode must agree on the env vocabulary (`purpose ∈ {run, test, utility, temp}`, backends).
 - `.project-guide.yml` is a **real, load-bearing cross-repo dependency contract** (pyve keys behavior off it; N.aj makes it a Python-active signal). A filename/shape change in `project-guide` is therefore a coordinated breaking change that must resolve the pyve-side contract.
 
 **Tasks (deliverable = a written design, not code)**
 
-- [ ] **Provisioning design.** Decide how/where a Python `utility` `root` env is materialized when project-guide is accepted on a non-Python-app stack: a declared `[env.root] purpose = "utility" backend = "venv"` block written to `pyve.toml`, the venv path under `.pyve/envs/root/venv/`, and how this composes with a Node app env at `.` or a sub-path (S4 root-cardinality interaction). Confirm the gate in N.aj reads it correctly.
-- [ ] **Wizard prompt placement.** Specify where the project-guide `[Y/n]` question sits in the composed/polyglot `pyve init` flow (it is stack-agnostic, so it cannot stay Python-plugin-private), and how acceptance drives the `utility`-`root` provisioning above. Note the current Python-plugin-bound install path (`_init_run_project_guide_hooks`, `install_project_guide`) that must be lifted to a cross-stack locus.
-- [ ] **Cross-repo contract formalization.** Write a `docs/specs/project-guide-requests/` spec (per the project-essentials "request, don't work around" rule) capturing: the `.project-guide.yml` filename/shape contract, the breaking-change protocol if `project-guide` renames it, and the `plan_envs` ↔ wizard hand-off (who writes `pyve.toml`, who validates). Record the minimum `project-guide` version the wizard integration depends on.
-- [ ] **Follow-up story breakdown.** Emit the concrete implementation stories (wizard prompt lift, `utility`-`root` provisioning, `plan_envs` consumption, contract guards) with a recommendation on **which subphase** they belong to — and explicitly flag if they warrant a new subphase, which is `plan_production_phase`'s call, not this mode's.
-- [ ] No `CHANGELOG.md` entry; no production `lib/` changes (spike output is documentation + the follow-up plan).
+Spike deliverable: **[spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md)** + the cross-repo request **[project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md)**.
+
+- [x] **Provisioning design.** § 2 of the spike: accepted project-guide on a non-Python-app stack provisions a dedicated Python `utility` `root` venv via a `[env.root] purpose = "utility" backend = "venv"` block (no `[plugins.python]` — it's a tool-hosting sidecar, not a Python app), materialized at `.pyve/envs/root/venv/` through `resolve_env_path`. Confirmed against the actual N.aj gate (`python_plugin_is_active_in_project`): the `[env.root] backend = "venv"` line *is* the gate's signal #2, so the read and write sides already agree — no gate change. S4 root-cardinality is a non-issue (the utility root is an *env*, not a plugin-at-root). One named consequence flagged: the Python check/status hooks need a utility-root-only mode (follow-up F3).
+- [x] **Wizard prompt placement.** § 3: lift the stack-agnostic `[Y/n]` prompt out of the Python-plugin-private tail (`_init_run_project_guide_hooks` / `install_project_guide` / `prompt_install_project_guide`, all confirmed welded into `init_project`'s tail) into a new `lib/project_guide.sh` orchestration invoked *early* in composed init, resolving the host env at accept-time (app env if present, else the provisioned utility root) before the composers/manifest finalize.
+- [x] **Cross-repo contract formalization.** Wrote [project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md): `.project-guide.yml` ratified as a versioned load-bearing contract + breaking-change protocol; `plan_envs` ↔ wizard hand-off with a single-writer boundary (project-guide authors the env-dependencies spec, pyve owns writing/validating `pyve.toml`); min-version pin deferred to the implementing story.
+- [x] **Follow-up story breakdown.** § 5: five stories (F1 orchestration lift, F2 utility-root provisioning, F3 utility-root-only check/status — highest risk, F4 `plan_envs` consumption, F5 contract guard). **Recommendation:** F1–F5 depend on a composed/cross-stack `pyve init` that does not exist yet (init is still monolithic Python-first) and are architecturally distinct from every existing N-5…N-10 theme → they **warrant a new subphase** (Newly inserted N-6). Per the mode's scope-of-authority rule this is a *recommendation only*; creating the subphase + bundling the stories is `plan_production_phase`'s call, deliberately not done here.
+- [x] No `CHANGELOG.md` entry; no production `lib/` changes (spike output is documentation + the follow-up plan).
+
+### Story N.ap: Renumber the read-compat removal markers after the N-6 subphase insertion [Done]
+
+**Motivation.** Inserting **Subphase N-6** (`pyve init` composed/cross-stack refactoring) renumbered the v3.0 tail subphases — the "hard migration gate / read-compat removal" subphase moved from the old **N-8** to the new **N-10** (the old N-8 number now belongs to "Documentation refresh"). But the load-bearing `v3.0-only: remove in N-8` markers — the literal contract that *drives* the read-compat cleanup (per [project-essentials.md](project-essentials.md) § "`v3.0-only: remove in N-10` marker is the contract") — still say **N-8** in code/tests, so they point at the wrong subphase. The enforcing sentinel in [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) greps for the literal string, so the code marker and the test must move in lockstep or the build goes red. This is a pure renumber-consistency sweep — **no read-compat code is removed** (that still happens in N-10); only the marker *text* and its references are updated. The `project-essentials.md` side (marker-contract section + the three-layer §3) was already renumbered to N-10 directly, so this story covers only the code + test footprint.
+
+**Tasks**
+
+- [x] **Code markers.** Updated all 7 `v3.0-only: remove in N-8` / "Subphase N-8 removes…" references in [lib/manifest.sh](../../lib/manifest.sh) → **N-10** (comment-only change; no executable code touched).
+- [x] **Sentinel test.** Updated [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) in lockstep (grep literal + test name + comments) → N-10; test-first (confirmed red against N-8 code, green after the marker change).
+- [x] **Adjacent comment.** Updated the stale `removed in N-8` comment in [test_n_f_state_layout.bats:166](../../tests/unit/test_n_f_state_layout.bats#L166) → N-10.
+- [x] **Sweep guard.** Re-grepped `lib/`, `tests/`, `docs/specs/`. `lib/` + `tests/` clean. Also renumbered two docs in the same read-compat contract: [tech-spec.md](tech-spec.md) § "v3.0-only read-compat layer" (heading + N-8 cleanup paragraph, 6 refs) and [spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md) § 5 (its subphase enumeration was pre-renumber; corrected, noting N-6 now owns the recommendation). Full bats unit suite green (1642 ok, 0 fail). **Out of scope — flagged for plan-mode:** [phase-n-plugin-architecture-named-envs-plan.md](phase-n-plugin-architecture-named-envs-plan.md) still describes the *original* 8-subphase map (N-1…N-8) with the pre-insertion themes (~15 `N-8` refs + the whole subphase table). Fully reconciling it to the 10-subphase post-N-6 map is a re-theme of the phase plan → `plan_production_phase`'s exclusive job per the scope-of-authority rule; deliberately not touched here.
+- [x] No version bump / `CHANGELOG.md` entry (Phase N runs unversioned).
 
 ---
 
-## Subphase N-5: `pyve deploy` lifecycle hook and consolidation of tests
+## Subphase N-5: `pyve package` lifecycle hook
 
-Architectural scaffold for `pyve deploy [--env <name>]` as an artifact-materialization hook (pinned `docker`/`podman` image, lock bundle). Whether any provider ships in v3.0 is a v3.0-window decision (per concept doc Q6). Story breakdown deferred. Bundles into **v3.0.0**. 
+Architectural scaffold for `pyve package [--env <name>]` (renamed from `pyve deploy` per **O1**) as the **artifact-materialization** verb — it builds the env's declared `packaging` form; it does **not** ship (`deploy` reserved for a future ship step). **Decisions settled 2026-06-05 (developer-ratified):** *(O8)* package config lives **on `[env.<name>]`** — the `packaging` attribute (S15) plus packaging-provider-private fields (e.g. `dockerfile`), read by `pyve package`; S8's separate `[deploy.*]` table is **retired**, consistent with S9's core-vs-provider-private split. *(concept Q6 / v3.0-window)* v3.0 **reserves the verb + scaffolds the packaging-provider contract**; **no provider materializes** — `pyve package` emits a clean advisory when no provider is registered (exactly like the `pyve lint` verb, O3), and providers land post-v3.0 with no breaking change. Test consolidation is **N-7**. Bundles into **v3.0.0**.
+
+### Story N.aq: Packaging-provider contract + registry skeleton (zero providers in v3.0) [Planned]
+
+**Motivation.** `pyve package` (N.ar) needs an extensibility seam so artifact-materialization providers (docker, `lock_bundle`, `binary`, …) can register and be dispatched by `packaging` value — exactly parallel to the backend-provider contract/registry N-2 stood up for env materialization. v3.0 ships the contract + registry with **zero** providers (per the Q6 / v3.0-window decision: reserve + scaffold, materialize nothing); the first provider lands post-v3.0 with no breaking change. This story also lands the minimal manifest plumbing N.ar reads.
+
+**Design note — parallel to the backend-provider contract, not a copy of F6.** The packaging-provider contract mirrors the N-2 backend-provider hook shape (a `package` hook receiving the resolved `[env.<name>]` block — `packaging` value + provider-private keys — and materializing the artifact). Core **stores** provider-private packaging keys (e.g. `dockerfile`) but never interprets them (S9). Closed-set *validation* of the `packaging` vocabulary (hard-error on unknown) is **F6 in N-6**, not here — N-5 reads leniently.
+
+**Tasks**
+
+- [ ] Define the packaging-provider hook contract (signature + lifecycle) parallel to the backend-provider contract from N-2; document the `package` hook (input: resolved `[env.<name>]` block; output: materialized artifact / advisory). Locus: a new `lib/packaging_registry.sh` or an extension of the existing provider-registry infra — match whatever N-2/N-3 established. Copyright/license header on any new file.
+- [ ] Stand up the packaging-provider **registry**: map a `packaging` value → a registered provider; v3.0 registers **none**. A lookup (`packaging_provider_for <value>`) returns empty when unregistered.
+- [ ] Add a `manifest_get_packaging <env>` accessor to [lib/manifest.sh](../../lib/manifest.sh) (+ the Python helper if the value isn't already surfaced); returns the env's `packaging` value or empty.
+- [ ] Confirm packaging-provider-private keys on `[env.<name>]` (e.g. `dockerfile`) survive the manifest parse into the provider-private extension space (S9) — add a passthrough accessor if the current parser drops unrecognized keys.
+- [ ] Bats tests: empty registry returns no provider; `manifest_get_packaging` reads the value; provider-private keys round-trip through parse.
+
+### Story N.ar: `pyve package [--env <name>]` verb — reserved-verb behavior [Planned]
+
+**Motivation.** Establish the `pyve package` CLI surface so the verb, its help, and its env-resolution + advisory behavior exist in v3.0 even though no provider materializes yet. Accepting a declared `packaging` and emitting a clean "reserved" advisory (rather than "unknown command") is what lets a post-v3.0 provider drop in transparently.
+
+**Implementation note — function name + locus.** Per the function-naming essential, `pyve package` → `package_environment()` in a new [lib/commands/package.sh](../../lib/commands/package.sh) (one top-level command per file), with `show_package_help()` co-located. Register `package` in [pyve.sh](../../pyve.sh)'s case dispatcher + an explicit `source` line (no glob). `package` is neither a bash builtin nor a binary pyve invokes, so no F-11 collision. Reuse the existing `--env` / default-env resolution that `pyve test --env` uses rather than re-implementing it.
+
+**Tasks**
+
+- [ ] Create `lib/commands/package.sh` with `package_environment()` + `show_package_help()` (copyright/license header).
+- [ ] Register `package` in `pyve.sh`'s dispatcher + an explicit `source lib/commands/package.sh` line (alphabetical position in the sourcing block).
+- [ ] Resolve the target env: `--env <name>` flag, else the default env (reuse the test-command resolution helper). Hard-error on an unknown/nonexistent env.
+- [ ] Read `packaging` via `manifest_get_packaging` (N.aq) and consult the registry:
+  - provider registered → dispatch its `package` hook (no providers in v3.0 — this path is exercised only by a test stub);
+  - **no provider** → clean advisory, **exit 0**: *"env `<name>` declares packaging `<X>`; no packaging provider is registered yet — reserved for a future release."*;
+  - `packaging` absent / `none` → informational: *"env `<name>` declares no packaging artifact."*
+- [ ] Bats unit + integration tests: `--env` resolution, default-env, packaging-present-but-no-provider (advisory, exit 0), packaging `none`, bad env (hard error), `--help`. Use a test-only stub provider to exercise the registered-provider dispatch path.
+
+### Story N.as: Document `pyve package` — features.md + reserved-verb semantics [Planned]
+
+**Motivation.** Capture the new verb in the user-facing surface so the reserved-in-v3.0 semantics, the O8 config location, and the post-v3.0 provider roadmap are discoverable — and so N-8's holistic docs refresh has the source material. Sequential-documentation rule: the verb that lands in N.ar gets its `features.md` entry now, not deferred wholesale to N-8.
+
+**Tasks**
+
+- [ ] [features.md](features.md): add `pyve package [--env <name>]` — purpose (materializes an env's `packaging` artifact), the O8 config model (`packaging` + provider-private fields on `[env.<name>]`), reserved-verb status in v3.0 (no provider materializes; clean advisory), and that `deploy` is reserved for a future ship step (O1).
+- [ ] Cross-reference the post-v3.0 provider roadmap (docker/podman, `lock_bundle`, `binary`) and note that materialization + advisory surfacing are gated on F6 closed-vocab validation (N-6).
+- [ ] Verify `show_package_help()` text matches the `features.md` description (single source of truth for the CLI contract).
+
+---
+
+## Subphase N-6: `pyve init` composed/cross-stack refactoring
+
+Closes the last structural gap left by N-4: `pyve init` is still **monolithic Python-first** — the dispatcher routes `init` → `plugin_dispatch python init` → `init_project`, which materializes a Python env (`.venv` / `.pyve/envs/<name>`) for *every* project regardless of stack, and runs the project-guide hooks against it at the tail. N-4 made `check` / `status` / `purge` / `.envrc` / `.gitignore` compose across all plugins, but **env materialization at init time does not**: a Node-only project still gets a Python venv it never asked for, and there is no path to stand up a non-Python app env (or a Python `utility` `root`) from the composed flow. This subphase refactors `init` into a composed, cross-stack flow where each declared plugin materializes its own env(s), and lifts the stack-agnostic project-guide orchestration (prompt + install + scaffold + completion) out of the Python plugin into a shared `lib/` locus.
+
+Design + follow-up breakdown already done by the **N.ao investigation spike** ([spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md)) and the cross-repo contract ([project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md)): F1 (lift project-guide orchestration to `lib/project_guide.sh`), F2 (Python `utility` `root` provisioning at `.pyve/envs/root/venv/` when project-guide is accepted on a non-Python stack), F3 (Python check/status utility-root-only mode — highest risk), F4 (`plan_envs` ↔ wizard hand-off, gated on the upstream release), F5 (`.project-guide.yml` contract guard + min-version pin), **F6** (closed-vocabulary + no-op trichotomy — the `VALID_*` sets in `pyve_toml_helper.py`, recognition of the advisory fields `packaging` / `require_min_version` / `manual_steps`, advisory recording + surfacing in `check` / `status`, and hard-error on unknown values; this is the validation layer **F4** depends on and shares F4's upstream `plan_envs` gating — see [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §A–§B). The composed-init materialization itself (each plugin builds its own env from the manifest) is the umbrella the F-stories sit under. Story breakdown is `plan_production_phase`'s job. Bundles into **v3.0.0**.
+
+**Scope boundary — what is *not* in this subphase (deferred post-v3.0).** The `pyve lint` verb (and `--fix`) per **O3** is post-v3.0 — v3.0 only *recognizes* lint-kind frameworks as advisory no-ops surfaced in `check` / `status` (via F6); the aggregating verb itself ships later. Materialization of advisory backends (`cargo`, `bundler`, `xcode`, …) lands when each ecosystem gets its own plugin, also post-v3.0. F6's hard-error enforcement is only meaningful once F4 is writing the new fields, so if `plan_envs` slips past v3.0, F4+F6 slip with it and v3.0 ships with today's lenient validation (only `purpose` closed-set-validated).
+
+---
+
+## Subphase N-7: Test consolidation and cleanup
 
 During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary tech debt:
 - **Story numbers embedded in test filenames:** practical for cleanly partitioning and attributing code and tests to the work done, but meaningless in the long term. Example `tests/unit/test_n_n_python_plugin.bats` should be refactored to `tests/unit/test_python_plugin.bats` (group by capability/surface, matching the already-capability-named files: `test_check`, `test_status`, `test_purge_ui`). Rename mechanics: update every `load` / `source` line and any test that greps for a sibling test filename; the green suite is the safety net (same shape as N.al's test rework).
 - **Story references in code:** practical for tracking progress and understanding the context of the code, but meaningless in the long term. Example `# Story N.x` should be justified as a critical cross-reference or removed; better to relocate the essential context the story carries into a self-contained code comment than to keep a brittle, arbitrary story number that only loosely references documentation that may not survive. **Critical caveat — distinguish narration from contract before deleting:** some story refs are *load-bearing*, not narrative, and MUST survive the sweep:
-  - The `v3.0-only: remove in N-8` markers in [lib/manifest.sh](../../lib/manifest.sh) — they *drive* the N-8 read-compat cleanup, and [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) asserts the marker is grep-visible. Stripping it silently disarms the N-8 sweep. (See [project-essentials.md](project-essentials.md) § "`v3.0-only: remove in N-8` marker is the contract".)
+  - The `v3.0-only: remove in N-10` markers in [lib/manifest.sh](../../lib/manifest.sh) — they *drive* the N-10 read-compat cleanup, and [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) asserts the marker is grep-visible. Stripping it silently disarms the N-10 sweep. (See [project-essentials.md](project-essentials.md) § "`v3.0-only: remove in N-10` marker is the contract".)
   - The grep-sentinels (`test_n_f_state_layout`, `test_n_al_retired_writers`, the `lib/ui/` boundary test) reference names/markers as their assertion subject — the in-test markers they grep for are load-bearing even though their *filenames* may be renamed.
 
   Rule: remove pure narration; keep (or relocate-without-losing) refs that are load-bearing contracts.
 - **Survey for other temporary scaffolding or structures** that don't belong in a well-maintained codebase.
 
-**Timing note.** This consolidation bundles into v3.0.0 with the rest of N-5–N-7; run it near the *end* of that bundle (after N-6's doc churn settles, just before N-7's release) to avoid re-churning files N-6 may still touch.
+**Timing note.** This consolidation bundles into v3.0.0 with the rest of N-5–N-9; run it near the *end* of that bundle (after N-8's doc churn settles, just before N-9's release) to avoid re-churning files N-8 may still touch.
 
 ---
 
-## Subphase N-6: Documentation refresh + brand alignment
+## Subphase N-8: Documentation refresh + brand alignment
 
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
 
-## Subphase N-7: v3.0.0 release tag
+## Subphase N-9: v3.0.0 release tag
 
 Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **First Phase N release tag.** Story breakdown deferred.
 
 ---
 
-## Subphase N-8: UX visual refinement + hard migration gate (post-v3.0.0)
+## Subphase N-10: UX visual refinement + hard migration gate (post-v3.0.0)
 
 Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred. Ships **v3.1.0** as the second Phase N release tag.
 

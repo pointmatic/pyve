@@ -1,13 +1,13 @@
-# pyve-environment-dependencies-repo_gitbetter.md
+# env-dependencies.md - gitbetter
 
-Concrete instance of `pyve-environment-dependencies-template.md` for the **gitbetter** repo.
+Concrete instance of `env-dependencies-template.md` for the **gitbetter** repo.
 It enumerates the root development environment and the test environment(s) required to
 develop and completely test the codebase.
 
 > **Related docs**
 > - `features.md` — what gitbetter does (scope, requirements, behavior).
 > - `tech-spec.md` — how gitbetter is built (architecture, dependencies, testing strategy).
-> - `pyve-environment-dependencies-template.md` — the template this document instantiates.
+> - `env-dependencies-template.md` — the template this document instantiates.
 > - Pyve backends reference: <https://pointmatic.github.io/pyve/backends/>
 
 ---

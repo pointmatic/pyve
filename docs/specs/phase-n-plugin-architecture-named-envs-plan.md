@@ -534,8 +534,8 @@ deferred to N.h since N-1 hasn't shipped yet),
   — strategic direction / requirements / gap-analysis (input to this plan).
 - [brand-descriptions.md](brand-descriptions.md) — sections flagged
   **NEEDS REVISION for Pyve 3.0**, addressed in N-6.
-- [env-dependencies-template.md](env-dependencies-template.md) /
-  [env-dependencies-prompt.md](env-dependencies-prompt.md) — declarative
+- [env-dependencies-template.md](project-guide-requests/env-dependencies-template.md) /
+  [env-dependencies-prompt.md](project-guide-requests/env-dependencies-prompt.md) — declarative
   env-dependencies model + LLM-assisted migration prompt.
 - [stories.md](stories.md) — the "generalize testenv → named environments"
   Future story is absorbed into N-1; other Future stories listed in
