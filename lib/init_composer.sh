@@ -48,8 +48,91 @@ compose_init() {
     # Reset the hand-off so a stale value from a prior in-process call can
     # never trigger a spurious tail (matters for tests / library callers).
     PYVE_INIT_TAIL_BACKEND=""
-    plugin_dispatch python init "$@" || return $?
+    if _compose_init_is_node_only; then
+        # Story N.av.3: a fresh Node-only project materializes node_modules
+        # and gets NO Python app env.
+        _compose_init_node_only "$@" || return $?
+    else
+        # Python / polyglot: today's monolithic Python materializer (which
+        # also scaffolds the manifest). Node materialization for polyglot
+        # lands in N.av.4.
+        plugin_dispatch python init "$@" || return $?
+    fi
     _compose_init_run_tail
+}
+
+# True for a FRESH Node-only project: no pyve.toml yet, Node detected at
+# root, and the Python plugin is NOT active (no Python app signal — the
+# package.json is the competing stack per the N.aj gate). Refresh
+# (pyve.toml already present) and polyglot are left to the normal path
+# here; polyglot Node materialization is N.av.4.
+_compose_init_is_node_only() {
+    [[ -f pyve.toml ]] && return 1
+    local node_signal
+    node_signal="$(plugin_dispatch node detect 2>/dev/null || true)"
+    [[ "$node_signal" == "node" ]] || return 1
+    ! python_plugin_is_active_in_project
+}
+
+# Composed Node-only init: scaffold a [plugins.node]-only manifest, load
+# it, then dispatch each active plugin's materializer (just Node here).
+# Hands the node-variant tail off via the result globals.
+_compose_init_node_only() {
+    local no_direnv=false arg
+    for arg in "$@"; do
+        [[ "$arg" == "--no-direnv" ]] && no_direnv=true
+    done
+
+    banner "Node project detected"
+    _init_write_pyve_toml_node_only "$(basename "$(pwd)")"
+
+    # Reload the manifest so the materializer + composers see node. This
+    # needs Pyve's toolchain Python (lib/toolchain_python.sh) to parse
+    # pyve.toml. If it fails we must NOT proceed: an empty plugin set falls
+    # back to implicit-Python (registry S5), which would materialize a
+    # Python venv on a Node-only project. Surface the real cause instead.
+    if ! manifest_load >/dev/null 2>&1; then
+        log_error "Could not parse pyve.toml — Pyve's Python interpreter is unavailable."
+        log_error "Run 'pyve self install' to provision Pyve's toolchain Python, or set PYVE_PYTHON."
+        return 1
+    fi
+    plugin_registry_reset
+    plugin_load_all_from_manifest
+
+    # Materialize each active plugin's env against its declared path. For a
+    # Node-only manifest this dispatches `node init "."` (node_modules); the
+    # same loop generalizes to polyglot in N.av.4.
+    local name path
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
+        [[ -z "$path" ]] && path="."
+        plugin_dispatch "$name" init "$path"
+    done < <(plugin_list_active)
+
+    # Node-variant tail: no Python backend, no project-guide (a non-Python
+    # stack needs a utility root to host it — F2/N.aw); node-aware next-steps.
+    PYVE_INIT_TAIL_BACKEND="node"
+    PYVE_INIT_TAIL_ENV_PATH="."
+    PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+    PYVE_INIT_TAIL_PG_MODE="no"
+    PYVE_INIT_TAIL_COMP_MODE="no"
+}
+
+# Write a Node-only v3 manifest ([plugins.node], no [plugins.python]).
+# Idempotent: no-op when pyve.toml already exists.
+_init_write_pyve_toml_node_only() {
+    local project_name="$1"
+    [[ -f pyve.toml ]] && return 0
+    cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "${project_name}"
+
+[plugins.node]
+EOF
+    success "Created pyve.toml (node)"
 }
 
 # Run the stack-agnostic composition tail using the PYVE_INIT_TAIL_*
@@ -73,8 +156,24 @@ _compose_init_run_tail() {
     fi
     compose_project_gitignore ".gitignore" && success "Updated .gitignore"
 
-    # project-guide orchestration (lifted in N.au), then next-steps.
-    run_project_guide_orchestration "$backend" "$env_path" "$pg_mode" "$comp_mode"
-    _init_print_next_steps "$backend" "$no_direnv" "$env_path"
+    if [[ "$backend" == "node" ]]; then
+        # Story N.av.3: project-guide on a non-Python stack needs a Python
+        # utility root to host it (F2/N.aw) — deferred. Node-aware next-steps.
+        _compose_init_node_next_steps "$no_direnv"
+    else
+        # project-guide orchestration (lifted in N.au), then next-steps.
+        run_project_guide_orchestration "$backend" "$env_path" "$pg_mode" "$comp_mode"
+        _init_print_next_steps "$backend" "$no_direnv" "$env_path"
+    fi
     footer_box
+}
+
+# Node-aware next-steps (no Python activation hints).
+_compose_init_node_next_steps() {
+    local no_direnv="$1"
+    banner "Next steps"
+    info "node_modules installed. Run package scripts with: pyve run <script>"
+    if [[ "$no_direnv" == false ]]; then
+        info "Activate node_modules/.bin via direnv: direnv allow"
+    fi
 }

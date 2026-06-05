@@ -1529,16 +1529,17 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] **Project-guide reorder DEFERRED to N.aw (F2).** The "accept decision before `compose_project_envrc`" reorder is only load-bearing for the utility-root `[env.root]` write, which is non-Python (F2). Doing it now would change Python-only output for no benefit, so project-guide stays after composition for now; N.aw moves it earlier when it actually writes `[env.root]`.
 - [x] Python-only byte-equivalence: full existing `init` surface (wizard, force, backends, project-guide G.*) passes unchanged. New [tests/unit/test_n_av_2_init_tail.bats](../../tests/unit/test_n_av_2_init_tail.bats) (4 tests — run-tail / skip-tail / reset / `--no-direnv`). Full suite **1707/1707**; shellcheck clean.
 
-### Story N.av.3: Node-only composed-init path [Planned]
+### Story N.av.3: Node-only composed-init path [Done]
 
 **Motivation.** With the tail lifted, `compose_init` can dispatch a non-Python materializer. Node-only project → `compose_init` dispatches the Node plugin's materializer (`node_modules` via the provider) and creates **no** Python app env / `.venv` / Python `.pyve/config`.
 
 **Tasks**
 
-- [ ] `compose_init` enumerates `plugin_list_active` and dispatches each plugin's init/materialize hook against `manifest_get_plugin_path`; Node-only → only `node_pyve_plugin_init "."`.
-- [ ] No `.venv`, no Python `.pyve/config` backend write on a Node-only stack; `.envrc`/`.gitignore` composed from the Node plugin's snippets (N-4 composers already handle this).
-- [ ] Next-steps output is stack-aware (no Python activation hints on Node-only).
-- [ ] Tests: Node-only `pyve init` → `node_modules` materialized, no `.venv`, composed `.envrc` has the Node section only.
+- [x] `compose_init` detects a fresh Node-only project (`_compose_init_is_node_only`: no `pyve.toml` yet, Node detected, Python plugin not active per the N.aj gate) and routes to `_compose_init_node_only`, which scaffolds a `[plugins.node]`-only manifest, reloads it, and dispatches each active plugin's materializer via `plugin_list_active` (just `node init "."` here — the loop generalizes to polyglot in N.av.4). Everything else still routes to the Python materializer.
+- [x] No `.venv`, no Python `.pyve/config` on a Node-only stack; `.envrc`/`.gitignore` composed from the Node plugin's snippets via the N-4 composers. The tail branches on `PYVE_INIT_TAIL_BACKEND == "node"`.
+- [x] Node-aware next-steps (`_compose_init_node_next_steps`); **project-guide is deferred** on a Node-only stack (it needs a Python utility root to host it — F2/N.aw), so no project-guide prompt fires.
+- [x] **Robustness fix (caught by smoke):** when `manifest_load` fails (Pyve's toolchain Python unavailable), the registry's implicit-Python fallback would have materialized a `.venv` on a Node-only project. Now the node-only path hard-errors with a clear "run `pyve self install` / set `PYVE_PYTHON`" message and creates no `.venv`.
+- [x] Tests: [tests/unit/test_n_av_3_node_only_init.bats](../../tests/unit/test_n_av_3_node_only_init.bats) — 8 tests (node materializer not python, no `.venv`, node-only manifest, composed `.envrc`/`.gitignore`, `--no-direnv`, node next-steps, manifest-failure robustness, python-routing regression). **End-to-end smoke validated**: real `pyve init` on a `package.json`-only dir → `node_modules` via pnpm, no `.venv`, node-only `pyve.toml`. Full suite **1715/1715**; shellcheck clean.
 
 ### Story N.av.4: Polyglot composed-init path [Planned]
 
