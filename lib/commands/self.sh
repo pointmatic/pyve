@@ -125,6 +125,9 @@ self_install() {
     # Provision Pyve's own toolchain Python (Story N.at.3) — best-effort.
     _self_install_toolchain_python
 
+    # Install Pyve's toolchain Python deps (PyYAML, Story N.az.1) — best-effort.
+    _self_install_toolchain_deps
+
     # Host project-guide as a Pyve-managed global tool (Story N.aw) —
     # best-effort; installs into the toolchain venv + shims onto PATH.
     _self_install_project_guide
@@ -339,6 +342,29 @@ _self_prune_stale_toolchain_versions() {
 # venv, so a DEFAULT_PYTHON_VERSION bump self-heals on the next install.
 # Requires project-guide >= 2.13.0 (the pyve-toolchain-hosting contract).
 #------------------------------------------------------------
+
+# Install Pyve's toolchain Python dependencies into the toolchain venv
+# (Story N.az.1). Currently just PyYAML, which lib/pyve_env_spec_helper.py
+# needs to parse §4.0 of the env-dependencies doc for `pyve env sync`.
+# Best-effort (mirrors _self_install_toolchain_python): a missing venv or
+# failed pip WARNS but never aborts — the env-spec seam then degrades to a
+# precise "run pyve self install" error. Removal rides the toolchain-tree
+# rm -rf in `pyve self uninstall` (no extra step).
+_self_install_toolchain_deps() {
+    declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0
+    local venv_dir pip_cmd
+    venv_dir="$(pyve_toolchain_venv_dir)"
+    pip_cmd="$venv_dir/bin/pip"
+    if [[ ! -x "$pip_cmd" ]]; then
+        return 0
+    fi
+    if run_quiet "$pip_cmd" install --upgrade pyyaml; then
+        log_success "Installed Pyve toolchain dependencies (PyYAML)"
+    else
+        log_warning "Could not install Pyve toolchain dependencies (PyYAML) — 'pyve env sync' may be unavailable until 'pyve self install' is re-run"
+    fi
+    return 0
+}
 
 _self_install_project_guide() {
     declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0

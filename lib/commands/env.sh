@@ -26,6 +26,37 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
+# Path to the env-spec projection helper. Resolves relative to this file
+# (lib/commands/env.sh → lib/pyve_env_spec_helper.py), mirroring
+# _PYVE_MANIFEST_HELPER in lib/manifest.sh.
+_PYVE_ENV_SPEC_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pyve_env_spec_helper.py"
+
+#------------------------------------------------------------
+# Story N.az.1: read §4.0 of the env-dependencies doc via the Pyve
+# toolchain interpreter and print the projected JSON on stdout. The seam
+# `pyve env sync` (N.az.2) builds on.
+#
+# Resolves the interpreter via pyve_toolchain_python (per the toolchain-
+# python essential), with the self-sufficient `|| ${PYVE_PYTHON:-python}`
+# fallback for piecemeal test subshells. PyYAML is a hard dependency of the
+# helper; we pre-check it so the failure is a precise "run pyve self
+# install" (exit 3) rather than a raw ImportError — distinct from the
+# helper's doc-not-found (2) / no-block (4) / parse-error (5) codes.
+#
+# Usage: _env_read_spec_json <doc_path>   (prints JSON; returns helper rc)
+#------------------------------------------------------------
+_env_read_spec_json() {
+    local doc_path="$1"
+    if declare -F pyve_toolchain_has_pyyaml >/dev/null 2>&1 \
+        && ! pyve_toolchain_has_pyyaml; then
+        printf "error: PyYAML is not available in Pyve's toolchain — run 'pyve self install'.\n" >&2
+        return 3
+    fi
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    "$py" "$_PYVE_ENV_SPEC_HELPER" "$doc_path"
+}
+
 #------------------------------------------------------------
 # Leaf: pyve testenv init [<name>]
 #

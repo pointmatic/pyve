@@ -66,6 +66,17 @@ pyve_toolchain_python() {
     printf '%s' "python"
 }
 
+# True (0) when the resolved toolchain interpreter can `import yaml`
+# (PyYAML), which lib/pyve_env_spec_helper.py requires for `pyve env sync`
+# (Story N.az.1). PyYAML is provisioned into the toolchain venv by
+# `pyve self install`. The env-spec seam uses this to emit a precise
+# "run pyve self install" error instead of a raw ImportError.
+pyve_toolchain_has_pyyaml() {
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    "$py" -c 'import yaml' >/dev/null 2>&1
+}
+
 # Build the hidden venv at <venv_dir> on DEFAULT_PYTHON_VERSION. This is
 # the real-work seam, factored out so pyve_toolchain_python_ensure's
 # orchestration (idempotency, error surfacing) is unit-testable without
