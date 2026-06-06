@@ -34,6 +34,7 @@
 #   3   PyYAML or tomlkit not importable (run `pyve self install`)
 #   4   no §4.0 YAML block found in the doc
 #   5   YAML parse error / usage error
+#   6   §4 has an unknown axis value or unrecognized field (F6/N.ba.2)
 #  10   diff --human: non-destructive changes
 #  11   diff --human: destructive changes
 
@@ -46,6 +47,7 @@ from pathlib import Path
 # from inventing diffs). Same directory → plain import resolves when invoked
 # as a script (sys.path[0] is lib/).
 import pyve_env_spec_helper as spec
+import pyve_toml_helper as toml_helper
 
 # Exit / verdict codes (kept in lockstep with pyve_env_spec_helper).
 EXIT_OK = 0
@@ -53,6 +55,7 @@ EXIT_NO_FILE = 2
 EXIT_NO_LIB = 3
 EXIT_NO_BLOCK = 4
 EXIT_PARSE_ERROR = 5
+EXIT_SPEC_INVALID = 6  # F6/N.ba.2: §4 has an unknown value / unrecognized field
 
 VERDICT_CHANGES = 10
 VERDICT_DESTRUCTIVE = 11
@@ -100,6 +103,15 @@ def _load_spec_envs(doc_path):
         return None, EXIT_PARSE_ERROR
 
     envs = data.get("envs") or {}
+    # F6/N.ba.2: closed-vocabulary + recognized-field enforcement on the RAW
+    # §4 envs (before projection, so app_type and unrecognized fields are in
+    # scope). An invalid spec aborts here — diff/apply both propagate the rc,
+    # so no pyve.toml write happens on an invalid spec.
+    errors = _validate_spec_envs(envs)
+    if errors:
+        for err in errors:
+            sys.stderr.write("error: {}\n".format(err))
+        return None, EXIT_SPEC_INVALID
     return {name: spec._project_env(env) for name, env in envs.items()}, EXIT_OK
 
 
@@ -123,16 +135,32 @@ def _load_toml(toml_path):
     return doc, projected
 
 
-def _validate_spec_envs(spec_envs):
-    """Permissive validation gate — accepts every value as-is.
+def _validate_spec_envs(raw_envs):
+    """F6/N.ba.2: closed-vocabulary + recognized-field enforcement for §4.
 
-    # F6/N.ba: replace with the closed-set trichotomy (implemented /
-    # advisory / unknown) per wizard-env-contract.md §A–§B. Today this is an
-    # intentional accept-all stub: F4 ships permissively so a spec-ahead
-    # project can sync before the vocabulary is enforced. Returns the (empty)
-    # list of validation errors; an empty list means "accepted".
+    Replaces the N.az.2 permissive accept-all stub. Operates on the RAW §4
+    env mappings (keys are the authored field names). Returns the list of
+    error strings; an empty list means "accepted". An unrecognized field or
+    an unknown axis value is an error — the caller aborts with
+    EXIT_SPEC_INVALID and writes nothing. Shares the value gate with
+    pyve.toml validation via pyve_toml_helper.env_value_errors so the
+    vocabulary has exactly one enforcement point.
     """
-    return []
+    errors = []
+    if not isinstance(raw_envs, dict):
+        return errors
+    for name, env in raw_envs.items():
+        if not isinstance(env, dict):
+            continue
+        # Unrecognized field → error (spec-side only; pyve.toml keeps its S9
+        # provider-private key tolerance).
+        for field in env:
+            if field not in toml_helper.SPEC_RECOGNIZED_FIELDS:
+                errors.append(
+                    "env '{}': unrecognized field '{}'".format(name, field)
+                )
+        errors.extend(toml_helper.env_value_errors(name, env))
+    return errors
 
 
 def _compute_diff(spec_envs, toml_envs):
@@ -234,11 +262,11 @@ def _apply(spec_envs, doc, toml_path):
 
 
 def _cmd_diff(spec_path, toml_path, human):
+    # _load_spec_envs runs the F6 closed-vocabulary gate before projecting;
+    # an invalid spec returns EXIT_SPEC_INVALID and we abort here.
     spec_envs, rc = _load_spec_envs(spec_path)
     if rc != EXIT_OK:
         return rc
-    # F4 ships a permissive accept-all gate; F6/N.ba replaces it.
-    _validate_spec_envs(spec_envs)
     _, toml_envs = _load_toml(toml_path)
     d = _compute_diff(spec_envs, toml_envs)
 
@@ -253,11 +281,11 @@ def _cmd_diff(spec_path, toml_path, human):
 
 
 def _cmd_apply(spec_path, toml_path):
+    # _load_spec_envs runs the F6 closed-vocabulary gate before projecting;
+    # an invalid spec returns EXIT_SPEC_INVALID → no write happens.
     spec_envs, rc = _load_spec_envs(spec_path)
     if rc != EXIT_OK:
         return rc
-    # F4 ships a permissive accept-all gate; F6/N.ba replaces it.
-    _validate_spec_envs(spec_envs)
     doc, _ = _load_toml(toml_path)
     _apply(spec_envs, doc, toml_path)
     return EXIT_OK

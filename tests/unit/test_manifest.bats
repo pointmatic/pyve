@@ -61,11 +61,11 @@ requirements = ["requirements-dev.txt"]
 purpose = "run"
 backend = "pnpm"
 path = "src/web"
-app_type = "spa"
+app_type = "web"
 frameworks = ["sveltekit"]
 languages = ["typescript"]
 lazy = true
-packaging = "docker"
+packaging = "container"
 dockerfile = "Dockerfile"
 TOML
 }
@@ -156,7 +156,7 @@ TOML
 @test "manifest_get_app_type: returns declared app_type, empty otherwise" {
     _fixture_full_manifest
     manifest_load
-    [ "$(manifest_get_app_type web)" = "spa" ]
+    [ "$(manifest_get_app_type web)" = "web" ]
     [ -z "$(manifest_get_app_type root)" ]
 }
 
@@ -169,7 +169,7 @@ TOML
 @test "manifest_get_packaging: returns declared packaging, empty otherwise" {
     _fixture_full_manifest
     manifest_load
-    [ "$(manifest_get_packaging web)" = "docker" ]
+    [ "$(manifest_get_packaging web)" = "container" ]
     [ -z "$(manifest_get_packaging root)" ]
 }
 

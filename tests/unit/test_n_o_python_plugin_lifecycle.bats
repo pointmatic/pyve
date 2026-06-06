@@ -140,12 +140,18 @@ backend = "venv"
 }
 
 @test "S9: unregistered backend → plugin validation fails with named diagnostic" {
+    # F6 (N.ba.2) now rejects an unknown backend at manifest_load. To exercise
+    # the plugin validator's own bp_lookup guard — which still defends the v2
+    # read-compat synthesis path that bypasses the Python validator — load a
+    # valid manifest, then inject an unregistered backend into the parsed
+    # arrays (simulating a synthesized shape).
     write_manifest '
 [env.root]
 purpose = "utility"
-backend = "quantum-foo"
+backend = "venv"
 '
     manifest_load pyve.toml
+    PYVE_ENV_BACKEND[0]="quantum-foo"
     run python_pyve_plugin_validate_env_blocks
     [ "$status" -ne 0 ]
     [[ "$output" == *"quantum-foo"* ]]
@@ -163,6 +169,9 @@ purpose = "utility"
 }
 
 @test "S9: validation iterates every declared env" {
+    # Inject the bad backend into the LAST env post-load (F6 would otherwise
+    # reject it at parse), so the plugin validator's per-env iteration is what
+    # is exercised — it must reach 'broken' at the end of the list.
     write_manifest '
 [env.root]
 purpose = "utility"
@@ -174,9 +183,10 @@ backend = "venv"
 
 [env.broken]
 purpose = "utility"
-backend = "quantum-foo"
+backend = "venv"
 '
     manifest_load pyve.toml
+    PYVE_ENV_BACKEND[2]="quantum-foo"
     run python_pyve_plugin_validate_env_blocks
     [ "$status" -ne 0 ]
     [[ "$output" == *"broken"* ]] || [[ "$output" == *"quantum-foo"* ]]

@@ -1671,16 +1671,16 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] `classify_value(axis, value)` → `implemented` | `advisory` | `unknown` helper (the single classifier both later sub-stories call). `none` is a recognized value across the `none`-bearing axes (it lives in the advisory column per the contract table; surfacing policy in N.ba.3 elects not to print it).
 - [x] Lockstep test ([tests/unit/test_n_ba_1_vocabulary.bats](../../tests/unit/test_n_ba_1_vocabulary.bats)): parses the contract §B closed-vocabulary table (bounded to the "Closed vocabulary" section) and asserts it equals the `_AXES` implemented/advisory partition per axis. Fails the build on drift between docs and code. `validate()` behavior unchanged in this sub-story (enforcement is N.ba.2).
 
-### Story N.ba.2: Trichotomy enforcement — unknown → hard error + abort [Planned]
+### Story N.ba.2: Trichotomy enforcement — unknown → hard error + abort [Done]
 
 **Motivation.** Flip the trichotomy on. Replaces the permissive accept-all `_validate_spec_envs` stub from N.az.2 with real closed-set enforcement, in both the `pyve.toml` validator and `pyve env sync` ingestion. The behavioral-risk sub-story: it touches the heavily-tested manifest-validation path and changes `env sync` from accept-all to strict.
 
 **Tasks**
 
-- [ ] Extend `validate(cfg)` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to enforce the closed sets on `backend` / `languages` / `frameworks` / `packaging` / `app_type`: unknown value → batched `error: pyve.env.<name>.<axis>: unknown <axis> '<value>' ...` (exit 2), mirroring the existing `purpose` check. Advisory and implemented values pass.
-- [ ] Replace the `_validate_spec_envs` stub in [lib/pyve_env_sync_helper.py](../../lib/pyve_env_sync_helper.py) with shared enforcement (import the classifier from `pyve_toml_helper`): an unknown value in §4 → hard error + abort (distinct exit code; no `pyve.toml` write).
-- [ ] Unrecognized §4 field handling per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §B (an unrecognized field on a spec env → error, like an unknown value) — spec-side only; `pyve.toml`'s S9 provider-private key tolerance is unchanged.
-- [ ] Tests: each axis unknown→error (both `pyve.toml` validation and `pyve env sync`); advisory value accepted; implemented value accepted; unrecognized spec field → error.
+- [x] Extend `validate(cfg)` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to enforce the closed sets on `backend` / `languages` / `frameworks` / `packaging` / `app_type`: unknown value → batched `error: pyve.env.<name>.<axis>: unknown <axis> '<value>' ...` (exit 2), mirroring the existing `purpose` check. Advisory and implemented values pass. (Shared gate `env_value_errors` + `SPEC_RECOGNIZED_FIELDS`.)
+- [x] Replace the `_validate_spec_envs` stub in [lib/pyve_env_sync_helper.py](../../lib/pyve_env_sync_helper.py) with shared enforcement (imports `env_value_errors` from `pyve_toml_helper`): an unknown value in §4 → hard error + abort (`EXIT_SPEC_INVALID = 6`; no `pyve.toml` write). `env_sync` leaf surfaces rc 6 with the per-env errors ([lib/commands/env.sh](../../lib/commands/env.sh)).
+- [x] Unrecognized §4 field handling per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §B (an unrecognized field on a spec env → error, like an unknown value) — spec-side only; `pyve.toml`'s S9 provider-private key tolerance is unchanged.
+- [x] Tests: each axis unknown→error (both `pyve.toml` validation and `pyve env sync`); advisory value accepted; implemented value accepted; unrecognized spec field → error ([tests/unit/test_n_ba_2_enforcement.bats](../../tests/unit/test_n_ba_2_enforcement.bats)). Reconciled fixtures that used now-invalid values to the closed vocabulary (`test_manifest`: `spa`→`web`, `docker`→`container`; `test_n_ar_package`: `docker`→`container`; `test_n_o` S9 backend tests inject the unregistered backend post-load so they exercise the plugin validator's read-compat guard instead of being pre-empted by F6). `pyve package --help` example updated `docker`→`container`.
 
 ### Story N.ba.3: Advisory recognition + surfacing + skip-materialization [Planned]
 

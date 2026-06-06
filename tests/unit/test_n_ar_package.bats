@@ -56,7 +56,7 @@ name = "demo"
 purpose = "run"
 backend = "venv"
 default = true
-packaging = "docker"
+packaging = "container"
 dockerfile = "ops/Dockerfile"
 TOML
 }
@@ -78,7 +78,7 @@ default = true
 [env.web]
 purpose = "run"
 backend = "pnpm"
-packaging = "docker"
+packaging = "container"
 TOML
 }
 
@@ -91,7 +91,7 @@ TOML
     run package_environment
     [ "$status" -eq 0 ]
     [[ "$output" == *"app"* ]]
-    [[ "$output" == *"docker"* ]]
+    [[ "$output" == *"container"* ]]
     [[ "$output" == *"reserved for a future release"* ]]
 }
 
@@ -104,7 +104,7 @@ TOML
     run package_environment --env web
     [ "$status" -eq 0 ]
     [[ "$output" == *"web"* ]]
-    [[ "$output" == *"docker"* ]]
+    [[ "$output" == *"container"* ]]
     [[ "$output" == *"reserved for a future release"* ]]
 }
 
@@ -172,11 +172,11 @@ TOML
 @test "package: registered provider's package hook is dispatched" {
     _fixture_docker_default
     eval '
-        docker_pyve_pp_package() {
+        container_pyve_pp_package() {
             printf "STUB-PACKAGED env=%s" "$1"
         }
     '
-    pp_register docker_provider docker
+    pp_register container_provider container
     run package_environment --env app
     [ "$status" -eq 0 ]
     [[ "$output" == *"STUB-PACKAGED env=app"* ]]

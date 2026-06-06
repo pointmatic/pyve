@@ -171,7 +171,7 @@ OPTIONS:
 
 CONFIG (pyve.toml):
     [env.<name>]
-    packaging  = "docker"        # artifact kind (read by pyve package)
+    packaging  = "container"     # artifact kind (read by pyve package)
     dockerfile = "Dockerfile"    # provider-private; stored, not interpreted
 
 EXAMPLES:

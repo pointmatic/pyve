@@ -175,6 +175,52 @@ def classify_value(axis, value):
         return "advisory"
     return "unknown"
 
+
+# Recognized §4 fields (wizard-env-contract.md §B). `pyve env sync` ingestion
+# errors on any field outside this set; pyve.toml keeps its S9 provider-private
+# key tolerance (unknown keys ride through into `attrs`), so this set is only
+# consulted on the spec side.
+SPEC_RECOGNIZED_FIELDS = frozenset(
+    {
+        "purpose", "backend", "default", "path", "languages", "frameworks",
+        "packaging", "app_type", "require_min_version", "manual_steps",
+    }
+)
+
+# Closed-set axes by value shape, for the shared F6 value gate.
+_SCALAR_AXES = ("purpose", "backend", "packaging", "app_type")
+_LIST_AXES = ("languages", "frameworks")
+
+
+def env_value_errors(name, env):
+    """Return closed-vocabulary errors for one env mapping (F6/N.ba.2).
+
+    `env` is keyed by axis name — works for both the pyve.toml-normalized env
+    and a raw §4 spec env. Scalar axes (`purpose`/`backend`/`packaging`/
+    `app_type`) hold a value; list axes (`languages`/`frameworks`) hold a
+    list. Empty/missing values are skipped (absence is not a violation). The
+    single closed-set gate shared by pyve.toml validate() and `pyve env sync`
+    ingestion — an unknown value → an error string; advisory and implemented
+    values pass.
+    """
+    errors = []
+    for axis in _SCALAR_AXES:
+        value = env.get(axis)
+        if value and classify_value(axis, value) == "unknown":
+            errors.append(
+                "pyve.env.{}.{}: unknown {} '{}'".format(name, axis, axis, value)
+            )
+    for axis in _LIST_AXES:
+        values = env.get(axis)
+        if isinstance(values, str):
+            values = [values]
+        for value in values or []:
+            if classify_value(axis, value) == "unknown":
+                errors.append(
+                    "pyve.env.{}.{}: unknown {} '{}'".format(name, axis, axis, value)
+                )
+    return errors
+
 # Core `[env.<name>]` keys interpreted by pyve. Every other key is
 # packaging-/backend-provider-private (spike S9): core stores it but
 # never interprets it, and it round-trips through the manifest unchanged
@@ -279,11 +325,10 @@ def validate(cfg):
         )
     default_envs = []
     for name, env in cfg["envs"].items():
-        if env["purpose"] and env["purpose"] not in VALID_PURPOSES:
-            errors.append(
-                f"pyve.env.{name}.purpose: unknown purpose "
-                f"'{env['purpose']}' (expected one of: {list(VALID_PURPOSES)})"
-            )
+        # F6/N.ba.2: closed-vocabulary enforcement across every axis
+        # (purpose/backend/languages/frameworks/packaging/app_type). Unknown
+        # value → error; advisory and implemented values pass.
+        errors.extend(env_value_errors(name, env))
         sources = sum(
             [
                 bool(env["requirements"]),

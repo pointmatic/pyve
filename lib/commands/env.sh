@@ -592,6 +592,14 @@ env_sync() {
             log_error "Env spec '$spec_path' has no §4.0 machine-readable block — nothing to sync."
             return 1
             ;;
+        6)
+            # F6/N.ba.2: the spec carries an unknown value or unrecognized
+            # field. Surface the helper's precise per-env errors; pyve.toml is
+            # left untouched.
+            log_error "Env spec '$spec_path' has invalid values — pyve.toml not changed. Fix the spec:"
+            printf '%s\n' "$out" >&2
+            return 1
+            ;;
         10|11) ;;  # changes present — fall through to present + confirm
         *)
             log_error "Could not read env spec '$spec_path'."
