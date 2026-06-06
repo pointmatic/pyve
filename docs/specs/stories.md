@@ -1652,19 +1652,46 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] `pyve check` surfaces a non-empty live diff at **warn** severity (exit 0) via `_compose_check_env_spec_drift` in [lib/check_composer.sh](../../lib/check_composer.sh) — a project-level addendum (not per-plugin), warn-only by contract; missing toolchain libs / no spec → no section (drift undetermined, never a failure).
 - [x] Tests against fixture §4 docs ([tests/unit/test_n_az_2_env_sync_helper.bats](../../tests/unit/test_n_az_2_env_sync_helper.bats), [test_n_az_2_env_sync.bats](../../tests/unit/test_n_az_2_env_sync.bats), [test_n_az_2_check_drift.bats](../../tests/unit/test_n_az_2_check_drift.bats)): additive diff (default `Y` → written), advisory backend (`none` → written-not-materialized), destructive diff (default `N`), clean (no diff → no-op), plus the `pyve check` warn surface. Guard-`skip` when PyYAML+tomlkit absent (N.az.1 precedent). (Unknown-value → hard-error is **F6/N.ba**'s test, not here — F4 accepts permissively.)
 
-### Story N.ba: F6 — closed-vocabulary + no-op trichotomy enforcement [Planned]
+### Story N.ba: F6 — closed-vocabulary + no-op trichotomy enforcement [Split] (bundle — see N.ba.1–N.ba.3)
 
 **Motivation.** The validation layer F4 depends on, and the runtime realization of the O4 / S12–S16 vocabulary. Today only `purpose` is closed-set-validated (`VALID_PURPOSES`); extend to all axes with the implemented / advisory / unknown trichotomy. Per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §A–§B.
 
 **Unblocked (2026-06-05):** pairs with F4 (N.az) — both were gated on `plan_envs`, now shipped in `project-guide` v2.12.0. F6's hard-error enforcement is only exercised once F4 is writing the new fields, so it still lands alongside F4 (after the §A–§B vocabulary is confirmed against the real `plan_envs` output).
 
+**Split into N.ba.1–N.ba.3 (developer-directed, 2026-06-06).** Authored as the umbrella; the breakdown decision is the work captured here (status `[Done]` on the diff that adds the three sub-stories). The surface bundles three concerns with distinct risk profiles, so it splits one-concern-per-commit (mirroring the N.az / N.ae / N.aw umbrella pattern): (1) **inert vocabulary data** — the implemented/advisory `VALID_*` sets + the framework-`kind` / backend-`category` registries + the classifier, plus the template↔`VALID_*` lockstep test (no behavior change); (2) **the enforcement flip** — unknown value → hard error + abort in both `pyve.toml` validation and `pyve env sync` ingestion (the behavioral risk; replaces the permissive `_validate_spec_envs` stub left by N.az.2 and touches the well-tested manifest-validation path); (3) **advisory recognition + surfacing** — parse/store `require_min_version` / `manual_steps`, surface advisory attributes in `check`/`status`, and skip materialization of advisory backends with the §B no-op advisory (the broad bash surface: check/status composers + the env materializer). Implementation in N.ba.1 onward.
+
+### Story N.ba.1: Closed-vocabulary data + classification + lockstep test [Done]
+
+**Motivation.** The inert foundation the other two sub-stories build on: the machine mirror of the Pyve-owned closed vocabulary ([wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §B / [env-dependencies-template.md](project-guide-requests/env-dependencies-template.md) §2), partitioned implemented-vs-advisory, plus the registries advisory messaging needs. No validation/behavior change — pure data + a classifier + the lockstep guard.
+
 **Tasks**
 
-- [ ] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) with `VALID_BACKENDS` / `VALID_LANGUAGES` / `VALID_FRAMEWORKS` / `VALID_PACKAGING` / `VALID_APP_TYPES` (implemented + advisory sets, versioned; the machine mirror of [env-dependencies-template.md](project-guide-requests/env-dependencies-template.md) §2 — kept in lockstep).
-- [ ] Recognize the advisory fields `require_min_version` / `manual_steps` on `[env.<name>]` (parse, store, never materialize).
-- [ ] Implement the trichotomy: known-implemented → normal; known-advisory → record + surface in `check`/`status`, skip materialization; unknown → hard error + abort (in both `pyve.toml` validation and `pyve env sync` ingestion).
-- [ ] Frameworks carry intrinsic `kind` (app/test/lint, S14); backends carry an S6 category (S16) — used for advisory messaging.
-- [ ] Tests: each axis's closed set; advisory recording + surfacing; hard-error on unknown; the template ↔ `VALID_*` lockstep assertion.
+- [x] Extend [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) with implemented/advisory partitioned sets per axis (`BACKENDS_IMPLEMENTED`/`_ADVISORY`, `LANGUAGES_*`, `FRAMEWORKS_*`, `PACKAGING_*`, `APP_TYPES_*`; `purpose` already closed via `VALID_PURPOSES`). Derive `VALID_BACKENDS` / `VALID_LANGUAGES` / `VALID_FRAMEWORKS` / `VALID_PACKAGING` / `VALID_APP_TYPES` as the unions. Versioned (spec_version 3.0).
+- [x] `FRAMEWORK_KIND` registry (intrinsic app/test/lint/none per S14) and `BACKEND_CATEGORY` registry (S6: project-virtualized / cache-backed / check-only / special, incl. S16's `xcode`/`swiftpm`/`android_sdk` as cache-backed) — consumed by N.ba.3 advisory messaging.
+- [x] `classify_value(axis, value)` → `implemented` | `advisory` | `unknown` helper (the single classifier both later sub-stories call). `none` is a recognized value across the `none`-bearing axes (it lives in the advisory column per the contract table; surfacing policy in N.ba.3 elects not to print it).
+- [x] Lockstep test ([tests/unit/test_n_ba_1_vocabulary.bats](../../tests/unit/test_n_ba_1_vocabulary.bats)): parses the contract §B closed-vocabulary table (bounded to the "Closed vocabulary" section) and asserts it equals the `_AXES` implemented/advisory partition per axis. Fails the build on drift between docs and code. `validate()` behavior unchanged in this sub-story (enforcement is N.ba.2).
+
+### Story N.ba.2: Trichotomy enforcement — unknown → hard error + abort [Planned]
+
+**Motivation.** Flip the trichotomy on. Replaces the permissive accept-all `_validate_spec_envs` stub from N.az.2 with real closed-set enforcement, in both the `pyve.toml` validator and `pyve env sync` ingestion. The behavioral-risk sub-story: it touches the heavily-tested manifest-validation path and changes `env sync` from accept-all to strict.
+
+**Tasks**
+
+- [ ] Extend `validate(cfg)` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) to enforce the closed sets on `backend` / `languages` / `frameworks` / `packaging` / `app_type`: unknown value → batched `error: pyve.env.<name>.<axis>: unknown <axis> '<value>' ...` (exit 2), mirroring the existing `purpose` check. Advisory and implemented values pass.
+- [ ] Replace the `_validate_spec_envs` stub in [lib/pyve_env_sync_helper.py](../../lib/pyve_env_sync_helper.py) with shared enforcement (import the classifier from `pyve_toml_helper`): an unknown value in §4 → hard error + abort (distinct exit code; no `pyve.toml` write).
+- [ ] Unrecognized §4 field handling per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §B (an unrecognized field on a spec env → error, like an unknown value) — spec-side only; `pyve.toml`'s S9 provider-private key tolerance is unchanged.
+- [ ] Tests: each axis unknown→error (both `pyve.toml` validation and `pyve env sync`); advisory value accepted; implemented value accepted; unrecognized spec field → error.
+
+### Story N.ba.3: Advisory recognition + surfacing + skip-materialization [Planned]
+
+**Motivation.** The "known-advisory → record + surface, skip materialization" arm of the trichotomy and the recognition of the two advisory-only fields. The broad bash surface: check/status composers + the env materializer.
+
+**Tasks**
+
+- [ ] Recognize advisory fields `require_min_version` (`{ <tool>: "<ver>" }`) and `manual_steps` (string list) on `[env.<name>]` in [lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py) (`manual_steps` already normalized; add `require_min_version`): parse, store, emit; never materialize.
+- [ ] Advisory surfacing helper (e.g. a `pyve_toml_helper.py advisories <pyve.toml>` mode) classifying each env's attributes and emitting advisory notes, using `FRAMEWORK_KIND` / `BACKEND_CATEGORY` (N.ba.1) for messaging. Surfaced as a project-level addendum in `pyve check` / `pyve status` (informational; spec-ahead is a legitimate steady state). `none` values are not surfaced (no noise).
+- [ ] Skip materialization of advisory backends with the §B no-op advisory ("env `<name>` declares backend `<b>`, which pyve does not yet materialize; provision it manually per the env spec") — guard in the env materialize path ([lib/envs.sh](../../lib/envs.sh) / [lib/commands/env.sh](../../lib/commands/env.sh)).
+- [ ] Tests: advisory backend skipped + advisory printed; `require_min_version` / `manual_steps` recorded + surfaced; framework-`kind` / backend-`category` messaging; `none` not surfaced.
 
 ---
 

@@ -39,6 +39,142 @@ from pathlib import Path
 SCHEMA_VERSION = "3.0"
 VALID_PURPOSES = ("run", "test", "utility", "temp")
 
+#============================================================
+# F6 (Story N.ba.1): the Pyve-owned closed vocabulary.
+#
+# Machine mirror of the enumeration published in
+# docs/specs/project-guide-requests/env-dependencies-template.md §2 and
+# reproduced in wizard-env-contract.md §B. Each axis is a CLOSED set
+# partitioned into two classes:
+#   implemented — pyve has a real integration that acts on it today.
+#   advisory    — recognized + surfaced in check/status, never materialized,
+#                 never an error (the trichotomy's "known + no-op" class).
+# A value outside both → unknown → hard error (enforced in N.ba.2).
+#
+# `none` is the not-applicable value; it lives in the ADVISORY column of
+# every none-bearing axis (per the contract table), exactly as the docs list
+# it — surfacing policy (N.ba.3) decides not to print it, but classification
+# stays faithful to the vocabulary.
+#
+# LOCKSTEP: tests/unit/test_n_ba_1_vocabulary.bats parses the contract §B
+# table and fails the build if these sets drift from the docs. Edit one and
+# the other together — never independently.
+#============================================================
+
+# backend — the environment-management mechanism (S6 categories below).
+BACKENDS_IMPLEMENTED = ("venv", "micromamba", "pnpm", "npm", "yarn")
+BACKENDS_ADVISORY = (
+    # project-virtualized (advisory)
+    "uv", "poetry", "conda", "bun", "deno",
+    # cache-backed (all advisory; xcode/swiftpm/android_sdk are cache-backed
+    # per S16 — the un-installable-toolchain fact rides require_min_version)
+    "cargo", "go", "bundler", "swiftpm", "xcode", "android_sdk",
+    "gradle", "maven", "sbt", "dotnet", "conan", "cmake",
+    # check-only / special (all advisory)
+    "homebrew", "apt", "docker", "podman", "none",
+)
+
+LANGUAGES_IMPLEMENTED = ("python", "javascript", "typescript")
+LANGUAGES_ADVISORY = (
+    "bash", "c", "cpp", "c_sharp", "java", "kotlin", "scala", "go",
+    "swift", "objective_c", "rust", "ruby",
+)
+
+# frameworks — intrinsic kind (app/test/lint) in FRAMEWORK_KIND below.
+FRAMEWORKS_IMPLEMENTED = ("sveltekit",)
+FRAMEWORKS_ADVISORY = (
+    # app
+    "flask", "fastapi", "django", "react", "vue", "jupyter", "marimo",
+    "spring", "j2ee", "kotlin_multiplatform", "rails", "sinatra",
+    "swiftui", "uikit",
+    # test
+    "pytest", "vitest", "jest", "mocha", "playwright", "cypress", "bats",
+    "rspec", "minitest", "xctest", "junit",
+    # lint
+    "ruff", "mypy", "black", "isort", "flake8", "pylint", "eslint",
+    "prettier", "shellcheck", "shfmt", "ktlint", "detekt", "scalafmt",
+    "scalafix", "google_java_format", "rustfmt", "clippy", "gofmt",
+    "golangci_lint", "rubocop", "swiftlint", "swiftformat",
+    "clang_format", "clang_tidy",
+    # special
+    "none",
+)
+
+PACKAGING_IMPLEMENTED = ()
+PACKAGING_ADVISORY = (
+    "container", "static", "server", "serverless", "package", "binary",
+    "mobile_app", "lock_bundle", "none",
+)
+
+APP_TYPES_IMPLEMENTED = ()
+APP_TYPES_ADVISORY = (
+    "api", "cli", "service", "library", "desktop", "mobile",
+    "embedded", "script", "web", "none",
+)
+
+# Derived unions — the closed set per axis (implemented ∪ advisory).
+VALID_BACKENDS = BACKENDS_IMPLEMENTED + BACKENDS_ADVISORY
+VALID_LANGUAGES = LANGUAGES_IMPLEMENTED + LANGUAGES_ADVISORY
+VALID_FRAMEWORKS = FRAMEWORKS_IMPLEMENTED + FRAMEWORKS_ADVISORY
+VALID_PACKAGING = PACKAGING_IMPLEMENTED + PACKAGING_ADVISORY
+VALID_APP_TYPES = APP_TYPES_IMPLEMENTED + APP_TYPES_ADVISORY
+
+# Per-axis (implemented, advisory) partition — the single source the
+# classifier and the lockstep test read.
+_AXES = {
+    "purpose": (VALID_PURPOSES, ()),
+    "backend": (BACKENDS_IMPLEMENTED, BACKENDS_ADVISORY),
+    "languages": (LANGUAGES_IMPLEMENTED, LANGUAGES_ADVISORY),
+    "frameworks": (FRAMEWORKS_IMPLEMENTED, FRAMEWORKS_ADVISORY),
+    "packaging": (PACKAGING_IMPLEMENTED, PACKAGING_ADVISORY),
+    "app_type": (APP_TYPES_IMPLEMENTED, APP_TYPES_ADVISORY),
+}
+
+# Framework → intrinsic kind (app / test / lint), looked up, never an
+# authoring choice (S14). `none` = no framework activation.
+FRAMEWORK_KIND = {}
+for _fw in ("sveltekit", "flask", "fastapi", "django", "react", "vue",
+            "jupyter", "marimo", "spring", "j2ee", "kotlin_multiplatform",
+            "rails", "sinatra", "swiftui", "uikit"):
+    FRAMEWORK_KIND[_fw] = "app"
+for _fw in ("pytest", "vitest", "jest", "mocha", "playwright", "cypress",
+            "bats", "rspec", "minitest", "xctest", "junit"):
+    FRAMEWORK_KIND[_fw] = "test"
+for _fw in ("ruff", "mypy", "black", "isort", "flake8", "pylint", "eslint",
+            "prettier", "shellcheck", "shfmt", "ktlint", "detekt", "scalafmt",
+            "scalafix", "google_java_format", "rustfmt", "clippy", "gofmt",
+            "golangci_lint", "rubocop", "swiftlint", "swiftformat",
+            "clang_format", "clang_tidy"):
+    FRAMEWORK_KIND[_fw] = "lint"
+FRAMEWORK_KIND["none"] = "none"
+
+# Backend → S6 category, for advisory messaging (N.ba.3).
+BACKEND_CATEGORY = {}
+for _b in ("venv", "micromamba", "pnpm", "npm", "yarn", "uv", "poetry",
+           "conda", "bun", "deno"):
+    BACKEND_CATEGORY[_b] = "project-virtualized"
+for _b in ("cargo", "go", "bundler", "swiftpm", "xcode", "android_sdk",
+           "gradle", "maven", "sbt", "dotnet", "conan", "cmake"):
+    BACKEND_CATEGORY[_b] = "cache-backed"
+for _b in ("homebrew", "apt", "docker", "podman"):
+    BACKEND_CATEGORY[_b] = "check-only"
+BACKEND_CATEGORY["none"] = "special"
+
+
+def classify_value(axis, value):
+    """Return 'implemented' | 'advisory' | 'unknown' for a value on an axis.
+
+    The single classifier the F6 enforcement (N.ba.2) and advisory surfacing
+    (N.ba.3) both consult. An unrecognized axis classifies everything as
+    'unknown'.
+    """
+    implemented, advisory = _AXES.get(axis, ((), ()))
+    if value in implemented:
+        return "implemented"
+    if value in advisory:
+        return "advisory"
+    return "unknown"
+
 # Core `[env.<name>]` keys interpreted by pyve. Every other key is
 # packaging-/backend-provider-private (spike S9): core stores it but
 # never interprets it, and it round-trips through the manifest unchanged
