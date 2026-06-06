@@ -39,3 +39,6 @@ tmp/
 
 # MkDocs build output (configured as site_dir in mkdocs.yml)
 /site/
+
+# Claude Code: nothing tracked
+.claude/*

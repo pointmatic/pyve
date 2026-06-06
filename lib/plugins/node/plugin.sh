@@ -334,6 +334,15 @@ node_pyve_plugin_init() {
     node_pyve_plugin_validate_env_blocks || return $?
     local path="${1:-.}"
     local backend="${2:-}"
+    # A declared Node path with no package.json is a scaffold-time
+    # declaration (e.g. `pyve init --node-path apps/web` before the app
+    # exists): the manifest records the intended path, but there is nothing
+    # to install yet. Skip with an advisory rather than failing init — the
+    # install runs later via `pyve env install` once package.json is added.
+    if [[ ! -f "${path}/package.json" ]]; then
+        info "node: no package.json at '${path}' — skipping install (add dependencies, then run 'pyve env install')"
+        return 0
+    fi
     local provider
     provider="$(node_provider_detect "$backend" "$path")"
     _node_provider_run_install "$path" "$provider" install

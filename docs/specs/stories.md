@@ -1682,6 +1682,20 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Unrecognized §4 field handling per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §B (an unrecognized field on a spec env → error, like an unknown value) — spec-side only; `pyve.toml`'s S9 provider-private key tolerance is unchanged.
 - [x] Tests: each axis unknown→error (both `pyve.toml` validation and `pyve env sync`); advisory value accepted; implemented value accepted; unrecognized spec field → error ([tests/unit/test_n_ba_2_enforcement.bats](../../tests/unit/test_n_ba_2_enforcement.bats)). Reconciled fixtures that used now-invalid values to the closed vocabulary (`test_manifest`: `spa`→`web`, `docker`→`container`; `test_n_ar_package`: `docker`→`container`; `test_n_o` S9 backend tests inject the unregistered backend post-load so they exercise the plugin validator's read-compat guard instead of being pre-empted by F6). `pyve package --help` example updated `docker`→`container`.
 
+### Fix N.ba.2b: Integration-suite reconciliation — composed-init Node scaffold-path + project-guide toolchain-hosting tests [Done]
+
+**Developer-signaled priority insert (2026-06-06).** Worked mid-N.ba (after N.ba.1/N.ba.2, before N.ba.3) to clear the integration CI failures so future commits get a clean integration read. Two pre-existing failures, both regressions from earlier Phase N redesigns surfaced by CI — neither caused by the F6 work:
+
+1. **Composed-init Node scaffold-path** ([lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh)). Since N.av made `pyve init` materialize each plugin's env, a `--node-path <sub>` declaring a path with no `package.json` (a scaffold-time declaration before the app exists) made `node_pyve_plugin_init` run the provider install, whose `cd "$path"` aborted init. Fix: skip the install with an advisory when the declared path has no `package.json` — the manifest records the path; `pyve env install` runs later once dependencies exist.
+2. **project-guide integration tests → toolchain-hosting model** ([tests/integration/test_project_guide_integration.py](../../tests/integration/test_project_guide_integration.py)). The Story G.c/G.h tests asserted project-guide was pip-installed into the *project venv* and that `pyve init` ran `project-guide init` to scaffold — the per-project model **N.aw.2 retired** in favor of toolchain hosting (`pyve self install` → toolchain venv + `~/.local/bin` shim). Rewrote the 6 stale tests to a **network-free `project-guide` stub on PATH** that emulates the `init`/`update --no-input --quiet` contract (scaffold + backup/restore + `PG_STUB_FAIL_UPDATE` hook), and assert pyve drove the hosted scaffolding (not a project-venv import).
+
+**Note — local-only / flaky residue (NOT addressed here, NOT CI failures):** running the full local integration suite (no `--maxfail`) surfaces additional failures that are dev-machine artifacts (`pyve init` aborts on an asdf "Install Python X now?" prompt in tmp dirs that don't symlink version-manager state) plus one order-dependent flaky test (`test_explicit_project_guide_flag_overrides_auto_skip` passes in isolation). CI provisions Python via `pyenv global`, so these are expected to pass there; left for a CI run to confirm.
+
+**Tasks**
+
+- [x] Node plugin: skip install with an advisory when the declared path has no `package.json` (scaffold-time `--node-path`); init no longer aborts. Verified: the failing `test_node_detection` integration test passes; node unit suite green.
+- [x] Rewrite the 6 stale project-guide integration tests to the toolchain-hosting model via a network-free PATH stub; drop the `_project_guide_importable(project_venv)` assertions for scaffolding/`.project-guide.yml` assertions. Verified: `test_project_guide_integration.py` → 13 passed, 2 deselected; ruff clean.
+
 ### Story N.ba.3: Advisory recognition + surfacing + skip-materialization [Planned]
 
 **Motivation.** The "known-advisory → record + surface, skip materialization" arm of the trichotomy and the recognition of the two advisory-only fields. The broad bash surface: check/status composers + the env materializer.
