@@ -125,6 +125,10 @@ self_install() {
     # Provision Pyve's own toolchain Python (Story N.at.3) — best-effort.
     _self_install_toolchain_python
 
+    # Host project-guide as a Pyve-managed global tool (Story N.aw) —
+    # best-effort; installs into the toolchain venv + shims onto PATH.
+    _self_install_project_guide
+
     printf "\n✓ pyve v%s installed successfully!\n" "$VERSION"
     printf "\nYou may need to restart your shell or run:\n"
     printf "  source ~/.zprofile  # or ~/.bash_profile\n"
@@ -322,6 +326,66 @@ _self_prune_stale_toolchain_versions() {
 }
 
 #------------------------------------------------------------
+# Private helper: host project-guide as a Pyve-managed global tool
+# (Story N.aw — F2 revised). project-guide is a version-agnostic any-stack
+# utility, so Pyve installs ONE copy into its toolchain venv (next to the
+# toolchain Python) and shims the console script onto ~/.local/bin — which
+# `self install` already creates and puts on PATH — so `project-guide`
+# resolves in every shell, no machinery installed per project.
+#
+# Best-effort by contract (mirrors _self_install_toolchain_python): a
+# missing toolchain venv or a failed pip install WARNS but never aborts.
+# Idempotent: `ln -sf` re-points the shim to the current version-keyed
+# venv, so a DEFAULT_PYTHON_VERSION bump self-heals on the next install.
+# Requires project-guide >= 2.13.0 (the pyve-toolchain-hosting contract).
+#------------------------------------------------------------
+
+_self_install_project_guide() {
+    declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0
+    local venv_dir pip_cmd
+    venv_dir="$(pyve_toolchain_venv_dir)"
+    pip_cmd="$venv_dir/bin/pip"
+    # Toolchain venv not provisioned (build skipped/failed) — nothing to
+    # install into or shim. Non-fatal; the next `self install` retries.
+    if [[ ! -x "$pip_cmd" ]]; then
+        return 0
+    fi
+    if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.13.0'; then
+        log_success "Installed project-guide into the Pyve toolchain"
+        _self_link_project_guide_shim "$venv_dir"
+    else
+        log_warning "Could not install project-guide into the toolchain (skip; re-run 'pyve self install' later)"
+    fi
+    return 0
+}
+
+# Point ~/.local/bin/project-guide at the toolchain venv's console script.
+# `self install` owns ~/.local/bin (it installs pyve there and adds it to
+# PATH), so the shim is immediately resolvable. `ln -sf` makes this a
+# refresh, not just a create (bump-reconcile + re-run idempotency).
+_self_link_project_guide_shim() {
+    local venv_dir="$1"
+    local target="$venv_dir/bin/project-guide"
+    [[ -x "$target" ]] || return 0
+    local bin_dir="$HOME/.local/bin"
+    mkdir -p "$bin_dir"
+    ln -sf "$target" "$bin_dir/project-guide"
+    log_info "Linked project-guide → $bin_dir/project-guide"
+}
+
+# Remove the project-guide shim on `self uninstall`. Only our own symlink
+# is removed — a real project-guide binary a user installed by hand (a
+# regular file, not a symlink) is left untouched. The toolchain-tree
+# rm -rf in _self_uninstall_toolchain_python drops the hosted package.
+_self_uninstall_project_guide() {
+    local shim="$HOME/.local/bin/project-guide"
+    if [[ -L "$shim" ]]; then
+        rm -f "$shim"
+        log_success "Removed project-guide shim ($shim)"
+    fi
+}
+
+#------------------------------------------------------------
 # Leaf: pyve self uninstall
 #------------------------------------------------------------
 
@@ -381,6 +445,10 @@ self_uninstall() {
     # call is a safe no-op if the block is absent or the file is missing.
     # (Story G.c / FR-G2)
     _self_uninstall_project_guide_completion
+
+    # Remove the project-guide global shim (Story N.aw). The hosted
+    # package itself goes with the toolchain-tree removal below.
+    _self_uninstall_project_guide
 
     # Remove Pyve's own toolchain Python tree (Story N.at.3).
     _self_uninstall_toolchain_python
