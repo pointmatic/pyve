@@ -1587,15 +1587,17 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 
 **Original motivation (for the record).** With `[env.root] backend = "venv"` present but no `[plugins.python]`, the N.aj gate makes Python active, so `compose_check` / `compose_status` dispatch the Python plugin's hooks — which assume an *application* env (look for `.venv`). They would have needed a utility-root-only mode reporting the health of `.pyve/envs/root/venv/` instead of complaining about a missing `.venv`.
 
-### Story N.ay: F5 — `.project-guide.yml` contract guard + `env_spec_path` discovery [Planned]
+### Story N.ay: F5 — `.project-guide.yml` contract guard + `env_spec_path` discovery [Done]
 
 **Motivation.** Formalize the load-bearing cross-repo dependency: pyve keys behavior off `.project-guide.yml`'s *presence* (install marker; N.aj Python-active signal). A pyve-side guard test makes an unannounced upstream rename/reshape trip a red build (the breaking-change tripwire), and `env_spec_path` discovery lets pyve find the env-dependencies spec via the tool-state pointer. Per [wizard-env-contract.md](project-guide-requests/wizard-env-contract.md) §E.
 
+**Scope note (re: N.aw re-approach).** The contract guard is deliberately scoped to the **stable** marker surface — the `.project-guide.yml` filename, its role as the install-marker, and (new) the `env_spec_path` pointer. It does **not** pin the "presence ⇒ Python plugin active" inference (N.aj): that semantic is slated to change under the N.aw `[Blocked]` global-tool re-approach, so guarding it here would only churn. Confirmed with the developer before implementation.
+
 **Tasks**
 
-- [ ] Add a contract-guard test asserting the gate's `.project-guide.yml` dependency is intact (filename + the presence-as-Python-active-signal behavior from N.aj) — fails loudly if the marker contract drifts.
-- [ ] Document the minimum `project-guide` version pin (alongside the existing `--no-input ≥ 2.2.3` precedent) for the wizard integration.
-- [ ] `env_spec_path` discovery: read it from `.project-guide.yml` (tool-state pointer), defaulting to `docs/specs/env-dependencies.md` (per the contract §D). Basic YAML `key: value` parse, no new dependency.
+- [x] Contract-guard test asserting the `.project-guide.yml` dependency is intact — [tests/unit/test_n_ay_marker_contract.bats](../../tests/unit/test_n_ay_marker_contract.bats): sentinels that the exact filename literal is used by the canonical consumers ([lib/utils.sh](../../lib/utils.sh), [lib/project_guide.sh](../../lib/project_guide.sh), [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) — post-N.s the init/update commands live in the Python plugin, not `lib/commands/`) and that the install-marker predicate `_init_detect_project_guide_present` keys off `[[ -f .project-guide.yml ]]`. An upstream rename trips a red build. (Scoped to the stable surface per the note above — the Python-active inference is intentionally not pinned.)
+- [x] Documented the minimum `project-guide` version pin for the wizard integration in the [`project_guide_env_spec_path`](../../lib/project_guide.sh) header: the `env_spec_path` pointer + env-dependencies doc are authored by `plan_envs` (project-guide ≥ 2.12.0), recorded alongside the existing `--no-input ≥ 2.2.3` / `--quiet ≥ 2.5.0` precedents.
+- [x] `env_spec_path` discovery: [`project_guide_env_spec_path`](../../lib/project_guide.sh) reads the `env_spec_path:` pointer from `.project-guide.yml` (basic `key: value` parse via `grep` — the [plugin.sh:3078](../../lib/plugins/python/plugin.sh#L3078) idiom; whitespace + single/double quotes stripped), defaulting to `docs/specs/env-dependencies.md` when the marker is absent, the key is missing, or the value is empty. No new dependency. 7 discovery tests + 2 contract sentinels; full suite **1732/1732**, shellcheck clean.
 
 ### Story N.az: F4 — `pyve env sync` (ingest §4 → diff → `[Y/n]`-apply) [Planned]
 

@@ -197,3 +197,45 @@ run_project_guide_orchestration() {
         log_warning "Failed to write project-guide completion to $rc_path (continuing)"
     fi
 }
+
+# Discover the env-dependencies spec path (the `plan_envs`-authored doc
+# whose §4 `pyve env sync` ingests, Story N.az) via the `.project-guide.yml`
+# tool-state pointer (Story N.ay — F5, per wizard-env-contract.md §D/§E).
+#
+# Resolution:
+#   1. the `env_spec_path:` key in `.project-guide.yml` — a plain
+#      `key: value` line (basic YAML, no parser dependency), with
+#      surrounding whitespace and quotes stripped.
+#   2. the default `docs/specs/env-dependencies.md` when the marker file is
+#      absent, the key is missing, or the value is empty.
+#
+# Minimum project-guide version: the `env_spec_path` pointer and the
+# env-dependencies doc are authored by the `plan_envs` mode, which ships in
+# project-guide >= 2.12.0 (the wizard-env-contract integration — alongside
+# the existing `--no-input` >= 2.2.3 / `--quiet` >= 2.5.0 precedents
+# recorded in lib/utils.sh). The default keeps discovery robust against
+# older installs that predate the pointer.
+#
+# Usage: project_guide_env_spec_path   (prints the resolved path)
+project_guide_env_spec_path() {
+    local marker=".project-guide.yml"
+    local default_path="docs/specs/env-dependencies.md"
+
+    [[ -f "$marker" ]] || { printf '%s' "$default_path"; return 0; }
+
+    local line
+    line="$(grep -E '^[[:space:]]*env_spec_path:' "$marker" 2>/dev/null | head -1 || true)"
+    [[ -n "$line" ]] || { printf '%s' "$default_path"; return 0; }
+
+    # Strip the key, then trim whitespace and one layer of surrounding quotes.
+    local value="${line#*:}"
+    value="${value#"${value%%[![:space:]]*}"}"   # ltrim
+    value="${value%"${value##*[![:space:]]}"}"   # rtrim
+    value="${value#\"}"; value="${value%\"}"     # strip double quotes
+    value="${value#\'}"; value="${value%\'}"     # strip single quotes
+    value="${value#"${value%%[![:space:]]*}"}"   # re-trim (quoted padding)
+    value="${value%"${value##*[![:space:]]}"}"
+
+    [[ -n "$value" ]] || { printf '%s' "$default_path"; return 0; }
+    printf '%s' "$value"
+}
