@@ -92,11 +92,13 @@ teardown() {
     [[ "$output" != *"COMPOSE-ENVRC"* ]] || { echo "composed .envrc despite --no-direnv" >&2; return 1; }
 }
 
-@test "node-only: next-steps are node-aware (no Python project-guide / python next-steps)" {
+@test "node-only: project-guide orchestration runs (globally hosted), but next-steps stay node-aware" {
     printf '{"name":"demo-node"}\n' > package.json
     run compose_init
-    # The Python tail (project-guide + python next-steps) must NOT run.
-    [[ "$output" != *"PROJECT-GUIDE"* ]] || { echo "project-guide ran on node-only (deferred to N.aw)" >&2; return 1; }
+    # Story N.aw: project-guide is globally hosted, so the orchestration runs
+    # on a Node-only stack too (no longer deferred).
+    [[ "$output" == *"PROJECT-GUIDE"* ]] || { echo "project-guide did NOT run on node-only (N.aw enables it)" >&2; return 1; }
+    # The Python next-steps tail must still NOT run — node gets node-aware steps.
     [[ "$output" != *"PY-NEXT-STEPS"* ]] || { echo "python next-steps ran on node-only" >&2; return 1; }
 }
 

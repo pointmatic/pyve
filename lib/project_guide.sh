@@ -29,26 +29,6 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
     exit 1
 fi
 
-# Resolve the env that will HOST project-guide (a pip-installed Python
-# package), decided at accept-time (Story N.au seam).
-#
-# Today — monolithic Python-first `init` — the caller always passes the
-# Python application env (`.venv` / micromamba prefix), so this is the
-# identity function. The composed-init core (N.av) will call the
-# orchestration on non-Python stacks with no app env; N.aw (F2) then
-# fills the branch that provisions a `utility` `root` venv at
-# `resolve_env_path`-derived path and returns it. Keeping the seam here
-# (rather than at the callsite) means the accept decision and the host
-# decision live together.
-#
-# Usage: _project_guide_resolve_host_env <backend> <provided_env_path>
-_project_guide_resolve_host_env() {
-    local backend="$1"
-    local provided_env_path="$2"
-    # N.au: identity. (N.aw extends the no-app-env branch.)
-    printf '%s' "$provided_env_path"
-}
-
 # Orchestrate the project-guide post-init flow: decide whether to install,
 # resolve the host env, install the package into it, scaffold/refresh the
 # managed artifacts, then optionally wire shell completion.
@@ -65,8 +45,10 @@ _project_guide_resolve_host_env() {
 #   pg_mode:   "" | "yes" | "no"  (from --project-guide / --no-project-guide)
 #   comp_mode: "" | "yes" | "no"  (from --project-guide-completion / etc.)
 run_project_guide_orchestration() {
-    local backend="$1"
-    local env_path="$2"
+    # Story N.aw: project-guide is globally hosted, so backend/env_path
+    # ($1, $2) are no longer used here (kept in the signature for the two
+    # callers — init_project + compose_init); pg_mode/comp_mode drive the
+    # install + completion decisions.
     local pg_mode="$3"
     local comp_mode="$4"
 
@@ -123,18 +105,15 @@ run_project_guide_orchestration() {
         return 0
     fi
 
-    # Resolve the host env at accept-time (Story N.au seam). Identity today;
-    # N.aw provisions a utility root for the no-app-env (non-Python) case.
-    local host_env_path
-    host_env_path="$(_project_guide_resolve_host_env "$backend" "$env_path")"
-
-    #--- Step 1: pip install --upgrade project-guide ----------------------
-    install_project_guide "$backend" "$host_env_path" || true
-
-    # If install actually failed, don't proceed to step 2 or 3 — running
-    # `project-guide init` against a missing binary or adding a completion
-    # eval for a missing tool would just leave dead state.
-    if ! is_project_guide_installed "$backend" "$host_env_path"; then
+    #--- Step 1: ensure project-guide is globally available --------------
+    # Story N.aw: project-guide is a Pyve-managed GLOBAL tool (pyve self
+    # install → toolchain venv + ~/.local/bin shim), not a per-project pip
+    # install. Nothing to install here — we only need it resolvable on PATH
+    # to scaffold. If it isn't, point the user at `pyve self install` and
+    # skip (non-fatal): scaffolding or wiring completion for a missing tool
+    # would just leave dead state.
+    if ! command -v project-guide >/dev/null 2>&1; then
+        log_warning "project-guide is not installed — run 'pyve self install' to host it, then re-run."
         return 0
     fi
 
@@ -144,12 +123,12 @@ run_project_guide_orchestration() {
     #   - present → refresh: `project-guide update --no-input` — preserves
     #     user state (current_mode, overrides, test_first, pyve_version)
     #     and creates `.bak.<ts>` siblings for modified managed files.
-    # Pyve never auto-runs `project-guide init --force` because it is
-    # destructive (resets config, no backups); that remains user-initiated.
+    # Both run the GLOBAL `project-guide` in the project cwd. Pyve never
+    # auto-runs `project-guide init --force` (destructive); user-initiated.
     if [[ -f ".project-guide.yml" ]]; then
-        run_project_guide_update_in_env "$backend" "$host_env_path"
+        run_project_guide_update_in_env
     else
-        run_project_guide_init_in_env "$backend" "$host_env_path"
+        run_project_guide_init_in_env
     fi
 
     #--- Step 3: shell completion wiring ----------------------------------

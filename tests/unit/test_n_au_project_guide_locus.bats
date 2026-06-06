@@ -42,11 +42,9 @@ setup() {
     [[ "$status" -ne 0 ]]
 }
 
-@test "_project_guide_resolve_host_env returns the provided path (N.au identity seam)" {
-    run _project_guide_resolve_host_env "venv" "/some/.venv"
-    assert_status_equals 0
-    assert_output_equals "/some/.venv"
-}
+# Note: the N.au `_project_guide_resolve_host_env` identity seam was retired
+# in N.aw — project-guide is globally hosted, so there is no per-project host
+# env to resolve. (Its test was removed with the function.)
 
 @test "pyve.sh sources lib/project_guide.sh explicitly" {
     grep -q 'source .*lib/project_guide.sh' "$PYVE_ROOT/pyve.sh"

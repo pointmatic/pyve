@@ -184,13 +184,14 @@ _compose_init_run_tail() {
     fi
     compose_project_gitignore ".gitignore" && success "Updated .gitignore"
 
+    # project-guide orchestration (lifted in N.au). Story N.aw: project-guide
+    # is globally hosted (pyve self install → toolchain venv + shim), so it
+    # works on a non-Python stack too — run it on every backend, then emit
+    # stack-aware next-steps.
+    run_project_guide_orchestration "$backend" "$env_path" "$pg_mode" "$comp_mode"
     if [[ "$backend" == "node" ]]; then
-        # Story N.av.3: project-guide on a non-Python stack needs a Python
-        # utility root to host it (F2/N.aw) — deferred. Node-aware next-steps.
         _compose_init_node_next_steps "$no_direnv"
     else
-        # project-guide orchestration (lifted in N.au), then next-steps.
-        run_project_guide_orchestration "$backend" "$env_path" "$pg_mode" "$comp_mode"
         _init_print_next_steps "$backend" "$no_direnv" "$env_path"
     fi
     footer_box

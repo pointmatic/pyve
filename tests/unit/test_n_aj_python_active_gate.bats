@@ -62,7 +62,10 @@ teardown() {
     python_plugin_is_active_in_project
 }
 
-@test "active: .project-guide.yml present (project-guide ⇒ Python utility root)" {
+@test "active: .project-guide.yml alone falls through to the bare-dir Python default (not a marker signal)" {
+    # Story N.aw: .project-guide.yml is NO LONGER a Python-active signal
+    # (project-guide is globally hosted). With no competing stack present,
+    # this dir is still active — but via the bare-dir default, not the marker.
     : > .project-guide.yml
     python_plugin_is_active_in_project
 }
@@ -115,10 +118,14 @@ EOF
     python_plugin_is_active_in_project
 }
 
-@test "active: package.json present BUT project-guide installed (Python utility root)" {
+@test "suppress: package.json + .project-guide.yml (project-guide is global, no project Python env)" {
+    # Story N.aw: project-guide is globally hosted, so its per-project marker
+    # no longer implies a project Python env. A Node-only project that accepts
+    # project-guide has NO .venv to report → Python stays suppressed.
     printf '{ "name": "x" }\n' > package.json
     : > .project-guide.yml
-    python_plugin_is_active_in_project
+    run python_plugin_is_active_in_project
+    [ "$status" -eq 1 ]
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -175,10 +182,12 @@ EOF
     [[ "$output" == *".pyve/config"* ]] || [[ "$output" == *"pyve init"* ]]
 }
 
-@test "e2e: Node dir + project-guide accepted → Python is active (utility root reported)" {
+@test "e2e: Node dir + project-guide accepted → Python suppressed (global hosting, no utility root)" {
+    # Story N.aw: project-guide is global; a Node-only project has no project
+    # Python env, so the Python plugin produces ZERO output (as when declined).
     printf '{ "name": "frontend" }\n' > package.json
     : > .project-guide.yml
     run "$PYVE_SCRIPT" check
-    # project-guide ⇒ Python utility root ⇒ Python NOT suppressed.
-    [[ "$output" == *"Pyve Environment Check"* ]] || [[ "$output" == *"[python]"* ]]
+    ! [[ "$output" == *"[python]"* ]]
+    ! [[ "$output" == *"virtual environment"* ]]
 }

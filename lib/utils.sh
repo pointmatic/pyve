@@ -593,34 +593,22 @@ install_project_guide() {
 # `--upgrade project-guide` install path keeps fresh installs current.
 # Failure is non-fatal by design.
 #
-# Usage: run_project_guide_init_in_env <backend> <env_path>
+# Story N.aw: project-guide is globally hosted (pyve self install →
+# toolchain venv + ~/.local/bin shim), so scaffolding runs the global
+# `project-guide` on PATH — not a per-project install. The (backend,
+# env_path) args are accepted for call-site compatibility but unused; the
+# `_in_env` name is retained pending the N-7 naming cleanup.
+#
+# Usage: run_project_guide_init_in_env [<backend>] [<env_path>]
 # Returns 0 always — failure is non-fatal by design.
 run_project_guide_init_in_env() {
-    local backend="$1"
-    local env_path="$2"
-
-    local pg_cmd=""
-    if [[ "$backend" == "venv" ]]; then
-        pg_cmd="$env_path/bin/project-guide"
-        if [[ ! -x "$pg_cmd" ]]; then
-            log_warning "Cannot run 'project-guide init': binary not found at $pg_cmd"
-            return 0
-        fi
-    elif [[ "$backend" == "micromamba" ]]; then
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-        if [[ -z "$micromamba_path" ]]; then
-            log_warning "Cannot run 'project-guide init': micromamba not found"
-            return 0
-        fi
-        pg_cmd="$micromamba_path run -p $env_path project-guide"
-    else
-        log_warning "Cannot run 'project-guide init': unknown backend '$backend'"
+    if ! command -v project-guide >/dev/null 2>&1; then
+        log_warning "Cannot run 'project-guide init': 'project-guide' not on PATH (run 'pyve self install')"
         return 0
     fi
 
-    log_info "Running 'project-guide init' in the project environment..."
-    if $pg_cmd init --no-input --quiet; then
+    log_info "Running 'project-guide init'..."
+    if project-guide init --no-input --quiet; then
         log_success "project-guide artifacts generated"
     else
         log_warning "'project-guide init' failed (skip with --no-project-guide)"
@@ -639,34 +627,17 @@ run_project_guide_init_in_env() {
 # and is non-fatal — pyve must never auto-run `project-guide init --force`,
 # since that is destructive.
 #
-# Usage: run_project_guide_update_in_env <backend> <env_path>
-# Returns 0 always — failure is non-fatal by design.
+# Usage: run_project_guide_update_in_env [<backend>] [<env_path>]
+# Returns 0 always — failure is non-fatal by design. (See the N.aw note on
+# run_project_guide_init_in_env: globally hosted, args accepted-but-unused.)
 run_project_guide_update_in_env() {
-    local backend="$1"
-    local env_path="$2"
-
-    local pg_cmd=""
-    if [[ "$backend" == "venv" ]]; then
-        pg_cmd="$env_path/bin/project-guide"
-        if [[ ! -x "$pg_cmd" ]]; then
-            log_warning "Cannot run 'project-guide update': binary not found at $pg_cmd"
-            return 0
-        fi
-    elif [[ "$backend" == "micromamba" ]]; then
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-        if [[ -z "$micromamba_path" ]]; then
-            log_warning "Cannot run 'project-guide update': micromamba not found"
-            return 0
-        fi
-        pg_cmd="$micromamba_path run -p $env_path project-guide"
-    else
-        log_warning "Cannot run 'project-guide update': unknown backend '$backend'"
+    if ! command -v project-guide >/dev/null 2>&1; then
+        log_warning "Cannot run 'project-guide update': 'project-guide' not on PATH (run 'pyve self install')"
         return 0
     fi
 
-    log_info "Running 'project-guide update' in the project environment..."
-    if $pg_cmd update --no-input --quiet; then
+    log_info "Running 'project-guide update'..."
+    if project-guide update --no-input --quiet; then
         log_success "project-guide artifacts refreshed"
     else
         log_warning "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"

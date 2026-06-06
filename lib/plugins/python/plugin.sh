@@ -272,11 +272,11 @@ _python_pyve_plugin_render_advisories() {
 #   ACTIVE (return 0) on ANY Python signal:
 #     - `[plugins.python]` declared in pyve.toml
 #     - any declared env with a Python backend (venv / micromamba) or
-#       `languages` containing `python` (catches the project-guide-
-#       hosting `root` `utility` venv)
-#     - `.project-guide.yml` present (project-guide is a Python package
-#       ⇒ a Python root env hosts it — a real cross-repo contract)
+#       `languages` containing `python` (an explicit Python env declaration)
 #     - `.pyve/config` present (v2 Python project marker)
+#       (Story N.aw: `.project-guide.yml` is NO LONGER a signal — project-
+#        guide is globally hosted, so its per-project marker no longer
+#        implies a project Python env.)
 #     - root-scoped Python application files
 #       (pyproject.toml / setup.py / requirements*.txt /
 #        environment*.yml / *.py). Root-scoped via `compgen -G` so
@@ -333,8 +333,11 @@ python_plugin_is_active_in_project() {
         done
     done < <(manifest_list_envs 2>/dev/null)
 
-    # 3. project-guide install marker (⇒ Python utility root) / v2 config.
-    [[ -f ".project-guide.yml" ]] && return 0
+    # 3. v2 Python project marker. (Story N.aw: `.project-guide.yml` is NO
+    #    longer a Python-active signal — project-guide is globally hosted, so
+    #    its per-project marker no longer implies a project Python env. On a
+    #    Node-only project that accepts project-guide there is no `.venv` for
+    #    the Python plugin to report, so it must stay suppressed.)
     [[ -f ".pyve/config" ]] && return 0
 
     # 4. Root-scoped Python application files (no recursion — `compgen -G`).
