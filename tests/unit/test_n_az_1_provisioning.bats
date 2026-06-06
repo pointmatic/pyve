@@ -53,11 +53,12 @@ _make_venv_pip() {
 # Provisioning
 #------------------------------------------------------------
 
-@test "_self_install_toolchain_deps: pip-installs pyyaml into the toolchain venv" {
+@test "_self_install_toolchain_deps: pip-installs pyyaml + tomlkit into the toolchain venv" {
     _make_venv_pip ok
     run _self_install_toolchain_deps
     assert_status_equals 0
-    grep -qF "install --upgrade pyyaml" "$TEST_DIR/pip.log"
+    # N.az.1 shipped PyYAML; N.az.2 adds tomlkit (the `pyve env sync` writer).
+    grep -qF "install --upgrade pyyaml tomlkit" "$TEST_DIR/pip.log"
 }
 
 @test "_self_install_toolchain_deps: non-fatal when toolchain venv absent" {

@@ -31,6 +31,10 @@ fi
 # _PYVE_MANIFEST_HELPER in lib/manifest.sh.
 _PYVE_ENV_SPEC_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pyve_env_spec_helper.py"
 
+# Story N.az.2: the `pyve env sync` engine (diff + tomlkit apply). Same
+# directory-relative resolution as the spec helper above.
+_PYVE_ENV_SYNC_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pyve_env_sync_helper.py"
+
 #------------------------------------------------------------
 # Story N.az.1: read §4.0 of the env-dependencies doc via the Pyve
 # toolchain interpreter and print the projected JSON on stdout. The seam
@@ -501,6 +505,139 @@ env_run() {
 }
 
 #------------------------------------------------------------
+# Story N.az.2 (F4): pyve env sync
+#
+# Discover the project-guide env-dependencies spec (§4.0, via N.ay's
+# project_guide_env_spec_path), diff it against the current pyve.toml (the
+# baseline — there is no separate state), present the changes, and on
+# confirm reconcile pyve.toml via the tomlkit writer (N.az.2 helper).
+#
+# Writes config ONLY — it never materializes an env. Run `pyve env install`
+# afterward to provision new/changed environments.
+#
+# Validation is PERMISSIVE here (the helper accepts any value). Closed-set
+# vocabulary enforcement is F6/N.ba — do not add it in this leaf.
+#
+# Flags:
+#   --dry-run / -n   show the diff and exit; never write.
+#   --yes / -y       apply non-destructive changes without prompting.
+#   --force / -f     also apply destructive changes (drops / backend flips).
+#
+# Confirm semantics (interactive TTY, or PYVE_FORCE_PROMPT=1):
+#   non-destructive → [Y/n] default Y
+#   destructive     → [y/N] default N
+# Non-interactive (CI): the default verdict applies directly — non-
+# destructive proceeds, destructive declines (unless --force).
+#------------------------------------------------------------
+
+# Run the sync engine under Pyve's TOOLCHAIN interpreter (per the toolchain-
+# python essential), with the self-sufficient fallback for piecemeal test
+# subshells. Args are the helper's own (`diff --human <spec> <toml>`, etc.).
+_env_sync_run_helper() {
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    "$py" "$_PYVE_ENV_SYNC_HELPER" "$@"
+}
+
+# Confirm with an explicit default ($1 = y|n; $2 = prompt). Prompts only on a
+# TTY or when PYVE_FORCE_PROMPT=1; otherwise returns the default verdict so
+# CI never blocks. Empty input takes the default. Mirrors the TTY-gating in
+# _env_purge_all_with_confirm.
+_env_sync_confirm() {
+    local default="$1" prompt="$2" response
+    if [[ "${PYVE_FORCE_PROMPT:-0}" != "1" ]] && [[ ! -t 0 ]]; then
+        [[ "$default" == "y" ]]
+        return
+    fi
+    local hint="[y/N]"
+    [[ "$default" == "y" ]] && hint="[Y/n]"
+    printf "%s %s: " "$prompt" "$hint"
+    read -r response || response=""
+    [[ -z "$response" ]] && response="$default"
+    [[ "$response" =~ ^[Yy]$ ]]
+}
+
+env_sync() {
+    local dry_run=0 assume_yes=0 force=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --dry-run|-n) dry_run=1; shift ;;
+            --yes|-y)     assume_yes=1; shift ;;
+            --force|-f)   force=1; shift ;;
+            *) log_error "env sync: unexpected argument '$1'"; return 1 ;;
+        esac
+    done
+
+    local spec_path
+    spec_path="$(project_guide_env_spec_path)"
+
+    # Compute the diff (human render + verdict exit code), capturing both.
+    local out rc=0
+    out="$(_env_sync_run_helper diff --human "$spec_path" pyve.toml 2>&1)" || rc=$?
+
+    case "$rc" in
+        0)
+            printf '%s\n' "$out"
+            return 0
+            ;;
+        2)
+            info "No env-dependencies spec found at '$spec_path' — nothing to sync."
+            return 0
+            ;;
+        3)
+            log_error "PyYAML/tomlkit unavailable in Pyve's toolchain — run 'pyve self install'."
+            return 3
+            ;;
+        4)
+            log_error "Env spec '$spec_path' has no §4.0 machine-readable block — nothing to sync."
+            return 1
+            ;;
+        10|11) ;;  # changes present — fall through to present + confirm
+        *)
+            log_error "Could not read env spec '$spec_path'."
+            printf '%s\n' "$out" >&2
+            return 1
+            ;;
+    esac
+
+    # Changes present (rc 10 non-destructive / 11 destructive). Show the diff.
+    printf '%s\n' "$out"
+
+    if [[ "$dry_run" == "1" ]]; then
+        info "Dry run — pyve.toml not modified."
+        return 0
+    fi
+
+    local do_apply=0
+    if [[ "$rc" == "11" ]]; then
+        if [[ "$force" == "1" ]]; then
+            do_apply=1
+        elif _env_sync_confirm n "Apply these changes (includes destructive drops/rebuilds)?"; then
+            do_apply=1
+        fi
+    else
+        if [[ "$assume_yes" == "1" || "$force" == "1" ]]; then
+            do_apply=1
+        elif _env_sync_confirm y "Apply these changes to pyve.toml?"; then
+            do_apply=1
+        fi
+    fi
+
+    if [[ "$do_apply" != "1" ]]; then
+        info "No changes applied to pyve.toml."
+        return 0
+    fi
+
+    if _env_sync_run_helper apply "$spec_path" pyve.toml; then
+        success "Updated pyve.toml from the env spec."
+        info "Run 'pyve env install' to materialize new or changed environments."
+        return 0
+    fi
+    log_error "Failed to apply env-spec changes to pyve.toml."
+    return 1
+}
+
+#------------------------------------------------------------
 # Story M.j: per-env install lock
 #
 # `mkdir`-based atomic lock at `.pyve/envs/<name>/.lock/`. The
@@ -796,6 +933,7 @@ env_command() {
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
     local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
+    local -a sync_args=()          # Story N.az.2: sync flags forwarded to env_sync
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -928,6 +1066,27 @@ env_command() {
                 shift
                 break  # Remaining args are the [<name> --] command [args]
                 ;;
+            sync)
+                action="sync"
+                shift
+                # Story N.az.2: collect sync flags. Unknown flags break back
+                # to the outer loop for the canonical unknown_flag_error.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --dry-run|-n|--yes|-y|--force|-f)
+                            sync_args+=("$1")
+                            shift
+                            ;;
+                        -*)
+                            break
+                            ;;
+                        *)
+                            log_error "env sync: unexpected positional '$1'"
+                            exit 1
+                            ;;
+                    esac
+                done
+                ;;
             --help|-h)
                 cat << 'EOF'
 pyve env - Manage one or more declared project environments
@@ -939,6 +1098,7 @@ Usage:
   pyve env run [<name> --] <command> [args...]
   pyve env list
   pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
+  pyve env sync [--dry-run] [--yes] [--force]
 
 Notes:
   - The legacy spelling `pyve testenv <sub>` is preserved as a Category A
@@ -974,6 +1134,12 @@ Notes:
   - `run` requires the `--` separator when routing to a named env:
       pyve env run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
+  - `sync` (N.az.2) reconciles pyve.toml with the project-guide
+    env-dependencies spec (§4.0): discover → diff → confirm → write. It
+    writes config ONLY (run `pyve env install` afterward to materialize).
+    Non-destructive changes default to apply ([Y/n]); destructive changes
+    (dropping a declared env, flipping a backend) default to skip ([y/N])
+    and need `--force`. `--dry-run` shows the diff without writing.
   - `testenv` and `root` are reserved names. `root` is selection-only
     (use `pyve test --env root`), not creatable as an env.
   - The default-env tree is preserved across `pyve init --force` and
@@ -1004,6 +1170,17 @@ EOF
     # (M.i.1) keeps this cheap on bash-only projects.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
         read_env_config
+    fi
+
+    # Story N.az.2: `sync` operates on pyve.toml + the env spec directly —
+    # no per-env name/path resolution. Handle it before the path-resolution
+    # block below (mirrors `run`'s early dispatch).
+    if [[ "$action" == "sync" ]]; then
+        header_box "pyve env"
+        local sync_rc=0
+        env_sync "${sync_args[@]+"${sync_args[@]}"}" || sync_rc=$?
+        footer_box
+        return "$sync_rc"
     fi
 
     # Story M.i.2: `run` has its own arg shape — parse `[<name> --]

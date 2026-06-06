@@ -344,10 +344,11 @@ _self_prune_stale_toolchain_versions() {
 #------------------------------------------------------------
 
 # Install Pyve's toolchain Python dependencies into the toolchain venv
-# (Story N.az.1). Currently just PyYAML, which lib/pyve_env_spec_helper.py
-# needs to parse §4.0 of the env-dependencies doc for `pyve env sync`.
+# (Story N.az.1 + N.az.2). PyYAML (lib/pyve_env_spec_helper.py — reads §4.0
+# of the env-dependencies doc) and tomlkit (lib/pyve_env_sync_helper.py —
+# the round-trip-preserving `pyve.toml` writer for `pyve env sync`).
 # Best-effort (mirrors _self_install_toolchain_python): a missing venv or
-# failed pip WARNS but never aborts — the env-spec seam then degrades to a
+# failed pip WARNS but never aborts — the env-sync seam then degrades to a
 # precise "run pyve self install" error. Removal rides the toolchain-tree
 # rm -rf in `pyve self uninstall` (no extra step).
 _self_install_toolchain_deps() {
@@ -358,10 +359,10 @@ _self_install_toolchain_deps() {
     if [[ ! -x "$pip_cmd" ]]; then
         return 0
     fi
-    if run_quiet "$pip_cmd" install --upgrade pyyaml; then
-        log_success "Installed Pyve toolchain dependencies (PyYAML)"
+    if run_quiet "$pip_cmd" install --upgrade pyyaml tomlkit; then
+        log_success "Installed Pyve toolchain dependencies (PyYAML, tomlkit)"
     else
-        log_warning "Could not install Pyve toolchain dependencies (PyYAML) — 'pyve env sync' may be unavailable until 'pyve self install' is re-run"
+        log_warning "Could not install Pyve toolchain dependencies (PyYAML, tomlkit) — 'pyve env sync' may be unavailable until 'pyve self install' is re-run"
     fi
     return 0
 }

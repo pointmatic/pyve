@@ -67,6 +67,42 @@ _compose_check_sev_label() {
     esac
 }
 
+# Story N.az.2 (F4): project-level env-spec drift check.
+#
+# Drift = pyve.toml lags the project-guide env-dependencies §4.0 surface.
+# A spec-ahead project is a LEGITIMATE steady state, so drift is surfaced at
+# WARN (rc 2 → warn → process exit 0), never error. This is a project-level
+# concern (not owned by any single plugin), hence it lives in the composer
+# rather than a plugin check hook.
+#
+# Prints a human drift summary + remediation hint on stdout and returns 2
+# when pyve.toml is behind the spec; returns 0 with no output when in sync,
+# when no spec exists, or when the diff cannot be computed (missing
+# toolchain libs / unreadable spec — drift is then undetermined, never a
+# failure). The `declare -F` guards keep it silent in piecemeal test
+# subshells where env.sh / project_guide.sh aren't sourced.
+_compose_check_env_spec_drift() {
+    declare -F project_guide_env_spec_path >/dev/null 2>&1 || return 0
+    declare -F _env_sync_run_helper >/dev/null 2>&1 || return 0
+    [[ -f pyve.toml ]] || return 0
+
+    local spec_path out rc=0
+    spec_path="$(project_guide_env_spec_path)"
+    out="$(_env_sync_run_helper diff --human "$spec_path" pyve.toml 2>/dev/null)" || rc=$?
+
+    # rc 10 (non-destructive) / 11 (destructive) → changes present → warn.
+    # Everything else (0 clean, 2 no-spec, 3 libs-missing, 4/5 unreadable)
+    # contributes no section.
+    case "$rc" in
+        10|11)
+            printf '%s\n' "$out"
+            printf "Run 'pyve env sync' to reconcile pyve.toml with the env spec.\n"
+            return 2
+            ;;
+    esac
+    return 0
+}
+
 # Orchestrate per-plugin checks and roll up the worst severity.
 #
 # Returns 2 when any plugin reports an error; 0 otherwise (warn-only or
@@ -143,6 +179,18 @@ compose_check() {
 
         printf '\n'
     done < <(plugin_list_active)
+
+    # Story N.az.2: project-level env-spec drift addendum (not a plugin, so
+    # it is not counted in the plugin tally). Warn-only by contract.
+    local drift_out drift_rc=0
+    drift_out="$(_compose_check_env_spec_drift)" || drift_rc=$?
+    if [[ -n "$drift_out" ]]; then
+        printf '[env-spec]\n'
+        printf '%s\n' "$drift_out"
+        sev="$(_compose_check_rc_to_severity "$drift_rc")"
+        (( sev > worst )) && worst="$sev"
+        printf '\n'
+    fi
 
     # Roll-up footer — the single worst-severity verdict across all plugins.
     printf '======================\n'
