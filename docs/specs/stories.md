@@ -1889,6 +1889,83 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [ ] Similarly, if N.be's survey surfaced any invariants worth pinning in `project-essentials.md`, capture them here. Skip if none meet the bar.
 - [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
 
+**Bugs surfaced during N.bf verification — captured as N.bf.1–N.bf.3.** The manual v3.0.0a1 smoke test (2026-06-07, dev checkout `../pyve/pyve.sh` run against a sibling project `pyve-3-smoke`) exposed a connected cluster of three defects in the purge/init lifecycle. All pre-existing in the v3.0 composed-purge / composed-init design — **not** introduced by N-7. Shared reproduction:
+
+```
+cd <fresh-project>
+../pyve/pyve.sh init       # creates .venv, .pyve/envs, .envrc, .tool-versions, pyve.toml
+../pyve/pyve.sh purge      # confirm y
+../pyve/pyve.sh init       # FAILS: "pyve.toml: invalid manifest"
+```
+
+Recommended fix order is N.bf.1 → N.bf.2 → N.bf.3 (cheap-and-high-value first, largest seam reconciliation last); sequence at the developer's discretion. **Out of scope** for all three: redesigning the inventory↔remover seam beyond what N.bf.3 names, and the `pyve self install` toolchain-Python provisioning path (a separate concern noted in N.bf.1).
+
+### Story N.bf.1: `pyve init` mis-reports an unresolvable interpreter as "invalid manifest" [Done]
+
+**Symptom.** On a project with a valid `pyve.toml` but no resolvable Python (e.g. `.tool-versions` absent post-purge), `pyve init` prints:
+
+```
+  ✘ pyve.toml: invalid manifest (see error(s) above)
+  ✘ Fix the manifest and re-run, or remove pyve.toml to re-scaffold.
+```
+
+The manifest is **valid**. Following the advice — deleting `pyve.toml` — destroys a good declaration to work around a Python-resolution failure.
+
+**Root cause.** [`_init_validate_existing_manifest`](../../lib/plugins/python/plugin.sh#L845) treats *any* non-zero from `manifest_load` as a malformed manifest. But `manifest_load` shells out to Python to parse the TOML; when the interpreter can't be resolved (asdf shim with no pinned version → "No version is set for command python"), the helper exits non-zero for a reason unrelated to the manifest's contents. The "(see error(s) above)" is asdf noise, not a schema diagnostic.
+
+**Contributing factor (note, not in scope to fix here).** Running the dev checkout directly (no `pyve self install`) means no toolchain venv, so `manifest_load` falls back to bare `python` (the asdf shim). In a real installed setup the toolchain Python would parse `pyve.toml` regardless of `.tool-versions`, so this symptom may not reproduce there — but the conflation bug is real either way.
+
+**Proposed fix.** Distinguish "couldn't run the parser / interpreter unresolvable" from "manifest schema invalid" in the validation path. On interpreter-resolution failure, emit a message pointing at Python resolution that does **not** advise deleting `pyve.toml`. Reserve the "invalid manifest / re-scaffold" message for genuine schema / purpose / vocabulary errors.
+
+**Tasks**
+
+- [x] Reproduce: valid `pyve.toml`, no resolvable `python`, assert the current misleading message (red). — [test_init_pyve_toml.bats](../../tests/unit/test_init_pyve_toml.bats) "unresolvable interpreter is NOT reported as an invalid manifest".
+- [x] Have `manifest_load` (or the validator) surface a distinguishable signal for "interpreter unresolvable" vs "schema invalid". — Implemented in the validator: it probes the same interpreter `manifest_load` resolves (`pyve_toolchain_python` → `${PYVE_PYTHON:-python}`) with `python -c 'import tomllib'`. Probe-fails ⇒ infrastructure failure; probe-passes ⇒ genuine manifest error. Robust to all non-2 exit codes (incl. malformed-TOML exit 1).
+- [x] `_init_validate_existing_manifest`: branch the two cases; the interpreter case must not recommend deleting `pyve.toml`. — [plugin.sh:845](../../lib/plugins/python/plugin.sh#L845); interpreter branch says "cannot validate — no usable Python interpreter found … Do NOT delete pyve.toml."
+- [x] Test both branches: schema-invalid still says "invalid manifest"; interpreter-missing says the Python-resolution message. — both bats cases green; real-path repro confirmed.
+- [x] Full suite; zero regressions. — 1824 Bats unit tests pass (1822 + 2 new), 0 failures; shellcheck clean on the edited range.
+
+### Story N.bf.2: `purge` → `init` round-trip broken by validate-before-pin ordering [Planned]
+
+**Symptom.** `pyve.toml` survives `purge` by design so that `purge` + `init` round-trips. It doesn't: post-purge `init` aborts before re-establishing the environment.
+
+**Root cause.** Ordering inversion in `init_project`: [`_init_validate_existing_manifest`](../../lib/plugins/python/plugin.sh#L1486) runs **before** [`_init_wizard`](../../lib/plugins/python/plugin.sh#L1490). Validation needs a resolvable Python; the wizard is what (re)pins Python. On a post-purge tree (no `.tool-versions`), init can never reach the step that would fix the thing validation requires. Compounded by N.bf.3 removing `.tool-versions` in the first place.
+
+**Proposed fix (decide during debug).** One of: (a) don't hard-require a resolvable project Python merely to validate a surviving manifest at that early point; (b) resolve/establish an interpreter before validating; or (c) reorder so the Python pin is re-established ahead of manifest validation. The invariant to land: **a project with a valid surviving `pyve.toml` and no env must `pyve init` cleanly back to a working state.**
+
+**Tasks**
+
+- [ ] Reproduce the full `init → purge → init` round-trip; assert the second `init` fails (red).
+- [ ] Pick and implement the ordering / bootstrap fix.
+- [ ] Test: the round-trip leaves the project in the same working state as the first `init` (env materialized, `pyve.toml` unchanged).
+- [ ] Verify interaction with N.bf.1 (the interpreter-unresolvable message is no longer reachable on the round-trip once Python is re-pinned).
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.3: `pyve purge` confirmation preview under-reports the actual blast radius [Planned]
+
+**Symptom.** The confirmation gate lists three artifacts:
+
+```
+[python]
+  .venv
+  .pyve/envs
+  .envrc
+```
+
+but the run removes more: `.tool-versions`, the **whole** `.pyve/` directory (not just `.pyve/envs`), `.env` (smart-removed when empty), and cleans `.gitignore`. The user consents to a list that under-represents the destruction; `.tool-versions` (a version-pin file) is removed without ever appearing in the preview.
+
+**Root cause.** Two independent paths that have drifted. The preview is built from the [`python_pyve_plugin_purge_inventory`](../../lib/plugins/python/plugin.sh#L501) hook (three `created` paths); the actual removal is hardcoded in [`purge_project`](../../lib/plugins/python/plugin.sh#L2161) (`_purge_version_file`, `_purge_pyve_dir` → `rm -rf .pyve`, the `.env` smart-purge, `.gitignore` cleanup). The code comments at [purge_project](../../lib/plugins/python/plugin.sh#L2135) state the inventory is read "for diagnostic / verbose surfacing only — the actual removal calls below stay direct." The preview and the remover were never reconciled.
+
+**Proposed fix (decide during debug).** Either (1) drive removal *from* the composed inventory so preview and action are identical by construction (larger; touches the Python + Node inventory / remover contract), or (2) make the inventory complete — add `.tool-versions`, `.env`, `.gitignore`, correct the `.pyve` scope — so the preview matches the existing hardcoded remover (smaller; closes the trust gap without re-architecting the seam).
+
+**Tasks**
+
+- [ ] Reproduce: snapshot the preview list vs. the actually-removed set; assert they diverge (red).
+- [ ] Choose fix direction (1 inventory-driven removal vs 2 complete-the-inventory) and record the decision in the story.
+- [ ] Implement so the confirmation preview enumerates every path the purge will remove / modify (incl. `.tool-versions`, full `.pyve`, `.env`-if-empty, `.gitignore`-cleaned).
+- [ ] Test: preview set == removed set, for venv and micromamba backends, with and without `--keep-testenv`.
+- [ ] Full suite; zero regressions.
+
 ---
 
 ## Subphase N-8: Documentation refresh + brand alignment

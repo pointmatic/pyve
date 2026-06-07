@@ -846,12 +846,29 @@ _init_validate_existing_manifest() {
     if [[ ! -f pyve.toml ]]; then
         return 0
     fi
-    if ! manifest_load pyve.toml; then
-        log_error "pyve.toml: invalid manifest (see error(s) above)"
-        log_error "Fix the manifest and re-run, or remove pyve.toml to re-scaffold."
+    if manifest_load pyve.toml; then
+        return 0
+    fi
+    # manifest_load failed. Distinguish "the validator couldn't run" from
+    # "the manifest is genuinely invalid" — they need opposite advice.
+    # manifest_load parses pyve.toml by shelling out to Pyve's manifest
+    # interpreter; if that interpreter can't run (an asdf shim with no
+    # pinned version → "No version is set for command python", a missing
+    # `python`, or a Python < 3.11 without tomllib), the failure says
+    # nothing about the manifest's contents. Probe the SAME interpreter
+    # manifest_load resolves; if it can't import tomllib, the manifest may
+    # be perfectly valid — never advise deleting it.
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    if ! "$py" -c 'import tomllib' >/dev/null 2>&1; then
+        log_error "pyve.toml: cannot validate — no usable Python interpreter found."
+        log_error "Pyve needs Python 3.11+ (with tomllib) to read pyve.toml."
+        log_error "Resolve your Python (set a version via asdf/pyenv, or run 'pyve self install'), then re-run. Do NOT delete pyve.toml."
         return 1
     fi
-    return 0
+    log_error "pyve.toml: invalid manifest (see error(s) above)"
+    log_error "Fix the manifest and re-run, or remove pyve.toml to re-scaffold."
+    return 1
 }
 
 # polyglot `pyve.toml` writer.

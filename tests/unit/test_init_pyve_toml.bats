@@ -172,6 +172,45 @@ EOF
     [[ "$output" == *"purpose"* ]] || [[ "$output" == *"pyve.toml"* ]]
 }
 
+@test "_init_validate_existing_manifest: unresolvable interpreter is NOT reported as an invalid manifest" {
+    # A VALID manifest, but Pyve's manifest interpreter cannot run — mirrors
+    # the post-purge asdf "No version is set for command python" failure where
+    # bare `python` can't execute. The manifest is fine; the validator
+    # infrastructure is missing. The user must NOT be told the manifest is
+    # invalid, and especially not advised to delete it.
+    cat > pyve.toml <<'EOF'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+EOF
+    export PYVE_PYTHON=/nonexistent/pyve-no-such-python
+    run _init_validate_existing_manifest
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"invalid manifest"* ]]
+    [[ "$output" != *"re-scaffold"* ]]
+    # The message points at Python resolution instead.
+    [[ "$output" == *"Python"* ]]
+}
+
+@test "_init_validate_existing_manifest: genuine schema error still reports an invalid manifest" {
+    # setup() exported a working PYVE_PYTHON, so the interpreter probe passes
+    # and the failure is correctly attributed to the manifest's contents.
+    cat > pyve.toml <<'EOF'
+pyve_schema = "9.9"
+
+[project]
+name = "demo"
+EOF
+    run _init_validate_existing_manifest
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"invalid manifest"* ]]
+    [[ "$output" == *"re-scaffold"* ]]
+}
+
 @test "_init_validate_existing_manifest: silent success when pyve.toml is absent" {
     # Absent manifest is a fresh-init signal, not a refresh-path call,
     # so the validator must be a no-op there (caller decides whether
