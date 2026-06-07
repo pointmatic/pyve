@@ -1839,17 +1839,21 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Emit `lines_with_phasestory_nums_dirty.txt` (688 candidate lines; format `<path>:<lineno>{{{\t\t}}}<content>`). By form: STORY 187, BARE 459, PHASE 22, KEEP 20. By phase: F2 G24 H71 I11 J41 K6 L58 M204 N251. FP scan: clean (no abbreviation false positives; every match starts with a real phase letter).
 - [x] Present the dirty enumeration at the gate for developer review; iterate the detector to catch additional forms before N.bd.3 starts. *(Reviewed 2026-06-06; detector accepted — no FPs; no scope/form changes requested. N.bd.3 method refined per developer: clean.txt is LLM-judged per line, not regex.)*
 
-### Story N.bd.3: Clean prototyping — propose the fix for every dirty line [Planned]
+### Story N.bd.3: Clean prototyping — safe-pattern taxonomy + first-pass clean.txt [Done]
 
 **Motivation.** Produce `lines_with_phasestory_nums_clean.txt` (same `<filepath>:<linenum>{{{\t\t}}}<linecontent>` format, line-for-line aligned with the dirty file) carrying the cleaned content for each dirty line. **The clean content is LLM-judged per line, not regex-transformed** (developer decision, 2026-06-06): a single regex can't tell structure/keep/decoration apart (demonstrated — it dangles parens, orphans letter-suffixes, and flattens the load-bearing `N.i-pending` marker), so each line gets reasoned about individually. Per-line the tool is whichever reads best: **strip** the token (`# Story N.d: Resolve …` → `# Resolve …`), **rephrase** to name the thing (`per N.ae.2 / N.y` → "the activate-emitter contract"), **`[implementation story]` placeholder** where naming a specific story adds nothing but the sentence needs a noun (`for symmetry with M.x's` → `for symmetry with [implementation story]'s`), or **verbatim-keep** for load-bearing exceptions. **Method:** seed `clean.txt` as an exact copy of `dirty.txt` (zero transcription risk for unchanged lines), then edit only the content after the delimiter on lines that need it. **Constraint:** 1:1 line-preserving (each dirty line → exactly one clean line; whole-line deletion via an explicit `<<<DELETE>>>` sentinel) so `filepath:linenum` stays valid for N.bd.4.
 
+**Closed out (2026-06-06).** Delivered the cleaner ([`clean_phasestory_refs.py`](../../clean_phasestory_refs.py)) and the **safe-pattern taxonomy** (whole-storynum parens → delete; `Story X.y:` prefix + ` landed` → strip; storynum pairs in mixed text → `XXXX` marker; degeneracy guard; bare singles + comma-parens + em-dash-leading = judgement-only). First-pass `clean.txt`: **198/688 auto-cleaned, 490 `clean==dirty`**. The exhaustive per-line judgement on the 490 bare singles + the apply (N.bd.4) are **deferred to the `## Future` story** "Complete phase/story-ref comment sanitization" — release (N-8/N-9) prioritized over comment cosmetics; the project-essentials guard already stops new refs. Full record in [phase-n-7-audit.md](phase-n-7-audit.md) § 5.
+
 **Tasks**
 
-- [ ] Seed `lines_with_phasestory_nums_clean.txt` as an exact copy of the dirty file.
-- [ ] Reason per line and edit the clean content (strip / rephrase / `[implementation story]` / verbatim-keep / `<<<DELETE>>>`); load-bearing exceptions stay `clean == dirty`.
-- [ ] Diff-review dirty↔clean together with the developer; iterate the per-line judgement until the clean proposals are all correct.
+- [x] Seed `lines_with_phasestory_nums_clean.txt` as an exact copy of the dirty file.
+- [x] Reason per line / build the cleaner: safe-auto forms transformed; the ~490 bare-single judgement cases left `clean==dirty` and deferred to Future.
+- [x] Diff-review dirty↔clean with the developer; iterated the rules until the auto-pass was mangle-free (paren/prefix/landed/pair-XXXX + degeneracy guard).
 
-### Story N.bd.4: Apply the approved clean proposals back to source [Planned]
+### Story N.bd.4: Apply the approved clean proposals back to source [Deferred → Future]
+
+**Deferred to the `## Future` story (2026-06-06).** Not implemented in N-7: applying requires a finalized `clean.txt` (the 490 bare-single judgement cases aren't done), and reviewing the resulting source change is the time cost the developer chose to defer in favor of the v3.0 release (N-8/N-9). The tasks below are carried by the Future story "Complete phase/story-ref comment sanitization." Retained here for traceability.
 
 **Motivation.** Once `clean.txt` is approved, a **dumb line-by-line applier** (no judgement — all judgement lives in the LLM-authored `clean.txt`) parses each `path:lineno{{{…}}}content` record and writes `content` back to that source line, processing bottom-up per file so any `<<<DELETE>>>` removals don't shift earlier line numbers. Then re-run the detector to confirm the targeted forms are gone (load-bearing exceptions survive), diff-review the resulting source change, and run the full suite.
 
@@ -1906,6 +1910,21 @@ Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and g
 ---
 
 ## Future
+
+### Story ?.?: Complete phase/story-ref comment sanitization (deferred from N-7) [Planned]
+
+**Motivation.** N.bd / N.bd.1 swept the conspicuous `# Story N.x` refs (Phase N). The broader all-phase sweep — bare `X.y` refs, `Story M.x`/`J.x`/etc. forms, `Phase`/`Subphase` pointers — was scoped, tooled, and partially auto-cleaned, then **deferred: release functionality (N-8/N-9) outranks comment cosmetics, and the project-essentials guard "No story / phase IDs in code or comments" already stops *new* refs.** This story finishes it when convenient. Full findings, scale (688 candidate lines, all phases), the behavioral-attractor rationale, and the **safe-pattern taxonomy** live in [phase-n-7-audit.md](phase-n-7-audit.md) § 5.
+
+**State at deferral.** First-pass `clean.txt` had 198/688 auto-cleaned (whole-storynum parens deleted; `Story X.y:` prefixes stripped; ` landed` handled; storynum pairs in mixed text marked `XXXX`); 490 left `clean==dirty` (mostly bare single refs in running prose — judgement cases — plus the 20 load-bearing KEEPs). **Nothing applied to source.** Tooling: [`audit_phasestory_refs.py`](../../audit_phasestory_refs.py) (detector / CI-guard candidate) + [`clean_phasestory_refs.py`](../../clean_phasestory_refs.py) (cleaner); the `*_dirty.txt` / `*_clean.txt` are regenerable output.
+
+**Tasks (when resumed)**
+
+- [ ] Per-line judgement on the ~490 `clean==dirty` bare-single refs: strip / rephrase-to-name-the-thing / `[implementation story]` / `<<<DELETE>>>` / keep — preserving load-bearing exceptions (`v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>` labels).
+- [ ] Resolve the `XXXX` pair markers into final content.
+- [ ] Decide scope: Phase-N-only vs all-phase (the 416 older-phase refs are pre-Phase-N historical context).
+- [ ] Write the dumb line-by-line applier (parse `clean.txt`; replace source `path:lineno` with content; `<<<DELETE>>>` removes the line; bottom-up per file) and apply.
+- [ ] Diff-review the full source change (comments-don't-execute — the only prose-quality net) + run the full suite; zero regressions.
+- [ ] Optionally wire the detector into CI to enforce the guard on new refs.
 
 ### Story ?.?: Deeper TypeScript integration for the Node plugin [Planned]
 

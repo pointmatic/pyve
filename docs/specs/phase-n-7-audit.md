@@ -321,3 +321,35 @@ grep -rnE 'Story N\.|Stories N\.|v3\.0-only|remove in N-|Subphase N-' lib/ pyve.
 # §3 LB-1 grep-visibility check (must stay nonzero through N-10):
 grep -c 'v3.0-only: remove in N-10' lib/manifest.sh
 ```
+
+---
+
+## §5 — Phase/story-ref comment sanitization: findings + safe-pattern taxonomy (DEFERRED to Future)
+
+**Status (2026-06-06):** the *conspicuous* `# Story N.x` refs were swept in N.bd (production) / N.bd.1 (tests). The broader sweep of **all-phase** refs (`Story M.x`, bare `X.y`, `Phase`/`Subphase`) was scoped, tooled, and partially auto-cleaned, then **deferred** — release functionality (Subphases N-8 / N-9) is higher priority than comment cosmetics, and the [project-essentials guard](project-essentials.md) "No story / phase IDs in code or comments" already stops *new* refs from accumulating regardless of historical cleanup. The completion (per-line judgement + apply) lives in the `## Future` story "Complete phase/story-ref comment sanitization."
+
+**Scale (why it was deferred).** The detector found **688 candidate lines** across `lib/` + `pyve.sh` + `tests/`, spanning every phase F..N (N 251, M 204, L 58, H 71, J 41, G 24, I 11, K 6, F 2) — ~16× the original "~40" estimate. The 416 older-phase (F..M) refs are pre-Phase-N historical context, outside N-7's "Phase-N migration debt" charter. It is a comments-don't-execute surface, so the test suite cannot catch prose mangling — **diff/clean review is the only net**, which is the time cost that motivated the deferral.
+
+**The behavioral-attractor insight (the real reason it matters).** Story-ref comments are self-reproducing: LLM contributors imitate local comment idiom (they are instructed to match surrounding density/naming/idiom), so each `# Story N.x` raises the prior that comments here cite stories, and the next contributor emits more. Conspicuous leading `# Story X.y:` is the strongest template; bare inline refs are weak. The durable fix is the **standing rule** (project-essentials guard), not exhaustive deletion — deletion removes existing seeds, the rule stops new ones; the rule is the higher-leverage half and it shipped in N.bd.2.
+
+**Tooling (regenerable; CI-guard candidates).**
+- [`audit_phasestory_refs.py`](../../audit_phasestory_refs.py) — detector. Emits `lines_with_phasestory_nums_dirty.txt` (`<path>:<lineno>{{{\t\t}}}<content>`). The same detector, wired into CI, enforces the guard (fail on a *new* ref).
+- [`clean_phasestory_refs.py`](../../clean_phasestory_refs.py) — cleaner. Emits `lines_with_phasestory_nums_clean.txt`, line-aligned with dirty, carrying the proposed fix per line. The `dirty`↔`clean` pair is the review surface; apply is a dumb line-by-line copy (deferred N.bd.4).
+- The two `*.txt` are **regenerable output** of the scripts — keep the scripts; the txt can be gitignored/removed.
+
+**Safe-pattern taxonomy (what auto-cleans reliably vs. what needs per-line judgement).** Discovered iteratively; each was demonstrated safe (or unsafe) on the real corpus.
+
+*Safe to auto-transform:*
+1. **Whole-storynum parenthetical** → delete the paren. `(Story X.y)`, bare `(N.az.2)`, `(N.ae/N.af)`, `(Story M.i.1 / M.k)`, `(N.s.1 + N.s.2)` — content is only storynums/connectors (`Story` optional). Grammatically isolated aside; removal is clean.
+2. **`Story X.y:` label prefix** (+ optional ` landed`) → strip. The colon delimits the label; the content after it stands alone. `# Story M.i.2: accepts…` → `# accepts…`; `# Story M.k landed: conda…` → `# conda…`.
+3. **`<ref> landed`** (mid-sentence) → delete the ref, keep `landed`. Some results are awkward-but-intelligible (`M.m landed \`.state\`` → `landed \`.state\``) — accepted.
+4. **Storynum pair in mixed text** (not wholly parenthesized) → replace with the visible marker **`XXXX`** (NOT delete) so the site is greppable for final per-line judgement. `Post-M.h.3 / N.f:` → `Post-XXXX:`; `per N.ae.2 / N.y)` → `per XXXX)`.
+- **Degeneracy guard:** any transform that would orphan a comment (`#.`, `#`, leading punctuation) self-reverts to `clean==dirty` rather than mangle.
+
+*NOT safe to auto-transform (per-line judgement required):*
+- **Bare *single* refs in running prose** — `the N.f layout`, `Pre-M.n this test`, `lands in N.av.2`, `see the N.aw note`. Removal usually needs a rephrase, not a delete; many read as meaningful context. This is the bulk (~490 lines left `clean==dirty`).
+- **Em-dash leading** `# Story X.y — …` (left for judgement; the colon form is safe, the dash form wasn't designated).
+- **Comma-parens with extra prose** `(Story N.f, env vocabulary)`, `(Story N.au — F1)` — deleting the whole paren drops real content; needs `(env vocabulary)` / keep-`F1` judgement.
+- **The `[implementation story]` placeholder** is a legitimate per-line tool where a sentence needs a noun but a specific story adds nothing (`for symmetry with M.x's` → `for symmetry with [implementation story]'s`) — applied by judgement, not rule.
+
+**Where it stopped:** first-pass `clean.txt` had **198 / 688 auto-cleaned** (whole-storynum parens, `Story X.y:` prefixes, ` landed`, pair `XXXX` marks), **490 `clean==dirty`** (bare singles + the load-bearing 20 KEEPs + judgement cases). **Nothing was applied to source** — `clean.txt` is a proposal only. Load-bearing exceptions to preserve in any completion: the `v3.0-only: remove in N-10` markers, `BOUNDARY`, `N.i-pending` skip strings, `F<n>` feature labels.
