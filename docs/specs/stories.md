@@ -1824,19 +1824,42 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**.
 - [x] No behavior change (comment + 2 docstring hygiene); the suite passing + comment-only diff review is the proof.
 
-### Story N.bd.2: Sweep bare `N.x` cross-refs from production code [Planned]
+### Story N.bd.2: Project-essentials guard + audit (enumerate every phase/story-ref "dirty" line) [Done]
 
-**Motivation.** N.bd swept the conspicuous `# Story N.x` tags; ~40 **bare** `N.x` refs remain in `lib/` + `pyve.sh` (no `Story` prefix — e.g. `N.av.2`, `F6/N.ba.2`, `N.ae.2 / N.y`, `see the N.aw note`). These are a distinct class the audit §2 didn't enumerate. Unlike the decorative `Story N.x` tags, many function as **meaningful cross-references** (e.g. `F6` is a real feature label; `N.ae.2 / N.y` points at the activate-emitter contract), so this sweep is a per-ref judgement, not a blanket strip — hence its own carefully diff-reviewed story rather than folding into N.bd.
+**Rescope decision (developer-directed, 2026-06-06).** Originally "sweep bare `N.x` refs from production code (~40)." Enumeration revealed the real surface is **~664 bare refs + ~187 conspicuous `Story X.y` forms across ALL phases (F..N), lib + tests** — an order of magnitude larger, mostly older-phase historical context, and a comments-don't-execute (diff-review-only) surface. Two reframes drove the rescope: (1) the highest-leverage fix is a **standing rule** (project-essentials guard) — story-ref comments are a *behavioral attractor* (LLMs imitate local comment idiom, so each `# Story N.x` seeds more); (2) the cleanup itself is best done as a reviewable **`dirty` → `clean` enumeration** the developer can audit and iterate, not a blind in-place diff. The work splits across N.bd.2 (guard + dirty audit) / N.bd.3 (clean prototyping) / N.bd.4 (apply).
 
-**Method caveat (same as N.bd).** Comments don't execute, so the suite cannot catch prose mangling — every changed line must be diff-reviewed. Bare refs are mostly mid-sentence (higher per-edit mangle risk than the leading/trailing `Story N.x` forms).
+**Deliverables.** (a) the project-essentials guard "No story / phase IDs in code or comments" (done as part of this story); (b) a re-runnable detector script that enumerates every candidate "dirty" line into `lines_with_phasestory_nums_dirty.txt`, format `<filepath>:<linenum>{{{\t\t}}}<linecontent>` (delimiter chosen to be visually distinct + collision-free); (c) the script is written so the same detector can later be wired into CI to enforce the guard.
+
+**Scope.** Detect across `lib/`, `pyve.sh`, `tests/`. Candidate patterns: `Story X.y[.z[c]]`, bare `X.y[.z[c]]`, `Phase X` / `Subphase N-#`. Load-bearing exceptions (per the guard) are flagged but NOT proposed for change: `v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>` labels.
 
 **Tasks**
 
-- [ ] Enumerate the bare `N.x` refs in `lib/` + `pyve.sh` (`grep -rnE '\bN\.[a-z]{1,2}(\.[0-9]+)?\b'`, excluding `N-1`/`N-6`/`N-10`/`v3.0-only` and the `F<n>` feature labels until classified).
-- [ ] Classify each: **pure decoration** (remove / relocate to self-contained prose) vs **meaningful cross-ref** (rewrite to name the thing directly — e.g. "the activate-emitter contract" instead of `N.ae.2 / N.y`) vs **load-bearing feature label** (keep the `F<n>`, drop the trailing `/N.x`).
-- [ ] Apply per the classification; diff-review every changed line (comments don't execute — this is the only net for prose quality).
-- [ ] Confirm the 6 `v3.0-only` markers + `BOUNDARY` (and any `F<n>` labels kept) survive.
-- [ ] Run the full test suite; zero regressions expected.
+- [x] Append the project-essentials guard entry (no story/phase IDs in code; relocate the *why*; load-bearing exceptions enumerated).
+- [x] Write the detector script ([audit_phasestory_refs.py](../../audit_phasestory_refs.py); re-runnable; CI-guard candidate).
+- [x] Emit `lines_with_phasestory_nums_dirty.txt` (688 candidate lines; format `<path>:<lineno>{{{\t\t}}}<content>`). By form: STORY 187, BARE 459, PHASE 22, KEEP 20. By phase: F2 G24 H71 I11 J41 K6 L58 M204 N251. FP scan: clean (no abbreviation false positives; every match starts with a real phase letter).
+- [x] Present the dirty enumeration at the gate for developer review; iterate the detector to catch additional forms before N.bd.3 starts. *(Reviewed 2026-06-06; detector accepted — no FPs; no scope/form changes requested. N.bd.3 method refined per developer: clean.txt is LLM-judged per line, not regex.)*
+
+### Story N.bd.3: Clean prototyping — propose the fix for every dirty line [Planned]
+
+**Motivation.** Produce `lines_with_phasestory_nums_clean.txt` (same `<filepath>:<linenum>{{{\t\t}}}<linecontent>` format, line-for-line aligned with the dirty file) carrying the cleaned content for each dirty line. **The clean content is LLM-judged per line, not regex-transformed** (developer decision, 2026-06-06): a single regex can't tell structure/keep/decoration apart (demonstrated — it dangles parens, orphans letter-suffixes, and flattens the load-bearing `N.i-pending` marker), so each line gets reasoned about individually. Per-line the tool is whichever reads best: **strip** the token (`# Story N.d: Resolve …` → `# Resolve …`), **rephrase** to name the thing (`per N.ae.2 / N.y` → "the activate-emitter contract"), **`[implementation story]` placeholder** where naming a specific story adds nothing but the sentence needs a noun (`for symmetry with M.x's` → `for symmetry with [implementation story]'s`), or **verbatim-keep** for load-bearing exceptions. **Method:** seed `clean.txt` as an exact copy of `dirty.txt` (zero transcription risk for unchanged lines), then edit only the content after the delimiter on lines that need it. **Constraint:** 1:1 line-preserving (each dirty line → exactly one clean line; whole-line deletion via an explicit `<<<DELETE>>>` sentinel) so `filepath:linenum` stays valid for N.bd.4.
+
+**Tasks**
+
+- [ ] Seed `lines_with_phasestory_nums_clean.txt` as an exact copy of the dirty file.
+- [ ] Reason per line and edit the clean content (strip / rephrase / `[implementation story]` / verbatim-keep / `<<<DELETE>>>`); load-bearing exceptions stay `clean == dirty`.
+- [ ] Diff-review dirty↔clean together with the developer; iterate the per-line judgement until the clean proposals are all correct.
+
+### Story N.bd.4: Apply the approved clean proposals back to source [Planned]
+
+**Motivation.** Once `clean.txt` is approved, a **dumb line-by-line applier** (no judgement — all judgement lives in the LLM-authored `clean.txt`) parses each `path:lineno{{{…}}}content` record and writes `content` back to that source line, processing bottom-up per file so any `<<<DELETE>>>` removals don't shift earlier line numbers. Then re-run the detector to confirm the targeted forms are gone (load-bearing exceptions survive), diff-review the resulting source change, and run the full suite.
+
+**Tasks**
+
+- [ ] Write the dumb applier (parse `clean.txt`; per record, replace source `path:lineno` with `content`; `<<<DELETE>>>` removes the line; bottom-up per file).
+- [ ] Apply `clean.txt` to source.
+- [ ] Re-run the detector: targeted forms gone; `v3.0-only` (6) + `BOUNDARY` + `N.i-pending` + `F<n>` labels survive.
+- [ ] Diff-review the full source change (comments-don't-execute — this is the prose-quality net) + run the full test suite; zero regressions.
+- [ ] Decide disposition of the working artifacts (`*_dirty.txt`, `*_clean.txt`, detector script): keep the script (CI guard candidate), remove/gitignore the txt enumerations.
 
 ### Story N.be: Survey + clean other temporary scaffolding [Planned]
 

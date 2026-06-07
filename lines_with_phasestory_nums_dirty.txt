@@ -1,0 +1,688 @@
+lib/backend_detect.sh:39{{{		}}}# `lib/commands/init.sh` don't churn — N.o onward can drop them in
+lib/check_composer.sh:35{{{		}}}# No-Python noise suppression seam (full impl in N.aj): the composer only
+lib/check_composer.sh:39{{{		}}}# is the seam N.aj refines with file-level detection.
+lib/commands/env.sh:41{{{		}}}# `pyve env sync` (N.az.2) builds on.
+lib/commands/env.sh:67{{{		}}}# Story M.i.2: accepts an optional <name>. No arg defaults to the
+lib/commands/env.sh:68{{{		}}}# reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
+lib/commands/env.sh:78{{{		}}}# Story M.l: venv-backed install with source dispatch.
+lib/commands/env.sh:80{{{		}}}# Renamed from `env_install` for symmetry with M.k's
+lib/commands/env.sh:92{{{		}}}#   5. Bare `pytest` fallback (pre-M.l default).
+lib/commands/env.sh:95{{{		}}}# M.g Python helper at config-read time, so by the time we get here
+lib/commands/env.sh:170{{{		}}}# Story M.l: invoke the Python helper's `--resolve-extra` mode to
+lib/commands/env.sh:199{{{		}}}# Story M.p — date helpers (epoch ↔ ISO date, cross-platform).
+lib/commands/env.sh:228{{{		}}}# Story M.p — `testenv list` / `testenv prune`.
+lib/commands/env.sh:248{{{		}}}# Confirmation gating mirrors M.i.4's `purge` semantics: `--force`
+lib/commands/env.sh:432{{{		}}}    # Confirm — same TTY/--force semantics as M.i.4.
+lib/commands/env.sh:462{{{		}}}# Story M.i.4: accepts an optional <name>. With-arg removes that env;
+lib/commands/env.sh:510{{{		}}}# Discover the project-guide env-dependencies spec (§4.0, via N.ay's
+lib/commands/env.sh:513{{{		}}}# confirm reconcile pyve.toml via the tomlkit writer (N.az.2 helper).
+lib/commands/env.sh:519{{{		}}}# vocabulary enforcement is F6/N.ba — do not add it in this leaf.
+lib/commands/env.sh:596{{{		}}}            # F6/N.ba.2: the spec carries an unknown value or unrecognized
+lib/commands/env.sh:649{{{		}}}# Story M.j: per-env install lock
+lib/commands/env.sh:728{{{		}}}# the env. Story M.k: dispatches on the resolved backend so a
+lib/commands/env.sh:730{{{		}}}# driven sync); Story M.l: venv backend goes through
+lib/commands/env.sh:763{{{		}}}# Story M.k: conda-backed init/install
+lib/commands/env.sh:852{{{		}}}# Story M.i.3: iterate `testenv install` over every non-lazy declared
+lib/commands/env.sh:856{{{		}}}# must have loaded config (env_command does this in M.i.2).
+lib/commands/env.sh:858{{{		}}}# Story M.j: takes a `lock_mode` second arg (`wait` | `no-wait`) so
+lib/commands/env.sh:861{{{		}}}# Story M.k: conda-backed envs are no longer skipped — backend dispatch
+lib/commands/env.sh:888{{{		}}}# Story M.i.4: iterate `testenv purge` over every declared env.
+lib/commands/env.sh:948{{{		}}}    local action_name=""           # Story M.i.2: optional positional <name>
+lib/commands/env.sh:950{{{		}}}    local purge_force=0            # Story M.i.4: --force skips the confirm prompt
+lib/commands/env.sh:951{{{		}}}    local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
+lib/commands/env.sh:952{{{		}}}    local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
+lib/commands/env.sh:957{{{		}}}            # New subcommand grammar (H.d §4.4 D5) — silent.
+lib/commands/env.sh:961{{{		}}}                # Story M.i.2: optional positional <name> after `init`.
+lib/commands/env.sh:970{{{		}}}                # Story M.i.3: install accepts an optional positional
+lib/commands/env.sh:1008{{{		}}}                # Story M.i.4: sub-parser for optional <name> and --force.
+lib/commands/env.sh:1033{{{		}}}                # Story M.p: `list` takes no positional / sub-flag args
+lib/commands/env.sh:1040{{{		}}}                # Story M.p: sub-parser absorbs flags here. The action
+lib/commands/env.sh:1069{{{		}}}            # Story J.d (v2.3.0): Category A legacy flag forms
+lib/commands/env.sh:1125{{{		}}}  - Named environments (Story M.i+) live at .pyve/envs/<name>/{venv,conda}/
+lib/commands/env.sh:1128{{{		}}}    envs are skipped (M.k will provide provisioning). `install <name>` installs
+lib/commands/env.sh:1130{{{		}}}  - `list` (M.p) prints a table of every env (declared + on-disk):
+lib/commands/env.sh:1132{{{		}}}    Last-used is from `.state.last_used_at` (M.m); `never` when 0.
+lib/commands/env.sh:1134{{{		}}}  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--force`:
+lib/commands/env.sh:1154{{{		}}}  - `sync` (N.az.2) reconciles pyve.toml with the project-guide
+lib/commands/env.sh:1185{{{		}}}    # Story M.i.2: load named-env config so `assert_env_*` gates can
+lib/commands/env.sh:1187{{{		}}}    # (M.i.1) keeps this cheap on bash-only projects.
+lib/commands/env.sh:1203{{{		}}}    # Story M.i.2: `run` has its own arg shape — parse `[<name> --]
+lib/commands/env.sh:1225{{{		}}}    # `testenv`). For `install`/`purge` the M.i.2 dispatcher still
+lib/commands/env.sh:1226{{{		}}}    # hard-codes the default; M.i.3/M.i.4 will accept `<name>` here.
+lib/commands/env.sh:1238{{{		}}}    # Propagate leaf return codes (M.i.2). Without explicit handling,
+lib/commands/env.sh:1247{{{		}}}            # Story M.i.3: with-arg installs into a single named env;
+lib/commands/env.sh:1249{{{		}}}            # Story M.j: each install is wrapped with a per-env lock;
+lib/commands/env.sh:1251{{{		}}}            # Story M.k: backend dispatch happens inside
+lib/commands/env.sh:1268{{{		}}}            # Story M.i.4: with-arg removes one env; no-arg iterates
+lib/commands/env.sh:1281{{{		}}}            # Story M.p: read-mostly walk of declared + on-disk envs.
+lib/commands/env.sh:1285{{{		}}}            # Story M.p: forward the captured flags to the leaf.
+lib/commands/lock.sh:31{{{		}}}# Story M.q surface (extends to per-testenv locking):
+lib/commands/lock.sh:79{{{		}}}    # Per-env routing — M.q. `--check` for per-env modes is not in
+lib/commands/lock.sh:80{{{		}}}    # scope for M.q (today's `--check` is main-env-only). The dispatch
+lib/commands/lock.sh:103{{{		}}}# Main-env locking — the pre-M.q body of `lock_environment`, factored
+lib/commands/lock.sh:195{{{		}}}# Story M.q: per-testenv locking
+lib/commands/package.sh:9{{{		}}}# dispatching to a registered packaging provider (the N.aq registry).
+lib/commands/package.sh:19{{{		}}}# unknown) is F6 in Subphase N-6, not here — this verb reads leniently.
+lib/commands/self.sh:88{{{		}}}    # Copy per-command modules (Phase K extraction phase). The lib/*.sh
+lib/commands/self.sh:97{{{		}}}    # Copy shell-completion scripts (H.e.9c)
+lib/commands/self.sh:140{{{		}}}    # Shell-completion activation hint (H.e.9c)
+lib/commands/self.sh:473{{{		}}}    # (Story G.c / FR-G2)
+lib/commands/self.sh:584{{{		}}}# name that follows. The K.e initial clean-name rename to `self()`
+lib/commands/self.sh:585{{{		}}}# violated the rule (no operand suffix); reverted in K.f follow-up.
+lib/commands/self.sh:716{{{		}}}    # implicit default `[env.testenv]` to match N.e's fresh-init
+lib/completion/_pyve:5{{{		}}}# Zsh completion for pyve (v2.0 surface, Story H.e.9c).
+lib/completion/pyve.bash:11{{{		}}}# Bash completion for pyve (v2.0 surface, Story H.e.9c; bash 3.2
+lib/completion/pyve.bash:12{{{		}}}# compatibility lock-in via H.e.9h).
+lib/distutils_shim.sh:91{{{		}}}        # $desired ended in a newline (i.e., always). See Story I.k.
+lib/env_detect.sh:265{{{		}}}# asdf/direnv Coexistence (Phase J)
+lib/env_detect.sh:271{{{		}}}#   - Story J.b: .envrc generator injects ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
+lib/env_detect.sh:272{{{		}}}#   - Story J.c: `pyve run` dispatcher exports the same var to subprocesses
+lib/envrc_composer.sh:9{{{		}}}# sections (the PC-2 composition layer from the Phase N plan).
+lib/envrc_composer.sh:12{{{		}}}#   - N.ae.3 (here): `_compose_envrc_body` — pure assembly + PC-1
+lib/envrc_composer.sh:14{{{		}}}#     `pyve_plugin_activate` (snippet emitter, per N.ae.2 / N.y),
+lib/envrc_composer.sh:19{{{		}}}#   - N.ae.4: `compose_envrc <path>` — the atomic writer (`.tmp` → `.prev`
+lib/envrc_composer.sh:31{{{		}}}# marker (preserved verbatim by compose_envrc in N.ae.4).
+lib/envrc_composer.sh:38{{{		}}}#   1. Enumerate active plugins (plugin_list_active, N.k).
+lib/envrc_composer.sh:40{{{		}}}#      hook emits a sentinel-wrapped section to stdout (N.ae.2 / N.y).
+lib/envs.sh:5{{{		}}}# lib/envs.sh — testenv-DX config foundation (Story M.g)
+lib/envs.sh:164{{{		}}}# Story M.i.1: gate for name-aware actions (testenv init / install /
+lib/envs.sh:187{{{		}}}# Story M.k: resolve <name>'s effective backend. Returns the concrete
+lib/envs.sh:224{{{		}}}# Story M.i.1 / M.k: venv-only gate for `pyve testenv run`. Returns 0
+lib/envs.sh:226{{{		}}}# `micromamba` (and `inherit` that resolves to micromamba). M.k landed
+lib/envs.sh:247{{{		}}}# .state file helpers (Story M.h.1; N.f relocated to .pyve/envs/)
+lib/envs.sh:349{{{		}}}# Legacy-layout migration (Story M.h.2; N.f extends to v3)
+lib/envs.sh:376{{{		}}}# v2.7 (singular) → v3 mover. Handles the original M.h.2 case; the v3
+lib/envs.sh:463{{{		}}}# the caller's responsibility. Path shape (N.f):
+lib/envs.sh:471{{{		}}}        # Main project env. Pre-N.g this still maps to .venv; N.g's
+lib/envs.sh:495{{{		}}}    # Story M.k: dispatch on the *resolved* backend so `inherit` produces
+lib/gitignore_composer.sh:9{{{		}}}# through PC-1 (validate_gitignore_snippet, N.m), dedupes entries across
+lib/gitignore_composer.sh:18{{{		}}}#                                      (init/update entry point; see N.ae.5)
+lib/gitignore_composer.sh:47{{{		}}}    # (mirrors the python activate emitter, N.ae.2). Falls back to the
+lib/gitignore_composer.sh:168{{{		}}}# Init/update entry point (mirrors compose_project_envrc, N.ae.5): reload the
+lib/init_composer.sh:14{{{		}}}# Target shape (N.av umbrella): parse args once → write/scaffold
+lib/init_composer.sh:23{{{		}}}# untangling (materializer extraction + tail lift) lands in N.av.2; the
+lib/init_composer.sh:24{{{		}}}# Node-only / polyglot paths in N.av.3 / N.av.4.
+lib/init_composer.sh:34{{{		}}}# N.av.2: the Python hook (init_project) now MATERIALIZES the env +
+lib/init_composer.sh:40{{{		}}}# rather than welded inside the plugin. N.av.3 / N.av.4 dispatch the
+lib/init_composer.sh:94{{{		}}}# package.json is the competing stack per the N.aj gate). Refresh
+lib/init_composer.sh:96{{{		}}}# here; polyglot Node materialization is N.av.4.
+lib/init_composer.sh:132{{{		}}}    # same loop generalizes to polyglot in N.av.4.
+lib/init_composer.sh:142{{{		}}}    # stack needs a utility root to host it — F2/N.aw); node-aware next-steps.
+lib/manifest.sh:9{{{		}}}# surface. Foundation for everything in Subphase N-1; no CLI dispatcher
+lib/manifest.sh:32{{{		}}}# This file is sourced explicitly by consumers (test files in N.a; later
+lib/manifest.sh:56{{{		}}}#       (memoized via the same sentinel scheme as the N.h banner).
+lib/manifest.sh:59{{{		}}}# The synthesis layer is bounded; Subphase N-10 removes everything tagged
+lib/manifest.sh:75{{{		}}}    # PATH `python`. Closes the Node-only mis-enumeration the N.at spike
+lib/manifest.sh:132{{{		}}}# synthesis (the N.h banner still fires on it for the user-visible
+lib/manifest.sh:150{{{		}}}# Mapping rules (mirrors N.g's render):
+lib/manifest.sh:160{{{		}}}#     entry — same behavior pre-N.i had via the v2 lib/envs.sh
+lib/manifest.sh:249{{{		}}}# reads from legacy v2 sources. Memoization mirrors N.h's banner —
+lib/micromamba_bootstrap.sh:153{{{		}}}    # Linux. BSD tar auto-detects regardless. See Story I.e.
+lib/micromamba_env.sh:372{{{		}}}    # it does not gate whether to print at all. (H.f.6 silent-exit fix.)
+lib/micromamba_env.sh:387{{{		}}}    # Always print an actionable error. (H.f.6 silent-exit fix.)
+lib/micromamba_env.sh:412{{{		}}}# `pyve lock`. Story H.f.7.
+lib/micromamba_env.sh:438{{{		}}}    # state; H.f.6's actionable error handles it. Don't paper over by
+lib/micromamba_env.sh:452{{{		}}}# Generated by \`pyve init --backend micromamba\` (H.f.7 scaffold)
+lib/plugins/node/plugin.sh:7{{{		}}}# Second reference implementation of the plugin contract from N.k,
+lib/plugins/node/plugin.sh:12{{{		}}}# Deliberately mirrors the shape of lib/plugins/python/plugin.sh (N.n)
+lib/plugins/node/plugin.sh:16{{{		}}}#   node_pyve_plugin_manifest_namespace   — returns "node"            (N.t)
+lib/plugins/node/plugin.sh:17{{{		}}}#   node_pyve_plugin_detect               — scaffold-time file scan    (N.t)
+lib/plugins/node/plugin.sh:18{{{		}}}#   node_pyve_plugin_register_backends    — pnpm / npm / yarn providers (N.u)
+lib/plugins/node/plugin.sh:20{{{		}}}#                                            string maps + resolution   (N.u)
+lib/plugins/node/plugin.sh:23{{{		}}}#   - runtime-resolution (nvm / fnm / volta + PATH) → N.v
+lib/plugins/node/plugin.sh:24{{{		}}}#   - lifecycle (init / purge / update)             → N.w
+lib/plugins/node/plugin.sh:25{{{		}}}#   - check / status / run / test                   → N.x
+lib/plugins/node/plugin.sh:26{{{		}}}#   - activation (.envrc node_modules/.bin PATH_add)→ N.y
+lib/plugins/node/plugin.sh:27{{{		}}}#   - .gitignore + smart-purge                      → N.z
+lib/plugins/node/plugin.sh:28{{{		}}}#   - SvelteKit detection + frameworks attribute    → N.aa
+lib/plugins/node/plugin.sh:37{{{		}}}# (pnpm/npm/yarn from lockfile) is N.u's job. Per the spike, detection
+lib/plugins/node/plugin.sh:61{{{		}}}# activation (the activation hook itself lands in N.y). bp_register is
+lib/plugins/node/plugin.sh:78{{{		}}}# hooks (N.w init/update, N.x test) consume these so the per-tool
+lib/plugins/node/plugin.sh:108{{{		}}}# Print the test invocation for <provider>. N.x revisits this per the
+lib/plugins/node/plugin.sh:109{{{		}}}# package.json-script-delegation decision; N.u returns the conventional
+lib/plugins/node/plugin.sh:161{{{		}}}# while Python owns the root) is tested in N.ab; probing the path here
+lib/plugins/node/plugin.sh:178{{{		}}}# node/none contract (N.t) stays intact. Returns the framework signal
+lib/plugins/node/plugin.sh:261{{{		}}}# Confirms a Node runtime first (every provider needs node) via N.v's
+lib/plugins/node/plugin.sh:299{{{		}}}# touches package.json, lockfiles, or source (S9 / N.r smart-purge rule).
+lib/plugins/node/plugin.sh:301{{{		}}}# "created" declaration (N.z).
+lib/plugins/node/plugin.sh:505{{{		}}}# command. N.y moves this PATH activation into the env's `.envrc`; this
+lib/plugins/node/plugin.sh:551{{{		}}}# `.envrc`. PC-1 (validate_envrc_snippet, N.m) gates the output — a
+lib/plugins/node/plugin.sh:587{{{		}}}# `.gitignore`. Output flows through validate_gitignore_snippet (N.m
+lib/plugins/node/plugin.sh:628{{{		}}}# Like the Python plugin's (N.r), this is a declarative data interface;
+lib/plugins/packaging_registry.sh:26{{{		}}}# unknown) is F6 in Subphase N-6, not here — N-5 reads leniently.
+lib/plugins/python/plugin.sh:7{{{		}}}# First reference implementation of the plugin contract from N.k.
+lib/plugins/python/plugin.sh:15{{{		}}}# (The N.l-era backend-provider activate shims `venv_pyve_bp_activate` /
+lib/plugins/python/plugin.sh:18{{{		}}}# the composition layer (N.ae/N.af) fully superseded them; activation now
+lib/plugins/python/plugin.sh:108{{{		}}}# is read-only, N.p surfaces it in `pyve check` / `pyve status`),
+lib/plugins/python/plugin.sh:111{{{		}}}# implementations stay there in N.o; N.s revisits whether to
+lib/plugins/python/plugin.sh:165{{{		}}}# accessor. N.p will surface the read in `pyve check` / `pyve status`.
+lib/plugins/python/plugin.sh:179{{{		}}}        # _langs is intentionally unused in N.o — N.p threads it
+lib/plugins/python/plugin.sh:181{{{		}}}        # flow is wired so N.p can rely on it without a schema change.
+lib/plugins/python/plugin.sh:406{{{		}}}# That boundary keeps the strict N.m allow-list usable for plugins
+lib/plugins/python/plugin.sh:460{{{		}}}# infrastructure boundary as N.q used for `.envrc`.
+lib/plugins/python/plugin.sh:496{{{		}}}# N.s.2) stay direct. The seam is in
+lib/plugins/python/plugin.sh:515{{{		}}}# Uniform composer-facing contract (spike N.ae.1, decision 1): the hook
+lib/plugins/python/plugin.sh:720{{{		}}}# this file (init_project relocated in N.s.1, purge_project in N.s.2).
+lib/plugins/python/plugin.sh:730{{{		}}}# N.al — `init_project` composes those files through
+lib/plugins/python/plugin.sh:755{{{		}}}# Used by the venv branch of the L.k.4 Python prompt.
+lib/plugins/python/plugin.sh:798{{{		}}}# leaves it alone per N.e Task 3).
+lib/plugins/python/plugin.sh:974{{{		}}}# manifest scaffold orchestrator (replaces N.t's advisory-only
+lib/plugins/python/plugin.sh:982{{{		}}}#     the S4+S5 root-collision hole N.t deferred.
+lib/plugins/python/plugin.sh:1044{{{		}}}# Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
+lib/plugins/python/plugin.sh:1049{{{		}}}# lands in L.k.4 / L.k.5.
+lib/plugins/python/plugin.sh:1097{{{		}}}    # Prompt 1 — backend (Story L.k.3 + L.k.7 auto handling).
+lib/plugins/python/plugin.sh:1137{{{		}}}    # Prompt 2 — Python version pin (Story L.k.4). Backend-aware: venv pins
+lib/plugins/python/plugin.sh:1264{{{		}}}    # Prompt 3 — project-guide install (Story L.k.5). Detection is keyed on
+lib/plugins/python/plugin.sh:1325{{{		}}}    # project-guide integration (Story G.c / FR-G2) — tri-state:
+lib/plugins/python/plugin.sh:1421{{{		}}}                # Removed in v2.0 (H.e.9). Hard error — semantics of
+lib/plugins/python/plugin.sh:1503{{{		}}}        # (PYVE_REINIT_MODE="update" path removed in v2.0 / H.e.9 —
+lib/plugins/python/plugin.sh:1655{{{		}}}        # H.f.7: if the directory has neither `environment.yml` nor
+lib/plugins/python/plugin.sh:1660{{{		}}}        # H.f.6 "missing environment.yml" hard-error path.
+lib/plugins/python/plugin.sh:1944{{{		}}}# End-of-init "Next steps:" summary (Story L.l).
+lib/plugins/python/plugin.sh:2095{{{		}}}# functions now live in this file (N.s.1 + N.s.2); bash resolves the
+lib/plugins/python/plugin.sh:2182{{{		}}}    # N.f: in v3 the named-env tree lives at `.pyve/envs/<name>/<backend>/`
+lib/plugins/python/plugin.sh:2183{{{		}}}    # and shares its parent with the micromamba main env (pre-N.g layout
+lib/plugins/python/plugin.sh:2190{{{		}}}    # is N.g's deterministic-migrator territory.
+lib/plugins/python/plugin.sh:2232{{{		}}}    # Explicit success: the composed-purge orchestrator (N.ai) keys its
+lib/plugins/python/plugin.sh:2360{{{		}}}# pyve update — non-destructive upgrade (Story H.e.2)
+lib/plugins/python/plugin.sh:2378{{{		}}}# Update-private wrapper around the M.h.2 migration helper. Exists as
+lib/plugins/python/plugin.sh:2379{{{		}}}# a named function so the M.h.3 wiring is grep-visible from plugin.sh
+lib/plugins/python/plugin.sh:2387{{{		}}}    local pg_mode=""  # "" | "no"  (only --no-project-guide is supported per H.d §4.3)
+lib/plugins/python/plugin.sh:2429{{{		}}}    # info() per boundary when an actual move happens. M.h.3 wires this;
+lib/plugins/python/plugin.sh:2584{{{		}}}# pyve check — read-only diagnostics (Story H.e.3)
+lib/plugins/python/plugin.sh:2590{{{		}}}# (H.e.4), not here.
+lib/plugins/python/plugin.sh:2779{{{		}}}    # follow-up H.e.3 polish).
+lib/plugins/python/plugin.sh:2922{{{		}}}# pyve status — read-only state dashboard (Story H.e.4)
+lib/plugins/python/plugin.sh:2952{{{		}}}    # Title + divider. BOLD for the title, DIM for the rule — per H.c §4.4.
+lib/plugins/python/plugin.sh:3031{{{		}}}# (Phase L audit T1-01).
+lib/plugins/python/plugin.sh:3338{{{		}}}    # `.pyve/envs/<name>/` (pre-N.f micromamba layout).
+lib/plugins/python/plugin.sh:3358{{{		}}}    # Story J.c: defense-in-depth asdf reshim guard. The .envrc block
+lib/plugins/python/plugin.sh:3359{{{		}}}    # added in J.b covers the direnv-allow path; this covers `pyve run`
+lib/plugins/python/plugin.sh:3449{{{		}}}# Story M.o: probe whether `<name>` has pytest importable. Drives the
+lib/plugins/python/plugin.sh:3452{{{		}}}# (its dependency stack may be what the tests actually need). M.c's
+lib/plugins/python/plugin.sh:3454{{{		}}}# → warn. M.o expands to root + every declared name.
+lib/plugins/python/plugin.sh:3462{{{		}}}# Renamed from `_test_main_env_has_pytest` in M.o.
+lib/plugins/python/plugin.sh:3511{{{		}}}    # Story M.m: `<name>` is no longer limited to `root` / `testenv`.
+lib/plugins/python/plugin.sh:3516{{{		}}}    # Story M.r: `<name>` may also be a comma-separated list of names
+lib/plugins/python/plugin.sh:3517{{{		}}}    # (`--env a,b,c`). With a single name (no comma), the M.m exec path
+lib/plugins/python/plugin.sh:3543{{{		}}}    # Story M.r: split CSV into a list. A single name (no comma)
+lib/plugins/python/plugin.sh:3560{{{		}}}            # Suppress the M.o silent-skip advisory in matrix mode:
+lib/plugins/python/plugin.sh:3576{{{		}}}    # Single-env path (no comma): preserve the M.m exec contract.
+lib/plugins/python/plugin.sh:3581{{{		}}}# Story M.r: extracted from `test_tests` so the matrix loop can call
+lib/plugins/python/plugin.sh:3582{{{		}}}# the per-env logic inside a subshell without losing the M.m exec
+lib/plugins/python/plugin.sh:3591{{{		}}}# Behavior is identical to pre-M.r `test_tests`: legacy-value catch,
+lib/plugins/python/plugin.sh:3593{{{		}}}# lazy auto-provision (M.n), pytest install prompt, silent-skip
+lib/plugins/python/plugin.sh:3594{{{		}}}# advisory (M.o), `last_used_at` touch (M.m), then `exec pytest`.
+lib/plugins/python/plugin.sh:3603{{{		}}}    # v2.7.1 (M.e). Catch the legacy value with a precise migration hint
+lib/plugins/python/plugin.sh:3620{{{		}}}    # Story M.m: load named-env config so we can validate the target
+lib/plugins/python/plugin.sh:3652{{{		}}}    # coverage carries `N.i-pending` skip markers — see the audit in
+lib/plugins/python/plugin.sh:3667{{{		}}}    # Same M.k gate that `pyve testenv run` uses; use `--env root`
+lib/plugins/python/plugin.sh:3674{{{		}}}    # Story M.n: lazy envs that have not been provisioned yet are
+lib/plugins/python/plugin.sh:3677{{{		}}}    # per the env's declared sources (M.l). The whole thing is gated
+lib/plugins/python/plugin.sh:3678{{{		}}}    # by PYVE_NO_AUTO_PROVISION=1 for strict CI that wants the M.m
+lib/plugins/python/plugin.sh:3727{{{		}}}    # Silent-skip trap guard (Story M.c, generalized in M.o):
+lib/plugins/python/plugin.sh:3735{{{		}}}    # matrix mode (M.r) sets the env-var inside its per-env subshell.
+lib/plugins/python/plugin.sh:3740{{{		}}}        # Candidates: root + every declared name (M.o). Skip the
+lib/plugins/python/plugin.sh:3760{{{		}}}    # Story M.m: touch `.state`'s `last_used_at` before exec so M.p's
+lib/plugins/python/plugin.sh:3763{{{		}}}    # provisioned before M.m landed `.state` writes in
+lib/project_guide.sh:120{{{		}}}    # Branch on `.project-guide.yml` presence (Story G.h):
+lib/purge_composer.sh:8{{{		}}}# authored declarations from N.r / N.z), composes them keyed by
+lib/purge_composer.sh:13{{{		}}}# Design (Option B, developer decision on N.ai): the composer owns the
+lib/pyve_env_sync_helper.py:37{{{		}}}#   6   §4 has an unknown axis value or unrecognized field (F6/N.ba.2)
+lib/pyve_env_sync_helper.py:58{{{		}}}EXIT_SPEC_INVALID = 6  # F6/N.ba.2: §4 has an unknown value / unrecognized field
+lib/pyve_env_sync_helper.py:106{{{		}}}    # F6/N.ba.2: closed-vocabulary + recognized-field enforcement on the RAW
+lib/pyve_env_sync_helper.py:139{{{		}}}    """F6/N.ba.2: closed-vocabulary + recognized-field enforcement for §4.
+lib/pyve_env_sync_helper.py:141{{{		}}}    Replaces the N.az.2 permissive accept-all stub. Operates on the RAW §4
+lib/pyve_env_sync_helper.py:250{{{		}}}        # than an inline `env = {…}` (verified empirically — N.az.2).
+lib/pyve_testenvs_helper.py:5{{{		}}}# bash-array-literal declarations (V3 wire format from spike M.f).
+lib/pyve_testenvs_helper.py:127{{{		}}}    """Story M.l: extract [project.optional-dependencies].<extra_name> from
+lib/pyve_testenvs_helper.py:130{{{		}}}    not declared — pyve's M.l dispatch surfaces both as "extra not
+lib/pyve_testenvs_helper.py:162{{{		}}}    # Story M.l: `--resolve-extra <pyproject> <extra_name>` is a side
+lib/pyve_testenvs_helper.py:165{{{		}}}    # (no flag) is M.g's V3-array emission.
+lib/pyve_toml_helper.py:9{{{		}}}# spike M.f) but reads pyve.toml's [project] + [env.<name>] blocks
+lib/pyve_toml_helper.py:52{{{		}}}# A value outside both → unknown → hard error (enforced in N.ba.2).
+lib/pyve_toml_helper.py:56{{{		}}}# it — surfacing policy (N.ba.3) decides not to print it, but classification
+lib/pyve_toml_helper.py:151{{{		}}}# Backend → S6 category, for advisory messaging (N.ba.3).
+lib/pyve_toml_helper.py:167{{{		}}}    The single classifier the F6 enforcement (N.ba.2) and advisory surfacing
+lib/pyve_toml_helper.py:168{{{		}}}    (N.ba.3) both consult. An unrecognized axis classifies everything as
+lib/pyve_toml_helper.py:196{{{		}}}    """Return closed-vocabulary errors for one env mapping (F6/N.ba.2).
+lib/pyve_toml_helper.py:272{{{		}}}        # records + surfaces it (N.ba.3); never executed or verified.
+lib/pyve_toml_helper.py:333{{{		}}}        # F6/N.ba.2: closed-vocabulary enforcement across every axis
+lib/pyve_toml_helper.py:435{{{		}}}    FRAMEWORK_KIND (S14) from N.ba.1.
+lib/status_composer.sh:19{{{		}}}# No-Python noise suppression seam (shared with N.ag, refined in N.aj): the
+lib/toolchain_python.sh:89{{{		}}}# N.at.3 lifecycle story; here it does the minimal viable build.
+lib/ui/progress.sh:17{{{		}}}#  All primitives respect the L.f verbosity gate: under
+lib/ui/select.sh:21{{{		}}}#  (Story L.k) hard-fails the multi-prompt flow when stdin isn't
+lib/ui/select.sh:143{{{		}}}# The L.k wizard's `expect`-style integration tests cover the
+lib/utils.sh:192{{{		}}}# project-guide Integration (Story G.c / FR-G2)
+lib/utils.sh:266{{{		}}}        # Story H.a bug 3).
+lib/utils.sh:572{{{		}}}    # Quiet-by-default subprocess output (Story L.j). Pip's per-package
+lib/utils.sh:631{{{		}}}# Returns 0 always — failure is non-fatal by design. (See the N.aw note on
+lib/utils.sh:1254{{{		}}}# `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
+lib/utils.sh:1259{{{		}}}# Post-M.h.3 / N.f: derive both paths from `resolve_env_path testenv`
+lib/utils.sh:1269{{{		}}}# (M.h.3); we tolerate that side effect because every caller of
+lib/utils.sh:1282{{{		}}}# Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
+lib/utils.sh:1288{{{		}}}# Story M.k: dispatches on the resolved backend — venv envs go through
+lib/utils.sh:1318{{{		}}}        # Story M.m: write initial `.state` for the conda env (parallel
+lib/utils.sh:1366{{{		}}}    # Story M.m: write an initial `.state` for the freshly-created env
+lib/utils.sh:1367{{{		}}}    # so M.m's `last_used_at` touch (in `test_tests`) and M.p's
+lib/utils.sh:1378{{{		}}}# Story M.i.4: accepts an optional `<name>` argument (default `testenv`).
+lib/utils.sh:1380{{{		}}}# pre-N.f), not just the inner `venv/` — covers `.state` and any future
+tests/helpers/pyve_test_helpers.py:183{{{		}}}                # Story L.k.6: bypass the interactive `pyve init` wizard's
+tests/helpers/test_helper.bash:13{{{		}}}    # utils.sh now calls run_quiet() (Story L.j) for quiet-on-success
+tests/helpers/test_helper.bash:34{{{		}}}    # without per-file source bloat (mirrors the N.d note for
+tests/helpers/test_helper.bash:55{{{		}}}    # Story L.k.2: bats fixtures invoke `pyve init` with various flag
+tests/integration/test_bootstrap.py:20{{{		}}}to be removed incrementally in Phase I (Stories I.b through I.g).
+tests/integration/test_bootstrap.py:82{{{		}}}    """Core auto-bootstrap tests (activated in Story I.b)."""
+tests/integration/test_bootstrap.py:182{{{		}}}    @pytest.mark.skip(reason="Pending future Story K: SHA256 verification of bootstrap download (I.h audit: transport-only today)")
+tests/integration/test_bootstrap.py:255{{{		}}}    Bootstrap configuration-precedence tests (activated in Story I.d).
+tests/integration/test_bootstrap.py:324{{{		}}}    """Failure-path edge cases for bootstrap (activated in Story I.c)."""
+tests/integration/test_envrc_composition.py:32{{{		}}}# the pinned version uninstalled), decline so init aborts fast. Since N.ae.6
+tests/integration/test_envrc_composition.py:55{{{		}}}    bug noted in stories.md § N.ae.5), unrelated to the composer under test.
+tests/integration/test_envrc_template.py:5{{{		}}}Integration tests for the uniform `.envrc` template (v2.3.2 / Story K.a.2).
+tests/integration/test_force_backend_detection.py:155{{{		}}}        Prompt order after F.k/F.l fixes:
+tests/integration/test_force_backend_detection.py:198{{{		}}}        Regression test for F.l: --force pre-flight must bypass .pyve/config (Priority 2)
+tests/integration/test_init_next_steps.py:5{{{		}}}Integration tests for the end-of-init "Next steps:" summary (Story L.l).
+tests/integration/test_init_next_steps.py:19{{{		}}}    """End-to-end coverage of the L.l Next-steps block."""
+tests/integration/test_init_wizard.py:5{{{		}}}Integration tests for the interactive `pyve init` wizard (Story L.k.6).
+tests/integration/test_init_wizard.py:9{{{		}}}L.i / L.k.4 notes). Instead, these tests exercise:
+tests/integration/test_init_wizard.py:30{{{		}}}    """End-to-end coverage of the L.k wizard's render paths via `pyve init`."""
+tests/integration/test_micromamba_workflow.py:150{{{		}}}        # pre-N.g, the env-name from environment.yml), testenv at
+tests/integration/test_micromamba_workflow.py:211{{{		}}}        # Template section headers and entries should be present (N.af composed-
+tests/integration/test_micromamba_workflow.py:223{{{		}}}        # named testenvs); was .pyve/testenv (singular) pre-M.h.3.
+tests/integration/test_micromamba_workflow.py:236{{{		}}}        """Test --init without environment.yml — H.f.7 scaffold-then-proceed contract.
+tests/integration/test_micromamba_workflow.py:241{{{		}}}        env creation instead of erroring out. Pre-H.f.7 behavior was:
+tests/integration/test_micromamba_workflow.py:243{{{		}}}        H.f.6 silent-exit fix). Post-H.f.7: success with scaffolded
+tests/integration/test_micromamba_workflow.py:248{{{		}}}        # Post-H.f.7: init succeeds and scaffolds environment.yml.
+tests/integration/test_node_detection.py:7{{{		}}}N.t shipped Node detection as advisory-only: when `package.json` was
+tests/integration/test_node_detection.py:9{{{		}}}deferring the real scaffold to Subphase N-4. N.ad closes that hole — when
+tests/integration/test_project_guide_integration.py:16{{{		}}}Integration tests for the project-guide install + completion hooks (Story G.c).
+tests/integration/test_project_guide_integration.py:126{{{		}}}# Under N.aw, project-guide is a Pyve-managed GLOBAL tool resolved on PATH
+tests/integration/test_project_guide_integration.py:560{{{		}}}# Refresh on reinit (Story G.h — slow, network required)
+tests/integration/test_project_guide_integration.py:567{{{		}}}    Story G.h: `pyve init --force` refreshes the project-guide scaffolding.
+tests/integration/test_project_guide_integration.py:573{{{		}}}                  unchanged from Story G.c)
+tests/integration/test_reinit.py:32{{{		}}}    N.am test-hardening. ``pyve init`` runs ``ensure_python_version_installed``,
+tests/integration/test_subcommand_cli.py:16{{{		}}}Integration tests for the v1.11.0 subcommand-style CLI surface (Story G.b.1).
+tests/integration/test_subcommand_cli.py:72{{{		}}}        """`pyve python-version <ver>` is no longer a routable subcommand (Story J.d)."""
+tests/integration/test_subcommand_cli.py:74{{{		}}}        # Story J.d ripped the alias; the dispatcher's *) arm now catches it.
+tests/integration/test_subcommand_cli.py:138{{{		}}}    """Story G.b.2 / FR-G4: every renamed subcommand responds to --help."""
+tests/integration/test_subcommand_cli.py:180{{{		}}}    """Story G.b.2 / FR-G4: pyve --help is grouped into four sections."""
+tests/integration/test_testenv.py:51{{{		}}}        # H.f.3 standardized the hint on v2.0 grammar (`pyve testenv init`)
+tests/integration/test_venv_workflow.py:163{{{		}}}        # Template section headers (N.af composed-gitignore format: the legacy
+tests/integration/test_venv_workflow.py:179{{{		}}}        # .pyve/testenv (singular) pre-M.h.3.
+tests/integration/test_venv_workflow.py:238{{{		}}}        # v2.8+ layout: gitignore covers .pyve/testenvs (was .pyve/testenv pre-M.h.3).
+tests/unit/test_asdf_compat.bats:6{{{		}}}# Unit tests for the asdf/direnv coexistence helpers (Phase J).
+tests/unit/test_asdf_compat.bats:9{{{		}}}# (Story J.a) plus placeholder tests for the downstream behaviors that
+tests/unit/test_asdf_compat.bats:10{{{		}}}# J.b (`.envrc` asdf compat guard) and J.c (`pyve run` asdf compat guard)
+tests/unit/test_asdf_compat.bats:11{{{		}}}# will green. The J.b/J.c placeholders use `skip` with a reason pointing
+tests/unit/test_asdf_compat.bats:12{{{		}}}# at the story that will unskip them — same pattern as the Phase I
+tests/unit/test_asdf_compat.bats:40{{{		}}}# is_asdf_active — the J.a helper contract
+tests/unit/test_asdf_compat.bats:80{{{		}}}# Shared helper — single-function extractor (used by the J.c tests below)
+tests/unit/test_asdf_compat.bats:87{{{		}}}# The J.c (`pyve run`) asdf-guard tests below remain and use this helper.
+tests/unit/test_asdf_compat.bats:93{{{		}}}# brace at column 0), so an awk range extract works. The J.c tests pass
+tests/unit/test_asdf_compat.bats:110{{{		}}}# Story J.c — pyve run asdf compat guard
+tests/unit/test_asdf_compat.bats:132{{{		}}}@test "J.c: pyve run exports ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1 when asdf is active" {
+tests/unit/test_asdf_compat.bats:144{{{		}}}@test "J.c: PYVE_NO_ASDF_COMPAT=1 suppresses the guard even when asdf is active" {
+tests/unit/test_asdf_compat.bats:156{{{		}}}@test "J.c: pyve run does not export the guard when asdf is not active (VERSION_MANAGER=pyenv)" {
+tests/unit/test_bash32_compat.bats:6{{{		}}}# Story J.e: bash 3.2 compatibility invariant tests.
+tests/unit/test_bash32_compat.bats:9{{{		}}}# and execute cleanly there. Phase H's H.e.7a (declare -A) and H.e.9h
+tests/unit/test_bash32_compat.bats:31{{{		}}}    # Phase K: include per-command modules. Guard against the empty-glob
+tests/unit/test_bash32_compat.bats:67{{{		}}}        _fail_with_matches "a flat colon-delimited string (see pre-J.d deprecation_warn pattern for an example)" "$m"
+tests/unit/test_check.bats:6{{{		}}}# Unit tests for the `pyve check` subcommand (Story H.e.3).
+tests/unit/test_check.bats:11{{{		}}}# H.e.4 (`pyve status`), not this command.
+tests/unit/test_check.bats:53{{{		}}}# Story L.c — stale "coming in a later release" parenthetical post-shipping
+tests/unit/test_check.bats:62{{{		}}}# Story L.c — `pyve doctor` and `pyve validate` were hard-removed in v2.0;
+tests/unit/test_check_composer.bats:183{{{		}}}# Active-plugin gate (no-Python suppression seam, N.aj completes it).
+tests/unit/test_cli_dispatch.bats:11{{{		}}}# Story G.b.1 — v1.11.0 dispatcher refactor + legacy-flag catch.
+tests/unit/test_cli_dispatch.bats:68{{{		}}}@test "dispatch: 'pyve python-version 3.12.0' is no longer a routable subcommand (Story J.d)" {
+tests/unit/test_cli_dispatch.bats:70{{{		}}}    # Story J.d ripped the alias; the dispatcher's *) arm now errors out.
+tests/unit/test_cli_dispatch.bats:166{{{		}}}# Legacy flag catches added in H.e.9 (v2.0.0)
+tests/unit/test_cli_dispatch.bats:190{{{		}}}@test "legacy: 'pyve init --update' prints migration error and does NOT proceed (H.e.9)" {
+tests/unit/test_cli_dispatch.bats:201{{{		}}}# Version — v2.1.0 (H.f.7 starter env.yml scaffold feature;
+tests/unit/test_cli_dispatch.bats:202{{{		}}}# v2.0.1 was the H.f.5 release wrap)
+tests/unit/test_cli_dispatch.bats:255{{{		}}}# Story L.f — global --verbose flag
+tests/unit/test_completion_bash.bats:6{{{		}}}# Unit tests for lib/completion/pyve.bash (Story H.e.9c).
+tests/unit/test_completion_bash.bats:25{{{		}}}# and silently mask bash-3.2 regressions (H.e.9h).
+tests/unit/test_completion_bash.bats:189{{{		}}}    # bash-3.2 compatibility regression guard added in H.e.9h.
+tests/unit/test_completion_bash.bats:197{{{		}}}    # Locks in the H.e.9h fix: COMPREPLY=( $(compgen …) ) is the
+tests/unit/test_composed_init_envrc_e2e.bats:13{{{		}}}#   - each section, and the composed body, passes the N.m PC-1 validator
+tests/unit/test_composed_init_matrix.bats:15{{{		}}}# Hermeticity (Fix N.ba.2c). This file drives the real product, so its
+tests/unit/test_composed_init_node.bats:100{{{		}}}    [[ "$output" == *"PROJECT-GUIDE"* ]] || { echo "project-guide did NOT run on node-only (N.aw enables it)" >&2; return 1; }
+tests/unit/test_composed_init_node_e2e.bats:17{{{		}}}# mirroring N.w's integration test).
+tests/unit/test_composed_init_orchestrator.bats:10{{{		}}}# to. At N.av.1 it is a pure delegation to today's monolithic Python init
+tests/unit/test_composed_init_orchestrator.bats:11{{{		}}}# hook (zero behavior change); N.av.2+ lift the orchestration tail into it.
+tests/unit/test_deprecation_warnings.bats:6{{{		}}}# Story J.d (v2.3.0) ripped the Category A delegation-with-warning paths
+tests/unit/test_deprecation_warnings.bats:7{{{		}}}# shipped in Phase H. The four legacy forms that used to delegate to the
+tests/unit/test_deprecation_warnings.bats:18{{{		}}}# original name for git history; original contents rewritten for J.d.
+tests/unit/test_deprecation_warnings.bats:38{{{		}}}@test "J.d: 'pyve testenv --init' exits non-zero and does not delegate" {
+tests/unit/test_deprecation_warnings.bats:52{{{		}}}@test "J.d: 'pyve testenv --install' exits non-zero and does not delegate" {
+tests/unit/test_deprecation_warnings.bats:55{{{		}}}    # See N.c note in 'pyve testenv --init' test above; the namespace
+tests/unit/test_deprecation_warnings.bats:57{{{		}}}    # its absence. The J.d guarantee — no flag-level Category A
+tests/unit/test_deprecation_warnings.bats:62{{{		}}}@test "J.d: 'pyve testenv --purge' exits non-zero and does not delegate" {
+tests/unit/test_deprecation_warnings.bats:65{{{		}}}    # See N.c note above. The flag-delegation guarantee is preserved
+tests/unit/test_deprecation_warnings.bats:77{{{		}}}@test "J.d: 'pyve python-version <ver>' exits non-zero and does not delegate" {
+tests/unit/test_deprecation_warnings.bats:90{{{		}}}@test "J.d: new-form 'pyve python set <ver>' is routed (not unknown-command)" {
+tests/unit/test_distutils_shim_coverage.bats:12{{{		}}}# pyve_install_distutils_shim_for_micromamba_prefix function. See Story I.k.
+tests/unit/test_doctor_validate_removed.bats:7{{{		}}}# (Story H.e.8a).
+tests/unit/test_doctor_validate_removed.bats:9{{{		}}}# Both subcommands were briefly delegated to `pyve check` in H.e.8.
+tests/unit/test_doctor_validate_removed.bats:10{{{		}}}# H.e.8a accelerates the v3.0 hard-removal forward: typing the old
+tests/unit/test_env_detect.bats:8{{{		}}}# without requiring those tools on the CI runner. See Story I.j.
+tests/unit/test_env_detect.bats:459{{{		}}}# (bit `pyve testenv init` in M.a, project-guide completion in M.b,
+tests/unit/test_env_detect.bats:460{{{		}}}# `pyve test` drift-rebuild in the N.d.1 report) before pyve invokes
+tests/unit/test_env_purpose_gate.bats:17{{{		}}}# These tests use v3-style pyve.toml fixtures (the canonical N.d
+tests/unit/test_env_purpose_gate.bats:20{{{		}}}# skipped with `N.i-pending` markers until the read-compat shim lands.
+tests/unit/test_env_sync_helper.bats:12{{{		}}}# is absent (N.az.1 precedent). Point PYVE_PYTHON at such an interpreter to
+tests/unit/test_envrc_composer.bats:15{{{		}}}# managed body to stdout — no filesystem writes (that is N.ae.4).
+tests/unit/test_envrc_composer.bats:195{{{		}}}# Migrated from test_asdf_compat.bats J.b — the opt-out is now
+tests/unit/test_envrc_composer_write.bats:9{{{		}}}# `compose_envrc <output_path>` wraps `_compose_envrc_body` (N.ae.3) with
+tests/unit/test_envrc_safety.bats:13{{{		}}}# Scope of N.m: validators + tests only. Composer integration (calling
+tests/unit/test_envrc_safety.bats:14{{{		}}}# these from the activation/gitignore composers) is deferred to N.q
+tests/unit/test_envrc_safety.bats:15{{{		}}}# (activation) and N.r (gitignore).
+tests/unit/test_error_ui.bats:6{{{		}}}# Unit tests for the error-path consistency sweep (Story H.f.4).
+tests/unit/test_gitignore_composer.bats:8{{{		}}}# Mirrors the `.envrc` composer (N.ae): `_compose_gitignore_body` enumerates
+tests/unit/test_gitignore_composer.bats:16{{{		}}}# registry first (the init/update entry point, mirroring N.ae.5).
+tests/unit/test_init_next_steps.bats:6{{{		}}}# Unit tests for the end-of-init "Next steps:" summary (Story L.l).
+tests/unit/test_init_pyve_toml.bats:9{{{		}}}# Scope per N.e (after the in-story scope decision):
+tests/unit/test_init_pyve_toml.bats:32{{{		}}}    # changes cwd — same asdf-shim trap as N.d.1, but here we just need a
+tests/unit/test_init_pyve_toml.bats:103{{{		}}}# _init_write_pyve_toml — refusal to overwrite (story N.e Task 3:
+tests/unit/test_init_pyve_toml.bats:185{{{		}}}# init_project source-grep wiring (matches the M.h.3 pattern at
+tests/unit/test_init_ui.bats:6{{{		}}}# Unit tests for the unified UX retrofit of `pyve init` (Story H.f.1).
+tests/unit/test_init_wizard.bats:6{{{		}}}# Unit tests for the interactive `pyve init` wizard skeleton (Story L.k.2).
+tests/unit/test_init_wizard.bats:10{{{		}}}# version / project-guide) lands in L.k.3 / L.k.4 / L.k.5; those stories
+tests/unit/test_init_wizard.bats:19{{{		}}}    # ui/select.sh is consumed by the L.k.3 backend prompt; source it
+tests/unit/test_init_wizard.bats:142{{{		}}}# L.k.3: _init_detect_backend_default (repo-signal helper)
+tests/unit/test_init_wizard.bats:180{{{		}}}# L.k.3: _init_wizard backend resolution — flag-render path
+tests/unit/test_init_wizard.bats:196{{{		}}}# L.k.3: _init_wizard backend resolution — auto-default path (bypass on)
+tests/unit/test_init_wizard.bats:220{{{		}}}# L.k.7: --backend auto → resolved via auto-detect, not literal "auto"
+tests/unit/test_init_wizard.bats:250{{{		}}}# L.k.3: side-effect — caller's backend_flag set to resolved value
+tests/unit/test_init_wizard.bats:267{{{		}}}# L.k.4: version-manager detection helper
+tests/unit/test_init_wizard.bats:270{{{		}}}# Helper for L.k.4 tests: drop fake `asdf` and/or `pyenv` shims into a
+tests/unit/test_init_wizard.bats:376{{{		}}}# L.k.4: installed-version listing helpers
+tests/unit/test_init_wizard.bats:398{{{		}}}# L.k.4: available-version listing helpers (full list, ^3\. filter)
+tests/unit/test_init_wizard.bats:422{{{		}}}# L.k.4: wizard Python-prompt — micromamba branch
+tests/unit/test_init_wizard.bats:452{{{		}}}# L.k.4: wizard Python-prompt — venv branch, flag-driven
+tests/unit/test_init_wizard.bats:486{{{		}}}# L.k.4: wizard Python-prompt — venv branch, bypass + no flag (silent skip)
+tests/unit/test_init_wizard.bats:504{{{		}}}# L.k.5: _init_detect_project_guide_present (signal helper)
+tests/unit/test_init_wizard.bats:519{{{		}}}# L.k.5: wizard project-guide prompt — flag-driven path
+tests/unit/test_init_wizard.bats:535{{{		}}}# L.k.5: wizard project-guide prompt — detection paths
+tests/unit/test_init_wizard.bats:573{{{		}}}# L.k.5: wizard project-guide prompt — bypass + no flag → silent skip
+tests/unit/test_init_wizard.bats:595{{{		}}}# L.k.5: detection-signal precedence (deps wins over .project-guide.yml)
+tests/unit/test_lock_per_env.bats:6{{{		}}}# Unit tests for Story M.q — `pyve lock --env <name>` / `--all`.
+tests/unit/test_lock_per_env.bats:9{{{		}}}# `environment.yml` → `conda-lock.yml`. M.q extends `lock_environment`:
+tests/unit/test_lock_validation.bats:205{{{		}}}# H.f.6 — actionable error content for Cases 3 and 4
+tests/unit/test_manifest.bats:7{{{		}}}# (Subphase N-1). Reads pyve.toml via the Python tomllib
+tests/unit/test_manifest.bats:435{{{		}}}# Catches the L.k.7-class regression on an empty config.
+tests/unit/test_micromamba_bootstrap.bats:74{{{		}}}    # See Story I.e and lib/micromamba_bootstrap.sh history for context.
+tests/unit/test_node_backend_providers.bats:8{{{		}}}# Fills the register_backends stub from N.t: registers the three Node
+tests/unit/test_node_backend_providers.bats:9{{{		}}}# package managers as project-virtualized backend-providers via N.l's
+tests/unit/test_node_backend_providers.bats:15{{{		}}}# The actual lifecycle bp hooks (activate / init / purge) land in N.w /
+tests/unit/test_node_backend_providers.bats:16{{{		}}}# N.y; N.u only registers the providers and maps their per-tool strings.
+tests/unit/test_node_backend_providers.bats:134{{{		}}}    # N.x revisits this per the package.json-script-delegation decision;
+tests/unit/test_node_backend_providers.bats:135{{{		}}}    # N.u returns the conventional `<pm> test` form.
+tests/unit/test_node_plugin.bats:8{{{		}}}# First story of Subphase N-3 (Node/SvelteKit second reference plugin).
+tests/unit/test_node_plugin.bats:9{{{		}}}# Stands up lib/plugins/node/plugin.sh against the N.k contract, mirroring
+tests/unit/test_node_plugin.bats:10{{{		}}}# the Python plugin's shape (N.n) so the two diff side-by-side. N.t ships
+tests/unit/test_node_plugin.bats:12{{{		}}}# no-op stub; the backend-providers (pnpm/npm/yarn) land in N.u and the
+tests/unit/test_node_plugin.bats:13{{{		}}}# lifecycle hooks land in N.w-N.z. Detection is scaffold-time only: once
+tests/unit/test_node_plugin.bats:24{{{		}}}    # asdf shim with no version set in the bats temp dir (mirrors N.k).
+tests/unit/test_node_plugin.bats:55{{{		}}}# N.t introduced this as a no-op stub; N.u filled it with the pnpm /
+tests/unit/test_node_plugin.bats:72{{{		}}}# Provider selection (pnpm/npm/yarn from lockfile) is N.u's job — detect
+tests/unit/test_node_plugin.bats:133{{{		}}}# in a pure-Python project (the implicit-plugin rule from N.k covers
+tests/unit/test_node_plugin.bats:195{{{		}}}# N.t shipped this as advisory-only (`_init_maybe_advise_node_plugin`
+tests/unit/test_node_plugin.bats:197{{{		}}}# polyglot scaffold to Subphase N-4. **That helper was superseded**
+tests/unit/test_node_plugin.bats:201{{{		}}}# advisory-only tests that lived here were removed when N.ad landed.
+tests/unit/test_node_plugin_activate.bats:10{{{		}}}# plugins), runs it through the N.m PC-1 validator (validate_envrc_snippet),
+tests/unit/test_node_plugin_gitignore_purge.bats:8{{{		}}}# Mirrors the Python plugin's N.r:
+tests/unit/test_node_plugin_gitignore_purge.bats:10{{{		}}}#                                                designed to pass the N.m
+tests/unit/test_node_plugin_gitignore_purge.bats:15{{{		}}}# composer handles root-vs-subpath placement. N.z also aligns the actual
+tests/unit/test_node_plugin_gitignore_purge.bats:16{{{		}}}# remover (_node_purge_at, from N.w) with the inventory's created set by
+tests/unit/test_node_plugin_gitignore_purge.bats:48{{{		}}}@test "gitignore_entries: root output passes the N.m gitignore validator" {
+tests/unit/test_node_plugin_lifecycle.bats:8{{{		}}}# Scaffolding lifecycle for Node envs. Mirrors N.o's shape; the new
+tests/unit/test_node_plugin_lifecycle.bats:12{{{		}}}#   node_pyve_plugin_init <path> <backend>    — resolve runtime (N.v),
+tests/unit/test_node_plugin_lifecycle.bats:13{{{		}}}#                                               detect provider (N.u),
+tests/unit/test_node_plugin_lifecycle.bats:74{{{		}}}# S9 env-block validation (mirrors the Python plugin's N.o validation).
+tests/unit/test_node_sveltekit.bats:144{{{		}}}# Scaffold-time SvelteKit hint (the Node consult from N.t, generalized by
+tests/unit/test_node_sveltekit.bats:145{{{		}}}# N.ad into the polyglot scaffold orchestrator `_init_scaffold_manifest`).
+tests/unit/test_package.bats:9{{{		}}}# dispatching to a registered packaging provider (N.aq registry). In v3.0
+tests/unit/test_polyglot_matrix.bats:9{{{		}}}# Phase N targets — pure-Python, Node-only, and polyglot (Python at the root +
+tests/unit/test_polyglot_matrix.bats:12{{{		}}}# (`compose_project_envrc` / `compose_project_gitignore`). Where N.ab proved
+tests/unit/test_polyglot_matrix.bats:18{{{		}}}# Scope (per the N.am hermetic-bats decision): this file owns the *composed*
+tests/unit/test_polyglot_matrix.bats:22{{{		}}}# suites (N.s*, N.w/N.x, test_venv_workflow.py, test_testenv.py) and are not
+tests/unit/test_polyglot_scaffold.bats:7{{{		}}}# hole). N.t deferred the resolution by making Node detection advisory-only
+tests/unit/test_polyglot_scaffold.bats:8{{{		}}}# (it surfaced "I see a Node project" but never mutated `pyve.toml`). N.ad
+tests/unit/test_polyglot_scaffold.bats:15{{{		}}}# was relocated by N.s):
+tests/unit/test_polyglot_scaffold.bats:27{{{		}}}    # asdf shim with no version set in the bats temp dir (mirrors N.t).
+tests/unit/test_preflight_wire_in.bats:8{{{		}}}# flagged out-of-scope in the initial N.d.1 fix and then folded in:
+tests/unit/test_project_guide.bats:5{{{		}}}# Story G.c / FR-G2 — hook that installs project-guide during pyve init
+tests/unit/test_project_guide.bats:275{{{		}}}# add_project_guide_completion — Story G.e regression tests
+tests/unit/test_project_guide.bats:280{{{		}}}@test "add_project_guide_completion: emits a real newline + backslash, not literal '\\n' (G.e bug 2)" {
+tests/unit/test_project_guide.bats:283{{{		}}}    # The pre-G.e bug emitted the 2-char sequence (backslash + 'n')
+tests/unit/test_project_guide.bats:295{{{		}}}@test "add_project_guide_completion: emitted block is syntactically valid zsh (G.e bug 2)" {
+tests/unit/test_project_guide.bats:303{{{		}}}@test "add_project_guide_completion: emitted block is syntactically valid bash (G.e bug 2)" {
+tests/unit/test_project_guide.bats:309{{{		}}}# add_project_guide_completion — Story M.b regression test
+tests/unit/test_project_guide.bats:324{{{		}}}@test "add_project_guide_completion: block does not leak asdf shim stderr at shell init (M.b)" {
+tests/unit/test_project_guide.bats:347{{{		}}}@test "add_project_guide_completion: SDKMan absent — block appended to end (G.e bug 1)" {
+tests/unit/test_project_guide.bats:362{{{		}}}@test "add_project_guide_completion: SDKMan present — block inserted BEFORE the marker (G.e bug 1)" {
+tests/unit/test_project_guide.bats:381{{{		}}}@test "add_project_guide_completion: SDKMan present — SDKMan section unchanged (G.e bug 1)" {
+tests/unit/test_project_guide.bats:403{{{		}}}@test "add_project_guide_completion: SDKMan present — round-trip add+remove is byte-identical (G.e bug 1)" {
+tests/unit/test_project_guide.bats:424{{{		}}}# insert_text_before_sdkman_marker_or_append — Story G.e helper
+tests/unit/test_project_guide.bats:517{{{		}}}@test "insert_text_before_sdkman_marker_or_append: SDKMan present — blank line precedes marker (H.a bug 3)" {
+tests/unit/test_project_guide.bats:518{{{		}}}    # Story H.a bug 3: the inserted block must be separated from the SDKMan
+tests/unit/test_project_guide.bats:819{{{		}}}# Story L.d — embedded callers also pass --quiet so a successful
+tests/unit/test_project_guide.bats:875{{{		}}}# Story L.d — see init counterpart above.
+tests/unit/test_project_guide_locus.bats:45{{{		}}}# Note: the N.au `_project_guide_resolve_host_env` identity seam was retired
+tests/unit/test_project_guide_locus.bats:46{{{		}}}# in N.aw — project-guide is globally hosted, so there is no per-project host
+tests/unit/test_project_guide_marker_contract.bats:17{{{		}}}#       "presence ⇒ Python plugin active" inference (N.aj): that semantic
+tests/unit/test_project_guide_marker_contract.bats:18{{{		}}}#       is slated to change under the N.aw global-tool re-approach, so
+tests/unit/test_project_guide_marker_contract.bats:45{{{		}}}    # that keys behavior off the exact filename. (Post-N.s, the init/update
+tests/unit/test_project_guide_orchestration.bats:9{{{		}}}# it scaffolds via the GLOBAL `project-guide` (the N.aw.1 ~/.local/bin
+tests/unit/test_purge_ui.bats:6{{{		}}}# Unit tests for the unified UX retrofit of `pyve purge` (Story H.f.2).
+tests/unit/test_python_activate_emitter.bats:9{{{		}}}# Per the N.ae.1 spike contract: `python_pyve_plugin_activate [<path>]` is a
+tests/unit/test_python_activate_emitter.bats:14{{{		}}}# composer (N.ae.3) dispatches it uniformly with the plugin's manifest path;
+tests/unit/test_python_activate_emitter.bats:15{{{		}}}# the file write moves to compose_envrc (N.ae.4) and the init/update
+tests/unit/test_python_activate_emitter.bats:16{{{		}}}# rewiring lands in N.ae.5.
+tests/unit/test_python_command.bats:6{{{		}}}# Unit tests for the `pyve python` nested subcommand (Story H.e.6).
+tests/unit/test_python_command.bats:133{{{		}}}    # Story K.d backfill (K.a.3 audit gap 2). show_python_version's third
+tests/unit/test_python_command.bats:144{{{		}}}    # Story K.d backfill (K.a.3 audit gap 3). The `python show <extra>`
+tests/unit/test_python_command.bats:161{{{		}}}@test "python-version: legacy command no longer routable (Story J.d)" {
+tests/unit/test_python_command.bats:163{{{		}}}    # Story J.d ripped the alias; --help (and any other invocation) now
+tests/unit/test_python_plugin.bats:9{{{		}}}# plugin contract from N.k. N.n ships THREE hooks (manifest_namespace,
+tests/unit/test_python_plugin.bats:11{{{		}}}# from N.l's transition state. The lifecycle hooks (init/purge/update/
+tests/unit/test_python_plugin.bats:12{{{		}}}# check/status/run/test) stay as no-op defaults; they land in N.o-N.r.
+tests/unit/test_python_plugin_activate.bats:9{{{		}}}# through validate_envrc_snippet (N.m), delegate the actual file
+tests/unit/test_python_plugin_activate.bats:43{{{		}}}    # N.ae.2: the hook emits a sentinel-wrapped section to stdout (no
+tests/unit/test_python_plugin_activate.bats:60{{{		}}}# `.envrc` byte-equivalence target lives in compose_envrc (N.ae.4).
+tests/unit/test_python_plugin_activate.bats:93{{{		}}}    # CONDA_PREFIX shape (migrated from the retired bp-shim .envrc test, N.al).
+tests/unit/test_python_plugin_gitignore_purge.bats:11{{{		}}}#     passes through validate_gitignore_snippet (N.m PC-1 gate).
+tests/unit/test_python_plugin_gitignore_purge.bats:17{{{		}}}# Re-seat in N.r:
+tests/unit/test_python_plugin_gitignore_purge.bats:20{{{		}}}#     lines stay composer-owned (same Option-(a) boundary as N.q used for
+tests/unit/test_python_plugin_gitignore_purge.bats:22{{{		}}}#     (the legacy write_gitignore_template was retired in N.al; its
+tests/unit/test_python_plugin_lifecycle.bats:12{{{		}}}# revisited in N.s.
+tests/unit/test_python_plugin_lifecycle.bats:18{{{		}}}#     surfacing in pyve check / pyve status lands in N.p.
+tests/unit/test_python_plugin_lifecycle.bats:143{{{		}}}    # F6 (N.ba.2) now rejects an unknown backend at manifest_load. To exercise
+tests/unit/test_python_plugin_lifecycle.bats:200{{{		}}}# N.p's surfacing in `pyve check` / `pyve status`. Tests confirm the
+tests/unit/test_python_plugin_lifecycle.bats:201{{{		}}}# read mechanism works end-to-end so N.p has something to consume.
+tests/unit/test_python_plugin_runtime.bats:278{{{		}}}# defined in lib/plugins/python/plugin.sh) is implicitly covered by N.s.8's
+tests/unit/test_python_ui.bats:6{{{		}}}# Unit tests for the unified UX retrofit of `pyve python set` (Story H.f.3).
+tests/unit/test_release_v2_0_1.bats:6{{{		}}}# Unit tests for the v2.0.1 release wrap (Story H.f.5).
+tests/unit/test_release_v2_0_1.bats:10{{{		}}}#     `validate` commands (removed in H.e.8a).
+tests/unit/test_release_v2_0_1.bats:15{{{		}}}#     (added in H.f.2).
+tests/unit/test_retired_writers.bats:10{{{		}}}# that the composition layer (N.ae/N.af) superseded must have NO production
+tests/unit/test_retired_writers.bats:16{{{		}}}# "retired in N.al" notes) are allowed; a non-comment reference is a
+tests/unit/test_run_backend_detection.bats:6{{{		}}}# pyve run backend detection regression after N.f
+tests/unit/test_run_backend_detection.bats:32{{{		}}}# Reuse the source_pyve_fn extractor from the J.c tests.
+tests/unit/test_run_backend_detection.bats:45{{{		}}}# Build a venv-backed project skeleton that matches the post-N.f shape:
+tests/unit/test_run_backend_detection.bats:80{{{		}}}# still .pyve/envs/<env_name>/ pre-N.g; the .pyve/envs/testenv/ sibling
+tests/unit/test_run_backend_detection.bats:113{{{		}}}@test "N.j.1: venv project with .pyve/envs/testenv/ uses venv (not micromamba)" {
+tests/unit/test_run_backend_detection.bats:122{{{		}}}@test "N.j.1: micromamba project picks main env from config, not the testenv sibling" {
+tests/unit/test_run_backend_detection.bats:133{{{		}}}@test "N.j.1: no env present → error, exit 1" {
+tests/unit/test_run_backend_detection.bats:144{{{		}}}@test "N.j.1: legacy project (no .pyve/config) with .venv/ falls back to venv" {
+tests/unit/test_scaffold_environment_yml.bats:6{{{		}}}# Unit tests for `scaffold_starter_environment_yml()` (Story H.f.7).
+tests/unit/test_scaffold_environment_yml.bats:122{{{		}}}# before the old silent-exit / H.f.6 hard-error path, and
+tests/unit/test_scaffold_environment_yml.bats:126{{{		}}}@test "init --backend micromamba in empty dir: scaffolds environment.yml, does not hit H.f.6 error" {
+tests/unit/test_scaffold_environment_yml.bats:142{{{		}}}    # H.f.6's actionable error for Case 4 must NOT appear (scaffolding
+tests/unit/test_scaffold_environment_yml.bats:149{{{		}}}@test "init --backend micromamba --strict in empty dir: does NOT scaffold (hits H.f.6 error)" {
+tests/unit/test_self_migrate.bats:23{{{		}}}    # (same asdf-shim guard as N.e/N.f tests).
+tests/unit/test_self_migrate.bats:139{{{		}}}    # Implicit default testenv (matches N.e fresh-init behavior).
+tests/unit/test_state_layout.bats:63{{{		}}}    # is N.g's deterministic-migrator territory; N.f keeps `root` mapping
+tests/unit/test_state_layout.bats:70{{{		}}}# Opportunistic v2.8 -> v3 migration (extension of M.h.2 helper)
+tests/unit/test_status.bats:6{{{		}}}# Unit tests for the `pyve status` subcommand (Story H.e.4).
+tests/unit/test_status.bats:190{{{		}}}# Project section: Python pin source — backend-aware (Story L.b)
+tests/unit/test_status_composer.bats:8{{{		}}}# `compose_status` is the informational sibling of N.ag's `compose_check`:
+tests/unit/test_subcommand_help.bats:5{{{		}}}# Story G.b.2 — every renamed subcommand from G.b.1 must respond to
+tests/unit/test_subcommand_help.bats:67{{{		}}}@test "help: 'pyve python-version --help' is no longer a routable subcommand (Story J.d)" {
+tests/unit/test_subcommand_help.bats:69{{{		}}}    # show_python_version_help. Story J.d removed the handler and the
+tests/unit/test_test_command.bats:6{{{		}}}# Unit tests for `pyve test` env routing (Stories M.c, M.e).
+tests/unit/test_test_command.bats:17{{{		}}}#     from `--env main` in M.e (v2.7.1) — the legacy form now hard-
+tests/unit/test_test_command.bats:31{{{		}}}    source "$PYVE_ROOT/lib/envs.sh"   # M.h.3: test.sh now reads paths via resolve_env_path
+tests/unit/test_test_command.bats:101{{{		}}}# --env main: Category-B hard-error catch (M.e rename)
+tests/unit/test_test_env_advisory.bats:6{{{		}}}# Unit tests for Story M.o — silent-skip advisory generalization.
+tests/unit/test_test_env_advisory.bats:8{{{		}}}# M.c shipped a one-line advisory that fires when `pyve test` routes to
+tests/unit/test_test_env_advisory.bats:13{{{		}}}# M.o generalizes:
+tests/unit/test_test_env_advisory.bats:75{{{		}}}    # The function should accept `root` and behave like the pre-M.o
+tests/unit/test_test_env_advisory.bats:135{{{		}}}    # Old M.c-only message wording shouldn't be the only signal.
+tests/unit/test_test_env_advisory.bats:181{{{		}}}# Opt-out (carry-over from M.c)
+tests/unit/test_test_env_advisory.bats:237{{{		}}}# M.c regression: helper rename is backward-compatible for the
+tests/unit/test_test_env_advisory.bats:241{{{		}}}@test "advisory: M.c regression — root has pytest, target is testenv, warn fires" {
+tests/unit/test_test_env_lazy_autoprovision.bats:6{{{		}}}# Unit tests for Story M.n — lazy auto-provisioning.
+tests/unit/test_test_env_lazy_autoprovision.bats:8{{{		}}}# M.m left a hard-error site for `pyve test --env <lazy-name>` when the
+tests/unit/test_test_env_lazy_autoprovision.bats:10{{{		}}}# install <name>`). M.n replaces that hard-error with auto-provisioning
+tests/unit/test_test_env_lazy_autoprovision.bats:14{{{		}}}# pre-M.n "is this env already built?" semantics.
+tests/unit/test_test_env_lazy_autoprovision.bats:73{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_lazy_autoprovision.bats:85{{{		}}}    # The lazy hard-error message from M.m is gone.
+tests/unit/test_test_env_lazy_autoprovision.bats:90{{{		}}}# Opt-out: PYVE_NO_AUTO_PROVISION=1 restores the M.m hard-error
+tests/unit/test_test_env_lazy_autoprovision.bats:94{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_lazy_autoprovision.bats:112{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_lazy_autoprovision.bats:140{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_lazy_autoprovision.bats:148{{{		}}}    # Lock dir cleaned up — the M.j release happens regardless of
+tests/unit/test_test_env_lazy_autoprovision.bats:154{{{		}}}# Conda lazy: still rejected (M.k venv-only gate fires before lazy gate)
+tests/unit/test_test_env_lazy_autoprovision.bats:158{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy-conda>] selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:6{{{		}}}# Unit tests for Story M.r — `pyve test --env a,b,c` matrix execution.
+tests/unit/test_test_env_matrix.bats:8{{{		}}}# Pre-M.r: `--env` accepted only a single name; comma-separated values
+tests/unit/test_test_env_matrix.bats:12{{{		}}}# M.r extends the parser to:
+tests/unit/test_test_env_matrix.bats:15{{{		}}}#   2. Single-element (no comma) preserves the M.m exec path verbatim.
+tests/unit/test_test_env_matrix.bats:82{{{		}}}@test "pyve test --env <single-name>: preserves single-env exec path (M.m regression)" {
+tests/unit/test_test_env_matrix.bats:83{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:92{{{		}}}    # No matrix header for the single-env path — verbatim M.m behavior.
+tests/unit/test_test_env_matrix.bats:101{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<a,b>] matrix selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:116{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<a,b>] matrix selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:131{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<a,b>] matrix selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:167{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<a,b>] matrix selector requires read-compat shim"
+tests/unit/test_test_env_matrix.bats:209{{{		}}}@test "pyve test --env main,smoke: legacy 'main' caught (M.e regression)" {
+tests/unit/test_test_env_matrix.bats:223{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<a,b>] matrix selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:6{{{		}}}# Unit tests for Story M.m — `pyve test --env <name>` resolver
+tests/unit/test_test_env_resolver.bats:9{{{		}}}# Pre-M.m: `--env` accepted only `root` and `testenv`; anything else
+tests/unit/test_test_env_resolver.bats:12{{{		}}}# M.m extends the parser to:
+tests/unit/test_test_env_resolver.bats:19{{{		}}}#      M.n's job — M.m stays self-contained).
+tests/unit/test_test_env_resolver.bats:21{{{		}}}#      from M.i.1/M.k — `pyve testenv run` is venv-only and the same
+tests/unit/test_test_env_resolver.bats:24{{{		}}}#      by M.p's `pyve testenv list / prune`).
+tests/unit/test_test_env_resolver.bats:91{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:106{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:134{{{		}}}# (M.n will replace this with auto-provisioning)
+tests/unit/test_test_env_resolver.bats:138{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:139{{{		}}}    # Pre-M.n this test asserted the bare hard-error. M.n landed
+tests/unit/test_test_env_resolver.bats:140{{{		}}}    # auto-provisioning; the strict-CI opt-out preserves the M.m
+tests/unit/test_test_env_resolver.bats:152{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<lazy>] selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:165{{{		}}}# Conda-backed envs: hard-error (run is venv-only per M.k)
+tests/unit/test_test_env_resolver.bats:169{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<conda>] selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:182{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] default-env selector requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:191{{{		}}}    # Did NOT route to `testenv` (the pre-M.m default) — smoke is
+tests/unit/test_test_env_resolver.bats:213{{{		}}}@test "pyve test --env root: still delegates to run_command (M.c regression)" {
+tests/unit/test_test_env_resolver.bats:235{{{		}}}    skip "N.i-pending: v2 [tool.pyve.testenvs.<smoke>] success-path .state touch requires read-compat shim"
+tests/unit/test_test_env_resolver.bats:273{{{		}}}# ensure_env_exists writes initial .state on creation (M.m)
+tests/unit/test_testenv_conda.bats:6{{{		}}}# Unit tests for Story M.k — conda-backed testenv plumbing.
+tests/unit/test_testenv_conda.bats:92{{{		}}}    # Story M.l: testenv's declared `requirements = [...]` is now consumed
+tests/unit/test_testenv_conda.bats:173{{{		}}}# resolve_env_path follows _env_resolve_backend (M.k)
+tests/unit/test_testenv_conda.bats:307{{{		}}}@test "testenv install (no-arg): iteration includes conda envs (no 'see Story M.k' skip)" {
+tests/unit/test_testenv_conda.bats:319{{{		}}}    # Old M.k skip message must NOT appear anymore.
+tests/unit/test_testenv_conda.bats:320{{{		}}}    [[ "$output" != *"see Story M.k"* ]]
+tests/unit/test_testenv_grammar.bats:7{{{		}}}# (Story H.e.5).
+tests/unit/test_testenv_grammar.bats:64{{{		}}}# Category A legacy flag grammar — no longer routable (Story J.d)
+tests/unit/test_testenv_grammar.bats:68{{{		}}}# deprecation warning in v2.0. Story J.d (v2.3.0) removed the handlers;
+tests/unit/test_testenv_grammar.bats:109{{{		}}}@test "testenv: --help no longer mentions the Category A legacy flag forms (Story J.d)" {
+tests/unit/test_testenv_grammar.bats:111{{{		}}}    # under a "Legacy flag forms" header. Story J.d removed the handlers;
+tests/unit/test_testenv_init_name.bats:6{{{		}}}# Unit tests for `pyve testenv init [<name>]` (Story M.i.2).
+tests/unit/test_testenv_init_name.bats:14{{{		}}}#   - conda-backed declared   → M.k stub hard-error
+tests/unit/test_testenv_init_name.bats:106{{{		}}}@test "testenv init <name>: conda-backed name with missing manifest file hard-errors (M.k)" {
+tests/unit/test_testenv_init_name.bats:107{{{		}}}    # Story M.k landed: conda-backed init/install now route through
+tests/unit/test_testenv_install_lock.bats:6{{{		}}}# Unit tests for the per-env install lock (Story M.j).
+tests/unit/test_testenv_install_name.bats:6{{{		}}}# Unit tests for `pyve testenv install [<name>] [-r <file>]` (Story M.i.3).
+tests/unit/test_testenv_install_name.bats:14{{{		}}}# (`requirements`/`extra`) is intentionally NOT consumed here — M.l
+tests/unit/test_testenv_install_name.bats:15{{{		}}}# flips that switch. M.i.3 preserves today's `-r <file>` or bare-pytest
+tests/unit/test_testenv_install_name.bats:73{{{		}}}    # Story M.l: declared `requirements = [...]` is now consumed at
+tests/unit/test_testenv_install_name.bats:74{{{		}}}    # install time (pre-M.l the declaration was inert and `pyve testenv
+tests/unit/test_testenv_install_name.bats:99{{{		}}}@test "testenv install: no-arg with declared envs iterates non-lazy (incl. conda after M.k), skips lazy" {
+tests/unit/test_testenv_install_name.bats:104{{{		}}}    # Story M.k: the conda env now needs its manifest on disk + a fake
+tests/unit/test_testenv_install_name.bats:125{{{		}}}    # hardware is conda-backed → installed via micromamba (M.k landed).
+tests/unit/test_testenv_install_name.bats:161{{{		}}}@test "testenv install <lazy-name>: explicit install bypasses lazy-skip (M.n regression)" {
+tests/unit/test_testenv_install_name.bats:162{{{		}}}    # M.i.3 made no-arg iteration skip lazy envs. Story M.n verifies
+tests/unit/test_testenv_install_name.bats:195{{{		}}}@test "testenv install <conda-backed>: missing manifest file hard-errors (M.k landed)" {
+tests/unit/test_testenv_install_name.bats:196{{{		}}}    # Story M.k landed: conda install routes through `_env_install_conda`.
+tests/unit/test_testenv_list_prune.bats:6{{{		}}}# Unit tests for Story M.p — `pyve testenv list` and `pyve testenv prune`.
+tests/unit/test_testenv_list_prune.bats:9{{{		}}}# env's `.state` (M.h.1) for backend / last_used_at, computes `du -sh`,
+tests/unit/test_testenv_list_prune.bats:25{{{		}}}# All confirmation prompts respect `--force` and the M.i.4 TTY rules
+tests/unit/test_testenv_name_aware.bats:6{{{		}}}# Unit tests for M.i.1 internal helpers:
+tests/unit/test_testenv_name_aware.bats:15{{{		}}}#     run` since M.k landed init/install for conda but not run). 0 if
+tests/unit/test_testenv_name_aware.bats:25{{{		}}}# Bundle scope: M.i.1 is internal-helpers-only — no leaf CLI changes.
+tests/unit/test_testenv_name_aware.bats:32{{{		}}}    # Story M.k: ensure_env_exists now dispatches into
+tests/unit/test_testenv_name_aware.bats:156{{{		}}}@test "assert_env_venv_backend: 'inherit' + main=venv passes (M.k inherit resolution)" {
+tests/unit/test_testenv_name_aware.bats:220{{{		}}}@test "ensure_env_exists: conda-backed name with missing manifest file hard-errors (M.k)" {
+tests/unit/test_testenv_name_aware.bats:221{{{		}}}    # M.k landed conda init for declared envs whose manifest exists.
+tests/unit/test_testenv_name_aware.bats:237{{{		}}}@test "no 'unbound variable' under 'set -euo pipefail' for the M.i.1 surface" {
+tests/unit/test_testenv_purge_name.bats:6{{{		}}}# Unit tests for `pyve testenv purge [<name>] [--force]` (Story M.i.4).
+tests/unit/test_testenv_run_name.bats:6{{{		}}}# Unit tests for `pyve testenv run [<name>] -- <cmd> [args...]` (Story M.i.2).
+tests/unit/test_testenv_run_name.bats:115{{{		}}}# Name validation through the M.i.1 gates
+tests/unit/test_testenv_run_name.bats:133{{{		}}}    # Story M.k landed conda init/install but kept `pyve testenv run`
+tests/unit/test_testenv_ui.bats:6{{{		}}}# Unit tests for the unified UX retrofit of `pyve testenv` (Story H.f.3).
+tests/unit/test_testenv_venv_manifest.bats:6{{{		}}}# Unit tests for Story M.l — venv testenv manifest sources.
+tests/unit/test_testenv_venv_manifest.bats:8{{{		}}}# `_env_install_venv` (renamed from `env_install` in M.l for
+tests/unit/test_testenv_venv_manifest.bats:9{{{		}}}# symmetry with M.k's `_env_install_conda`) dispatches on the
+tests/unit/test_testenv_venv_manifest.bats:20{{{		}}}# is already enforced by the M.g Python helper at read time; the bats
+tests/unit/test_testenv_venv_manifest.bats:209{{{		}}}# Validation: M.g helper still rejects mutually-exclusive sources
+tests/unit/test_testenv_venv_manifest.bats:229{{{		}}}    # The M.g Python helper batches this as
+tests/unit/test_testenvs.bats:7{{{		}}}# (Story M.g). Reads `[tool.pyve.testenvs]` from `pyproject.toml` via the
+tests/unit/test_testenvs.bats:242{{{		}}}# This catches the L.k.7-class regression on an empty config.
+tests/unit/test_testenvs_activate.bats:6{{{		}}}# Unit tests for the M.h.3 layout cut-over:
+tests/unit/test_testenvs_activate.bats:18{{{		}}}# separately to point at the new path; that update is part of M.h.3.
+tests/unit/test_testenvs_migration.bats:7{{{		}}}# (Story M.h.2). One helper, four outcome cases:
+tests/unit/test_testenvs_migration.bats:14{{{		}}}# Not yet wired into pyve update or the resolver — that's M.h.3.
+tests/unit/test_testenvs_state.bats:6{{{		}}}# Unit tests for the `.state` helpers in lib/envs.sh (Story M.h.1).
+tests/unit/test_toolchain_provisioning.bats:60{{{		}}}    # N.az.1 shipped PyYAML; N.az.2 adds tomlkit (the `pyve env sync` writer).
+tests/unit/test_ui.bats:247{{{		}}}# bash 3.2 compatibility (H.e.7a regression guard)
+tests/unit/test_ui.bats:251{{{		}}}#   (The former deprecation_warn tests were removed in Story J.d
+tests/unit/test_ui.bats:256{{{		}}}# is_verbose() — Story L.f verbosity gate
+tests/unit/test_ui.bats:296{{{		}}}# _edit_distance — Levenshtein helper (H.e.9d)
+tests/unit/test_ui.bats:352{{{		}}}#   eventually extractable. The carve-out for Phase L is
+tests/unit/test_ui.bats:365{{{		}}}    # is_verbose() reads PYVE_VERBOSE per the Phase L plan ("PYVE_VERBOSE
+tests/unit/test_ui_progress.bats:7{{{		}}}# progress bar primitives (Story L.h). Tests focus on the
+tests/unit/test_ui_run.bats:7{{{		}}}# wrapper (Story L.g). The module captures stdout+stderr from noisy
+tests/unit/test_ui_run.bats:9{{{		}}}# Honors L.f's PYVE_VERBOSE gate via is_verbose() — verbose mode
+tests/unit/test_ui_select.bats:7{{{		}}}# TTY-fallback numbered prompt (Story L.i). The TTY path uses
+tests/unit/test_ui_select.bats:114{{{		}}}@test "select.sh: no PYVE_-prefixed identifiers (no L.f gate consumed here)" {
+tests/unit/test_unknown_flag.bats:7{{{		}}}# unknown flags (Story H.e.9d).
+tests/unit/test_update.bats:6{{{		}}}# Unit tests for the `pyve update` subcommand (Story H.e.2).
+tests/unit/test_update.bats:111{{{		}}}@test "update: venv-init'd project gains .pyve/envs ignore after update (H.e.2a)" {
+tests/unit/test_update.bats:112{{{		}}}    # Regression for H.e.2a: a project originally venv-init'd with the
+tests/unit/test_update.bats:216{{{		}}}    # Step framing (Story L.j) renders the skip as
+tests/unit/test_update.bats:253{{{		}}}# Step counter framing (Story L.j)
+tests/unit/test_utils.bats:11{{{		}}}    # Story L.j: setup_pyve_env now sources lib/ui/core.sh before
+tests/unit/test_utils.bats:568{{{		}}}# prompt_yes_no — three-arm input loop (Story I.k coverage)
+tests/unit/test_v2_banner.bats:83{{{		}}}@test "banner: text matches the documented N.h wording" {
+pyve.sh:89{{{		}}}# interpreter at runtime (manifest, envs, env) — rewired in N.at.2.
+pyve.sh:213{{{		}}}# wiring beyond sourcing. Consumed by the activation composer (N.q)
+pyve.sh:214{{{		}}}# and the gitignore composer (N.r).
+pyve.sh:235{{{		}}}# shims absorbed from N.l's transition state. Fired eagerly at
+pyve.sh:249{{{		}}}# (pnpm/npm/yarn) land in N.u. Sourced after the Python plugin for
+pyve.sh:252{{{		}}}# in N.t and becomes live once N.u fills it in — mirroring Python.
+pyve.sh:263{{{		}}}# hooks (N.w) before invoking a package manager.
+pyve.sh:336{{{		}}}# Source per-command modules (Phase K — alphabetical)
+pyve.sh:348{{{		}}}# v3.0 (no provider materializes); consults the N.aq packaging registry.
+pyve.sh:564{{{		}}}# `pyve env` in Phase N) is the first user of this primitive.
+pyve.sh:575{{{		}}}# Unknown-flag error with closest-match suggestion (H.e.9d).
+pyve.sh:628{{{		}}}# read-compat for the actual command behavior is N.i.
+pyve.sh:667{{{		}}}    # existing UX styling. Banner wording is the canonical N.h form.
+pyve.sh:675{{{		}}}    # Global flags consumed before subcommand dispatch (Story L.f).
+pyve.sh:757{{{		}}}        # Added in v2.0 (H.e.9) — top-level flag forms catch
+pyve.sh:792{{{		}}}            # composed cross-stack init. N.av.1 delegates to the
+pyve.sh:812{{{		}}}            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
+pyve.sh:886{{{		}}}            # Removed in v2.0 per H.e.8a. Superseded by `pyve check`.
