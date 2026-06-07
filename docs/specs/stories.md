@@ -1696,6 +1696,24 @@ Design + follow-up breakdown already done by the **N.ao investigation spike** ([
 - [x] Node plugin: skip install with an advisory when the declared path has no `package.json` (scaffold-time `--node-path`); init no longer aborts. Verified: the failing `test_node_detection` integration test passes; node unit suite green.
 - [x] Rewrite the 6 stale project-guide integration tests to the toolchain-hosting model via a network-free PATH stub; drop the `_project_guide_importable(project_venv)` assertions for scaffolding/`.project-guide.yml` assertions. Verified: `test_project_guide_integration.py` → 13 passed, 2 deselected; ruff clean.
 
+### Fix N.ba.2c: Make the composed-init matrix e2e test hermetic (stop asserting against ambient toolchain) [Done]
+
+**Developer-signaled priority insert (2026-06-06).** Worked mid-N.ba (after N.ba.2b, before N.ba.3) to clear more pre-existing CI failures, so future commits get a clean read. Four `not ok` results in [test_n_av_5_composed_matrix.bats](../../tests/unit/test_n_av_5_composed_matrix.bats) on the **unit-tests** CI job (746/748/749 on both ubuntu + macOS; 747 ubuntu-only) — none caused by the F6 work.
+
+**Root cause — the test asserts fixed outcomes while running *real* `pyve init` against whatever toolchain the ambient environment happens to provide.** It "passes" locally only because it is reading the developer's machine (asdf + a global Python + a particular npm), not a controlled fixture. Two ambient variables drive every failure:
+
+1. **Version-manager presence.** `pyve init --backend venv` *correctly* hard-fails when no version manager is found ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) `detect_version_manager` → `exit 1`) — pinning the interpreter via asdf/pyenv is the product model, **not** a bug to loosen. The **unit-tests** CI job ([.github/workflows/test.yml](../../.github/workflows/test.yml)) installs *only* Bats (no asdf/pyenv), so real `init --backend venv` exits 1 → 746/748/749 fail (all three have a Python backend). The same bats files run in the **bash-coverage** job *with* pyenv, where init succeeds — so the single fixed assertion can't be right in both jobs.
+2. **npm version (node-only, 747, ubuntu-only).** The fixture's `package.json` has **zero dependencies**; `npm install` then creates **no** `node_modules` on npm 11.x (ubuntu) but did on the macOS runner's older npm. The `[[ -d node_modules ]]` assertion is npm-version-fragile, and implicitly network-coupled.
+
+**Fix philosophy — control what can be controlled; skip only what genuinely cannot be faked.** Asserting "init fails when there is no VM" against a CI job that *happens* to lack a VM is the same disease (asserting against an accident). Instead the test must *establish* its conditions.
+
+**Tasks**
+
+- [x] **No-VM failure path → make it deterministic.** `_pyve_init_no_vm` runs init under `env -i` with an empty `HOME` (so `source_shell_profiles` finds no `~/.asdf`/`~/.pyenv` to re-add) and a VM-free `PATH` (the real interpreter — `sys.executable` — symlinked into a temp `bin`, plus `/usr/bin:/bin`). The python-only arm asserts `init --backend venv` exits non-zero, creates **no** `.venv`, and the output mentions "version manager". Runs identically everywhere (unit-tests job included); covers the refusal path nothing else exercised.
+- [x] **Real-venv success path → skip-guard, don't fake.** `setup()` computes `HAVE_VM` (asdf-with-python-plugin or pyenv resolvable). The python-only build, polyglot build, and composed `check`/`status`/`purge` cases `skip` when `HAVE_VM=0` — mirroring the file's existing "skip if no real python3 / no node" guards. Where a VM is present they assert init exits 0, `.venv` is built, and the composers enumerate the right plugin set.
+- [x] **Node materialization → make it deterministic, network-free.** `_write_node_project` controls *both* ambient node variables: (1) writes a `file:./local-dep` dependency so `npm install` materializes `node_modules` regardless of npm version and without the registry (a zero-dep `package.json` creates none on npm 11.x); (2) generates a committed `package-lock.json` (`npm install --package-lock-only`) so `node_provider_detect` resolves to **npm** rather than its **pnpm default-when-no-lockfile** — `npm` is guaranteed by the `HAVE_NODE` guard, whereas pnpm/yarn presence is ambient (and `_node_provider_run_install` failures aren't propagated, so a missing pnpm let init return 0 with no `node_modules`). Applied to the node-only root and both polyglot package.json paths (root + `src/frontend`).
+- [x] **Verify both CI arms.** No-VM shape (clean `PATH`, mirrors unit-tests job): refusal + node-only run and pass, the three venv cases skip cleanly. **No-VM + no-pnpm shape** (the exact failing CI shape): node-only still materializes `node_modules` via lockfile-pinned npm. VM-present shape (asdf on `PATH`, mirrors bash-coverage job / local dev): all 5 run and pass. Full unit suite (`make test-unit`): exit 0, no regressions.
+
 ### Story N.ba.3: Advisory recognition + surfacing + skip-materialization [Planned]
 
 **Motivation.** The "known-advisory → record + surface, skip materialization" arm of the trichotomy and the recognition of the two advisory-only fields. The broad bash surface: check/status composers + the env materializer.
@@ -1721,6 +1739,78 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - **Survey for other temporary scaffolding or structures** that don't belong in a well-maintained codebase.
 
 **Timing note.** This consolidation bundles into v3.0.0 with the rest of N-5–N-9; run it near the *end* of that bundle (after N-8's doc churn settles, just before N-9's release) to avoid re-churning files N-8 may still touch.
+
+**Phase-specific insights for this subphase:**
+
+- **Execution order ≠ subphase number.** Story breakdown below is drafted now so the work is locked in, but execution waits until N-8's doc churn settles per the timing note above. The breakdown reads as if it ran in numerical order; the execution sequence is determined by the timing note.
+- **Audit-first pattern.** N.bb produces a reviewable [phase-n-7-audit.md](phase-n-7-audit.md) classifying every story-named test file (with proposed new capability-named targets) and every `# Story N.x` reference in production code (as **narrative** or **load-bearing**). N.bc and N.bd execute against the audit's per-item dispositions. The split is deliberate — load-bearing-vs-narrative classification deserves explicit review before any deletion, since silently stripping a load-bearing marker disarms a downstream sweep (e.g., the N-10 read-compat cleanup) with no test failure to catch it.
+- **Load-bearing exceptions to preserve** (per the existing list above): the `v3.0-only: remove in N-10` markers in [lib/manifest.sh](../../lib/manifest.sh) and the grep-sentinels in tests where the marker IS the assertion subject (`test_n_f_state_layout`, `test_n_al_retired_writers`, the `lib/ui/` boundary test). N.bb's audit explicitly lists these and any similar items found during the sweep.
+- **Spike artifacts are kept, not cleaned up in N.be.** [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md), [spike-n-at-composed-init-seam.md](spike-n-at-composed-init-seam.md), [spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md), and the new [phase-n-7-audit.md](phase-n-7-audit.md) are historical design records, not scaffolding.
+
+### Story N.bb: Audit + classification — story-named tests, story-refs in code, load-bearing exceptions [Planned]
+
+**Motivation.** Produce the load-bearing classification before any deletion happens. The deliverable is a reviewable artifact (`docs/specs/phase-n-7-audit.md`) that drives N.bc and N.bd as mechanical execution stories. Surfacing the classification upfront catches borderline cases (story-refs that look narrative but are actually contract) at review time instead of as silent disarmaments later.
+
+**Tasks**
+
+- [ ] Walk `tests/unit/`, `tests/integration/`, `tests/perf/`, and any other tests/ subdirectories; enumerate every test file with a story-IDed name (e.g., `test_n_*.bats`, `test_n_*_*.bats`).
+- [ ] For each story-named test file, propose a capability-named target following the existing convention (`test_check`, `test_status`, `test_purge_ui`, etc.). Group multiple story-named files that test the same capability into one target file where natural (e.g., `test_n_av_*.bats` → `test_composed_init.bats`).
+- [ ] Walk `lib/`, `pyve.sh`, and `tests/` (separate sweep from the rename catalog); enumerate every `# Story N.x` reference / similar story-IDed comment. Classify each as **narrative** (decorative; safe to remove) or **load-bearing** (contract; must survive).
+- [ ] For every load-bearing ref, document the contract: what depends on the ref existing (e.g., the `v3.0-only: remove in N-10` markers drive the N-10 cleanup sweep and are asserted grep-visible by [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats)).
+- [ ] Produce [docs/specs/phase-n-7-audit.md](phase-n-7-audit.md) with three sections:
+  - **§1 Test file rename catalog**: table of current name → proposed name → merge target (if applicable) → per-file disposition note.
+  - **§2 Story-ref classification**: table of file:line → ref text → narrative/load-bearing → disposition (remove / keep / relocate).
+  - **§3 Load-bearing contract notes**: per-ref entries documenting what each load-bearing ref protects (grep-visibility, marker presence, …) so future maintainers don't strip them on a follow-up pass.
+- [ ] Audit doc gate: present at approval gate for review before N.bc/N.bd execute. Adjust the classification per developer feedback before marking [Done].
+
+### Story N.bc: Rename story-named test files per the audit [Planned]
+
+**Motivation.** Execute the test file renames cataloged in N.bb's §1. Mechanical sweep with the green suite as the safety net — same shape as N.al's test rework. Goal is post-N-7 file naming that reads by capability (`test_python_plugin`, `test_node_plugin`, `test_composed_init`) rather than by story attribution.
+
+**Tasks**
+
+- [ ] For each entry in N.bb's §1 rename catalog: `git mv <old-name> <new-name>` (or merge contents into the existing capability file per the catalog).
+- [ ] For merge cases (multiple story-named files → one capability file): combine contents; reconcile any duplicate test names (Bats requires unique `@test` descriptions per file); preserve every assertion.
+- [ ] Update every `load` / `source` line in tests that references a renamed file. Grep with the old filenames to find leftover references.
+- [ ] Update any test that greps for a sibling test filename as part of its assertion (per N.bb's §3 notes). Filenames may be renamed but the in-test markers they grep for stay load-bearing — adjust the grep target, don't strip the assertion.
+- [ ] Run the full test suite (`make test`); zero regressions expected.
+- [ ] If any test breaks from a missed `load` / `source` / grep: fix at the same story granularity (a missed update during the sweep is not a separate story) and re-run before marking [Done].
+
+### Story N.bd: Sweep narrative story-refs from production code per the audit [Planned]
+
+**Motivation.** Remove the `# Story N.x` narrative references in production code per N.bb's §2 classification. Production code should be self-documenting on its current behavior; story IDs only earn their keep when they protect a contract (per §3).
+
+**Tasks**
+
+- [ ] For each entry classified **narrative** in N.bb's §2: remove the ref. Where the ref carried essential context not derivable from the code, relocate that context into a self-contained code comment (no story ID — explain the *why* directly).
+- [ ] For each entry classified **load-bearing** in N.bb's §2: leave in place. If the ref needs *relocation* (e.g., moving a marker to a different file), ensure the contract from §3 survives — re-test the assertion that depends on grep-visibility / marker presence.
+- [ ] Cross-check after the sweep: every load-bearing item from N.bb's §3 is still grep-visible (use `git grep` with each marker pattern; assert nonzero hits).
+- [ ] Run the full test suite (`make test`); zero regressions expected. Failures here typically indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
+- [ ] No production behavior change expected (this is pure comment hygiene); the suite passing is the proof.
+
+### Story N.be: Survey + clean other temporary scaffolding [Planned]
+
+**Motivation.** Open-ended sweep for tech debt that doesn't fit the test-rename or story-ref categories. Catches obsolete TODOs, unused helpers, abandoned fixtures, and similar scaffolding that accumulated during Phase N's velocity but doesn't belong in a v3.0 codebase. **Spike docs and the audit doc are explicitly out of scope** — they're historical records, not scaffolding.
+
+**Tasks**
+
+- [ ] Walk `lib/`, `tests/`, `docs/specs/` (excluding spike artifacts and the N-7 audit doc); identify temporary scaffolding past its usefulness. Examples to check for: TODO comments referencing now-completed work; unused helper functions (no callers in `lib/` or `tests/`); obsolete fixtures (no `load` line in any test); stub functions that were placeholders for never-shipped scope.
+- [ ] For each finding: document in a new §4 of [phase-n-7-audit.md](phase-n-7-audit.md) (or extend §2/§3 if the finding fits the existing categories); decide disposition (remove / keep with justification / promote to a follow-up Future story).
+- [ ] Execute removals where the disposition is clear-cut and safe. For ambiguous items, leave in place and surface at the approval gate for direction.
+- [ ] Run the full test suite (`make test`); zero regressions expected.
+- [ ] If any finding warrants a Future story (the work is real but out of N-7's scope), add it under `## Future` with a clear motivation.
+
+### Story N.bf: End-to-end test verification + N-7 project-essentials append (if any) [Planned]
+
+**Motivation.** Final proof that the consolidation didn't break anything across the full polyglot matrix Phase N targets. Captures any new invariants that surfaced during N-7 if they meet the LLM-blunder bar per the working agreement on `project-essentials.md` scope.
+
+**Tasks**
+
+- [ ] Run the full test suite from a clean checkout (`make test` from a fresh `git clean -fdx` working tree); zero regressions expected.
+- [ ] Re-run the polyglot matrix sweep from N.al's pattern (Python-only / Node-only / polyglot Python+Node fixtures): `pyve init`, `pyve env install`, `pyve check`, `pyve status`, `pyve env run <cmd>`, `pyve test`, `pyve purge --force`. Verify outputs match per-fixture snapshots from N.al / N.av.5.
+- [ ] If the test naming convention itself warrants a [project-essentials.md](project-essentials.md) entry per the LLM-blunder criterion (e.g., "test files are named by capability/surface, not by story ID; story-IDed names are a Phase N migration artifact that was cleaned up in N-7" — preventing a future LLM from re-introducing the pattern), append it. Otherwise skip per the working agreement.
+- [ ] Similarly, if N.be's survey surfaced any invariants worth pinning in `project-essentials.md`, capture them here. Skip if none meet the bar.
+- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
 
 ---
 
