@@ -1966,6 +1966,167 @@ but the run removes more: `.tool-versions`, the **whole** `.pyve/` directory (no
 - [x] Test: preview set == removed set, for venv and micromamba backends, with and without `--keep-testenv`. — **Exact for the default purge, both backends** (the existence-gated `.pyve` covers both venv `.../venv` and micromamba `.../conda` trees). **`--keep-testenv` scope decision (option 2, developer-approved):** the flat inventory can't express the config-dependent surgical scope (`rm -rf .pyve` minus `envs`/`testenvs`, plus the micromamba main-env subdir read from `.pyve/config`) without replicating the remover's logic inside the inventory — the exact Option-B seam limitation the umbrella told me not to redesign. So under `--keep-testenv` the preview lists `.pyve` (an **over**-report — it never hides a deletion, so the N.bf.3 trust bug does not recur) plus a clarifying **note** ("your test environments are preserved — '.pyve' is pruned around them, not fully removed") to prevent a false alarm. Exact `--keep-testenv` itemization is left as a follow-up (would require revisiting the inventory↔remover seam as its own story).
 - [x] Full suite; zero regressions. — 1829 Bats unit tests pass, 0 failures; shellcheck clean on both edited files; Node inventory untouched.
 
+### Story N.bf.4: `assert_python_resolvable` advises `direnv allow` without checking init state [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (`pyve test` in a purged `pyve-3-smoke`).
+
+**Symptom.** In a project with no resolvable Python (post-purge: no `.tool-versions`, no `.envrc`, no env), `pyve test` (creating the testenv) prints:
+
+```
+  ✘ Cannot resolve 'python' — version-manager shim has no version pinned for this directory.
+  ✘ Most likely cause: the project environment isn't active in this shell.
+  ✘ Fix one of these:
+  ✘   • Run 'direnv allow' in the project root (one-time per shell session)
+  ✘   • Re-run wrapped: 'pyve run <cmd>' (one-shot, works without direnv)
+```
+
+Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, and `pyve run` fails with "No Python environment found." The actual fix is `pyve init`.
+
+**Root cause.** [`assert_python_resolvable`](../../lib/env_detect.sh#L330) emits a fixed message presuming "the env exists but isn't active in this shell." But the asdf/pyenv shim trap only fires when there is **no version pin** in the directory — which, in a properly-initialized project, never happens (the shim would resolve via `.tool-versions`). So whenever this message appears, the project is purged/uninitialized, and `direnv allow` / `pyve run` are the wrong advice. The guard never checks whether the project is initialized before prescribing the fix.
+
+**Proposed fix.** Gate the advice on the initialization signal. `.envrc` is the precise signal for "`direnv allow` is meaningful" (it's what direnv acts on); `pyve.toml` distinguishes "purged Pyve project" from "not a Pyve project at all":
+- `.envrc` present → keep the current advice (env exists, just inactive).
+- No `.envrc`, `pyve.toml` present → "This Pyve project has no active environment — run `pyve init` to (re)create it."
+- Neither → "This directory isn't an initialized Pyve project — run `pyve init` to set one up."
+
+**Tasks**
+
+- [ ] Reproduce: shim trap + no `.envrc` → assert the current `direnv allow` advice (red).
+- [ ] Branch the shim-trap (and generic) message on `.envrc` / `pyve.toml` presence.
+- [ ] Test all three states (activatable / purged-Pyve / non-Pyve) emit the right fix; the activatable case keeps the `direnv allow` advice.
+- [ ] Verify no caller regresses (3 callers: [utils.sh:1340](../../lib/utils.sh#L1340), [utils.sh:1361](../../lib/utils.sh#L1361), [plugin.sh:1951](../../lib/plugins/python/plugin.sh#L1951)); none should now advise `pyve init` during `pyve init` itself.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.5: `env_name` unbound-variable crash in `_purge_pyve_dir` [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (`pyve purge` on a v3 project with a leftover `.pyve/`).
+
+**Symptom.** `pyve purge` crashes mid-removal, leaving `.pyve` behind and reporting "Purge incomplete":
+
+```
+/…/lib/plugins/python/plugin.sh: line 2314: env_name: unbound variable
+  ⚠ Purge incomplete — these plugins reported errors: python
+```
+
+**Root cause.** [`_purge_pyve_dir`](../../lib/plugins/python/plugin.sh#L2298) declares `local env_name` (uninitialized) and only assigns it **inside** `if config_file_exists` — which checks for the **v2** `.pyve/config`. On a v3 project (no `.pyve/config`) with a `.pyve/envs/` subdir and micromamba installed, the assignment never runs, and `[[ -n "$env_name" ]]` at line 2314 reads an unbound variable under `set -u` (`pyve.sh` runs `set -euo pipefail`) → crash. Same `set -u` trap class as the project-essentials "Bash empty-array reads" entry, on a scalar. (The developer's "nothing to purge" read was actually this crash aborting the removal — the preview correctly listed `.pyve`.)
+
+**Proposed fix.** Initialize on declaration: `local env_name=""`. The empty value then correctly falls through to the existing `for env_dir in .pyve/envs/*` glob-removal path.
+
+**Tasks**
+
+- [ ] Reproduce under `set -u`: `.pyve/envs/` present, micromamba resolvable, no `.pyve/config` → assert the unbound-variable failure (red). Pattern: the fresh `/bin/bash -c "set -euo pipefail; …"` shape from [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats).
+- [ ] Initialize `local env_name=""`.
+- [ ] Test the v3 micromamba purge path completes cleanly (no `unbound variable`); `.pyve` fully removed.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.6: version-manager detection — `pipefail` false-negative + discarded wizard choice [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (`pyve init`, asdf selected, pyenv silently used instead).
+
+**Symptom.** User selects **asdf** in the wizard (which correctly lists asdf's Python versions), but materialization warns "asdf found but Python plugin not installed" (false — `asdf list python` works) and silently falls back to **pyenv**: installs Python under `~/.pyenv/`, writes `.python-version` (pyenv's pin) instead of `.tool-versions` (asdf's). The user asked for asdf and got a pyenv-shaped project.
+
+**Root cause (two compounding bugs).**
+1. **`pipefail` + `grep -q` false-negative.** [`detect_version_manager`](../../lib/env_detect.sh#L72) runs `asdf plugin list 2>/dev/null | grep -q "^python$"` under `set -euo pipefail`. `grep -q` exits on first match; if `asdf plugin list` is still writing (multiple plugins, `python` early), asdf gets **SIGPIPE (141)**, which `pipefail` propagates as the pipeline status → the `if` reads a successful match as failure → "plugin not installed" → pyenv fallback. Timing/plugin-count dependent (reproduced generically: a producer emitting the match then writing more returns rc=141 under `pipefail`).
+2. **Wizard choice discarded.** Even absent (1): the wizard sets `VERSION_MANAGER` from the user's pick ([plugin.sh:1209](../../lib/plugins/python/plugin.sh#L1209)/[1287](../../lib/plugins/python/plugin.sh#L1287)), but materialization at [plugin.sh:1847](../../lib/plugins/python/plugin.sh#L1847) unconditionally re-runs `detect_version_manager`, which resets `VERSION_MANAGER=""` and re-detects — throwing the user's selection away.
+
+**Proposed fix.**
+1. Make the asdf-plugin check robust: capture first, then grep — `plugins="$(asdf plugin list 2>/dev/null)"; grep -qx "python" <<<"$plugins"` (no pipe into `grep -q`, no SIGPIPE).
+2. Honor the wizard-selected `VERSION_MANAGER` at materialization rather than blindly re-detecting (re-detect only to *validate* the chosen manager, or skip re-detection when an explicit pick is present).
+
+**Out of scope.** Reconciling an already-written `.python-version` vs `.tool-versions` after a mis-detection (the residual artifact); this story prevents the mis-detection at the source.
+
+**Tasks**
+
+- [ ] Reproduce (1): under `set -o pipefail`, an `asdf plugin list` producer that emits `python` then keeps writing → assert the current check false-negatives (red).
+- [ ] Fix the check to capture-then-grep; assert it matches under `pipefail`.
+- [ ] Reproduce (2): wizard sets `VERSION_MANAGER=asdf`, materialization must not silently flip it to pyenv when asdf is valid (red).
+- [ ] Honor the selected manager at materialization.
+- [ ] Test: asdf selected + asdf has python → init uses asdf, writes `.tool-versions` (not `.python-version`).
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.7: `pyve lock`'s bootstrap advice walks into a wall (missing `--no-lock`) [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (micromamba `pyve-3-smoke`, trying to generate a lock).
+
+**Symptom.** With a micromamba env that has no `conda-lock` installed, `pyve lock` says:
+
+```
+  ✘ conda-lock is not available in the current environment.
+  ✘ Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'.
+```
+
+Following it (edit `environment.yml`, `pyve init --force`) then hard-errors with "No conda-lock.yml found." The advice omits the flag that makes it work: the rebuild must be `pyve init --force --no-lock` (you're bootstrapping the locker, so a lock can't exist yet).
+
+**Root cause.** The advice strings at [lock.sh:147](../../lib/commands/lock.sh#L147) and [lock.sh:267](../../lib/commands/lock.sh#L267) tell the user to `pyve init --force` without `--no-lock`, sending them straight into the N.bf.8 wall.
+
+**Proposed fix.** Correct the advice to `pyve init --force --no-lock`. **Coordinate with N.bf.10:** once the starter `environment.yml` ships `conda-lock` by default, *new* projects never reach this message (their env already has the locker), so this fix mainly serves projects scaffolded before N.bf.10 / created with `--no-lock`. If N.bf.10 lands first, reframe the advice toward "your env already has conda-lock; just run `pyve lock`" for the common case.
+
+**Tasks**
+
+- [ ] Assert the current advice text omits `--no-lock` (red).
+- [ ] Update both advice sites to `pyve init --force --no-lock`.
+- [ ] Test the message names the working command.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.8: `--force` rebuild is stricter than fresh init (no auto `--no-lock` when `environment.yml` exists) [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (the `pyve init --force` step of the lock dance).
+
+**Symptom.** On a *fresh* dir, `pyve init --backend micromamba` scaffolds `environment.yml` and proceeds without a lock. But when `environment.yml` *already exists* (the user edited it) and there's no `conda-lock.yml`, `pyve init --force` hard-errors "No conda-lock.yml found" — the same project state, opposite behavior, purely because the file already exists.
+
+**Root cause.** [`scaffold_starter_environment_yml`](../../lib/plugins/python/plugin.sh#L1698) only sets `PYVE_NO_LOCK=1` when it actually *creates* `environment.yml`. When the file already exists it no-ops, `PYVE_NO_LOCK` stays unset, and [`validate_lock_file_status`](../../lib/micromamba_env.sh#L311) Case 2 (env.yml present, lock absent) hard-errors. The bypass is gated on "did we just scaffold," not on "is a lock obtainable yet."
+
+**Proposed fix (decide during debug).** Make the rebuild consistent with fresh init when a lock genuinely can't exist yet: when `environment.yml` is present, `conda-lock.yml` absent, and `conda-lock` isn't available to generate one, auto-proceed with `--no-lock` + the existing warning (rather than hard-erroring). The invariant: **a micromamba project with a source file but no lock must `init`/`init --force` to a working env without the user hand-passing `--no-lock`.** **Relationship to N.bf.10:** once the default scaffold ships `conda-lock`, the common rebuild has the locker available and won't hit this wall — this fix then mainly covers `--no-lock`-scaffolded or pre-N.bf.10 projects.
+
+**Tasks**
+
+- [ ] Reproduce: existing `environment.yml`, no `conda-lock.yml`, `pyve init --force` → assert hard error (red).
+- [ ] Relax the bypass so the existing-source-no-lock case proceeds like the freshly-scaffolded case.
+- [ ] Test fresh-dir and existing-`environment.yml` paths behave identically (both proceed with the `--no-lock` warning); a present `conda-lock.yml` is still honored; `--strict` still errors.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.9: "Update in-place" silently ignores `environment.yml` edits [Planned]
+
+**Discovered:** v3.0.0a1 smoke test (option 1 at the re-init prompt "seems to do nothing").
+
+**Symptom.** The user edited `environment.yml` (added `conda-lock`), re-ran `pyve init`, and chose *"1. Update in-place (preserves environment, updates config)."* It reported "Configuration updated" but did not apply the dependency change — "preserves environment" means the conda env is not rebuilt from the edited file, so `conda-lock` was never installed. The reasonable expectation ("I changed deps; update applies them") is silently violated, and the label doesn't say otherwise.
+
+**Root cause.** The update path refreshes Pyve-managed config files but does not rebuild the backend env from a changed `environment.yml`; the menu label doesn't communicate that dependency edits require option 2 (purge + rebuild).
+
+**Proposed fix (decide during debug).** Either (a) reword the option to make the boundary explicit — e.g. "Update in-place (refreshes Pyve config/files; does NOT apply `environment.yml`/dependency changes — use option 2 for that)" — or (b) detect a changed `environment.yml` (mtime vs the env, or hash) during update and offer to apply it (rebuild). Lowest-risk is (a); (b) is the friendlier behavior if the detection is cheap and reliable.
+
+**Tasks**
+
+- [ ] Reproduce: edit `environment.yml`, choose update → assert the dependency change is not applied (red, behavioral) and/or the label is misleading.
+- [ ] Implement the chosen option (reword and/or detect-and-offer); record the decision.
+- [ ] Test: a user who edits `environment.yml` and updates either gets the change applied or is clearly told it won't be.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.10: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Planned]
+
+**Discovered:** v3.0.0a1 smoke test — the conda-lock bootstrap circularity.
+
+**Motivation.** `pyve lock` needs `conda-lock` installed in the micromamba env to run; getting it there today means editing `environment.yml` + rebuilding, but the rebuild demands a `conda-lock.yml` that can't exist yet (the loop N.bf.7–N.bf.8 file down by hand). The loop shouldn't exist: **if Pyve ships `pyve lock`, the env Pyve scaffolds should be able to run it.** So the starter `environment.yml` includes `conda-lock` as a dependency by default — built into the env from the first `pyve init`, so `pyve lock` works immediately. The `--no-lock` opt-out ("I'm not using the lock workflow") naturally extends to "don't put the locker in my env," keeping a lean env for users who don't want it.
+
+Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `--no-lock` for the validation since there's no lock file yet) → `pyve lock` just works. No editing `environment.yml`, no force-rebuild, no manual `--no-lock` dance.
+
+**Chosen over the on-demand-runner alternatives** (developer decision): a one-line scaffold-template change beats adding `uvx`/`pipx`/transient-env invocation machinery to `pyve lock` — no new dependency expectation, no env-lifecycle code, and it removes the *reason* `conda-lock` was absent rather than working around it. `conda-lock` is conda-forge-native and operates on the root `environment.yml`, so the project env is a reasonable home for it.
+
+**Tradeoff (accepted):** every default micromamba env carries `conda-lock` + its transitive deps. Mitigated by `--no-lock`. If env weight later proves annoying, the fallback is the commented form (`# - conda-lock  # uncomment for 'pyve lock'`) — not adopted now because it reintroduces a manual step.
+
+**Relationship to N.bf.7/N.bf.8.** This makes both **new-project-moot** (no wall, no dance). They remain worth landing for **existing** projects scaffolded before this change and for the `--no-lock`-then-changed-mind path; N.bf.7's advice should point at the smooth path for the common case.
+
+**Scope.** Affects the starter scaffold only ([`scaffold_starter_environment_yml`](../../lib/micromamba_env.sh)). Does **not** mutate a user's existing `environment.yml`.
+
+**Tasks**
+
+- [ ] Reproduce: default `pyve init --backend micromamba` scaffolds an `environment.yml` WITHOUT `conda-lock`; assert `pyve lock` then fails "conda-lock is not available" (red).
+- [ ] Add `conda-lock` to the dependencies in `scaffold_starter_environment_yml`'s template; thread the `--no-lock` signal so it is omitted under `--no-lock`.
+- [ ] Test: default scaffold includes `conda-lock`; `--no-lock` scaffold omits it; the scaffold still validates and the env builds.
+- [ ] Test the end-to-end smooth path: fresh `pyve init` → `pyve lock` produces `conda-lock.yml` without any manual `environment.yml` edit or rebuild.
+- [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
+- [ ] Full suite; zero regressions.
+
 ---
 
 ## Subphase N-8: Documentation refresh + brand alignment
