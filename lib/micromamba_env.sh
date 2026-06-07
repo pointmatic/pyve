@@ -93,25 +93,6 @@ parse_environment_name() {
     return 0
 }
 
-# Parse environment.yml for channels
-# Returns: space-separated list of channels or empty string
-parse_environment_channels() {
-    local env_file="${1:-environment.yml}"
-    
-    if [[ ! -f "$env_file" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Extract channels from YAML (simple parsing)
-    # This handles: channels:\n  - channel1\n  - channel2
-    local channels
-    channels="$(awk '/^channels:$/,/^[a-z]/ {if ($1 == "-") print $2}' "$env_file" | tr '\n' ' ')"
-    
-    echo "$channels"
-    return 0
-}
-
 # Validate environment.yml exists and is readable
 # Returns: 0 if valid, 1 if invalid
 validate_environment_file() {
@@ -159,30 +140,6 @@ validate_environment_file() {
     fi
     
     return 0
-}
-
-# Error if no environment file found
-# Returns: 1 (always errors)
-error_no_environment_file() {
-    log_error "No environment file found for micromamba backend"
-    log_error ""
-    log_error "Micromamba requires either:"
-    log_error "  - conda-lock.yml (for reproducible builds)"
-    log_error "  - environment.yml (for flexible dependencies)"
-    log_error ""
-    log_error "Create environment.yml with:"
-    log_error ""
-    printf "  name: myproject\n"
-    printf "  channels:\n"
-    printf "    - conda-forge\n"
-    printf "  dependencies:\n"
-    printf "    - python=3.11\n"
-    printf "    - numpy\n"
-    log_error ""
-    log_error "Or generate a lock file:"
-    log_error "  pyve lock"
-
-    return 1
 }
 
 #============================================================

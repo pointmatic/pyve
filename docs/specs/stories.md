@@ -1865,17 +1865,17 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [ ] Diff-review the full source change (comments-don't-execute — this is the prose-quality net) + run the full test suite; zero regressions.
 - [ ] Decide disposition of the working artifacts (`*_dirty.txt`, `*_clean.txt`, detector script): keep the script (CI guard candidate), remove/gitignore the txt enumerations.
 
-### Story N.be: Survey + clean other temporary scaffolding [Planned]
+### Story N.be: Survey + clean other temporary scaffolding [Done]
 
 **Motivation.** Open-ended sweep for tech debt that doesn't fit the test-rename or story-ref categories. Catches obsolete TODOs, unused helpers, abandoned fixtures, and similar scaffolding that accumulated during Phase N's velocity but doesn't belong in a v3.0 codebase. **Spike docs and the audit doc are explicitly out of scope** — they're historical records, not scaffolding.
 
 **Tasks**
 
-- [ ] Walk `lib/`, `tests/`, `docs/specs/` (excluding spike artifacts and the N-7 audit doc); identify temporary scaffolding past its usefulness. Examples to check for: TODO comments referencing now-completed work; unused helper functions (no callers in `lib/` or `tests/`); obsolete fixtures (no `load` line in any test); stub functions that were placeholders for never-shipped scope.
-- [ ] For each finding: document in a new §4 of [phase-n-7-audit.md](phase-n-7-audit.md) (or extend §2/§3 if the finding fits the existing categories); decide disposition (remove / keep with justification / promote to a follow-up Future story).
-- [ ] Execute removals where the disposition is clear-cut and safe. For ambiguous items, leave in place and surface at the approval gate for direction.
-- [ ] Run the full test suite (`make test`); zero regressions expected.
-- [ ] If any finding warrants a Future story (the work is real but out of N-7's scope), add it under `## Future` with a clear motivation.
+- [x] Walk `lib/`, `tests/`, `docs/specs/` (excluding spike artifacts and the N-7 audit doc); identify temporary scaffolding past its usefulness. Examples to check for: TODO comments referencing now-completed work; unused helper functions (no callers in `lib/` or `tests/`); obsolete fixtures (no `load` line in any test); stub functions that were placeholders for never-shipped scope.
+- [x] For each finding: document in a new §4 of [phase-n-7-audit.md](phase-n-7-audit.md) (or extend §2/§3 if the finding fits the existing categories); decide disposition (remove / keep with justification / promote to a follow-up Future story).
+- [x] Execute removals where the disposition is clear-cut and safe. For ambiguous items, leave in place and surface at the approval gate for direction. — 4 zero-caller removals (S-1..S-4); no ambiguous items surfaced.
+- [x] Run the full test suite (`make test`); zero regressions expected. — 1822 Bats unit tests pass; venv integration 86 passed / 2 failed, both failures pre-existing & env-specific (`pyve init --python-version 3.12.13` cancels when 3.12.13 absent from asdf), proven identical on a stashed clean tree. Tracked by the `## Future` "Fix pre-existing integration test failures" story.
+- [x] If any finding warrants a Future story (the work is real but out of N-7's scope), add it under `## Future` with a clear motivation. — None warranted; all findings were immediate clear-cut removals.
 
 ### Story N.bf: End-to-end test verification + N-7 project-essentials append (if any) [Planned]
 

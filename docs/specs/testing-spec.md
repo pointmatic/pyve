@@ -90,10 +90,7 @@ tests/
 │   └── kcov-wrapper.sh            # kcov wrapper for Bash coverage during integration tests
 ├── fixtures/                       # Test data
 │   ├── environment.yml
-│   ├── requirements.txt
-│   └── sample_configs/
-│       ├── basic_micromamba.yml
-│       └── basic_venv.yml
+│   └── requirements.txt
 ```
 
 ---

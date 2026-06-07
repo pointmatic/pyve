@@ -309,6 +309,38 @@ Each entry documents what the ref protects so a future maintainer cannot strip i
 
 ---
 
+## §4 — Other temporary scaffolding (Story N.be)
+
+Open-ended sweep for tech debt outside the test-rename (§1) and story-ref (§2/§5) categories: obsolete TODOs, unused helper functions, abandoned fixtures, placeholder stubs. Spike docs and this audit doc are out of scope (historical records, not scaffolding).
+
+**Method.** Detectors run over `lib/`, `pyve.sh`, `tests/`:
+- TODO/FIXME/XXX/HACK grep (lib + tests + non-spike docs).
+- Unused-function sweep: enumerate every `name()` definition, count call-sites outside the definition across `lib/ pyve.sh tests/`, flag zero-caller functions.
+- Orphaned-fixture sweep: every file under `tests/fixtures/` with no reference in any `.bats` / `.py` test.
+- Placeholder/stub/skip greps (`placeholder|stub|not implemented|for now|temporary`; `skip`/`xfail`/`.disabled`).
+
+### §4 findings — REMOVE (clear-cut, executed in N.be)
+
+| ID | Finding | Location | Disposition |
+|----|---------|----------|-------------|
+| S-1 | v2 `.pyve/config` YAML fixtures (`basic_venv.yml`, `basic_micromamba.yml`) — created in v0.8.1, **zero test references**; the v2 config format is obsolete in v3.0 (replaced by `pyve.toml`) | `tests/fixtures/sample_configs/` | **Remove** the directory; drop the directory-tree mentions in `tests/README.md` + `testing-spec.md` |
+| S-2 | `parse_environment_channels()` — never wired up; zero callers anywhere | `lib/micromamba_env.sh:98` | **Remove** |
+| S-3 | `error_no_environment_file()` — redundant variant of the error message already inlined in `validate_environment_file()`; zero callers | `lib/micromamba_env.sh:166` | **Remove** |
+| S-4 | `set_test_env()` / `unset_test_env()` — thin `export`/`unset` wrappers; zero callers | `tests/helpers/test_helper.bash:202,209` | **Remove** |
+
+### §4 — investigated and KEPT (false positives; recorded so a later sweep skips re-investigation)
+
+| Candidate | Why it survives |
+|-----------|-----------------|
+| `tests/helpers/kcov-wrapper.sh` | Load-bearing via **dynamic path construction**: `pyve_test_helpers.py:112` builds `Path(__file__).parent / "kcov-wrapper.sh"` when `PYVE_KCOV_OUTDIR` is set. A basename grep misses it. |
+| `pyve_plugin_default_*` family (15 fns, `lib/plugins/contract.sh`) | Dispatched dynamically — `lib/plugins/registry.sh:126` calls `"pyve_plugin_default_${hook}"`. The default-hook vtable; each is reachable. |
+| `fail` / `info` / `warn` / `main` | Heavily used (`warn` 41×, `info` 154× …); short-name counting artifact in the zero-caller detector, not dead code. |
+| `N.i-pending` skip strings (`test_test_env_*`) | Intentional deferred-work markers tracked for Subphase N-i; load-bearing survivors per §3 / N.bd.4. Out of scope (deferred real work, not scaffolding). |
+
+**No ambiguous items** surfaced — every finding is a zero-caller removal or a verified keep. **No Future story warranted** — all removals are immediate and safe; nothing real is deferred by this sweep.
+
+---
+
 ## Appendix — reproduction commands
 
 ```sh

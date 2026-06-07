@@ -197,16 +197,3 @@ unmock_command() {
     local cmd="$1"
     unset -f "$cmd"
 }
-
-# Set environment variable for test
-set_test_env() {
-    local var="$1"
-    local value="$2"
-    export "$var=$value"
-}
-
-# Unset environment variable
-unset_test_env() {
-    local var="$1"
-    unset "$var"
-}

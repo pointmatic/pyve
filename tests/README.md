@@ -35,8 +35,7 @@ tests/
 │   └── pyve_test_helpers.py # pytest helper classes
 ├── fixtures/                # Test data
 │   ├── environment.yml
-│   ├── requirements.txt
-│   └── sample_configs/
+│   └── requirements.txt
 └── README.md               # This file
 ```
 
