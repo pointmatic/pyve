@@ -83,7 +83,7 @@ teardown() {
 # Story J.b's `.envrc` asdf-guard tests were retired in Story N.al: the
 # `_init_direnv_*` writers they exercised were removed, and the guard is
 # now emitted (and tested) by the `.envrc` composition layer — see the
-# "asdf guard present/absent" tests in test_n_ae_3_envrc_composer.bats.
+# "asdf guard present/absent" tests in test_envrc_composer.bats.
 # The J.c (`pyve run`) asdf-guard tests below remain and use this helper.
 
 # Extract a function definition from a shell file and eval it into the

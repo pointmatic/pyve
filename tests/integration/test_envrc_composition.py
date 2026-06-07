@@ -12,14 +12,14 @@ snippet is assembled into one managed section (`# >>> pyve:managed:start >>>`
 section in place, preserving user content below the end marker.
 
 The composer's mechanics (PC-1 validation, atomic write, `.envrc.prev`,
-preservation) are pinned fast in tests/unit/test_n_ae_3*/4*/5*.bats; these
+preservation) are pinned fast in tests/unit/test_envrc_composer*.bats; these
 slow tests prove the end-to-end wiring through real `pyve init` / `pyve
 update`, including the ordering (config + manifest exist before compose).
 
 Note on polyglot coverage: the polyglot case (both Python + Node sections in
 one composed .envrc) is covered at the unit level —
-tests/unit/test_n_ae_3_envrc_composer.bats (composed body with both
-sections) and tests/unit/test_n_ae_5_compose_project_wiring.bats (the reload
+tests/unit/test_envrc_composer.bats (composed body with both
+sections) and tests/unit/test_envrc_composer_wiring.bats (the reload
 surfacing a freshly-scaffolded node plugin). It is intentionally NOT a real-
 `pyve init` test here: a polyglot fixture flips asdf's view of the pinned
 Python version to "not installed", tripping a pre-existing non-interactive

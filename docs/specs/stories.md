@@ -1777,18 +1777,20 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Add `@pytest.mark.micromamba` + `@pytest.mark.requires_micromamba` to `test_wizard_environment_yml_defaults_to_micromamba`, with a docstring note explaining the routing rationale.
 - [x] Verify routing via `--collect-only`: test is absent from `-m "venv and not requires_micromamba"` (count 0) and present in `-m "micromamba or requires_micromamba"` (count 1); `--strict-markers` collection clean (3 tests collected).
 
-### Story N.bc: Rename story-named test files per the audit [Planned]
+### Story N.bc: Rename story-named test files per the audit [Done]
 
 **Motivation.** Execute the test file renames cataloged in N.bb's §1. Mechanical sweep with the green suite as the safety net — same shape as N.al's test rework. Goal is post-N-7 file naming that reads by capability (`test_python_plugin`, `test_node_plugin`, `test_composed_init`) rather than by story attribution.
 
+**Execution decision (developer-directed, 2026-06-06).** Inspecting the merge clusters revealed every cluster — and every merge-into-existing target — carries its own distinct `setup()`/`teardown()`; merging would force risky fixture reconciliation (notably into the 74-test `test_project_guide.bats`) for purely cosmetic consolidation. Per developer choice, the §1 **merge proposals were superseded by rename-to-distinct-capability-names**: all 59 files de-barnacled, zero content-merges, near-zero risk, honoring the preamble's "group… where natural" qualifier. Final mapping recorded in [phase-n-7-audit.md](phase-n-7-audit.md) §1 "Execution result".
+
 **Tasks**
 
-- [ ] For each entry in N.bb's §1 rename catalog: `git mv <old-name> <new-name>` (or merge contents into the existing capability file per the catalog).
-- [ ] For merge cases (multiple story-named files → one capability file): combine contents; reconcile any duplicate test names (Bats requires unique `@test` descriptions per file); preserve every assertion.
-- [ ] Update every `load` / `source` line in tests that references a renamed file. Grep with the old filenames to find leftover references.
-- [ ] Update any test that greps for a sibling test filename as part of its assertion (per N.bb's §3 notes). Filenames may be renamed but the in-test markers they grep for stay load-bearing — adjust the grep target, don't strip the assertion.
-- [ ] Run the full test suite (`make test`); zero regressions expected.
-- [ ] If any test breaks from a missed `load` / `source` / grep: fix at the same story granularity (a missed update during the sweep is not a separate story) and re-run before marking [Done].
+- [x] For each entry in N.bb's §1 rename catalog: `git mv <old-name> <new-name>`. 29 clean 1:1 renames + 30 merge-cluster files renamed to distinct capability names (per the execution decision above).
+- [x] ~~For merge cases: combine contents…~~ **N/A** — no merges performed (superseded by rename-to-distinct).
+- [x] Update every `load` / `source` line in tests that references a renamed file. (No bats file `load`s a sibling test; ~13 comment/docstring filename cross-references in `tests/` + one in `lib/pyve_toml_helper.py` updated to new names.)
+- [x] Update any test that greps for a sibling test filename as part of its assertion. (None found — the §3 grep-sentinels assert on markers/literals/function-names, not filenames; cross-refs were all comments.)
+- [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**. (Integration `.py` edits were docstring-only.)
+- [x] If any test breaks from a missed `load` / `source` / grep: fix at the same story granularity. (None broke.)
 
 ### Story N.bd: Sweep narrative story-refs from production code per the audit [Planned]
 

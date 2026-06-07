@@ -16,7 +16,7 @@ cardinality error — so Node must land at a distinct sub-path).
 A single full `pyve init` run proves the scaffold orchestrator is wired
 into the init flow (a bats unit test of the helper alone can't). The
 branch logic (0/1/2+ conventions, `--node-path`, idempotence) is pinned
-fast in tests/unit/test_n_ad_polyglot_scaffold.bats; this asserts the
+fast in tests/unit/test_polyglot_scaffold.bats; this asserts the
 end-to-end scaffold and the `--node-path` override together in one (slow)
 init.
 """

@@ -15,7 +15,7 @@
 #
 # Note: cardinality validation (S4 — at most one plugin with
 # `path = "."`) belongs to the registry, not the schema parser; covered
-# in test_n_k_plugin_registry.bats. The parser just preserves what the
+# in test_plugin_registry.bats. The parser just preserves what the
 # manifest declared.
 
 bats_require_minimum_version 1.5.0
@@ -25,7 +25,7 @@ load ../helpers/test_helper.bash
 setup() {
     setup_pyve_env
     # Resolve python BEFORE create_test_dir cd's away from PYVE_ROOT's
-    # .envrc-activated venv (same pattern as test_n_i_read_compat.bats).
+    # .envrc-activated venv (same pattern as test_read_compat.bats).
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 }

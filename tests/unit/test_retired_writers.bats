@@ -6,7 +6,7 @@
 # Story N.al — Retire the pre-composer template writers.
 #
 # Regression sentinel (mirrors the stale-path sentinels, e.g.
-# test_n_f_state_layout.bats): the `.envrc` / `.gitignore` writer chains
+# test_state_layout.bats): the `.envrc` / `.gitignore` writer chains
 # that the composition layer (N.ae/N.af) superseded must have NO production
 # definition or caller in `lib/` or `pyve.sh`. The composer functions
 # (`compose_envrc` / `compose_gitignore` and the per-plugin `activate` /

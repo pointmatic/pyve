@@ -54,7 +54,7 @@ teardown() {
 #
 # N.t introduced this as a no-op stub; N.u filled it with the pnpm /
 # npm / yarn providers. The provider-registration behavior is owned by
-# tests/unit/test_n_u_node_backend_providers.bats; here we only assert
+# tests/unit/test_node_backend_providers.bats; here we only assert
 # the hook exists so the plugin's contract shape is complete.
 # ════════════════════════════════════════════════════════════════════
 
@@ -197,6 +197,6 @@ EOF
 # polyglot scaffold to Subphase N-4. **Story N.ad superseded that helper**
 # with `_init_scaffold_manifest`, which now writes a polyglot manifest
 # (`[plugins.python]` + `[plugins.node]`) when Node is detected at root.
-# The behavior is owned by tests/unit/test_n_ad_polyglot_scaffold.bats; the
+# The behavior is owned by tests/unit/test_polyglot_scaffold.bats; the
 # advisory-only tests that lived here were removed when N.ad landed.
 # ════════════════════════════════════════════════════════════════════

@@ -20,7 +20,7 @@
 #     lines stay composer-owned (same Option-(a) boundary as N.q used for
 #     .envrc). The composed write itself lives in lib/gitignore_composer.sh
 #     (the legacy write_gitignore_template was retired in N.al; its
-#     emission is covered by test_n_af_gitignore_composer.bats).
+#     emission is covered by test_gitignore_composer.bats).
 #   - purge_project pulls the inventory as a data interface (no
 #     removal-decision change in v3.0; the seam is in place for
 #     future plugins).

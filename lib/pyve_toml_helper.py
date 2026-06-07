@@ -56,7 +56,7 @@ VALID_PURPOSES = ("run", "test", "utility", "temp")
 # it — surfacing policy (N.ba.3) decides not to print it, but classification
 # stays faithful to the vocabulary.
 #
-# LOCKSTEP: tests/unit/test_n_ba_1_vocabulary.bats parses the contract §B
+# LOCKSTEP: tests/unit/test_env_vocabulary.bats parses the contract §B
 # table and fails the build if these sets drift from the docs. Edit one and
 # the other together — never independently.
 #============================================================

@@ -10,6 +10,8 @@ This is a **reviewable classification artifact**, not an execution log. Nothing 
 
 ## §1 — Test file rename catalog
 
+> **EXECUTED in N.bc (2026-06-06) — merge proposals superseded.** During execution, inspecting the merge clusters revealed that every cluster (and every merge-into-existing target) carries its own distinct `setup()`/`teardown()`; merging would force risky reconciliation of test fixtures (notably into the 74-test `test_project_guide.bats`). Per developer decision, the **merge dispositions below were replaced by rename-to-distinct-capability-names** — fully de-barnacling (the N-7 goal) at near-zero risk, honoring the preamble's "group… where natural" qualifier. The clean 1:1 renames below stand as written; the merge rows are superseded by the **Execution result** table at the end of this section. No test content was merged.
+
 59 story-IDed test files → capability-named targets. Convention: group by **capability/surface**, mirroring the existing capability-named files (`test_check`, `test_status`, `test_purge_ui`, `test_manifest`, `test_project_guide`, `test_python_plugin_command_layout`). Where multiple story files cover one capability, the proposed target **merges** them (N.bc reconciles duplicate `@test` descriptions — Bats requires uniqueness per file — and preserves every assertion).
 
 Legend — **Disposition**: `rename` = 1:1 `git mv`; `merge→X` = combine into target `X` (existing or new); `LB` = load-bearing assertion subject (filename renamable, in-test marker must survive — see §3).
@@ -137,6 +139,45 @@ All five notes below were **accepted as their proposed defaults** at the N.bb ga
 - **Note C — composed-init blast radius.** Ten files collapse to `test_composed_init.bats`. That is a large merge; if it produces an unwieldy file, the natural seam is `test_composed_init.bats` (orchestrator + unit, the `av_*` set) vs `test_composed_init_e2e.bats` (the `ab_*` + `am` end-to-end matrix). **Developer call.**
 - **Note D — toolchain provisioning.** `az_1_provisioning` is PyYAML-into-the-toolchain-venv; it sits between "toolchain python" and "env spec." Proposed `test_toolchain_python.bats` (it provisions the toolchain). Alternative: `test_env_spec_helper.bats`. **Developer call.**
 - **Note E — drift check locus.** `az_2_check_drift` is the `pyve check` env-spec drift addendum. Proposed `test_env_sync.bats` (same feature family). Alternative: `test_check.bats` (same command surface). **Developer call.**
+
+### Execution result (N.bc, 2026-06-06) — the 30 merge-cluster files renamed to distinct names
+
+The 29 clean 1:1 renames matched the catalog above. The 30 files originally proposed for merging were instead given distinct capability names:
+
+| Original (story-named) | Executed name | (superseded merge target) |
+|---|---|---|
+| `test_n_av_1_init_composer.bats` | `test_composed_init_orchestrator.bats` | test_composed_init |
+| `test_n_av_2_init_tail.bats` | `test_composed_init_tail.bats` | test_composed_init |
+| `test_n_av_3_node_only_init.bats` | `test_composed_init_node.bats` | test_composed_init |
+| `test_n_av_4_polyglot_init.bats` | `test_composed_init_polyglot.bats` | test_composed_init |
+| `test_n_av_5_composed_matrix.bats` | `test_composed_init_matrix.bats` | test_composed_init |
+| `test_n_ab_1_node_root_e2e.bats` | `test_composed_init_node_e2e.bats` | test_composed_init |
+| `test_n_ab_2_polyglot_e2e.bats` | `test_composed_init_polyglot_e2e.bats` | test_composed_init |
+| `test_n_ab_3_composed_envrc.bats` | `test_composed_init_envrc_e2e.bats` | test_composed_init |
+| `test_n_am_polyglot_matrix.bats` | `test_polyglot_matrix.bats` | test_composed_init |
+| `test_n_ae_2_python_activate_emitter.bats` | `test_python_activate_emitter.bats` | test_envrc_composer |
+| `test_n_ae_3_envrc_composer.bats` | `test_envrc_composer.bats` | test_envrc_composer |
+| `test_n_ae_4_compose_envrc_write.bats` | `test_envrc_composer_write.bats` | test_envrc_composer |
+| `test_n_ae_5_compose_project_wiring.bats` | `test_envrc_composer_wiring.bats` | test_envrc_composer |
+| `test_n_ae_6_prompt_eof.bats` | `test_envrc_composer_prompt_eof.bats` | test_envrc_composer |
+| `test_n_at_1_toolchain_python.bats` | `test_toolchain_python.bats` | test_toolchain_python |
+| `test_n_at_2_resolver_rewire.bats` | `test_toolchain_python_resolver.bats` | test_toolchain_python |
+| `test_n_at_3_toolchain_lifecycle.bats` | `test_toolchain_python_lifecycle.bats` | test_toolchain_python |
+| `test_n_az_1_provisioning.bats` | `test_toolchain_provisioning.bats` | test_toolchain_python |
+| `test_n_az_2_env_sync.bats` | `test_env_sync.bats` | test_env_sync |
+| `test_n_az_2_env_sync_helper.bats` | `test_env_sync_helper.bats` | test_env_sync |
+| `test_n_az_2_check_drift.bats` | `test_env_sync_drift.bats` | test_env_sync |
+| `test_n_ba_1_vocabulary.bats` | `test_env_vocabulary.bats` | test_env_vocabulary |
+| `test_n_ba_2_enforcement.bats` | `test_env_vocabulary_enforcement.bats` | test_env_vocabulary |
+| `test_n_ba_3_advisory.bats` | `test_env_vocabulary_advisory.bats` | test_env_vocabulary |
+| `test_n_ag_compose_check.bats` | `test_check_composer.bats` | (into) test_check |
+| `test_n_ah_compose_status.bats` | `test_status_composer.bats` | (into) test_status |
+| `test_n_ai_compose_purge.bats` | `test_purge_composer.bats` | (into) test_purge_ui |
+| `test_n_au_project_guide_locus.bats` | `test_project_guide_locus.bats` | (into) test_project_guide |
+| `test_n_aw_toolchain_hosting.bats` | `test_project_guide_hosting.bats` | (into) test_project_guide |
+| `test_n_aw_2_orchestration.bats` | `test_project_guide_orchestration.bats` | (into) test_project_guide |
+
+Cross-references to old filenames (comments/docstrings in `tests/` + one in `lib/pyve_toml_helper.py`) were updated to the new names. The historical `test_n_s_*_relocation.bats` reference in `test_python_plugin_command_layout.bats:16` points at long-deleted files (not renamed here) and is left for N.bd.1's test-body narrative sweep.
 
 ---
 

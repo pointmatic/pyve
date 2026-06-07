@@ -56,7 +56,7 @@ teardown() {
 # sentinel-wrapped snippet EMITTER (stdout), self-resolving from
 # `.pyve/config`. The emitter contract (self-resolution, no-write, PC-1
 # gate, dispatch routing) is owned by
-# tests/unit/test_n_ae_2_python_activate_emitter.bats. The composed
+# tests/unit/test_python_activate_emitter.bats. The composed
 # `.envrc` byte-equivalence target lives in compose_envrc (N.ae.4).
 #
 # Story N.al retired the legacy file-write path entirely — the
