@@ -1925,7 +1925,7 @@ The manifest is **valid**. Following the advice — deleting `pyve.toml` — des
 - [x] Test both branches: schema-invalid still says "invalid manifest"; interpreter-missing says the Python-resolution message. — both bats cases green; real-path repro confirmed.
 - [x] Full suite; zero regressions. — 1824 Bats unit tests pass (1822 + 2 new), 0 failures; shellcheck clean on the edited range.
 
-### Story N.bf.2: `purge` → `init` round-trip broken by validate-before-pin ordering [Planned]
+### Story N.bf.2: `purge` → `init` round-trip broken by validate-before-pin ordering [Done]
 
 **Symptom.** `pyve.toml` survives `purge` by design so that `purge` + `init` round-trips. It doesn't: post-purge `init` aborts before re-establishing the environment.
 
@@ -1935,11 +1935,11 @@ The manifest is **valid**. Following the advice — deleting `pyve.toml` — des
 
 **Tasks**
 
-- [ ] Reproduce the full `init → purge → init` round-trip; assert the second `init` fails (red).
-- [ ] Pick and implement the ordering / bootstrap fix.
-- [ ] Test: the round-trip leaves the project in the same working state as the first `init` (env materialized, `pyve.toml` unchanged).
-- [ ] Verify interaction with N.bf.1 (the interpreter-unresolvable message is no longer reachable on the round-trip once Python is re-pinned).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce the full `init → purge → init` round-trip; assert the second `init` fails (red). — Reproduced deterministically at the gate level (the full e2e round-trip is environment-blocked by the same installable-Python limitation as N.bf's matrix sweep): [test_init_pyve_toml.bats](../../tests/unit/test_init_pyve_toml.bats) "unresolvable interpreter DEFERS validation (does not abort init)" — red under the N.bf.1 abort behavior.
+- [x] Pick and implement the ordering / bootstrap fix. — **Chose option (a):** the pre-flight gate only aborts on a KNOWN-bad manifest. When the validator can't run (interpreter unresolvable), it now DEFERS (warns + returns 0) instead of aborting, so init proceeds to the wizard that re-establishes Python — rather than reordering wizard-before-validate (option c) and losing the early-abort-on-bad-manifest guarantee. [plugin.sh:845](../../lib/plugins/python/plugin.sh#L845). Caller gate ([plugin.sh:1503](../../lib/plugins/python/plugin.sh#L1503)) unchanged — it now simply proceeds on the deferral.
+- [x] Test: the round-trip leaves the project in the same working state as the first `init` (env materialized, `pyve.toml` unchanged). — Gate-level proof: deferral message explicitly states "Not deleting or modifying the manifest"; real-path repro confirms the caller proceeds (does not `exit 1`). Downstream env materialization is existing tested wizard behavior.
+- [x] Verify interaction with N.bf.1. — N.bf.2 **supersedes** N.bf.1's interpreter branch: the hard-error "cannot validate … Resolve your Python, then re-run … Do NOT delete pyve.toml" (abort) is replaced by a `warn` deferral (proceed). N.bf.1's message-correctness guarantees still hold (never says "invalid manifest"/"re-scaffold" for the interpreter case); the genuine-invalid path is unchanged.
+- [x] Full suite; zero regressions. — 1824 Bats unit tests pass, 0 failures; shellcheck clean on the edited range; no integration test depended on the old abort behavior.
 
 ### Story N.bf.3: `pyve purge` confirmation preview under-reports the actual blast radius [Planned]
 

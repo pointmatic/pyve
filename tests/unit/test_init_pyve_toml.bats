@@ -172,12 +172,14 @@ EOF
     [[ "$output" == *"purpose"* ]] || [[ "$output" == *"pyve.toml"* ]]
 }
 
-@test "_init_validate_existing_manifest: unresolvable interpreter is NOT reported as an invalid manifest" {
+@test "_init_validate_existing_manifest: unresolvable interpreter DEFERS validation (does not abort init)" {
     # A VALID manifest, but Pyve's manifest interpreter cannot run — mirrors
     # the post-purge asdf "No version is set for command python" failure where
-    # bare `python` can't execute. The manifest is fine; the validator
-    # infrastructure is missing. The user must NOT be told the manifest is
-    # invalid, and especially not advised to delete it.
+    # bare `python` can't execute. The pre-flight gate must only abort on a
+    # KNOWN-bad manifest; "cannot validate" is not "invalid", so it defers
+    # (returns 0) and lets init proceed to the wizard that re-establishes
+    # Python. This is the purge->init round-trip fix: validation that can't
+    # run must never block the very step that would make it runnable.
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"
 
@@ -189,10 +191,12 @@ purpose = "utility"
 EOF
     export PYVE_PYTHON=/nonexistent/pyve-no-such-python
     run _init_validate_existing_manifest
-    [ "$status" -ne 0 ]
+    # Defers, does not abort: caller's `if ! validate; then exit 1` proceeds.
+    [ "$status" -eq 0 ]
+    # The manifest is valid — never blame or threaten it.
     [[ "$output" != *"invalid manifest"* ]]
     [[ "$output" != *"re-scaffold"* ]]
-    # The message points at Python resolution instead.
+    # Surfaces the deferral, pointing at Python (not the manifest).
     [[ "$output" == *"Python"* ]]
 }
 
