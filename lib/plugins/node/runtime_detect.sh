@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/node/runtime_detect.sh — Node runtime resolution (Story N.v)
+# lib/plugins/node/runtime_detect.sh — Node runtime resolution
 #
 # Node's version-manager precedence per spike S10 (revised):
 #

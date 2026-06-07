@@ -183,6 +183,8 @@ Cross-references to old filenames (comments/docstrings in `tests/` + one in `lib
 
 ## §2 — Story-ref classification (production code)
 
+> **EXECUTED in N.bd (2026-06-06).** All 191 `Story N.x` / `Stories N.x` refs swept via the form taxonomy below; 6 `v3.0-only` markers + `BOUNDARY` preserved (§3); 8 Form-D stale-forwards rephrased to present tense. Diff-reviewed line-by-line (caught + fixed one newline-join mangle and one empty-`#` artifact). **Note:** ~40 *bare* `N.x` refs (no `Story` prefix — `N.av.2`, `F6/N.ba.2`, `N.ae.2 / N.y`, …) are a distinct class not enumerated here; per developer decision (2026-06-06) they get their own carefully diff-reviewed pass in **Story N.bd.2** (many are meaningful cross-refs, so it's a per-ref judgement, not a blanket strip).
+
 **203** story-ID-bearing lines across **27** files in `lib/` + `pyve.sh` (full count below). Rather than 203 individual rows, refs are classified by **form**, because the overwhelming majority are uniform and the disposition follows from the form. The few non-uniform cases (load-bearing, stale-forward) are enumerated individually. The complete `file:line` list is mechanically reproducible — see the appendix grep — so N.bd has no ambiguity at execution time.
 
 ### The "where does the context survive?" gate

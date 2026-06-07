@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/manifest.sh — v3.0 canonical manifest reader (Story N.a)
+# lib/manifest.sh — v3.0 canonical manifest reader
 #
 # Reads pyve.toml (root-level v3 declarative manifest) via the Python
 # tomllib helper lib/pyve_toml_helper.py and exposes a flat accessor
@@ -70,7 +70,7 @@ manifest_load() {
         _manifest_reset_state
         return 0
     fi
-    # Pyve toolchain python (Story N.at.2): resolve Pyve's own interpreter
+    # Pyve toolchain python: resolve Pyve's own interpreter
     # (PYVE_PYTHON → hidden toolchain venv → bare `python`), not the dev's
     # PATH `python`. Closes the Node-only mis-enumeration the N.at spike
     # found (a shim with no pinned version killed the manifest parse).
@@ -86,7 +86,7 @@ manifest_load() {
     eval "$kv"
 }
 
-# Story N.ba.3 (F6): print the project's advisory notes — spec-ahead
+# print the project's advisory notes — spec-ahead
 # attributes recorded in pyve.toml but not materialized (advisory
 # backends/languages/frameworks/packaging/app_type + require_min_version /
 # manual_steps). One note per line; empty output when there are none, when
@@ -301,7 +301,7 @@ manifest_get_purpose() {
     printf '%s' "${PYVE_ENV_PURPOSE[$i]}"
 }
 
-# Story N.d. Resolve <env_name> to one of: run | test | utility | temp.
+# Resolve <env_name> to one of: run | test | utility | temp.
 # Always returns a valid purpose; never empty, never fail-1. Resolution:
 #   1. If <env_name> is in PYVE_ENV_NAMES with a non-empty declared
 #      purpose → return the declared value.
@@ -353,7 +353,7 @@ manifest_get_app_type() {
     printf '%s' "${PYVE_ENV_APP_TYPE[$i]}"
 }
 
-# Story N.aq (S15): the env's `packaging` value (artifact kind read by
+# the env's `packaging` value (artifact kind read by
 # `pyve package`), or empty string when undeclared. Returns 1 (no output)
 # for unknown env names. The v2 read-compat synthesis path doesn't populate
 # PYVE_ENV_PACKAGING with declared values (v2 had no packaging concept), so
@@ -366,7 +366,7 @@ manifest_get_packaging() {
     fi
 }
 
-# Story N.aq (S9): read a packaging-/backend-provider-private attribute
+# read a packaging-/backend-provider-private attribute
 # declared on `[env.<name>]` (e.g. `dockerfile`). Core stores these but
 # never interprets them; this accessor exists so a provider's `package`
 # hook can read its own config. Prints empty string for an unset attr on a
@@ -426,7 +426,7 @@ manifest_get_requirements() {
     eval "$out_var=( ${PYVE_ENV_REQUIREMENTS_Q[$i]} )"
 }
 
-# Story N.p (S7): manual_steps advisory accessor. Mirrors
+# manual_steps advisory accessor. Mirrors
 # manifest_get_languages's contract — populate the caller's named
 # array. Returns 1 (no assignment) for unknown env names. Reads
 # PYVE_ENV_MANUAL_STEPS_Q only when it's been populated (the v2
@@ -444,7 +444,7 @@ manifest_get_manual_steps() {
 }
 
 # ────────────────────────────────────────────────────────────────────
-# Plugin accessors (Story N.k, folding N.k.1).
+# Plugin accessors.
 #
 # `[plugins.<name>]` blocks expose one core key (`path`, default ".")
 # plus any provider-private attributes per spike S9. The Python helper

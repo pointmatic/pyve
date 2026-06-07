@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/node/plugin.sh — Node plugin (Story N.t)
+# lib/plugins/node/plugin.sh — Node plugin
 #
 # Second reference implementation of the plugin contract from N.k,
 # and the first non-Python ecosystem. N-3 proves the contract
@@ -27,7 +27,7 @@
 #   - .gitignore + smart-purge                      → N.z
 #   - SvelteKit detection + frameworks attribute    → N.aa
 #
-# Detection contract (per Story N.t task list):
+# Detection contract (per task list):
 #   Signal: package.json present at the plugin's path (default ".").
 #   Output:
 #     - present → "node"
@@ -53,7 +53,7 @@ node_pyve_plugin_manifest_namespace() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — register_backends (Story N.u)
+# Plugin contract — register_backends
 #
 # The three Node package managers register as project-virtualized
 # backend-providers (spike S6): each materializes per-project state
@@ -172,7 +172,7 @@ node_pyve_plugin_detect() {
 }
 
 #------------------------------------------------------------
-# Framework detection (Story N.aa)
+# Framework detection
 #
 # Sibling to node_pyve_plugin_detect — kept separate so detect's
 # node/none contract (N.t) stays intact. Returns the framework signal
@@ -205,7 +205,7 @@ node_detect_framework() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — env-block validation (Story N.w, S9)
+# Plugin contract — env-block validation (S9)
 #
 # Mirrors the Python plugin's validate_env_blocks: iterates declared
 # envs, checks `purpose` ∈ {run, test, utility, temp} (defense-in-depth;
@@ -249,7 +249,7 @@ node_pyve_plugin_validate_env_blocks() {
 }
 
 #------------------------------------------------------------
-# Lifecycle workers (Story N.w)
+# Lifecycle workers
 #
 # Parameterized by <path> + <provider>; the contract hooks below resolve
 # the env's path/backend and call these. Kept separate so the install /
@@ -321,7 +321,7 @@ _node_purge_at() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — lifecycle hooks (Story N.w)
+# Plugin contract — lifecycle hooks
 #
 # Signatures take an explicit <path> [<backend>]. N-4's composed init
 # resolves these per declared env from the manifest and dispatches here;
@@ -363,7 +363,7 @@ node_pyve_plugin_update() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — runtime hooks (Story N.x)
+# Plugin contract — runtime hooks
 #
 # check / status / run / test for Node envs. Signatures take an explicit
 # <path> [<backend>] (not yet CLI-routed; N-4 threads them from the
@@ -424,7 +424,7 @@ _node_pyve_plugin_render_advisories() {
             fi
         fi
 
-        # S11 (Story N.aa): frameworks attribute — advisory surfacing only.
+        # S11: frameworks attribute — advisory surfacing only.
         local -a fws
         fws=()
         manifest_get_frameworks "$name" fws 2>/dev/null || true
@@ -533,7 +533,7 @@ node_pyve_plugin_test() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — activate (Story N.y)
+# Plugin contract — activate
 #
 # Compose → validate → emit. The Node plugin's `.envrc` contribution is
 # a single `PATH_add` for the env's node_modules/.bin so locally-installed
@@ -581,7 +581,7 @@ node_pyve_plugin_activate() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — gitignore_entries (Story N.z)
+# Plugin contract — gitignore_entries
 #
 # Returns the Node-ecosystem patterns the plugin contributes to
 # `.gitignore`. Output flows through validate_gitignore_snippet (N.m
@@ -620,7 +620,7 @@ node_pyve_plugin_gitignore_entries() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — purge_inventory (Story N.z)
+# Plugin contract — purge_inventory
 #
 # Declares the Node ecosystem's created-vs-authored split:
 #   created <path>   — package-manager / build generated; safe to remove.

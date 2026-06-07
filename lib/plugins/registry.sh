@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/registry.sh — plugin registry + dispatcher (Story N.k)
+# lib/plugins/registry.sh — plugin registry + dispatcher
 #
 # Maintains the list of active plugins for the current pyve invocation
 # and dispatches hook calls. Activation source is `[plugins.*]` blocks

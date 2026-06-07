@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/toolchain_python.sh — Pyve-owned toolchain interpreter (Story N.at.1)
+# lib/toolchain_python.sh — Pyve-owned toolchain interpreter
 #
 # Pyve is implemented partly in Python: lib/pyve_toml_helper.py (and
 # siblings) parse pyve.toml via `tomllib`. Historically every callsite
@@ -68,7 +68,7 @@ pyve_toolchain_python() {
 
 # True (0) when the resolved toolchain interpreter can `import yaml`
 # (PyYAML), which lib/pyve_env_spec_helper.py requires for `pyve env sync`
-# (Story N.az.1). PyYAML is provisioned into the toolchain venv by
+#. PyYAML is provisioned into the toolchain venv by
 # `pyve self install`. The env-spec seam uses this to emit a precise
 # "run pyve self install" error instead of a raw ImportError.
 pyve_toolchain_has_pyyaml() {
@@ -105,7 +105,7 @@ _pyve_toolchain_build() {
 # Resolve a bootstrap interpreter capable of building the toolchain venv.
 # Prints the interpreter path on success; non-zero / empty on failure.
 #
-# Order (version-tracking fidelity — Story N.at.3):
+# Order (version-tracking fidelity):
 #   1. the version manager's install for the EXACT DEFAULT_PYTHON_VERSION
 #      (so Pyve's toolchain tracks that version, per the developer's
 #      decision), installing it first if absent;

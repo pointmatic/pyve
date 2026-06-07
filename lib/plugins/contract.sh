@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/contract.sh — pyve plugin contract (Story N.k)
+# lib/plugins/contract.sh — pyve plugin contract
 #
 # Defines the no-op default implementation for every plugin hook.
 # A plugin implementing a subset of hooks does not need to provide

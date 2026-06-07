@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/status_composer.sh — composed `pyve status` builder (Story N.ah)
+# lib/status_composer.sh — composed `pyve status` builder
 #
 # The informational sibling of lib/check_composer.sh. Iterates every active
 # plugin, dispatches its `pyve_plugin_status` hook, and emits a per-plugin
@@ -69,7 +69,7 @@ compose_status() {
         # the hook's return code is intentionally ignored.
         out="$(plugin_dispatch "$name" status "$path" 2>&1)" || true
 
-        # Story N.aj: a plugin that contributes nothing (e.g. the Python
+        # a plugin that contributes nothing (e.g. the Python
         # plugin suppressed by the PC-4a gate) gets no section — no empty
         # `[plugin]` header in the composed status output.
         [[ -z "$out" ]] && continue
@@ -85,7 +85,7 @@ compose_status() {
         printf '\n'
     done < <(plugin_list_active)
 
-    # Story N.ba.3: project-level advisory addendum (spec-ahead attributes
+    # project-level advisory addendum (spec-ahead attributes
     # recorded in pyve.toml, not materialized). Informational, like the rest
     # of status; absent when there are no advisory attributes.
     local adv_out

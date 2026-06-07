@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/backend_registry.sh — backend-provider registry (Story N.l)
+# lib/plugins/backend_registry.sh — backend-provider registry
 #
 # Backends are owned by plugins; each backend declares one of three
 # categories (spike S6) with documented init/purge/activation semantics:

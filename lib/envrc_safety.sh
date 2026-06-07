@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/envrc_safety.sh — PC-1 plugin input safety (Story N.m)
+# lib/envrc_safety.sh — PC-1 plugin input safety
 #
 # Pure validators that guard the boundary between plugin-emitted text
 # and pyve's composed `.envrc` / `.gitignore` files. A malicious or
@@ -25,7 +25,7 @@
 # whole snippet, with the offending line printed to stderr.
 #
 # Scope: validators only. The activation and gitignore composers
-# integrate these (Stories N.q and N.r).
+# integrate these.
 #============================================================
 
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then

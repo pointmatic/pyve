@@ -83,7 +83,7 @@ else
     exit 1
 fi
 
-# Pyve-owned toolchain Python (Story N.at.1). After env_detect.sh
+# Pyve-owned toolchain Python. After env_detect.sh
 # because its build seam references detect_version_manager /
 # ensure_python_version_installed; before the libs that resolve the
 # interpreter at runtime (manifest, envs, env) — rewired in N.at.2.
@@ -168,7 +168,7 @@ else
     exit 1
 fi
 
-# Story N.k: plugin contract + registry. Sourced AFTER lib/manifest.sh
+# plugin contract + registry. Sourced AFTER lib/manifest.sh
 # (registry consumes manifest_list_plugins / manifest_get_plugin_path)
 # and BEFORE per-command modules (commands may dispatch plugin hooks).
 if [[ -f "$SCRIPT_DIR/lib/plugins/contract.sh" ]]; then
@@ -187,7 +187,7 @@ else
     exit 1
 fi
 
-# Story N.l: backend-provider registry. Sourced alongside the plugin
+# backend-provider registry. Sourced alongside the plugin
 # registry — plugins register their backends via bp_register on load.
 if [[ -f "$SCRIPT_DIR/lib/plugins/backend_registry.sh" ]]; then
     # shellcheck source=lib/plugins/backend_registry.sh
@@ -197,7 +197,7 @@ else
     exit 1
 fi
 
-# Story N.aq: packaging-provider registry. Parallel to the backend
+# packaging-provider registry. Parallel to the backend
 # registry but for artifact materialization (`pyve package`). v3.0
 # registers zero providers; the scaffold lets a post-v3.0 provider drop
 # in with no breaking change.
@@ -209,7 +209,7 @@ else
     exit 1
 fi
 
-# Story N.m: PC-1 plugin input safety validators. Pure functions; no
+# PC-1 plugin input safety validators. Pure functions; no
 # wiring beyond sourcing. Consumed by the activation composer (N.q)
 # and the gitignore composer (N.r).
 if [[ -f "$SCRIPT_DIR/lib/envrc_safety.sh" ]]; then
@@ -220,7 +220,7 @@ else
     exit 1
 fi
 
-# Story N.au (F1): stack-agnostic project-guide orchestration, lifted out
+# stack-agnostic project-guide orchestration, lifted out
 # of the Python plugin's init tail. After utils.sh (whose leaf helpers it
 # calls); before the plugins (whose init_project calls it).
 if [[ -f "$SCRIPT_DIR/lib/project_guide.sh" ]]; then
@@ -230,7 +230,7 @@ else
     exit 1
 fi
 
-# Story N.n: Python plugin — first reference plugin. Defines
+# Python plugin — first reference plugin. Defines
 # python_pyve_plugin_* hooks plus the venv/micromamba bp_activate
 # shims absorbed from N.l's transition state. Fired eagerly at
 # source-time so bp_register lands on every invocation regardless
@@ -244,7 +244,7 @@ else
 fi
 python_pyve_plugin_register_backends
 
-# Story N.t: Node plugin — second reference plugin (first non-Python
+# Node plugin — second reference plugin (first non-Python
 # ecosystem). Defines node_pyve_plugin_* hooks; backend-providers
 # (pnpm/npm/yarn) land in N.u. Sourced after the Python plugin for
 # consistency with the existing list (path/alphabetical order isn't
@@ -257,7 +257,7 @@ else
     printf "ERROR: Cannot find lib/plugins/node/plugin.sh\n" >&2
     exit 1
 fi
-# Story N.v: Node runtime resolution (nvm/fnm/volta/asdf/PATH per S10).
+# Node runtime resolution (nvm/fnm/volta/asdf/PATH per S10).
 # Plugin-internal detection — kept beside the Node plugin, not in the
 # Python/asdf-oriented lib/env_detect.sh. Consumed by the Node lifecycle
 # hooks (N.w) before invoking a package manager.
@@ -270,7 +270,7 @@ else
 fi
 node_pyve_plugin_register_backends
 
-# Story N.ae: composed `.envrc` builder. Depends on the plugin registry,
+# composed `.envrc` builder. Depends on the plugin registry,
 # manifest accessors, envrc_safety (PC-1), is_asdf_active, and the plugin
 # activate hooks — sourced after all of them.
 if [[ -f "$SCRIPT_DIR/lib/envrc_composer.sh" ]]; then
@@ -281,7 +281,7 @@ else
     exit 1
 fi
 
-# Story N.af: composed `.gitignore` builder. Same dependencies as the
+# composed `.gitignore` builder. Same dependencies as the
 # `.envrc` composer (registry, manifest, envrc_safety PC-1, plugin hooks).
 if [[ -f "$SCRIPT_DIR/lib/gitignore_composer.sh" ]]; then
     # shellcheck source=lib/gitignore_composer.sh
@@ -291,7 +291,7 @@ else
     exit 1
 fi
 
-# Story N.ag: composed `pyve check` builder. Depends on the plugin
+# composed `pyve check` builder. Depends on the plugin
 # registry (plugin_list_active / plugin_dispatch) and the manifest
 # (manifest_get_plugin_path for path-aware section labels).
 if [[ -f "$SCRIPT_DIR/lib/check_composer.sh" ]]; then
@@ -302,7 +302,7 @@ else
     exit 1
 fi
 
-# Story N.ah: composed `pyve status` builder. Same dependencies as the
+# composed `pyve status` builder. Same dependencies as the
 # check composer; informational (always exit 0, no severity ladder).
 if [[ -f "$SCRIPT_DIR/lib/status_composer.sh" ]]; then
     # shellcheck source=lib/status_composer.sh
@@ -312,7 +312,7 @@ else
     exit 1
 fi
 
-# Story N.ai: composed `pyve purge` builder. Aggregates each plugin's
+# composed `pyve purge` builder. Aggregates each plugin's
 # purge_inventory, enforces the authored guard, confirms, then delegates
 # removal to the per-plugin purge hooks.
 if [[ -f "$SCRIPT_DIR/lib/purge_composer.sh" ]]; then
@@ -323,7 +323,7 @@ else
     exit 1
 fi
 
-# Story N.av: composed `pyve init` orchestrator. After the plugins (it
+# composed `pyve init` orchestrator. After the plugins (it
 # dispatches their init hooks) and the other composers (sibling surface).
 if [[ -f "$SCRIPT_DIR/lib/init_composer.sh" ]]; then
     source "$SCRIPT_DIR/lib/init_composer.sh"
@@ -344,7 +344,7 @@ else
     exit 1
 fi
 
-# Story N.ar: `pyve package` — artifact-materialization verb. Reserved in
+# `pyve package` — artifact-materialization verb. Reserved in
 # v3.0 (no provider materializes); consults the N.aq packaging registry.
 if [[ -f "$SCRIPT_DIR/lib/commands/package.sh" ]]; then
     # shellcheck source=lib/commands/package.sh
@@ -549,7 +549,7 @@ legacy_flag_error() {
 }
 
 #------------------------------------------------------------
-# Category A delegation primitive (Story N.c, v3.0).
+# Category A delegation primitive (v3.0).
 #
 #   deprecation_warn <old_form> <new_form>
 #
@@ -610,7 +610,7 @@ unknown_flag_error() {
 
 
 #------------------------------------------------------------
-# Story N.h — soft migration banner for v2-configured projects.
+# soft migration banner for v2-configured projects.
 #
 # Pre-dispatch hook that nudges users on v2.7/v2.8 projects toward
 # `pyve self migrate` without blocking the command. Suppressed
@@ -695,7 +695,7 @@ main() {
         printf 'VERBOSE:%s\n' "${PYVE_VERBOSE:-0}"
     fi
 
-    # Story N.n: load the v3 manifest and register plugins. Run early
+    # load the v3 manifest and register plugins. Run early
     # so plugin_dispatch is usable in every subcommand path. Errors
     # are silenced here so a malformed pyve.toml does not break
     # informational commands like --version / --help; commands that
@@ -711,7 +711,7 @@ main() {
         exit 1
     fi
 
-    # Story N.h: soft v2-migration banner. Fires before dispatch on
+    # soft v2-migration banner. Fires before dispatch on
     # subcommands that operate on the current project; skipped on
     # informational verbs (`--help` / `--version` / `--config`) and
     # the `self` namespace (self-install / self-uninstall / self-
@@ -775,7 +775,7 @@ main() {
             ;;
 
         # New subcommand surface (v1.11.0+)
-        # Story N.o: public-boundary plugin dispatch. The hooks
+        # public-boundary plugin dispatch. The hooks
         # forward to init_project / purge_project / update_project
         # in lib/commands/*.sh; env-block validation (S9) and the
         # languages advisory read (S11) run inside the init hook.
@@ -789,7 +789,7 @@ main() {
                 printf 'DISPATCH:init %s\n' "$*"
                 exit 0
             fi
-            # Story N.av: composed cross-stack init. N.av.1 delegates to the
+            # composed cross-stack init. N.av.1 delegates to the
             # Python init hook unchanged; later sub-stories compose per-plugin.
             compose_init "$@"
             ;;
@@ -803,7 +803,7 @@ main() {
                 printf 'DISPATCH:purge %s\n' "$*"
                 exit 0
             fi
-            # Story N.ai: composed purge across every active plugin
+            # composed purge across every active plugin
             # (inventory + authored guard + confirmation; delegated removal).
             compose_purge "$@"
             exit $?
@@ -842,7 +842,7 @@ main() {
             ;;
 
         # Unchanged subcommands (already subcommand-form pre-v1.11.0)
-        # Story N.p: public-boundary plugin dispatch for runtime hooks.
+        # public-boundary plugin dispatch for runtime hooks.
         run)
             shift
             plugin_dispatch python run "$@"
@@ -856,7 +856,7 @@ main() {
             env_command "$@"
             ;;
         testenv)
-            # Story N.c: Category A delegation. `pyve testenv` is the
+            # Category A delegation. `pyve testenv` is the
             # legacy spelling of `pyve env`; re-dispatch with a one-shot
             # deprecation warning. Removal scheduled for v4.0.
             shift
@@ -876,7 +876,7 @@ main() {
             lock_environment "$@"
             ;;
         package)
-            # Story N.ar: artifact-materialization verb. Reserved in v3.0 —
+            # artifact-materialization verb. Reserved in v3.0 —
             # consults the packaging registry and emits a clean advisory
             # when no provider is registered (always, in v3.0).
             shift
@@ -896,7 +896,7 @@ main() {
                 printf 'DISPATCH:check %s\n' "$*"
                 exit 0
             fi
-            # Story N.ag: composed check across every active plugin with
+            # composed check across every active plugin with
             # worst-severity exit roll-up (error → 2, warn → 0, pass → 0).
             compose_check "$@"
             exit $?
@@ -911,7 +911,7 @@ main() {
                 printf 'DISPATCH:status %s\n' "$*"
                 exit 0
             fi
-            # Story N.ah: composed status across every active plugin
+            # composed status across every active plugin
             # (informational; always exit 0).
             compose_status "$@"
             exit $?

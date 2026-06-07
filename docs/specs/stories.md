@@ -1792,17 +1792,21 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**. (Integration `.py` edits were docstring-only.)
 - [x] If any test breaks from a missed `load` / `source` / grep: fix at the same story granularity. (None broke.)
 
-### Story N.bd: Sweep narrative story-refs from production code per the audit [Planned]
+### Story N.bd: Sweep narrative story-refs from production code per the audit [Done]
 
 **Motivation.** Remove the `# Story N.x` narrative references in production code per N.bb's §2 classification. Production code should be self-documenting on its current behavior; story IDs only earn their keep when they protect a contract (per §3).
 
+**Execution note.** Swept all **191** `Story N.x` / `Stories N.x` refs across 28 files (`lib/` + `pyve.sh`) via the audit §2 form taxonomy: Form A/B (strip the ID, keep the self-contained prose), Form C (remove), Form D (rephrase the 8 stale forward-refs to present tense — verified the `[tool.pyve.testenvs]` purpose shim is *still* pending via active `N.i-pending` skips, so "not yet implemented" is accurate). The 6 load-bearing `v3.0-only: remove in N-10` markers and the `BOUNDARY` marker survive (§3). **Method caveat honored:** comments don't execute, so the suite can't catch prose mangling — every changed line was diff-reviewed; this caught one newline-join mangle (`pyve_env_sync_helper.py`) and one empty-`#` artifact, both fixed. Three story-refs that had leaked into *user-facing* strings (an `info` purge line, a `self` help heredoc, a Python docstring) were cleaned too — strictly improvements, no test pinned them.
+
+**Out of scope (surfaced for developer decision).** ~40 **bare** `N.x` refs remain (no `Story` prefix — e.g. `N.av.2`, `F6/N.ba.2`, `N.ae.2 / N.y`). These are a distinct class the audit §2 didn't enumerate, and many function as meaningful cross-references; deciding their fate is a separate scope call (fold-in / new story / leave).
+
 **Tasks**
 
-- [ ] For each entry classified **narrative** in N.bb's §2: remove the ref. Where the ref carried essential context not derivable from the code, relocate that context into a self-contained code comment (no story ID — explain the *why* directly).
-- [ ] For each entry classified **load-bearing** in N.bb's §2: leave in place. If the ref needs *relocation* (e.g., moving a marker to a different file), ensure the contract from §3 survives — re-test the assertion that depends on grep-visibility / marker presence.
-- [ ] Cross-check after the sweep: every load-bearing item from N.bb's §3 is still grep-visible (use `git grep` with each marker pattern; assert nonzero hits).
-- [ ] Run the full test suite (`make test`); zero regressions expected. Failures here typically indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
-- [ ] No production behavior change expected (this is pure comment hygiene); the suite passing is the proof.
+- [x] For each entry classified **narrative** in N.bb's §2: remove the ref / strip the ID, relocating context into self-contained prose where needed. (191 refs swept.)
+- [x] For each entry classified **load-bearing** in N.bb's §2: leave in place. (6× `v3.0-only`, `BOUNDARY` — untouched.)
+- [x] Cross-check after the sweep: every load-bearing item from N.bb's §3 is still grep-visible. (`git grep`: 6 `v3.0-only` markers, 1 `BOUNDARY` — confirmed.)
+- [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**.
+- [x] No production behavior change (comment hygiene + 3 user-facing string decorations removed); the suite passing + comment-only diff review is the proof.
 
 ### Story N.bd.1: Sweep narrative story-refs from test bodies per the audit [Planned]
 
@@ -1817,6 +1821,20 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [ ] Cross-check after the sweep: LB-1's grep enforcer is still present and green (the read-compat marker assertion must still fire).
 - [ ] Run the full test suite (`make test`); zero regressions expected. Failures indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
 - [ ] No behavior change expected (comment hygiene only); the suite passing is the proof.
+
+### Story N.bd.2: Sweep bare `N.x` cross-refs from production code [Planned]
+
+**Motivation.** N.bd swept the conspicuous `# Story N.x` tags; ~40 **bare** `N.x` refs remain in `lib/` + `pyve.sh` (no `Story` prefix — e.g. `N.av.2`, `F6/N.ba.2`, `N.ae.2 / N.y`, `see the N.aw note`). These are a distinct class the audit §2 didn't enumerate. Unlike the decorative `Story N.x` tags, many function as **meaningful cross-references** (e.g. `F6` is a real feature label; `N.ae.2 / N.y` points at the activate-emitter contract), so this sweep is a per-ref judgement, not a blanket strip — hence its own carefully diff-reviewed story rather than folding into N.bd.
+
+**Method caveat (same as N.bd).** Comments don't execute, so the suite cannot catch prose mangling — every changed line must be diff-reviewed. Bare refs are mostly mid-sentence (higher per-edit mangle risk than the leading/trailing `Story N.x` forms).
+
+**Tasks**
+
+- [ ] Enumerate the bare `N.x` refs in `lib/` + `pyve.sh` (`grep -rnE '\bN\.[a-z]{1,2}(\.[0-9]+)?\b'`, excluding `N-1`/`N-6`/`N-10`/`v3.0-only` and the `F<n>` feature labels until classified).
+- [ ] Classify each: **pure decoration** (remove / relocate to self-contained prose) vs **meaningful cross-ref** (rewrite to name the thing directly — e.g. "the activate-emitter contract" instead of `N.ae.2 / N.y`) vs **load-bearing feature label** (keep the `F<n>`, drop the trailing `/N.x`).
+- [ ] Apply per the classification; diff-review every changed line (comments don't execute — this is the only net for prose quality).
+- [ ] Confirm the 6 `v3.0-only` markers + `BOUNDARY` (and any `F<n>` labels kept) survive.
+- [ ] Run the full test suite; zero regressions expected.
 
 ### Story N.be: Survey + clean other temporary scaffolding [Planned]
 

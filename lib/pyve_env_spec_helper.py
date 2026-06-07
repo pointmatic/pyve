@@ -5,14 +5,14 @@
 # `plan_envs`-authored machine surface) and project each environment to the
 # pyve.toml-projectable shape, emitting JSON on stdout for the Bash side.
 #
-# Story N.az.1 (F4 foundation). Per wizard-env-contract.md §B: §4.0
+# F4 foundation. Per wizard-env-contract.md §B: §4.0
 # "Environment Surface Enumeration" is a single machine-readable YAML block
 # (the only machine surface — §4.1's table and §5–§9 prose are human-only).
 #
 # This helper runs under Pyve's TOOLCHAIN interpreter (resolved by the Bash
 # seam via pyve_toolchain_python), which carries PyYAML (provisioned by
 # `pyve self install`). It is PERMISSIVE — it does not closed-set-validate
-# values; that is F6 (Story N.ba). Missing optional fields are default-filled
+# values; that is F6. Missing optional fields are default-filled
 # so the projected shape is uniform.
 #
 # Usage:  python pyve_env_spec_helper.py <env-dependencies-doc-path>

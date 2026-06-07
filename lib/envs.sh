@@ -63,7 +63,7 @@ read_env_config() {
         PYVE_TESTENV_REQUIREMENTS_Q=("")
         return 0
     fi
-    # Pyve toolchain python (Story N.at.2) — see lib/manifest.sh's note
+    # Pyve toolchain python — see lib/manifest.sh's note
     # (incl. the self-sufficient fallback + the `local` split rationale).
     local py
     py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
@@ -206,7 +206,7 @@ _env_resolve_backend() {
     fi
 }
 
-# Story N.ba.3 (F6): is <backend> a known-advisory backend? Routes through
+# is <backend> a known-advisory backend? Routes through
 # the Python classifier (the single source of the closed vocabulary) so the
 # advisory set is never duplicated — and thus never drifts — on the shell
 # side. Returns 0 when advisory, 1 otherwise (implemented, unknown, empty, or
@@ -353,13 +353,13 @@ state_touch_last_used() {
 #
 #   v2.7  →  .pyve/testenv/venv/                (singular, TESTENV_DIR_NAME)
 #   v2.8  →  .pyve/testenvs/<name>/{venv,conda}/  (plural, name-keyed)
-#   v3.0  →  .pyve/envs/<name>/{venv,conda}/      (Story N.f, env vocabulary)
+#   v3.0  →  .pyve/envs/<name>/{venv,conda}/      (env vocabulary)
 #
 # `migrate_legacy_env_layout` is the opportunistic mover for both
 # boundaries. It runs as a side effect of `resolve_env_path` and as a
 # pre-step in `pyve update`, so users on v2.7/v2.8 layouts pick up the
 # move without explicit action. The deterministic, fully backed-up
-# variant lives in `pyve self migrate` (Story N.g).
+# variant lives in `pyve self migrate`.
 #
 # Four-case shape preserved across both boundaries:
 #   1. legacy only        → mv + write initial .state + info log
@@ -463,7 +463,7 @@ _migrate_legacy_env_v28_to_v3() {
 # the caller's responsibility. Path shape (N.f):
 #   root      → .venv          (the project main venv; micromamba main-env
 #                                relocation to .pyve/envs/root/conda/
-#                                is owned by `pyve self migrate`, Story N.g)
+#                                is owned by `pyve self migrate`)
 #   <name>    → .pyve/envs/<name>/{venv|conda}/  (per declared backend)
 resolve_env_path() {
     local name="$1"

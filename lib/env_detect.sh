@@ -307,7 +307,7 @@ check_direnv_installed() {
 }
 
 #============================================================
-# Python pre-flight check (Story N.d.1)
+# Python pre-flight check
 #============================================================
 
 # Detect the recurring "asdf/pyenv shim with no resolvable version"
@@ -328,7 +328,7 @@ check_direnv_installed() {
 # first; it probes `python` directly. Callers can invoke it pre-flight
 # without ordering concerns.
 assert_python_resolvable() {
-    # BOUNDARY (Story N.at.2): this guards the *project* python — the
+    # BOUNDARY: this guards the *project* python — the
     # developer's interpreter for `pyve run python`, version-manager
     # activation, the project venv. It is deliberately NOT routed through
     # pyve_toolchain_python (that resolves Pyve's *own* toolchain

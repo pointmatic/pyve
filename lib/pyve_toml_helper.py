@@ -40,7 +40,7 @@ SCHEMA_VERSION = "3.0"
 VALID_PURPOSES = ("run", "test", "utility", "temp")
 
 #============================================================
-# F6 (Story N.ba.1): the Pyve-owned closed vocabulary.
+# F6: the Pyve-owned closed vocabulary.
 #
 # Machine mirror of the enumeration published in
 # docs/specs/project-guide-requests/env-dependencies-template.md §2 and
@@ -376,7 +376,7 @@ def emit(cfg, out):
         ("PYVE_ENV_EXTRA", "extra"),
         ("PYVE_ENV_MANIFEST", "manifest"),
         ("PYVE_ENV_APP_TYPE", "app_type"),
-        # Story N.aq (S15): packaging artifact kind, read by `pyve package`.
+        # packaging artifact kind, read by `pyve package`.
         ("PYVE_ENV_PACKAGING", "packaging"),
     ]
     for var, key in scalar_fields:
@@ -386,13 +386,13 @@ def emit(cfg, out):
         ("PYVE_ENV_REQUIREMENTS_Q", "requirements"),
         ("PYVE_ENV_FRAMEWORKS_Q", "frameworks"),
         ("PYVE_ENV_LANGUAGES_Q", "languages"),
-        # S7 (Story N.p): manual_steps advisory list.
+        # S7: manual_steps advisory list.
         ("PYVE_ENV_MANUAL_STEPS_Q", "manual_steps"),
     ]
     for var, key in list_fields:
         vals_q = [_quote_array(cfg["envs"][n][key]) for n in names]
         print(f"{var}=({_quote_array(vals_q)})", file=out)
-    # Story N.aq (S9): per-env packaging-/backend-provider-private attrs.
+    # per-env packaging-/backend-provider-private attrs.
     # Same per-index-array shape as the plugin attrs below: each attr is a
     # single "key=value" entry so manifest_get_env_attr can iterate without
     # bash-4 associative arrays. Core stores these but never interprets them.
@@ -400,14 +400,14 @@ def emit(cfg, out):
         attrs = cfg["envs"][name].get("attrs", {})
         pairs = [f"{k}={v}" for k, v in attrs.items()]
         print(f"PYVE_ENV_{idx}_ATTRS=({_quote_array(pairs)})", file=out)
-    # Story N.ba.3 (S16): per-env advisory require_min_version map, emitted
+    # per-env advisory require_min_version map, emitted
     # as a per-index "tool=ver" array (same encoding as the attrs above).
     # Advisory-only — surfaced, never materialized.
     for idx, name in enumerate(names):
         rmv = cfg["envs"][name].get("require_min_version", {})
         pairs = [f"{k}={v}" for k, v in rmv.items()]
         print(f"PYVE_ENV_{idx}_REQUIRE_MIN_VERSION=({_quote_array(pairs)})", file=out)
-    # Plugins (Story N.k): per-plugin attrs are exposed as per-index
+    # Plugins: per-plugin attrs are exposed as per-index
     # arrays so manifest_get_plugin_attr can iterate without resorting
     # to bash-4 associative arrays.
     plugin_names = list(cfg.get("plugins", {}).keys())
@@ -423,7 +423,7 @@ def emit(cfg, out):
 
 
 def _advisory_notes(cfg):
-    """Per-attribute advisory notes for spec-ahead envs (Story N.ba.3).
+    """Per-attribute advisory notes for spec-ahead envs.
 
     One line per advisory-class attribute across every env, in env-declaration
     order. The trichotomy's "known + no-op" surface: recorded in pyve.toml,
@@ -481,7 +481,7 @@ def _advisory_notes(cfg):
 
 def main():
     args = sys.argv[1:]
-    # `advisories <manifest>` — emit advisory notes (Story N.ba.3). No
+    # `advisories <manifest>` — emit advisory notes. No
     # validation: surfacing assumes an already-valid manifest, and a
     # spec-ahead project is a legitimate steady state.
     if args and args[0] == "advisories":

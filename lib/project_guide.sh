@@ -3,7 +3,6 @@
 # shellcheck shell=bash
 #============================================================
 # lib/project_guide.sh — stack-agnostic project-guide orchestration
-# (Story N.au — F1)
 #
 # Lifted out of the Python plugin's `init_project` tail (where it was
 # `_init_run_project_guide_hooks`) so the project-guide install decision
@@ -45,7 +44,7 @@ fi
 #   pg_mode:   "" | "yes" | "no"  (from --project-guide / --no-project-guide)
 #   comp_mode: "" | "yes" | "no"  (from --project-guide-completion / etc.)
 run_project_guide_orchestration() {
-    # Story N.aw: project-guide is globally hosted, so backend/env_path
+    # project-guide is globally hosted, so backend/env_path
     # ($1, $2) are no longer used here (kept in the signature for the two
     # callers — init_project + compose_init); pg_mode/comp_mode drive the
     # install + completion decisions.
@@ -106,7 +105,7 @@ run_project_guide_orchestration() {
     fi
 
     #--- Step 1: ensure project-guide is globally available --------------
-    # Story N.aw: project-guide is a Pyve-managed GLOBAL tool (pyve self
+    # project-guide is a Pyve-managed GLOBAL tool (pyve self
     # install → toolchain venv + ~/.local/bin shim), not a per-project pip
     # install. Nothing to install here — we only need it resolvable on PATH
     # to scaffold. If it isn't, point the user at `pyve self install` and
@@ -178,8 +177,8 @@ run_project_guide_orchestration() {
 }
 
 # Discover the env-dependencies spec path (the `plan_envs`-authored doc
-# whose §4 `pyve env sync` ingests, Story N.az) via the `.project-guide.yml`
-# tool-state pointer (Story N.ay — F5, per wizard-env-contract.md §D/§E).
+# whose §4 `pyve env sync` ingests) via the `.project-guide.yml`
+# tool-state pointer (per wizard-env-contract.md §D/§E).
 #
 # Resolution:
 #   1. the `env_spec_path:` key in `.project-guide.yml` — a plain

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/init_composer.sh — composed `pyve init` orchestrator (Story N.av)
+# lib/init_composer.sh — composed `pyve init` orchestrator
 #
 # The stack-agnostic entry point `pyve init` dispatches to, sibling of
 # the composer family (lib/check_composer.sh / lib/purge_composer.sh /
@@ -18,7 +18,7 @@
 # .gitignore → next-steps. So a Node-only project materializes
 # node_modules (no unwanted .venv) and polyglot materializes both.
 #
-# Story N.av.1 (this step) is a PURE SEAM: `compose_init` delegates to
+# This step is a PURE SEAM: `compose_init` delegates to
 # today's monolithic Python init hook with zero behavior change. The
 # untangling (materializer extraction + tail lift) lands in N.av.2; the
 # Node-only / polyglot paths in N.av.3 / N.av.4.
@@ -49,14 +49,14 @@ compose_init() {
     # never trigger a spurious tail (matters for tests / library callers).
     PYVE_INIT_TAIL_BACKEND=""
     if _compose_init_is_node_only; then
-        # Story N.av.3: a fresh Node-only project materializes node_modules
+        # a fresh Node-only project materializes node_modules
         # and gets NO Python app env.
         _compose_init_node_only "$@" || return $?
     else
         # Python / polyglot: the monolithic Python materializer builds the
         # Python app env AND scaffolds the manifest (plain or polyglot).
         plugin_dispatch python init "$@" || return $?
-        # Story N.av.4: now materialize any OTHER declared plugins (e.g.
+        # now materialize any OTHER declared plugins (e.g.
         # node at its sub-path) from the freshly-scaffolded manifest.
         _compose_init_materialize_secondary_plugins
     fi
@@ -184,7 +184,7 @@ _compose_init_run_tail() {
     fi
     compose_project_gitignore ".gitignore" && success "Updated .gitignore"
 
-    # project-guide orchestration (lifted in N.au). Story N.aw: project-guide
+    # project-guide orchestration (lifted to lib/project_guide.sh). project-guide
     # is globally hosted (pyve self install → toolchain venv + shim), so it
     # works on a non-Python stack too — run it on every backend, then emit
     # stack-aware next-steps.

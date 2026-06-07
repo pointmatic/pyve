@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# pyve package — materialize an environment's packaging artifact (Story N.ar)
+# pyve package — materialize an environment's packaging artifact
 #
 # `pyve package [--env <name>]` builds the packaging artifact declared for
 # an environment via its `packaging` attribute in pyve.toml (S15), by

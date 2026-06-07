@@ -65,7 +65,7 @@ prompt_yes_no() {
         printf "%s [y/n]: " "$prompt"
         # EOF (closed/empty stdin — e.g. a non-interactive caller) returns
         # non-zero from `read`. Treat it as a decline rather than looping
-        # forever on the "invalid answer" arm (Story N.ae.6). Matches the
+        # forever on the "invalid answer" arm. Matches the
         # default-negative semantics of ask_yn in lib/ui/core.sh.
         if ! read -r response; then
             return 1
@@ -593,7 +593,7 @@ install_project_guide() {
 # `--upgrade project-guide` install path keeps fresh installs current.
 # Failure is non-fatal by design.
 #
-# Story N.aw: project-guide is globally hosted (pyve self install →
+# project-guide is globally hosted (pyve self install →
 # toolchain venv + ~/.local/bin shim), so scaffolding runs the global
 # `project-guide` on PATH — not a per-project install. The (backend,
 # env_path) args are accepted for call-site compatibility but unused; the
@@ -1329,7 +1329,7 @@ ensure_env_exists() {
     # the project Python was changed after the initial pyve init, then pyve init
     # --force preserved the old testenv via --keep-testenv), rebuild it.
     if [[ -d "$testenv_env_path" ]] && [[ -f "$testenv_env_path/pyvenv.cfg" ]]; then
-        # Story N.d.1: pre-flight before invoking `python -c` for the
+        # pre-flight before invoking `python -c` for the
         # drift check. Previously this silently no-op'd when python
         # errored — `current_ver` came back empty, the comparison
         # short-circuited, and the stale testenv stayed in place with
@@ -1349,7 +1349,7 @@ ensure_env_exists() {
 
     if [[ ! -d "$testenv_env_path" ]]; then
         info "Creating dev/test runner environment in '$testenv_env_path'..."
-        # Story N.d.1: pre-flight check for the asdf/pyenv shim trap.
+        # pre-flight check for the asdf/pyenv shim trap.
         # The next call invokes `python` directly. In a non-activated
         # shell with no resolvable version pin, the shim errors with
         # asdf's confusing "No version is set for command python" — a

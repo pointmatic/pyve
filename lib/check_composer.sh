@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/check_composer.sh — composed `pyve check` builder (Story N.ag)
+# lib/check_composer.sh — composed `pyve check` builder
 #
 # The `pyve check` sibling of lib/envrc_composer.sh / lib/gitignore_composer.sh.
 # Iterates every active plugin, dispatches its `pyve_plugin_check` hook,
@@ -22,7 +22,7 @@
 # (0 pass / 1 error / 2 warn) and the Node plugin's 0/1 (pass / error)
 # convention — the composer interprets them without rewriting either hook.
 #
-# Process exit semantics (the composed roll-up — Story N.ag):
+# Process exit semantics (the composed roll-up):
 #   error present → exit 2 (nonzero; CI fails the build)
 #   warn-only     → exit 0 (advisory text, non-failing)
 #   all pass      → exit 0 (clean)
@@ -67,7 +67,7 @@ _compose_check_sev_label() {
     esac
 }
 
-# Story N.az.2 (F4): project-level env-spec drift check.
+# project-level env-spec drift check.
 #
 # Drift = pyve.toml lags the project-guide env-dependencies §4.0 surface.
 # A spec-ahead project is a LEGITIMATE steady state, so drift is surfaced at
@@ -155,7 +155,7 @@ compose_check() {
         rc=0
         out="$(plugin_dispatch "$name" check "$path" 2>&1)" || rc=$?
 
-        # Story N.aj: a plugin that contributes nothing (e.g. the Python
+        # a plugin that contributes nothing (e.g. the Python
         # plugin suppressed by the PC-4a gate) gets no section at all — the
         # composed output stays free of empty `[plugin]` headers.
         if [[ -z "$out" ]]; then
@@ -180,7 +180,7 @@ compose_check() {
         printf '\n'
     done < <(plugin_list_active)
 
-    # Story N.az.2: project-level env-spec drift addendum (not a plugin, so
+    # project-level env-spec drift addendum (not a plugin, so
     # it is not counted in the plugin tally). Warn-only by contract.
     local drift_out drift_rc=0
     drift_out="$(_compose_check_env_spec_drift)" || drift_rc=$?
@@ -192,7 +192,7 @@ compose_check() {
         printf '\n'
     fi
 
-    # Story N.ba.3: project-level advisory addendum (spec-ahead attributes
+    # project-level advisory addendum (spec-ahead attributes
     # recorded in pyve.toml, not materialized). Purely informational — never
     # affects severity; absent when there are no advisory attributes.
     local adv_out

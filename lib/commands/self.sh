@@ -122,13 +122,13 @@ self_install() {
     # Create local .env template
     _self_install_local_env_template
 
-    # Provision Pyve's own toolchain Python (Story N.at.3) — best-effort.
+    # Provision Pyve's own toolchain Python — best-effort.
     _self_install_toolchain_python
 
-    # Install Pyve's toolchain Python deps (PyYAML, Story N.az.1) — best-effort.
+    # Install Pyve's toolchain Python deps (PyYAML) — best-effort.
     _self_install_toolchain_deps
 
-    # Host project-guide as a Pyve-managed global tool (Story N.aw) —
+    # Host project-guide as a Pyve-managed global tool —
     # best-effort; installs into the toolchain venv + shims onto PATH.
     _self_install_project_guide
 
@@ -281,7 +281,7 @@ _self_install_local_env_template() {
 
 #------------------------------------------------------------
 # Private helper: provision (and version-track) Pyve's own toolchain
-# Python during `self install` (Story N.at.3).
+# Python during `self install`.
 #
 # Best-effort by contract: a build failure WARNS but never aborts the
 # install — the resolver (pyve_toolchain_python) falls back to PATH
@@ -308,7 +308,7 @@ _self_install_toolchain_python() {
 #------------------------------------------------------------
 # Private helper: remove toolchain version dirs other than the current
 # DEFAULT_PYTHON_VERSION. The version-keyed layout means a default bump
-# lands a fresh dir; the old one is dead weight (Story N.at.3).
+# lands a fresh dir; the old one is dead weight.
 #------------------------------------------------------------
 
 _self_prune_stale_toolchain_versions() {
@@ -330,7 +330,7 @@ _self_prune_stale_toolchain_versions() {
 
 #------------------------------------------------------------
 # Private helper: host project-guide as a Pyve-managed global tool
-# (Story N.aw — F2 revised). project-guide is a version-agnostic any-stack
+#. project-guide is a version-agnostic any-stack
 # utility, so Pyve installs ONE copy into its toolchain venv (next to the
 # toolchain Python) and shims the console script onto ~/.local/bin — which
 # `self install` already creates and puts on PATH — so `project-guide`
@@ -344,7 +344,7 @@ _self_prune_stale_toolchain_versions() {
 #------------------------------------------------------------
 
 # Install Pyve's toolchain Python dependencies into the toolchain venv
-# (Story N.az.1 + N.az.2). PyYAML (lib/pyve_env_spec_helper.py — reads §4.0
+#. PyYAML (lib/pyve_env_spec_helper.py — reads §4.0
 # of the env-dependencies doc) and tomlkit (lib/pyve_env_sync_helper.py —
 # the round-trip-preserving `pyve.toml` writer for `pyve env sync`).
 # Best-effort (mirrors _self_install_toolchain_python): a missing venv or
@@ -473,11 +473,11 @@ self_uninstall() {
     # (Story G.c / FR-G2)
     _self_uninstall_project_guide_completion
 
-    # Remove the project-guide global shim (Story N.aw). The hosted
+    # Remove the project-guide global shim. The hosted
     # package itself goes with the toolchain-tree removal below.
     _self_uninstall_project_guide
 
-    # Remove Pyve's own toolchain Python tree (Story N.at.3).
+    # Remove Pyve's own toolchain Python tree.
     _self_uninstall_toolchain_python
 
     printf "\n✓ pyve uninstalled.\n"
@@ -485,7 +485,7 @@ self_uninstall() {
 
 #------------------------------------------------------------
 # Private helper: remove the entire Pyve-owned toolchain Python tree on
-# `self uninstall` (Story N.at.3). Safe no-op when absent.
+# `self uninstall`. Safe no-op when absent.
 #------------------------------------------------------------
 
 _self_uninstall_toolchain_python() {
@@ -586,14 +586,14 @@ _self_uninstall_prompt_hook() {
 #------------------------------------------------------------
 
 # ============================================================
-# Story N.g — `pyve self migrate` (v2 → v3 migration command)
+# `pyve self migrate` (v2 → v3 migration command)
 # ============================================================
 #
 # Deterministic, idempotent path that brings a v2.7/v2.8 project to
 # v3 in one invocation: writes `pyve.toml` from legacy artifacts,
 # backs them up under `.pyve/.v2-legacy/`, optionally invokes
 # `pyve init --force` to rebuild envs at the v3 state layout
-# (Story N.f).
+#.
 #
 # Flags:
 #   --dry-run     Print the migration plan; perform no writes.
@@ -1062,7 +1062,7 @@ Description:
     3. Moves legacy sources to .pyve/.v2-legacy/ (preserved for one
        release cycle so you can roll back manually if needed).
     4. Invokes 'pyve init --force' to rebuild envs at the v3 state
-       layout (.pyve/envs/<name>/<backend>/, decided in Story N.f).
+       layout (.pyve/envs/<name>/<backend>/).
     5. Prints a summary.
 
   Re-running on a fully-migrated project (pyve.toml present, no v2

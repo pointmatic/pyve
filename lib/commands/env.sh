@@ -31,12 +31,12 @@ fi
 # _PYVE_MANIFEST_HELPER in lib/manifest.sh.
 _PYVE_ENV_SPEC_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pyve_env_spec_helper.py"
 
-# Story N.az.2: the `pyve env sync` engine (diff + tomlkit apply). Same
+# the `pyve env sync` engine (diff + tomlkit apply). Same
 # directory-relative resolution as the spec helper above.
 _PYVE_ENV_SYNC_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/pyve_env_sync_helper.py"
 
 #------------------------------------------------------------
-# Story N.az.1: read §4.0 of the env-dependencies doc via the Pyve
+# read §4.0 of the env-dependencies doc via the Pyve
 # toolchain interpreter and print the projected JSON on stdout. The seam
 # `pyve env sync` (N.az.2) builds on.
 #
@@ -176,7 +176,7 @@ _env_install_venv() {
 _env_resolve_extra_packages() {
     local extra_name="$1"
     local out_var="$2"
-    # Pyve toolchain python (Story N.at.2) — see lib/manifest.sh's note
+    # Pyve toolchain python — see lib/manifest.sh's note
     # (incl. the self-sufficient fallback + the `local` split rationale).
     local py
     py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
@@ -505,7 +505,7 @@ env_run() {
 }
 
 #------------------------------------------------------------
-# Story N.az.2 (F4): pyve env sync
+# pyve env sync
 #
 # Discover the project-guide env-dependencies spec (§4.0, via N.ay's
 # project_guide_env_spec_path), diff it against the current pyve.toml (the
@@ -733,7 +733,7 @@ _env_release_install_lock() {
 # auto-detect/bare-pytest).
 _env_install_with_lock() {
     local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
-    # Story N.ba.3 (F6): a declared env whose backend is known-advisory is
+    # a declared env whose backend is known-advisory is
     # recorded but never materialized — skip with the §B no-op advisory
     # (before acquiring the install lock; there is nothing to serialize).
     local _adv_backend
@@ -950,7 +950,7 @@ env_command() {
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
     local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
-    local -a sync_args=()          # Story N.az.2: sync flags forwarded to env_sync
+    local -a sync_args=()          # sync flags forwarded to env_sync
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1086,7 +1086,7 @@ env_command() {
             sync)
                 action="sync"
                 shift
-                # Story N.az.2: collect sync flags. Unknown flags break back
+                # collect sync flags. Unknown flags break back
                 # to the outer loop for the canonical unknown_flag_error.
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
@@ -1189,7 +1189,7 @@ EOF
         read_env_config
     fi
 
-    # Story N.az.2: `sync` operates on pyve.toml + the env spec directly —
+    # `sync` operates on pyve.toml + the env spec directly —
     # no per-env name/path resolution. Handle it before the path-resolution
     # block below (mirrors `run`'s early dispatch).
     if [[ "$action" == "sync" ]]; then

@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/packaging_registry.sh — packaging-provider registry (Story N.aq)
+# lib/plugins/packaging_registry.sh — packaging-provider registry
 #
 # Parallel to lib/plugins/backend_registry.sh, but for the artifact-
-# materialization side: `pyve package` (Story N.ar) dispatches to a
+# materialization side: `pyve package` dispatches to a
 # packaging provider keyed by an env's `packaging` value (e.g. "docker",
 # "lock_bundle", "binary"). A provider materializes the env's declared
 # packaging artifact via its `package` hook.

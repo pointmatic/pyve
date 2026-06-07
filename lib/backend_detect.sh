@@ -31,7 +31,7 @@ fi
 # Detect backend from project files
 # Returns: "venv", "micromamba", "ambiguous", or "none"
 #
-# Story N.n: thin delegator over the Python plugin's detect hook.
+# thin delegator over the Python plugin's detect hook.
 # The plugin owns the file-signal probes (broader signal set:
 # `pyproject.toml | requirements*.txt | setup.py | *.py` for Python;
 # `environment*.yml | conda-lock.yml` for conda). This wrapper is

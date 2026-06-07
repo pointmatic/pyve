@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/envrc_composer.sh — composed `.envrc` builder (Story N.ae)
+# lib/envrc_composer.sh — composed `.envrc` builder
 #
 # Stands up the central composer that gathers every active plugin's
 # activation snippet into one `.envrc` body with sentinel-marked plugin
@@ -50,7 +50,7 @@ ENVRC_MANAGED_END="# <<< pyve:managed:end <<<"
 #
 # Returns non-zero (emitting nothing usable) when any plugin hook fails
 # or the composed plugin sections fail PC-1.
-# Story N.ak (PC-4b): portable wall-clock marker, microsecond resolution.
+# portable wall-clock marker, microsecond resolution.
 # Sets REPLY to "now" in integer MICROSECONDS — by design it does NOT use
 # command substitution, so when bash 5 `$EPOCHREALTIME` is available the read
 # is fork-free and adds no measurable overhead to the timed region. Falls back
@@ -84,7 +84,7 @@ _pyve_bench_now_ms() {
 _compose_envrc_body() {
     local name path section
     local plugin_body=""
-    # Story N.ak (PC-4b): optional per-plugin activate timing. Gated by
+    # optional per-plugin activate timing. Gated by
     # PYVE_LATENCY_BENCH=1; emits a `# pyve:bench:<plugin>:activate_ms=<n>`
     # trailer line per plugin (after the managed end marker) for the latency
     # regression in tests/perf/. Off by default — zero overhead and no output
@@ -136,7 +136,7 @@ _compose_envrc_body() {
 
     printf '%s\n' "$ENVRC_MANAGED_END"
 
-    # Story N.ak (PC-4b): bench trailer, emitted only under PYVE_LATENCY_BENCH=1
+    # bench trailer, emitted only under PYVE_LATENCY_BENCH=1
     # and read by tests/perf/. It sits below the managed end marker, so it is
     # NOT part of the managed section; production writers never set the flag,
     # so the on-disk `.envrc` is unaffected.
@@ -145,7 +145,7 @@ _compose_envrc_body() {
 }
 
 # Compose the managed `.envrc` body (via _compose_envrc_body) and write it
-# to <output_path> with PC-2 crash-safe semantics (Story N.ae.4):
+# to <output_path> with PC-2 crash-safe semantics:
 #
 #   1. Capture user-authored content below the `# <<< pyve:managed:end <<<`
 #      marker of the existing file (if any), to re-emit verbatim.
@@ -202,7 +202,7 @@ compose_envrc() {
     mv -f "$tmp" "$output_path"
 }
 
-# Init/update entry point (Story N.ae.5): reload the manifest + plugin
+# Init/update entry point: reload the manifest + plugin
 # registry from the on-disk pyve.toml, THEN compose `.envrc`.
 #
 # The reload is required because pyve.sh's main() loads the manifest +

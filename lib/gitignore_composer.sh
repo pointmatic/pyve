@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck shell=bash
 #============================================================
-# lib/gitignore_composer.sh — composed `.gitignore` builder (Story N.af)
+# lib/gitignore_composer.sh — composed `.gitignore` builder
 #
 # The `.gitignore` sibling of lib/envrc_composer.sh. Gathers every active
 # plugin's `pyve_plugin_gitignore_entries` contribution, validates each

@@ -2,7 +2,7 @@
 # shellcheck shell=bash
 # SPDX-License-Identifier: Apache-2.0
 #============================================================
-# lib/purge_composer.sh — composed `pyve purge` builder (Story N.ai)
+# lib/purge_composer.sh — composed `pyve purge` builder
 #
 # Gathers every active plugin's `pyve_plugin_purge_inventory` (created /
 # authored declarations from N.r / N.z), composes them keyed by

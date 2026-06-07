@@ -1,8 +1,8 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# pyve_env_sync_helper.py — the engine behind `pyve env sync` (Story N.az.2,
-# F4). Computes a STATELESS diff between §4.0 of the env-dependencies doc
+# pyve_env_sync_helper.py — the engine behind `pyve env sync` (F4).
+# Computes a STATELESS diff between §4.0 of the env-dependencies doc
 # (the `plan_envs`-authored machine surface) and the current `pyve.toml`,
 # and applies the reconcile via tomlkit (round-trip-preserving).
 #
@@ -13,7 +13,7 @@
 # Like its sibling, this runs under Pyve's TOOLCHAIN interpreter (resolved
 # by the Bash seam via pyve_toolchain_python), which carries PyYAML AND
 # tomlkit (both provisioned by `pyve self install`). It is PERMISSIVE — it
-# does not closed-set-validate values; that is F6 (Story N.ba).
+# does not closed-set-validate values; that is F6.
 #
 # Usage:
 #   pyve_env_sync_helper.py diff [--human] <spec-doc> <pyve.toml>

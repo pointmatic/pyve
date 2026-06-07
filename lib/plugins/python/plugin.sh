@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# lib/plugins/python/plugin.sh — Python plugin (Story N.n)
+# lib/plugins/python/plugin.sh — Python plugin
 #
 # First reference implementation of the plugin contract from N.k.
 # Re-seats the Python ecosystem behind the contract. This story
@@ -14,17 +14,17 @@
 #
 # (The N.l-era backend-provider activate shims `venv_pyve_bp_activate` /
 # `micromamba_pyve_bp_activate` and the legacy `write_envrc_template` /
-# `write_gitignore_template` writer chains were retired in Story N.al once
+# `write_gitignore_template` writer chains were retired once
 # the composition layer (N.ae/N.af) fully superseded them; activation now
 # flows through `python_pyve_plugin_activate` → `_python_pyve_plugin_envrc_snippet`.)
 #
 # Lifecycle hooks (init / purge / update / check / status / run /
-# test) stay as no-op defaults from contract.sh in N.n; they land in
-# Stories N.o (init/purge/update) and N.p (check/status/run/test).
-# The activation hook proper (`.envrc` snippet composition) and the
-# gitignore + smart-purge hooks land in N.q and N.r respectively.
+# test) start as no-op defaults from contract.sh; the Python plugin
+# implements init/purge/update (lifecycle) and check/status/run/test
+# (runtime). The activation hook (`.envrc` snippet composition) and the
+# gitignore + smart-purge hooks are implemented below.
 #
-# Detection contract (per Story N.n task list + spike):
+# Detection contract (per task list + spike):
 #   Signal classes (probed at the project root):
 #     Python: pyproject.toml | requirements*.txt | setup.py | *.py
 #     Conda:  environment*.yml | conda-lock.yml
@@ -101,7 +101,7 @@ python_pyve_plugin_detect() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — lifecycle hooks (Story N.o, Option 2)
+# Plugin contract — lifecycle hooks (Option 2)
 #
 # Hook-as-shim re-seat: each hook validates the manifest's env
 # blocks (per S9), reads the `languages` advisory (per S11; v3.0
@@ -198,7 +198,7 @@ python_pyve_plugin_update() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — runtime hooks (Story N.p, Option 2)
+# Plugin contract — runtime hooks (Option 2)
 #
 # Hook-as-shim: check / status / run / test delegate to today's
 # implementations in lib/commands/{check,status,run,test}.sh.
@@ -263,7 +263,7 @@ _python_pyve_plugin_render_advisories() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — PC-4a no-Python noise suppression (Story N.aj)
+# Plugin contract — PC-4a no-Python noise suppression
 #
 # `python_plugin_is_active_in_project` gates the Python plugin's
 # diagnostic hooks (check / status). Pyve defaults to Python, so the
@@ -274,7 +274,7 @@ _python_pyve_plugin_render_advisories() {
 #     - any declared env with a Python backend (venv / micromamba) or
 #       `languages` containing `python` (an explicit Python env declaration)
 #     - `.pyve/config` present (v2 Python project marker)
-#       (Story N.aw: `.project-guide.yml` is NO LONGER a signal — project-
+#       (`.project-guide.yml` is NO LONGER a signal — project-
 #        guide is globally hosted, so its per-project marker no longer
 #        implies a project Python env.)
 #     - root-scoped Python application files
@@ -333,7 +333,7 @@ python_plugin_is_active_in_project() {
         done
     done < <(manifest_list_envs 2>/dev/null)
 
-    # 3. v2 Python project marker. (Story N.aw: `.project-guide.yml` is NO
+    # 3. v2 Python project marker. (`.project-guide.yml` is NO
     #    longer a Python-active signal — project-guide is globally hosted, so
     #    its per-project marker no longer implies a project Python env. On a
     #    Node-only project that accepts project-guide there is no `.venv` for
@@ -357,13 +357,13 @@ python_plugin_is_active_in_project() {
 }
 
 python_pyve_plugin_check() {
-    # Story N.ag: the composer (compose_check) passes the plugin's declared
+    # the composer (compose_check) passes the plugin's declared
     # path as $1. Python always operates at the project root, so consume and
     # ignore it; forwarding it to check_environment would trip its
     # "takes no positional arguments" guard. User flags (`pyve check --x`)
     # are validated upstream in compose_check before any hook runs.
     [[ $# -gt 0 ]] && shift
-    # Story N.aj: PC-4a — suppress all Python diagnostic output when there
+    # PC-4a — suppress all Python diagnostic output when there
     # is no Python surface and a competing stack is present.
     python_plugin_is_active_in_project || return 0
     _python_pyve_plugin_render_advisories
@@ -371,12 +371,12 @@ python_pyve_plugin_check() {
 }
 
 python_pyve_plugin_status() {
-    # Story N.ah: the composer (compose_status) passes the plugin's declared
+    # the composer (compose_status) passes the plugin's declared
     # path as $1. Python operates at the project root, so consume and ignore
     # it (forwarding it would trip show_status's positional-arg guard). User
     # flags are validated upstream in compose_status before any hook runs.
     [[ $# -gt 0 ]] && shift
-    # Story N.aj: PC-4a — see python_pyve_plugin_check.
+    # PC-4a — see python_pyve_plugin_check.
     python_plugin_is_active_in_project || return 0
     _python_pyve_plugin_render_advisories
     show_status "$@"
@@ -391,12 +391,12 @@ python_pyve_plugin_test() {
 }
 
 #------------------------------------------------------------
-# Plugin contract — activate (Story N.q)
+# Plugin contract — activate
 #
 # Plugin-level activation: compose the plugin-owned `.envrc` snippet
 # (the 5 lines the Python plugin contributes — PATH_add + four
 # `export VAR=...` lines), run it through validate_envrc_snippet
-# (Story N.m's PC-1 allow-list), then delegate the actual file write
+#, then delegate the actual file write
 # to bp_dispatch <backend> activate.
 #
 # The infrastructure lines around the plugin snippet (the
@@ -411,7 +411,7 @@ python_pyve_plugin_test() {
 # 4 exports). `env_root_expr` rule: absolute env-root paths pass through;
 # relative paths get prefixed with `$PWD/` so direnv resolves them against
 # the `.envrc` directory rather than the caller's cwd. (This snippet
-# replaced the retired `write_envrc_template`'s emission — Story N.al.)
+# replaced the retired `write_envrc_template`'s emission)
 _python_pyve_plugin_envrc_snippet() {
     local backend="$1"
     local env_path="$2"
@@ -450,11 +450,11 @@ EOF
 }
 
 #------------------------------------------------------------
-# Plugin contract — gitignore_entries (Story N.r)
+# Plugin contract — gitignore_entries
 #
 # Returns the Python-ecosystem patterns the plugin contributes to
 # `.gitignore`. Output flows through validate_gitignore_snippet
-# (Story N.m PC-1 gate) before being written. Composer-owned lines
+# before being written. Composer-owned lines
 # (macOS `.DS_Store`, Pyve-managed `.pyve/envs`, the dynamic venv
 # directory) are emitted by `lib/gitignore_composer.sh` — same plugin-vs-
 # infrastructure boundary as N.q used for `.envrc`.
@@ -483,7 +483,7 @@ EOF
 }
 
 #------------------------------------------------------------
-# Plugin contract — purge_inventory (Story N.r)
+# Plugin contract — purge_inventory
 #
 # Declares the paths the Python plugin manages, split into two
 # classes:
@@ -510,14 +510,14 @@ authored environment.yml
 EOF
 }
 
-# Plugin activate hook (Story N.ae.2 — snippet emitter).
+# Plugin activate hook.
 #
 # Uniform composer-facing contract (spike N.ae.1, decision 1): the hook
 # takes a single optional `<path>` (the plugin's manifest path — always
 # "." for Python, which owns the project root) and emits a sentinel-wrapped
 # `.envrc` section to STDOUT, matching node_pyve_plugin_activate. It performs
 # NO file write — the composed `.envrc` is assembled and atomically written
-# by compose_envrc (Stories N.ae.3 / N.ae.4).
+# by compose_envrc.
 #
 # Self-resolution: backend / env_path / env_name come from `.pyve/config`
 # (the authoritative backend record init writes), with manifest + convention
@@ -703,7 +703,7 @@ EOF
 
 #============================================================
 # pyve init — initialize a Python virtual environment
-# (Story N.s.1, Option 1 relocation from lib/commands/init.sh)
+# (Option 1 relocation from lib/commands/init.sh)
 #
 # Auto-detects backend (venv vs micromamba), resolves the version
 # manager (asdf or pyenv), creates the environment, configures
@@ -724,7 +724,7 @@ EOF
 # on all single-caller helpers — the surviving config-writers
 # (`_init_python_version`, `_init_venv`, `_init_dotenv`). The
 # project-guide orchestration (formerly `_init_run_project_guide_hooks`)
-# was lifted to the stack-agnostic `lib/project_guide.sh` in Story N.au
+# was lifted to the stack-agnostic `lib/project_guide.sh`
 # (`run_project_guide_orchestration`). The `.envrc` / `.gitignore`
 # writers (`_init_direnv_*`, `_init_gitignore`) were retired in Story
 # N.al — `init_project` composes those files through
@@ -791,7 +791,7 @@ _init_detect_project_guide_present() {
     [[ -f .project-guide.yml ]]
 }
 
-# Story N.e — emit the v3.0 canonical `pyve.toml` manifest at cwd.
+# emit the v3.0 canonical `pyve.toml` manifest at cwd.
 #
 # Idempotent: if `pyve.toml` already exists, this is a silent no-op
 # (the existing manifest is the source of truth — the refresh path
@@ -828,7 +828,7 @@ default = true
 EOF
 }
 
-# Story N.e — refresh-path guard. When `pyve.toml` exists, validate
+# refresh-path guard. When `pyve.toml` exists, validate
 # it before letting `init_project` proceed. Validation is delegated
 # to `manifest_load` (which calls the Python helper and exits 2 with
 # stderr diagnostics on malformed schema / unknown purpose / etc.).
@@ -854,7 +854,7 @@ _init_validate_existing_manifest() {
     return 0
 }
 
-# Story N.ad — polyglot `pyve.toml` writer.
+# polyglot `pyve.toml` writer.
 #
 # Emits the canonical manifest with explicit `[plugins.python]` (root) and
 # `[plugins.node]` (sub-path) blocks. Per spike S3 there is no `role` field;
@@ -892,7 +892,7 @@ path = "${node_path}"
 EOF
 }
 
-# Story N.ad — interactivity gate for the Node sub-path prompt. Mirrors the
+# interactivity gate for the Node sub-path prompt. Mirrors the
 # wizard's gate: prompt only when stdin is a TTY and the non-interactive
 # bypass is not set. `--node-path` (the scripted override) sidesteps this
 # entirely by short-circuiting the resolver before the gate is consulted.
@@ -900,7 +900,7 @@ _init_node_path_interactive() {
     [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]
 }
 
-# Story N.ad — resolve the Node sub-path for a polyglot scaffold.
+# resolve the Node sub-path for a polyglot scaffold.
 #
 # Usage: _init_resolve_node_path <flag> <interactive>
 #   <flag>:        the --node-path value ("" if unset). Non-empty wins
@@ -971,7 +971,7 @@ _init_resolve_node_path() {
     fi
 }
 
-# Story N.ad — manifest scaffold orchestrator (replaces N.t's advisory-only
+# manifest scaffold orchestrator (replaces N.t's advisory-only
 # `_init_maybe_advise_node_plugin`). Consults the Node plugin's detection
 # hook alongside Python's:
 #
@@ -1016,7 +1016,7 @@ _init_scaffold_manifest() {
     _init_write_pyve_toml_polyglot "$project_name" "$node_path"
     success "Created pyve.toml (polyglot: python + node)"
 
-    # Story N.aa: surface a SvelteKit framework hint when detected.
+    # surface a SvelteKit framework hint when detected.
     local node_framework
     node_framework="$(node_detect_framework 2>/dev/null || true)"
     if [[ "$node_framework" == "sveltekit" ]]; then
@@ -1318,7 +1318,7 @@ init_project() {
     local no_direnv=false
     local lock_preflight_done=false
     local preflight_backend=""
-    # Story N.ad — explicit Node sub-path for polyglot scaffolds. Empty
+    # explicit Node sub-path for polyglot scaffolds. Empty
     # means "infer / prompt"; a value overrides all detection.
     local node_path_flag=""
 
@@ -1477,7 +1477,7 @@ init_project() {
         esac
     done
 
-    # Story N.e — refresh-path guard. If `pyve.toml` exists, validate
+    # refresh-path guard. If `pyve.toml` exists, validate
     # it before doing any work; surface helper errors and abort on
     # malformed schema / unknown purpose / etc. Absent manifest is a
     # silent no-op (the fresh-init path falls through to the writer
@@ -1738,14 +1738,14 @@ init_project() {
             pyve_install_distutils_shim_for_micromamba_prefix "$micromamba_path" "$env_prefix"
         fi
 
-        # .envrc is composed below (Story N.ae.5), AFTER .pyve/config and
+        # .envrc is composed below, AFTER .pyve/config and
         # pyve.toml exist (see the venv branch for the rationale).
         local env_path=".pyve/envs/$env_name"
 
         # Create .env file
         _init_dotenv "$use_local_env"
 
-        # .gitignore is composed below (Story N.af), after .pyve/config +
+        # .gitignore is composed below, after .pyve/config +
         # pyve.toml exist, via compose_project_gitignore (gathers every
         # active plugin's ignore entries through the managed section).
 
@@ -1759,13 +1759,13 @@ micromamba:
 EOF
         success "Created .pyve/config"
 
-        # Story N.e / N.ad — write the v3.0 canonical manifest. No-op if
+        # write the v3.0 canonical manifest. No-op if
         # it already exists (refresh path). When Node is detected at root
         # alongside Python, this writes a polyglot manifest with explicit
         # [plugins.python] + [plugins.node] blocks; pure-Python projects
         # get the plain manifest. `.pyve/config` continues to be written
-        # above; the YAML removal lands in Story N.i with the read-compat
-        # sweep.
+        # above for the v3.0 read-compat window; it is dropped when that
+        # read-compat layer is removed.
         _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
@@ -1776,7 +1776,7 @@ EOF
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
 
-        # Story N.av.2: hand the stack-agnostic composition tail (compose
+        # hand the stack-agnostic composition tail (compose
         # .envrc/.gitignore → project-guide → next-steps) up to compose_init
         # via the result globals. The .envrc/.gitignore composition is no
         # longer welded here — it runs once at orchestration level.
@@ -1835,7 +1835,7 @@ EOF
         pyve_install_distutils_shim_for_python "$venv_dir/bin/python"
     fi
 
-    # .envrc is composed below (Story N.ae.5), AFTER .pyve/config and
+    # .envrc is composed below, AFTER .pyve/config and
     # pyve.toml exist — the composer's Python activate hook resolves the
     # backend / env path from .pyve/config, and plugin enumeration reads
     # the freshly-written manifest.
@@ -1843,7 +1843,7 @@ EOF
     # Create .env file
     _init_dotenv "$use_local_env"
 
-    # .gitignore is composed below (Story N.af), after .pyve/config +
+    # .gitignore is composed below, after .pyve/config +
     # pyve.toml exist (the composer reads venv.directory from .pyve/config
     # to ignore a custom venv dir, and enumerates plugins from pyve.toml).
 
@@ -1859,12 +1859,12 @@ python:
 EOF
     success "Created .pyve/config"
 
-    # Story N.e / N.ad — write the v3.0 canonical manifest. No-op if it
+    # write the v3.0 canonical manifest. No-op if it
     # already exists (refresh path). Polyglot Python+Node projects get
     # explicit [plugins.python] + [plugins.node] blocks; pure-Python
     # projects get the plain manifest. `.pyve/config` continues to be
-    # written above; the YAML removal lands in Story N.i with the
-    # read-compat sweep.
+    # written above for the v3.0 read-compat window; it is dropped when
+    # that read-compat layer is removed.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
     # Ensure dev/test runner environment exists (upgrade-friendly)
@@ -1877,7 +1877,7 @@ EOF
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
     prompt_install_pip_dependencies "venv" "$_venv_abs"
 
-    # Story N.av.2: hand the stack-agnostic composition tail (compose
+    # hand the stack-agnostic composition tail (compose
     # .envrc/.gitignore → project-guide → next-steps) up to compose_init
     # via the result globals (see the micromamba branch + lib/init_composer.sh).
     PYVE_INIT_TAIL_BACKEND="venv"
@@ -1907,7 +1907,7 @@ _init_venv() {
         info "Virtual environment '$venv_dir' already exists, skipping"
     else
         info "Creating virtual environment in '$venv_dir'..."
-        # Story N.d.1: pre-flight check for the asdf/pyenv shim trap.
+        # pre-flight check for the asdf/pyenv shim trap.
         # Same wire-in pattern as `ensure_env_exists`'s testenv venv
         # creation — placed after the banner so the user sees the
         # intent, then a pyve-owned error if `python` would fail.
@@ -2077,7 +2077,7 @@ EOF
 
 #============================================================
 # pyve purge — remove pyve-managed environment artifacts
-# (Story N.s.2, Option 1 relocation from lib/commands/purge.sh)
+# (Option 1 relocation from lib/commands/purge.sh)
 #
 # Removes the venv / micromamba env, version manager files, .envrc,
 # .env (only if empty — v0.6.0 smart purge), pyve-managed sections of
@@ -2124,7 +2124,7 @@ purge_project() {
         esac
     done
 
-    # Story N.ai: when invoked as a composed-purge section, the composer
+    # when invoked as a composed-purge section, the composer
     # (compose_purge) owns the header/footer frame and the confirmation, so
     # suppress the duplicate here. Standalone / init --force callers
     # (PYVE_PURGE_COMPOSED unset) keep the original frame.
@@ -2132,7 +2132,7 @@ purge_project() {
         header_box "pyve purge"
     fi
 
-    # Story N.r: pull the active plugin's purge_inventory as a data
+    # pull the active plugin's purge_inventory as a data
     # interface. v3.0 reads the inventory for diagnostic / verbose
     # surfacing only — the actual removal calls below stay direct.
     # Future stories can extend the composer to consume the inventory
@@ -2141,7 +2141,7 @@ purge_project() {
         local _plugin_inventory
         _plugin_inventory="$(plugin_dispatch python purge_inventory 2>/dev/null || true)"
         if [[ -n "${PYVE_VERBOSE:-}" ]] && [[ -n "$_plugin_inventory" ]]; then
-            info "Plugin purge inventory (Story N.r):"
+            info "Plugin purge inventory:"
             while IFS= read -r _inv_line; do
                 [[ -n "$_inv_line" ]] && info "  $_inv_line"
             done <<< "$_plugin_inventory"
@@ -2358,7 +2358,7 @@ EOF
 
 #============================================================
 # pyve update — non-destructive upgrade (Story H.e.2)
-# (Story N.s.3, Option 1 relocation from lib/commands/update.sh)
+# (Option 1 relocation from lib/commands/update.sh)
 #
 # Refreshes managed files (config, .gitignore, .vscode/settings.json,
 # project-guide scaffolding) without rebuilding the venv or touching
@@ -2424,7 +2424,7 @@ update_project() {
 
     # Pre-step: opportunistically migrate any v2.7 `.pyve/testenv/venv/`
     # or v2.8 `.pyve/testenvs/<name>/{venv,conda}/` layout to the v3
-    # `.pyve/envs/<name>/{venv,conda}/` shape (Story N.f). Silent on
+    # `.pyve/envs/<name>/{venv,conda}/` shape. Silent on
     # greenfield and on already-migrated projects; prints a one-line
     # info() per boundary when an actual move happens. M.h.3 wires this;
     # the helper lives in lib/envs.sh.
@@ -2451,7 +2451,7 @@ update_project() {
     step_end_ok
 
     # Step 2/5 — refresh the composed .gitignore managed section across all
-    # active plugins (Story N.af). User content above/below the managed
+    # active plugins. User content above/below the managed
     # markers is preserved; prior file backed up to .gitignore.prev.
     step_begin "[2/5] Refresh .gitignore (Pyve-managed section)"
     if run_quiet compose_project_gitignore ".gitignore"; then
@@ -2462,7 +2462,7 @@ update_project() {
     fi
 
     # Step 3/5 — refresh the composed .envrc managed section IF it exists.
-    # Story N.ae.5: like the .vscode step, NEVER create one (that respects
+    # like the .vscode step, NEVER create one (that respects
     # the --no-direnv opt-out from init). compose_project_envrc reloads the
     # manifest/registry, preserves user content below the managed end
     # marker, and backs the prior file up to .envrc.prev.
@@ -2582,7 +2582,7 @@ EOF
 
 #============================================================
 # pyve check — read-only diagnostics (Story H.e.3)
-# (Story N.s.4, Option 1 relocation from lib/commands/check.sh)
+# (Option 1 relocation from lib/commands/check.sh)
 #
 # Replaces the semantic of `pyve validate` (structured 0/1/2 exit
 # codes for CI) and most of `pyve doctor` (per-problem findings
@@ -2654,7 +2654,7 @@ check_environment() {
         exit_code=1
     }
 
-    # Story N.ag: the composer (compose_check) owns the top-level banner
+    # the composer (compose_check) owns the top-level banner
     # when it dispatches this hook as a per-plugin section, so suppress the
     # duplicate here. Standalone invocations (PYVE_CHECK_COMPOSED unset)
     # still print it.
@@ -2920,7 +2920,7 @@ EOF
 
 #============================================================
 # pyve status — read-only state dashboard (Story H.e.4)
-# (Story N.s.5, Option 1 relocation from lib/commands/status.sh)
+# (Option 1 relocation from lib/commands/status.sh)
 #
 # Three sections: Project / Environment / Integrations. Never has
 # a non-zero exit code based on findings — that's `pyve check`'s
@@ -2950,7 +2950,7 @@ show_status() {
     done
 
     # Title + divider. BOLD for the title, DIM for the rule — per H.c §4.4.
-    # Story N.ah: the composer (compose_status) owns the top-level title when
+    # the composer (compose_status) owns the top-level title when
     # it dispatches this hook as a per-plugin section, so suppress the
     # duplicate here. Standalone invocations (PYVE_STATUS_COMPOSED unset)
     # still print it.
@@ -3294,7 +3294,7 @@ EOF
 
 #============================================================
 # pyve run — execute a command inside the active project environment
-# (Story N.s.6, Option 1 relocation from lib/commands/run.sh)
+# (Option 1 relocation from lib/commands/run.sh)
 #
 # Auto-detects the active backend (venv vs micromamba) by probing
 # .pyve/config first (authoritative), then falling back to the
@@ -3316,9 +3316,9 @@ run_command() {
 
     # Detect active backend. Authoritative source is .pyve/config's
     # `backend:` field; the directory heuristic is only a fallback for
-    # legacy projects with no config. Story N.j.1: post-N.f, the
+    # legacy projects with no config. With the v3 state layout, the
     # `.pyve/envs/*` glob also matches testenvs (e.g. .pyve/envs/testenv/),
-    # so the pre-N.f "any child under .pyve/envs/ means micromamba" rule
+    # so the older "any child under .pyve/envs/ means micromamba" rule
     # would mis-route every venv-backed project that has a testenv to the
     # micromamba branch — and within micromamba projects, mis-route the
     # main env to whichever sibling sorted first alphabetically.
@@ -3640,14 +3640,14 @@ _test_run_one_env() {
         exit 1
     fi
 
-    # Story N.d: purpose gate. `pyve test --env <name>` is reserved
+    # purpose gate. `pyve test --env <name>` is reserved
     # for envs with `purpose = "test"` (declared in pyve.toml, or
     # implied by the name-based default rule in
     # `lib/manifest.sh::manifest_resolve_purpose`). Non-test envs hard-
     # error with a precise hint at the right invocation form.
     #
     # The shim that propagates `purpose = "test"` from v2-source
-    # `[tool.pyve.testenvs.<name>]` blocks lands in Story N.i; until
+    # `[tool.pyve.testenvs.<name>]` blocks is not yet implemented; until
     # then, v2-only selector paths are intentionally broken (test-suite
     # coverage carries `N.i-pending` skip markers — see the audit in
     # `tests/unit/test_test_env_resolver.bats`'s setup).
