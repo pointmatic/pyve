@@ -85,5 +85,16 @@ compose_status() {
         printf '\n'
     done < <(plugin_list_active)
 
+    # Story N.ba.3: project-level advisory addendum (spec-ahead attributes
+    # recorded in pyve.toml, not materialized). Informational, like the rest
+    # of status; absent when there are no advisory attributes.
+    local adv_out
+    adv_out="$(manifest_advisory_notes)"
+    if [[ -n "$adv_out" ]]; then
+        printf '[advisories]\n'
+        printf '%s\n' "$adv_out"
+        printf '\n'
+    fi
+
     return 0
 }

@@ -206,6 +206,21 @@ _env_resolve_backend() {
     fi
 }
 
+# Story N.ba.3 (F6): is <backend> a known-advisory backend? Routes through
+# the Python classifier (the single source of the closed vocabulary) so the
+# advisory set is never duplicated — and thus never drifts — on the shell
+# side. Returns 0 when advisory, 1 otherwise (implemented, unknown, empty, or
+# classifier unavailable — caller then proceeds with normal materialization).
+_env_backend_is_advisory() {
+    local backend="${1:-}"
+    [[ -n "$backend" ]] || return 1
+    local helper py cls
+    helper="${_PYVE_MANIFEST_HELPER:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_toml_helper.py}"
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    cls="$("$py" "$helper" classify backend "$backend" 2>/dev/null)" || return 1
+    [[ "$cls" == "advisory" ]]
+}
+
 # Story M.i.1 / M.k: venv-only gate for `pyve testenv run`. Returns 0
 # when the resolved backend is `venv`; 1 (with a stderr error) for
 # `micromamba` (and `inherit` that resolves to micromamba). M.k landed

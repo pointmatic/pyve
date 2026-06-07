@@ -86,6 +86,21 @@ manifest_load() {
     eval "$kv"
 }
 
+# Story N.ba.3 (F6): print the project's advisory notes — spec-ahead
+# attributes recorded in pyve.toml but not materialized (advisory
+# backends/languages/frameworks/packaging/app_type + require_min_version /
+# manual_steps). One note per line; empty output when there are none, when
+# no pyve.toml exists, or when the toolchain is unavailable (advisory
+# surfacing is informational and must never become a failure). Routes
+# through the pyve_toml_helper `advisories` mode so the closed vocabulary
+# lives in exactly one place. Shared by the check and status composers.
+manifest_advisory_notes() {
+    [[ -f pyve.toml ]] || return 0
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    "$py" "$_PYVE_MANIFEST_HELPER" advisories pyve.toml 2>/dev/null || return 0
+}
+
 # Reset every PYVE_* array to the empty-config baseline. Pulled out
 # so both the "no sources at all" path and the synthesis path start
 # from the same clean state.

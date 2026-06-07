@@ -733,6 +733,15 @@ _env_release_install_lock() {
 # auto-detect/bare-pytest).
 _env_install_with_lock() {
     local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
+    # Story N.ba.3 (F6): a declared env whose backend is known-advisory is
+    # recorded but never materialized — skip with the §B no-op advisory
+    # (before acquiring the install lock; there is nothing to serialize).
+    local _adv_backend
+    _adv_backend="$(_env_resolve_backend "$name")" || _adv_backend="venv"
+    if _env_backend_is_advisory "$_adv_backend"; then
+        info "env '$name' declares backend '$_adv_backend', which pyve does not yet materialize; provision it manually per the env spec"
+        return 0
+    fi
     _env_acquire_install_lock "$name" "$lock_mode" || return $?
     trap "_env_release_install_lock '$name'" EXIT INT TERM
     local rc=0

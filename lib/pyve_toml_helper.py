@@ -242,6 +242,7 @@ KNOWN_ENV_KEYS = frozenset(
         "frameworks",
         "languages",
         "manual_steps",
+        "require_min_version",
     }
 )
 
@@ -266,6 +267,10 @@ def _normalize_env(name, decl):
         # S7: manual_steps is an advisory list. v3.0 surfaces it in
         # `pyve check` / `pyve status`; no automated execution.
         "manual_steps": list(decl.get("manual_steps", [])),
+        # S16: require_min_version is an advisory map { <tool>: "<ver>" } of
+        # un-installable-toolchain pins (e.g. { xcode = "15.0" }). v3.0
+        # records + surfaces it (N.ba.3); never executed or verified.
+        "require_min_version": dict(decl.get("require_min_version", {}) or {}),
         # S9: packaging-/backend-provider-private keys (e.g. `dockerfile`)
         # are preserved as-is. Core never interprets them; they exist so a
         # provider's `package` hook can read its own config from
@@ -395,6 +400,13 @@ def emit(cfg, out):
         attrs = cfg["envs"][name].get("attrs", {})
         pairs = [f"{k}={v}" for k, v in attrs.items()]
         print(f"PYVE_ENV_{idx}_ATTRS=({_quote_array(pairs)})", file=out)
+    # Story N.ba.3 (S16): per-env advisory require_min_version map, emitted
+    # as a per-index "tool=ver" array (same encoding as the attrs above).
+    # Advisory-only — surfaced, never materialized.
+    for idx, name in enumerate(names):
+        rmv = cfg["envs"][name].get("require_min_version", {})
+        pairs = [f"{k}={v}" for k, v in rmv.items()]
+        print(f"PYVE_ENV_{idx}_REQUIRE_MIN_VERSION=({_quote_array(pairs)})", file=out)
     # Plugins (Story N.k): per-plugin attrs are exposed as per-index
     # arrays so manifest_get_plugin_attr can iterate without resorting
     # to bash-4 associative arrays.
@@ -410,8 +422,86 @@ def emit(cfg, out):
         print(f"PYVE_PLUGIN_{idx}_ATTRS=({_quote_array(pairs)})", file=out)
 
 
+def _advisory_notes(cfg):
+    """Per-attribute advisory notes for spec-ahead envs (Story N.ba.3).
+
+    One line per advisory-class attribute across every env, in env-declaration
+    order. The trichotomy's "known + no-op" surface: recorded in pyve.toml,
+    surfaced here, never materialized. Silent for:
+      - implemented values (they are materialized, not advisory);
+      - `none` (the not-applicable value carries no advisory — no noise).
+    `require_min_version` and `manual_steps` are advisory-only fields, always
+    surfaced when present. Messaging uses BACKEND_CATEGORY (S6) and
+    FRAMEWORK_KIND (S14) from N.ba.1.
+    """
+    notes = []
+    for name, env in cfg["envs"].items():
+        backend = env.get("backend") or ""
+        if (backend and backend != "none"
+                and classify_value("backend", backend) == "advisory"):
+            category = BACKEND_CATEGORY.get(backend, "uncategorized")
+            notes.append(
+                f"env '{name}': backend '{backend}' ({category}) — advisory; "
+                f"pyve does not materialize it, provision it manually per the env spec"
+            )
+        for lang in env.get("languages", []):
+            if (lang and lang != "none"
+                    and classify_value("languages", lang) == "advisory"):
+                notes.append(
+                    f"env '{name}': language '{lang}' — advisory metadata"
+                )
+        for fw in env.get("frameworks", []):
+            if (fw and fw != "none"
+                    and classify_value("frameworks", fw) == "advisory"):
+                kind = FRAMEWORK_KIND.get(fw, "none")
+                notes.append(
+                    f"env '{name}': framework '{fw}' ({kind}) — advisory metadata"
+                )
+        packaging = env.get("packaging") or ""
+        if (packaging and packaging != "none"
+                and classify_value("packaging", packaging) == "advisory"):
+            notes.append(
+                f"env '{name}': packaging '{packaging}' — advisory metadata"
+            )
+        app_type = env.get("app_type") or ""
+        if (app_type and app_type != "none"
+                and classify_value("app_type", app_type) == "advisory"):
+            notes.append(
+                f"env '{name}': app_type '{app_type}' — advisory metadata"
+            )
+        for tool, ver in env.get("require_min_version", {}).items():
+            notes.append(
+                f"env '{name}': requires {tool} >= {ver} (advisory; verify manually)"
+            )
+        for step in env.get("manual_steps", []):
+            if step:
+                notes.append(f"env '{name}': manual step — {step}")
+    return notes
+
+
 def main():
-    manifest = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("pyve.toml")
+    args = sys.argv[1:]
+    # `advisories <manifest>` — emit advisory notes (Story N.ba.3). No
+    # validation: surfacing assumes an already-valid manifest, and a
+    # spec-ahead project is a legitimate steady state.
+    if args and args[0] == "advisories":
+        manifest = Path(args[1]) if len(args) > 1 else Path("pyve.toml")
+        for note in _advisory_notes(load(manifest)):
+            print(note)
+        return
+    # `classify <axis> <value>` — expose the closed-vocabulary classifier
+    # (implemented | advisory | unknown) to bash consumers without
+    # duplicating the vocabulary on the shell side.
+    if args and args[0] == "classify":
+        if len(args) < 3:
+            print(
+                "usage: pyve_toml_helper.py classify <axis> <value>",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        print(classify_value(args[1], args[2]))
+        return
+    manifest = Path(args[0]) if args else Path("pyve.toml")
     cfg = load(manifest)
     errors = validate(cfg)
     if errors:

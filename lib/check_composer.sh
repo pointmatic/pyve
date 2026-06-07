@@ -192,6 +192,17 @@ compose_check() {
         printf '\n'
     fi
 
+    # Story N.ba.3: project-level advisory addendum (spec-ahead attributes
+    # recorded in pyve.toml, not materialized). Purely informational — never
+    # affects severity; absent when there are no advisory attributes.
+    local adv_out
+    adv_out="$(manifest_advisory_notes)"
+    if [[ -n "$adv_out" ]]; then
+        printf '[advisories]\n'
+        printf '%s\n' "$adv_out"
+        printf '\n'
+    fi
+
     # Roll-up footer — the single worst-severity verdict across all plugins.
     printf '======================\n'
     printf 'Overall: %s (%d plugin(s) checked)\n' "$(_compose_check_sev_label "$worst")" "$count"
