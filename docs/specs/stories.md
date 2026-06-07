@@ -1764,6 +1764,19 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
   - **§3 Load-bearing contract notes**: per-ref entries documenting what each load-bearing ref protects (grep-visibility, marker presence, …) so future maintainers don't strip them on a follow-up pass.
 - [x] Audit doc gate: present at approval gate for review before N.bc/N.bd execute. Adjust the classification per developer feedback before marking [Done]. *(Approved 2026-06-06; one feedback item folded in — the test-body scope seam became Story N.bd.1; §1 merge proposals A–E accepted as default.)*
 
+### Story N.bb.1: Route the micromamba-default init-wizard test to the micromamba CI job [Done]
+
+**Motivation (debug fix).** CI failure on `plan/phase-n-plugin-multi-env`: `tests/integration/test_init_wizard.py::TestInitWizard::test_wizard_environment_yml_defaults_to_micromamba` timed out after 120s (`subprocess.TimeoutExpired` on `pyve init … --no-direnv --force --no-project-guide`).
+
+**Root cause.** Marker/CI-job mismatch, not slow micromamba per se. The test's class `TestInitWizard` is marked `@pytest.mark.venv`, and the test itself carried no backend-routing override. The venv CI job runs `pytest -m "venv and not requires_micromamba"` and **deliberately does not install micromamba** ([.github/workflows/test.yml](../../.github/workflows/test.yml) `integration-tests` job). But the test pre-creates `environment.yml`, so `pyve init` auto-detects the micromamba backend and runs the full materialization (cold-bootstrap the micromamba binary + conda-solve `python=3.13`) before returning. On the no-micromamba venv runner that cold path exceeds the 120s subprocess cap. (The assertion only checks the wizard's `Backend: micromamba (auto-detected)` render line, but `subprocess.run` still waits for `pyve init` to fully exit, so the slow tail is unavoidable in-process.)
+
+**Fix.** Add `@pytest.mark.micromamba` + `@pytest.mark.requires_micromamba` to the test method (the repo idiom for every test that does real micromamba env creation — mirrors `test_micromamba_workflow.py`). This excludes it from the venv job (`… and not requires_micromamba`) and includes it in the micromamba job (`-m "micromamba or requires_micromamba"`), where micromamba is pre-installed via `setup-micromamba` and the work completes well within budget. Test-only change; no product code touched. The class-level `venv` marker is left intact (it is correct for the other two wizard tests).
+
+**Tasks**
+
+- [x] Add `@pytest.mark.micromamba` + `@pytest.mark.requires_micromamba` to `test_wizard_environment_yml_defaults_to_micromamba`, with a docstring note explaining the routing rationale.
+- [x] Verify routing via `--collect-only`: test is absent from `-m "venv and not requires_micromamba"` (count 0) and present in `-m "micromamba or requires_micromamba"` (count 1); `--strict-markers` collection clean (3 tests collected).
+
 ### Story N.bc: Rename story-named test files per the audit [Planned]
 
 **Motivation.** Execute the test file renames cataloged in N.bb's §1. Mechanical sweep with the green suite as the safety net — same shape as N.al's test rework. Goal is post-N-7 file naming that reads by capability (`test_python_plugin`, `test_node_plugin`, `test_composed_init`) rather than by story attribution.
