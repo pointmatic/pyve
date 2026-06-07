@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.av.2 — the stack-agnostic composition tail is owned by
+# the stack-agnostic composition tail is owned by
 # compose_init, handed off from the Python materializer via the
 # PYVE_INIT_TAIL_* result globals. These tests pin the hand-off
 # protocol (run-tail / skip-tail / reset), using stubs so no real env

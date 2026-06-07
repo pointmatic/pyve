@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.m — PC-1 plugin input safety validators.
+# PC-1 plugin input safety validators.
 #
 # Two pure validators that guard the boundary between plugin-emitted
 # text and pyve's composed `.envrc` / `.gitignore` files. A malicious

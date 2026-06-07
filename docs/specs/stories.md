@@ -1808,19 +1808,21 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**.
 - [x] No production behavior change (comment hygiene + 3 user-facing string decorations removed); the suite passing + comment-only diff review is the proof.
 
-### Story N.bd.1: Sweep narrative story-refs from test bodies per the audit [Planned]
+### Story N.bd.1: Sweep narrative story-refs from test bodies per the audit [Done]
 
 **Motivation.** N.bd's test-body counterpart. N.bb's task-3 sweep covered three locations (`lib/`, `pyve.sh`, `tests/`), but the execution stories left a seam: N.bc renames test *filenames* and N.bd sweeps *production* comments — neither owns the `# Story N.x` narrative comments *inside* test bodies. N.bb's §2-T classified them (114 narrative, 1 load-bearing); this story executes their removal. Same shape and risk profile as N.bd — pure comment hygiene, green suite as the proof.
 
 **Scope note.** Test-body refs live in **both** story-named and capability-named files (e.g. `test_check.bats`, `test_manifest.bats`, `tests/helpers/test_helper.bash`), so this sweep walks **all of `tests/`**, not just the files N.bc renames. Run *after* N.bc so the rename churn has settled and the sweep operates on final filenames.
 
+**Execution note.** Swept all `Story N.x` / `Stories N.x` test-body refs (110 at execution time, post-N.bc) via the same form taxonomy as N.bd; the 19 mid-sentence narrative refs ("Story N.x did X") were rephrased to name the thing directly (no bare ref left behind). The 2 module-docstring refs were cleaned too. Diff-reviewed line-by-line (comments don't execute) — caught + fixed one empty-`#` artifact in `test_manifest.bats`. **Out of scope:** test-body *bare* `N.x` refs (e.g. `N.i-pending` skip markers, `N.ae.6`) — the test-side analog of N.bd.2's production bare-ref class; left for that decision (see gate note).
+
 **Tasks**
 
-- [ ] For each entry classified **narrative** in N.bb's §2-T: strip the `Story N.x` token, keeping any self-contained "what this test covers" prose. Where the ref carried context not derivable from the test, relocate it into a self-contained comment (no story ID).
-- [ ] Leave the one **load-bearing** §2-T entry in place: `tests/unit/test_n_i_read_compat.bats` → `grep -qE 'v3\.0-only: remove in N-10'` (audit §3 LB-1's enforcer; the literal is the assertion subject). Adjust only if N.bc renamed the file — update the `load`/path, never the grep target.
-- [ ] Cross-check after the sweep: LB-1's grep enforcer is still present and green (the read-compat marker assertion must still fire).
-- [ ] Run the full test suite (`make test`); zero regressions expected. Failures indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
-- [ ] No behavior change expected (comment hygiene only); the suite passing is the proof.
+- [x] For each entry classified **narrative** in N.bb's §2-T: strip the `Story N.x` token, keeping/relocating self-contained prose (rephrased the 19 mid-sentence forms so no bare ref remains).
+- [x] Leave the one **load-bearing** §2-T entry in place: `tests/unit/test_read_compat.bats` (renamed from `test_n_i_read_compat.bats` in N.bc) → `grep -qE 'v3\.0-only: remove in N-10'`. The grep literal is untouched (the sweep targets `Story N.`, not the marker).
+- [x] Cross-check after the sweep: LB-1's grep enforcer is present and green (bats test 1187 "read-compat code path: marked with 'v3.0-only: remove in N-10'" passes).
+- [x] Run the full test suite; bats unit suite: **1822 passed, 0 failed**.
+- [x] No behavior change (comment + 2 docstring hygiene); the suite passing + comment-only diff review is the proof.
 
 ### Story N.bd.2: Sweep bare `N.x` cross-refs from production code [Planned]
 

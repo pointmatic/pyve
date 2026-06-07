@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.i — v3.0-only read-compat layer in lib/manifest.sh.
+# v3.0-only read-compat layer in lib/manifest.sh.
 #
 # When pyve.toml is absent but legacy sources are present
 # (.pyve/config and/or [tool.pyve.testenvs.*]), manifest_load

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.au — project-guide orchestration is lifted to a stack-agnostic
+# project-guide orchestration is lifted to a stack-agnostic
 # locus (lib/project_guide.sh), no longer welded inside the Python
 # plugin's tail. These tests pin the SEAM (reachability + locus), not
 # the install/scaffold behavior (that stays covered by test_project_guide.bats).

@@ -59,7 +59,7 @@ class TestNewSubcommandRouting:
         """`pyve purge --keep-testenv` preserves the dev/test runner env."""
         pyve.init(backend="venv")
         pyve.run("testenv", "init")
-        # v3 layout (Story N.f): `.pyve/envs/<name>/{venv,conda}/`.
+        # v3 layout: `.pyve/envs/<name>/{venv,conda}/`.
         # `--keep-testenv` preserves the `.pyve/envs/` tree, surgically
         # deleting only the main-env subdir.
         assert (pyve.cwd / ".pyve" / "envs" / "testenv").exists()

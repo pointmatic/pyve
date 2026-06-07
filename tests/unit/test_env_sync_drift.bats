@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.az.2 — `pyve check` env-spec drift surface.
+# `pyve check` env-spec drift surface.
 #
 # A spec-ahead project (pyve.toml lags the project-guide env-dependencies
 # §4.0 surface) is a LEGITIMATE steady state, so the composer surfaces drift

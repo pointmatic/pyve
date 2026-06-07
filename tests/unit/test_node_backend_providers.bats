@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.u — Node backend-providers: pnpm / npm / yarn.
+# Node backend-providers: pnpm / npm / yarn.
 #
 # Fills the register_backends stub from N.t: registers the three Node
 # package managers as project-virtualized backend-providers via N.l's

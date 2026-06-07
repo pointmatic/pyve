@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.p — Python plugin runtime hooks (check / status / run / test)
+# Python plugin runtime hooks (check / status / run / test)
 # plus the manual_steps (S7) schema extension and advisory rendering,
 # plus the languages (S11) advisory in check, plus python set/show
 # relocation into the plugin file (Option (a) — ordinary functions).
@@ -289,7 +289,7 @@ EOF
 @test "relocation: python_command dispatcher still resolves python_show by name" {
     # Sanity: python_show is callable from the dispatcher after the
     # relocation. Both now live in lib/plugins/python/plugin.sh
-    # (dispatcher relocated in Story N.s.8).
+    # (dispatcher relocated from the command file).
     declare -F python_show >/dev/null
     declare -F python_set >/dev/null
 }

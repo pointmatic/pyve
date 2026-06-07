@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for Story N.c: `pyve env` CLI dispatcher + `pyve testenv`
+# Unit tests for the `pyve env` CLI dispatcher + `pyve testenv`
 # legacy-sugar Category A delegation wrapper.
 #
 # Surface under test (in pyve.sh):

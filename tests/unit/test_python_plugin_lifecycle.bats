@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.o — Python plugin lifecycle hooks (init / purge / update).
+# Python plugin lifecycle hooks (init / purge / update).
 #
 # Option 2 (announce-gate decision): hook-as-shim re-seat. The public
 # entry points in pyve.sh's case dispatcher route through
@@ -130,8 +130,8 @@ backend = "venv"
 purpose = "deploy"
 backend = "venv"
 '
-    # The Python helper itself rejects unknown purposes (Story N.a
-    # added VALID_PURPOSES validation). Loading errors at the helper
+    # The Python helper itself rejects unknown purposes (via
+    # VALID_PURPOSES validation). Loading errors at the helper
     # layer; plugin validation never reaches this env. Sanity-check
     # the error surfaces correctly.
     run manifest_load pyve.toml

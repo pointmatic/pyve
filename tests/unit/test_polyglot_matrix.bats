@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.am — End-to-end regression sweep: the polyglot test matrix.
+# End-to-end regression sweep: the polyglot test matrix.
 #
 # The N-4 composition layer is exercised against the three project shapes
 # Phase N targets — pure-Python, Node-only, and polyglot (Python at the root +

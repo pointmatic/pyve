@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.aq — Packaging-provider contract + registry skeleton.
+# Packaging-provider contract + registry skeleton.
 #
 # The packaging-provider registry maps a `packaging` value (e.g. "docker")
 # to a registered provider, parallel to the N-2 backend-provider registry.

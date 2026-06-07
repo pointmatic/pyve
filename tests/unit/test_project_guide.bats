@@ -796,7 +796,7 @@ EOF
 
 #============================================================
 # run_project_guide_init_in_env — runs the GLOBAL `project-guide init`
-# (Story N.aw: project-guide is globally hosted on PATH via the
+# (project-guide is globally hosted on PATH via the
 # ~/.local/bin shim, no longer a per-project install).
 #============================================================
 

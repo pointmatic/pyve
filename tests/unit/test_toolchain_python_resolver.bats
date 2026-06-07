@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Regression test for Story N.at.2 — internal helper callsites resolve
+# Regression test: internal helper callsites resolve
 # Pyve's toolchain interpreter, not the developer's PATH `python`.
 #
 # The canonical motivator from spike-n-at-composed-init-seam.md Part 2:

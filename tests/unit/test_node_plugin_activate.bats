@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.y — Node plugin: activation hook (.envrc emission).
+# Node plugin: activation hook (.envrc emission).
 #
 # node_pyve_plugin_activate composes a sentinel-marked `.envrc` section
 # that PATH_adds the env's node_modules/.bin (path-aware for sub-path

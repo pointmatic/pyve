@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ae.6 — `prompt_yes_no` EOF-safety.
+# `prompt_yes_no` EOF-safety.
 #
 # `prompt_yes_no` (lib/utils.sh) previously looped forever on EOF stdin
 # (`read` returns non-zero with empty input → falls to the "invalid" arm →

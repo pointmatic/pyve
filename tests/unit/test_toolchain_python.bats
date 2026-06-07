@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Unit tests for lib/toolchain_python.sh (Story N.at.1)
+# Unit tests for lib/toolchain_python.sh
 #
 # The Pyve-owned toolchain interpreter: a resolver that returns a
 # reliable, Pyve-owned Python (independent of the developer's PATH)

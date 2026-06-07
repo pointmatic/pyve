@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.aw.2 — retire per-project provisioning. `run_project_guide_
+# retire per-project provisioning. `run_project_guide_
 # orchestration` no longer pip-installs project-guide into a project env;
 # it scaffolds via the GLOBAL `project-guide` (the N.aw.1 ~/.local/bin
 # shim) and warns when that global tool is absent.

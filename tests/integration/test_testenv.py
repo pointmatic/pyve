@@ -39,7 +39,7 @@ class TestTestenvRun:
         project_builder.create_requirements([])
         pyve.init(backend='venv')
         # pyve init auto-creates the testenv, so remove it to test the guard.
-        # v3 layout (Story N.f): .pyve/envs/testenv/venv.
+        # v3 layout: .pyve/envs/testenv/venv.
         import shutil
         testenv_venv = pyve.cwd / '.pyve' / 'envs' / 'testenv' / 'venv'
         if testenv_venv.exists():
@@ -79,7 +79,7 @@ def test_testenv_survives_force_reinit(pyve, project_builder):
 
     # `pyve test` should auto-create the dev/test runner env and (in tests/CI)
     # auto-install pytest without prompting.
-    # v3 layout (Story N.f): `.pyve/envs/<name>/{venv,conda}/`.
+    # v3 layout: `.pyve/envs/<name>/{venv,conda}/`.
     testenv_python = project_builder.project_dir / ".pyve" / "envs" / "testenv" / "venv" / "bin" / "python"
 
     result = pyve.run("test", "-q", check=False)
@@ -115,7 +115,7 @@ def test_testenv_rebuilt_when_python_version_stale(pyve, project_builder):
     project_builder.create_requirements([])
     pyve.init(backend='venv')
 
-    # v3 layout (Story N.f): .pyve/envs/testenv/venv.
+    # v3 layout: .pyve/envs/testenv/venv.
     testenv_venv = pyve.cwd / '.pyve' / 'envs' / 'testenv' / 'venv'
     assert testenv_venv.exists(), "testenv was not created by pyve init"
 

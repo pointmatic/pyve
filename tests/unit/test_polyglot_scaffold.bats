@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ad — Polyglot `pyve init` scaffold (closes the N-3 root-collision
+# Polyglot `pyve init` scaffold (closes the N-3 root-collision
 # hole). N.t deferred the resolution by making Node detection advisory-only
 # (it surfaced "I see a Node project" but never mutated `pyve.toml`). N.ad
 # lands the real scaffold: when both Python and Node fire at root, walk the

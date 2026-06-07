@@ -3,10 +3,10 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.j.1 — pyve run backend detection regression after N.f
+# pyve run backend detection regression after N.f
 # state-dir relocation.
 #
-# After Story N.f moved testenv state and venv-backed testenvs under
+# After the v3 state layout moved testenv state and venv-backed testenvs under
 # .pyve/envs/<name>/, the heuristic in lib/plugins/python/plugin.sh ("if
 # .pyve/envs/* has any children, it's micromamba") falsely fires on
 # pure-venv projects that happen to have a testenv. The fix consults

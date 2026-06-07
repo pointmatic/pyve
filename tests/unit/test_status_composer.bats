@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ah — Composed `pyve status` aggregation.
+# Composed `pyve status` aggregation.
 #
 # `compose_status` is the informational sibling of N.ag's `compose_check`:
 # it iterates the active-plugin list, dispatches each plugin's

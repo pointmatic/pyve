@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.v — Node runtime-resolution helpers (nvm / fnm / volta + PATH).
+# Node runtime-resolution helpers (nvm / fnm / volta + PATH).
 #
 # Implements Node's S10 version-manager precedence: per-manager detectors
 # (each gated by a PYVE_NO_<MGR>_COMPAT opt-out, mirroring is_asdf_active),

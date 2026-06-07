@@ -41,7 +41,7 @@ teardown() {
     [[ "$output" == *"pyve check"* ]]
 }
 
-# Story N.ag — composed `pyve check` collapses the ladder to two outcomes:
+# composed `pyve check` collapses the ladder to two outcomes:
 # 0 (no errors; pass or warn-only) and 2 (one or more errors).
 @test "check: --help documents the 0 / 2 exit codes" {
     run "$PYVE_SCRIPT" check --help
@@ -81,7 +81,7 @@ teardown() {
 
 #============================================================
 # Exit code 2 — errors (environment broken for pyve run / pyve test).
-# Story N.ag: the composed check uses exit 2 for any error (was 1).
+# the composed check uses exit 2 for any error (was 1).
 #============================================================
 
 @test "check: exit 2 when .pyve/config is missing" {
@@ -118,7 +118,7 @@ teardown() {
 
 #============================================================
 # Exit code 0 — warnings only (environment usable but drifting).
-# Story N.ag: the composed check no longer fails CI on warnings.
+# the composed check no longer fails CI on warnings.
 #============================================================
 
 @test "check: exit 0 when pyve_version differs from current (drift)" {

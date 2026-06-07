@@ -101,7 +101,7 @@ EOF
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
 
-    # Pyve-managed section now present (Story N.af composed managed markers).
+    # Pyve-managed section now present.
     grep -q "# >>> pyve:managed:gitignore >>>" .gitignore
     grep -q "__pycache__" .gitignore
     # User section preserved (carried below the managed section).

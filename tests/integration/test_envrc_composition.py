@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Integration tests for the composed `.envrc` (Story N.ae.5).
+Integration tests for the composed `.envrc`.
 
 `pyve init` (without `--no-direnv`) now emits `.envrc` via the composer
 (`compose_project_envrc`): after `.pyve/config` and `pyve.toml` are written,
@@ -104,7 +104,7 @@ class TestComposedEnvrc:
             f"python section must export VIRTUAL_ENV; got:\n{text}"
         )
 
-        # Story N.af: init also composes a managed .gitignore section.
+        # init also composes a managed .gitignore section.
         gitignore = pyve.cwd / ".gitignore"
         assert gitignore.exists(), "init must compose .gitignore"
         gtext = gitignore.read_text()

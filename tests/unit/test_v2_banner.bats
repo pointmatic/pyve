@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.h — soft migration banner on `pyve <cmd>` in v2-configured
+# soft migration banner on `pyve <cmd>` in v2-configured
 # projects.
 #
 # Black-box tests: subprocess `bash pyve.sh ...` (matches the

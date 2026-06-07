@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Integration tests for the polyglot `pyve init` scaffold (Story N.ad).
+Integration tests for the polyglot `pyve init` scaffold.
 
 N.t shipped Node detection as advisory-only: when `package.json` was
 present, `pyve init` surfaced a note but left `pyve.toml` plugin-free,

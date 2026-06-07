@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ab.1 — Node-at-root fixture: hook-level lifecycle drive.
+# Node-at-root fixture: hook-level lifecycle drive.
 #
 # Contract-generalization proof (N-3), hook level: stand up a realistic
 # pure-Node SvelteKit fixture and drive the WHOLE Node hook lifecycle

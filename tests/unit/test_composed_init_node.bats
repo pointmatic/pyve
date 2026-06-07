@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.av.3 — Node-only composed-init path.
+# Node-only composed-init path.
 #
 # A fresh project with Node at root and no Python signal must materialize
 # node_modules (via the Node plugin) and get NO Python app env (.venv),
@@ -95,7 +95,7 @@ teardown() {
 @test "node-only: project-guide orchestration runs (globally hosted), but next-steps stay node-aware" {
     printf '{"name":"demo-node"}\n' > package.json
     run compose_init
-    # Story N.aw: project-guide is globally hosted, so the orchestration runs
+    # project-guide is globally hosted, so the orchestration runs
     # on a Node-only stack too (no longer deferred).
     [[ "$output" == *"PROJECT-GUIDE"* ]] || { echo "project-guide did NOT run on node-only (N.aw enables it)" >&2; return 1; }
     # The Python next-steps tail must still NOT run — node gets node-aware steps.

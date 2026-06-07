@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.az.1 — toolchain PyYAML provisioning + the env-spec Bash seam:
+# toolchain PyYAML provisioning + the env-spec Bash seam:
 #   - `pyve self install` pip-installs pyyaml into the toolchain venv
 #     (best-effort), via _self_install_toolchain_deps
 #   - pyve_toolchain_has_pyyaml reports interpreter capability

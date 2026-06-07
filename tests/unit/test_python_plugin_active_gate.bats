@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.aj — PC-4a: no-Python noise suppression on Node-only projects.
+# PC-4a: no-Python noise suppression on Node-only projects.
 #
 # `python_plugin_is_active_in_project` is the gate. Pyve defaults to Python:
 # the gate returns ACTIVE (0) on any Python signal, AND on a bare dir with no
@@ -63,7 +63,7 @@ teardown() {
 }
 
 @test "active: .project-guide.yml alone falls through to the bare-dir Python default (not a marker signal)" {
-    # Story N.aw: .project-guide.yml is NO LONGER a Python-active signal
+    # .project-guide.yml is NO LONGER a Python-active signal
     # (project-guide is globally hosted). With no competing stack present,
     # this dir is still active — but via the bare-dir default, not the marker.
     : > .project-guide.yml
@@ -119,7 +119,7 @@ EOF
 }
 
 @test "suppress: package.json + .project-guide.yml (project-guide is global, no project Python env)" {
-    # Story N.aw: project-guide is globally hosted, so its per-project marker
+    # project-guide is globally hosted, so its per-project marker
     # no longer implies a project Python env. A Node-only project that accepts
     # project-guide has NO .venv to report → Python stays suppressed.
     printf '{ "name": "x" }\n' > package.json
@@ -183,7 +183,7 @@ EOF
 }
 
 @test "e2e: Node dir + project-guide accepted → Python suppressed (global hosting, no utility root)" {
-    # Story N.aw: project-guide is global; a Node-only project has no project
+    # project-guide is global; a Node-only project has no project
     # Python env, so the Python plugin produces ZERO output (as when declined).
     printf '{ "name": "frontend" }\n' > package.json
     : > .project-guide.yml

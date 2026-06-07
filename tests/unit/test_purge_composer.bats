@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ai — Composed `pyve purge` with composed inventory.
+# Composed `pyve purge` with composed inventory.
 #
 # `compose_purge` gathers each active plugin's `pyve_plugin_purge_inventory`
 # (created/authored lines), composes them keyed by (plugin, path), enforces

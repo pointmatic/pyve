@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ae.2 — Activate-contract unification: Python `activate` → snippet
+# Activate-contract unification: Python `activate` → snippet
 # emitter.
 #
 # Per the N.ae.1 spike contract: `python_pyve_plugin_activate [<path>]` is a

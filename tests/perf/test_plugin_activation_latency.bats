@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ak — PC-4b: per-plugin activation latency budget (≤ 50ms p95).
+# PC-4b: per-plugin activation latency budget (≤ 50ms p95).
 #
 # The composed `.envrc` evaluates on every shell / direnv reload, so each
 # plugin's `activate` contribution must stay fast. This regression benchmark

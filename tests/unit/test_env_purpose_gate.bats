@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for Story N.d — `pyve test --env <name>` purpose gate.
+# Unit tests for the `pyve test --env <name>` purpose gate.
 #
 # The selector now rejects any env whose resolved purpose is NOT
 # "test", pointing the user at `pyve env run <name> -- <cmd>` for the

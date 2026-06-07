@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.r — Python plugin gitignore + purge_inventory hooks.
+# Python plugin gitignore + purge_inventory hooks.
 #
 # Two hooks ship as data interfaces:
 #   - python_pyve_plugin_gitignore_entries   — language-ecosystem

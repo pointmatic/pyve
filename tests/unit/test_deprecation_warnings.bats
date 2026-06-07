@@ -39,7 +39,7 @@ teardown() {
     run bash -c "'$PYVE_SCRIPT' testenv --init 2>&1"
     [ "$status" -ne 0 ]
     # The old Category A flag-delegation path fired a per-flag warning
-    # AND executed the new-form action. Story N.c re-introduced
+    # AND executed the new-form action. The v3 rename re-introduced
     # Category A at the *namespace* layer (`pyve testenv` → `pyve env`),
     # so a "deprecated" substring legitimately appears now from the
     # namespace deprecation_warn — but the flag-delegation behavior

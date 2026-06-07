@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Unit tests for Story N.e — `pyve init` writes `pyve.toml` on fresh
+# Unit tests for `pyve init` writes `pyve.toml` on fresh
 # projects, treats an existing `pyve.toml` as a refresh.
 #
 # Scope per N.e (after the in-story scope decision):
@@ -18,8 +18,8 @@
 #     test_init_wizard.bats / integration suite.
 #
 # Tasks 2 (v2-source detection + soft banner) and 4 (remove
-# .pyve/config write) are deferred to Stories N.g/N.h and N.i
-# respectively; see the Scope note in stories.md § Story N.e.
+# .pyve/config write) are deferred to later stories; see the
+# `pyve init` scope note in stories.md.
 
 bats_require_minimum_version 1.5.0
 

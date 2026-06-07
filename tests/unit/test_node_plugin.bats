@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.t — Node plugin module + scaffold-time detection hook.
+# Node plugin module + scaffold-time detection hook.
 #
 # First story of Subphase N-3 (Node/SvelteKit second reference plugin).
 # Stands up lib/plugins/node/plugin.sh against the N.k contract, mirroring
@@ -194,7 +194,7 @@ EOF
 #
 # N.t shipped this as advisory-only (`_init_maybe_advise_node_plugin`
 # surfaced a note but never mutated `pyve.toml`), deferring the real
-# polyglot scaffold to Subphase N-4. **Story N.ad superseded that helper**
+# polyglot scaffold to Subphase N-4. **That helper was superseded**
 # with `_init_scaffold_manifest`, which now writes a polyglot manifest
 # (`[plugins.python]` + `[plugins.node]`) when Node is detected at root.
 # The behavior is owned by tests/unit/test_polyglot_scaffold.bats; the

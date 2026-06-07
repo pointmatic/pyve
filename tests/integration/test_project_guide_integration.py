@@ -121,7 +121,7 @@ def _project_guide_importable(project_dir) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# project-guide stub (Story N.aw toolchain-hosting model)
+# project-guide stub
 #
 # Under N.aw, project-guide is a Pyve-managed GLOBAL tool resolved on PATH
 # (toolchain venv + ~/.local/bin shim), NOT a per-project pip install. These
@@ -457,7 +457,7 @@ class TestRealInstall:
         result = pyve.run("init", "--no-direnv", "--force", timeout=300)
         assert result.returncode == 0, f"pyve init failed: {result.stderr}"
 
-        # Story N.aw: project-guide is toolchain-hosted (resolved on PATH),
+        # project-guide is toolchain-hosted (resolved on PATH),
         # NOT installed into the project venv — so the assertion is that pyve
         # drove the hosted `project-guide init` to scaffold, not that the
         # package imports from .venv.

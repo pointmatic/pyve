@@ -453,7 +453,7 @@ EOF
 }
 
 # ────────────────────────────────────────────────────────────────────
-# assert_python_resolvable — Story N.d.1 pre-flight check.
+# assert_python_resolvable — pre-flight check.
 #
 # Detects the recurring "asdf-shim with no resolvable version" trap
 # (bit `pyve testenv init` in M.a, project-guide completion in M.b,

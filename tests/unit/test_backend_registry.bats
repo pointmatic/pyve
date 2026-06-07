@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.l — Backend-provider registry (three-category abstraction).
+# Backend-provider registry (three-category abstraction).
 #
 # Per spike S6, every backend declares one of three categories:
 #   - virtualized   (per-project env dir; PATH activation required)

@@ -145,10 +145,10 @@ class TestMicromambaWorkflow:
         # Create testenv
         pyve.run('testenv', 'init')
 
-        # v3 layout (Story N.f): the micromamba main env and the testenv
+        # v3 layout: the micromamba main env and the testenv
         # share `.pyve/envs/` — main env at `.pyve/envs/test-env/` (still
         # pre-N.g, the env-name from environment.yml), testenv at
-        # `.pyve/envs/testenv/`. Story N.f-aware `pyve purge --keep-testenv`
+        # `.pyve/envs/testenv/`. The v3-layout-aware `pyve purge --keep-testenv`
         # surgically deletes the main-env subdir and preserves the rest of
         # `.pyve/envs/`.
         assert (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()

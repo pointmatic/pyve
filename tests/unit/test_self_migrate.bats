@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.g — `pyve self migrate` — v2 → v3 migration command.
+# `pyve self migrate` — v2 → v3 migration command.
 #
 # Scope: unit-test each helper in isolation, plus a few end-to-end
 # self_migrate() flows that exercise the orchestrator without

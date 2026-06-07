@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ae.4 — PC-2 write safety: atomic write, `.envrc.prev` backup,
+# PC-2 write safety: atomic write, `.envrc.prev` backup,
 # user-content preservation.
 #
 # `compose_envrc <output_path>` wraps `_compose_envrc_body` (N.ae.3) with

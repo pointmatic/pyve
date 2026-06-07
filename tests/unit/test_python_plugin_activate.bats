@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.q — Python plugin activate hook with PC-1 validation gate.
+# Python plugin activate hook with PC-1 validation gate.
 #
 # Plugin-level activate: compose plugin-side .envrc snippet, run it
 # through validate_envrc_snippet (N.m), delegate the actual file
@@ -50,7 +50,7 @@ teardown() {
 }
 
 # ════════════════════════════════════════════════════════════════════
-# Activate-contract change (Story N.ae.2).
+# Activate-contract change.
 #
 # `python_pyve_plugin_activate` is no longer a file writer — it is a
 # sentinel-wrapped snippet EMITTER (stdout), self-resolving from
@@ -59,7 +59,7 @@ teardown() {
 # tests/unit/test_python_activate_emitter.bats. The composed
 # `.envrc` byte-equivalence target lives in compose_envrc (N.ae.4).
 #
-# Story N.al retired the legacy file-write path entirely — the
+# The legacy file-write path was retired entirely — the
 # `bp_dispatch <backend> activate` shims (`{venv,micromamba}_pyve_bp_activate`)
 # and `write_envrc_template` are gone; the composer is the only `.envrc`
 # emitter now. The bp-shim `.envrc`-write tests that lived here were

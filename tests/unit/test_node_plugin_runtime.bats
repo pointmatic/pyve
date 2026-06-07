@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.x — Node plugin: check / status / run / test hooks.
+# Node plugin: check / status / run / test hooks.
 #
 # Diagnostic + execution lifecycle. check verifies runtime + provisioning
 # and renders the S7 (manual_steps) and S11 (typescript) advisories;

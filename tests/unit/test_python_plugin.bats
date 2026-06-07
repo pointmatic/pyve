@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.n — Python plugin module + scaffold-time detection hook.
+# Python plugin module + scaffold-time detection hook.
 #
 # The Python plugin is the first reference implementation of the
 # plugin contract from N.k. N.n ships THREE hooks (manifest_namespace,

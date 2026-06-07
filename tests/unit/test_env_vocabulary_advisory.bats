@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.ba.3 (F6) — advisory recognition + surfacing + skip-materialization.
+# advisory recognition + surfacing + skip-materialization.
 #
 # The "known-advisory → record + surface, skip materialization" arm of the
 # trichotomy:

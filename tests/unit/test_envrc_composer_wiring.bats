@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ae.5 — init/update rewiring: `compose_project_envrc`.
+# init/update rewiring: `compose_project_envrc`.
 #
 # `compose_project_envrc` is the init/update entry point: it reloads the
 # manifest + plugin registry from the on-disk pyve.toml BEFORE composing,

@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ar — `pyve package [--env <name>]` verb (reserved-verb behavior).
+# `pyve package [--env <name>]` verb (reserved-verb behavior).
 #
 # `pyve package` materializes an env's declared `packaging` artifact by
 # dispatching to a registered packaging provider (N.aq registry). In v3.0

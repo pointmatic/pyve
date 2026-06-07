@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ab.2 — Polyglot Python+Node fixture: independent hook firing.
+# Polyglot Python+Node fixture: independent hook firing.
 #
 # The canonical multi-plugin case (spike Example 4): a Python API at the
 # project root and a SvelteKit frontend at src/frontend. Proves both

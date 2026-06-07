@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.az.2 — lib/pyve_env_sync_helper.py computes a stateless diff
+# lib/pyve_env_sync_helper.py computes a stateless diff
 # between §4.0 of the env-dependencies doc and the current pyve.toml, and
 # applies the reconcile via tomlkit (round-trip-preserving). Tested by
 # shelling out to the helper (the way the Bash seam invokes it). The

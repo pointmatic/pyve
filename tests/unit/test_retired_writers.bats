@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.al — Retire the pre-composer template writers.
+# Retire the pre-composer template writers.
 #
 # Regression sentinel (mirrors the stale-path sentinels, e.g.
 # test_state_layout.bats): the `.envrc` / `.gitignore` writer chains

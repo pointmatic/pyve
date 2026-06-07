@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ag — Composed `pyve check` with severity roll-up.
+# Composed `pyve check` with severity roll-up.
 #
 # `compose_check` iterates the active-plugin list, dispatches each plugin's
 # `pyve_plugin_check` hook, emits a per-plugin (path-aware) section, and

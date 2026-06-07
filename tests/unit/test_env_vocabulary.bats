@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.ba.1 (F6) — closed-vocabulary data + classifier + lockstep.
+# closed-vocabulary data + classifier + lockstep.
 #
 # lib/pyve_toml_helper.py carries the machine mirror of the Pyve-owned
 # closed vocabulary (wizard-env-contract.md §B / env-dependencies-template.md

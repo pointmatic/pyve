@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.af — Composed `.gitignore` self-heal across plugins.
+# Composed `.gitignore` self-heal across plugins.
 #
 # Mirrors the `.envrc` composer (N.ae): `_compose_gitignore_body` enumerates
 # active plugins, dispatches each plugin's `pyve_plugin_gitignore_entries`,

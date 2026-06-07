@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.av.5 — composed-init integration matrix.
+# composed-init integration matrix.
 #
 # Drives REAL `pyve init` end-to-end across the three project shapes
 # (Python-only / Node-only / polyglot), then runs the composed

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.az.1 — lib/pyve_env_spec_helper.py reads §4.0 of the
+# lib/pyve_env_spec_helper.py reads §4.0 of the
 # env-dependencies doc and projects each env to the pyve.toml-projectable
 # shape, emitting JSON. Tested by shelling out to the helper (the way the
 # Bash seam invokes it). The projection tests need a yaml-capable

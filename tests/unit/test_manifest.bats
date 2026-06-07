@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Unit tests for lib/manifest.sh — the v3.0 canonical manifest reader
-# (Story N.a, Subphase N-1). Reads pyve.toml via the Python tomllib
+# (Subphase N-1). Reads pyve.toml via the Python tomllib
 # helper lib/pyve_toml_helper.py and exposes a flat accessor surface.
 #
 # Surface under test:
@@ -160,7 +160,7 @@ TOML
     [ -z "$(manifest_get_app_type root)" ]
 }
 
-# Story N.aq — packaging accessor + provider-private env-key passthrough.
+# packaging accessor + provider-private env-key passthrough.
 # `packaging` (S15) is a core key read by `pyve package`; arbitrary other
 # keys (e.g. `dockerfile`) are packaging-provider-private (S9) — core
 # stores them but never interprets them. Closed-set validation of the
@@ -332,7 +332,6 @@ TOML
 
 # ============================================================
 # 4. manifest_resolve_purpose: explicit value wins over name-default
-#    (Story N.d)
 # ============================================================
 #
 # Resolution contract (lib/manifest.sh):

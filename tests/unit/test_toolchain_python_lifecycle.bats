@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Unit tests for the toolchain-Python lifecycle (Story N.at.3):
+# Unit tests for the toolchain-Python lifecycle:
 #   - `self install` provisions the hidden venv (best-effort, non-fatal)
 #   - a DEFAULT_PYTHON_VERSION bump provisions a new version-keyed dir
 #     and prunes the stale one

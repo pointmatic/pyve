@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.av.4 — polyglot composed-init path.
+# polyglot composed-init path.
 #
 # For a polyglot project the Python materializer (init_project) scaffolds
 # the [plugins.python] + [plugins.node] manifest and builds the Python

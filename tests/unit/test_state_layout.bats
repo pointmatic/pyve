@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.f — v3 state-directory layout pin.
+# v3 state-directory layout pin.
 #
 # Hard-pins the v3 path shape:
 #   .pyve/envs/<name>/<backend>/   (was .pyve/testenvs/<name>/<backend>/ in v2.8)
@@ -159,7 +159,7 @@ EOF
     #   - lib/envs.sh: legitimately mentions the legacy v2.8 path inside
     #     migrate_legacy_env_layout (source-of-truth for the opportunistic
     #     mover).
-    #   - lib/commands/self.sh: `pyve self migrate` (Story N.g) reads
+    #   - lib/commands/self.sh: `pyve self migrate` reads
     #     the legacy paths during detection/backup; its surface refers
     #     to .pyve/testenvs/ by name.
     #   - lib/utils.sh: the gitignore template line keeping `.pyve/testenvs`

@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ae.3 — `compose_envrc` body assembly + PC-1 validation.
+# `compose_envrc` body assembly + PC-1 validation.
 #
 # The composer's pure half: `_compose_envrc_body` enumerates active plugins
 # (plugin_list_active), dispatches each plugin's `pyve_plugin_activate`
@@ -192,7 +192,7 @@ EOF
     [[ "$output" == *"export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1"* ]]
 }
 
-# Migrated from test_asdf_compat.bats J.b (Story N.al) — the opt-out is now
+# Migrated from test_asdf_compat.bats J.b — the opt-out is now
 # enforced on the composed `.envrc` path. is_asdf_active honors
 # PYVE_NO_ASDF_COMPAT, so the guard is suppressed even when asdf is active.
 @test "composer: asdf guard absent when PYVE_NO_ASDF_COMPAT=1 (asdf otherwise active)" {

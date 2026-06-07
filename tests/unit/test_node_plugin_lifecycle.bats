@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.w — Node plugin: init / purge / update hooks.
+# Node plugin: init / purge / update hooks.
 #
 # Scaffolding lifecycle for Node envs. Mirrors N.o's shape; the new
 # shape is Node's dep-install flow — there is no `python -m venv`

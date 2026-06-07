@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.k (folding N.k.1) — `[plugins.<name>]` schema in pyve.toml
+# `[plugins.<name>]` schema in pyve.toml
 # plus the manifest.sh accessors that consume it.
 #
 # Per the spike (decisions S3, S9):

@@ -80,7 +80,7 @@ teardown() {
 # Shared helper — single-function extractor (used by the J.c tests below)
 # ────────────────────────────────────────────────────────────────────
 #
-# Story J.b's `.envrc` asdf-guard tests were retired in Story N.al: the
+# The legacy `.envrc` asdf-guard tests were retired: the
 # `_init_direnv_*` writers they exercised were removed, and the guard is
 # now emitted (and tested) by the `.envrc` composition layer — see the
 # "asdf guard present/absent" tests in test_envrc_composer.bats.

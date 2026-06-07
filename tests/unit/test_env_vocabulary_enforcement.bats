@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.ba.2 (F6) — trichotomy enforcement: unknown → hard error + abort.
+# trichotomy enforcement: unknown → hard error + abort.
 #
 # Part A (pyve.toml validation, pure stdlib): pyve_toml_helper.py rejects an
 # unknown value on any closed axis (exit 2); advisory and implemented values

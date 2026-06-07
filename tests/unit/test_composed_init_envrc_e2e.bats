@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.ab.3 — Composed `.envrc` non-interference + visitor-path activation.
+# Composed `.envrc` non-interference + visitor-path activation.
 #
 # N-3's closest look at N-4's composition concern. The Python plugin's
 # activation section (root env) and the Node plugin's activation section

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.az.2 — `pyve env sync` leaf (black-box via `bash pyve.sh`).
+# `pyve env sync` leaf (black-box via `bash pyve.sh`).
 #
 # Discovers the project-guide env-dependencies spec (§4.0), diffs it
 # against the current pyve.toml (the baseline), presents the changes, and

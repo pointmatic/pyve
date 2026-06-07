@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.av.1 — composed-init orchestrator seam.
+# composed-init orchestrator seam.
 #
 # `compose_init` is the stack-agnostic entry point `pyve init` dispatches
 # to. At N.av.1 it is a pure delegation to today's monolithic Python init

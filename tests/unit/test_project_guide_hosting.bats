@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.aw — F2 (revised): host project-guide as a Pyve-managed global
+# F2 (revised): host project-guide as a Pyve-managed global
 # tool. Cycle 1 — the hosting MECHANISM in `pyve self install`/`uninstall`:
 #   - install project-guide into the toolchain venv (best-effort, pinned)
 #   - shim the console script onto ~/.local/bin (PATH-reachable in every shell)

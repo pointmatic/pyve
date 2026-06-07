@@ -95,7 +95,7 @@ _install_banner_absent='Dev/test runner environment not initialized'
 #============================================================
 
 @test "testenv: --help documents the new subcommand grammar" {
-    # Story N.c renamed the canonical form to `pyve env`. The help heredoc
+    # The canonical form was renamed to `pyve env`. The help heredoc
     # documents that grammar; `pyve testenv --help` reaches the same
     # heredoc through the Category A delegation wrapper, so both forms
     # show the `pyve env <sub>` spelling.

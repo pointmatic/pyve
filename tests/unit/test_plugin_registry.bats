@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.k — Plugin contract + registry skeleton.
+# Plugin contract + registry skeleton.
 #
 # The contract defines 8 conceptual hook groups (manifest_namespace,
 # register_backends, detect, lifecycle [init/purge/update/check/status/
@@ -113,7 +113,7 @@ plant_fake_plugin() {
 
 @test "registry: plugin_dispatch falls back to the default when hook not defined" {
     # Use a hook the Python plugin still doesn't implement at this
-    # point in the phase (`diagnostics` lands later). Story N.o made
+    # point in the phase (`diagnostics` lands later). The lifecycle-hook work made
     # `init` / `purge` / `update` concrete on the Python plugin, so
     # they're no longer suitable for the fallback assertion.
     plugin_register python

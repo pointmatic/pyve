@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 #============================================================
-# Story N.ay — F5: `.project-guide.yml` contract guard + `env_spec_path`
+# F5: `.project-guide.yml` contract guard + `env_spec_path`
 # discovery.
 #
 # Two concerns:

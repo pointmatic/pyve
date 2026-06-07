@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.aa — SvelteKit detection + frameworks attribute support.
+# SvelteKit detection + frameworks attribute support.
 #
 # Layers SvelteKit detection onto the Node plugin (sibling helper
 # node_detect_framework — keeps node_pyve_plugin_detect's node/none

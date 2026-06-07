@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.d.1 — verify the `assert_python_resolvable` pre-flight is
+# verify the `assert_python_resolvable` pre-flight is
 # wired into the two additional `python` invocation sites that were
 # flagged out-of-scope in the initial N.d.1 fix and then folded in:
 #

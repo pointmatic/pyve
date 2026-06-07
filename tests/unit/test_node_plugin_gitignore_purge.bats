@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story N.z — Node plugin: .gitignore + smart-purge hooks.
+# Node plugin: .gitignore + smart-purge hooks.
 #
 # Mirrors the Python plugin's N.r:
 #   node_pyve_plugin_gitignore_entries [path]  — Node ecosystem patterns,
