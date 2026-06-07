@@ -99,20 +99,53 @@ teardown() {
     declare -F python_pyve_plugin_purge_inventory >/dev/null
 }
 
-@test "purge_inventory: declares .venv as Pyve-created" {
+# purge_inventory must enumerate every path `pyve purge` touches so the
+# confirmation preview matches the remover (N.bf.3). Existence-gated: a path
+# is declared only when present, so the preview reflects THIS project.
+
+@test "purge_inventory: declares present .venv / .envrc / full .pyve as created" {
+    mkdir -p .venv .pyve/envs
+    touch .envrc
     run python_pyve_plugin_purge_inventory
     [ "$status" -eq 0 ]
-    [[ "$output" == *"created .venv"* ]]
+    grep -qxF "created .venv" <<< "$output"
+    grep -qxF "created .envrc" <<< "$output"
+    # The remover does `rm -rf .pyve` (whole dir), not just .pyve/envs.
+    grep -qxF "created .pyve" <<< "$output"
+    # `! grep` is errexit-exempt under set -e, so gate negatives explicitly.
+    if grep -qxF "created .pyve/envs" <<< "$output"; then
+        echo "FAIL: inventory understates scope as .pyve/envs"; return 1
+    fi
 }
 
-@test "purge_inventory: declares .envrc as Pyve-created" {
+@test "purge_inventory: declares .tool-versions / .python-version as created (the silent-removal gap)" {
+    touch .tool-versions .python-version
     run python_pyve_plugin_purge_inventory
-    [[ "$output" == *"created .envrc"* ]]
+    grep -qxF "created .tool-versions" <<< "$output"
+    grep -qxF "created .python-version" <<< "$output"
 }
 
-@test "purge_inventory: declares .pyve/envs as Pyve-created" {
+@test "purge_inventory: declares .env / .gitignore as tidied (cleaned or removed-if-empty)" {
+    touch .env .gitignore
     run python_pyve_plugin_purge_inventory
-    [[ "$output" == *"created .pyve/envs"* ]]
+    grep -qxF "tidied .env" <<< "$output"
+    grep -qxF "tidied .gitignore" <<< "$output"
+    # Must NOT mislabel a user-authored / conditional artifact as a removal.
+    if grep -qxF "created .gitignore" <<< "$output"; then
+        echo "FAIL: .gitignore mislabeled as an unconditional removal"; return 1
+    fi
+}
+
+@test "purge_inventory: existence-gated — absent artifacts are NOT declared" {
+    # Empty project dir: no created/tidied artifacts, only the authored guards.
+    run python_pyve_plugin_purge_inventory
+    [ "$status" -eq 0 ]
+    if grep -qE '^created ' <<< "$output"; then
+        echo "FAIL: created listed for an absent artifact"; return 1
+    fi
+    if grep -qE '^tidied ' <<< "$output"; then
+        echo "FAIL: tidied listed for an absent artifact"; return 1
+    fi
 }
 
 @test "purge_inventory: declares pyproject.toml as user-authored (never touch)" {
@@ -127,6 +160,7 @@ teardown() {
 
 @test "purge_inventory: plugin_dispatch python purge_inventory routes to the hook" {
     plugin_register python
+    touch .envrc
     run plugin_dispatch python purge_inventory
     [ "$status" -eq 0 ]
     [[ "$output" == *"created"* ]]

@@ -499,15 +499,30 @@ EOF
 #------------------------------------------------------------
 
 python_pyve_plugin_purge_inventory() {
-    cat <<'EOF'
-created .venv
-created .pyve/envs
-created .envrc
-authored pyproject.toml
-authored requirements*.txt
-authored setup.py
-authored environment.yml
-EOF
+    # Existence-gated so the composed `pyve purge` preview reflects THIS
+    # project's actual artifacts — listing only what is present keeps the
+    # confirmation honest (no phantom entries, and no silent removals like
+    # the .tool-versions one N.bf.3 fixed). Two display classes, consumed by
+    # the purge composer:
+    #   created — pyve-generated; the purge hook removes it wholesale.
+    #   tidied  — pyve touches only its OWN part: .gitignore (its section is
+    #             stripped, the file stays) or .env (removed only if empty).
+    # Scope note: the remover does `rm -rf .pyve` (whole dir), so we declare
+    # `.pyve`, not the narrower `.pyve/envs` the preview used to under-report.
+    # The `authored` guards are presence-independent — they protect user
+    # files from removal whether or not they exist yet.
+    local envf="${ENV_FILE_NAME:-.env}"
+    if [[ -d .venv ]];           then printf 'created .venv\n'; fi
+    if [[ -d .pyve ]];           then printf 'created .pyve\n'; fi
+    if [[ -f .envrc ]];          then printf 'created .envrc\n'; fi
+    if [[ -f .tool-versions ]];  then printf 'created .tool-versions\n'; fi
+    if [[ -f .python-version ]]; then printf 'created .python-version\n'; fi
+    if [[ -f "$envf" ]];         then printf 'tidied %s\n' "$envf"; fi
+    if [[ -f .gitignore ]];      then printf 'tidied .gitignore\n'; fi
+    printf 'authored pyproject.toml\n'
+    printf 'authored requirements*.txt\n'
+    printf 'authored setup.py\n'
+    printf 'authored environment.yml\n'
 }
 
 # Plugin activate hook.

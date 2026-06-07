@@ -184,6 +184,53 @@ INV
     [[ "$output" == *"build"* ]]
 }
 
+@test "purge: tidied artifacts are surfaced in the preview (cleaned, not silently touched)" {
+    _fake_plugin alpha 0 <<'INV'
+created build
+tidied .gitignore
+INV
+    run compose_purge --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"build"* ]]
+    # The tidied artifact must appear so the user knows it will be touched.
+    [[ "$output" == *".gitignore"* ]]
+}
+
+@test "purge: a tidied-only project is NOT reported as 'nothing to remove'" {
+    _fake_plugin alpha 0 <<'INV'
+tidied .gitignore
+INV
+    run compose_purge --yes
+    [ "$status" -eq 0 ]
+    if [[ "$output" == *"Nothing to remove"* ]]; then
+        echo "FAIL: a project with only tidied artifacts said nothing to remove"; return 1
+    fi
+    [[ "$output" == *".gitignore"* ]]
+}
+
+@test "purge: --keep-testenv surfaces a note that test environments are preserved" {
+    # The flat preview lists .pyve, but --keep-testenv prunes around the test
+    # envs rather than wiping the whole dir. A note prevents a false alarm
+    # (user thinking their test envs are about to be deleted).
+    _fake_plugin alpha 0 <<'INV'
+created .pyve
+INV
+    run compose_purge --keep-testenv --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"test environment"* ]]
+    [[ "$output" == *"preserved"* ]]
+}
+
+@test "purge: no keep-testenv note on a normal purge" {
+    _fake_plugin alpha 0 <<'INV'
+created .pyve
+INV
+    run compose_purge --yes
+    if [[ "$output" == *"preserved"* ]]; then
+        echo "FAIL: keep-testenv note shown on a normal purge"; return 1
+    fi
+}
+
 # ── Failure recovery ────────────────────────────────────────────────
 
 @test "recovery: a failing purge hook does NOT stop the composer dispatching others" {

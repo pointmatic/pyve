@@ -1941,7 +1941,7 @@ The manifest is **valid**. Following the advice — deleting `pyve.toml` — des
 - [x] Verify interaction with N.bf.1. — N.bf.2 **supersedes** N.bf.1's interpreter branch: the hard-error "cannot validate … Resolve your Python, then re-run … Do NOT delete pyve.toml" (abort) is replaced by a `warn` deferral (proceed). N.bf.1's message-correctness guarantees still hold (never says "invalid manifest"/"re-scaffold" for the interpreter case); the genuine-invalid path is unchanged.
 - [x] Full suite; zero regressions. — 1824 Bats unit tests pass, 0 failures; shellcheck clean on the edited range; no integration test depended on the old abort behavior.
 
-### Story N.bf.3: `pyve purge` confirmation preview under-reports the actual blast radius [Planned]
+### Story N.bf.3: `pyve purge` confirmation preview under-reports the actual blast radius [Done]
 
 **Symptom.** The confirmation gate lists three artifacts:
 
@@ -1960,11 +1960,11 @@ but the run removes more: `.tool-versions`, the **whole** `.pyve/` directory (no
 
 **Tasks**
 
-- [ ] Reproduce: snapshot the preview list vs. the actually-removed set; assert they diverge (red).
-- [ ] Choose fix direction (1 inventory-driven removal vs 2 complete-the-inventory) and record the decision in the story.
-- [ ] Implement so the confirmation preview enumerates every path the purge will remove / modify (incl. `.tool-versions`, full `.pyve`, `.env`-if-empty, `.gitignore`-cleaned).
-- [ ] Test: preview set == removed set, for venv and micromamba backends, with and without `--keep-testenv`.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce: snapshot the preview list vs. the actually-removed set; assert they diverge (red). — [test_python_plugin_gitignore_purge.bats](../../tests/unit/test_python_plugin_gitignore_purge.bats) (inventory completeness) + [test_purge_composer.bats](../../tests/unit/test_purge_composer.bats) (tidied rendering) — red under the old static `.pyve/envs`-only inventory.
+- [x] Choose fix direction and record the decision. — **Chose option 2 (complete the inventory), display-only**, preserving the N.ai Option-B delegated-removal seam (no removal-behavior change). Two refinements: (a) the Python inventory is now **existence-gated** (lists only present artifacts — no phantoms, no silent omissions) and enumerates `.tool-versions`/`.python-version`/full `.pyve`; (b) a new **`tidied`** display class surfaces clean-in-place / remove-if-empty artifacts (`.gitignore`, `.env`) honestly instead of mislabeling them as wholesale removals.
+- [x] Implement so the preview enumerates every path the purge will remove / modify. — Inventory: [plugin.sh:501](../../lib/plugins/python/plugin.sh#L501). Composer renders a second "cleaned / removed-if-empty" section + emptiness check: [purge_composer.sh](../../lib/purge_composer.sh). E2E: the real `pyve purge` preview now lists `.venv`, full `.pyve`, `.envrc`, `.tool-versions` (removed) and `.env`, `.gitignore` (cleaned).
+- [x] Test: preview set == removed set, for venv and micromamba backends, with and without `--keep-testenv`. — **Exact for the default purge, both backends** (the existence-gated `.pyve` covers both venv `.../venv` and micromamba `.../conda` trees). **`--keep-testenv` scope decision (option 2, developer-approved):** the flat inventory can't express the config-dependent surgical scope (`rm -rf .pyve` minus `envs`/`testenvs`, plus the micromamba main-env subdir read from `.pyve/config`) without replicating the remover's logic inside the inventory — the exact Option-B seam limitation the umbrella told me not to redesign. So under `--keep-testenv` the preview lists `.pyve` (an **over**-report — it never hides a deletion, so the N.bf.3 trust bug does not recur) plus a clarifying **note** ("your test environments are preserved — '.pyve' is pruned around them, not fully removed") to prevent a false alarm. Exact `--keep-testenv` itemization is left as a follow-up (would require revisiting the inventory↔remover seam as its own story).
+- [x] Full suite; zero regressions. — 1829 Bats unit tests pass, 0 failures; shellcheck clean on both edited files; Node inventory untouched.
 
 ---
 

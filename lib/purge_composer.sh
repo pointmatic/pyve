@@ -89,12 +89,30 @@ compose_purge_removals() {
     done <<< "$inv"
 }
 
+# Print the tidied set (`<plugin> <path>` per line) — every `tidied` entry in
+# the composed inventory. A `tidied` artifact is one the plugin cleans in
+# place (strips only its OWN section from a shared file, e.g. .gitignore) or
+# removes only when empty (e.g. .env) — never a wholesale delete of user
+# data. Display-only: the actual tidy is delegated to the plugin's purge hook
+# (Option B). NOT subject to the authored guard — a tidied path may itself be
+# user-authored (.gitignore is); surfacing it keeps the confirmation honest,
+# but the plugin hook is responsible for touching only its own part.
+compose_purge_tidied() {
+    local inv plugin cls path
+    inv="$(compose_purge_inventory)"
+    while read -r plugin cls path; do
+        [[ "$cls" == "tidied" ]] || continue
+        printf '%s %s\n' "$plugin" "$path"
+    done <<< "$inv"
+}
+
 # Orchestrate a composed purge: build the inventory, apply the authored
 # guard, confirm (unless skipped), then delegate removal to each active
 # plugin's purge hook. Returns nonzero if any plugin's purge hook failed
 # (see the file header's "Failure recovery").
 compose_purge() {
     local skip_confirm=false
+    local keep_testenv=false
     local -a py_args=()
 
     while [[ $# -gt 0 ]]; do
@@ -104,6 +122,7 @@ compose_purge() {
                 shift
                 ;;
             --keep-testenv)
+                keep_testenv=true
                 py_args+=("--keep-testenv")
                 shift
                 ;;
@@ -121,30 +140,58 @@ compose_purge() {
 
     header_box "pyve purge"
 
-    # Composed inventory + authored guard.
-    local removals
+    # Composed inventory + authored guard. `removals` are wholesale deletes;
+    # `tidied` are clean-in-place / remove-if-empty (e.g. .gitignore, .env).
+    # Both are surfaced so the confirmation matches what the purge actually
+    # touches (N.bf.3) — under-reporting either is a consent/trust bug.
+    local removals tidied
     removals="$(compose_purge_removals)"
+    tidied="$(compose_purge_tidied)"
 
-    if [[ -z "$removals" ]]; then
+    if [[ -z "$removals" && -z "$tidied" ]]; then
         info "Nothing to remove — no pyve-created artifacts found."
         footer_box
         return 0
     fi
 
-    # Grouped confirmation: list what will be removed, by plugin.
-    info "The following pyve-created artifacts will be removed:"
+    # Grouped confirmation: list what will be removed, then what will be
+    # cleaned, each by plugin.
     local plugin path last_plugin=""
-    while read -r plugin path; do
-        [[ -z "$plugin" ]] && continue
-        if [[ "$plugin" != "$last_plugin" ]]; then
-            printf "  [%s]\n" "$plugin"
-            last_plugin="$plugin"
-        fi
-        printf "    %s\n" "$path"
-    done <<< "$removals"
+    if [[ -n "$removals" ]]; then
+        info "The following pyve-created artifacts will be removed:"
+        while read -r plugin path; do
+            [[ -z "$plugin" ]] && continue
+            if [[ "$plugin" != "$last_plugin" ]]; then
+                printf "  [%s]\n" "$plugin"
+                last_plugin="$plugin"
+            fi
+            printf "    %s\n" "$path"
+        done <<< "$removals"
+    fi
+
+    if [[ -n "$tidied" ]]; then
+        info "The following will be cleaned (pyve's own entries only) or removed if empty:"
+        last_plugin=""
+        while read -r plugin path; do
+            [[ -z "$plugin" ]] && continue
+            if [[ "$plugin" != "$last_plugin" ]]; then
+                printf "  [%s]\n" "$plugin"
+                last_plugin="$plugin"
+            fi
+            printf "    %s\n" "$path"
+        done <<< "$tidied"
+    fi
+
+    # --keep-testenv prunes around the test envs rather than wiping the whole
+    # tree, so any `.pyve` listed above is pruned, not fully removed. The flat
+    # inventory can't express that surgical scope (Option B seam), so surface
+    # it as a note to prevent a false "my test envs are about to die" alarm.
+    if [[ "$keep_testenv" == true ]]; then
+        info "--keep-testenv: your test environments are preserved — '.pyve' is pruned around them, not fully removed."
+    fi
 
     if [[ "$skip_confirm" != true ]] && [[ -z "${CI:-}" ]] && [[ -z "${PYVE_FORCE_YES:-}" ]]; then
-        warn "This permanently removes the artifacts listed above."
+        warn "This permanently removes or cleans the artifacts listed above."
         if ! ask_yn "Proceed"; then
             info "Aborted — no changes made"
             return 0
