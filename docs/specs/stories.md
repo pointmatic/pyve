@@ -1738,30 +1738,31 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
   Rule: remove pure narration; keep (or relocate-without-losing) refs that are load-bearing contracts.
 - **Survey for other temporary scaffolding or structures** that don't belong in a well-maintained codebase.
 
-**Timing note.** This consolidation bundles into v3.0.0 with the rest of N-5–N-9; run it near the *end* of that bundle (after N-8's doc churn settles, just before N-9's release) to avoid re-churning files N-8 may still touch.
+**Timing note — N-7 precedes N-8.** This consolidation bundles into v3.0.0 with the rest of N-5–N-9, and runs **before** N-8, not after. N-7 renames story-named test files to capability names (N.bc) and strips barnacle story-refs from code (N.bd); the spec docs N-8 refreshes — `tech-spec.md` and `testing-spec.md` — reference those test filenames directly (~76 references between them). Running N-7 first means N-8's refresh documents the *final* capability names in a single pass. Running N-8 first would write doc prose against soon-to-be-renamed files, forcing N-7's renames to re-churn N-8's just-written output. Land N-7 first, then refresh docs against the clean state.
 
 **Phase-specific insights for this subphase:**
 
-- **Execution order ≠ subphase number.** Story breakdown below is drafted now so the work is locked in, but execution waits until N-8's doc churn settles per the timing note above. The breakdown reads as if it ran in numerical order; the execution sequence is determined by the timing note.
+- **Execution order = subphase number; N-7 precedes N-8.** N-7's decisions — the test→capability-name mapping (N.bc) and the narrative-vs-load-bearing ref classification (N.bd) — are derived from **code structure and contracts**, so documentation churn cannot invalidate them. There is no reason to wait on N-8. Land N-7 first so N-8 enters a clean, story-ref-free codebase and refreshes the docs against final names once.
+- **Caveat — an N-8 command-surface rename lands surgically on the cleaned base.** A clean codebase is the *ideal* environment for an N-8 "Aha!" moment that renames the command surface: once the story-ref barnacles are gone and the tests are capability-named, such a rename propagates as a single surgical sweep across code, tests, and docs, unobscured by transient story attribution. This is the one residual N-8→N-7 coupling — a capability name that should adopt a *post*-N-8 command name — and it is handled *forward*, by executing the rename cleanly on the N-7 base, **not** by deferring N-7 behind N-8.
 - **Audit-first pattern.** N.bb produces a reviewable [phase-n-7-audit.md](phase-n-7-audit.md) classifying every story-named test file (with proposed new capability-named targets) and every `# Story N.x` reference in production code (as **narrative** or **load-bearing**). N.bc and N.bd execute against the audit's per-item dispositions. The split is deliberate — load-bearing-vs-narrative classification deserves explicit review before any deletion, since silently stripping a load-bearing marker disarms a downstream sweep (e.g., the N-10 read-compat cleanup) with no test failure to catch it.
 - **Load-bearing exceptions to preserve** (per the existing list above): the `v3.0-only: remove in N-10` markers in [lib/manifest.sh](../../lib/manifest.sh) and the grep-sentinels in tests where the marker IS the assertion subject (`test_n_f_state_layout`, `test_n_al_retired_writers`, the `lib/ui/` boundary test). N.bb's audit explicitly lists these and any similar items found during the sweep.
 - **Spike artifacts are kept, not cleaned up in N.be.** [phase-n-2-spike-env-model-worked-examples.md](phase-n-2-spike-env-model-worked-examples.md), [spike-n-at-composed-init-seam.md](spike-n-at-composed-init-seam.md), [spike-n-ao-project-guide-provisioning.md](spike-n-ao-project-guide-provisioning.md), and the new [phase-n-7-audit.md](phase-n-7-audit.md) are historical design records, not scaffolding.
 
-### Story N.bb: Audit + classification — story-named tests, story-refs in code, load-bearing exceptions [Planned]
+### Story N.bb: Audit + classification — story-named tests, story-refs in code, load-bearing exceptions [Done]
 
 **Motivation.** Produce the load-bearing classification before any deletion happens. The deliverable is a reviewable artifact (`docs/specs/phase-n-7-audit.md`) that drives N.bc and N.bd as mechanical execution stories. Surfacing the classification upfront catches borderline cases (story-refs that look narrative but are actually contract) at review time instead of as silent disarmaments later.
 
 **Tasks**
 
-- [ ] Walk `tests/unit/`, `tests/integration/`, `tests/perf/`, and any other tests/ subdirectories; enumerate every test file with a story-IDed name (e.g., `test_n_*.bats`, `test_n_*_*.bats`).
-- [ ] For each story-named test file, propose a capability-named target following the existing convention (`test_check`, `test_status`, `test_purge_ui`, etc.). Group multiple story-named files that test the same capability into one target file where natural (e.g., `test_n_av_*.bats` → `test_composed_init.bats`).
-- [ ] Walk `lib/`, `pyve.sh`, and `tests/` (separate sweep from the rename catalog); enumerate every `# Story N.x` reference / similar story-IDed comment. Classify each as **narrative** (decorative; safe to remove) or **load-bearing** (contract; must survive).
-- [ ] For every load-bearing ref, document the contract: what depends on the ref existing (e.g., the `v3.0-only: remove in N-10` markers drive the N-10 cleanup sweep and are asserted grep-visible by [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats)).
-- [ ] Produce [docs/specs/phase-n-7-audit.md](phase-n-7-audit.md) with three sections:
+- [x] Walk `tests/unit/`, `tests/integration/`, `tests/perf/`, and any other tests/ subdirectories; enumerate every test file with a story-IDed name (e.g., `test_n_*.bats`, `test_n_*_*.bats`). *(59 files — audit §1)*
+- [x] For each story-named test file, propose a capability-named target following the existing convention (`test_check`, `test_status`, `test_purge_ui`, etc.). Group multiple story-named files that test the same capability into one target file where natural (e.g., `test_n_av_*.bats` → `test_composed_init.bats`). *(audit §1; 5 open merge decisions flagged for the gate, notes A–E)*
+- [x] Walk `lib/`, `pyve.sh`, and `tests/` (separate sweep from the rename catalog); enumerate every `# Story N.x` reference / similar story-IDed comment. Classify each as **narrative** (decorative; safe to remove) or **load-bearing** (contract; must survive). *(203 production-code refs → audit §2 form taxonomy; 115 test-body refs → audit §2-T)*
+- [x] For every load-bearing ref, document the contract: what depends on the ref existing (e.g., the `v3.0-only: remove in N-10` markers drive the N-10 cleanup sweep and are asserted grep-visible by [test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats)). *(audit §3, LB-1…LB-6)*
+- [x] Produce [docs/specs/phase-n-7-audit.md](phase-n-7-audit.md) with three sections:
   - **§1 Test file rename catalog**: table of current name → proposed name → merge target (if applicable) → per-file disposition note.
   - **§2 Story-ref classification**: table of file:line → ref text → narrative/load-bearing → disposition (remove / keep / relocate).
   - **§3 Load-bearing contract notes**: per-ref entries documenting what each load-bearing ref protects (grep-visibility, marker presence, …) so future maintainers don't strip them on a follow-up pass.
-- [ ] Audit doc gate: present at approval gate for review before N.bc/N.bd execute. Adjust the classification per developer feedback before marking [Done].
+- [x] Audit doc gate: present at approval gate for review before N.bc/N.bd execute. Adjust the classification per developer feedback before marking [Done]. *(Approved 2026-06-06; one feedback item folded in — the test-body scope seam became Story N.bd.1; §1 merge proposals A–E accepted as default.)*
 
 ### Story N.bc: Rename story-named test files per the audit [Planned]
 
@@ -1787,6 +1788,20 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [ ] Cross-check after the sweep: every load-bearing item from N.bb's §3 is still grep-visible (use `git grep` with each marker pattern; assert nonzero hits).
 - [ ] Run the full test suite (`make test`); zero regressions expected. Failures here typically indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
 - [ ] No production behavior change expected (this is pure comment hygiene); the suite passing is the proof.
+
+### Story N.bd.1: Sweep narrative story-refs from test bodies per the audit [Planned]
+
+**Motivation.** N.bd's test-body counterpart. N.bb's task-3 sweep covered three locations (`lib/`, `pyve.sh`, `tests/`), but the execution stories left a seam: N.bc renames test *filenames* and N.bd sweeps *production* comments — neither owns the `# Story N.x` narrative comments *inside* test bodies. N.bb's §2-T classified them (114 narrative, 1 load-bearing); this story executes their removal. Same shape and risk profile as N.bd — pure comment hygiene, green suite as the proof.
+
+**Scope note.** Test-body refs live in **both** story-named and capability-named files (e.g. `test_check.bats`, `test_manifest.bats`, `tests/helpers/test_helper.bash`), so this sweep walks **all of `tests/`**, not just the files N.bc renames. Run *after* N.bc so the rename churn has settled and the sweep operates on final filenames.
+
+**Tasks**
+
+- [ ] For each entry classified **narrative** in N.bb's §2-T: strip the `Story N.x` token, keeping any self-contained "what this test covers" prose. Where the ref carried context not derivable from the test, relocate it into a self-contained comment (no story ID).
+- [ ] Leave the one **load-bearing** §2-T entry in place: `tests/unit/test_n_i_read_compat.bats` → `grep -qE 'v3\.0-only: remove in N-10'` (audit §3 LB-1's enforcer; the literal is the assertion subject). Adjust only if N.bc renamed the file — update the `load`/path, never the grep target.
+- [ ] Cross-check after the sweep: LB-1's grep enforcer is still present and green (the read-compat marker assertion must still fire).
+- [ ] Run the full test suite (`make test`); zero regressions expected. Failures indicate a misclassification — re-open N.bb for the affected ref rather than monkey-patching the test.
+- [ ] No behavior change expected (comment hygiene only); the suite passing is the proof.
 
 ### Story N.be: Survey + clean other temporary scaffolding [Planned]
 
