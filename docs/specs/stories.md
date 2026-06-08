@@ -2057,9 +2057,11 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 
 Following it (edit `environment.yml`, `pyve init --force`) then hard-errors with "No conda-lock.yml found." The advice omits the flag that makes it work: the rebuild must be `pyve init --force --no-lock` (you're bootstrapping the locker, so a lock can't exist yet).
 
-**Root cause.** The advice strings at [lock.sh:147](../../lib/commands/lock.sh#L147) and [lock.sh:267](../../lib/commands/lock.sh#L267) tell the user to `pyve init --force` without `--no-lock`, sending them straight into the N.bf.8 wall.
+**Root cause.** The advice strings at [lock.sh:147](../../lib/commands/lock.sh#L147) and [lock.sh:267](../../lib/commands/lock.sh#L267) tell the user to `pyve init --force` without `--no-lock`, sending them straight into the N.bf.8-12 wall.
 
-**Proposed fix.** Correct the advice to `pyve init --force --no-lock`. **Coordinate with N.bf.10:** once the starter `environment.yml` ships `conda-lock` by default, *new* projects never reach this message (their env already has the locker), so this fix mainly serves projects scaffolded before N.bf.10 / created with `--no-lock`. If N.bf.10 lands first, reframe the advice toward "your env already has conda-lock; just run `pyve lock`" for the common case.
+**Proposed fix.** Correct the advice to `pyve init --force --no-lock`. **Coordinate with N.bf.[deprecated]:** once the starter `environment.yml` ships `conda-lock` by default, *new* projects never reach this message (their env already has the locker), so this fix mainly serves projects scaffolded before N.bf.[deprecated] / created with `--no-lock`. If N.bf.[deprecated] lands first, reframe the advice toward "your env already has conda-lock; just run `pyve lock`" for the common case.
+
+> **Forward note (2026-06-07):** N.bf.[deprecated]'s scaffold-by-default behavior is now part of **N.bf.11** (declarative lock model). Once N.bf.11 lands, new projects scaffold `conda-lock` into the env and `pyve lock` works directly — making this guard's advice new-project-moot; it remains for pre-N.bf.11 / `--no-lock` projects. The advice text shipped here is harmless under the new model but N.bf.12's doc pass may revisit it.
 
 **Tasks**
 
@@ -2068,24 +2070,125 @@ Following it (edit `environment.yml`, `pyve init --force`) then hard-errors with
 - [x] Test the message names the working command. — both new cases assert the output contains `pyve init --force --no-lock` (and still names "conda-lock is not available").
 - [x] Full suite; zero regressions. — 1840 Bats unit tests pass (1838 + 2 new), 0 failures; shellcheck clean (only the pre-existing SC2148 no-shebang info on the sourced lib). Integration test `test_lock_success_output_references_pyve_init_force` still satisfied (asserts the `pyve init --force` substring, which the new text preserves).
 
-### Story N.bf.8: `--force` rebuild is stricter than fresh init (no auto `--no-lock` when `environment.yml` exists) [Planned]
+### Story-Group: Declarative lock-requirement model + gentle nudge/bark 
 
-**Discovered:** v3.0.0a1 smoke test (the `pyve init --force` step of the lock dance).
+**(umbrella — see N.bf.8–N.bf.12)**
 
-**Symptom.** On a *fresh* dir, `pyve init --backend micromamba` scaffolds `environment.yml` and proceeds without a lock. But when `environment.yml` *already exists* (the user edited it) and there's no `conda-lock.yml`, `pyve init --force` hard-errors "No conda-lock.yml found" — the same project state, opposite behavior, purely because the file already exists.
+**Discovered:** v3.0.0a1 smoke test (the `pyve init --force` lock dance) + the design discussion that followed (2026-06-07).
 
-**Root cause.** [`scaffold_starter_environment_yml`](../../lib/plugins/python/plugin.sh#L1698) only sets `PYVE_NO_LOCK=1` when it actually *creates* `environment.yml`. When the file already exists it no-ops, `PYVE_NO_LOCK` stays unset, and [`validate_lock_file_status`](../../lib/micromamba_env.sh#L311) Case 2 (env.yml present, lock absent) hard-errors. The bypass is gated on "did we just scaffold," not on "is a lock obtainable yet."
+**Problem.** The v3.0 lock behavior keys "is a lock required?" off transient init-time state (`PYVE_NO_LOCK`, set only when the scaffolder actually *creates* `environment.yml`) plus raw file existence. Two consequences: (1) `pyve init` and `pyve init --force` diverge on identical project state — the original N.bf.8-12 symptom: existing `environment.yml` + no `conda-lock.yml` → `--force` hard-errors "No conda-lock.yml found" while fresh init scaffolds-and-proceeds; (2) the lock requirement lives in init's control flow rather than in the project's own declaration.
 
-**Proposed fix (decide during debug).** Make the rebuild consistent with fresh init when a lock genuinely can't exist yet: when `environment.yml` is present, `conda-lock.yml` absent, and `conda-lock` isn't available to generate one, auto-proceed with `--no-lock` + the existing warning (rather than hard-erroring). The invariant: **a micromamba project with a source file but no lock must `init`/`init --force` to a working env without the user hand-passing `--no-lock`.** **Relationship to N.bf.10:** once the default scaffold ships `conda-lock`, the common rebuild has the locker available and won't hit this wall — this fix then mainly covers `--no-lock`-scaffolded or pre-N.bf.10 projects.
+**Settled model (developer decision, 2026-06-07).** Move the lock requirement from a transient flag to a *declarative signal*, and replace the hard pre-flight error (non-strict) with a gentle nudge — matching Pyve's "calm, non-invasive in the developer's environment" philosophy.
+
+- **Signal:** `conda-lock` declared as a dependency in `environment.yml` ⟺ "a lock is required." Decoupled from install-source selection.
+- **Install source (independent axis):** `conda-lock.yml` if it exists, else `environment.yml` ([`detect_environment_file`](../../lib/micromamba_env.sh#L61)'s existing priority). `--no-lock` forces `environment.yml`. Whether `conda-lock` is *declared* does not affect which file installs — only whether a missing lock is nudged/barked.
+- **Non-strict `init` / `init --force`:** never hard-error on a missing lock. If `conda-lock` is declared and no fresh lock exists → proceed and **nudge** at the end of init. Fresh and `--force` are symmetric — nothing keys on "did we scaffold / did the file pre-exist," so the asymmetry cannot recur.
+- **`--strict`:** turns the nudge into a **bark** (hard pre-flight error — the production gate). Orthogonally still opts out of scaffolding/inference.
+- **`--no-lock`:** single meaning — "don't *use* a lock this run; resolve from `environment.yml`." Always non-destructive (never deletes a committed `conda-lock.yml`, even with `--force`, which purges materialized state only). Beats `--strict`'s lock requirement (explicit instruction > policy).
+- **No auto-lock:** init never runs `pyve lock` for the user (preserves features.md's "no hidden resolve time in init" rationale). The nudge makes the manual step discoverable instead.
+
+**Messages (final wording).**
+
+Nudge — end of a successful non-strict init, `conda-lock` declared, lock absent/stale:
+
+```
+conda-lock is in your environment.yml, so Pyve expects a conda-lock.yml.
+When your dependencies are finalized, run `pyve lock` to resolve them into the lock file.
+```
+
+Enforcement (the bark) — `--strict` init, and `pyve check`'s diagnostic:
+
+```
+No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires a lock file.
+  → Run `pyve lock` to generate it.
+  → Or pass --no-lock to skip the check for this run.
+  → Or remove conda-lock from environment.yml to opt out permanently.
+```
+
+**Enforcement surface.** [`validate_lock_file_status`](../../lib/micromamba_env.sh#L311) is called only from `init_project` ([plugin.sh:1578](../../lib/plugins/python/plugin.sh#L1578), [:1747](../../lib/plugins/python/plugin.sh#L1747)) — `init` is the sole barker today. The model keeps the bark on `pyve init --strict`; `pyve check` adopts the enforcement wording as a *non-blocking* warning. No new enforcing commands — `pyve run` / `pyve test` stay lock-agnostic so the pre-production workflow is never punished.
+
+**Out of scope.** Broad README/MkDocs v3.0 staleness reconciliation (already captured in the deferred `refactor_document` bundle at the end of this subphase); a lightweight "apply a changed lock without a full rebuild" path (the `pyve lock` → `pyve init --force` loop stands; gap noted in the design discussion for a possible future `pyve sync`); N.bf.13's update-in-place behavior (its own story).
+
+**Sub-stories (work in order):**
+
+- **N.bf.8** — `conda-lock`-declared detector (the signal).
+- **N.bf.9** — Repoint `init` / `init --force` to the declarative model (nudge/bark, symmetric).
+- **N.bf.10** — `--no-lock` = non-destructive "resolve from `environment.yml`".
+- **N.bf.11** — Scaffold + interactive wizard `conda-lock` opt-in (supersedes N.bf.[deprecated]).
+- **N.bf.12** — Targeted docs (features.md + tech-spec.md lock/strict passages).
+
+### Story N.bf.8: `conda-lock`-declared detector [Planned]
+
+**Scope.** A helper that answers "is `conda-lock` a declared dependency in `environment.yml`?" — the single signal the rest of the model keys on. Robust to the forms `conda-lock` can appear in: bare (`conda-lock`), version-pinned (`conda-lock=2.5.0`, `conda-lock >=2`), and the nested `pip:` subsection. Lives in [`lib/micromamba_env.sh`](../../lib/micromamba_env.sh) alongside the other `environment.yml` readers. Implementation approach (grep-based vs. PyYAML via the toolchain interpreter provisioned in N.az.1) is the implementer's call; nesting under `pip:` is the deciding factor.
 
 **Tasks**
 
-- [ ] Reproduce: existing `environment.yml`, no `conda-lock.yml`, `pyve init --force` → assert hard error (red).
-- [ ] Relax the bypass so the existing-source-no-lock case proceeds like the freshly-scaffolded case.
-- [ ] Test fresh-dir and existing-`environment.yml` paths behave identically (both proceed with the `--no-lock` warning); a present `conda-lock.yml` is still honored; `--strict` still errors.
+- [ ] Failing tests: declares `conda-lock` (bare / pinned / under `pip:`) → true; absent → false; no `environment.yml` → false (red).
+- [ ] Implement `is_conda_lock_declared` (parse `environment.yml` dependencies).
+- [ ] Test the edge forms above, plus a venv project (no `environment.yml`) returns false cleanly under `set -euo pipefail`.
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.9: "Update in-place" silently ignores `environment.yml` edits [Planned]
+### Story N.bf.9: Repoint `init` / `init --force` to the declarative model [Planned]
+
+**Scope.** The core behavioral change. Replace [`validate_lock_file_status`](../../lib/micromamba_env.sh#L311)'s file-existence + `PYVE_NO_LOCK` gating (Case 2) with the declarative model: non-strict + `is_conda_lock_declared` + lock absent/stale → proceed and emit the **nudge**; `--strict` → **bark** with the enforcement message; `conda-lock` undeclared → silent proceed (no lock expected). Retire the `PYVE_NO_LOCK`-on-scaffold export ([plugin.sh:1718](../../lib/plugins/python/plugin.sh#L1718)) — no longer needed once non-strict never barks. Fresh `init` and `init --force` become identical in lock behavior (closes the original N.bf.8-12 asymmetry). `pyve check` adopts the enforcement wording as a non-blocking warning.
+
+**Tasks**
+
+- [ ] Reproduce the asymmetry (original N.bf.8-12 bug): existing `environment.yml`, no `conda-lock.yml`, `pyve init --force` → current hard error vs. fresh init proceeds (red).
+- [ ] Repoint the validation to the declarative model: non-strict + declared + lock-absent → proceed; `--strict` → bark; undeclared → silent.
+- [ ] Emit the nudge at the end of a successful non-strict init (declared + lock absent/stale only — not when a fresh lock is present, not when undeclared).
+- [ ] Retire the `PYVE_NO_LOCK`-on-scaffold export; confirm nothing else depends on it.
+- [ ] `pyve check`: surface the enforcement wording as a warning (non-blocking) for the declared-but-missing case.
+- [ ] Tests: fresh vs `--force` identical (both nudge); present-fresh-lock → no nudge, builds from lock; `--strict` barks; undeclared → silent.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.10: `--no-lock` = non-destructive "resolve from `environment.yml`" [Planned]
+
+**Scope.** Give `--no-lock` its single settled meaning across `init`: don't *use* a lock this run; resolve the install from `environment.yml` even when a `conda-lock.yml` is present; and never delete the lock file (including under `--force`, which purges materialized state only — committed source like `conda-lock.yml` survives). `--no-lock` also relaxes `--strict`'s lock requirement (explicit instruction beats policy).
+
+**Tasks**
+
+- [ ] Tests (red): with a present `conda-lock.yml`, `pyve init --no-lock` resolves from `environment.yml` (lock ignored as install source); `pyve init --force --no-lock` leaves `conda-lock.yml` on disk; `pyve init --strict --no-lock` proceeds (no bark).
+- [ ] Implement: `--no-lock` forces `environment.yml` as the install source; ensure no code path deletes `conda-lock.yml`; `--no-lock` short-circuits the strict bark.
+- [ ] Test the reproducibility footgun is opt-in only (default still prefers a present lock).
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.11: Scaffold + interactive wizard `conda-lock` opt-in [Planned]
+
+**Supersedes N.bf.[deprecated].** Folds N.bf.[deprecated]'s "scaffold `conda-lock` by default, omit on `--no-lock`" into the model and adds the interactive wizard prompt. N.bf.[deprecated]'s developer-decision rationale (scaffold-over-on-demand-runner — a one-line template change beats `uvx`/`pipx`/transient-env machinery, and it removes the *reason* `conda-lock` was absent rather than working around it) stands and is why the locker lives in the project env.
+
+**Scope.** When `pyve init --backend micromamba` scaffolds a starter `environment.yml` (neither `environment.yml` nor `conda-lock.yml` present):
+
+- **Interactive:** prompt "Version-control dependencies with a lock file? [Y/n]" — yes adds `conda-lock` to the scaffold deps, no omits it.
+- **Non-interactive:** default adds `conda-lock`; `--no-lock` omits it.
+
+Does **not** mutate an existing user-authored `environment.yml`. After a yes/default scaffold the lock is absent, so init ends with the nudge (per N.bf.9).
+
+**Tasks**
+
+- [ ] Reproduce (red): default `pyve init --backend micromamba` scaffolds WITHOUT `conda-lock`.
+- [ ] Add `conda-lock` to [`scaffold_starter_environment_yml`](../../lib/micromamba_env.sh)'s template; thread the `--no-lock` signal so it is omitted under `--no-lock`.
+- [ ] Interactive wizard prompt for the lock opt-in (Y default); honor `--no-lock` / the non-interactive default.
+- [ ] Tests: default + wizard-yes include `conda-lock`; `--no-lock` + wizard-no omit it; the scaffold still validates and the env builds; end-to-end fresh `pyve init` → `pyve lock` works with no manual edit or rebuild.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.12: Targeted docs for the declarative lock model [Planned]
+
+**Scope.** Update the lock/strict passages to the settled model — *targeted edits only*; the broad README/MkDocs v3.0 reconciliation stays in the deferred `refactor_document` bundle at the end of this subphase.
+
+- **features.md:** rewrite the "Lock-file interaction" paragraph ([:311](features.md) — currently argues "no auto-lock" via the `PYVE_NO_LOCK`-on-scaffold mechanism; replace with the declarative-signal + nudge/bark model, *keeping* the "no auto-lock" conclusion), the lock-validation FR summary ([:38](features.md)), the flag-table `--strict` / `--no-lock` rows ([:86-87](features.md)), the scaffold section ([:286-316](features.md)), and FR-15 ([:652](features.md)).
+- **tech-spec.md:** `validate_lock_file_status` / `scaffold_starter_environment_yml` behavior rows ([:554-560](tech-spec.md)), the `--strict` / `--no-lock` flag descriptions ([:1684-1685](tech-spec.md)).
+- **README + matching MkDocs page:** targeted update of the "Lock File Validation / Strict Mode" section only ([README:569-619](../../README.md)).
+
+**Tasks**
+
+- [ ] features.md: rewrite the passages above to the settled model (signal / install-source / nudge / bark / `--no-lock` non-destructive / strict precedence).
+- [ ] tech-spec.md: update the function-behavior rows and flag descriptions.
+- [ ] README + the matching MkDocs page: update the lock/strict section to the new model.
+- [ ] Cross-check: no remaining doc text claims "missing lock is a hard error" for non-strict init.
+- [ ] Doc-only story — no code change, no test-suite delta.
+
+### Story N.bf.13: "Update in-place" silently ignores `environment.yml` edits [Planned]
 
 **Discovered:** v3.0.0a1 smoke test (option 1 at the re-init prompt "seems to do nothing").
 
@@ -2102,11 +2205,13 @@ Following it (edit `environment.yml`, `pyve init --force`) then hard-errors with
 - [ ] Test: a user who edits `environment.yml` and updates either gets the change applied or is clearly told it won't be.
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.10: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Planned]
+### Story N.bf.[deprecated]: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Superseded → N.bf.11]
+
+**Superseded (2026-06-07).** Folded into the declarative lock-requirement model as **N.bf.11** (scaffold + interactive wizard `conda-lock` opt-in). The scaffold-by-default + `--no-lock`-omits behavior is unchanged; N.bf.11 adds the interactive wizard prompt and ties the post-scaffold state to the nudge (N.bf.9). The developer-decision rationale below stands and is carried forward by reference. Body retained for that rationale.
 
 **Discovered:** v3.0.0a1 smoke test — the conda-lock bootstrap circularity.
 
-**Motivation.** `pyve lock` needs `conda-lock` installed in the micromamba env to run; getting it there today means editing `environment.yml` + rebuilding, but the rebuild demands a `conda-lock.yml` that can't exist yet (the loop N.bf.7–N.bf.8 file down by hand). The loop shouldn't exist: **if Pyve ships `pyve lock`, the env Pyve scaffolds should be able to run it.** So the starter `environment.yml` includes `conda-lock` as a dependency by default — built into the env from the first `pyve init`, so `pyve lock` works immediately. The `--no-lock` opt-out ("I'm not using the lock workflow") naturally extends to "don't put the locker in my env," keeping a lean env for users who don't want it.
+**Motivation.** `pyve lock` needs `conda-lock` installed in the micromamba env to run; getting it there today means editing `environment.yml` + rebuilding, but the rebuild demands a `conda-lock.yml` that can't exist yet (the loop N.bf.7–12 file down by hand). The loop shouldn't exist: **if Pyve ships `pyve lock`, the env Pyve scaffolds should be able to run it.** So the starter `environment.yml` includes `conda-lock` as a dependency by default — built into the env from the first `pyve init`, so `pyve lock` works immediately. The `--no-lock` opt-out ("I'm not using the lock workflow") naturally extends to "don't put the locker in my env," keeping a lean env for users who don't want it.
 
 Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `--no-lock` for the validation since there's no lock file yet) → `pyve lock` just works. No editing `environment.yml`, no force-rebuild, no manual `--no-lock` dance.
 
@@ -2114,7 +2219,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 **Tradeoff (accepted):** every default micromamba env carries `conda-lock` + its transitive deps. Mitigated by `--no-lock`. If env weight later proves annoying, the fallback is the commented form (`# - conda-lock  # uncomment for 'pyve lock'`) — not adopted now because it reintroduces a manual step.
 
-**Relationship to N.bf.7/N.bf.8.** This makes both **new-project-moot** (no wall, no dance). They remain worth landing for **existing** projects scaffolded before this change and for the `--no-lock`-then-changed-mind path; N.bf.7's advice should point at the smooth path for the common case.
+**Relationship to N.bf.7-12.** This makes both **new-project-moot** (no wall, no dance). They remain worth landing for **existing** projects scaffolded before this change and for the `--no-lock`-then-changed-mind path; N.bf.7's advice should point at the smooth path for the common case.
 
 **Scope.** Affects the starter scaffold only ([`scaffold_starter_environment_yml`](../../lib/micromamba_env.sh)). Does **not** mutate a user's existing `environment.yml`.
 
@@ -2127,7 +2232,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.11: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
+### Story N.bf.14: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve env` absent from `--help`).
 
@@ -2137,7 +2242,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 **Decision (developer, 2026-06-07): drop `testenv` from `--help` entirely** (don't relabel it as deprecated). The deprecation path keeps working at runtime with its one-shot warning; help should show only the canonical surface.
 
-**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.11 only fixes the top-level `--help`.
+**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.14 only fixes the top-level `--help`.
 
 **Tasks**
 
