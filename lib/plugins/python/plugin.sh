@@ -2452,11 +2452,26 @@ _purge_pyve_dir() {
                         "$micromamba_path" env remove -p "$(resolve_main_micromamba_path "$env_name")" -y 2>/dev/null || true
                     fi
                 else
-                    # No env name in config, try to find and remove any environments in .pyve/envs
+                    # No env name in config: deregister any *actual* conda
+                    # envs under .pyve/envs/. Story N.bf.17: only dirs that
+                    # are conda prefixes (have a conda-meta/) are micromamba
+                    # envs — a venv testenv or an empty stray must NOT be
+                    # mislabeled "micromamba environment" (it's removed by the
+                    # rm -rf .pyve below, not via micromamba). v3 nests the
+                    # prefix under <name>/conda/; the pre-N.bf.14 flat layout
+                    # had it directly under <name>/.
+                    local env_dir conda_prefix
                     for env_dir in .pyve/envs/*; do
-                        if [[ -d "$env_dir" ]]; then
-                            info "Removing micromamba environment at '$env_dir'..."
-                            "$micromamba_path" env remove -p "$env_dir" -y 2>/dev/null || true
+                        [[ -d "$env_dir" ]] || continue
+                        conda_prefix=""
+                        if [[ -d "$env_dir/conda/conda-meta" ]]; then
+                            conda_prefix="$env_dir/conda"
+                        elif [[ -d "$env_dir/conda-meta" ]]; then
+                            conda_prefix="$env_dir"
+                        fi
+                        if [[ -n "$conda_prefix" ]]; then
+                            info "Removing micromamba environment at '$conda_prefix'..."
+                            "$micromamba_path" env remove -p "$conda_prefix" -y 2>/dev/null || true
                         fi
                     done
                 fi

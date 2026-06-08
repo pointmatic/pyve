@@ -1341,9 +1341,15 @@ ensure_env_exists() {
     testenv_root="${testenv_env_path%/venv}"
     testenv_root="${testenv_root%/conda}"
 
-    mkdir -p "$testenv_root"
+    # Story N.bf.17: do NOT mkdir the env root here. Materialize only
+    # AFTER the relevant resolvability gate passes, so a failed gate (e.g.
+    # the asdf-shim trap on an uninitialized / non-activated project)
+    # leaves no `.pyve/envs/<name>` stray for a later `pyve purge` to
+    # "find" and remove. Each branch below mkdir's once it commits to
+    # creating the env.
 
     if [[ "$backend" == "micromamba" ]]; then
+        mkdir -p "$testenv_root"
         local manifest
         manifest="$(_env_manifest_of "$name")" || manifest=""
         _env_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
@@ -1381,7 +1387,9 @@ ensure_env_exists() {
 
     if [[ ! -d "$testenv_env_path" ]]; then
         info "Creating dev/test runner environment in '$testenv_env_path'..."
-        # pre-flight check for the asdf/pyenv shim trap.
+        # pre-flight check for the asdf/pyenv shim trap. Gate BEFORE the
+        # mkdir below (Story N.bf.17) so a failed resolution materializes
+        # nothing.
         # The next call invokes `python` directly. In a non-activated
         # shell with no resolvable version pin, the shim errors with
         # asdf's confusing "No version is set for command python" — a
@@ -1391,6 +1399,7 @@ ensure_env_exists() {
         # and the existing testenv-grammar tests still observe the
         # banner before the eventual error.
         assert_python_resolvable || return 1
+        mkdir -p "$testenv_root"
         run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
     fi

@@ -19,9 +19,7 @@ Tests auto-detection of backend based on project files (requirements.txt, enviro
 .pyve/config file, and CLI flags.
 """
 
-import os
 import pytest
-from pathlib import Path
 
 
 class TestBackendAutoDetection:
@@ -251,22 +249,45 @@ class TestEdgeCases:
         assert (pyve.cwd / '.venv').exists()
     
     def test_invalid_backend_in_config(self, pyve, project_builder):
-        """Test with invalid backend value in config."""
+        """An invalid backend in a legacy `.pyve/config` is rejected on init.
+
+        v3.0-only: remove in N-10 (read-compat retirement).
+
+        This drives validation through the v3.0 read-compat path: a legacy
+        hand-written `.pyve/config` (no `pyve.toml`) is *synthesized* into a
+        v3 manifest by `_manifest_synthesize_from_legacy` (pure bash —
+        `backend:` maps to `[env.root]`), and the v3 manifest/plugin layer
+        rejects the unregistered backend:
+
+            error: python plugin: env 'root' declares unregistered backend
+            'invalid_backend'
+
+        Behavior is uniform across CI and non-CI (init here runs WITHOUT
+        --force, so the surviving config is read both ways) — the old
+        non-CI-only guard was a v2-ism and is gone.
+
+        The CANONICAL v3 surface — an invalid backend in `pyve.toml` — is
+        covered at the unit level by N.bf.1's validator bats
+        (`test_init_pyve_toml.bats`). It is intentionally NOT re-tested here
+        as an integration case: the `pyve.toml` validator probes the project
+        interpreter and *defers* when none resolves (Story N.bf.1/.2), so the
+        invalid-backend error is environment-dependent in this harness (no
+        pinned Python), whereas the legacy-synthesis path validates
+        deterministically. When read-compat is swept in N-10, this whole
+        test goes with it (per the marker above).
+        """
         project_builder.create_requirements(['requests==2.31.0'])
-        
-        # Create config with invalid backend
-        config_content = """backend: invalid_backend
-"""
+
+        # Legacy v2 config with an unregistered backend (no pyve.toml).
         config_path = pyve.cwd / '.pyve' / 'config'
         config_path.parent.mkdir(exist_ok=True)
-        config_path.write_text(config_content)
-        
-        # Use run() instead of init() to avoid --force flag that would purge the config
+        config_path.write_text("backend: invalid_backend\n")
+
+        # run() (not init()) so no --force purges the surviving config.
         result = pyve.run('init', '--no-direnv', check=False)
-        
-        # In CI mode with --force, invalid config is purged and init succeeds
-        # This test only works in non-CI mode where config is read
-        if os.environ.get('CI') != 'true':
-            # Should fail with validation error
-            assert result.returncode != 0
-            assert 'invalid' in result.stderr.lower() or 'backend' in result.stderr.lower()
+
+        assert result.returncode != 0
+        # The v3 manifest/plugin rejection names both 'backend' and the bad
+        # value; tolerant match keeps it robust to message wording.
+        assert 'backend' in result.stderr.lower()
+        assert 'invalid_backend' in result.stderr.lower()

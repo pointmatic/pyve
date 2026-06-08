@@ -2311,19 +2311,55 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [x] Test: `--help` lists `env` (and `env sync`); `testenv` no longer appears in `--help`; `pyve testenv` still works at runtime and still emits its deprecation warning (the runtime alias is untouched). — new help tests green; runtime alias + deprecation warning still covered (untouched) by [test_env_dispatcher.bats](../../tests/unit/test_env_dispatcher.bats). The v2.0-era [test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) help-examples test (which asserted the old `pyve testenv init` grammar) was retargeted to the canonical `pyve env init` grammar + a `no testenv` assertion.
 - [x] Full suite; zero regressions. — 1893 Bats unit tests pass (1890 + 3 new), 0 failures.
 
+### Story N.bf.17: `pyve test` materializes `.pyve/envs/<name>` before the Python-resolvability gate, leaving strays on uninitialized projects [Done]
+
+**Discovered:** v3.0.0a1 smoke test (`pyve test` then `pyve purge` in an *uninitialized* `pyve-v3-smoke`).
+
+**Symptom.** On a directory that was never `pyve init`'d, `pyve test` fails (correctly) on the asdf-shim trap — but a subsequent `pyve purge` then finds and removes a `.pyve/` directory, reporting `Removing micromamba environment at '.pyve/envs/testenv'` and `✔ All done.` Two things read as wrong: (a) purge acts as though there's a real Pyve project to tear down when there isn't; (b) it calls a venv (here, empty) testenv a "micromamba environment."
+
+```
+$ ../pyve/pyve.sh test
+  ▸ Creating dev/test runner environment in '.pyve/envs/testenv/venv'...
+  ✘ Cannot resolve 'python' — version-manager shim has no version pinned …
+  ✘ This directory isn't an initialized Pyve project. Run 'pyve init' …
+$ ../pyve/pyve.sh purge          # ← finds a .pyve to remove, "succeeds"
+```
+
+**Root cause (the real bug — upstream of purge).** [`ensure_env_exists`](../../lib/utils.sh#L1325) runs `mkdir -p "$testenv_root"` ([utils.sh:1344](../../lib/utils.sh#L1344)) — creating `.pyve/envs/<name>/` — **before** the Python-resolvability gate `assert_python_resolvable` ([utils.sh:1393](../../lib/utils.sh#L1393)). So when `pyve test` hits the shim trap, it has already materialized `.pyve/envs/testenv/` (empty). That stray is the *only* reason a `.pyve` exists on a project that was never initialized.
+
+**Why purge then "succeeds."** `compose_purge` ([purge_composer.sh:151](../../lib/purge_composer.sh#L151)) gates on artifact **presence** (is the composed inventory empty?), not project **init state** (is there a `pyve.toml` / valid `.pyve/config`?). The stray `.pyve` makes the inventory non-empty, so purge proceeds and cleans it. Purge isn't really "wrong" — it's removing a genuine stray — but it can't distinguish a real teardown from leftover junk because the junk shouldn't exist.
+
+**Secondary (cosmetic) bug.** The `_purge_pyve_dir` fallback loop ([plugin.sh:2456-2458](../../lib/plugins/python/plugin.sh#L2456-L2458)) labels every `.pyve/envs/*` entry a "micromamba environment" and runs `micromamba env remove -p` on it — wrong for a venv testenv or an empty dir. Harmless (the `rm -rf .pyve` does the real work) but misleading.
+
+**Proposed fix (decide during debug).**
+- **Primary:** reorder `ensure_env_exists` so the gate runs before any `mkdir` — `assert_python_resolvable` (and, ideally, an "is this an initialized Pyve project?" check) **first**, materialize nothing on failure. Fail-fast leaves the uninitialized project pristine; `pyve purge` then correctly prints *"Nothing to remove — no pyve-created artifacts found."* Audit the other env-build paths (`_env_init_conda`, the main-venv `_init_venv` is already gated correctly) for the same mkdir-before-gate ordering.
+- **Secondary:** in the `_purge_pyve_dir` fallback, don't hard-label entries "micromamba environment" — detect backend (or just say "environment at '<path>'") so a venv/empty dir isn't mislabeled.
+
+**Out of scope.** Adding an init-state gate *to purge itself* (the primary fix removes the stray, so purge needs no new gate); broader "partial-failure cleanup" semantics for other commands.
+
+**Tasks**
+
+- [x] Reproduce: on an uninitialized dir, `pyve test` fails the shim trap yet leaves `.pyve/envs/<name>/` behind; assert the stray exists (red). — [test_env_failed_provision_cleanup.bats](../../tests/unit/test_env_failed_provision_cleanup.bats) "unresolvable python leaves NO .pyve stray" (red under the old mkdir-before-gate ordering).
+- [x] Reorder `ensure_env_exists`: run `assert_python_resolvable` … before `mkdir -p "$testenv_root"`; materialize nothing on failure. Audit sibling env-build paths for the same ordering. — [utils.sh](../../lib/utils.sh): removed the premature top-level `mkdir`; the micromamba branch mkdir's once it commits, and the venv branch mkdir's only **after** `assert_python_resolvable` passes (the final idempotent `state_write` is unreachable on gate-fail since the gate `return 1`s first). Audited: the main-venv `_init_venv` already gated correctly; `_env_init_conda` reached only after the (now post-)mkdir in the micromamba branch (no project-python gate there). **Did NOT adopt a separate init-state check** — the fail-fast gate already leaves the project pristine, and an init-state gate is the broader concern surfaced separately (see follow-up below).
+- [x] Test: failed-resolution `pyve test`/`env init` on an uninitialized (or non-activated) project creates **no** `.pyve` artifacts; `pyve purge` afterward reports "Nothing to remove." — bats green; **verified end-to-end** on a fresh dir: `pyve test` fails the shim trap with **zero** `.pyve` created, and `pyve purge` then prints "Nothing to remove — no pyve-created artifacts found."
+- [x] Fix the `_purge_pyve_dir` mislabel (don't call a venv/empty dir a "micromamba environment"). — [plugin.sh](../../lib/plugins/python/plugin.sh) fallback loop now only labels/deregisters dirs that are actual conda prefixes (`<name>/conda/conda-meta` v3, or flat `<name>/conda-meta`), at the correct prefix; venv testenvs / empty strays are left to the `rm -rf .pyve`. Two bats cases (no-mislabel + still-deregisters-real-conda).
+- [x] Full suite; zero regressions. — 1897 Bats unit tests pass (1893 + 4 new), 0 failures; shellcheck clean on the edited ranges.
+
+**Follow-up surfaced (2026-06-08):** `pyve env init <name>` on an *uninitialized* project errors `testenv '<name>' is not declared. Declare it under [tool.pyve.testenvs.<name>] in pyproject.toml.` — which (a) is a **v2-ism** (v3 declares envs in `pyve.toml` `[env.<name>]`, not `pyproject.toml` `[tool.pyve.testenvs.*]`), and (b) should first detect "not an initialized Pyve project → run `pyve init`." This is a distinct issue (`assert_env_name_actionable` in `lib/envs.sh`) — see Story N.bf.18.
+
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
 
-### Story N.bg: Fix pre-existing integration test failure [Planned]
+### Story N.bg: Fix pre-existing integration test failure [Done]
 
 **Motivation**: surfaced during story K.a.1 regression sweep, confirmed still problematic in story N.s.9. One integration test remains to re-check: `test_invalid_backend_in_config`, originally pinned for an `stderr`/`stdout` output-stream drift. Its original sibling failures are gone — the assertion fixes landed during Phase N, and a flaky cross-platform timeout was pushed to a future story. Re-checking the remaining one so it doesn't mask real regressions in `make test-integration`.
 
 **Tasks**
 
-- [ ] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — **reinvestigate first; do not assume the stream fix.** The original task claimed the error banner moved to `stdout`, but `validate_backend_config`'s "Invalid backend in <config>" ([backend_detect.sh:152](../../lib/backend_detect.sh#L152)) uses `log_error`, which writes to **stderr** ([utils.sh:46](../../lib/utils.sh#L46)) — so the test's `result.stderr` assertion may already be correct. Run the test: either it now passes (close it), or it fails for a different reason — most plausibly v3.0 read-compat synthesizes/ignores an invalid `.pyve/config` backend (no `pyve.toml` present) so `pyve init` no longer errors. Fix to the true behavior, not the assumed one.
-- [ ] **v2-ism note:** this test drives validation through the legacy `.pyve/config` (`backend: invalid_backend` hand-written) — a read-compat surface slated for removal in N-10. v3's canonical invalid-backend validation lives in the `pyve.toml` / `manifest_load` path (covered by N.bf.1's validator + bats). Prefer porting the test to `pyve.toml`, or retire it with read-compat, rather than hardening the legacy path.
-- [ ] Re-run `make test-integration` after the fix; expect zero failures on a clean checkout.
+- [x] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — reinvestigated by running it: **it passes** (both non-CI and `CI=true`). The original "moved to stdout" hypothesis was wrong, and so was the story's "read-compat ignores the bad backend" guess. True behavior: the legacy `.pyve/config` is **synthesized** into a v3 manifest by `_manifest_synthesize_from_legacy` (pure bash — no interpreter needed), and the **v3 manifest/plugin** layer rejects it: `error: python plugin: env 'root' declares unregistered backend 'invalid_backend'`. No code fix needed; corrected the test's docstring/assertions to the real behavior and dropped the stale non-CI-only guard (the error is uniform across CI/non-CI since init runs without `--force`).
+- [x] **v2-ism note** — chose **retire-with-read-compat** over porting. Porting to `pyve.toml` is genuinely fragile in this harness: the `pyve.toml` validator probes the project interpreter and *defers* when none resolves (N.bf.1/.2), and the harness pins no Python — so the invalid-backend error would be environment-dependent there, whereas the legacy-synthesis path validates deterministically (pure bash). The canonical `pyve.toml` invalid-backend validation is already unit-covered by N.bf.1's `test_init_pyve_toml.bats`. Tagged the test `v3.0-only: remove in N-10` so the read-compat sweep removes it; removed now-unused `os` / `Path` imports (ruff-clean).
+- [x] Re-run `make test-integration` after the fix — **target test green in both modes.** ⚠️ The full `make test-integration` is **not** all-green on this dev machine: `TestPriorityOrder::test_priority_cli_over_all` and (flakily) `TestBackendAutoDetection::test_detects_venv_from_pyproject_toml` fail because there is no resolvable Python in pytest's `tmp_path` (asdf shim, no pin) → `pyve init` returns 0 but creates no `.venv`. **Confirmed pre-existing** (identical failure on clean HEAD via `git stash`), **out of N.bg's scope** (N.bg targets only `test_invalid_backend_in_config`), and environment-dependent — they belong to the existing `## Future` "Fix pre-existing integration test failures" story, not here. Recommend routing them there.
 
 ---
 
