@@ -17,6 +17,87 @@ teardown() {
 }
 
 #============================================================
+# is_conda_lock_declared() tests (Story N.bf.8)
+#============================================================
+# The declarative signal for "a lock is required": conda-lock present as a
+# dependency in environment.yml. Must match bare / version-pinned / pip-nested
+# forms, must NOT match longer names (conda-lock-foo), and must be false when
+# there is no environment.yml.
+
+@test "is_conda_lock_declared: bare 'conda-lock' dependency → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - conda-lock
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: version-pinned 'conda-lock=2.5.0' → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock=2.5.0
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: space-separated 'conda-lock >=2' → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock >=2
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: nested under 'pip:' subsection → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - conda-lock
+      - requests
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: absent → false" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - numpy
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+}
+
+@test "is_conda_lock_declared: longer name 'conda-lock-foo' is NOT a match → false" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock-foo
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+}
+
+@test "is_conda_lock_declared: no environment.yml → false (clean, no error)" {
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+#============================================================
 # is_lock_file_stale() tests
 #============================================================
 

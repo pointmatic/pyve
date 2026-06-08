@@ -2117,16 +2117,16 @@ No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires
 - **N.bf.11** — Scaffold + interactive wizard `conda-lock` opt-in (supersedes N.bf.[deprecated]).
 - **N.bf.12** — Targeted docs (features.md + tech-spec.md lock/strict passages).
 
-### Story N.bf.8: `conda-lock`-declared detector [Planned]
+### Story N.bf.8: `conda-lock`-declared detector [Done]
 
 **Scope.** A helper that answers "is `conda-lock` a declared dependency in `environment.yml`?" — the single signal the rest of the model keys on. Robust to the forms `conda-lock` can appear in: bare (`conda-lock`), version-pinned (`conda-lock=2.5.0`, `conda-lock >=2`), and the nested `pip:` subsection. Lives in [`lib/micromamba_env.sh`](../../lib/micromamba_env.sh) alongside the other `environment.yml` readers. Implementation approach (grep-based vs. PyYAML via the toolchain interpreter provisioned in N.az.1) is the implementer's call; nesting under `pip:` is the deciding factor.
 
 **Tasks**
 
-- [ ] Failing tests: declares `conda-lock` (bare / pinned / under `pip:`) → true; absent → false; no `environment.yml` → false (red).
-- [ ] Implement `is_conda_lock_declared` (parse `environment.yml` dependencies).
-- [ ] Test the edge forms above, plus a venv project (no `environment.yml`) returns false cleanly under `set -euo pipefail`.
-- [ ] Full suite; zero regressions.
+- [x] Failing tests: declares `conda-lock` (bare / pinned / under `pip:`) → true; absent → false; no `environment.yml` → false (red). — 7 cases in [test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) ("is_conda_lock_declared: …"), including the `conda-lock-foo` longer-name negative.
+- [x] Implement `is_conda_lock_declared` (parse `environment.yml` dependencies). — [micromamba_env.sh:114](../../lib/micromamba_env.sh#L114); **grep-based** (no PyYAML needed). ERE `^[[:space:]]*-[[:space:]]+conda-lock([[:space:]=<>!~]|$)` — the leading-whitespace match covers `pip:`-nested items, and the terminator class excludes longer names like `conda-lock-foo`.
+- [x] Test the edge forms above, plus a venv project (no `environment.yml`) returns false cleanly under `set -euo pipefail`. — no-`environment.yml` case returns 1 with empty output; `[[ -f ]]` guard short-circuits before grep.
+- [x] Full suite; zero regressions. — 1847 Bats unit tests pass (1840 + 7 new), 0 failures; shellcheck clean on the added function (the file's one SC2155 is pre-existing in `sanitize`, not introduced here).
 
 ### Story N.bf.9: Repoint `init` / `init --force` to the declarative model [Planned]
 

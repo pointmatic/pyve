@@ -93,6 +93,32 @@ parse_environment_name() {
     return 0
 }
 
+# Detect whether `conda-lock` is declared as a dependency in environment.yml.
+# This is the declarative signal for "a lock is required" (Story N.bf.8): its
+# presence — and only its presence — makes a missing conda-lock.yml a nudge
+# (non-strict) or a bark (--strict) in the init flow downstream. It is
+# independent of which file drives the install (that stays detect_environment_file's
+# lock-if-present rule).
+#
+# Matches conda-lock as a dependency list item in any form:
+#   - conda-lock              (bare)
+#   - conda-lock=2.5.0        (version-pinned)
+#   - conda-lock >=2          (space-separated spec)
+#   - pip: \ - conda-lock     (nested under pip: — deeper indentation)
+# Does NOT match longer names (e.g. conda-lock-foo): the item must terminate at
+# whitespace, a version operator (= < > ! ~), or end-of-line.
+#
+# Arguments:
+#   $1 - env_file (default: environment.yml)
+# Returns: 0 if conda-lock is declared, 1 otherwise (including no env file)
+is_conda_lock_declared() {
+    local env_file="${1:-environment.yml}"
+
+    [[ -f "$env_file" ]] || return 1
+
+    grep -Eq '^[[:space:]]*-[[:space:]]+conda-lock([[:space:]=<>!~]|$)' "$env_file"
+}
+
 # Validate environment.yml exists and is readable
 # Returns: 0 if valid, 1 if invalid
 validate_environment_file() {
