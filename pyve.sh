@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.0.0a1"
+VERSION="3.0.0a2"
 DEFAULT_PYTHON_VERSION="3.14.5"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -406,10 +406,11 @@ COMMANDS:
     run <command> [args...]   Run a command inside the project environment
                               For CI/CD, Docker, and --no-direnv setups
     test [pytest args...]     Run pytest via the dev/test runner environment
-    testenv <subcommand>      Manage the dev/test runner environment
-                              Subcommands: init | install [-r <req>] | purge | run <cmd>
-                              (Legacy flag forms --init / --install / --purge still accepted)
-                              See `pyve testenv --help` for details
+    env <subcommand>          Manage project environments (test / utility / temp)
+                              Subcommands: init | install [-r <req>] | purge |
+                              list | prune | run <cmd> | sync
+                              (`sync` ingests an env spec and applies the diff)
+                              See `pyve env --help` for details
     package [--env <name>]    Materialize an env's packaging artifact
                               Reserved in v3.0 (no provider materializes yet)
                               See `pyve package --help` for details
@@ -445,9 +446,10 @@ EXAMPLES:
     pyve init --no-direnv                # Skip direnv (for CI/CD)
     pyve run python --version            # Run command in environment
     pyve run pytest                      # Run tests in environment
-    pyve testenv init                    # Create dev/test runner environment
-    pyve testenv install -r requirements-dev.txt  # Install dev/test deps
-    pyve testenv run ruff check .        # Run dev tools from testenv
+    pyve env init                        # Create the dev/test runner environment
+    pyve env install -r requirements-dev.txt  # Install dev/test deps
+    pyve env run ruff check .            # Run dev tools from the env
+    pyve env sync                        # Apply an env spec's dependency diff
     pyve test -q                         # Run pytest via dev/test runner
     pyve lock                            # Generate/update conda-lock.yml
     pyve lock --check                    # Verify conda-lock.yml is current (CI gate)

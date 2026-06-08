@@ -142,6 +142,30 @@ run_pyve() {
 }
 
 #============================================================
+# Top-level --help — canonical `env`, not deprecated `testenv` (N.bf.16)
+#============================================================
+
+@test "top-level help: 'pyve --help' documents the canonical 'env' namespace" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"env <subcommand>"* ]]
+    # Unambiguous marker (not a substring of the old 'pyve testenv --help').
+    [[ "$output" == *"pyve env --help"* ]]
+}
+
+@test "top-level help: 'pyve --help' surfaces 'env sync' (v3 feature)" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"env sync"* ]]
+}
+
+@test "top-level help: 'pyve --help' no longer mentions the deprecated 'testenv'" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"testenv"* ]]
+}
+
+#============================================================
 # Regression: --help must NOT trigger the real handler
 #============================================================
 

@@ -61,20 +61,19 @@ teardown() {
     [[ "$output" != *"pyve validate"* ]]
 }
 
-@test "release: 'pyve --help' EXAMPLES use v2.0 grammar for testenv and python" {
+@test "release: 'pyve --help' EXAMPLES use canonical grammar for env and python" {
     run "$PYVE_SCRIPT" --help
     [ "$status" -eq 0 ]
-    # New grammar advertised as canonical. The informational row under
-    # Commands may still reference the legacy `python-version` form so
-    # migrating v1.x users can discover the deprecation — so we only
-    # assert the positive v2.0 examples are present.
-    [[ "$output" == *"pyve testenv init"* ]]
+    # Canonical grammar advertised. Story N.bf.16 retired the deprecated
+    # `pyve testenv …` examples in favor of the canonical `pyve env …`
+    # namespace (the runtime alias still works + warns, but --help shows
+    # only the canonical surface).
+    [[ "$output" == *"pyve env init"* ]]
     [[ "$output" == *"pyve python set"* ]]
-    # Deprecated `pyve testenv --init` as an EXAMPLE is removed (the
-    # Commands row's `(Legacy flag forms ... still accepted)` note stays).
+    # The deprecated namespace no longer appears anywhere in --help.
+    [[ "$output" != *"testenv"* ]]
     local examples_block
     examples_block="$(echo "$output" | awk '/^EXAMPLES:/,/^REQUIREMENTS:/')"
-    [[ "$examples_block" != *"pyve testenv --init"* ]]
     [[ "$examples_block" != *"pyve python-version "* ]]
 }
 

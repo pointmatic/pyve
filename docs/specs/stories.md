@@ -2292,7 +2292,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.16: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
+### Story N.bf.16: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Done]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve env` absent from `--help`).
 
@@ -2306,10 +2306,10 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 **Tasks**
 
-- [ ] Assert (red) `pyve --help` output contains `env` and does NOT contain `testenv`.
-- [ ] In `show_help`: replace the `testenv <subcommand>` entry with `env <subcommand>` (canonical); surface the env subcommands including `env sync`; swap the `pyve testenv …` examples for `pyve env …`.
-- [ ] Test: `--help` lists `env` (and `env sync`); `testenv` no longer appears in `--help`; `pyve testenv` still works at runtime and still emits its deprecation warning (the runtime alias is untouched).
-- [ ] Full suite; zero regressions.
+- [x] Assert (red) `pyve --help` output contains `env` and does NOT contain `testenv`. — new cases in [test_subcommand_help.bats](../../tests/unit/test_subcommand_help.bats) ("documents the canonical 'env' namespace" with the unambiguous `pyve env --help` marker; "surfaces 'env sync'"; "no longer mentions the deprecated 'testenv'").
+- [x] In `show_help`: replace the `testenv <subcommand>` entry with `env <subcommand>` (canonical); surface the env subcommands including `env sync`; swap the `pyve testenv …` examples for `pyve env …`. — [pyve.sh](../../pyve.sh) `show_help`: command entry now `env <subcommand>` listing `init | install | purge | list | prune | run | sync` (with a one-line `sync` gloss) + `See \`pyve env --help\``; examples swapped to `pyve env init` / `install` / `run` / **`pyve env sync`**.
+- [x] Test: `--help` lists `env` (and `env sync`); `testenv` no longer appears in `--help`; `pyve testenv` still works at runtime and still emits its deprecation warning (the runtime alias is untouched). — new help tests green; runtime alias + deprecation warning still covered (untouched) by [test_env_dispatcher.bats](../../tests/unit/test_env_dispatcher.bats). The v2.0-era [test_release_v2_0_1.bats](../../tests/unit/test_release_v2_0_1.bats) help-examples test (which asserted the old `pyve testenv init` grammar) was retargeted to the canonical `pyve env init` grammar + a `no testenv` assertion.
+- [x] Full suite; zero regressions. — 1893 Bats unit tests pass (1890 + 3 new), 0 failures.
 
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
