@@ -2304,8 +2304,11 @@ _purge_pyve_dir() {
             micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
 
             if [[ -n "$micromamba_path" ]] && [[ -x "$micromamba_path" ]]; then
-                # Get environment name from config if it exists
-                local env_name
+                # Get environment name from config if it exists.
+                # Initialize on declaration: a declared-but-unset `local` is
+                # an unbound-variable error under `set -u` on bash 4.4+ when
+                # config_file_exists is false (no v2 .pyve/config). (N.bf.5)
+                local env_name=""
                 if config_file_exists; then
                     env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
                 fi

@@ -1997,7 +1997,7 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 - [x] Verify no caller regresses; none should advise `pyve init` during `pyve init` itself. — The 3 callers create the venv/testenv **after** the wizard pins Python (`ensure_python_version_installed` precedes [`_init_venv`](../../lib/plugins/python/plugin.sh#L1951)), so in normal init `python` resolves and the guard returns 0 silently — the new advice is unreachable during init. Confirmed by the full init/composed-init suite staying green.
 - [x] Full suite; zero regressions. — 1832 Bats unit tests pass, 0 failures; shellcheck clean on the edited range.
 
-### Story N.bf.5: `env_name` unbound-variable crash in `_purge_pyve_dir` [Planned]
+### Story N.bf.5: `env_name` unbound-variable crash in `_purge_pyve_dir` [Done]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve purge` on a v3 project with a leftover `.pyve/`).
 
@@ -2014,10 +2014,10 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 
 **Tasks**
 
-- [ ] Reproduce under `set -u`: `.pyve/envs/` present, micromamba resolvable, no `.pyve/config` → assert the unbound-variable failure (red). Pattern: the fresh `/bin/bash -c "set -euo pipefail; …"` shape from [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats).
-- [ ] Initialize `local env_name=""`.
-- [ ] Test the v3 micromamba purge path completes cleanly (no `unbound variable`); `.pyve` fully removed.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce under `set -u`: `.pyve/envs/` present, micromamba resolvable, no `.pyve/config` → assert the unbound-variable failure (red). — [test_python_plugin_lifecycle.bats](../../tests/unit/test_python_plugin_lifecycle.bats). **Bash-version subtlety (the inverse of the usual 3.2 trap):** a declared-but-unset scalar `local` reads as EMPTY on bash 3.2 but UNBOUND on bash 4.4+. The crash only fires on modern bash — which `/usr/bin/env bash` resolves to via Homebrew and which CI runs. The test picks a bash ≥ 4 (skips on 3.2-only) and reproduced the developer's exact `line 2314: env_name: unbound variable`.
+- [x] Initialize `local env_name=""`. — [plugin.sh:2308](../../lib/plugins/python/plugin.sh#L2308), with a comment naming the bash-4.4+ `set -u` trap.
+- [x] Test the v3 micromamba purge path completes cleanly (no `unbound variable`); `.pyve` fully removed. — green; the empty value falls through to the existing `for env_dir in .pyve/envs/*` glob-removal path.
+- [x] Full suite; zero regressions. — 1833 Bats unit tests pass, 0 failures; shellcheck clean on the edited range.
 
 ### Story N.bf.6: version-manager detection — `pipefail` false-negative + discarded wizard choice [Planned]
 
@@ -2127,9 +2127,24 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
 - [ ] Full suite; zero regressions.
 
----
+### Story N.bf.11: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
 
-## Subphase N-8: Documentation refresh + brand alignment
+**Discovered:** v3.0.0a1 smoke test (`pyve env` absent from `--help`).
+
+**Symptom.** `pyve --help` documents `testenv <subcommand>` (and `pyve testenv init/install/run` in the examples) but never mentions `env`. Yet `env` is the **canonical** command and `testenv` is its **deprecated alias** — so the help points new users at the deprecated surface and hides the real one. The whole `env` namespace is consequently undocumented, including the notable v3 feature **`pyve env sync`**.
+
+**Root cause.** The dispatcher registers `env` ([pyve.sh:850](../../pyve.sh#L850)) → `env_command`, and `testenv` ([pyve.sh:858](../../pyve.sh#L858)) → `deprecation_warn "testenv" "env"` + re-dispatch. But `show_help` ([pyve.sh:377](../../pyve.sh#L377)) was never updated for the Phase N `testenv → env` rename: it still lists `testenv` and omits `env`. (Top-level audit: `env` is the only registered command missing from help; `validate`/`doctor` are legacy hard-error stubs, correctly omitted.)
+
+**Decision (developer, 2026-06-07): drop `testenv` from `--help` entirely** (don't relabel it as deprecated). The deprecation path keeps working at runtime with its one-shot warning; help should show only the canonical surface.
+
+**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.11 only fixes the top-level `--help`.
+
+**Tasks**
+
+- [ ] Assert (red) `pyve --help` output contains `env` and does NOT contain `testenv`.
+- [ ] In `show_help`: replace the `testenv <subcommand>` entry with `env <subcommand>` (canonical); surface the env subcommands including `env sync`; swap the `pyve testenv …` examples for `pyve env …`.
+- [ ] Test: `--help` lists `env` (and `env sync`); `testenv` no longer appears in `--help`; `pyve testenv` still works at runtime and still emits its deprecation warning (the runtime alias is untouched).
+- [ ] Full suite; zero regressions.
 
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 

@@ -96,6 +96,44 @@ stub_lifecycle_targets() {
     [[ "$output" == *"update_project ARGS=--foo bar"* ]]
 }
 
+@test "_purge_pyve_dir: no 'unbound variable' under 'set -u' when .pyve/envs exists without .pyve/config (v3)" {
+    # Regression (N.bf.5): pyve.sh runs under `set -euo pipefail`. On a v3
+    # project (no .pyve/config) with a .pyve/envs/ subdir and micromamba
+    # resolvable, _purge_pyve_dir read `local env_name` before assigning it
+    # (assignment was gated on config_file_exists), tripping `set -u`.
+    #
+    # Bash-version note (the inverse of the usual bash-3.2 trap): a
+    # declared-but-unset `local` reads as EMPTY on bash 3.2 but as UNBOUND on
+    # bash 4.4+. So this only fires on modern bash — exactly what
+    # `/usr/bin/env bash` resolves to via Homebrew, and what CI runs. Pick a
+    # bash >= 4; skip if only 3.2 is present (it can't exercise the trap).
+    local strict_bash="" cand p
+    for cand in bash /opt/homebrew/bin/bash /usr/local/bin/bash; do
+        p="$(command -v "$cand" 2>/dev/null || true)"
+        [[ -n "$p" ]] || continue
+        if [[ "$("$p" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null || echo 0)" -ge 4 ]]; then
+            strict_bash="$p"; break
+        fi
+    done
+    [[ -n "$strict_bash" ]] || skip "needs bash >= 4 to exercise the set -u unbound-local trap"
+
+    local work="$TEST_DIR/purgework"
+    mkdir -p "$work/.pyve/envs/someenv"
+    local fakemm="$TEST_DIR/fake-micromamba"
+    printf '#!/usr/bin/env bash\nexit 0\n' > "$fakemm"; chmod +x "$fakemm"
+    run "$strict_bash" -c "set -euo pipefail; \
+        cd '$work'; \
+        source '$PYVE_ROOT/lib/ui/core.sh'; \
+        source '$PYVE_ROOT/lib/plugins/python/plugin.sh'; \
+        get_micromamba_path() { printf '%s' '$fakemm'; }; \
+        config_file_exists()  { return 1; }; \
+        _purge_pyve_dir"
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"unbound variable"* ]]
+    # Clean completion through the no-env-name glob path → .pyve removed.
+    [ ! -d "$work/.pyve" ]
+}
+
 # ════════════════════════════════════════════════════════════════════
 # S9 env-block validation — purpose + backend.
 # ════════════════════════════════════════════════════════════════════
