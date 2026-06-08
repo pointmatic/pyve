@@ -66,6 +66,52 @@ pyve_toolchain_python() {
     printf '%s' "python"
 }
 
+# Resolve the pyve-hosted `project-guide` console script. project-guide is
+# globally hosted by `pyve self install` (pip-installed into the toolchain
+# venv, then symlinked onto ~/.local/bin). Pyve-internal callsites MUST
+# resolve the hosted absolute path rather than invoking a bare
+# `project-guide` on PATH: when asdf is active, ~/.asdf/shims precedes
+# ~/.local/bin, so the bare name resolves to asdf's shim — which rejects it
+# against the *project's* python pin (no project-guide installed there) and
+# fails with "No version is set for command project-guide". This is the same
+# failure class pyve_toolchain_python fixes for Pyve's own Python helpers
+# (Story N.at); Story N.bf.22 extends it to the hosted project-guide.
+#
+# Precedence:
+#   1. toolchain venv console script — the canonical hosted binary
+#   2. ~/.local/bin/project-guide   — the `self install` shim (a symlink to #1)
+#   3. bare `project-guide`         — PATH fallback (non-asdf / hand-installed)
+# Always prints SOMETHING so callers can use it directly as
+# `local pg="$(pyve_project_guide)"`.
+pyve_project_guide() {
+    local venv_pg
+    venv_pg="$(pyve_toolchain_venv_dir)/bin/project-guide"
+    if [[ -x "$venv_pg" ]]; then
+        printf '%s' "$venv_pg"
+        return 0
+    fi
+    local shim="$HOME/.local/bin/project-guide"
+    if [[ -x "$shim" ]]; then
+        printf '%s' "$shim"
+        return 0
+    fi
+    printf '%s' "project-guide"
+}
+
+# True (0) when a runnable project-guide resolves. Replaces the
+# `command -v project-guide` guard at the run_project_guide_* callsites:
+# for a hosted absolute path, test it is executable; for the bare-PATH
+# fallback, fall back to `command -v`.
+pyve_project_guide_available() {
+    local pg
+    pg="$(pyve_project_guide)"
+    if [[ "$pg" == "project-guide" ]]; then
+        command -v project-guide >/dev/null 2>&1
+    else
+        [[ -x "$pg" ]]
+    fi
+}
+
 # True (0) when the resolved toolchain interpreter can `import yaml`
 # (PyYAML), which lib/pyve_env_spec_helper.py requires for `pyve env sync`
 #. PyYAML is provisioned into the toolchain venv by

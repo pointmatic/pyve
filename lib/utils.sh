@@ -602,13 +602,18 @@ install_project_guide() {
 # Usage: run_project_guide_init_in_env [<backend>] [<env_path>]
 # Returns 0 always — failure is non-fatal by design.
 run_project_guide_init_in_env() {
-    if ! command -v project-guide >/dev/null 2>&1; then
+    # Story N.bf.22: resolve the pyve-hosted project-guide absolute path
+    # (toolchain venv → ~/.local/bin shim → bare PATH) so an active asdf
+    # shim dir cannot hijack the bare name. See pyve_project_guide.
+    if ! pyve_project_guide_available; then
         log_warning "Cannot run 'project-guide init': 'project-guide' not on PATH (run 'pyve self install')"
         return 0
     fi
+    local pg
+    pg="$(pyve_project_guide)"
 
     log_info "Running 'project-guide init'..."
-    if project-guide init --no-input --quiet; then
+    if "$pg" init --no-input --quiet; then
         log_success "project-guide artifacts generated"
     else
         log_warning "'project-guide init' failed (skip with --no-project-guide)"
@@ -631,13 +636,17 @@ run_project_guide_init_in_env() {
 # Returns 0 always — failure is non-fatal by design. (See the N.aw note on
 # run_project_guide_init_in_env: globally hosted, args accepted-but-unused.)
 run_project_guide_update_in_env() {
-    if ! command -v project-guide >/dev/null 2>&1; then
+    # Story N.bf.22: resolve the pyve-hosted project-guide absolute path so
+    # an active asdf shim cannot hijack the bare name. See pyve_project_guide.
+    if ! pyve_project_guide_available; then
         log_warning "Cannot run 'project-guide update': 'project-guide' not on PATH (run 'pyve self install')"
         return 0
     fi
+    local pg
+    pg="$(pyve_project_guide)"
 
     log_info "Running 'project-guide update'..."
-    if project-guide update --no-input --quiet; then
+    if "$pg" update --no-input --quiet; then
         log_success "project-guide artifacts refreshed"
     else
         log_warning "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"

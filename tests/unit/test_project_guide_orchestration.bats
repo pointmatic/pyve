@@ -16,8 +16,16 @@ setup() {
     source "$PYVE_ROOT/lib/ui/core.sh"
     source "$PYVE_ROOT/lib/ui/run.sh"
     source "$PYVE_ROOT/lib/utils.sh"
+    source "$PYVE_ROOT/lib/toolchain_python.sh"
     source "$PYVE_ROOT/lib/project_guide.sh"
     TEST_DIR="$(mktemp -d)"
+    # Story N.bf.22: the scaffolding callsites now resolve project-guide via
+    # pyve_project_guide (toolchain venv → ~/.local/bin shim → bare PATH).
+    # Isolate HOME + XDG_DATA_HOME so neither hosted tier leaks the real
+    # developer shim/venv; the fake-on-PATH then resolves via the bare tier.
+    export HOME="$TEST_DIR/home"
+    export XDG_DATA_HOME="$TEST_DIR/xdg"
+    mkdir -p "$HOME"
     cd "$TEST_DIR"
 }
 

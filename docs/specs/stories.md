@@ -2468,7 +2468,7 @@ Let `pyve test -q` (already in EXAMPLES) own the testing example. Scope: `show_h
 - [x] Test: `pyve --help` no longer contains `pyve run pytest`; still demonstrates generic `pyve run <cmd>`; `pyve test` remains the advertised testing path. — all three assertions green.
 - [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1916 ok / 0 not ok.
 
-### Story N.bf.22: `pyve init`'s `project-guide init` fails on asdf projects pinned off `DEFAULT_PYTHON_VERSION` (bare-PATH shadows the hosted shim) [Planned]
+### Story N.bf.22: `pyve init`'s `project-guide init` fails on asdf projects pinned off `DEFAULT_PYTHON_VERSION` (bare-PATH shadows the hosted shim) [Done]
 
 **Discovered:** 2026-06-08 smoke test (`pyve init` in a fresh `pyve-v3-smoke`, asdf active, project pinned to python 3.12.13; toolchain `DEFAULT_PYTHON_VERSION` = 3.14.3).
 
@@ -2492,11 +2492,11 @@ The N.aw global-hosting design intends `project-guide` to resolve independent of
 
 **Tasks**
 
-- [ ] Reproduce (red): with asdf active and a project python pin ≠ `DEFAULT_PYTHON_VERSION`, `run_project_guide_init_in_env` resolves the wrong `project-guide` and the init step fails. (Unit-shape: stub PATH so a fake asdf shim precedes a fake `~/.local/bin` hosted shim; assert the hosted one is the one invoked once fixed.)
-- [ ] Add the hosted-`project-guide` resolver (toolchain venv → `~/.local/bin` → bare PATH); place it alongside the toolchain helpers ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) or `lib/project_guide.sh` per the command/shared-helper rules.
-- [ ] Route `run_project_guide_init_in_env` and `run_project_guide_update_in_env` through the resolver; replace the `command -v project-guide` guard with a resolved-path check.
-- [ ] Test: the hosted shim wins over an asdf shim on PATH; the bare-PATH fallback still works when no toolchain/hosted shim exists.
-- [ ] Full suite; zero regressions. Re-run the `pyve init` smoke on an asdf project pinned off `DEFAULT_PYTHON_VERSION` to confirm `project-guide init` succeeds.
+- [x] Reproduce (red): with asdf active and a project python pin ≠ `DEFAULT_PYTHON_VERSION`, `run_project_guide_init_in_env` resolves the wrong `project-guide` and the init step fails. — [tests/unit/test_project_guide_hosting.bats](../../tests/unit/test_project_guide_hosting.bats) "invokes the hosted project-guide, not an asdf shim on PATH" (a fake asdf shim prepended to PATH exits 126 like the real "no version set" rejection; the test was red until the resolver landed).
+- [x] Add the hosted-`project-guide` resolver (toolchain venv → `~/.local/bin` → bare PATH); place it alongside the toolchain helpers ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) or `lib/project_guide.sh` per the command/shared-helper rules. — added `pyve_project_guide` + `pyve_project_guide_available` to [lib/toolchain_python.sh](../../lib/toolchain_python.sh) (sibling to `pyve_toolchain_python`, reusing `pyve_toolchain_venv_dir`).
+- [x] Route `run_project_guide_init_in_env` and `run_project_guide_update_in_env` through the resolver; replace the `command -v project-guide` guard with a resolved-path check. — both callsites in [lib/utils.sh](../../lib/utils.sh) now guard via `pyve_project_guide_available` and invoke `"$(pyve_project_guide)"`.
+- [x] Test: the hosted shim wins over an asdf shim on PATH; the bare-PATH fallback still works when no toolchain/hosted shim exists. — covered for the toolchain-venv tier, the `~/.local/bin` shim tier, and the bare-PATH tier; orchestration tests ([tests/unit/test_project_guide_orchestration.bats](../../tests/unit/test_project_guide_orchestration.bats)) updated to source the resolver + isolate `HOME`/`XDG_DATA_HOME` so the fake-on-PATH resolves via the bare tier.
+- [x] Full suite; zero regressions. Re-run the `pyve init` smoke on an asdf project pinned off `DEFAULT_PYTHON_VERSION` to confirm `project-guide init` succeeds. — `bats tests/unit/*.bats` → 1922 ok / 0 not ok. **Live `pyve init` asdf-smoke re-run still pending the developer (requires `pyve self install` to provision the toolchain shim in the real environment).**
 
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 

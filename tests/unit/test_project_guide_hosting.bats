@@ -121,3 +121,83 @@ _make_toolchain_venv() {
     assert_status_equals 0
     [[ -f "$HOME/.local/bin/project-guide" && ! -L "$HOME/.local/bin/project-guide" ]]
 }
+
+#------------------------------------------------------------
+# Story N.bf.22: internal callsites must resolve the HOSTED project-guide
+# absolute path, not bare `project-guide` on PATH — otherwise an active
+# asdf shim dir (which precedes ~/.local/bin) hijacks the name and rejects
+# it against the project's python pin. Same failure class as
+# pyve_toolchain_python (N.at).
+#------------------------------------------------------------
+
+# Prepend a fake asdf shim that mimics asdf's "no version set" rejection:
+# prints a marker on stderr and exits non-zero, like the real failure.
+_prepend_asdf_shim() {
+    local shimdir="$TEST_DIR/asdf-shims"
+    mkdir -p "$shimdir"
+    cat > "$shimdir/project-guide" <<'SH'
+#!/bin/sh
+echo "ASDF_SHIM_PG" >&2
+echo "No version is set for command project-guide" >&2
+exit 126
+SH
+    chmod +x "$shimdir/project-guide"
+    export PATH="$shimdir:$PATH"
+}
+
+@test "pyve_project_guide: returns the toolchain venv console script when present" {
+    _make_toolchain_venv ok
+    run pyve_project_guide
+    [[ "$output" == "$(pyve_toolchain_venv_dir)/bin/project-guide" ]]
+}
+
+@test "pyve_project_guide: falls back to the ~/.local/bin shim when no toolchain venv" {
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/bin/sh\nexit 0\n' > "$HOME/.local/bin/project-guide"
+    chmod +x "$HOME/.local/bin/project-guide"
+    run pyve_project_guide
+    [[ "$output" == "$HOME/.local/bin/project-guide" ]]
+}
+
+@test "pyve_project_guide: falls back to bare 'project-guide' when nothing is hosted" {
+    run pyve_project_guide
+    [[ "$output" == "project-guide" ]]
+}
+
+@test "pyve_project_guide_available: true when the hosted path is executable" {
+    _make_toolchain_venv ok
+    run pyve_project_guide_available
+    assert_status_equals 0
+}
+
+@test "run_project_guide_init_in_env: invokes the hosted project-guide, not an asdf shim on PATH" {
+    _prepend_asdf_shim
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"; mkdir -p "$bin"
+    cat > "$bin/project-guide" <<'SH'
+#!/bin/sh
+echo "HOSTED_PG ran: $*"
+exit 0
+SH
+    chmod +x "$bin/project-guide"
+    run run_project_guide_init_in_env
+    assert_status_equals 0
+    [[ "$output" == *"HOSTED_PG ran: init"* ]]
+    [[ "$output" != *"ASDF_SHIM_PG"* ]]
+    [[ "$output" == *"project-guide artifacts generated"* ]]
+}
+
+@test "run_project_guide_update_in_env: invokes the hosted project-guide, not an asdf shim on PATH" {
+    _prepend_asdf_shim
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"; mkdir -p "$bin"
+    cat > "$bin/project-guide" <<'SH'
+#!/bin/sh
+echo "HOSTED_PG ran: $*"
+exit 0
+SH
+    chmod +x "$bin/project-guide"
+    run run_project_guide_update_in_env
+    assert_status_equals 0
+    [[ "$output" == *"HOSTED_PG ran: update"* ]]
+    [[ "$output" != *"ASDF_SHIM_PG"* ]]
+    [[ "$output" == *"project-guide artifacts refreshed"* ]]
+}
