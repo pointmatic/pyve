@@ -2188,7 +2188,7 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 - [x] Cross-check: no remaining doc text claims "missing lock is a hard error" for non-strict init. — grep sweep across README/features/tech-spec/docs-site; the only remaining "hard error" mentions are the *correct* `--strict`/bark framing, plus `pyve lock`'s own conda-lock-on-PATH guard (unrelated to the init requirement).
 - [x] Doc-only story — no code change, no test-suite delta. — only `.md` files edited (features.md, tech-spec.md, README.md, docs/site/{getting-started,backends,usage}.md); bats suite unaffected, not re-run.
 
-### Story N.bf.13: "Update in-place" silently ignores `environment.yml` edits [Planned]
+### Story N.bf.13: "Update in-place" silently ignores `environment.yml` edits [Done]
 
 **Discovered:** v3.0.0a1 smoke test (option 1 at the re-init prompt "seems to do nothing").
 
@@ -2198,11 +2198,35 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Proposed fix (decide during debug).** Either (a) reword the option to make the boundary explicit — e.g. "Update in-place (refreshes Pyve config/files; does NOT apply `environment.yml`/dependency changes — use option 2 for that)" — or (b) detect a changed `environment.yml` (mtime vs the env, or hash) during update and offer to apply it (rebuild). Lowest-risk is (a); (b) is the friendlier behavior if the detection is cheap and reliable.
 
+**Decision (developer, 2026-06-07): option (a) — reword.** Detection (b) is deferred to **N.bf.14** because reliable drift detection requires a content **hash**, not mtime (mtime is rewritten by `git clone`/`checkout`, editors, `cp`, cloud sync, CI cache restores — false positives and negatives). That's more than a one-liner (state plumbing), so it gets its own story rather than a half-version bolted on here.
+
 **Tasks**
 
-- [ ] Reproduce: edit `environment.yml`, choose update → assert the dependency change is not applied (red, behavioral) and/or the label is misleading.
-- [ ] Implement the chosen option (reword and/or detect-and-offer); record the decision.
-- [ ] Test: a user who edits `environment.yml` and updates either gets the change applied or is clearly told it won't be.
+- [x] Reproduce: edit `environment.yml`, choose update → assert the dependency change is not applied (red, behavioral) and/or the label is misleading. — captured at the label level: [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) "_init_print_reinit_menu: option 1 states it does NOT apply environment.yml/dependency edits" (the old "(preserves environment, updates config)" label failed this assertion).
+- [x] Implement the chosen option (reword and/or detect-and-offer); record the decision. — option (a): extracted the menu into `_init_print_reinit_menu` ([plugin.sh](../../lib/plugins/python/plugin.sh)) and reworded option 1 to "Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)". Decision recorded above; detect-and-offer → N.bf.14.
+- [x] Test: a user who edits `environment.yml` and updates either gets the change applied or is clearly told it won't be. — the reworded label now clearly tells them it won't be applied (asserted in the menu test).
+- [x] Full suite; zero regressions. — 1869 Bats unit tests pass (1868 + 1 new), 0 failures; shellcheck clean. Also updated the matching menu line in [README.md](../../README.md) for consistency (a 1-line fix; the surrounding "Smart Re-initialization" section's broader staleness stays for the deferred `refactor_document` bundle).
+
+### Story N.bf.14: Hash-based `environment.yml`-drift detection + detect-and-offer on update [Planned]
+
+**Motivation.** N.bf.13 made "Update in-place" *honest* (its label now states it does not apply `environment.yml`/dependency changes). The friendlier behavior — detecting that the user edited `environment.yml` and surfacing it on update — was deferred here because reliable drift detection needs a **content hash, not mtime**. `git clone` / `checkout`, editor saves, `cp`, cloud sync, and CI cache restores all rewrite mtimes, so an mtime comparison (the kind [`is_lock_file_stale`](../../lib/micromamba_env.sh) uses) yields both false positives and false negatives. A stored `sha256(environment.yml)` captured at env-build time and compared on update is deterministic.
+
+**Distinct from N.bh.** N.bh is SHA256 verification of the micromamba **bootstrap download** (a supply-chain concern in [`micromamba_bootstrap.sh`](../../lib/micromamba_bootstrap.sh)). This story hashes the project's **`environment.yml` content** for drift detection. Shared primitive, unrelated purpose.
+
+**Design sketch (refine when picked up).**
+
+- At every micromamba env-build path (`init`, `init --force`, rebuild), store `sha256(environment.yml)` in the env's state file ([`.pyve/envs/<name>/.state`](../../lib/envs.sh), the N.f state surface) under a key like `env_yml_sha256`.
+- On the re-init "Update in-place" path, recompute the hash and compare to the stored value. Mismatch ⇒ the env was built from a different `environment.yml` ⇒ surface it: "your `environment.yml` changed since this env was built — choose option 2 (purge + rebuild) to apply it."
+- Decide **nudge-only vs. interactive offer-to-rebuild**: an offer that rebuilds from inside the update path muddies "update preserves the environment," so a nudge that points at option 2 may be the cleaner boundary.
+
+**Out of scope.** Retiring the existing mtime-based `is_lock_file_stale` (its own decision — though this story's stored hash could later enable it); venv backend (no `environment.yml`).
+
+**Tasks**
+
+- [ ] Decide nudge-only vs. interactive offer-to-rebuild; record the decision.
+- [ ] Store `sha256(environment.yml)` in the env state at every micromamba build path.
+- [ ] On "Update in-place", compare stored vs. current hash; surface drift per the decision.
+- [ ] Tests: unchanged `environment.yml` → no drift signal; edited → drift surfaced; missing/old state (pre-N.bf.14 env) handled gracefully (no false drift).
 - [ ] Full suite; zero regressions.
 
 ### Story N.bf.[deprecated]: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Superseded → N.bf.11]
@@ -2232,7 +2256,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.14: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
+### Story N.bf.15: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve env` absent from `--help`).
 
@@ -2242,7 +2266,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 **Decision (developer, 2026-06-07): drop `testenv` from `--help` entirely** (don't relabel it as deprecated). The deprecation path keeps working at runtime with its one-shot warning; help should show only the canonical surface.
 
-**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.14 only fixes the top-level `--help`.
+**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.15 only fixes the top-level `--help`.
 
 **Tasks**
 

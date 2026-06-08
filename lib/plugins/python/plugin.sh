@@ -1356,6 +1356,18 @@ _init_resolve_version_manager() {
     detect_version_manager
 }
 
+# Print the interactive re-initialization menu (Story N.bf.13). Option 1's label
+# is explicit that an in-place update refreshes Pyve config/files only — it does
+# NOT apply environment.yml/dependency edits (those require option 2's purge +
+# rebuild). The old "(preserves environment, updates config)" wording implied
+# dependency edits would be picked up, which silently misled users.
+_init_print_reinit_menu() {
+    printf "\n  What would you like to do?\n"
+    printf "    1. Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)\n"
+    printf "    2. Purge and re-initialize (clean slate)\n"
+    printf "    3. Cancel\n\n"
+}
+
 # Emit the gentle lock nudge at the end of a successful non-strict micromamba
 # init (Story N.bf.9). Fires only when `conda-lock` is a declared dependency
 # but no lock file exists yet — the signal that the user opted into locking but
@@ -1673,10 +1685,7 @@ init_project() {
             fi
             info "Current version:  $VERSION"
             info "Backend:          $existing_backend"
-            printf "\n  What would you like to do?\n"
-            printf "    1. Update in-place (preserves environment, updates config)\n"
-            printf "    2. Purge and re-initialize (clean slate)\n"
-            printf "    3. Cancel\n\n"
+            _init_print_reinit_menu
             printf "  %sChoose [1/2/3]:%s " "${Y}" "${RESET}"
             read -r choice
 

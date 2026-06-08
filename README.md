@@ -829,7 +829,7 @@ $ pyve init
   Backend: venv
 
 What would you like to do?
-  1. Update in-place (preserves environment, updates config)
+  1. Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)
   2. Purge and re-initialize (clean slate)
   3. Cancel
 

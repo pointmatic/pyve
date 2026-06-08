@@ -453,6 +453,20 @@ YAML
 }
 
 #============================================================
+# N.bf.13: re-init menu label is honest about what update applies
+#============================================================
+
+@test "_init_print_reinit_menu: option 1 states it does NOT apply environment.yml/dependency edits" {
+    run _init_print_reinit_menu
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Update in-place"* ]]
+    [[ "$output" == *"does NOT apply"* ]]
+    [[ "$output" == *"environment.yml"* ]]
+    [[ "$output" == *"Purge and re-initialize"* ]]
+    [[ "$output" == *"Cancel"* ]]
+}
+
+#============================================================
 # N.bf.11: scaffold conda-lock opt-in decision (_init_resolve_scaffold_conda_lock)
 #============================================================
 # Return code: 0 = include conda-lock in the scaffold, 1 = omit. The interactive
