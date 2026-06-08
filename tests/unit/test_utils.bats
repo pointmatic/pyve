@@ -381,7 +381,9 @@ EOF
     [ "$status" -eq 0 ]
 
     assert_file_exists ".vscode/settings.json"
-    assert_file_contains ".vscode/settings.json" ".pyve/envs/my-env/bin/python"
+    # Story N.bf.14: the main micromamba env lives at the v3 root slot;
+    # the interpreter path no longer keys off the configured env name.
+    assert_file_contains ".vscode/settings.json" ".pyve/envs/root/conda/bin/python"
     assert_file_contains ".vscode/settings.json" '"python.terminal.activateEnvironment": false'
     assert_file_contains ".vscode/settings.json" '"python.condaPath": ""'
 }
@@ -406,7 +408,7 @@ EOF
     PYVE_REINIT_MODE=force run write_vscode_settings "my-env"
     [ "$status" -eq 0 ]
 
-    assert_file_contains ".vscode/settings.json" ".pyve/envs/my-env/bin/python"
+    assert_file_contains ".vscode/settings.json" ".pyve/envs/root/conda/bin/python"
 }
 
 #============================================================

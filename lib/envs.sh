@@ -206,6 +206,19 @@ _env_resolve_backend() {
     fi
 }
 
+# Story N.bf.14: resolve the reserved `root` env's backend. `root` is
+# never in PYVE_TESTENVS_NAMES, so the regular `_env_resolve_backend`
+# can't see it; read it from `.pyve/config` (v3 read-compat) then the
+# manifest, defaulting to `venv`. Defensive under `set -u` and when the
+# config/manifest helpers aren't sourced (returns `venv`).
+_env_resolve_root_backend() {
+    local b=""
+    b="$(read_config_value backend 2>/dev/null || true)"
+    [[ -z "$b" ]] && b="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$b" ]] && b="venv"
+    printf '%s' "$b"
+}
+
 # is <backend> a known-advisory backend? Routes through
 # the Python classifier (the single source of the closed vocabulary) so the
 # advisory set is never duplicated — and thus never drifts — on the shell
@@ -371,6 +384,10 @@ migrate_legacy_env_layout() {
     _migrate_legacy_env_v27_to_v3
     # --- v2.8 → v3: .pyve/testenvs/<name>/* → .pyve/envs/<name>/* ---
     _migrate_legacy_env_v28_to_v3
+    # --- v3-flat → v3-conda: .pyve/envs/<configured>/ → .pyve/envs/root/conda/
+    #     (Story N.bf.14: the main micromamba env is the reserved `root`
+    #     env; finish the physical move N.g left unreconciled). ---
+    _migrate_main_micromamba_to_v3
 }
 
 # v2.7 (singular) → v3 mover. Handles the original M.h.2 case; the v3
@@ -459,18 +476,127 @@ _migrate_legacy_env_v28_to_v3() {
     fi
 }
 
+# Story N.bf.14: the main micromamba env is the reserved `root` env; its
+# canonical v3 slot is `.pyve/envs/root/conda/` (uniform `<name>/<backend>/`
+# shape), with a sibling `.pyve/envs/root/.state`. Single source of the
+# slot literal — consumed by `resolve_env_path root` here and by
+# `create_micromamba_env` / `verify_micromamba_env` in lib/micromamba_env.sh.
+micromamba_root_prefix() {
+    printf '%s' ".pyve/envs/root/conda"
+}
+
+# Story N.bf.14: non-mutating resolver for the main micromamba env path.
+# Returns the v3 root slot (`.pyve/envs/root/conda`) if it exists, else
+# the legacy flat path (`.pyve/envs/<configured>/`) derived from the
+# passed name or `.pyve/config:micromamba.env_name`, else the canonical
+# root slot (so a caller's existence check reports "missing" against the
+# right path). Unlike `resolve_env_path root`, this does NOT trigger the
+# opportunistic move — read paths (`check` / `status` / `run`) use it to
+# tolerate both layouts during the transition window without mutating the
+# tree on a diagnostic; the move fires on the write paths (`init` /
+# `update` / `test` / `env *`).
+resolve_main_micromamba_path() {
+    local root
+    root="$(micromamba_root_prefix)"
+    if [[ -d "$root" ]]; then
+        printf '%s' "$root"
+        return 0
+    fi
+    local name="${1:-}"
+    [[ -z "$name" ]] && name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+    if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name" ]]; then
+        printf '%s' ".pyve/envs/$name"
+        return 0
+    fi
+    printf '%s' "$root"
+}
+
+# v3-flat (main micromamba env) → v3-conda(root) mover. Pre-N.bf.14, the
+# main micromamba env materialized FLAT at `.pyve/envs/<configured>/`
+# (conda-meta directly inside, no `conda/` subdir, no `.state`). This
+# moves it to `.pyve/envs/root/conda/` and writes the sibling `.state`.
+#
+# Discriminator: a flat main env has `conda-meta` DIRECTLY inside
+# `.pyve/envs/<name>/`. Named micromamba testenvs nest it one level
+# deeper (`.pyve/envs/<name>/conda/conda-meta`), so they are never
+# matched. Idempotent: if `.pyve/envs/root/conda/` already exists the
+# v3 env is preserved and any stray flat dir is left untouched.
+_migrate_main_micromamba_to_v3() {
+    local dest_root=".pyve/envs/root"
+    local dest="$dest_root/conda"
+
+    # Case 2 + 3: v3 root/conda already present → preserve it, no-op.
+    if [[ -d "$dest" ]]; then
+        return 0
+    fi
+
+    # Locate the flat main env. Prefer the configured name from
+    # `.pyve/config` (micromamba backend); fall back to a scan for a
+    # `.pyve/envs/*/conda-meta` directory that is not `root`.
+    local name="" flat=""
+    if config_file_exists 2>/dev/null \
+       && [[ "$(read_config_value backend 2>/dev/null || true)" == "micromamba" ]]; then
+        name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+    fi
+    if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name/conda-meta" ]]; then
+        flat=".pyve/envs/$name"
+    else
+        local d
+        for d in .pyve/envs/*/; do
+            [[ -d "${d}conda-meta" ]] || continue
+            [[ "$(basename "$d")" == "root" ]] && continue
+            flat="${d%/}"
+            break
+        done
+    fi
+
+    # Case 4: greenfield for this boundary (no flat main env).
+    [[ -n "$flat" && -d "$flat/conda-meta" ]] || return 0
+
+    # Capture legacy mtime so the new `.state` records the original
+    # provisioning epoch (mirrors the v2.7 mover).
+    local legacy_mtime=""
+    if [[ "$(uname)" == "Darwin" ]]; then
+        legacy_mtime="$(stat -f %m "$flat" 2>/dev/null || true)"
+    else
+        legacy_mtime="$(stat -c %Y "$flat" 2>/dev/null || true)"
+    fi
+
+    mkdir -p "$dest_root"
+    mv "$flat" "$dest"
+
+    local state_args=("root" "micromamba" "manifest=environment.yml")
+    if [[ -n "$legacy_mtime" ]]; then
+        state_args+=("provisioned_at=$legacy_mtime")
+    fi
+    state_write "${state_args[@]}"
+
+    info "Migrated flat micromamba main env: $flat → $dest"
+}
+
 # Resolve the on-disk path for <name>. Does NOT check existence; that is
-# the caller's responsibility. Path shape (N.f):
-#   root      → .venv          (the project main venv; micromamba main-env
-#                                relocation to .pyve/envs/root/conda/
-#                                is owned by `pyve self migrate`)
+# the caller's responsibility. Path shape (N.f / N.bf.14):
+#   root      → .venv                   (venv backend — the project main venv)
+#             → .pyve/envs/root/conda/  (micromamba backend — uniform slot)
 #   <name>    → .pyve/envs/<name>/{venv|conda}/  (per declared backend)
 resolve_env_path() {
     local name="$1"
     if [[ "$name" == "root" ]]; then
-        # Main project env. Pre-N.g this still maps to .venv; N.g's
-        # deterministic migrator owns the micromamba main-env move.
-        printf '%s' ".venv"
+        # Main project env (Story N.bf.14). venv → .venv; micromamba →
+        # the uniform `.pyve/envs/root/conda/` slot. Fire the opportunistic
+        # flat→conda(root) move so a pre-N.bf.14 flat main env is relocated
+        # before any consumer reads the path.
+        local root_backend
+        root_backend="$(_env_resolve_root_backend)"
+        if [[ "$root_backend" == "micromamba" ]]; then
+            # Redirect the migrator's progress output to stderr: this
+            # function is command-substituted by callers (env_path="$(...)"),
+            # so its stdout must carry ONLY the resolved path.
+            migrate_legacy_env_layout >&2
+            printf '%s' "$(micromamba_root_prefix)"
+        else
+            printf '%s' ".venv"
+        fi
         return 0
     fi
     # Opportunistic-migration fallback. Two trigger conditions:
@@ -479,17 +605,19 @@ resolve_env_path() {
     #   (b) v2.8 legacy at `.pyve/testenvs/<name>/...` for the env being
     #       asked for
     # Either trigger fires the full migrator (it's a cheap pair of dir
-    # checks per branch); the migrator is internally idempotent.
+    # checks per branch); the migrator is internally idempotent. Its
+    # progress output is redirected to stderr because this function is
+    # command-substituted by callers — stdout must carry ONLY the path.
     local v3_venv=".pyve/envs/${name}/venv"
     local v3_conda=".pyve/envs/${name}/conda"
     if [[ "$name" == "testenv" ]] \
        && [[ ! -d "$v3_venv" ]] \
        && [[ -d ".pyve/testenv/venv" ]]; then
-        migrate_legacy_env_layout
+        migrate_legacy_env_layout >&2
     elif [[ ! -d "$v3_venv" ]] \
          && [[ ! -d "$v3_conda" ]] \
          && [[ -d ".pyve/testenvs/${name}" ]]; then
-        migrate_legacy_env_layout
+        migrate_legacy_env_layout >&2
     fi
     local backend
     # Story M.k: dispatch on the *resolved* backend so `inherit` produces

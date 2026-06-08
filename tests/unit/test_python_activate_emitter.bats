@@ -88,12 +88,14 @@ EOF
     [[ "$output" == *'export VIRTUAL_ENV="$PWD/myenv"'* ]]
 }
 
-@test "emitter (micromamba): CONDA_PREFIX + env path from config env_name" {
+@test "emitter (micromamba): CONDA_PREFIX + PATH from the v3 root slot" {
+    # Story N.bf.14: the main micromamba env lives at the uniform root
+    # slot .pyve/envs/root/conda/; PYVE_ENV_NAME stays the configured name.
     _write_config_micromamba "sci"
     run python_pyve_plugin_activate
     [ "$status" -eq 0 ]
-    [[ "$output" == *'PATH_add ".pyve/envs/sci/bin"'* ]]
-    [[ "$output" == *'export CONDA_PREFIX="$PWD/.pyve/envs/sci"'* ]]
+    [[ "$output" == *'PATH_add ".pyve/envs/root/conda/bin"'* ]]
+    [[ "$output" == *'export CONDA_PREFIX="$PWD/.pyve/envs/root/conda"'* ]]
     [[ "$output" == *'export PYVE_BACKEND="micromamba"'* ]]
     [[ "$output" == *'export PYVE_ENV_NAME="sci"'* ]]
 }

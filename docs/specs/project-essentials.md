@@ -252,11 +252,13 @@ Every code path in [`lib/manifest.sh`](../../lib/manifest.sh) that exists solely
 
 ### v3 state directory is `.pyve/envs/<name>/<backend>/`; route through helpers
 
-All declared envs materialize at `.pyve/envs/<name>/<backend>/` (Story N.f). `<backend>` is `venv` for venv-backed, `conda` for micromamba-backed; future plugin backends pick their own subdir name. The reserved `root` env's micromamba prefix lands at `.pyve/envs/root/conda/` after `pyve self migrate` runs (pre-migration, it stays at `.pyve/envs/<configured_name>/` for compat). Path-construction goes through the helpers in [`lib/envs.sh`](../../lib/envs.sh):
+All declared envs materialize at `.pyve/envs/<name>/<backend>/` (Story N.f). `<backend>` is `venv` for venv-backed, `conda` for micromamba-backed; future plugin backends pick their own subdir name. The reserved `root` env's micromamba prefix lands at `.pyve/envs/root/conda/` — on **fresh `pyve init`** and after `pyve self migrate` alike (Story N.bf.14 finished the physical move N.g had left logical-only). The configured env name survives only as the conda env's metadata `name:` in `environment.yml`; it no longer keys the directory. Pre-N.bf.14 flat main envs (conda-meta directly inside `.pyve/envs/<configured>/`) are relocated by an opportunistic mover. Path-construction goes through the helpers in [`lib/envs.sh`](../../lib/envs.sh):
 
 - `state_path <name>` → `.pyve/envs/<name>/.state`
-- `resolve_env_path <name>` → `.pyve/envs/<name>/{venv|conda}/`
-- `migrate_legacy_env_layout` runs as a side effect of `resolve_env_path` to opportunistically catch v2.7 / v2.8 layouts.
+- `resolve_env_path <name>` → `.pyve/envs/<name>/{venv|conda}/`; for `root` it is backend-aware (`venv` → `.venv`; `micromamba` → `.pyve/envs/root/conda/`) and **fires** the opportunistic move.
+- `micromamba_root_prefix` → the single source of the `.pyve/envs/root/conda` literal (used by `create_micromamba_env` / `verify_micromamba_env` and `resolve_env_path root`).
+- `resolve_main_micromamba_path [<name>]` → **non-mutating** tolerant resolver for read paths (`check` / `status` / `run`): returns the root slot if present, else the legacy flat path, without triggering the move.
+- `migrate_legacy_env_layout` runs as a side effect of `resolve_env_path` to opportunistically catch v2.7 / v2.8 / v3-flat layouts.
 
 A bats sweep in [`tests/unit/test_n_f_state_layout.bats`](../../tests/unit/test_n_f_state_layout.bats) greps `lib/commands/*.sh` and `pyve.sh` for forbidden `.pyve/testenvs/` literals and fails the build on regression. The migrator surfaces (`lib/envs.sh`, `lib/commands/self.sh`) are exempted by location since they legitimately reference the legacy path during migration.
 

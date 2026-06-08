@@ -2198,16 +2198,52 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Proposed fix (decide during debug).** Either (a) reword the option to make the boundary explicit — e.g. "Update in-place (refreshes Pyve config/files; does NOT apply `environment.yml`/dependency changes — use option 2 for that)" — or (b) detect a changed `environment.yml` (mtime vs the env, or hash) during update and offer to apply it (rebuild). Lowest-risk is (a); (b) is the friendlier behavior if the detection is cheap and reliable.
 
-**Decision (developer, 2026-06-07): option (a) — reword.** Detection (b) is deferred to **N.bf.14** because reliable drift detection requires a content **hash**, not mtime (mtime is rewritten by `git clone`/`checkout`, editors, `cp`, cloud sync, CI cache restores — false positives and negatives). That's more than a one-liner (state plumbing), so it gets its own story rather than a half-version bolted on here.
+**Decision (developer, 2026-06-07): option (a) — reword.** Detection (b) is deferred to **N.bf.15** because reliable drift detection requires a content **hash**, not mtime (mtime is rewritten by `git clone`/`checkout`, editors, `cp`, cloud sync, CI cache restores — false positives and negatives). That's more than a one-liner (state plumbing), so it gets its own story rather than a half-version bolted on here.
 
 **Tasks**
 
 - [x] Reproduce: edit `environment.yml`, choose update → assert the dependency change is not applied (red, behavioral) and/or the label is misleading. — captured at the label level: [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) "_init_print_reinit_menu: option 1 states it does NOT apply environment.yml/dependency edits" (the old "(preserves environment, updates config)" label failed this assertion).
-- [x] Implement the chosen option (reword and/or detect-and-offer); record the decision. — option (a): extracted the menu into `_init_print_reinit_menu` ([plugin.sh](../../lib/plugins/python/plugin.sh)) and reworded option 1 to "Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)". Decision recorded above; detect-and-offer → N.bf.14.
+- [x] Implement the chosen option (reword and/or detect-and-offer); record the decision. — option (a): extracted the menu into `_init_print_reinit_menu` ([plugin.sh](../../lib/plugins/python/plugin.sh)) and reworded option 1 to "Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)". Decision recorded above; detect-and-offer → N.bf.15.
 - [x] Test: a user who edits `environment.yml` and updates either gets the change applied or is clearly told it won't be. — the reworded label now clearly tells them it won't be applied (asserted in the menu test).
 - [x] Full suite; zero regressions. — 1869 Bats unit tests pass (1868 + 1 new), 0 failures; shellcheck clean. Also updated the matching menu line in [README.md](../../README.md) for consistency (a 1-line fix; the surrounding "Smart Re-initialization" section's broader staleness stays for the deferred `refactor_document` bundle).
 
-### Story N.bf.14: Hash-based `environment.yml`-drift detection + detect-and-offer on update [Planned]
+### Story N.bf.14: Main micromamba env → v3 `.state` layout (finish the N.g physical move) [Done]
+
+**Blocks N.bf.15.** N.bf.15 (env.yml-drift detection) wants to store the env's source hash in `manifest_sha256` of the main env's `.state` — the field designed for it. That can't be done cleanly until the main micromamba env *has* a proper v3 `.state`, which it doesn't today. Fixing this first turns N.bf.15 into "populate + compare an existing field" with no new storage mechanism.
+
+**Problem (surfaced 2026-06-07 during the N.bf.15 design).** N.g (`pyve self migrate`) did the *logical* main-env mapping (main env → `[env.root]` in `pyve.toml`) but left the *physical* layout unreconciled:
+
+- [`create_micromamba_env`](../../lib/micromamba_env.sh#L630) writes the main micromamba env's prefix **flat** at `.pyve/envs/<configured-name>/` — not the v3 `.pyve/envs/<name>/<backend>/` shape (`conda/` subdir) the rest of N.f/N.g assumes, and with **no sibling `.state`**.
+- [`resolve_env_path`](../../lib/envs.sh) `root` branch unconditionally returns `.venv` and still carries a stale comment: *"Pre-N.g this still maps to `.venv`; N.g's deterministic migrator owns the micromamba main-env move."* Wrong for a micromamba root env; never reconciled after N.g shipped.
+- The done-state is **overclaimed in three places that disagree with the code**: N.g's help text ([self.sh:1065](../../lib/commands/self.sh#L1065) "rebuilds at the v3 state layout `.pyve/envs/<name>/<backend>/`"), [project-essentials.md](project-essentials.md) ("the root env's micromamba prefix lands at `.pyve/envs/root/conda/` after `pyve self migrate`"), and the `resolve_env_path` comment.
+
+**Goal / invariant.** The main micromamba env materializes at the same `.pyve/envs/<name>/<backend>/` shape as every other env, with a sibling `.state` (so `manifest_sha256` and the rest of the state schema apply uniformly). `resolve_env_path` returns the correct prefix for a micromamba root env. The three doc/comment sites match reality.
+
+**Design questions to settle when picked up:**
+
+- Is the main micromamba env's `<name>` the reserved `root`, or the configured project name? Fresh `init` uses the configured name; `self migrate` maps to `[env.root]`. Reconcile.
+- Relocation trigger: fresh build only, opportunistic move (like `migrate_legacy_env_layout`), and/or `self migrate`-only.
+- Do `pyve check` / `status` / `env list` tolerate both layouts during the transition window?
+
+**Decisions (developer, 2026-06-08, via design-question gate):**
+
+- **Name = reserved `root`.** The main micromamba env materializes at `.pyve/envs/root/conda/` (matches `[env.root]`, project-essentials, and the N.g help). The configured name survives only as the conda env's metadata `name:` in `environment.yml`; it no longer keys the directory.
+- **Relocation trigger = fresh build + opportunistic move.** Fresh `init` writes the root slot; a new `_migrate_main_micromamba_to_v3` mover (alongside the v2.7/v2.8 movers in `migrate_legacy_env_layout`) relocates pre-N.bf.14 flat main envs. `self migrate` is covered via its `init --force` rebuild.
+- **Dual-layout tolerance (LLM call) = non-mutating reads.** `check`/`status`/`run` route through a new `resolve_main_micromamba_path` that finds the env at either layout WITHOUT triggering the move (a diagnostic shouldn't relocate a directory); the move fires on the write paths (`init`/`update`) and via `resolve_env_path root`.
+
+**Tasks**
+
+- [x] Decide root-vs-configured-name + the relocation trigger. — `root` slot; fresh-build + opportunistic mover (see Decisions above).
+- [x] `create_micromamba_env` (and init's micromamba branch) materialize the main env at `.pyve/envs/<name>/conda/` with a sibling `.state` written via `state_write`. — [micromamba_env.sh](../../lib/micromamba_env.sh) `create_micromamba_env`/`verify_micromamba_env`/`check_micromamba_env_exists` now use `micromamba_root_prefix` (`.pyve/envs/root/conda`) + `state_write root micromamba manifest=<env_file>`; init's micromamba branch (distutils prefix, `.envrc` env_path, `write_vscode_settings` interpreter, activate emitter `CONDA_PREFIX`/`PATH_add`) all repointed.
+- [x] Reconcile `resolve_env_path`'s `root` branch for the micromamba case; remove the stale "Pre-N.g" comment. — [envs.sh](../../lib/envs.sh) `resolve_env_path root` is now backend-aware (`_env_resolve_root_backend`: venv → `.venv`; micromamba → `.pyve/envs/root/conda`) and fires the opportunistic move; stale comment removed.
+- [x] Opportunistic migration for existing flat `.pyve/envs/<name>/` main envs (no silent breakage on upgrade). — `_migrate_main_micromamba_to_v3` in `migrate_legacy_env_layout`; discriminator is `conda-meta` directly inside `.pyve/envs/<name>/` (named micromamba testenvs nest it under `conda/`, so they're never matched); preserves provisioned-at mtime; idempotent.
+- [x] Fix the overclaiming docs (N.g help, project-essentials, `resolve_env_path` comment) to match the now-true layout. — [project-essentials.md](project-essentials.md) "v3 state directory" entry updated (fresh-init lands at root/conda, configured-name → conda metadata only, new helpers documented); `resolve_env_path` comment updated. **N.g help ([self.sh:1065](../../lib/commands/self.sh#L1065)) left as-is — its generic `.pyve/envs/<name>/<backend>/` claim is now accurate (code matches), no longer overclaiming.**
+- [x] Tests: fresh micromamba init → `<name>/conda/` + `.state`; `resolve_env_path root` correct; opportunistic move of a flat legacy env; `check` / `status` / `env list` unaffected. — new [test_main_micromamba_env_layout.bats](../../tests/unit/test_main_micromamba_env_layout.bats) (11 cases: helper, resolver both backends, mover move/idempotence/non-interference, create→root/conda+.state); [test_python_activate_emitter.bats](../../tests/unit/test_python_activate_emitter.bats) micromamba case updated to root slot; [test_utils.bats](../../tests/unit/test_utils.bats) vscode interpreter updated; integration [test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py) `--keep-testenv` assertions updated to root slot.
+- [x] Full suite; zero regressions. — 1880 Bats unit tests pass, 0 failures; shellcheck clean on the edited ranges (remaining warnings are pre-existing, on untouched lines). Integration assertions updated but not executed locally (require a real micromamba bootstrap; exercised in N.bf's a2 e2e retest).
+
+### Story N.bf.15: Hash-based `environment.yml`-drift detection + detect-and-offer on update [Planned]
+
+**Blocked on N.bf.14** (main micromamba env → v3 `.state`). Once the main env has a sibling `.state`, this story populates `manifest_sha256` at build and compares it on update — no separate storage mechanism (the earlier "sentinel file" idea was a workaround for the missing `.state` and is dropped).
 
 **Motivation.** N.bf.13 made "Update in-place" *honest* (its label now states it does not apply `environment.yml`/dependency changes). The friendlier behavior — detecting that the user edited `environment.yml` and surfacing it on update — was deferred here because reliable drift detection needs a **content hash, not mtime**. `git clone` / `checkout`, editor saves, `cp`, cloud sync, and CI cache restores all rewrite mtimes, so an mtime comparison (the kind [`is_lock_file_stale`](../../lib/micromamba_env.sh) uses) yields both false positives and false negatives. A stored `sha256(environment.yml)` captured at env-build time and compared on update is deterministic.
 
@@ -2215,7 +2251,7 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Design sketch (refine when picked up).**
 
-- At every micromamba env-build path (`init`, `init --force`, rebuild), store `sha256(environment.yml)` in the env's state file ([`.pyve/envs/<name>/.state`](../../lib/envs.sh), the N.f state surface) under a key like `env_yml_sha256`.
+- At every micromamba env-build path (`init`, `init --force`, rebuild), store `sha256(environment.yml)` in the main env's `.state` via the **existing `manifest_sha256` field** (`manifest=environment.yml`) — no new schema key. (Requires N.bf.14's main-env `.state`.) Use a portable hash helper (`sha256sum` → `shasum -a 256` → `cksum` fallback; `.state` is per-machine so the algorithm stays consistent for write+read).
 - On the re-init "Update in-place" path, recompute the hash and compare to the stored value. Mismatch ⇒ the env was built from a different `environment.yml` ⇒ surface it: "your `environment.yml` changed since this env was built — choose option 2 (purge + rebuild) to apply it."
 - Decide **nudge-only vs. interactive offer-to-rebuild**: an offer that rebuilds from inside the update path muddies "update preserves the environment," so a nudge that points at option 2 may be the cleaner boundary.
 
@@ -2224,9 +2260,9 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 **Tasks**
 
 - [ ] Decide nudge-only vs. interactive offer-to-rebuild; record the decision.
-- [ ] Store `sha256(environment.yml)` in the env state at every micromamba build path.
+- [ ] Store `sha256(environment.yml)` in the main env's `.state` `manifest_sha256` at every micromamba build path (depends on N.bf.14).
 - [ ] On "Update in-place", compare stored vs. current hash; surface drift per the decision.
-- [ ] Tests: unchanged `environment.yml` → no drift signal; edited → drift surfaced; missing/old state (pre-N.bf.14 env) handled gracefully (no false drift).
+- [ ] Tests: unchanged `environment.yml` → no drift signal; edited → drift surfaced; missing/old state (pre-N.bf.15 env) handled gracefully (no false drift).
 - [ ] Full suite; zero regressions.
 
 ### Story N.bf.[deprecated]: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Superseded → N.bf.11]
@@ -2256,7 +2292,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 - [ ] Update N.bf.7's advice text to reference the now-default `conda-lock` presence (coordinate if N.bf.7 lands first).
 - [ ] Full suite; zero regressions.
 
-### Story N.bf.15: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
+### Story N.bf.16: `pyve --help` documents the deprecated `testenv` and omits the canonical `env` [Planned]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve env` absent from `--help`).
 
@@ -2266,7 +2302,7 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 **Decision (developer, 2026-06-07): drop `testenv` from `--help` entirely** (don't relabel it as deprecated). The deprecation path keeps working at runtime with its one-shot warning; help should show only the canonical surface.
 
-**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.15 only fixes the top-level `--help`.
+**Scope.** `show_help`'s command list + examples block in `pyve.sh`. Surface the `env` namespace and its subcommands (`init`, `install`, `purge`, `list`, `prune`, `run`, `sync`). Per-leaf `env` help functions (a `show_env_help`) are **out of scope** here — that belongs to the existing `## Future` "Per-leaf help functions for namespace commands" story; N.bf.16 only fixes the top-level `--help`.
 
 **Tasks**
 
@@ -2279,18 +2315,15 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 ---
 
-### Story N.bg: Fix pre-existing integration test failures [Planned]
+### Story N.bg: Fix pre-existing integration test failure [Planned]
 
-**Motivation**: surfaced during story K.a.1 regression sweep. Four tests in [tests/integration/](../../tests/integration/) fail against `main` unrelated to any in-flight change; three are UI-drift (assertions checking `stderr` for output now on `stdout`, or looking for prompt text that changed), one is a genuine behavior check worth reinvestigating, and one is a flaky timeout. Pinning these now so they don't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9.
+**Motivation**: surfaced during story K.a.1 regression sweep, confirmed still problematic in story N.s.9. One integration test remains to re-check: `test_invalid_backend_in_config`, originally pinned for an `stderr`/`stdout` output-stream drift. Its original sibling failures are gone — the assertion fixes landed during Phase N, and a flaky cross-platform timeout was pushed to a future story. Re-checking the remaining one so it doesn't mask real regressions in `make test-integration`.
 
 **Tasks**
 
-- [ ] `test_reinit.py::TestReinitForce::test_force_purges_existing_venv` — assertion `"Force re-initialization" in result.stderr` fails because the `warn()` banner prints to `stdout`. Update the assertion to check combined output (or `stdout`).
-- [ ] `test_reinit.py::TestReinitForce::test_force_prompts_for_confirmation` — asserts `"Proceed?" in result.stdout` but `ask_yn` prompt text / stream appears to have changed (stdout now shows only the `Cancelled` message). Verify where the prompt is emitted and update assertion or re-emit the prompt to the captured stream.
-- [ ] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — asserts `'invalid' in result.stderr.lower() or 'backend' in result.stderr.lower()` but the error banner is on `stdout`. Same UI-drift fix as above.
-- [ ] `test_auto_detection.py::TestPriorityOrder::test_priority_cli_over_all` — asserts `(project_dir / ".venv").exists()` but the directory is not created in the scenario. Investigate whether this is a test-setup gap (missing fixture state) or a genuine regression in CLI-priority backend dispatch.
-- [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
-- [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
+- [ ] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — **reinvestigate first; do not assume the stream fix.** The original task claimed the error banner moved to `stdout`, but `validate_backend_config`'s "Invalid backend in <config>" ([backend_detect.sh:152](../../lib/backend_detect.sh#L152)) uses `log_error`, which writes to **stderr** ([utils.sh:46](../../lib/utils.sh#L46)) — so the test's `result.stderr` assertion may already be correct. Run the test: either it now passes (close it), or it fails for a different reason — most plausibly v3.0 read-compat synthesizes/ignores an invalid `.pyve/config` backend (no `pyve.toml` present) so `pyve init` no longer errors. Fix to the true behavior, not the assumed one.
+- [ ] **v2-ism note:** this test drives validation through the legacy `.pyve/config` (`backend: invalid_backend` hand-written) — a read-compat surface slated for removal in N-10. v3's canonical invalid-backend validation lives in the `pyve.toml` / `manifest_load` path (covered by N.bf.1's validator + bats). Prefer porting the test to `pyve.toml`, or retire it with read-compat, rather than hardening the legacy path.
+- [ ] Re-run `make test-integration` after the fix; expect zero failures on a clean checkout.
 
 ---
 
@@ -2350,6 +2383,15 @@ Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and g
 ---
 
 ## Future
+
+### Story ?.?: Fix pre-existing integration test failures [Planned]
+
+**Motivation**: surfaced during story K.a.1 regression sweep. One test in [tests/integration/](../../tests/integration/) fails against `main` unrelated to any in-flight change; it is a flaky timeout. Pinning this now so it doesn't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9 and again in N.bg.
+
+**Tasks**
+
+- [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
+- [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
 
 ### Story ?.?: Complete phase/story-ref comment sanitization (deferred from N-7) [Planned]
 

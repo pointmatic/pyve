@@ -626,9 +626,12 @@ resolve_environment_name() {
 #   $1 - Environment name
 # Returns: 0 if exists, 1 if not exists
 check_micromamba_env_exists() {
-    local env_name="$1"
-    local env_path=".pyve/envs/$env_name"
-    
+    # Story N.bf.14: the main micromamba env is the reserved `root` env at
+    # the uniform `.pyve/envs/root/conda/` slot. `$1` (the configured name)
+    # is accepted for caller compat but no longer keys the path.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+
     if [[ -d "$env_path" ]]; then
         return 0
     else
@@ -680,20 +683,27 @@ create_micromamba_env() {
         return 1
     fi
     
-    # Create environment directory
-    local env_path=".pyve/envs/$env_name"
-    mkdir -p ".pyve/envs" || {
-        log_error "Failed to create .pyve/envs directory"
+    # Story N.bf.14: materialize the main env at the uniform v3 slot
+    # `.pyve/envs/root/conda/` (the reserved `root` env), with a sibling
+    # `.pyve/envs/root/.state`. `$env_name` stays the conda env's metadata
+    # name (environment.yml `name:`) and is used only for logging.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+    mkdir -p "$(dirname "$env_path")" || {
+        log_error "Failed to create .pyve/envs/root directory"
         return 1
     }
-    
-    log_info "Creating micromamba environment '$env_name' from $env_file..."
-    
+
+    log_info "Creating micromamba environment '$env_name' at $env_path from $env_file..."
+
     # Execute micromamba create command
     # Use -p for prefix (path-based environment)
     # Use -f for file (environment.yml or conda-lock.yml)
     # Use -y for yes (non-interactive)
     if "$micromamba_path" create -p "$env_path" -f "$env_file" -y; then
+        # Sibling .state so manifest_sha256 + the rest of the schema apply
+        # uniformly (N.bf.15 populates the hash from this `manifest` source).
+        state_write root micromamba manifest="$env_file"
         log_success "Micromamba environment '$env_name' created successfully"
         return 0
     else
@@ -711,9 +721,11 @@ create_micromamba_env() {
 #   $1 - Environment name
 # Returns: 0 if functional, 1 if not
 verify_micromamba_env() {
-    local env_name="$1"
-    local env_path=".pyve/envs/$env_name"
-    
+    # Story N.bf.14: verify the reserved `root` env at the uniform
+    # `.pyve/envs/root/conda/` slot. `$1` accepted for caller compat.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+
     # Check if environment directory exists
     if [[ ! -d "$env_path" ]]; then
         log_error "Environment directory not found: $env_path"

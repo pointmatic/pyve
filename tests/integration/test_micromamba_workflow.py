@@ -145,13 +145,16 @@ class TestMicromambaWorkflow:
         # Create testenv
         pyve.run('testenv', 'init')
 
-        # v3 layout: the micromamba main env and the testenv
-        # share `.pyve/envs/` — main env at `.pyve/envs/test-env/` (still
-        # pre-N.g, the env-name from environment.yml), testenv at
-        # `.pyve/envs/testenv/`. The v3-layout-aware `pyve purge --keep-testenv`
-        # surgically deletes the main-env subdir and preserves the rest of
-        # `.pyve/envs/`.
-        assert (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
+        # v3 layout (Story N.bf.14): the micromamba main env is the
+        # reserved `root` env at `.pyve/envs/root/conda/` (with a sibling
+        # `.pyve/envs/root/.state`); the testenv lives at
+        # `.pyve/envs/testenv/`. The configured `test-env` name from
+        # environment.yml is now conda metadata only, not a directory.
+        # `pyve purge --keep-testenv` surgically deletes the main-env
+        # subdir (`.pyve/envs/root`) and preserves the rest of `.pyve/envs/`.
+        assert (pyve.cwd / '.pyve' / 'envs' / 'root' / 'conda').exists()
+        assert (pyve.cwd / '.pyve' / 'envs' / 'root' / '.state').exists()
+        assert not (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
         assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
 
         # Purge with keep-testenv
@@ -159,7 +162,7 @@ class TestMicromambaWorkflow:
 
         assert result.returncode == 0
         # Micromamba main env should be removed
-        assert not (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
+        assert not (pyve.cwd / '.pyve' / 'envs' / 'root').exists()
         # Testenv should be preserved (now under `.pyve/envs/testenv/`)
         assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
     

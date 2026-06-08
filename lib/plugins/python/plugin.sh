@@ -565,9 +565,11 @@ python_pyve_plugin_activate() {
             env_name="$(basename "$PWD")"
             ;;
         micromamba)
+            # PYVE_ENV_NAME stays the configured (human-facing) name; the
+            # CONDA_PREFIX/PATH come from the v3 root slot (Story N.bf.14).
             env_name="$(read_config_value "micromamba.env_name")"
             [[ -z "$env_name" ]] && env_name="$(basename "$PWD")"
-            env_path=".pyve/envs/$env_name"
+            env_path="$(micromamba_root_prefix)"
             ;;
         *)
             log_error "python plugin: activate: unknown backend '$backend'"
@@ -1722,10 +1724,13 @@ init_project() {
                             _interactive_env_missing=true
                         fi
                     elif [[ "$existing_backend" == "micromamba" ]]; then
-                        local _interactive_env_name
+                        local _interactive_env_name _interactive_env_path
                         _interactive_env_name="$(read_config_value "micromamba.env_name")"
-                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d ".pyve/envs/$_interactive_env_name" ]]; then
-                            info "Environment '.pyve/envs/$_interactive_env_name' not found — creating it now..."
+                        # v3 root slot (Story N.bf.14), tolerant of a
+                        # not-yet-moved flat env.
+                        _interactive_env_path="$(resolve_main_micromamba_path "$_interactive_env_name")"
+                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d "$_interactive_env_path" ]]; then
+                            info "Environment '$_interactive_env_path' not found — creating it now..."
                             _interactive_env_missing=true
                         fi
                     fi
@@ -1847,9 +1852,11 @@ init_project() {
             warn "Environment created but verification failed"
         fi
 
-        # Apply Python 3.12+ distutils shim if needed
+        # Apply Python 3.12+ distutils shim if needed. The main micromamba
+        # env lives at the v3 root slot (Story N.bf.14), not the flat
+        # configured-name path.
         local env_prefix
-        env_prefix=".pyve/envs/$env_name"
+        env_prefix="$(micromamba_root_prefix)"
         local micromamba_path
         micromamba_path="$(get_micromamba_path)"
         if [[ -n "$micromamba_path" ]]; then
@@ -1858,7 +1865,8 @@ init_project() {
 
         # .envrc is composed below, AFTER .pyve/config and
         # pyve.toml exist (see the venv branch for the rationale).
-        local env_path=".pyve/envs/$env_name"
+        local env_path
+        env_path="$(micromamba_root_prefix)"
 
         # Create .env file
         _init_dotenv "$use_local_env"
@@ -2325,7 +2333,12 @@ purge_project() {
                     fi
                 fi
                 rm -rf ".pyve/config" 2>/dev/null || true
-                if [[ -n "$main_env_subdir" ]] && [[ -d ".pyve/envs/$main_env_subdir" ]]; then
+                # Main micromamba env: the v3 root slot (Story N.bf.14),
+                # plus the pre-N.bf.14 flat configured-name dir for projects
+                # not yet relocated by the opportunistic mover.
+                rm -rf ".pyve/envs/root" 2>/dev/null || true
+                if [[ -n "$main_env_subdir" ]] && [[ "$main_env_subdir" != "root" ]] \
+                   && [[ -d ".pyve/envs/$main_env_subdir" ]]; then
                     rm -rf ".pyve/envs/$main_env_subdir" 2>/dev/null || true
                 fi
                 find ".pyve" -mindepth 1 -maxdepth 1 \
@@ -2407,9 +2420,11 @@ _purge_pyve_dir() {
                     if "$micromamba_path" env remove -n "$env_name" -y 2>/dev/null; then
                         success "Removed micromamba environment '$env_name'"
                     else
-                        # If named removal fails, try prefix-based removal
+                        # If named removal fails, try prefix-based removal.
+                        # v3 main env at the root slot (Story N.bf.14),
+                        # tolerant of a not-yet-moved flat env.
                         info "Named removal failed, trying prefix-based removal..."
-                        "$micromamba_path" env remove -p ".pyve/envs/$env_name" -y 2>/dev/null || true
+                        "$micromamba_path" env remove -p "$(resolve_main_micromamba_path "$env_name")" -y 2>/dev/null || true
                     fi
                 else
                     # No env name in config, try to find and remove any environments in .pyve/envs
@@ -2643,11 +2658,10 @@ update_project() {
             venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
             env_path="$venv_dir"
         elif [[ "$backend" == "micromamba" ]]; then
-            local env_name
-            env_name="$(read_config_value "micromamba.env_name")"
-            if [[ -n "$env_name" ]]; then
-                env_path=".pyve/envs/$env_name"
-            fi
+            # Main micromamba env at the v3 root slot (Story N.bf.14); the
+            # flat→root move already fired via _update_migrate_legacy_layout
+            # earlier in update_project.
+            env_path="$(micromamba_root_prefix)"
         fi
         if [[ -n "$env_path" ]] && [[ -d "$env_path" ]]; then
             step_begin "[5/5] Refresh project-guide artifacts"
@@ -2844,9 +2858,9 @@ check_environment() {
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
         env_name="$(read_config_value "micromamba.env_name")"
-        if [[ -n "$env_name" ]]; then
-            env_path=".pyve/envs/$env_name"
-        fi
+        # Main micromamba env at the v3 root slot (Story N.bf.14), tolerant
+        # of a not-yet-moved flat env (non-mutating — `check` is a diagnostic).
+        env_path="$(resolve_main_micromamba_path "$env_name")"
         _check_micromamba_backend "$env_path" "$env_name"
     else
         _check_fail "Backend: unknown value '$backend'" \
@@ -3311,7 +3325,8 @@ _status_env_micromamba() {
         _status_row "Name:" "${DIM}not configured${RESET}"
         return 0
     fi
-    env_path=".pyve/envs/$env_name"
+    # v3 root slot (Story N.bf.14), tolerant of a not-yet-moved flat env.
+    env_path="$(resolve_main_micromamba_path "$env_name")"
 
     _status_row "Name:" "$env_name"
 
@@ -3380,7 +3395,7 @@ _status_section_integrations() {
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
         env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
-        [[ -n "$env_name" ]] && env_path=".pyve/envs/$env_name"
+        [[ -n "$env_name" ]] && env_path="$(resolve_main_micromamba_path "$env_name")"
     fi
     if [[ -n "$env_path" ]] && [[ -x "$env_path/bin/project-guide" ]]; then
         pg_info="$("$env_path/bin/project-guide" --version 2>/dev/null | head -1 | awk '{print $NF}')"
@@ -3545,7 +3560,11 @@ run_command() {
             log_error "Micromamba env_name not recorded in .pyve/config"
             exit 1
         fi
-        local env_path=".pyve/envs/$mm_env_name"
+        # v3 root slot (Story N.bf.14), tolerant of a not-yet-moved flat
+        # env (and of the no-config legacy fallback that set mm_env_name
+        # from the sole .pyve/envs/* entry).
+        local env_path
+        env_path="$(resolve_main_micromamba_path "$mm_env_name")"
         if [[ ! -d "$env_path" ]]; then
             log_error "Micromamba environment not found at $env_path"
             exit 1

@@ -1113,7 +1113,10 @@ write_vscode_settings() {
     local env_name="$1"
     local vscode_dir=".vscode"
     local settings_file="$vscode_dir/settings.json"
-    local interpreter_path=".pyve/envs/${env_name}/bin/python"
+    # The main micromamba env lives at the v3 root slot (Story N.bf.14),
+    # not the flat configured-name path. `$1` accepted for caller compat.
+    local interpreter_path
+    interpreter_path="$(micromamba_root_prefix)/bin/python"
 
     if [[ -f "$settings_file" ]] && [[ "${PYVE_REINIT_MODE:-}" != "force" ]]; then
         log_info "Skipping .vscode/settings.json (already exists; use --force to overwrite)"
