@@ -373,6 +373,35 @@ EOF
 }
 
 #============================================================
+# N.bf.6: materialization honors the wizard's version-manager pick
+#============================================================
+
+@test "_init_resolve_version_manager: honors an explicit pick over re-detection" {
+    # Bug 2: materialization re-ran detect_version_manager unconditionally,
+    # discarding the user's wizard selection. With an explicit pick recorded
+    # in VERSION_MANAGER, the resolver must keep it even when detection would
+    # land on a different manager.
+    _stub_managers pyenv          # only pyenv is detectable
+    VERSION_MANAGER="asdf"        # but the wizard picked asdf
+    _init_resolve_version_manager
+    [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "_init_resolve_version_manager: re-detects when no explicit pick recorded" {
+    _stub_managers asdf
+    VERSION_MANAGER=""
+    _init_resolve_version_manager
+    [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "_init_resolve_version_manager: returns non-zero when nothing resolvable and no pick" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    VERSION_MANAGER=""
+    PATH="$TEST_DIR/.emptybin" run _init_resolve_version_manager
+    [ "$status" -ne 0 ]
+}
+
+#============================================================
 # L.k.4: installed-version listing helpers
 #============================================================
 

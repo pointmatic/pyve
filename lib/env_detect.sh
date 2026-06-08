@@ -68,8 +68,14 @@ detect_version_manager() {
     
     # Check for asdf first (preferred)
     if command -v asdf >/dev/null 2>&1; then
-        # Verify asdf has Python plugin
-        if asdf plugin list 2>/dev/null | grep -q "^python$"; then
+        # Verify asdf has Python plugin. Capture-then-grep (not a pipe into
+        # `grep -q`): `grep -q` exits on first match, which closes the pipe
+        # while `asdf plugin list` may still be writing — the producer then
+        # takes SIGPIPE (141), and under `set -o pipefail` that propagates as
+        # the pipeline status, false-negating an installed plugin.
+        local asdf_plugins=""
+        asdf_plugins="$(asdf plugin list 2>/dev/null)" || true
+        if grep -qx "python" <<<"$asdf_plugins"; then
             VERSION_MANAGER="asdf"
             return 0
         else

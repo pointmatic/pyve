@@ -46,7 +46,17 @@ make_asdf_shim() {
 #!/usr/bin/env bash
 case "$1:$2" in
     plugin:list)
-        [[ "${ASDF_HAS_PYTHON_PLUGIN:-1}" == "1" ]] && echo "python"
+        if [[ "${ASDF_HAS_PYTHON_PLUGIN:-1}" == "1" ]]; then
+            echo "python"
+            # Opt-in noise: emit a large volume after the match so that a
+            # consumer using `grep -q` (which exits on first match) closes
+            # the pipe while this producer is still writing → SIGPIPE (141).
+            # Under `set -o pipefail` that propagates as the pipeline status,
+            # producing the false-negative this test guards (Story N.bf.6).
+            if [[ "${ASDF_PLUGIN_LIST_NOISE:-0}" == "1" ]]; then
+                for ((__i=0; __i<100000; __i++)); do echo "noise-plugin-$__i"; done
+            fi
+        fi
         exit 0
         ;;
     list:python)
@@ -202,6 +212,36 @@ EOF
 
     detect_version_manager
     [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "detect_version_manager: noisy asdf plugin list under pipefail still detects asdf (Story N.bf.6)" {
+    # Bug 1: `asdf plugin list | grep -q "^python$"` under `set -o pipefail`
+    # false-negatives when asdf is still writing as grep exits (SIGPIPE 141),
+    # flipping the result to the pyenv fallback. The fix captures-then-greps
+    # so no pipe (and no SIGPIPE) is involved.
+    make_asdf_shim
+    make_pyenv_shim
+    export ASDF_HAS_PYTHON_PLUGIN=1
+    export ASDF_PLUGIN_LIST_NOISE=1
+
+    set -o pipefail
+    detect_version_manager
+    set +o pipefail
+    [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "version-manager pick honored: asdf write lands in .tool-versions, not .python-version (Story N.bf.6)" {
+    # Bug 2 consequence: when asdf is the resolved manager, the pin must be
+    # written via asdf (.tool-versions) — never silently via pyenv
+    # (.python-version), which is what a clobbered VERSION_MANAGER produced.
+    make_asdf_shim
+    make_pyenv_shim
+    export ASDF_HAS_PYTHON_PLUGIN=1
+    VERSION_MANAGER="asdf"
+
+    set_local_python_version "3.13.7"
+    [ -f .tool-versions ]
+    [ ! -f .python-version ]
 }
 
 # ────────────────────────────────────────────────────────────────────

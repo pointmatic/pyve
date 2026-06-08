@@ -1342,6 +1342,20 @@ _init_wizard() {
     return 0
 }
 
+# Resolve the version manager to use during materialization. Honors an
+# explicit pick already recorded in VERSION_MANAGER (the wizard sets it from
+# the user's selection, after verifying the manager is available); only when
+# none is recorded does it fall back to detect_version_manager. This keeps a
+# transient detection false-negative (e.g. the SIGPIPE/pipefail bug in
+# Story N.bf.6) from silently overriding what the user asked for. Returns
+# non-zero only when nothing can be resolved at all.
+_init_resolve_version_manager() {
+    if [[ -n "${VERSION_MANAGER:-}" ]]; then
+        return 0
+    fi
+    detect_version_manager
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -1843,8 +1857,11 @@ EOF
     # Source shell profiles to find version managers
     source_shell_profiles
 
-    # Detect and validate version manager
-    if ! detect_version_manager; then
+    # Resolve the version manager. Honors the wizard's explicit pick
+    # (recorded in VERSION_MANAGER) rather than blindly re-detecting, which
+    # used to discard the user's selection — and could flip asdf → pyenv on a
+    # transient detection false-negative (Story N.bf.6).
+    if ! _init_resolve_version_manager; then
         exit 1
     fi
     info "Using $VERSION_MANAGER for Python version management"

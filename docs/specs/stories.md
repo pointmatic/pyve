@@ -2019,7 +2019,7 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 - [x] Test the v3 micromamba purge path completes cleanly (no `unbound variable`); `.pyve` fully removed. — green; the empty value falls through to the existing `for env_dir in .pyve/envs/*` glob-removal path.
 - [x] Full suite; zero regressions. — 1833 Bats unit tests pass, 0 failures; shellcheck clean on the edited range.
 
-### Story N.bf.6: version-manager detection — `pipefail` false-negative + discarded wizard choice [Planned]
+### Story N.bf.6: version-manager detection — `pipefail` false-negative + discarded wizard choice [Done]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve init`, asdf selected, pyenv silently used instead).
 
@@ -2037,12 +2037,12 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 
 **Tasks**
 
-- [ ] Reproduce (1): under `set -o pipefail`, an `asdf plugin list` producer that emits `python` then keeps writing → assert the current check false-negatives (red).
-- [ ] Fix the check to capture-then-grep; assert it matches under `pipefail`.
-- [ ] Reproduce (2): wizard sets `VERSION_MANAGER=asdf`, materialization must not silently flip it to pyenv when asdf is valid (red).
-- [ ] Honor the selected manager at materialization.
-- [ ] Test: asdf selected + asdf has python → init uses asdf, writes `.tool-versions` (not `.python-version`).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (1): under `set -o pipefail`, an `asdf plugin list` producer that emits `python` then keeps writing → assert the current check false-negatives (red). — [test_env_detect.bats](../../tests/unit/test_env_detect.bats) "noisy asdf plugin list under pipefail still detects asdf"; the shim grew an `ASDF_PLUGIN_LIST_NOISE` mode that emits ~1 MB after the match so `grep -q` reliably SIGPIPEs the producer (rc 141 under `pipefail`).
+- [x] Fix the check to capture-then-grep; assert it matches under `pipefail`. — [env_detect.sh](../../lib/env_detect.sh#L66) `detect_version_manager` now does `asdf_plugins="$(asdf plugin list 2>/dev/null)" || true; grep -qx "python" <<<"$asdf_plugins"` (no pipe → no SIGPIPE).
+- [x] Reproduce (2): wizard sets `VERSION_MANAGER=asdf`, materialization must not silently flip it to pyenv when asdf is valid (red). — [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) "_init_resolve_version_manager: honors an explicit pick over re-detection" (only pyenv detectable, recorded pick = asdf → stays asdf).
+- [x] Honor the selected manager at materialization. — new `_init_resolve_version_manager` helper in [plugin.sh](../../lib/plugins/python/plugin.sh) keeps a non-empty `VERSION_MANAGER` and only falls back to `detect_version_manager` when none is recorded; `init_project`'s materialization now calls it instead of re-detecting unconditionally.
+- [x] Test: asdf selected + asdf has python → init uses asdf, writes `.tool-versions` (not `.python-version`). — [test_env_detect.bats](../../tests/unit/test_env_detect.bats) "version-manager pick honored: asdf write lands in .tool-versions, not .python-version"; plus the re-detect-when-empty and no-resolvable cases in test_init_wizard.bats.
+- [x] Full suite; zero regressions. — 1838 Bats unit tests pass (1833 + 5 new), 0 failures; shellcheck clean on the edited ranges.
 
 ### Story N.bf.7: `pyve lock`'s bootstrap advice walks into a wall (missing `--no-lock`) [Planned]
 
