@@ -100,6 +100,28 @@ teardown() {
 }
 
 #============================================================
+# N.bf.11: conda-lock opt-in in the scaffold template
+#============================================================
+
+@test "scaffold: include_conda_lock=true adds conda-lock to dependencies" {
+    run scaffold_starter_environment_yml "3.12.13" "" "false" "true"
+    [ "$status" -eq 0 ]
+    grep -q "^  - conda-lock$" environment.yml
+}
+
+@test "scaffold: include_conda_lock=false omits conda-lock" {
+    run scaffold_starter_environment_yml "3.12.13" "" "false" "false"
+    [ "$status" -eq 0 ]
+    ! grep -q "conda-lock" environment.yml
+}
+
+@test "scaffold: default (no 4th arg) includes conda-lock (non-interactive default = locking desired)" {
+    run scaffold_starter_environment_yml "3.12.13" "" "false"
+    [ "$status" -eq 0 ]
+    grep -q "^  - conda-lock$" environment.yml
+}
+
+#============================================================
 # Generated file is valid YAML structure (basic shape check)
 #============================================================
 

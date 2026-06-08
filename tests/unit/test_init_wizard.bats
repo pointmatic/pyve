@@ -453,6 +453,40 @@ YAML
 }
 
 #============================================================
+# N.bf.11: scaffold conda-lock opt-in decision (_init_resolve_scaffold_conda_lock)
+#============================================================
+# Return code: 0 = include conda-lock in the scaffold, 1 = omit. The interactive
+# prompt branch needs a TTY (not available under bats `run`), so these cover the
+# non-interactive default + the opt-out / no-scaffold short-circuits.
+
+@test "_init_resolve_scaffold_conda_lock: --no-lock → omit" {
+    PYVE_NO_LOCK=1 run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: non-interactive clean dir → include (default = locking desired)" {
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 0 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: strict → omit (no scaffold will occur)" {
+    run _init_resolve_scaffold_conda_lock "true"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: existing environment.yml → omit (no scaffold)" {
+    touch environment.yml
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: existing conda-lock.yml → omit (no scaffold)" {
+    touch conda-lock.yml
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+#============================================================
 # N.bf.10: --no-lock install-source override (_init_select_env_file)
 #============================================================
 

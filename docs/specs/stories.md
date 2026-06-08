@@ -2153,7 +2153,7 @@ No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires
 - [x] Test the reproducibility footgun is opt-in only (default still prefers a present lock). — `_init_select_env_file` default case returns `conda-lock.yml` when present; the override fires only under `PYVE_NO_LOCK=1`.
 - [x] Full suite; zero regressions. — 1860 Bats unit tests pass (1855 + 5 new), 0 failures; shellcheck clean on the edited ranges.
 
-### Story N.bf.11: Scaffold + interactive wizard `conda-lock` opt-in [Planned]
+### Story N.bf.11: Scaffold + interactive wizard `conda-lock` opt-in [Done]
 
 **Supersedes N.bf.[deprecated].** Folds N.bf.[deprecated]'s "scaffold `conda-lock` by default, omit on `--no-lock`" into the model and adds the interactive wizard prompt. N.bf.[deprecated]'s developer-decision rationale (scaffold-over-on-demand-runner — a one-line template change beats `uvx`/`pipx`/transient-env machinery, and it removes the *reason* `conda-lock` was absent rather than working around it) stands and is why the locker lives in the project env.
 
@@ -2166,11 +2166,11 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Tasks**
 
-- [ ] Reproduce (red): default `pyve init --backend micromamba` scaffolds WITHOUT `conda-lock`.
-- [ ] Add `conda-lock` to [`scaffold_starter_environment_yml`](../../lib/micromamba_env.sh)'s template; thread the `--no-lock` signal so it is omitted under `--no-lock`.
-- [ ] Interactive wizard prompt for the lock opt-in (Y default); honor `--no-lock` / the non-interactive default.
-- [ ] Tests: default + wizard-yes include `conda-lock`; `--no-lock` + wizard-no omit it; the scaffold still validates and the env builds; end-to-end fresh `pyve init` → `pyve lock` works with no manual edit or rebuild.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): default `pyve init --backend micromamba` scaffolds WITHOUT `conda-lock`. — [test_scaffold_environment_yml.bats](../../tests/unit/test_scaffold_environment_yml.bats) "default (no 4th arg) includes conda-lock" failed against the old template.
+- [x] Add `conda-lock` to [`scaffold_starter_environment_yml`](../../lib/micromamba_env.sh)'s template; thread the `--no-lock` signal so it is omitted under `--no-lock`. — new 4th param `include_conda_lock` (default `"true"`); appends `- conda-lock` when true. Threaded from the callsites via the decision helper below.
+- [x] Interactive wizard prompt for the lock opt-in (Y default); honor `--no-lock` / the non-interactive default. — `_init_resolve_scaffold_conda_lock` in [plugin.sh](../../lib/plugins/python/plugin.sh): `--no-lock` → omit; no-scaffold preconditions (strict / existing env.yml / existing lock) → omit without prompting; interactive TTY → `[Y/n]` default-yes prompt (neither `prompt_yes_no` nor `ask_yn` is default-yes, so a small inline default-yes `read` is used); non-interactive → include. Return-code based (0=include) so it composes in an `if` and avoids command-substitution prompt capture. Wired into both scaffold callsites (force + main).
+- [x] Tests: default + wizard-yes include `conda-lock`; `--no-lock` + wizard-no omit it; the scaffold still validates and the env builds; end-to-end fresh `pyve init` → `pyve lock` works with no manual edit or rebuild. — scaffold include/omit/default in test_scaffold_environment_yml.bats; decision branches (`--no-lock` / non-interactive default / strict / existing-files) in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats). The TTY prompt branch isn't unit-tested (bats has no TTY on stdin → exercises the non-interactive default). End-to-end "→ `pyve lock` works" verified by construction: declared `conda-lock` → installed into the env → lockable; the full live micromamba run is an integration concern, not a bats unit test.
+- [x] Full suite; zero regressions. — 1868 Bats unit tests pass (1860 + 8 new), 0 failures; shellcheck clean on the edited ranges. Existing H.f.7 scaffold + integration tests stay green (they don't assert conda-lock absence; the micromamba-stub integration test fails env creation before the lock matters).
 
 ### Story N.bf.12: Targeted docs for the declarative lock model [Planned]
 

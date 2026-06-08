@@ -1385,6 +1385,36 @@ _init_select_env_file() {
     detect_environment_file
 }
 
+# Decide whether a freshly scaffolded environment.yml should declare conda-lock
+# (Story N.bf.11). Return-code based (0 = include, 1 = omit) so it composes in an
+# `if`. Short-circuits to omit when no scaffold will actually happen (strict, or
+# environment.yml / conda-lock.yml already present) so we never prompt
+# pointlessly. `--no-lock` → omit. Interactive TTY → prompt with a Y default
+# ("[Y/n]"). Non-interactive → include (the settled "locking desired" default).
+_init_resolve_scaffold_conda_lock() {
+    local strict_mode="$1"
+
+    [[ "${PYVE_NO_LOCK:-}" == "1" ]] && return 1
+    # No scaffold will occur → the value is irrelevant; don't prompt.
+    [[ "$strict_mode" == "true" ]] && return 1
+    [[ -f "environment.yml" ]] && return 1
+    [[ -f "conda-lock.yml" ]] && return 1
+
+    if [[ -t 0 ]] && [[ "${PYVE_INIT_NONINTERACTIVE:-0}" != "1" ]]; then
+        # Default-yes prompt (the project's other prompts are default-no; this
+        # one recommends locking, so Enter accepts). Prompt to stderr; read the
+        # already-confirmed TTY on stdin.
+        local answer
+        read -r -p "  Version-control dependencies with a lock file? [Y/n] " answer
+        answer="${answer:-y}"
+        [[ "$answer" =~ ^[Yy] ]]
+        return $?
+    fi
+
+    # Non-interactive default: include.
+    return 0
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -1599,13 +1629,11 @@ init_project() {
                 # validation, otherwise validate_lock_file_status's "neither file"
                 # case fires and aborts the switch on projects that the non-force
                 # path handles fine.
-                if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
+                local _scaffold_lock="false"
+                _init_resolve_scaffold_conda_lock "$strict_mode" && _scaffold_lock="true"
+                if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode" "$_scaffold_lock"; then
                     info "Scaffolded starter environment.yml (python=$python_version)"
                     info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
-                    # No PYVE_NO_LOCK needed (Story N.bf.9): the freshly
-                    # scaffolded environment.yml doesn't declare conda-lock, so
-                    # validate_lock_file_status treats it as "no lock required"
-                    # and proceeds on its own.
                 fi
                 if ! validate_lock_file_status "$strict_mode"; then
                     fail "Pre-flight check failed — no changes made"
@@ -1741,13 +1769,11 @@ init_project() {
         # Doing this early means the user-visible error surface in a
         # clean directory is "scaffolded and proceeded" instead of the
         # H.f.6 "missing environment.yml" hard-error path.
-        if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
+        local _scaffold_lock="false"
+        _init_resolve_scaffold_conda_lock "$strict_mode" && _scaffold_lock="true"
+        if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode" "$_scaffold_lock"; then
             info "Scaffolded starter environment.yml (python=$python_version)"
             info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
-            # No PYVE_NO_LOCK needed (Story N.bf.9): the freshly scaffolded
-            # environment.yml doesn't declare conda-lock, so
-            # validate_lock_file_status treats it as "no lock required" and
-            # proceeds without insisting on a lock that can't yet exist.
         fi
 
         # Check if micromamba is available

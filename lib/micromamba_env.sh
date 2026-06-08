@@ -416,9 +416,14 @@ validate_lock_file_status() {
 # `pyve lock`. Story H.f.7.
 #
 # Arguments:
-#   $1 - python_version  (e.g. "3.12.13")
-#   $2 - env_name_flag   (explicit `--env-name` value; empty => use cwd basename)
-#   $3 - strict_mode     ("true" or "false")
+#   $1 - python_version    (e.g. "3.12.13")
+#   $2 - env_name_flag     (explicit `--env-name` value; empty => use cwd basename)
+#   $3 - strict_mode       ("true" or "false")
+#   $4 - include_conda_lock ("true" or "false", default "true") — Story N.bf.11.
+#        When "true", declare `conda-lock` as a dependency so the scaffolded env
+#        can run `pyve lock` out of the box (and the declarative lock model's
+#        nudge fires). Omitted under `--no-lock`. Default "true" = the
+#        non-interactive "locking desired" default.
 #
 # Returns:
 #   0 if environment.yml was scaffolded
@@ -427,6 +432,7 @@ scaffold_starter_environment_yml() {
     local python_version="$1"
     local env_name_flag="$2"
     local strict_mode="${3:-false}"
+    local include_conda_lock="${4:-true}"
 
     # --strict opts out of any inference or synthesis — hand-authored files only.
     if [[ "$strict_mode" == "true" ]]; then
@@ -462,6 +468,13 @@ dependencies:
   - python=${python_version}
   - pip
 EOF
+
+    # conda-lock opt-in (Story N.bf.11): declaring it here means the env can run
+    # `pyve lock` immediately — no edit-then-rebuild dance. Omitted under
+    # --no-lock (include_conda_lock="false").
+    if [[ "$include_conda_lock" == "true" ]]; then
+        printf '  - conda-lock\n' >> environment.yml
+    fi
 
     return 0
 }
