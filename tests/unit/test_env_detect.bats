@@ -507,8 +507,9 @@ EOF
     [ -z "$output" ]
 }
 
-@test "assert_python_resolvable: asdf-shim-no-version → exit 1 + actionable error" {
+@test "assert_python_resolvable: asdf-shim-no-version (activatable) → exit 1 + actionable error" {
     make_asdf_python_shim_no_version
+    touch .envrc             # an activatable project: keep the direnv advice
     run assert_python_resolvable
     assert_status_equals 1
     assert_output_contains "direnv allow"
@@ -517,8 +518,9 @@ EOF
     [[ "$output" != *"Consider adding one of the following versions"* ]]
 }
 
-@test "assert_python_resolvable: pyenv-shim-no-version → exit 1 + actionable error" {
+@test "assert_python_resolvable: pyenv-shim-no-version (activatable) → exit 1 + actionable error" {
     make_pyenv_python_shim_no_version
+    touch .envrc
     run assert_python_resolvable
     assert_status_equals 1
     assert_output_contains "direnv allow"
@@ -533,8 +535,47 @@ EOF
     # at a nonexistent path so the assertion exercises the
     # missing-entirely branch deterministically across runners (keeping
     # the rest of PATH intact so bats helpers like grep still work).
+    # An activatable project (.envrc present) keeps the direnv advice.
+    touch .envrc
     PYVE_PYTHON="/nonexistent/python-deliberately-missing" \
         run assert_python_resolvable
     assert_status_equals 1
     assert_output_contains "direnv allow"
+}
+
+# N.bf.4: the fix advice is gated on init state. The shim trap only fires
+# when there's no version pin — which in a properly-initialized project
+# never happens. So when the message appears with no `.envrc`, the project
+# is purged/uninitialized, and `direnv allow` / `pyve run` are wrong advice.
+
+@test "assert_python_resolvable: shim trap + no .envrc + pyve.toml → advises 'pyve init', not 'direnv allow'" {
+    make_asdf_python_shim_no_version
+    touch pyve.toml          # a Pyve project whose env was purged
+    run assert_python_resolvable
+    assert_status_equals 1
+    assert_output_contains "pyve init"
+    if [[ "$output" == *"direnv allow"* ]]; then
+        echo "FAIL: advised 'direnv allow' with no .envrc to allow"; return 1
+    fi
+}
+
+@test "assert_python_resolvable: shim trap + no .envrc + no pyve.toml → advises 'pyve init' to set up" {
+    make_asdf_python_shim_no_version
+    run assert_python_resolvable     # not a Pyve project at all
+    assert_status_equals 1
+    assert_output_contains "pyve init"
+    if [[ "$output" == *"direnv allow"* ]]; then
+        echo "FAIL: advised 'direnv allow' in a non-Pyve dir"; return 1
+    fi
+}
+
+@test "assert_python_resolvable: generic (missing) + no .envrc + pyve.toml → advises 'pyve init'" {
+    touch pyve.toml
+    PYVE_PYTHON="/nonexistent/python-deliberately-missing" \
+        run assert_python_resolvable
+    assert_status_equals 1
+    assert_output_contains "pyve init"
+    if [[ "$output" == *"direnv allow"* ]]; then
+        echo "FAIL: generic branch ignored init state"; return 1
+    fi
 }

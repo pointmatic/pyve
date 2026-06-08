@@ -1966,7 +1966,7 @@ but the run removes more: `.tool-versions`, the **whole** `.pyve/` directory (no
 - [x] Test: preview set == removed set, for venv and micromamba backends, with and without `--keep-testenv`. — **Exact for the default purge, both backends** (the existence-gated `.pyve` covers both venv `.../venv` and micromamba `.../conda` trees). **`--keep-testenv` scope decision (option 2, developer-approved):** the flat inventory can't express the config-dependent surgical scope (`rm -rf .pyve` minus `envs`/`testenvs`, plus the micromamba main-env subdir read from `.pyve/config`) without replicating the remover's logic inside the inventory — the exact Option-B seam limitation the umbrella told me not to redesign. So under `--keep-testenv` the preview lists `.pyve` (an **over**-report — it never hides a deletion, so the N.bf.3 trust bug does not recur) plus a clarifying **note** ("your test environments are preserved — '.pyve' is pruned around them, not fully removed") to prevent a false alarm. Exact `--keep-testenv` itemization is left as a follow-up (would require revisiting the inventory↔remover seam as its own story).
 - [x] Full suite; zero regressions. — 1829 Bats unit tests pass, 0 failures; shellcheck clean on both edited files; Node inventory untouched.
 
-### Story N.bf.4: `assert_python_resolvable` advises `direnv allow` without checking init state [Planned]
+### Story N.bf.4: `assert_python_resolvable` advises `direnv allow` without checking init state [Done]
 
 **Discovered:** v3.0.0a1 smoke test (`pyve test` in a purged `pyve-3-smoke`).
 
@@ -1991,11 +1991,11 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 
 **Tasks**
 
-- [ ] Reproduce: shim trap + no `.envrc` → assert the current `direnv allow` advice (red).
-- [ ] Branch the shim-trap (and generic) message on `.envrc` / `pyve.toml` presence.
-- [ ] Test all three states (activatable / purged-Pyve / non-Pyve) emit the right fix; the activatable case keeps the `direnv allow` advice.
-- [ ] Verify no caller regresses (3 callers: [utils.sh:1340](../../lib/utils.sh#L1340), [utils.sh:1361](../../lib/utils.sh#L1361), [plugin.sh:1951](../../lib/plugins/python/plugin.sh#L1951)); none should now advise `pyve init` during `pyve init` itself.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce: shim trap + no `.envrc` → assert the current `direnv allow` advice (red). — [test_env_detect.bats](../../tests/unit/test_env_detect.bats) "shim trap + no .envrc + pyve.toml → advises 'pyve init', not 'direnv allow'" (+ non-Pyve and generic-missing variants); red under the old fixed message.
+- [x] Branch the shim-trap (and generic) message on `.envrc` / `pyve.toml` presence. — [env_detect.sh:330](../../lib/env_detect.sh#L330) refactored: the **cause** line stays shim-specific vs generic; the **fix advice** is now gated — `.envrc` → `direnv allow`/`pyve run`; no `.envrc` + `pyve.toml` → "run `pyve init` to (re)create"; neither → "run `pyve init` to set one up".
+- [x] Test all three states emit the right fix; the activatable case keeps the `direnv allow` advice. — 7 `assert_python_resolvable` tests green (existing shim/pyenv/missing tests updated to the activatable state with `.envrc`; 3 new no-`.envrc` cases).
+- [x] Verify no caller regresses; none should advise `pyve init` during `pyve init` itself. — The 3 callers create the venv/testenv **after** the wizard pins Python (`ensure_python_version_installed` precedes [`_init_venv`](../../lib/plugins/python/plugin.sh#L1951)), so in normal init `python` resolves and the guard returns 0 silently — the new advice is unreachable during init. Confirmed by the full init/composed-init suite staying green.
+- [x] Full suite; zero regressions. — 1832 Bats unit tests pass, 0 failures; shellcheck clean on the edited range.
 
 ### Story N.bf.5: `env_name` unbound-variable crash in `_purge_pyve_dir` [Planned]
 

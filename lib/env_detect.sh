@@ -351,24 +351,35 @@ assert_python_resolvable() {
     local python_path
     python_path="$(command -v "$py" 2>/dev/null || true)"
 
+    # Cause line — shim-specific where we can name the shim, generic
+    # otherwise (python missing entirely, or some other unresolvable case).
     if [[ "$python_path" == *"/.asdf/shims/python"* ]] \
        || [[ "$python_path" == *"/.pyenv/shims/python"* ]]; then
         log_error "Cannot resolve 'python' — version-manager shim has no version pinned for this directory."
         log_error "  Shim path: $python_path"
-        log_error ""
+    else
+        log_error "Cannot resolve 'python' on PATH."
+    fi
+    log_error ""
+
+    # Fix advice — gated on whether this is an activatable / initialized
+    # Pyve project. The shim trap only fires when there is NO version pin in
+    # this directory, which a properly-initialized project always has; so by
+    # the time we reach here, `direnv allow` / `pyve run` only make sense if
+    # there is actually an `.envrc` to allow and an env to activate. With no
+    # `.envrc` the project is purged or uninitialized — the real fix is to
+    # (re)initialize, not to "activate" an env that doesn't exist.
+    if [[ -f .envrc ]]; then
         log_error "Most likely cause: the project environment isn't active in this shell."
         log_error "Fix one of these:"
         log_error "  • Run 'direnv allow' in the project root (one-time per shell session)"
         log_error "  • Re-run wrapped: 'pyve run <cmd>' (one-shot, works without direnv)"
-        return 1
+    elif [[ -f pyve.toml ]]; then
+        log_error "This Pyve project has no active environment (its '.envrc' is gone)."
+        log_error "Run 'pyve init' to (re)create the environment."
+    else
+        log_error "This directory isn't an initialized Pyve project."
+        log_error "Run 'pyve init' to set one up."
     fi
-
-    # Generic fallback — python missing entirely, or some other
-    # unresolvable case. Still point at activation as the most likely fix.
-    log_error "Cannot resolve 'python' on PATH."
-    log_error "Most likely cause: the project environment isn't active in this shell."
-    log_error "Fix one of these:"
-    log_error "  • Run 'direnv allow' in the project root"
-    log_error "  • Re-run wrapped: 'pyve run <cmd>'"
     return 1
 }
