@@ -233,6 +233,41 @@ EOF
 }
 
 #============================================================
+# N.bf.9: declarative conda-lock status in check (_check_conda_lock_status)
+#============================================================
+# Unit-tested directly with stubbed reporters because _check_micromamba_backend
+# returns early when the micromamba binary is absent (which it may be on CI),
+# so the conda-lock branch isn't reachable via a full subprocess `pyve check`.
+
+@test "_check_conda_lock_status: declared + lock missing → warns (lock required)" {
+    _check_warn() { printf 'WARN:%s|%s\n' "$1" "${2:-}"; }
+    _check_pass() { printf 'PASS:%s\n' "$1"; }
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock
+YAML
+    run _check_conda_lock_status
+    [[ "$output" == *"WARN:"* ]]
+    [[ "$output" == *"conda-lock.yml: missing"* ]]
+    [[ "$output" == *"pyve lock"* ]]
+}
+
+@test "_check_conda_lock_status: NOT declared + lock missing → pass (not required)" {
+    _check_warn() { printf 'WARN:%s|%s\n' "$1" "${2:-}"; }
+    _check_pass() { printf 'PASS:%s\n' "$1"; }
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+YAML
+    run _check_conda_lock_status
+    [[ "$output" == *"PASS:"* ]]
+    [[ "$output" == *"not required"* ]]
+    [[ "$output" != *"WARN:"* ]]
+}
+
+#============================================================
 # Unknown flag
 #============================================================
 

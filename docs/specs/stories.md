@@ -2128,19 +2128,19 @@ No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires
 - [x] Test the edge forms above, plus a venv project (no `environment.yml`) returns false cleanly under `set -euo pipefail`. — no-`environment.yml` case returns 1 with empty output; `[[ -f ]]` guard short-circuits before grep.
 - [x] Full suite; zero regressions. — 1847 Bats unit tests pass (1840 + 7 new), 0 failures; shellcheck clean on the added function (the file's one SC2155 is pre-existing in `sanitize`, not introduced here).
 
-### Story N.bf.9: Repoint `init` / `init --force` to the declarative model [Planned]
+### Story N.bf.9: Repoint `init` / `init --force` to the declarative model [Done]
 
 **Scope.** The core behavioral change. Replace [`validate_lock_file_status`](../../lib/micromamba_env.sh#L311)'s file-existence + `PYVE_NO_LOCK` gating (Case 2) with the declarative model: non-strict + `is_conda_lock_declared` + lock absent/stale → proceed and emit the **nudge**; `--strict` → **bark** with the enforcement message; `conda-lock` undeclared → silent proceed (no lock expected). Retire the `PYVE_NO_LOCK`-on-scaffold export ([plugin.sh:1718](../../lib/plugins/python/plugin.sh#L1718)) — no longer needed once non-strict never barks. Fresh `init` and `init --force` become identical in lock behavior (closes the original N.bf.8-12 asymmetry). `pyve check` adopts the enforcement wording as a non-blocking warning.
 
 **Tasks**
 
-- [ ] Reproduce the asymmetry (original N.bf.8-12 bug): existing `environment.yml`, no `conda-lock.yml`, `pyve init --force` → current hard error vs. fresh init proceeds (red).
-- [ ] Repoint the validation to the declarative model: non-strict + declared + lock-absent → proceed; `--strict` → bark; undeclared → silent.
-- [ ] Emit the nudge at the end of a successful non-strict init (declared + lock absent/stale only — not when a fresh lock is present, not when undeclared).
-- [ ] Retire the `PYVE_NO_LOCK`-on-scaffold export; confirm nothing else depends on it.
-- [ ] `pyve check`: surface the enforcement wording as a warning (non-blocking) for the declared-but-missing case.
-- [ ] Tests: fresh vs `--force` identical (both nudge); present-fresh-lock → no nudge, builds from lock; `--strict` barks; undeclared → silent.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce the asymmetry (original N.bf.8-12 bug): existing `environment.yml`, no `conda-lock.yml`, `pyve init --force` → current hard error vs. fresh init proceeds (red). — Captured at the gate level: the now-updated [test_lock_validation.bats](../../tests/unit/test_lock_validation.bats) cases asserting non-strict env.yml-only → proceeds (both `init` and `init --force` call the same `validate_lock_file_status`, so fixing the gate makes them symmetric by construction).
+- [x] Repoint the validation to the declarative model: non-strict + declared + lock-absent → proceed; `--strict` → bark; undeclared → silent. — [micromamba_env.sh:336](../../lib/micromamba_env.sh#L336) Case 2 rewrite: `--no-lock` bypass first → undeclared = silent proceed → declared+strict = bark (the 3-arrow enforcement message) → declared+non-strict = proceed. `--no-lock` beats `--strict` (bypass evaluated first — settled precedence).
+- [x] Emit the nudge at the end of a successful non-strict init (declared + lock absent/stale only — not when a fresh lock is present, not when undeclared). — new `_init_lock_nudge` in [plugin.sh](../../lib/plugins/python/plugin.sh), wired into the micromamba success path after the pip-deps prompt. Scoped to the **absent** case (exact nudge wording); the stale case keeps its existing `warn_stale_lock_file` (already a "regenerate" nudge, non-error in non-strict).
+- [x] Retire the `PYVE_NO_LOCK`-on-scaffold export; confirm nothing else depends on it. — removed both scaffold exports (force path + main path in [plugin.sh](../../lib/plugins/python/plugin.sh)); the user `--no-lock` flag export is untouched. Scaffolded env.yml doesn't declare conda-lock → undeclared → silent proceed, so the export is no longer needed.
+- [x] `pyve check`: surface the enforcement wording as a warning (non-blocking) for the declared-but-missing case. — extracted `_check_conda_lock_status` ([plugin.sh](../../lib/plugins/python/plugin.sh)): declared+missing → warn (names `pyve lock` + the two opt-outs); undeclared+missing → pass ("not required") instead of the old unconditional warning.
+- [x] Tests: fresh vs `--force` identical (both nudge); present-fresh-lock → no nudge, builds from lock; `--strict` barks; undeclared → silent. — validate cases (declared/undeclared × strict/non-strict) in test_lock_validation.bats; nudge cases (declared/undeclared/lock-present/`--no-lock`) in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats); `_check_conda_lock_status` cases in [test_check.bats](../../tests/unit/test_check.bats).
+- [x] Full suite; zero regressions. — 1855 Bats unit tests pass (1847 + 8 net new; 6 existing "missing lock = hard error" tests rewritten to the declarative model), 0 failures; shellcheck clean on the edited ranges.
 
 ### Story N.bf.10: `--no-lock` = non-destructive "resolve from `environment.yml`" [Planned]
 
@@ -2255,6 +2255,64 @@ Resulting default flow: `pyve init` → env built **with** `conda-lock` (auto `-
 
 ---
 
+### Story N.bg: Fix pre-existing integration test failures [Planned]
+
+**Motivation**: surfaced during story K.a.1 regression sweep. Four tests in [tests/integration/](../../tests/integration/) fail against `main` unrelated to any in-flight change; three are UI-drift (assertions checking `stderr` for output now on `stdout`, or looking for prompt text that changed), one is a genuine behavior check worth reinvestigating, and one is a flaky timeout. Pinning these now so they don't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9.
+
+**Tasks**
+
+- [ ] `test_reinit.py::TestReinitForce::test_force_purges_existing_venv` — assertion `"Force re-initialization" in result.stderr` fails because the `warn()` banner prints to `stdout`. Update the assertion to check combined output (or `stdout`).
+- [ ] `test_reinit.py::TestReinitForce::test_force_prompts_for_confirmation` — asserts `"Proceed?" in result.stdout` but `ask_yn` prompt text / stream appears to have changed (stdout now shows only the `Cancelled` message). Verify where the prompt is emitted and update assertion or re-emit the prompt to the captured stream.
+- [ ] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — asserts `'invalid' in result.stderr.lower() or 'backend' in result.stderr.lower()` but the error banner is on `stdout`. Same UI-drift fix as above.
+- [ ] `test_auto_detection.py::TestPriorityOrder::test_priority_cli_over_all` — asserts `(project_dir / ".venv").exists()` but the directory is not created in the scenario. Investigate whether this is a test-setup gap (missing fixture state) or a genuine regression in CLI-priority backend dispatch.
+- [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
+- [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
+
+---
+
+### Story N.bh: SHA256 Verification of Bootstrap Download [Planned]
+
+**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
+
+**Design sketch** (to be refined when the story is picked up):
+
+- **Hash source**: two realistic options.
+  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
+  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
+- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
+- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
+
+**Tasks**
+
+- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
+- [ ] Implement verification in `bootstrap_install_micromamba`.
+- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
+- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
+- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
+
+---
+
+### Story N.bi: Micromamba Version Pinning via `--micromamba-version` [Planned]
+
+**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
+
+**Design sketch**
+
+- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
+- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
+- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
+- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
+
+**Tasks**
+
+- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
+- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
+- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
+- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
+- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
+
+---
+
 ## Subphase N-9: v3.0.0 release tag
 
 Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **First Phase N release tag.** Story breakdown deferred.
@@ -2338,64 +2396,6 @@ Per the *Per-command help blocks live with their commands* rule in [project-esse
 ### Story ?.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred to collect real usage data on `pyve check` before deciding which fixes to automate and with what safety gates.
-
----
-
-### Story ?.?: SHA256 Verification of Bootstrap Download [Planned]
-
-**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
-
-**Design sketch** (to be refined when the story is picked up):
-
-- **Hash source**: two realistic options.
-  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
-  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
-- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
-- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
-
-**Tasks**
-
-- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
-- [ ] Implement verification in `bootstrap_install_micromamba`.
-- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
-- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
-- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
-
----
-
-### Story ?.?: Micromamba Version Pinning via `--micromamba-version` [Planned]
-
-**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
-
-**Design sketch**
-
-- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
-- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
-- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
-- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
-
-**Tasks**
-
-- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
-- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
-- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
-- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
-- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
-
----
-
-### Story ?.?: Fix pre-existing integration test failures [Planned]
-
-**Motivation**: surfaced during story K.a.1 regression sweep. Four tests in [tests/integration/](../../tests/integration/) fail against `main` unrelated to any in-flight change; three are UI-drift (assertions checking `stderr` for output now on `stdout`, or looking for prompt text that changed), one is a genuine behavior check worth reinvestigating, and one is a flaky timeout. Pinning these now so they don't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9.
-
-**Tasks**
-
-- [ ] `test_reinit.py::TestReinitForce::test_force_purges_existing_venv` — assertion `"Force re-initialization" in result.stderr` fails because the `warn()` banner prints to `stdout`. Update the assertion to check combined output (or `stdout`).
-- [ ] `test_reinit.py::TestReinitForce::test_force_prompts_for_confirmation` — asserts `"Proceed?" in result.stdout` but `ask_yn` prompt text / stream appears to have changed (stdout now shows only the `Cancelled` message). Verify where the prompt is emitted and update assertion or re-emit the prompt to the captured stream.
-- [ ] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — asserts `'invalid' in result.stderr.lower() or 'backend' in result.stderr.lower()` but the error banner is on `stdout`. Same UI-drift fix as above.
-- [ ] `test_auto_detection.py::TestPriorityOrder::test_priority_cli_over_all` — asserts `(project_dir / ".venv").exists()` but the directory is not created in the scenario. Investigate whether this is a test-setup gap (missing fixture state) or a genuine regression in CLI-priority backend dispatch.
-- [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
-- [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
 
 ---
 

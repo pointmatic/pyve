@@ -1356,6 +1356,21 @@ _init_resolve_version_manager() {
     detect_version_manager
 }
 
+# Emit the gentle lock nudge at the end of a successful non-strict micromamba
+# init (Story N.bf.9). Fires only when `conda-lock` is a declared dependency
+# but no lock file exists yet — the signal that the user opted into locking but
+# hasn't generated the lock. No-op when `--no-lock` is set, a lock already
+# exists, or `conda-lock` is not declared (pre-production). The `--strict`
+# declared-missing case never reaches here — validate_lock_file_status barks
+# pre-flight.
+_init_lock_nudge() {
+    [[ "${PYVE_NO_LOCK:-}" == "1" ]] && return 0
+    [[ -f "conda-lock.yml" ]] && return 0
+    is_conda_lock_declared || return 0
+    info "conda-lock is in your environment.yml, so Pyve expects a conda-lock.yml."
+    info "When your dependencies are finalized, run \`pyve lock\` to resolve them into the lock file."
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -1573,7 +1588,10 @@ init_project() {
                 if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
                     info "Scaffolded starter environment.yml (python=$python_version)"
                     info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
-                    export PYVE_NO_LOCK=1
+                    # No PYVE_NO_LOCK needed (Story N.bf.9): the freshly
+                    # scaffolded environment.yml doesn't declare conda-lock, so
+                    # validate_lock_file_status treats it as "no lock required"
+                    # and proceeds on its own.
                 fi
                 if ! validate_lock_file_status "$strict_mode"; then
                     fail "Pre-flight check failed — no changes made"
@@ -1712,10 +1730,10 @@ init_project() {
         if scaffold_starter_environment_yml "$python_version" "$env_name_flag" "$strict_mode"; then
             info "Scaffolded starter environment.yml (python=$python_version)"
             info "Edit environment.yml to add dependencies, then run 'pyve lock' when ready."
-            # No conda-lock.yml yet (we just generated the source file).
-            # Take validate_lock_file_status's existing bypass so init
+            # No PYVE_NO_LOCK needed (Story N.bf.9): the freshly scaffolded
+            # environment.yml doesn't declare conda-lock, so
+            # validate_lock_file_status treats it as "no lock required" and
             # proceeds without insisting on a lock that can't yet exist.
-            export PYVE_NO_LOCK=1
         fi
 
         # Check if micromamba is available
@@ -1826,6 +1844,10 @@ EOF
 
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
         prompt_install_pip_dependencies "micromamba" "$env_path"
+
+        # Gentle nudge (Story N.bf.9): if conda-lock is declared but no lock
+        # exists yet, point the user at `pyve lock` — no auto-lock, no error.
+        _init_lock_nudge
 
         # hand the stack-agnostic composition tail (compose
         # .envrc/.gitignore → project-guide → next-steps) up to compose_init
@@ -2865,6 +2887,27 @@ _check_venv_backend() {
     fi
 }
 
+# Report conda-lock.yml status for `pyve check` (Story N.bf.9, declarative
+# model). A missing lock is a warning ONLY when conda-lock is a declared
+# dependency (the project opted into locking); otherwise no lock is expected
+# and it's reported as a non-issue. Uses the `_check_pass` / `_check_warn`
+# reporters in scope (mirrors _check_micromamba_backend's closure usage).
+_check_conda_lock_status() {
+    if [[ ! -f "conda-lock.yml" ]]; then
+        if is_conda_lock_declared; then
+            _check_warn "conda-lock.yml: missing (conda-lock is in environment.yml)" \
+                "→ Run: pyve lock  (or --no-lock for this run, or remove conda-lock from environment.yml)"
+        else
+            _check_pass "conda-lock.yml: not required (conda-lock not declared in environment.yml)"
+        fi
+    elif is_lock_file_stale; then
+        _check_warn "conda-lock.yml: stale (older than environment.yml)" \
+            "→ Run: pyve lock"
+    else
+        _check_pass "conda-lock.yml: up to date"
+    fi
+}
+
 _check_micromamba_backend() {
     local env_path="$1"
     local env_name="$2"
@@ -2885,15 +2928,8 @@ _check_micromamba_backend() {
     fi
     _check_pass "environment.yml: present"
 
-    # Check 11 / 12: conda-lock.yml present and fresh.
-    if [[ ! -f "conda-lock.yml" ]]; then
-        _check_warn "conda-lock.yml: missing" "→ Run: pyve lock"
-    elif is_lock_file_stale; then
-        _check_warn "conda-lock.yml: stale (older than environment.yml)" \
-            "→ Run: pyve lock"
-    else
-        _check_pass "conda-lock.yml: up to date"
-    fi
+    # Check 11 / 12: conda-lock.yml present and fresh (declarative — N.bf.9).
+    _check_conda_lock_status
 
     # Check 5: environment directory exists.
     if [[ -z "$env_path" ]] || [[ ! -d "$env_path" ]]; then

@@ -333,21 +333,42 @@ validate_lock_file_status() {
         return 0
     fi
     
-    # Case 2: Only environment.yml exists (no lock file) — hard error
+    # Case 2: Only environment.yml exists (no lock file).
+    #
+    # Declarative lock-requirement model (Story N.bf.9). "Is a lock required?"
+    # is answered by the project's own declaration — `conda-lock` present as a
+    # dependency in environment.yml — NOT by file existence or a transient
+    # init-time flag. This makes `pyve init` and `pyve init --force` behave
+    # identically (both call this gate) and replaces the v3.0 hard error with a
+    # gentle nudge for the common pre-production case.
     if [[ "$has_env_yml" == true ]] && [[ "$has_lock_yml" == false ]]; then
-        # Allow explicit bypass via --no-lock / PYVE_NO_LOCK=1
+        # Explicit per-run opt-out (`--no-lock`). Beats everything, including
+        # --strict (explicit instruction > policy): proceed, resolve from
+        # environment.yml.
         if [[ "${PYVE_NO_LOCK:-}" == "1" ]]; then
             log_warning "Proceeding without conda-lock.yml (--no-lock)"
             return 0
         fi
 
-        printf "\n" >&2
-        printf "ERROR: No conda-lock.yml found.\n\n" >&2
-        printf "For reproducible builds, generate one first:\n" >&2
-        printf "  pyve lock\n\n" >&2
-        printf "To proceed without a lock file (not recommended):\n" >&2
-        printf "  pyve init --no-lock\n" >&2
-        return 1
+        # No lock declared ⇒ no lock required (pre-production): proceed silently.
+        if ! is_conda_lock_declared; then
+            return 0
+        fi
+
+        # conda-lock IS declared ⇒ a lock is required.
+        if [[ "$strict_mode" == true ]]; then
+            # The bark — production gate (--strict).
+            printf "\n" >&2
+            printf "No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires a lock file.\n" >&2
+            printf "  → Run \`pyve lock\` to generate it.\n" >&2
+            printf "  → Or pass --no-lock to skip the check for this run.\n" >&2
+            printf "  → Or remove conda-lock from environment.yml to opt out permanently.\n" >&2
+            return 1
+        fi
+
+        # Non-strict: proceed. The init flow emits the gentle nudge after a
+        # successful build (see _init_lock_nudge); validation just permits it.
+        return 0
     fi
     
     # Case 3: Only conda-lock.yml exists — missing source file.

@@ -402,6 +402,57 @@ EOF
 }
 
 #============================================================
+# N.bf.9: end-of-init lock nudge (_init_lock_nudge)
+#============================================================
+
+@test "_init_lock_nudge: conda-lock declared + no lock → prints the nudge" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - conda-lock
+YAML
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"expects a conda-lock.yml"* ]]
+    [[ "$output" == *"pyve lock"* ]]
+}
+
+@test "_init_lock_nudge: conda-lock NOT declared → silent" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+YAML
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+@test "_init_lock_nudge: lock already present → silent" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock
+YAML
+    touch conda-lock.yml
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+@test "_init_lock_nudge: --no-lock (PYVE_NO_LOCK=1) → silent even when declared" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock
+YAML
+    PYVE_NO_LOCK=1 run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+#============================================================
 # L.k.4: installed-version listing helpers
 #============================================================
 
