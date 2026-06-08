@@ -279,7 +279,7 @@ assert_env_venv_backend() {
     if [[ "$backend" == "venv" ]]; then
         return 0
     fi
-    printf "error: 'pyve testenv run' does not yet support conda-backed testenv '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/envs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
+    printf "error: 'pyve env run' does not yet support conda-backed env '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/envs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
     return 1
 }
 

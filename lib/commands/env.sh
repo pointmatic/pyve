@@ -103,7 +103,7 @@ _env_install_venv() {
 
     if [[ ! -x "$env_path/bin/python" ]]; then
         log_error "Dev/test runner environment not initialized"
-        log_error "Run: pyve testenv init $name"
+        log_error "Run: pyve env init $name"
         exit 1
     fi
     info "Installing dev/test dependencies into '$env_path'..."
@@ -483,13 +483,13 @@ env_run() {
 
     if [[ $# -lt 1 ]]; then
         log_error "No command provided"
-        log_error "Usage: pyve testenv run <command> [args...]"
-        log_error "Example: pyve testenv run ruff check ."
+        log_error "Usage: pyve env run <command> [args...]"
+        log_error "Example: pyve env run ruff check ."
         exit 1
     fi
     if [[ ! -x "$testenv_venv/bin/python" ]]; then
         log_error "Dev/test runner environment not initialized"
-        log_error "Run: pyve testenv init"
+        log_error "Run: pyve env init"
         exit 1
     fi
     local cmd="$1"
@@ -731,22 +731,46 @@ _env_release_install_lock() {
 # `_env_install_venv` (renamed from `env_install`), which
 # itself dispatches on declared sources (`requirements`/`extra`/
 # auto-detect/bare-pytest).
+# Story N.bf.20: backend-aware "is this env materialized on disk?" check.
+# Used to gate `_env_install_with_lock` BEFORE it acquires the install lock
+# (whose `mkdir -p .pyve/envs/<name>` would otherwise leave a stray on a
+# doomed install). venv: an executable interpreter; micromamba: conda-meta/.
+_env_is_initialized() {
+    local env_path="$1" backend="$2"
+    if [[ "$backend" == "micromamba" ]]; then
+        [[ -d "$env_path/conda-meta" ]]
+    else
+        [[ -x "$env_path/bin/python" ]]
+    fi
+}
+
 _env_install_with_lock() {
     local name="$1" env_path="$2" req_file="$3" lock_mode="${4:-wait}"
+    local backend
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
     # a declared env whose backend is known-advisory is
     # recorded but never materialized — skip with the §B no-op advisory
     # (before acquiring the install lock; there is nothing to serialize).
-    local _adv_backend
-    _adv_backend="$(_env_resolve_backend "$name")" || _adv_backend="venv"
-    if _env_backend_is_advisory "$_adv_backend"; then
-        info "env '$name' declares backend '$_adv_backend', which pyve does not yet materialize; provision it manually per the env spec"
+    if _env_backend_is_advisory "$backend"; then
+        info "env '$name' declares backend '$backend', which pyve does not yet materialize; provision it manually per the env spec"
         return 0
+    fi
+    # Story N.bf.20: gate the env-initialized check BEFORE acquiring the
+    # install lock — there is nothing to serialize against a non-existent
+    # env, and `_env_acquire_install_lock`'s `mkdir -p` would otherwise
+    # leave a `.pyve/` stray on an uninitialized project (cf. N.bf.17).
+    if ! _env_is_initialized "$env_path" "$backend"; then
+        if [[ "$backend" == "micromamba" ]]; then
+            log_error "Conda-backed env '$name' is not initialized at '$env_path'"
+        else
+            log_error "Dev/test runner environment not initialized"
+        fi
+        log_error "Run: pyve env init $name"
+        return 1
     fi
     _env_acquire_install_lock "$name" "$lock_mode" || return $?
     trap "_env_release_install_lock '$name'" EXIT INT TERM
     local rc=0
-    local backend
-    backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" == "micromamba" ]]; then
         local manifest
         manifest="$(_env_manifest_of "$name")" || manifest=""
@@ -828,7 +852,7 @@ _env_install_conda() {
     fi
     if [[ ! -d "$env_path/conda-meta" ]]; then
         log_error "Conda-backed testenv '$name' is not initialized at '$env_path'"
-        log_error "Run: pyve testenv init $name"
+        log_error "Run: pyve env init $name"
         return 1
     fi
 
@@ -872,7 +896,7 @@ _env_install_all_nonlazy() {
         if is_env_lazy "$name"; then
             continue
         fi
-        info "Installing '$name' testenv..."
+        info "Installing '$name'..."
         local install_env_path
         install_env_path="$(resolve_env_path "$name")"
         _env_install_with_lock "$name" "$install_env_path" "$requirements_file" "$lock_mode" || rc=$?
@@ -1233,7 +1257,7 @@ EOF
     testenv_venv="$(resolve_env_path "$target_name")"
     testenv_root="${testenv_venv%/venv}"
 
-    header_box "pyve testenv"
+    header_box "pyve env"
 
     # Propagate leaf return codes (M.i.2). Without explicit handling,
     # bash uses the last command's status — which is footer_box's 0,

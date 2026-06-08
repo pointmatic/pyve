@@ -2398,6 +2398,106 @@ The user has no Pyve project at all, so "declare it under …" is the wrong firs
 - [x] Tests: v3-declared `[env.<name>]` is recognized; an undeclared name errors with the v3-surface message; a v2 `[tool.pyve.testenvs.<name>]` project still resolves during read-compat. — 4 new cases in the new file; the 4 N.bf.18 undeclared-name tests (init/install + 2 in `test_testenv_name_aware`) retargeted from the `tool.pyve.testenvs` assertion to `[env.<name>]` + a `not tool.pyve.testenvs` guard. (`test_lock_per_env`'s tolerant `*declared* || *tool.pyve.testenvs*` OR still matches "declared".)
 - [x] Full suite; zero regressions. — 1906 Bats unit tests pass (1902 + 4 new), 0 failures; shellcheck clean.
 
+### Story N.bf.20: `pyve env install` leaves a `.pyve` stray (lock-before-init-check) and emits deprecated `testenv` branding [Done]
+
+**Discovered:** 2026-06-08 smoke test (`pyve env install` in a `.git`-only, never-initialized `pyve-v3-smoke`).
+
+**Symptom.** On a directory with only `.git`, `pyve env install` fails ("not initialized") but leaves a `.pyve/` directory behind, and the entire output is branded with the deprecated `testenv` even though `env` was invoked:
+
+```
+$ ../pyve/pyve.sh env install
+  ╭─────────────────────────────────────────╮
+  │  pyve testenv                           │   ← should be 'pyve env'
+  ╰─────────────────────────────────────────╯
+  ▸ Installing 'testenv' testenv...
+  ✘ Dev/test runner environment not initialized
+  ✘ Run: pyve testenv init testenv             ← deprecated command
+$ ls -d .pyve   # ← created by the failed run
+.pyve
+```
+
+**Root cause A — the stray (same class as N.bf.17, different path).** `pyve env install` (no name) → `_env_install_all_nonlazy` → [`_env_install_with_lock`](../../lib/commands/env.sh#L734) **acquires the install lock first** ([env.sh:745](../../lib/commands/env.sh#L745)), and [`_env_acquire_install_lock`](../../lib/commands/env.sh#L671) does `mkdir -p "$(dirname "$lock_dir")"` = `mkdir -p .pyve/envs/<name>` ([env.sh:676](../../lib/commands/env.sh#L676)) — **before** the env-initialized check in `_env_install_venv` / `_env_install_conda` ([env.sh:829-831](../../lib/commands/env.sh#L829)). N.bf.17 fixed the premature-`mkdir` in the *create* path (`ensure_env_exists`); the *install* path materializes `.pyve` via the lock and only then discovers there's no env to install into.
+
+**Root cause B — `testenv` branding in the canonical `env` path (v2-ism).** The named-action dispatcher hardcodes `header_box "pyve testenv"` ([env.sh:1236](../../lib/commands/env.sh#L1236)) regardless of whether `env` or the deprecated `testenv` alias was invoked; the install loop prints `Installing '<name>' testenv...` ([env.sh:875](../../lib/commands/env.sh#L875)); and the not-initialized advice says `Run: pyve testenv init <name>` ([env.sh:106](../../lib/commands/env.sh#L106), [492](../../lib/commands/env.sh#L492), [831](../../lib/commands/env.sh#L831)) — pointing at the deprecated command. Since `testenv` re-dispatches to `env_command` (and already emits its own deprecation warning), the canonical surface should read `pyve env`.
+
+**Proposed fix (decide during debug).**
+- **A (stray):** gate before acquiring the lock — there is nothing to serialize against a non-existent env. Check the env is initialized (and/or the project is initialized) *before* `_env_acquire_install_lock`, so a doomed install materializes nothing. Mirror N.bf.17's "gate before mkdir" shape. Verify `pyve env install` on an uninitialized dir leaves no `.pyve`, and `pyve purge` afterward reports "Nothing to remove."
+- **B (branding):** `header_box "pyve env"`; reword the install-loop and not-initialized messages to the canonical `pyve env init <name>` surface. Audit the env-namespace leaves for other hardcoded `testenv` user-facing strings (init/install/purge/run not-initialized hints).
+
+**Out of scope.** An init-state "run `pyve init`" hint for `env install` on a never-initialized *project* (the reserved `testenv` is always actionable, so it bypasses N.bf.18's gate) — once the command name is corrected, "not initialized → run `pyve env init`" is directional; fold in only if desired. The internal function names / comments that say `testenv` (not user-facing) are a separate cleanup.
+
+**Tasks**
+
+- [x] Reproduce: `pyve env install` on a `.git`-only dir fails yet leaves `.pyve/`; assert the stray exists (red). — confirmed via `/tmp` smoke repro and the red bats run.
+- [x] Gate the env-initialized (and/or project-initialized) check before `_env_acquire_install_lock`; materialize nothing on a doomed install. — new `_env_is_initialized` helper + a pre-lock gate in `_env_install_with_lock` ([lib/commands/env.sh](../../lib/commands/env.sh)); backend resolution hoisted above the lock so the gate is backend-aware (venv: `bin/python`; micromamba: `conda-meta/`).
+- [x] Test: failed `pyve env install` on an uninitialized project creates no `.pyve`; `pyve purge` afterward reports "Nothing to remove." — [tests/unit/test_env_install_no_stray.bats](../../tests/unit/test_env_install_no_stray.bats) "doomed install leaves nothing for purge to find".
+- [x] Fix the `env`-path branding: `header_box "pyve env"`, `Installing '<name>'…`, and the `Run: pyve env init <name>` advice (audit all env-leaf not-initialized hints). — `header_box "pyve env"`; install loop `Installing '<name>'...`; not-initialized hints in `_env_install_venv` / `_env_install_conda` / `env_run` retargeted to `pyve env init`; `env run` usage/example and the conda-run guard in [lib/envs.sh](../../lib/envs.sh) re-branded to `pyve env run`.
+- [x] Test: `pyve env install` (and a sibling leaf) output contains `pyve env` and no user-facing `pyve testenv`. — covered for `env install` and `env run` in the new bats file.
+- [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1281 ok / 0 not ok (two pre-existing expectations updated for the new behavior: the conda-install "uninitialized → init-first" precedence, and the namespace box now reading canonical `pyve env` even via the deprecated alias).
+
+### Story N.bf.21: `--help` `pyve run pytest` example is misleading (collides with `pyve test`, fails under the two-env model) [Planned]
+
+**Discovered:** 2026-06-08 `--help` review.
+
+**Symptom.** `show_help`'s EXAMPLES block lists:
+
+```
+    pyve run python --version            # Run command in environment
+    pyve run pytest                      # Run tests in environment
+```
+
+`pyve run pytest` reads as "the way to run tests," but it is **not** equivalent to `pyve test`, and under Pyve's canonical two-environment model it actively fails.
+
+**Root cause / why it's wrong.** `pyve run <cmd>` executes in the **main project (runtime) `.venv`**; `pyve test` runs pytest in the **dev/test runner env** (`.pyve/envs/testenv/venv`), where pytest is actually installed. In the two-env model, pytest is deliberately absent from the main venv (test deps live in the testenv), so `pyve run pytest` typically errors `pytest: not found`. The command `pyve run pytest` is actually closest to `pyve test --env root` (main env via `python -m pytest`), **not** plain `pyve test`. So the example both (a) duplicates/contradicts the dedicated `pyve test` surface and (b) steers users into the exact failure the two-env split exists to prevent. It is **not** a "long form" of `pyve test` — the two ensure *different* venv contexts.
+
+**Proposed fix.** Replace the `pyve run pytest` example with a non-test "run your own code/entry-point in the runtime env" example that doesn't collide with `pyve test`, e.g.:
+
+```
+    pyve run python --version            # Run a command in the project (runtime) env
+    pyve run python -m myapp             # Run your package/entry-point in the runtime env
+```
+
+Let `pyve test -q` (already in EXAMPLES) own the testing example. Scope: `show_help`'s EXAMPLES block in `pyve.sh` only.
+
+**Out of scope.** Per-command help bodies; any change to `pyve run` / `pyve test` behavior (this is a docs-only correction).
+
+**Tasks**
+
+- [ ] Assert (red) `pyve --help` EXAMPLES contains `pyve run pytest`.
+- [ ] Replace the `pyve run pytest` example with a non-test runtime-env example; reword the `pyve run python --version` comment to name the runtime env.
+- [ ] Test: `pyve --help` no longer contains `pyve run pytest`; still demonstrates generic `pyve run <cmd>`; `pyve test` remains the advertised testing path.
+- [ ] Full suite; zero regressions.
+
+### Story N.bf.22: `pyve init`'s `project-guide init` fails on asdf projects pinned off `DEFAULT_PYTHON_VERSION` (bare-PATH shadows the hosted shim) [Planned]
+
+**Discovered:** 2026-06-08 smoke test (`pyve init` in a fresh `pyve-v3-smoke`, asdf active, project pinned to python 3.12.13; toolchain `DEFAULT_PYTHON_VERSION` = 3.14.3).
+
+**Symptom.** `pyve init` completes ("All done"), but the project-guide provisioning step inside it fails:
+
+```
+  ▸ Running 'project-guide init'...
+No version is set for command project-guide
+Consider adding one of the following versions in your config file at .../.tool-versions
+python 3.14.3
+  ⚠ 'project-guide init' failed (skip with --no-project-guide)
+```
+
+**Root cause — bare-PATH resolution of a pyve-hosted tool is hijacked by asdf's shims (same class as the N.at toolchain-Python lesson).** `project-guide` is globally hosted by pyve: `pyve self install` pip-installs it into the toolchain venv (`$(pyve_toolchain_venv_dir)/bin/project-guide`) and symlinks `~/.local/bin/project-guide` → that console script ([`_self_link_project_guide_shim`](../../lib/commands/self.sh#L389-L401)). But [`run_project_guide_init_in_env`](../../lib/utils.sh#L604-L617) (and its sibling [`run_project_guide_update_in_env`](../../lib/utils.sh#L633-L646)) invoke **bare `project-guide`** via `command -v` / PATH. When asdf is active, `~/.asdf/shims` precedes `~/.local/bin` on PATH, so `project-guide` resolves to **asdf's** shim — created when the toolchain venv was built under asdf's 3.14.3 and asdf reshimmed. asdf then resolves the *project's* python (3.12.13 from `.tool-versions`), finds no `project-guide` installed for that version, and errors `No version is set for command project-guide`. So project-guide provisioning is broken on every asdf-active project whose pin ≠ `DEFAULT_PYTHON_VERSION`.
+
+The N.aw global-hosting design intends `project-guide` to resolve independent of the project python; the bug is that the invocation borrows PATH (which asdf owns) instead of the pyve-hosted absolute path — exactly the failure class `pyve_toolchain_python` was introduced to fix for Pyve's own Python helpers (N.at).
+
+**Proposed fix (decide during debug).** Add a resolver — mirroring `pyve_toolchain_python` — that returns the hosted `project-guide` absolute path: prefer `$(pyve_toolchain_venv_dir)/bin/project-guide`, fall back to `~/.local/bin/project-guide`, fall back to bare `project-guide` on PATH (so non-asdf / hand-installed setups still work). Route both `run_project_guide_*_in_env` callsites through it, and make the "not available" guard test the resolved path rather than `command -v project-guide`. This bypasses asdf's shim shadowing without disabling asdf compat.
+
+**Out of scope.** Reworking asdf shim management or the `is_asdf_active()` reshim guard; the project-guide completion-rc-file path ([utils.sh](../../lib/utils.sh)'s `add_project_guide_completion`), which is a separate PATH-guarded surface; any change to project-guide itself (this is a pyve-side resolution fix, not a cross-repo request).
+
+**Tasks**
+
+- [ ] Reproduce (red): with asdf active and a project python pin ≠ `DEFAULT_PYTHON_VERSION`, `run_project_guide_init_in_env` resolves the wrong `project-guide` and the init step fails. (Unit-shape: stub PATH so a fake asdf shim precedes a fake `~/.local/bin` hosted shim; assert the hosted one is the one invoked once fixed.)
+- [ ] Add the hosted-`project-guide` resolver (toolchain venv → `~/.local/bin` → bare PATH); place it alongside the toolchain helpers ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) or `lib/project_guide.sh` per the command/shared-helper rules.
+- [ ] Route `run_project_guide_init_in_env` and `run_project_guide_update_in_env` through the resolver; replace the `command -v project-guide` guard with a resolved-path check.
+- [ ] Test: the hosted shim wins over an asdf shim on PATH; the bare-PATH fallback still works when no toolchain/hosted shim exists.
+- [ ] Full suite; zero regressions. Re-run the `pyve init` smoke on an asdf project pinned off `DEFAULT_PYTHON_VERSION` to confirm `project-guide init` succeeds.
+
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
@@ -2411,49 +2511,6 @@ The user has no Pyve project at all, so "declare it under …" is the wrong firs
 - [x] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — reinvestigated by running it: **it passes** (both non-CI and `CI=true`). The original "moved to stdout" hypothesis was wrong, and so was the story's "read-compat ignores the bad backend" guess. True behavior: the legacy `.pyve/config` is **synthesized** into a v3 manifest by `_manifest_synthesize_from_legacy` (pure bash — no interpreter needed), and the **v3 manifest/plugin** layer rejects it: `error: python plugin: env 'root' declares unregistered backend 'invalid_backend'`. No code fix needed; corrected the test's docstring/assertions to the real behavior and dropped the stale non-CI-only guard (the error is uniform across CI/non-CI since init runs without `--force`).
 - [x] **v2-ism note** — chose **retire-with-read-compat** over porting. Porting to `pyve.toml` is genuinely fragile in this harness: the `pyve.toml` validator probes the project interpreter and *defers* when none resolves (N.bf.1/.2), and the harness pins no Python — so the invalid-backend error would be environment-dependent there, whereas the legacy-synthesis path validates deterministically (pure bash). The canonical `pyve.toml` invalid-backend validation is already unit-covered by N.bf.1's `test_init_pyve_toml.bats`. Tagged the test `v3.0-only: remove in N-10` so the read-compat sweep removes it; removed now-unused `os` / `Path` imports (ruff-clean).
 - [x] Re-run `make test-integration` after the fix — **target test green in both modes.** ⚠️ The full `make test-integration` is **not** all-green on this dev machine: `TestPriorityOrder::test_priority_cli_over_all` and (flakily) `TestBackendAutoDetection::test_detects_venv_from_pyproject_toml` fail because there is no resolvable Python in pytest's `tmp_path` (asdf shim, no pin) → `pyve init` returns 0 but creates no `.venv`. **Confirmed pre-existing** (identical failure on clean HEAD via `git stash`), **out of N.bg's scope** (N.bg targets only `test_invalid_backend_in_config`), and environment-dependent — they belong to the existing `## Future` "Fix pre-existing integration test failures" story, not here. Recommend routing them there.
-
----
-
-### Story N.bh: SHA256 Verification of Bootstrap Download [Planned]
-
-**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
-
-**Design sketch** (to be refined when the story is picked up):
-
-- **Hash source**: two realistic options.
-  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
-  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
-- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
-- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
-
-**Tasks**
-
-- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
-- [ ] Implement verification in `bootstrap_install_micromamba`.
-- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
-- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
-- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
-
----
-
-### Story N.bi: Micromamba Version Pinning via `--micromamba-version` [Planned]
-
-**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
-
-**Design sketch**
-
-- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
-- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
-- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
-- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
-
-**Tasks**
-
-- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
-- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
-- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
-- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
-- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
 
 ---
 
@@ -2549,6 +2606,68 @@ Per the *Per-command help blocks live with their commands* rule in [project-esse
 ### Story ?.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred to collect real usage data on `pyve check` before deciding which fixes to automate and with what safety gates.
+
+---
+
+### Story-Group: Security & Bootstrap Hardening
+
+**What these are.** Two I.h-audit-driven hardening items on the micromamba *bootstrap download* (the binary pyve fetches when a user has no micromamba): cryptographic integrity verification of the downloaded tarball, and pinning its version instead of always fetching `latest`. Neither is user-requested — they close known gaps a security reviewer would flag, not workflows anyone is blocked on.
+
+**Relevance / reach.** The bootstrap path only fires for users *without* micromamba already installed (many have it via brew/system), so this is a subset of the micromamba-backend subset. The current bar — TLS to `micro.mamba.pm` plus operational sanity (extracts, runs, reports a version) — matches most dev tooling.
+
+**Benefits.**
+
+- *Verification (SHA256):* a real integrity gate. Catches a tampered artifact (compromised CDN/mirror, or a TLS-intercepting proxy / bad CA) and silent corruption (a truncated download that still extracts). Honest limits: it's trust-on-first-use pinning of whatever `micro.mamba.pm` served us at table-build time — **not** upstream signature verification — and the binary still runs with full user privileges immediately after. Incremental defense-in-depth, not a category change.
+- *Version pinning:* deterministic, stable bootstraps. The strongest concrete win is **insulation from a regressing `latest`** (mamba/conda have shipped behavior-changing releases — e.g. the libmamba solver default flip — that break unpinned users with no pyve change); plus CI reproducibility across time.
+
+**Tradeoffs (why deferred).**
+
+- Both push pyve into **actively tracking micromamba releases** — bump the pinned version + refresh the hash table each release, or users sit on stale tooling. `latest` + TLS-only is zero-maintenance; these swap that for a recurring release chore.
+- **`pyve lock` already covers the reproducibility that matters most.** A `conda-lock.yml` records the *already-solved* package set, and install-from-lock does **not** re-solve — so two machines with different micromamba versions still get identical packages. The binary-version pin only bites when there's *no* lock (solve-from-`environment.yml`) or to dodge a broken `latest`; the integrity gate is orthogonal to it.
+- Linking the binary-version pin to `pyve lock` was considered and rejected for now: micromamba is machine-level pyve *infrastructure* (shared `~/.pyve/bin`, like the toolchain Python), not per-project data — letting a per-project lock dictate a shared binary invites churn/conflict between projects, for a reproducibility benefit the lock already delivers.
+
+**Disposition.** Deferred to a future dedicated security pass. The dependency-reproducibility benefit `pyve lock` provides is sufficient for now; the marginal integrity/pin gains don't yet justify the per-release maintenance discipline. Pick these up if a security review specifically asks for download integrity, or if a regressing micromamba `latest` makes the pin worth its upkeep. If revived, version pinning is the higher-value of the two and is the natural prerequisite for the hardcoded-hash table.
+
+### Story ?.?: SHA256 Verification of Bootstrap Download [Planned]
+
+**Motivation**: I.h audit finding — `bootstrap_install_micromamba` ([lib/micromamba_bootstrap.sh:87-200](../../lib/micromamba_bootstrap.sh#L87-L200)) currently verifies the downloaded micromamba tarball only via transport (TLS to `micro.mamba.pm`) + operational sanity (non-empty, extracts, binary runs and reports a version). No cryptographic content integrity. Same trust bar as most `curl | bash` installers, but a step below `apt` / `brew` signed-package verification.
+
+**Design sketch** (to be refined when the story is picked up):
+
+- **Hash source**: two realistic options.
+  1. Hardcode `(os, arch, version) → sha256` map in a new `lib/micromamba_manifest.sh`. Explicit, audit-friendly, zero runtime network overhead. Cost: every micromamba release that pyve wants to track requires a pyve release to update the table.
+  2. Fetch hashes dynamically from GitHub Releases API (`https://api.github.com/repos/mamba-org/micromamba-releases/releases/latest`). No hardcoded table; picks up new releases automatically. Cost: extra network round-trip, GitHub rate limits (60/hr anonymous), more error paths. Pin specific versions to soften the moving-target problem.
+- **Verification step** slots between the download and the extraction in `bootstrap_install_micromamba`. On mismatch: `log_error`, `rm -f "$temp_file"`, `return 1`. On match: `log_info "Verified micromamba tarball SHA256"`.
+- **Escape hatch**: `PYVE_NO_BOOTSTRAP_VERIFY=1` env var for developers on networks that strip TLS cert chains or fetch from a mirror.
+
+**Tasks**
+
+- [ ] Decide between hardcoded table vs GitHub API (weigh update cadence vs runtime cost).
+- [ ] Implement verification in `bootstrap_install_micromamba`.
+- [ ] Activate `test_bootstrap_download_verification` in [tests/integration/test_bootstrap.py:182-195](../../tests/integration/test_bootstrap.py#L182-L195); replace the "verified/checksum" substring assertion with something specific to the chosen implementation (e.g. `Verified micromamba tarball SHA256` log line + a negative test that mismatches fail the bootstrap).
+- [ ] Add a bats unit test that exercises the mismatch path via `curl`-shim returning known bogus content.
+- [ ] Document the escape hatch in `features.md` and the new env var in the Environment Variables table.
+
+---
+
+### Story ?.?: Micromamba Version Pinning via `--micromamba-version` [Planned]
+
+**Motivation**: I.h audit finding — [lib/micromamba_bootstrap.sh:36](../../lib/micromamba_bootstrap.sh#L36) hardcodes `version="latest"` in the download URL. Reproducible bootstraps across machines or CI runs require a pinned version. The skipped `test_bootstrap_version_selection` in [test_bootstrap.py:170-180](../../tests/integration/test_bootstrap.py#L170-L180) was written for this feature before it was implemented.
+
+**Design sketch**
+
+- **New CLI flag** `--micromamba-version <ver>` on `pyve init`, parallel to the existing `--bootstrap-to`. Propagates into `bootstrap_micromamba_auto`.
+- **URL construction**: `get_micromamba_download_url` takes an optional `version` arg; URL becomes `https://micro.mamba.pm/api/micromamba/<platform>/<version>` when version is set, `/latest` otherwise.
+- **Config-file key**: optional — `micromamba.micromamba_version` in `.pyve/config` could pin per-project. Weigh against the "bootstrap is CLI-only" invariant pinned by the I.d negative tests; adding this one key would require inverting those tests.
+- **Compose cleanly with K's SHA256 story**: with version pinning, the hardcoded-table approach becomes much more tractable because pinned versions have known-stable hashes.
+
+**Tasks**
+
+- [ ] Add `--micromamba-version <ver>` flag parsing alongside `--auto-bootstrap` / `--bootstrap-to` in `pyve.sh`.
+- [ ] Plumb version through `bootstrap_micromamba_auto` → `bootstrap_install_micromamba` → `get_micromamba_download_url`.
+- [ ] Activate `test_bootstrap_version_selection` with a real version string (e.g. `2.0.5`) and assert the download URL in stdout contains that version.
+- [ ] Decide on config-key support; if yes, revisit and invert I.d's negative tests.
+- [ ] Document the flag in `--help`, `features.md`, `tech-spec.md`.
 
 ---
 

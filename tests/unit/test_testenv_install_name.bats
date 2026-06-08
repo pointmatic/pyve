@@ -195,15 +195,18 @@ TOML
     [[ "$output" != *"tool.pyve.testenvs"* ]]
 }
 
-@test "testenv install <conda-backed>: missing manifest file hard-errors (M.k landed)" {
+@test "testenv install <conda-backed>: uninitialized env hard-errors before lock (N.bf.20)" {
     # Story M.k landed: conda install routes through `_env_install_conda`.
-    # When the declared manifest is missing on disk, surface a clear
-    # error (the fixture declares manifest = "tests/env.yml" without
-    # creating it).
+    # Story N.bf.20: the env-initialized gate now runs BEFORE the install
+    # lock (and before _env_install_conda's manifest check), so installing
+    # into a conda env that was never created reports "not initialized"
+    # and materializes no `.pyve` stray — init must precede install.
     _fixture_named_envs
     run env_command install hardware
     [ "$status" -ne 0 ]
-    [[ "$output" == *"tests/env.yml"* ]]
+    [[ "$output" == *"not initialized"* ]]
+    [[ "$output" == *"pyve env init hardware"* ]]
+    [ ! -e ".pyve/envs/hardware" ]
 }
 
 # ============================================================
