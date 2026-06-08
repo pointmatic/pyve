@@ -177,7 +177,14 @@ assert_env_name_actionable() {
         printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
         return 1
     fi
-    if [[ "$name" == "testenv" ]] || is_env_declared "$name"; then
+    # Story N.bf.19: recognize the canonical v3 declaration surface —
+    # `[env.<name>]` in `pyve.toml` (via `manifest_load`, which also
+    # read-compat-synthesizes from `.pyve/config` + `[tool.pyve.testenvs.*]`).
+    # The trailing `is_env_declared` arm is the legacy pyproject reader kept
+    # as a defensive bridge during the read-compat window.
+    if [[ "$name" == "testenv" ]] \
+       || _env_declared_in_manifest "$name" \
+       || is_env_declared "$name"; then   # is_env_declared: v3.0-only read-compat, remove in N-10
         return 0
     fi
     # Story N.bf.18: a non-reserved, non-declared name on a project that
@@ -189,8 +196,19 @@ assert_env_name_actionable() {
         printf "error: this isn't an initialized Pyve project — run 'pyve init' to set one up.\n" >&2
         return 1
     fi
-    printf "error: testenv '%s' is not declared. Declare it under [tool.pyve.testenvs.%s] in pyproject.toml.\n" "$name" "$name" >&2
+    printf "error: env '%s' is not declared. Declare it under [env.%s] in pyve.toml.\n" "$name" "$name" >&2
     return 1
+}
+
+# Story N.bf.19: is <name> declared as `[env.<name>]` in the v3 manifest?
+# Loads `pyve.toml` (or read-compat synthesis from `.pyve/config` +
+# `[tool.pyve.testenvs.*]`) into PYVE_ENV_NAMES and checks membership.
+# Graceful: returns 1 when the manifest can't be loaded (no toolchain
+# Python, malformed/empty manifest, etc.) so callers fall through to their
+# next arm rather than crashing.
+_env_declared_in_manifest() {
+    manifest_load >/dev/null 2>&1 || return 1
+    manifest_get_env "$1"
 }
 
 # Story M.k: resolve <name>'s effective backend. Returns the concrete

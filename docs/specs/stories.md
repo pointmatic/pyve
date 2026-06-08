@@ -2376,7 +2376,7 @@ The user has no Pyve project at all, so "declare it under …" is the wrong firs
 - [x] Test: uninitialized → init-pointing error for `env init|install|purge|run <name>`; an initialized project still reaches the normal declared-name path (no false "run init"). — 5 new cases (uninitialized→init hint; pyve.toml→not-declared; `.pyve/config`→not-declared; reserved `testenv` still actionable; `root` still selection-only). Six pre-existing undeclared-name tests across `test_testenv_{init,install,run,purge}_name.bats` + `test_testenv_name_aware.bats` were missing an init marker (their `_fixture_*` set up `pyproject.toml [tool.pyve.testenvs]` but no `pyve.toml`/`.pyve/config` — an unrealistic half-state); added an inline `pyve.toml` marker so they test the undeclared-on-initialized path they intend.
 - [x] Full suite; zero regressions. — 1902 Bats unit tests pass (1897 + 5 new), 0 failures; shellcheck clean.
 
-### Story N.bf.19: `pyve env` name-validation reads the v2 `pyproject.toml [tool.pyve.testenvs]` surface, not the v3 `pyve.toml [env.<name>]` manifest [Planned]
+### Story N.bf.19: `pyve env` name-validation reads the v2 `pyproject.toml [tool.pyve.testenvs]` surface, not the v3 `pyve.toml [env.<name>]` manifest [Done]
 
 **Discovered:** 2026-06-08 smoke test (`pyve env init foo`) — deeper analysis of the same error.
 
@@ -2392,11 +2392,11 @@ The user has no Pyve project at all, so "declare it under …" is the wrong firs
 
 **Tasks**
 
-- [ ] Reproduce: with `[env.foo]` declared in `pyve.toml` (and no `pyproject.toml [tool.pyve.testenvs.foo]`), `pyve env init foo` still errors "not declared" (red).
-- [ ] Route the declared-name check through the v3 manifest `[env.<name>]` accessors; keep v2 `[tool.pyve.testenvs.*]` resolving during the v3.0 read-compat window.
-- [ ] Fix the "not declared" message to point at `pyve.toml [env.<name>]`.
-- [ ] Tests: v3-declared `[env.<name>]` is recognized; an undeclared name errors with the v3-surface message; a v2 `[tool.pyve.testenvs.<name>]` project still resolves during read-compat.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce: with `[env.foo]` declared in `pyve.toml` (and no `pyproject.toml [tool.pyve.testenvs.foo]`), `pyve env init foo` still errors "not declared" (red). — [test_env_name_manifest_decl.bats](../../tests/unit/test_env_name_manifest_decl.bats) "recognizes a v3-manifest-declared [env.foo]" (red under the pyproject-only check).
+- [x] Route the declared-name check through the v3 manifest `[env.<name>]` accessors; keep v2 `[tool.pyve.testenvs.*]` resolving during the v3.0 read-compat window. — [envs.sh](../../lib/envs.sh): new `_env_declared_in_manifest` (`manifest_load` → `manifest_get_env`) added to `assert_env_name_actionable`'s success condition as the **canonical** arm (manifest-first); `manifest_load` itself read-compat-synthesizes `[env.<name>]` from `.pyve/config` + `[tool.pyve.testenvs.*]`, so v2 resolves through it. The legacy `is_env_declared` arm is kept as a defensive bridge, tagged `is_env_declared: v3.0-only read-compat, remove in N-10`.
+- [x] Fix the "not declared" message to point at `pyve.toml [env.<name>]`. — now `error: env '<name>' is not declared. Declare it under [env.<name>] in pyve.toml.` (was `testenv … [tool.pyve.testenvs.<name>] in pyproject.toml`). **Verified e2e** on a v3 project: `pyve env init bogus` prints the `[env.bogus] in pyve.toml` message.
+- [x] Tests: v3-declared `[env.<name>]` is recognized; an undeclared name errors with the v3-surface message; a v2 `[tool.pyve.testenvs.<name>]` project still resolves during read-compat. — 4 new cases in the new file; the 4 N.bf.18 undeclared-name tests (init/install + 2 in `test_testenv_name_aware`) retargeted from the `tool.pyve.testenvs` assertion to `[env.<name>]` + a `not tool.pyve.testenvs` guard. (`test_lock_per_env`'s tolerant `*declared* || *tool.pyve.testenvs*` OR still matches "declared".)
+- [x] Full suite; zero regressions. — 1906 Bats unit tests pass (1902 + 4 new), 0 failures; shellcheck clean.
 
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 

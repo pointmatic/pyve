@@ -94,13 +94,15 @@ TOML
     [ ! -d ".pyve/envs/root" ]
 }
 
-@test "testenv init <name>: undeclared name hard-errors with [tool.pyve.testenvs] hint" {
+@test "testenv init <name>: undeclared name hard-errors with [env.<name>] hint" {
     _fixture_named_envs
     : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
     run env_command init bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
-    [[ "$output" == *"tool.pyve.testenvs"* ]]
+    # N.bf.19: points at the v3 surface, not the v2 [tool.pyve.testenvs].
+    [[ "$output" == *"[env.bogus]"* ]]
+    [[ "$output" != *"tool.pyve.testenvs"* ]]
     [ ! -d ".pyve/envs/bogus" ]
 }
 
