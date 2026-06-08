@@ -296,3 +296,27 @@ run_pyve() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"--verbose"* ]]
 }
+
+#============================================================
+# Story N.bf.21: --help EXAMPLES must not advertise `pyve run pytest`
+# (it runs in the main runtime venv where pytest is deliberately absent
+# under the two-env model, so it duplicates and fights `pyve test`).
+#============================================================
+
+@test "help examples: do not advertise 'pyve run pytest'" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"pyve run pytest"* ]]
+}
+
+@test "help examples: still demonstrate a generic 'pyve run <cmd>'" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve run python"* ]]
+}
+
+@test "help examples: 'pyve test' remains the advertised testing path" {
+    run_pyve --help
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"pyve test"* ]]
+}

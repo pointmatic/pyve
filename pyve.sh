@@ -444,8 +444,8 @@ EXAMPLES:
     pyve init --backend venv             # Explicitly use venv backend
     pyve init --backend micromamba       # Explicitly use micromamba backend
     pyve init --no-direnv                # Skip direnv (for CI/CD)
-    pyve run python --version            # Run command in environment
-    pyve run pytest                      # Run tests in environment
+    pyve run python --version            # Run a command in the project (runtime) env
+    pyve run python -m myapp             # Run your package/entry-point in the runtime env
     pyve env init                        # Create the dev/test runner environment
     pyve env install -r requirements-dev.txt  # Install dev/test deps
     pyve env run ruff check .            # Run dev tools from the env

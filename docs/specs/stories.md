@@ -2435,7 +2435,7 @@ $ ls -d .pyve   # ← created by the failed run
 - [x] Test: `pyve env install` (and a sibling leaf) output contains `pyve env` and no user-facing `pyve testenv`. — covered for `env install` and `env run` in the new bats file.
 - [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1281 ok / 0 not ok (two pre-existing expectations updated for the new behavior: the conda-install "uninitialized → init-first" precedence, and the namespace box now reading canonical `pyve env` even via the deprecated alias).
 
-### Story N.bf.21: `--help` `pyve run pytest` example is misleading (collides with `pyve test`, fails under the two-env model) [Planned]
+### Story N.bf.21: `--help` `pyve run pytest` example is misleading (collides with `pyve test`, fails under the two-env model) [Done]
 
 **Discovered:** 2026-06-08 `--help` review.
 
@@ -2463,10 +2463,10 @@ Let `pyve test -q` (already in EXAMPLES) own the testing example. Scope: `show_h
 
 **Tasks**
 
-- [ ] Assert (red) `pyve --help` EXAMPLES contains `pyve run pytest`.
-- [ ] Replace the `pyve run pytest` example with a non-test runtime-env example; reword the `pyve run python --version` comment to name the runtime env.
-- [ ] Test: `pyve --help` no longer contains `pyve run pytest`; still demonstrates generic `pyve run <cmd>`; `pyve test` remains the advertised testing path.
-- [ ] Full suite; zero regressions.
+- [x] Assert (red) `pyve --help` EXAMPLES contains `pyve run pytest`. — added three help-examples tests to [tests/unit/test_cli_dispatch.bats](../../tests/unit/test_cli_dispatch.bats); the "do not advertise 'pyve run pytest'" test was red against the unfixed EXAMPLES block.
+- [x] Replace the `pyve run pytest` example with a non-test runtime-env example; reword the `pyve run python --version` comment to name the runtime env. — [pyve.sh](../../pyve.sh) EXAMPLES now reads `pyve run python --version # Run a command in the project (runtime) env` and `pyve run python -m myapp # Run your package/entry-point in the runtime env`.
+- [x] Test: `pyve --help` no longer contains `pyve run pytest`; still demonstrates generic `pyve run <cmd>`; `pyve test` remains the advertised testing path. — all three assertions green.
+- [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1916 ok / 0 not ok.
 
 ### Story N.bf.22: `pyve init`'s `project-guide init` fails on asdf projects pinned off `DEFAULT_PYTHON_VERSION` (bare-PATH shadows the hosted shim) [Planned]
 
