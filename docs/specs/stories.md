@@ -2142,16 +2142,16 @@ No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires
 - [x] Tests: fresh vs `--force` identical (both nudge); present-fresh-lock → no nudge, builds from lock; `--strict` barks; undeclared → silent. — validate cases (declared/undeclared × strict/non-strict) in test_lock_validation.bats; nudge cases (declared/undeclared/lock-present/`--no-lock`) in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats); `_check_conda_lock_status` cases in [test_check.bats](../../tests/unit/test_check.bats).
 - [x] Full suite; zero regressions. — 1855 Bats unit tests pass (1847 + 8 net new; 6 existing "missing lock = hard error" tests rewritten to the declarative model), 0 failures; shellcheck clean on the edited ranges.
 
-### Story N.bf.10: `--no-lock` = non-destructive "resolve from `environment.yml`" [Planned]
+### Story N.bf.10: `--no-lock` = non-destructive "resolve from `environment.yml`" [Done]
 
 **Scope.** Give `--no-lock` its single settled meaning across `init`: don't *use* a lock this run; resolve the install from `environment.yml` even when a `conda-lock.yml` is present; and never delete the lock file (including under `--force`, which purges materialized state only — committed source like `conda-lock.yml` survives). `--no-lock` also relaxes `--strict`'s lock requirement (explicit instruction beats policy).
 
 **Tasks**
 
-- [ ] Tests (red): with a present `conda-lock.yml`, `pyve init --no-lock` resolves from `environment.yml` (lock ignored as install source); `pyve init --force --no-lock` leaves `conda-lock.yml` on disk; `pyve init --strict --no-lock` proceeds (no bark).
-- [ ] Implement: `--no-lock` forces `environment.yml` as the install source; ensure no code path deletes `conda-lock.yml`; `--no-lock` short-circuits the strict bark.
-- [ ] Test the reproducibility footgun is opt-in only (default still prefers a present lock).
-- [ ] Full suite; zero regressions.
+- [x] Tests (red): with a present `conda-lock.yml`, `pyve init --no-lock` resolves from `environment.yml` (lock ignored as install source); `pyve init --force --no-lock` leaves `conda-lock.yml` on disk; `pyve init --strict --no-lock` proceeds (no bark). — install-source cases in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats) ("_init_select_env_file: …"); the never-deleted guard + strict-bypass case in [test_lock_validation.bats](../../tests/unit/test_lock_validation.bats).
+- [x] Implement: `--no-lock` forces `environment.yml` as the install source; ensure no code path deletes `conda-lock.yml`; `--no-lock` short-circuits the strict bark. — new `_init_select_env_file` in [plugin.sh](../../lib/plugins/python/plugin.sh) (PYVE_NO_LOCK + `environment.yml` present → return `environment.yml`, else `detect_environment_file`), wired at the single micromamba env-file callsite ([plugin.sh:1803](../../lib/plugins/python/plugin.sh#L1803)). `detect_environment_file`'s general contract is left untouched (check/status reporting unaffected). No deletion code added — the only `rm conda-lock.yml` in the tree is inside a `log_error` message string. Strict bypass already landed in N.bf.9 (bypass-first in `validate_lock_file_status`).
+- [x] Test the reproducibility footgun is opt-in only (default still prefers a present lock). — `_init_select_env_file` default case returns `conda-lock.yml` when present; the override fires only under `PYVE_NO_LOCK=1`.
+- [x] Full suite; zero regressions. — 1860 Bats unit tests pass (1855 + 5 new), 0 failures; shellcheck clean on the edited ranges.
 
 ### Story N.bf.11: Scaffold + interactive wizard `conda-lock` opt-in [Planned]
 

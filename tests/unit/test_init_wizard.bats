@@ -453,6 +453,38 @@ YAML
 }
 
 #============================================================
+# N.bf.10: --no-lock install-source override (_init_select_env_file)
+#============================================================
+
+@test "_init_select_env_file: default prefers conda-lock.yml when present" {
+    touch environment.yml conda-lock.yml
+    run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "conda-lock.yml" ]
+}
+
+@test "_init_select_env_file: --no-lock resolves from environment.yml even when a lock is present" {
+    touch environment.yml conda-lock.yml
+    PYVE_NO_LOCK=1 run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "environment.yml" ]
+}
+
+@test "_init_select_env_file: --no-lock with only conda-lock.yml falls back to the lock (nothing to resolve from)" {
+    touch conda-lock.yml
+    PYVE_NO_LOCK=1 run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "conda-lock.yml" ]
+}
+
+@test "_init_select_env_file: only environment.yml → environment.yml" {
+    touch environment.yml
+    run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "environment.yml" ]
+}
+
+#============================================================
 # L.k.4: installed-version listing helpers
 #============================================================
 

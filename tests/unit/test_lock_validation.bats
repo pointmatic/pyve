@@ -17,6 +17,20 @@ teardown() {
 }
 
 #============================================================
+# N.bf.10: conda-lock.yml is committed source — never deleted by pyve
+#============================================================
+
+@test "no executable code path deletes conda-lock.yml (committed source survives --force/--no-lock)" {
+    # conda-lock.yml is committed source (like environment.yml), not pyve state.
+    # --no-lock ignores it; --force purges materialized state only. Guard: no
+    # line in lib/ or pyve.sh is an `rm` command targeting conda-lock.yml. (The
+    # one occurrence is inside a log_error *message*, which starts with
+    # log_error, not rm — so this anchored pattern won't match it.)
+    run grep -rnE '^[[:space:]]*rm[[:space:]].*conda-lock\.yml' "$PYVE_ROOT/lib" "$PYVE_ROOT/pyve.sh"
+    [ "$status" -ne 0 ]
+}
+
+#============================================================
 # is_conda_lock_declared() tests (Story N.bf.8)
 #============================================================
 # The declarative signal for "a lock is required": conda-lock present as a

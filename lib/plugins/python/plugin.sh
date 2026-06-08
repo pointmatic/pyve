@@ -1371,6 +1371,20 @@ _init_lock_nudge() {
     info "When your dependencies are finalized, run \`pyve lock\` to resolve them into the lock file."
 }
 
+# Select the environment file micromamba builds from. The default prefers a
+# present conda-lock.yml (reproducible) via detect_environment_file. `--no-lock`
+# (PYVE_NO_LOCK=1) overrides that for this run (Story N.bf.10): resolve from
+# environment.yml even when a lock exists — the lock is ignored as the install
+# source, NOT deleted. Falls back to detect_environment_file when there's no
+# environment.yml to resolve from.
+_init_select_env_file() {
+    if [[ "${PYVE_NO_LOCK:-}" == "1" ]] && [[ -f "environment.yml" ]]; then
+        echo "environment.yml"
+        return 0
+    fi
+    detect_environment_file
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local python_version="$DEFAULT_PYTHON_VERSION"
@@ -1786,7 +1800,7 @@ init_project() {
         info "Environment:     $env_name"
 
         local env_file
-        env_file="$(detect_environment_file)"
+        env_file="$(_init_select_env_file)"
         info "Using file:      $env_file"
 
         if ! create_micromamba_env "$env_name" "$env_file"; then
