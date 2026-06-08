@@ -416,7 +416,7 @@ pip install custom-internal-package
 # Both work together in same environment
 ```
 
-> **Note:** `pyve init` requires `conda-lock.yml` to exist. During initial project setup before the file has been generated, use `pyve init --no-lock`.
+> **Note:** A lock is required only when `conda-lock` is declared in `environment.yml`. In that case, non-strict `pyve init` proceeds and nudges you to run `pyve lock` (and `--strict` errors until a fresh lock exists). Use `pyve init --no-lock` to skip the lock for a run, or remove `conda-lock` from `environment.yml` to opt out permanently.
 
 ### ML/Data Science Project with Both Files (v1.6.2+)
 
@@ -520,10 +520,10 @@ conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
 conda-lock -f environment.yml -p linux-64     # Linux
 ```
 
-During initial project setup before the lock file exists:
+To skip the lock for a run (e.g. before you've generated one):
 
 ```bash
-pyve init --no-lock   # not recommended for shared projects
+pyve init --no-lock   # resolve from environment.yml; not recommended for shared projects
 ```
 
 ### venv: Package Won't Install
@@ -634,7 +634,7 @@ pip-compile --generate-hashes requirements.in
 ```bash
 pyve lock
 # Commit conda-lock.yml to git — it must be committed, not ignored
-# (pyve init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
+# (with conda-lock declared, non-strict init nudges for a missing lock and --strict errors; --no-lock skips it for a run)
 ```
 
 ### Document Your Choice

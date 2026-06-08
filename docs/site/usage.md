@@ -99,8 +99,8 @@ pyve init [<dir>] [options]
   - If both `environment.yml` and `pyproject.toml` exist, prompts interactively (defaults to micromamba)
 - `--auto-bootstrap`: Install micromamba without prompting (if needed)
 - `--bootstrap-to <location>`: Where to install micromamba: `project` or `user`
-- `--strict`: Error on stale or missing lock files
-- `--no-lock`: Bypass missing `conda-lock.yml` hard error (use during initial setup before the lock file has been generated)
+- `--strict`: Error on a stale lock, or a missing lock when `conda-lock` is declared in `environment.yml` (non-strict only nudges); also opts out of scaffolding/inference
+- `--no-lock`: Don't use a lock this run — resolve from `environment.yml`, ignore any present lock (never deletes it), skip the requirement (beats `--strict`), and omit `conda-lock` from a fresh scaffold
 - `--env-name <name>`: Environment name (micromamba backend)
 - `--no-direnv`: Skip `.envrc` creation (for CI/CD or when direnv isn't used)
 - `--auto-install-deps`: Automatically install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
@@ -147,7 +147,7 @@ pyve init --no-direnv
 # Force re-initialization (purges and rebuilds)
 pyve init --force
 
-# Bypass missing conda-lock.yml error (initial setup only, before lock file exists)
+# Skip the lock for this run (resolve from environment.yml; a present lock is ignored, not deleted)
 pyve init --no-lock
 
 # Bypass cloud-sync directory check (only if you have disabled sync)
@@ -895,7 +895,7 @@ Pyve recognizes the following environment variables:
 | `PYVE_AUTO_INSTALL_DEPS` | Auto-install dependencies without prompting | `0` (prompt) |
 | `PYVE_NO_INSTALL_DEPS` | Skip dependency installation prompt | `0` (prompt) |
 | `PYVE_FORCE_YES` | Skip all interactive prompts (CI mode) | `0` (interactive) |
-| `PYVE_NO_LOCK` | Bypass missing `conda-lock.yml` hard error (same as `--no-lock`) | `0` |
+| `PYVE_NO_LOCK` | `--no-lock` semantics: don't use a lock this run (resolve from `environment.yml`, ignore a present lock without deleting it), skip the requirement (beats `--strict`), omit `conda-lock` from a fresh scaffold | `0` |
 | `PYVE_ALLOW_SYNCED_DIR` | Bypass cloud-synced directory check (same as `--allow-synced-dir`) | `0` |
 | `PYVE_PROJECT_GUIDE` | Run the project-guide three-step hook (same as `--project-guide`) | Unset |
 | `PYVE_NO_PROJECT_GUIDE` | Skip the project-guide three-step hook (same as `--no-project-guide`) | Unset |

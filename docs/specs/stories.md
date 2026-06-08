@@ -2172,7 +2172,7 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 - [x] Tests: default + wizard-yes include `conda-lock`; `--no-lock` + wizard-no omit it; the scaffold still validates and the env builds; end-to-end fresh `pyve init` → `pyve lock` works with no manual edit or rebuild. — scaffold include/omit/default in test_scaffold_environment_yml.bats; decision branches (`--no-lock` / non-interactive default / strict / existing-files) in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats). The TTY prompt branch isn't unit-tested (bats has no TTY on stdin → exercises the non-interactive default). End-to-end "→ `pyve lock` works" verified by construction: declared `conda-lock` → installed into the env → lockable; the full live micromamba run is an integration concern, not a bats unit test.
 - [x] Full suite; zero regressions. — 1868 Bats unit tests pass (1860 + 8 new), 0 failures; shellcheck clean on the edited ranges. Existing H.f.7 scaffold + integration tests stay green (they don't assert conda-lock absence; the micromamba-stub integration test fails env creation before the lock matters).
 
-### Story N.bf.12: Targeted docs for the declarative lock model [Planned]
+### Story N.bf.12: Targeted docs for the declarative lock model [Done]
 
 **Scope.** Update the lock/strict passages to the settled model — *targeted edits only*; the broad README/MkDocs v3.0 reconciliation stays in the deferred `refactor_document` bundle at the end of this subphase.
 
@@ -2182,11 +2182,11 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Tasks**
 
-- [ ] features.md: rewrite the passages above to the settled model (signal / install-source / nudge / bark / `--no-lock` non-destructive / strict precedence).
-- [ ] tech-spec.md: update the function-behavior rows and flag descriptions.
-- [ ] README + the matching MkDocs page: update the lock/strict section to the new model.
-- [ ] Cross-check: no remaining doc text claims "missing lock is a hard error" for non-strict init.
-- [ ] Doc-only story — no code change, no test-suite delta.
+- [x] features.md: rewrite the passages above to the settled model (signal / install-source / nudge / bark / `--no-lock` non-destructive / strict precedence). — QR-3 lock-validation summary, the `--strict` / `--no-lock` flag rows, the FR-10a scaffold section (generated-content + YAML now shows `- conda-lock`, the "Lock-file interaction" paragraph rewritten declarative, carve-out updated), FR-15 prerequisite advice (`--force --no-lock` + N.bf.11 note), the `conda-lock` non-goal, and the `PYVE_NO_LOCK` env-var row.
+- [x] tech-spec.md: update the function-behavior rows and flag descriptions. — `validate_lock_file_status` row rewritten to the declarative cases; added an `is_conda_lock_declared` row; `scaffold_starter_environment_yml` row gained the `include_conda_lock` arg + `_init_resolve_scaffold_conda_lock`; `--strict` / `--no-lock` flag-table rows updated.
+- [x] README + the matching MkDocs page: update the lock/strict section to the new model. — README "Lock Files (`conda-lock.yml`)" section fully rewritten (declarative signal, nudge vs bark, `--no-lock` non-destructive, `pyve check`; also swapped the stale `pyve doctor` → `pyve check`). MkDocs: getting-started.md, backends.md (×3), usage.md (flag list + example + env-var table) updated.
+- [x] Cross-check: no remaining doc text claims "missing lock is a hard error" for non-strict init. — grep sweep across README/features/tech-spec/docs-site; the only remaining "hard error" mentions are the *correct* `--strict`/bark framing, plus `pyve lock`'s own conda-lock-on-PATH guard (unrelated to the init requirement).
+- [x] Doc-only story — no code change, no test-suite delta. — only `.md` files edited (features.md, tech-spec.md, README.md, docs/site/{getting-started,backends,usage}.md); bats suite unaffected, not re-run.
 
 ### Story N.bf.13: "Update in-place" silently ignores `environment.yml` edits [Planned]
 

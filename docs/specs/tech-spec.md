@@ -552,12 +552,13 @@ Environment file parsing, naming resolution, environment creation, and lock file
 | `parse_environment_channels` | `(env_file?)` → string | Extract channels list |
 | `validate_environment_file` | `()` → 0/1 | Check environment file exists and is readable |
 | `is_lock_file_stale` | `()` → 0/1 | Compare mtimes of environment.yml vs conda-lock.yml |
-| `validate_lock_file_status` | `(strict_mode)` → 0/1 | Full lock file validation with user prompts |
+| `validate_lock_file_status` | `(strict_mode)` → 0/1 | Lock-status gate (declarative model, Story N.bf.9). Case 1 (both files): staleness check — strict errors, interactive warns. Case 2 (only `environment.yml`): `--no-lock`/`PYVE_NO_LOCK` → proceed (beats strict); else `is_conda_lock_declared` decides — undeclared → proceed silently (no lock expected), declared + `--strict` → bark (hard error naming `pyve lock` + opt-outs), declared + non-strict → proceed (the end-of-init `_init_lock_nudge` handles messaging). Cases 3/4 (lock-only / neither) unchanged. |
+| `is_conda_lock_declared` | `(env_file?)` → 0/1 | Story N.bf.8. The declarative lock signal: is `conda-lock` a dependency in `environment.yml`? Grep-based, matches bare / version-pinned / `pip:`-nested forms; excludes longer names (`conda-lock-foo`); 1 when no env file. |
 | `sanitize_environment_name` | `(raw_name)` → string | Lowercase, replace special chars, trim hyphens |
 | `is_reserved_environment_name` | `(name)` → 0/1 | Check against reserved names list |
 | `validate_environment_name` | `(name)` → 0/1 | Full name validation |
 | `resolve_environment_name` | `(cli_name?)` → string | Priority: CLI > config > env file > directory basename |
-| `scaffold_starter_environment_yml` | `(python_version, env_name_flag?, strict_mode)` → 0/1 | Write starter `environment.yml` when the current dir has neither an `environment.yml` nor a `conda-lock.yml` and `strict_mode` is `false`. Returns 0 on write, 1 on refusal (strict / env.yml already present / conda-lock.yml present). Called from `init()` before `check_micromamba_available` so the fresh-project path gets a scaffold-then-proceed flow instead of the H.f.6 hard-error. Template content: `name: <sanitized-basename or env_name_flag>`, `channels: [conda-forge]`, `dependencies: [python=<ver>, pip]`. H.f.7. |
+| `scaffold_starter_environment_yml` | `(python_version, env_name_flag?, strict_mode, include_conda_lock?)` → 0/1 | Write starter `environment.yml` when the current dir has neither an `environment.yml` nor a `conda-lock.yml` and `strict_mode` is `false`. Returns 0 on write, 1 on refusal (strict / env.yml already present / conda-lock.yml present). Called from `init()` before `check_micromamba_available` so the fresh-project path gets a scaffold-then-proceed flow instead of the H.f.6 hard-error. Template content: `name: <sanitized-basename or env_name_flag>`, `channels: [conda-forge]`, `dependencies: [python=<ver>, pip]`. **Story N.bf.11:** 4th arg `include_conda_lock` (default `"true"`) appends `- conda-lock` so the env can run `pyve lock` out of the box; the caller resolves it via `_init_resolve_scaffold_conda_lock` (`--no-lock` → omit; interactive `[Y/n]` default-yes; non-interactive → include). H.f.7. |
 | `check_micromamba_env_exists` | `(env_name)` → 0/1 | Check if `.pyve/envs/<name>` exists |
 | `create_micromamba_env` | `(env_name, env_file?)` → 0/1 | Create environment from file |
 | `verify_micromamba_env` | `(env_name)` → 0/1 | Verify environment is functional |
@@ -1681,8 +1682,8 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--force` | `pyve init` | Purge and re-initialize |
 | `--auto-bootstrap` | `pyve init` | Auto-install micromamba |
 | `--bootstrap-to <loc>` | `pyve init` | Bootstrap location (project/user) |
-| `--strict` | `pyve init` | Enforce lock file validation |
-| `--no-lock` | `pyve init` | Bypass missing `conda-lock.yml` hard error |
+| `--strict` | `pyve init` | Bark on a declared-but-missing/stale lock; also opts out of scaffolding/inference |
+| `--no-lock` | `pyve init` | Don't use a lock this run (resolve from `environment.yml`, ignore any present lock without deleting it); skip the requirement (beats `--strict`); omit `conda-lock` from a fresh scaffold |
 | `--allow-synced-dir` | `pyve init` | Bypass cloud-synced directory check |
 | `--keep-testenv` | `pyve purge` | Preserve dev/test environment |
 | `--project-guide` | `pyve init` | Force project-guide hook (overrides auto-skip) |

@@ -566,57 +566,37 @@ cd "My ML Project"
 pyve init --backend micromamba  # Environment: my-ml-project
 ```
 
-### Lock File Validation
+### Lock Files (`conda-lock.yml`)
 
-Pyve validates conda lock files to ensure reproducibility:
+For micromamba projects, a `conda-lock.yml` pins every dependency (and its transitive deps) to exact versions per platform, so the environment builds byte-for-byte reproducibly. When a `conda-lock.yml` is present, Pyve builds the env *from the lock* rather than re-solving `environment.yml`.
 
-#### Lock File Status
+#### Whether a lock is required is declarative
+
+Pyve keys "is a lock required?" on **your own declaration** — whether `conda-lock` is a dependency in `environment.yml`:
+
+- **`conda-lock` declared, no lock yet** → `pyve init` proceeds and gently **nudges** you to run `pyve lock` when your dependencies are finalized. `pyve init --strict` instead **errors** (the production gate).
+- **`conda-lock` not declared** → no lock is expected; init proceeds silently (the pre-production default).
+
+A fresh micromamba scaffold declares `conda-lock` by default (interactive init asks; `--no-lock` omits it), so `pyve lock` works immediately — no edit-then-rebuild dance.
+
+#### `--strict` and `--no-lock`
+
+- **`--strict`** — turn the missing/stale-lock nudge into a hard error (for CI/CD reproducibility). Also opts out of scaffolding/inference.
+- **`--no-lock`** — for this run, don't use a lock: resolve from `environment.yml`, ignore any present `conda-lock.yml` (it is **never deleted**, even with `--force`), skip the requirement (beats `--strict`), and omit `conda-lock` from a fresh scaffold. To opt out permanently, remove `conda-lock` from `environment.yml`.
 
 ```bash
-pyve doctor  # Check lock file status
+pyve init --backend micromamba --strict --auto-bootstrap --no-direnv   # CI: require a fresh lock
+pyve init --backend micromamba --no-lock                                # skip locking this run
 ```
 
-**Status Indicators:**
-- ✓ **Up to date** - `conda-lock.yml` newer than `environment.yml`
-- ⚠ **Stale** - `environment.yml` modified after `conda-lock.yml`
-- ⚠ **Missing** - No `conda-lock.yml` found
-
-#### Strict Mode
-
-Use `--strict` to enforce lock file requirements:
+#### Generate / check a lock
 
 ```bash
-# Error if lock file is stale or missing
-pyve init --backend micromamba --strict
-
-# Useful for CI/CD to ensure reproducibility
-pyve init --backend micromamba --strict --auto-bootstrap --no-direnv
+pyve lock          # generate/update conda-lock.yml for the current platform
+pyve check         # report lock status (up to date / stale / missing-but-required)
 ```
 
-**Strict Mode Behavior:**
-- **Missing lock file** - Exits with error, suggests generating with `conda-lock`
-- **Stale lock file** - Exits with error, shows timestamps, suggests regenerating
-- **Up-to-date lock file** - Proceeds normally
-
-**Generate Lock Files:**
-```bash
-# Generate lock file for the current platform (recommended)
-pyve lock
-
-# Or invoke conda-lock directly (must know your platform string)
-conda-lock -f environment.yml -p osx-arm64  # macOS Apple Silicon
-conda-lock -f environment.yml -p linux-64   # Linux x86_64
-```
-
-**Example Output (Stale Lock File):**
-```
-⚠ Lock file: conda-lock.yml (stale)
-  environment.yml: 2026-01-06 02:15:30
-  conda-lock.yml:  2026-01-05 18:42:15
-
-ERROR: Lock file is stale (--strict mode)
-Regenerate with: conda-lock -f environment.yml
-```
+`pyve check` reports a missing lock as a finding only when `conda-lock` is declared; otherwise it reports it as "not required." A stale lock (`environment.yml` newer than `conda-lock.yml`) warns; re-run `pyve lock` to refresh, then `pyve init --force` to rebuild the env from the new lock.
 
 ## Commands
 
