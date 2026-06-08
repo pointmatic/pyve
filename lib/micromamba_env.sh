@@ -701,9 +701,20 @@ create_micromamba_env() {
     # Use -f for file (environment.yml or conda-lock.yml)
     # Use -y for yes (non-interactive)
     if "$micromamba_path" create -p "$env_path" -f "$env_file" -y; then
-        # Sibling .state so manifest_sha256 + the rest of the schema apply
-        # uniformly (N.bf.15 populates the hash from this `manifest` source).
-        state_write root micromamba manifest="$env_file"
+        # Sibling .state (Story N.bf.14). The drift-tracked manifest is
+        # `environment.yml` — the human-edited declarative source — even
+        # when the env builds from `conda-lock.yml` (the derived lock).
+        # `manifest_sha256` is its SHA-256 so the re-init "Update in-place"
+        # path can detect environment.yml edits (Story N.bf.15). When
+        # environment.yml is absent, fall back to the file actually used.
+        local _state_manifest="environment.yml" _state_sha=""
+        if [[ -f "environment.yml" ]]; then
+            _state_sha="$(pyve_file_sha256 environment.yml 2>/dev/null || true)"
+        else
+            _state_manifest="$env_file"
+            _state_sha="$(pyve_file_sha256 "$env_file" 2>/dev/null || true)"
+        fi
+        state_write root micromamba manifest="$_state_manifest" manifest_sha256="$_state_sha"
         log_success "Micromamba environment '$env_name' created successfully"
         return 0
     else

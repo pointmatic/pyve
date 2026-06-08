@@ -2241,7 +2241,7 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 - [x] Tests: fresh micromamba init → `<name>/conda/` + `.state`; `resolve_env_path root` correct; opportunistic move of a flat legacy env; `check` / `status` / `env list` unaffected. — new [test_main_micromamba_env_layout.bats](../../tests/unit/test_main_micromamba_env_layout.bats) (11 cases: helper, resolver both backends, mover move/idempotence/non-interference, create→root/conda+.state); [test_python_activate_emitter.bats](../../tests/unit/test_python_activate_emitter.bats) micromamba case updated to root slot; [test_utils.bats](../../tests/unit/test_utils.bats) vscode interpreter updated; integration [test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py) `--keep-testenv` assertions updated to root slot.
 - [x] Full suite; zero regressions. — 1880 Bats unit tests pass, 0 failures; shellcheck clean on the edited ranges (remaining warnings are pre-existing, on untouched lines). Integration assertions updated but not executed locally (require a real micromamba bootstrap; exercised in N.bf's a2 e2e retest).
 
-### Story N.bf.15: Hash-based `environment.yml`-drift detection + detect-and-offer on update [Planned]
+### Story N.bf.15: Hash-based `environment.yml`-drift detection + detect-and-offer on update [Done]
 
 **Blocked on N.bf.14** (main micromamba env → v3 `.state`). Once the main env has a sibling `.state`, this story populates `manifest_sha256` at build and compares it on update — no separate storage mechanism (the earlier "sentinel file" idea was a workaround for the missing `.state` and is dropped).
 
@@ -2259,11 +2259,11 @@ Does **not** mutate an existing user-authored `environment.yml`. After a yes/def
 
 **Tasks**
 
-- [ ] Decide nudge-only vs. interactive offer-to-rebuild; record the decision.
-- [ ] Store `sha256(environment.yml)` in the main env's `.state` `manifest_sha256` at every micromamba build path (depends on N.bf.14).
-- [ ] On "Update in-place", compare stored vs. current hash; surface drift per the decision.
-- [ ] Tests: unchanged `environment.yml` → no drift signal; edited → drift surfaced; missing/old state (pre-N.bf.15 env) handled gracefully (no false drift).
-- [ ] Full suite; zero regressions.
+- [x] Decide nudge-only vs. interactive offer-to-rebuild; record the decision. — **Nudge-only** (developer-favored boundary in the story sketch). On in-place update with drift, `warn` + point at option 2; the update path never rebuilds — preserving the honest "update preserves the environment" boundary N.bf.13 established. An interactive rebuild-offer inside the update path would re-muddy exactly that.
+- [x] Store `sha256(environment.yml)` in the main env's `.state` `manifest_sha256` at every micromamba build path (depends on N.bf.14). — `create_micromamba_env` (the single build path for `init` / `init --force` / rebuild) now records `manifest=environment.yml` + `manifest_sha256=$(pyve_file_sha256 environment.yml)`. **The drift-tracked manifest is `environment.yml` (the human-edited source) even when the env builds from `conda-lock.yml`** — so the on-update comparison is apples-to-apples; falls back to the built file only when no `environment.yml` exists. New portable hash helper `pyve_file_sha256` ([utils.sh](../../lib/utils.sh)): `sha256sum` → `shasum -a 256`, **no `cksum` fallback** (a true SHA-256, safe to reuse for N.bh's download verification — see new [project-essentials.md](project-essentials.md) entry).
+- [x] On "Update in-place", compare stored vs. current hash; surface drift per the decision. — `_init_environment_yml_drifted` ([plugin.sh](../../lib/plugins/python/plugin.sh)) compares live `sha256(environment.yml)` to the stored `manifest_sha256`; wired into the interactive re-init option-1 micromamba branch to emit the nudge when the env exists and drifted. Returns "no drift" for every missing-baseline case (no `environment.yml`, no `.state`, empty stored hash on a pre-N.bf.15/migrated env, no hash tool) — never a false signal.
+- [x] Tests: unchanged `environment.yml` → no drift signal; edited → drift surfaced; missing/old state (pre-N.bf.15 env) handled gracefully (no false drift). — new [test_environment_yml_drift.bats](../../tests/unit/test_environment_yml_drift.bats) (10 cases: `pyve_file_sha256` determinism/sensitivity/unreadable; `create_micromamba_env` stores the env.yml hash incl. the build-from-lock case; the full drift trichotomy + the three graceful no-baseline cases). The interactive nudge *emission* (warn+info, gated on the unit-tested helper) is exercised in N.bf's a2 e2e retest, consistent with N.bf.14's deferred integration coverage.
+- [x] Full suite; zero regressions. — 1890 Bats unit tests pass (1880 + 10 new), 0 failures; shellcheck clean on the new code.
 
 ### Story N.bf.[deprecated]: Scaffold `conda-lock` into the starter `environment.yml` by default (omit on `--no-lock`) [Superseded → N.bf.11]
 

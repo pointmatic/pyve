@@ -1135,6 +1135,35 @@ EOF
 }
 
 #============================================================
+# Content hashing
+#============================================================
+
+# Story N.bf.15: portable SHA-256 of a file's contents. Probes the two
+# tools that cover the OSes pyve supports — `sha256sum` (Linux/coreutils)
+# then `shasum -a 256` (macOS, where `sha256sum` is absent) — and prints
+# the 64-hex digest to stdout.
+#
+# Deliberately NO `cksum`/CRC fallback: this is a *true* SHA-256 so the
+# same helper is safe to reuse for N.bh's bootstrap-download verification
+# (comparing against a published SHA-256 checksum — a CRC would never
+# match and would defeat the security check). When neither tool exists,
+# returns non-zero with no output, so callers degrade safely:
+#   - drift detection (N.bf.15): treat as "can't tell" → no nudge.
+#   - download verification (N.bh): treat as "can't verify" → hard error.
+# Also returns non-zero if <file> is missing/unreadable.
+pyve_file_sha256() {
+    local file="$1"
+    [[ -r "$file" ]] || return 1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+#============================================================
 # Cloud Sync Detection
 #============================================================
 

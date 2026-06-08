@@ -1385,6 +1385,24 @@ _init_lock_nudge() {
     info "When your dependencies are finalized, run \`pyve lock\` to resolve them into the lock file."
 }
 
+# Story N.bf.15: has `environment.yml` changed since the main micromamba
+# env was built? Compares the live SHA-256 against the one stored in
+# root's `.state` (`manifest_sha256`, written by `create_micromamba_env`).
+# Returns 0 (drift) only when ALL of: environment.yml exists, root's
+# .state has a non-empty stored hash, and the two differ. Otherwise 1 —
+# including the graceful cases (no environment.yml, no .state, empty
+# stored hash on a pre-N.bf.15 or migrated env, or no hash tool available)
+# so a missing baseline never produces a false drift signal.
+_init_environment_yml_drifted() {
+    [[ -f "environment.yml" ]] || return 1
+    state_read root || return 1
+    local stored="${PYVE_TESTENV_STATE_MANIFEST_SHA256:-}"
+    [[ -n "$stored" ]] || return 1
+    local current
+    current="$(pyve_file_sha256 environment.yml 2>/dev/null)" || return 1
+    [[ "$current" != "$stored" ]]
+}
+
 # Select the environment file micromamba builds from. The default prefers a
 # present conda-lock.yml (reproducible) via detect_environment_file. `--no-lock`
 # (PYVE_NO_LOCK=1) overrides that for this run (Story N.bf.10): resolve from
@@ -1732,6 +1750,13 @@ init_project() {
                         if [[ -n "$_interactive_env_name" ]] && [[ ! -d "$_interactive_env_path" ]]; then
                             info "Environment '$_interactive_env_path' not found — creating it now..."
                             _interactive_env_missing=true
+                        elif _init_environment_yml_drifted; then
+                            # Story N.bf.15: environment.yml changed since the
+                            # env was built. Nudge-only — in-place update does
+                            # NOT rebuild (that would muddy "update preserves
+                            # the environment"); steer the user to option 2.
+                            warn "Your 'environment.yml' changed since this environment was built."
+                            info "In-place update does not apply dependency edits — re-run and choose option 2 (purge + rebuild) to apply them."
                         fi
                     fi
                     if [[ "$_interactive_env_missing" == false ]]; then
