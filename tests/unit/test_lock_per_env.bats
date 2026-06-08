@@ -242,3 +242,29 @@ TOML
     run lock_environment --bogus
     [ "$status" -ne 0 ]
 }
+
+# ============================================================
+# N.bf.7: conda-lock-missing advice points at a command that works
+# ============================================================
+#
+# Bare `pyve init --force` then hard-errors "No conda-lock.yml found"
+# (the N.bf.8 wall). Bootstrapping the locker means no lock can exist yet,
+# so the advice must name `pyve init --force --no-lock`. conda-lock is
+# absent from the base PATH (it lives inside micromamba envs), so the
+# guard fires naturally without stubbing.
+
+@test "pyve lock (main env): conda-lock-missing advice names 'pyve init --force --no-lock'" {
+    _fixture_mixed_lock
+    run lock_environment
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"conda-lock is not available"* ]]
+    [[ "$output" == *"pyve init --force --no-lock"* ]]
+}
+
+@test "pyve lock --env <conda-name>: conda-lock-missing advice names 'pyve init --force --no-lock'" {
+    _fixture_mixed_lock
+    run lock_environment --env hardware
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"conda-lock is not available"* ]]
+    [[ "$output" == *"pyve init --force --no-lock"* ]]
+}

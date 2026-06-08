@@ -144,7 +144,7 @@ _lock_main_env() {
     # Guard 3: conda-lock must be on PATH
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force --no-lock'."
         exit 1
     fi
 
@@ -264,7 +264,7 @@ _lock_one_env() {
 
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force --no-lock'."
         return 1
     fi
 

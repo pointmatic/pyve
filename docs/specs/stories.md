@@ -2044,7 +2044,7 @@ Both suggested fixes are wrong for this state: there is no `.envrc` to `allow`, 
 - [x] Test: asdf selected + asdf has python → init uses asdf, writes `.tool-versions` (not `.python-version`). — [test_env_detect.bats](../../tests/unit/test_env_detect.bats) "version-manager pick honored: asdf write lands in .tool-versions, not .python-version"; plus the re-detect-when-empty and no-resolvable cases in test_init_wizard.bats.
 - [x] Full suite; zero regressions. — 1838 Bats unit tests pass (1833 + 5 new), 0 failures; shellcheck clean on the edited ranges.
 
-### Story N.bf.7: `pyve lock`'s bootstrap advice walks into a wall (missing `--no-lock`) [Planned]
+### Story N.bf.7: `pyve lock`'s bootstrap advice walks into a wall (missing `--no-lock`) [Done]
 
 **Discovered:** v3.0.0a1 smoke test (micromamba `pyve-3-smoke`, trying to generate a lock).
 
@@ -2063,10 +2063,10 @@ Following it (edit `environment.yml`, `pyve init --force`) then hard-errors with
 
 **Tasks**
 
-- [ ] Assert the current advice text omits `--no-lock` (red).
-- [ ] Update both advice sites to `pyve init --force --no-lock`.
-- [ ] Test the message names the working command.
-- [ ] Full suite; zero regressions.
+- [x] Assert the current advice text omits `--no-lock` (red). — [test_lock_per_env.bats](../../tests/unit/test_lock_per_env.bats) two cases ("conda-lock-missing advice names 'pyve init --force --no-lock'") for the main-env and `--env <conda-name>` paths; conda-lock is absent from base PATH so the guard fires without stubbing.
+- [x] Update both advice sites to `pyve init --force --no-lock`. — [lock.sh:147](../../lib/commands/lock.sh#L147) (`_lock_main_env`) and [lock.sh:267](../../lib/commands/lock.sh#L267) (`_lock_one_env`), both updated via the shared advice string.
+- [x] Test the message names the working command. — both new cases assert the output contains `pyve init --force --no-lock` (and still names "conda-lock is not available").
+- [x] Full suite; zero regressions. — 1840 Bats unit tests pass (1838 + 2 new), 0 failures; shellcheck clean (only the pre-existing SC2148 no-shebang info on the sourced lib). Integration test `test_lock_success_output_references_pyve_init_force` still satisfied (asserts the `pyve init --force` substring, which the new text preserves).
 
 ### Story N.bf.8: `--force` rebuild is stricter than fresh init (no auto `--no-lock` when `environment.yml` exists) [Planned]
 
