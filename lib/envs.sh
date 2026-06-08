@@ -180,6 +180,15 @@ assert_env_name_actionable() {
     if [[ "$name" == "testenv" ]] || is_env_declared "$name"; then
         return 0
     fi
+    # Story N.bf.18: a non-reserved, non-declared name on a project that
+    # was never initialized should point at `pyve init`, not tell the user
+    # to "declare" an env in a project that doesn't exist yet. Init signal:
+    # `pyve.toml` (canonical v3) or `.pyve/config` (v2, read-compat window;
+    # the .pyve/config arm goes away with read-compat in N-10).
+    if [[ ! -f "pyve.toml" && ! -f ".pyve/config" ]]; then
+        printf "error: this isn't an initialized Pyve project — run 'pyve init' to set one up.\n" >&2
+        return 1
+    fi
     printf "error: testenv '%s' is not declared. Declare it under [tool.pyve.testenvs.%s] in pyproject.toml.\n" "$name" "$name" >&2
     return 1
 }

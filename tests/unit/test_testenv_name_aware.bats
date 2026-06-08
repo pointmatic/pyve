@@ -104,6 +104,7 @@ TOML
 
 @test "assert_env_name_actionable: undeclared name is rejected with [tool.pyve.testenvs] hint" {
     _fixture_named_envs
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
     read_env_config
     run assert_env_name_actionable bogus
     [ "$status" -ne 0 ]
@@ -210,6 +211,7 @@ TOML
 
 @test "ensure_env_exists: undeclared name is rejected with [tool.pyve.testenvs] hint" {
     _fixture_named_envs
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
     run ensure_env_exists bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]

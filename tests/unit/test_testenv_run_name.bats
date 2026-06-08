@@ -124,6 +124,7 @@ TOML
 
 @test "testenv run <undeclared> -- <cmd>: undeclared name rejected" {
     _fixture_named_envs
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
     run env_command run bogus -- pytest
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]

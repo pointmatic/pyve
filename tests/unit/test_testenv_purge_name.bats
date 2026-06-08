@@ -98,6 +98,7 @@ TOML
 
 @test "testenv purge <undeclared>: hard-errors with [tool.pyve.testenvs] hint" {
     _fixture_multi_envs
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
     run env_command purge bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]

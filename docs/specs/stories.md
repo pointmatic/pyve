@@ -2347,11 +2347,62 @@ $ ../pyve/pyve.sh purge          # ← finds a .pyve to remove, "succeeds"
 
 **Follow-up surfaced (2026-06-08):** `pyve env init <name>` on an *uninitialized* project errors `testenv '<name>' is not declared. Declare it under [tool.pyve.testenvs.<name>] in pyproject.toml.` — which (a) is a **v2-ism** (v3 declares envs in `pyve.toml` `[env.<name>]`, not `pyproject.toml` `[tool.pyve.testenvs.*]`), and (b) should first detect "not an initialized Pyve project → run `pyve init`." This is a distinct issue (`assert_env_name_actionable` in `lib/envs.sh`) — see Story N.bf.18.
 
+### Story N.bf.18: `pyve env <leaf> <name>` on an uninitialized project should say "run `pyve init`" before "not declared" [Done]
+
+**Discovered:** 2026-06-08 smoke test (`pyve env init foo` in an empty, never-initialized dir).
+
+**Symptom.** On a directory that was never `pyve init`'d:
+
+```
+$ ../pyve/pyve.sh env init foo
+error: testenv 'foo' is not declared. Declare it under [tool.pyve.testenvs.foo] in pyproject.toml.
+```
+
+The user has no Pyve project at all, so "declare it under …" is the wrong first thing to say — the actionable advice is **run `pyve init`**. (The message is also a v2-ism — that's the separate Story N.bf.19.)
+
+**Root cause.** [`assert_env_name_actionable`](../../lib/envs.sh#L170) jumps straight to reserved/declared-name validation with no awareness of whether this is an initialized Pyve project. The name-actionable env leaves (`env init|install|purge|run <name>`) all route through it, so none of them detect the uninitialized case.
+
+**Proposed fix.** Before the declared-name check in `assert_env_name_actionable` (or at the `env` dispatcher gate that calls it), detect "not an initialized Pyve project" and emit an init-pointing error instead. Reuse the established init signal — `pyve.toml` is the canonical v3 marker (and, during the v3.0 read-compat window, `.pyve/config` marks a v2 project). Mirrors the N.bf.4 precedent (`assert_python_resolvable` was taught to advise `pyve init` vs `direnv allow` based on init state).
+
+**Design question to settle.** What counts as "initialized" here — `pyve.toml` only, or `pyve.toml` **or** `.pyve/config` (so v2 projects in the read-compat window aren't wrongly told to re-init)? Lean: accept either during v3.0, drop `.pyve/config` in N-10.
+
+**Out of scope.** The v2-ism in the message + the declaration-surface rewire (Story N.bf.19); the no-name default path (`pyve env init` → reserved `testenv`) which already works without declaration.
+
+**Tasks**
+
+- [x] Reproduce: `pyve env init foo` (and a sibling leaf) on an uninitialized dir errors "not declared" rather than pointing at `pyve init` (red). — [test_env_name_init_gate.bats](../../tests/unit/test_env_name_init_gate.bats) "uninitialized project → points at 'pyve init'" (red under the old straight-to-not-declared path).
+- [x] Decide the init signal (`pyve.toml` only vs. `pyve.toml`/`.pyve/config`); record it. — **Accept either `pyve.toml` (canonical v3) or `.pyve/config` (v2, read-compat window).** The `.pyve/config` arm prevents wrongly telling a v2 project to re-init; it goes away with read-compat in N-10.
+- [x] Add the init-state check ahead of the declared-name validation; emit "this isn't an initialized Pyve project — run `pyve init`." — [envs.sh](../../lib/envs.sh) `assert_env_name_actionable`: the check sits AFTER the reserved-name (`root`, `testenv`) and declared-name success arms and BEFORE the not-declared error, so it fires only for a non-reserved, non-declared name on a project with neither init marker. All name-actionable leaves (`env init|install|purge|run <name>`) route through this one function, so they're covered uniformly. **Verified e2e:** `pyve env init foo` on an empty dir now prints "this isn't an initialized Pyve project — run 'pyve init' to set one up."
+- [x] Test: uninitialized → init-pointing error for `env init|install|purge|run <name>`; an initialized project still reaches the normal declared-name path (no false "run init"). — 5 new cases (uninitialized→init hint; pyve.toml→not-declared; `.pyve/config`→not-declared; reserved `testenv` still actionable; `root` still selection-only). Six pre-existing undeclared-name tests across `test_testenv_{init,install,run,purge}_name.bats` + `test_testenv_name_aware.bats` were missing an init marker (their `_fixture_*` set up `pyproject.toml [tool.pyve.testenvs]` but no `pyve.toml`/`.pyve/config` — an unrealistic half-state); added an inline `pyve.toml` marker so they test the undeclared-on-initialized path they intend.
+- [x] Full suite; zero regressions. — 1902 Bats unit tests pass (1897 + 5 new), 0 failures; shellcheck clean.
+
+### Story N.bf.19: `pyve env` name-validation reads the v2 `pyproject.toml [tool.pyve.testenvs]` surface, not the v3 `pyve.toml [env.<name>]` manifest [Planned]
+
+**Discovered:** 2026-06-08 smoke test (`pyve env init foo`) — deeper analysis of the same error.
+
+**Symptom.** The "not declared" error names the **v2** surface: `Declare it under [tool.pyve.testenvs.foo] in pyproject.toml.` Worse, the validation behind it actually *reads* that v2 surface — so even on a properly v3-initialized project with `[env.foo]` declared in `pyve.toml`, `pyve env init foo` would still say "foo is not declared." The canonical v3 declaration surface is invisible to the `env` namespace's own name checks.
+
+**Root cause.** `assert_env_name_actionable` / `is_env_declared` consult `PYVE_TESTENVS_NAMES`, populated by [`read_env_config`](../../lib/envs.sh#L48) which parses `pyproject.toml [tool.pyve.testenvs]` (the v2.8 / M-series named-testenv config) — **not** the v3 manifest `[env.<name>]` exposed via `manifest_load` / the `manifest_*` accessors. The error string at [envs.sh:183](../../lib/envs.sh#L183) hardcodes the v2 location. The whole `env` name-declaration path predates the `pyve.toml` consolidation and was never repointed.
+
+**Proposed fix (decide during debug).** Route `env`-name declaration checks through the v3 manifest (`[env.<name>]` via the `manifest_*` accessors), and correct the message to point at `pyve.toml [env.<name>]`. Source + message land together so the advice is never a broken instruction (telling a user to edit `pyve.toml` only works once validation reads it). **Read-compat:** during the v3.0 window a v2 project's `[tool.pyve.testenvs.*]` should still resolve (it's synthesized into the manifest by the existing read-compat — confirm coverage), with the v2 surface removed in N-10. Coordinate with N.bf.18 (init-state) since both touch the same `assert_env_name_actionable` path; sequence at the developer's discretion.
+
+**Relationship.** This is part of the broader v2→v3 testenvs-config consolidation (`[tool.pyve.testenvs]` → `[env.<name>]`); scope to the `env`-namespace name-validation path here, not a wholesale removal of `read_env_config` (other consumers — `pyve test --env`, install source dispatch — may still read it until their own migration).
+
+**Out of scope.** Removing `read_env_config` / the `[tool.pyve.testenvs]` reader outright (that's the N-10 read-compat sweep once all consumers are migrated); the init-state hint (N.bf.18).
+
+**Tasks**
+
+- [ ] Reproduce: with `[env.foo]` declared in `pyve.toml` (and no `pyproject.toml [tool.pyve.testenvs.foo]`), `pyve env init foo` still errors "not declared" (red).
+- [ ] Route the declared-name check through the v3 manifest `[env.<name>]` accessors; keep v2 `[tool.pyve.testenvs.*]` resolving during the v3.0 read-compat window.
+- [ ] Fix the "not declared" message to point at `pyve.toml [env.<name>]`.
+- [ ] Tests: v3-declared `[env.<name>]` is recognized; an undeclared name errors with the v3-surface message; a v2 `[tool.pyve.testenvs.<name>]` project still resolves during read-compat.
+- [ ] Full suite; zero regressions.
+
 `refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
 
-### Story N.bg: Fix pre-existing integration test failure [Done]
+### >Story N.bg: Fix pre-existing integration test failure [Done]
 
 **Motivation**: surfaced during story K.a.1 regression sweep, confirmed still problematic in story N.s.9. One integration test remains to re-check: `test_invalid_backend_in_config`, originally pinned for an `stderr`/`stdout` output-stream drift. Its original sibling failures are gone — the assertion fixes landed during Phase N, and a flaky cross-platform timeout was pushed to a future story. Re-checking the remaining one so it doesn't mask real regressions in `make test-integration`.
 
