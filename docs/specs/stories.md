@@ -2729,15 +2729,15 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. **Story breakdown drafted 2026-06-05: N.bp–N.br below** (grouped by artifact, not one-per-doc).
 
-### Story N.bp: brand-descriptions.md v3 reflow — complete the brand alignment [Planned]
+### Story N.bp: brand-descriptions.md v3 reflow — complete the brand alignment [Done]
 
 **Motivation.** [brand-descriptions.md](brand-descriptions.md) is the source-of-truth for Pyve's positioning copy (it feeds the site home + feature cards). Its **Benefits**, **Technical Description**, **Keywords**, and **Feature Cards** still carry the *v3 baseline — deferred to N-8* annotations; N-8 completes the full narrative reflow pivoting the positioning from "Python virtual-environment manager" to "declarative, polyglot project-environment orchestrator." Run via `refactor_document`.
 
 **Tasks**
 
-- [ ] `refactor_document` over **Benefits**, **Technical Description**, **Keywords**, **Feature Cards** — full reflow, clearing the deferred annotations; reflect plugins, named envs, multi-stack (Python + Node), the `pyve.toml` manifest, and `pyve self migrate`.
-- [ ] Reconcile the upstream framing (Name / Tagline / One-liner / Two-clause Technical Description, and the `# descriptions.md — Pyve (Python)` title) for the polyglot pivot — they must not still scope Pyve to "Python virtual environments" once the body says polyglot orchestrator (consistency pass).
-- [ ] **Do not market unshipped surfaces** as available — advisory backends and the `pyve lint` verb are roadmap, not shipped v3.0 capability.
+- [x] `refactor_document` over **Benefits**, **Technical Description**, **Keywords**, **Feature Cards** — full reflow, clearing the deferred annotations; reflect plugins, named envs, multi-stack (Python + Node), the `pyve.toml` manifest, and `pyve self migrate`.
+- [x] Reconcile the upstream framing (Name / Tagline / One-liner / Two-clause Technical Description, and the title) for the polyglot pivot — title de-scoped to `# brand-descriptions.md — Pyve`; Friendly Brief / Two-clause trimmed to shipped languages/backends; Note block de-changelogged. Taglines kept as brand heritage by developer call.
+- [x] **Do not market unshipped surfaces** as available — Ruby / Docker / Podman / Homebrew / apt moved to an explicit **Future (roadmap)** line; no `pyve lint` claims.
 
 ### Story N.bq: Canonical spec docs cascade — concept / features / tech-spec [Planned]
 
