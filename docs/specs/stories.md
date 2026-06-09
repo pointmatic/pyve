@@ -1877,19 +1877,25 @@ During the migration of Pyve v2.8 to v3.0, we have accumulated some necessary te
 - [x] Run the full test suite (`make test`); zero regressions expected. — 1822 Bats unit tests pass; venv integration 86 passed / 2 failed, both failures pre-existing & env-specific (`pyve init --python-version 3.12.13` cancels when 3.12.13 absent from asdf), proven identical on a stashed clean tree. Tracked by the `## Future` "Fix pre-existing integration test failures" story.
 - [x] If any finding warrants a Future story (the work is real but out of N-7's scope), add it under `## Future` with a clear motivation. — None warranted; all findings were immediate clear-cut removals.
 
-### Story N.bf: End-to-end test verification + N-7 project-essentials append (if any) [Planned]
+### Story N.bf: End-to-end test verification + N-7 project-essentials append (if any) [Done]
 
 **Motivation.** Final proof that the consolidation didn't break anything across the full polyglot matrix Phase N targets. Captures any new invariants that surfaced during N-7 if they meet the LLM-blunder bar per the working agreement on `project-essentials.md` scope.
 
 **Tasks**
 
-- [ ] Run the full test suite from a clean checkout (`make test` from a fresh `git clean -fdx` working tree); zero regressions expected.
-- [ ] Re-run the polyglot matrix sweep from N.al's pattern (Python-only / Node-only / polyglot Python+Node fixtures): `pyve init`, `pyve env install`, `pyve check`, `pyve status`, `pyve env run <cmd>`, `pyve test`, `pyve purge --force`. Verify outputs match per-fixture snapshots from N.al / N.av.5.
-- [ ] If the test naming convention itself warrants a [project-essentials.md](project-essentials.md) entry per the LLM-blunder criterion (e.g., "test files are named by capability/surface, not by story ID; story-IDed names are a Phase N migration artifact that was cleaned up in N-7" — preventing a future LLM from re-introducing the pattern), append it. Otherwise skip per the working agreement.
-- [ ] Similarly, if N.be's survey surfaced any invariants worth pinning in `project-essentials.md`, capture them here. Skip if none meet the bar.
-- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
+- [-] (too intrusive) Run the full test suite from a clean checkout (`make test` from a fresh `git clean -fdx` working tree); zero regressions expected.
+- [x] Re-run the polyglot matrix sweep from N.al's pattern (Python-only / Node-only / polyglot Python+Node fixtures): `pyve init`, `pyve env install`, `pyve check`, `pyve status`, `pyve env run <cmd>`, `pyve test`, `pyve purge --force`. Verify outputs match per-fixture snapshots from N.al / N.av.5.
+  - Re-ran all combinations and found functional success. UI/UX needs help, but that is planned for Phase O.
+- [x] If the test naming convention itself warrants a [project-essentials.md](project-essentials.md) entry per the LLM-blunder criterion (e.g., "test files are named by capability/surface, not by story ID; story-IDed names are a Phase N migration artifact that was cleaned up in N-7" — preventing a future LLM from re-introducing the pattern), append it. Otherwise skip per the working agreement.
+- [x] Similarly, if N.be's survey surfaced any invariants worth pinning in `project-essentials.md`, capture them here. Skip if none meet the bar.
+- [x] **Post-N-7 project-essentials append — the N.bm/N.bo CI-hardening arc + a live environment-corruption incident.** Four standing entries appended to [project-essentials.md](project-essentials.md), each costing real debugging time this cycle (well above the LLM-blunder bar):
+  1. *Installed `pyve` vs working-tree `./pyve.sh` can be different major versions* — the meta-trap where the LLM reasons from v3 tree code about a v2 install and prescribes nonexistent commands (`pyve self provision`) / asdf-coupled "repairs" that invert v3's design; plus PATH-slot resolution reasoning (a direnv `.venv` shadows the asdf `.tool-versions` pin; a `~/.local/bin` shim precedes the asdf shims). Skew *detection* is forward-pointed to Subphase N-11.
+  2. *Running the integration suite locally mutates real `~/.local` / `~/.asdf`* via `_isolate_home`'s version-manager symlinks — provisioning tests dangle a developer's real toolchain venv + project-guide shim; plus the `PYVE_PROJECT_GUIDE_BIN` hermetic-stub seam (from N.bo) that PATH-only stubs need because hosted resolution ignores PATH.
+  3. *Never pipe a still-writing producer into `grep -q` under `pipefail`* — the SIGPIPE-141 class fixed in N.bf.6 and again in N.bm; capture-then-grep.
+  4. *Health checks must probe runnability, not existence* — `[[ -x ]]` passes for a dead-shebang/dangling artifact, the trap that would have let `pyve check` rubber-stamp the corrupted toolchain venv; systematic fix scoped into Subphase N-11.
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; CHANGELOG lands at N-9's v3.0.0 release).
 
-**Bugs surfaced during N.bf verification — captured as N.bf.1–N.bf.3.** The manual v3.0.0a1 smoke test (2026-06-07, dev checkout `../pyve/pyve.sh` run against a sibling project `pyve-3-smoke`) exposed a connected cluster of three defects in the purge/init lifecycle. All pre-existing in the v3.0 composed-purge / composed-init design — **not** introduced by N-7. Shared reproduction:
+**Bugs surfaced during N.bf verification — captured as N.bf.1–N.bf.22 and N.bh/i/j/k/l/m/n/o.** The manual v3.0.0a1 smoke test (2026-06-07, dev checkout `../pyve/pyve.sh` run against a sibling project `pyve-3-smoke`) exposed a connected cluster of three defects in the purge/init lifecycle. All pre-existing in the v3.0 composed-purge / composed-init design — **not** introduced by N-7. Shared reproduction:
 
 ```
 cd <fresh-project>
