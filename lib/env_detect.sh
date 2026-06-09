@@ -107,13 +107,22 @@ detect_version_manager() {
 # Returns 0 if installed, 1 if not
 is_python_version_installed() {
     local version="$1"
-    
+    local installed
+
+    # Capture the manager's version list first, then match with a here-string.
+    # Piping straight into `grep -q` lets grep close the pipe on its first
+    # match while the manager is still writing later versions — the producer
+    # then takes SIGPIPE (141), and under `set -o pipefail` that propagates as
+    # a false "not installed" (e.g. 3.12.10 matched, 3.14.5 written after it).
+    # Same trap captured-then-greped in detect_version_manager above.
     case "$VERSION_MANAGER" in
         asdf)
-            asdf list python 2>/dev/null | grep -q "$version"
+            installed="$(asdf list python 2>/dev/null || true)"
+            grep -q "$version" <<<"$installed"
             ;;
         pyenv)
-            pyenv versions --bare 2>/dev/null | grep -q "^${version}$"
+            installed="$(pyenv versions --bare 2>/dev/null || true)"
+            grep -q "^${version}$" <<<"$installed"
             ;;
         *)
             return 1
@@ -182,7 +191,18 @@ install_python_version() {
 # Returns 0 on success, 1 on failure
 ensure_python_version_installed() {
     local version="$1"
-    
+
+    # TEMP insurance (gated on PIN_DIAG): confirm the SIGPIPE fix held on the
+    # macOS-CI validation run — one line with the gate verdict + the version
+    # list it saw. Silent unless PIN_DIAG is set. Remove once CI is green.
+    if [[ -n "${PIN_DIAG:-}" ]]; then
+        local _pin_list _pin_res
+        _pin_list="$(pyenv versions --bare 2>/dev/null || true)"
+        if is_python_version_installed "$version"; then _pin_res="INSTALLED"; else _pin_res="NOT_INSTALLED"; fi
+        printf 'PIN_DIAG gate: version=%s VM=%s -> %s  list=[%s]\n' \
+            "$version" "${VERSION_MANAGER:-}" "$_pin_res" "$(printf '%s' "$_pin_list" | tr '\n' ' ')" >&2
+    fi
+
     # Check if already installed
     if is_python_version_installed "$version"; then
         return 0

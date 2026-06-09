@@ -2654,6 +2654,43 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 ---
 
+### Story N.bm: macOS-CI false "Python not installed" — SIGPIPE in `is_python_version_installed` under `pipefail` [Done]
+
+**Motivation.** Integration tests that pin an installed pyenv version and clear `CI`/`PYVE_FORCE_YES` (`test_install_with_completion_wires_everything`, `test_update_refreshes_managed_templates`, assorted `test_run_command` cases) failed **only on the macOS-3.12 runner** and **only in the full suite** — `pyve init` reported `Python 3.12.10 is not installed but is available via pyenv` and cancelled at the suppressed prompt → `rc 1`. Run in isolation, the same tests passed. The N.bg→N.bl "pre-existing CI-environment integration failure" class; N.bl's harness-side auto-pin guard addressed a sibling symptom, not this root cause.
+
+**Root cause.** `is_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)) checked the version with `pyenv versions --bare 2>/dev/null | grep -q "^${version}$"`. Under pyve's `set -o pipefail`, when the matched version is followed by more output, `grep -q` exits on the first match and closes the pipe; `pyenv` (still writing later versions) takes **SIGPIPE (141)**, and `pipefail` propagates that as the pipeline status → the check returns non-zero → "not installed." This is the **identical** SIGPIPE-under-`pipefail` trap fixed for `detect_version_manager` in Story N.bf.6; that sweep never reached this sibling function.
+
+**Why macОS-3.12 and full-suite-only (the order dependence that masked it).** The pyenv root (`/Users/runner/.pyenv`) is **shared** across the whole job — `_isolate_home` fakes `$HOME` but not the pyenv root. Run alone, only `3.12.10` is installed, so it is the *last* line of `pyenv versions --bare` (nothing written after the match → no SIGPIPE → pass). In the full suite an earlier test provisions the toolchain's `3.14.5` into that shared root, so `3.12.10` is now followed by `3.14.5` → grep closes early → SIGPIPE → fail. A temporary CI gate-dump proved it: `PYENV_ROOT` was already the real root, `pyenv versions --bare` listed `3.12.10` cleanly on stdout via both the `pyenv init -` shell function and the raw binary, yet `is_python_version_installed → FALSE`; a `| tr` read of the same command (no early close) saw it fine.
+
+**Discarded hypotheses (recorded so they are not re-explored).** (1) An inherited-`PYENV_ROOT`-clobber in `source_shell_profiles` — the dump showed `PYENV_ROOT` was already correct; the speculative `${PYENV_ROOT:-…}` guard was reverted with the rest of the investigation scaffolding. (2) `pyenv init -`'s shell function routing the list to stderr — both function and raw binary write cleanly to stdout. (3) asdf winning version-manager detection — the init log confirmed pyenv.
+
+**Fix.** Capture-then-`grep` (here-string, no pipe → no SIGPIPE) in both the `asdf` and `pyenv` branches of `is_python_version_installed`, exactly as N.bf.6 did for `detect_version_manager`. Pure correctness fix; behavior is unchanged when no version follows the match.
+
+**Tasks**
+
+- [x] Test-first regression: `is_python_version_installed: pyenv match followed by more output under pipefail → status 0` in [tests/unit/test_env_detect.bats](../../tests/unit/test_env_detect.bats), with a `PYENV_VERSIONS_NOISE` hook on the pyenv shim (mirrors `ASDF_PLUGIN_LIST_NOISE`). Confirmed red against the piped form, green after.
+- [x] Fix `is_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)): capture the manager's list into a local, then `grep -q … <<<"$installed"` — both `asdf` and `pyenv` branches.
+- [x] **Prevention scan** — swept `lib/` for other `<live-command> | grep -q` gates under `pipefail`. Found and fixed one more instance: `_is_asdf_node_active` in [lib/plugins/node/runtime_detect.sh](../../lib/plugins/node/runtime_detect.sh) (`asdf plugin list | grep -qx 'nodejs'`) → capture-then-grep. `is_python_version_available` already captures first (safe); `detect_version_manager` was fixed in N.bf.6. No other live-pipe-into-`grep -q` gates remain.
+- [x] Full bats unit suite green (1928 ok, 0 fail).
+- [x] Added a temporary `PIN_DIAG` gate-verdict dump (insurance) in `ensure_python_version_installed` + `export PIN_DIAG=1` in the integration CI job — kept until macOS-CI confirms green, then removed. Cleanup tracked in **N.bn**.
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; bundles into v3.0.0).
+
+---
+
+### Story N.bn: Remove N.bm's SIGPIPE-fix instrumentation once macOS-CI confirms green [Planned]
+
+**Motivation.** N.bm shipped a temporary one-line `PIN_DIAG` gate-verdict dump in `ensure_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)) plus `export PIN_DIAG=1` in the integration job ([.github/workflows/test.yml](../../.github/workflows/test.yml)) as **insurance**. The macOS-3.12 SIGPIPE failure is order-dependent and only reproduces in the full suite, so rather than de-instrument before a real CI run confirms the fix (the mistake made earlier in this investigation), the diagnostic stays in until macOS-3.12 is observed green. On a *failing* run the dump rides the test's `result.stderr` (`version=… -> NOT_INSTALLED list=[…]`, or `INSTALLED` meaning a *different* failure) for immediate diagnosis with no re-instrument round-trip; on a *green* run it is silent (pytest suppresses passing tests' captured output). This story closes the loop: confirm green, then remove the insurance.
+
+**Tasks**
+
+- [ ] Confirm macОS-3.12 and the rest of the matrix are green on a full-suite CI run carrying the N.bm fix.
+- [ ] Remove the `PIN_DIAG` gate-verdict block from `ensure_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)).
+- [ ] Remove `export PIN_DIAG=1` from the integration step in [.github/workflows/test.yml](../../.github/workflows/test.yml).
+- [ ] (Optional follow-up) Dedicated Node regression test for the `_is_asdf_node_active` SIGPIPE fix — the env_detect test proves the pattern; a Node-shim noise test would lock it in locally.
+- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned).
+
+---
+
 ## Subphase N-8: Documentation refresh + brand alignment
 
 Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. Description only; story breakdown deferred to its `plan_production_phase` session.

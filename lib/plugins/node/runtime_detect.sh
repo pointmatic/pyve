@@ -69,7 +69,12 @@ is_volta_active() {
 _is_asdf_node_active() {
     [[ -n "${PYVE_NO_ASDF_COMPAT:-}" ]] && return 1
     command -v asdf >/dev/null 2>&1 || return 1
-    asdf plugin list 2>/dev/null | grep -qx 'nodejs' || return 1
+    # Capture-then-grep: piping into `grep -qx` lets grep close the pipe on
+    # the match while `asdf plugin list` is still writing → SIGPIPE (141),
+    # which `set -o pipefail` turns into a false "not active."
+    local plugins
+    plugins="$(asdf plugin list 2>/dev/null || true)"
+    grep -qx 'nodejs' <<<"$plugins" || return 1
     return 0
 }
 

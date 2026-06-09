@@ -97,6 +97,14 @@ case "$1" in
     versions)
         # "pyenv versions --bare"
         for v in ${PYENV_INSTALLED_VERSIONS:-}; do echo "$v"; done
+        # Opt-in noise emitted AFTER the listed versions so that a consumer
+        # using `grep -q` (exits on first match) closes the pipe while this
+        # producer is still writing → SIGPIPE (141). Under `set -o pipefail`
+        # that propagates as the pipeline status — the false-negative this
+        # guards (same class as ASDF_PLUGIN_LIST_NOISE).
+        if [[ "${PYENV_VERSIONS_NOISE:-0}" == "1" ]]; then
+            for ((__i=0; __i<100000; __i++)); do echo "noise-$__i"; done
+        fi
         exit 0
         ;;
     install)
@@ -273,6 +281,25 @@ EOF
 
     run is_python_version_installed "3.13.7"
     assert_status_equals 0
+}
+
+@test "is_python_version_installed: pyenv match followed by more output under pipefail → status 0" {
+    # `pyenv versions --bare | grep -q "^X$"` false-negatives under
+    # `set -o pipefail` when pyenv keeps writing versions after the match:
+    # grep exits on first match → pipe closes → pyenv takes SIGPIPE (141) →
+    # pipefail makes the pipeline non-zero → "not installed". This was the
+    # macOS-CI failure (3.12.10 matched, 3.14.5 written after it). The fix
+    # captures-then-greps so no pipe (and no SIGPIPE) is involved.
+    make_pyenv_shim
+    export PYENV_INSTALLED_VERSIONS="3.12.10"
+    export PYENV_VERSIONS_NOISE=1
+    VERSION_MANAGER="pyenv"
+
+    set -o pipefail
+    local rc=0
+    is_python_version_installed "3.12.10" || rc=$?
+    set +o pipefail
+    [ "$rc" -eq 0 ]
 }
 
 @test "is_python_version_installed: pyenv, version not listed → status 1" {
