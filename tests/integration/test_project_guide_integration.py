@@ -189,6 +189,13 @@ def _install_pg_stub(monkeypatch, tmp_path):
     stub.write_text(_PG_STUB_SCRIPT.replace("__CANON__", _PG_STUB_CANON))
     stub.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    # pyve's internal callsites resolve project-guide by HOSTED absolute path
+    # (toolchain venv → ~/.local/bin shim), which deliberately ignores PATH
+    # (lib/toolchain_python.sh § pyve_project_guide). A PATH-only stub is
+    # therefore never invoked — pyve runs whatever real project-guide the
+    # runner has hosted. Pin the override seam to this stub so the hook
+    # genuinely routes here and stays network-free + runner-independent.
+    monkeypatch.setenv("PYVE_PROJECT_GUIDE_BIN", str(stub))
     return bin_dir
 
 

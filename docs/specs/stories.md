@@ -2691,6 +2691,33 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 ---
 
+### Story N.bo: integration `project-guide` stub bypassed by hosted-absolute-path resolution — `PYVE_PROJECT_GUIDE_BIN` override seam [Done]
+
+**Motivation.** With N.bm's SIGPIPE fix confirmed green, the same macOS-CI validation run (`logs_73159472933`) surfaced a **distinct, all-platform** integration failure: `test_project_guide_integration.py::TestRefreshOnReinit::test_force_reinit_update_failure_is_non_fatal` failed on **every** integration job — ubuntu/macOS × 3.12/3.14 **and** the kcov coverage job. This is not a SIGPIPE regression: the run's own `PIN_DIAG` dump reads `version=3.12.13 VM=pyenv -> INSTALLED list=[3.12.13 3.14.5]` (a match followed by more output, correctly INSTALLED), so the N.bm fix held. The failing test sets `PG_STUB_FAIL_UPDATE=1` to force the stubbed `project-guide update` to exit non-zero, then asserts `pyve init --force` surfaces a failure warning and continues — but CI shows `✔ project-guide artifacts refreshed` (update **succeeded**), so no warning, assertion fails.
+
+**Root cause.** Pyve resolves `project-guide` at internal callsites by **hosted absolute path** — `pyve_project_guide` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) returns the toolchain venv console script → `~/.local/bin/project-guide` shim → bare `project-guide`, in that order — which **deliberately ignores PATH** (the N.bf.22 fix that stops an active asdf shim dir from hijacking the name). The integration harness's `_install_pg_stub` ([tests/integration/test_project_guide_integration.py](../../tests/integration/test_project_guide_integration.py)) injects its network-free stub onto **PATH only**, while `_isolate_home` symlinks the real `~/.local` into the fake `$HOME`. So pyve runs the **real hosted project-guide by absolute path**; the stub — and its `PG_STUB_FAIL_UPDATE` knob — is never invoked. The PATH-only stub harness predates N.bf.22's hosted resolution and has been silently bypassed ever since.
+
+**Why this one test and not the others.** `test_force_reinit_update_failure_is_non_fatal` is the only `_install_pg_stub` consumer that needs the stub to do something the **real** binary won't — fail on demand. The siblings (`test_force_reinit_restores_modified_template_with_backup`, `test_update_refreshes_managed_templates`, the fall-back-to-init case, …) coincidentally passed because the real hosted `project-guide update` performs the same template-refresh/backup the stub emulates. They were green for the wrong reason (not hermetic), not genuinely exercising the stub.
+
+**Fix (two parts).**
+
+1. **Product test seam.** Add a `PYVE_PROJECT_GUIDE_BIN` override honored at **top precedence** by every project-guide predicate — `pyve_project_guide`, `pyve_project_guide_available`, `pyve_project_guide_is_hosted`, `pyve_project_guide_ensure` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) — mirroring `PYVE_PYTHON` in `pyve_toolchain_python` ("tests + power users"). Since hosted resolution ignores PATH, an env override is the **only** seam by which a test (or a power user pointing at a specific build) can redirect resolution. A set override is treated as a fully hosted, runnable binary: `ensure` short-circuits to success with **no venv build and no network pip**.
+2. **Harness.** `_install_pg_stub` now also exports `PYVE_PROJECT_GUIDE_BIN=<stub>` (PATH injection kept for the completion-guard `command -v` reference), so **every** consumer genuinely routes through the network-free stub — hermetic and independent of whatever real project-guide the runner has hosted.
+
+**Tasks**
+
+- [x] Test-first: 4 regression tests in [tests/unit/test_project_guide_hosting.bats](../../tests/unit/test_project_guide_hosting.bats) — override outranks the toolchain venv; `is_hosted` true via override with no real hosting; `ensure` no-ops (no venv dir created) under override; `run_project_guide_update_in_env` surfaces an override's non-zero exit as a non-fatal warning. Confirmed red against the unpatched resolvers, green after.
+- [x] Add the `PYVE_PROJECT_GUIDE_BIN` override to all four project-guide resolvers in [lib/toolchain_python.sh](../../lib/toolchain_python.sh).
+- [x] `_install_pg_stub` exports `PYVE_PROJECT_GUIDE_BIN=<stub>` ([tests/integration/test_project_guide_integration.py](../../tests/integration/test_project_guide_integration.py)).
+- [x] Originally-failing test green locally; full `test_project_guide_integration.py` suite **15/15** green (siblings now genuinely hermetic via the stub).
+- [x] **Prevention scan** — swept `tests/` for other PATH-only `project-guide` stubs pyve would bypass. The integration `_install_pg_stub` was the sole instance; the bats unit stubs construct the **hosted absolute path** (toolchain venv / `~/.local/bin` shim) or asdf-shim simulations directly, so they were never PATH-dependent and are unaffected.
+- [x] Full bats unit suite green (**1932 ok, 0 fail** — +4 from this story).
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned; bundles into v3.0.0).
+
+> **Unblocks N.bn:** this was the last failure keeping the matrix from all-green. Once N.bo lands and CI reruns clean, N.bn's first task (matrix-green confirmation) is satisfied and its `PIN_DIAG` instrumentation can be removed.
+
+---
+
 ## Subphase N-8: Documentation refresh + brand alignment
 
 Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. Description only; story breakdown deferred to its `plan_production_phase` session.
@@ -2742,6 +2769,30 @@ The process exit code is correct (non-zero); only the visual footer lies.
 - [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
 - [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
 - [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
+
+---
+
+## Subphase N-11: Harden and heal Pyve
+
+Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). Theme: make Pyve's environment resolution **bulletproof**, and — when the armor is pierced — give Pyve a **healing mechanism**. This is the "calm the chaos" mission applied to Pyve's own substrate: the developer should never have to hand-trace PATH order, version-manager pins, and venv symlinks to understand why a command misbehaves, and never have to hand-repair Pyve-managed state.
+
+**Triggering incident (field-discovered 2026-06-09).** A developer's `project-guide` invocation in the pyve repo broke with a cryptic `No version is set for command project-guide` naming a Python `3.14.3` they could not place. Untangling it took a long manual trace across **four independent layers**, none of which any Pyve command could see or explain:
+
+1. **PATH shadowing.** `python` reported 3.14.4 while `.tool-versions` pinned 3.12.13 — because direnv had prepended an activated `.venv/bin` ahead of `~/.asdf/shims`, so the asdf pin never governed `python` at all. `project-guide`, present in neither `.venv` nor `~/.local/bin`, fell through to the asdf shim where the 3.12.13 pin *did* apply — and 3.12.13 had no project-guide.
+2. **Interpreter drift.** The `.venv` python was a frozen symlink to asdf 3.14.4 (its creation-time interpreter), drifted from the now-3.12.13 pin — a venv never tracks later `.tool-versions` edits.
+3. **Dead Pyve-managed artifacts.** `~/.local/bin/project-guide` was a dangling symlink, and the hosted toolchain venv's `project-guide` had a `bad interpreter` shebang — both pointing at a deleted path. Yet both passed Pyve's existence checks.
+4. **The 3.14.3 mystery.** project-guide 2.12.0 happened to be pip-installed into one asdf interpreter (3.14.3); asdf surfaced that version number in its rejection message, with no context a human could decode.
+
+**Core anti-pattern to eliminate: existence ≠ runnability.** Pyve's health/hosting code asserts that artifacts *exist* (`-x` / `-f` / `-d`) rather than that they *run*. The canonical trap: [`_compose_check_pyve_hosting`](../../lib/check_composer.sh#L121) reports `project-guide hosting: provisioned` on `[[ -x "$venv_dir/bin/python" ]]`, which passes for a venv whose python symlink targets a deleted interpreter. Story N.bo began the correction at the project-guide resolver (a runnability-honoring `PYVE_PROJECT_GUIDE_BIN` override seam); this subphase generalizes it across the codebase.
+
+**Design pillars (planner to decompose into stories).**
+
+1. **Runnability probes.** Replace existence checks throughout hosting/health code with probes that actually execute the artifact (`python --version`, `project-guide --version`, version-manager resolution) and classify the failure: dead interpreter, asdf "no version set", dangling symlink, missing command, version-manager-not-installed. A health check that can be fooled by a broken symlink is not a health check.
+2. **Resolution reasoning in `pyve check`.** Turn the manual trace into automated narrative: for each managed command, report *where* it resolves and *why* — PATH-slot ordering, venv-shadows-pin, reachability under the active pin, venv↔pin interpreter drift — in the plain language a human had to reconstruct by hand. `check` should have said, unprompted: "`python` resolves from `.venv` (3.14.4), shadowing the asdf pin (3.12.13); `project-guide` falls through to the asdf shim under that pin, which has no project-guide → install it into 3.12.13 or repoint the pin."
+3. **Healing mechanism (`pyve heal`, or `pyve check --fix`).** Safe, idempotent, **confirm-before-destroy** repairs for every failure class the probes detect: rebuild a toolchain venv with a dead interpreter; re-link a dangling `~/.local/bin` shim; rebuild a `.venv` whose interpreter drifted from the pin (destructive → explicit confirmation); install a missing managed command into the *selected* interpreter. Reversible and re-runnable; never silently mutates without surfacing what it will do.
+4. **Close the upstream cause — the test-isolation leak.** The triggering incident was *manufactured by Pyve's own test suite*: [`_isolate_home`](../../tests/integration/test_project_guide_integration.py#L211-L217) (integration harness) symlinks the developer's **real** `~/.asdf` and `~/.local` into the test's fake `$HOME`, so any project-guide/toolchain-provisioning test writes hosting artifacts into real developer state — which dangles when the test's tmpdir is cleaned up. Re-scope `_isolate_home` so the suite can never again mutate a real home (provision into a fully self-contained fake `$HOME`, or stub provisioning entirely). N.bo's `PYVE_PROJECT_GUIDE_BIN` seam closes one path; the version-manager (`.asdf`) and self-install paths remain open.
+
+**Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Subphase N-10 (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
 
 ---
 

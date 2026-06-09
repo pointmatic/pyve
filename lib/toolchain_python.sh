@@ -78,12 +78,23 @@ pyve_toolchain_python() {
 # (Story N.at); Story N.bf.22 extends it to the hosted project-guide.
 #
 # Precedence:
+#   0. PYVE_PROJECT_GUIDE_BIN        — explicit override, highest priority
+#                                      (tests + power users), mirroring
+#                                      PYVE_PYTHON in pyve_toolchain_python.
+#                                      The hosted-absolute-path resolution
+#                                      below deliberately ignores PATH, so an
+#                                      env override is the only seam by which
+#                                      a test can redirect to a stub.
 #   1. toolchain venv console script — the canonical hosted binary
 #   2. ~/.local/bin/project-guide   — the `self install` shim (a symlink to #1)
 #   3. bare `project-guide`         — PATH fallback (non-asdf / hand-installed)
 # Always prints SOMETHING so callers can use it directly as
 # `local pg="$(pyve_project_guide)"`.
 pyve_project_guide() {
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        printf '%s' "$PYVE_PROJECT_GUIDE_BIN"
+        return 0
+    fi
     local venv_pg
     venv_pg="$(pyve_toolchain_venv_dir)/bin/project-guide"
     if [[ -x "$venv_pg" ]]; then
@@ -103,6 +114,10 @@ pyve_project_guide() {
 # for a hosted absolute path, test it is executable; for the bare-PATH
 # fallback, fall back to `command -v`.
 pyve_project_guide_available() {
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        [[ -x "$PYVE_PROJECT_GUIDE_BIN" ]]
+        return
+    fi
     local pg
     pg="$(pyve_project_guide)"
     if [[ "$pg" == "project-guide" ]]; then
@@ -118,6 +133,10 @@ pyve_project_guide_available() {
 # resolution or (re)provision — a bare-PATH `project-guide` under active
 # asdf is a trap, not a real hosted tool.
 pyve_project_guide_is_hosted() {
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        [[ -x "$PYVE_PROJECT_GUIDE_BIN" ]]
+        return
+    fi
     [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]] || [[ -x "$HOME/.local/bin/project-guide" ]]
 }
 
@@ -143,6 +162,12 @@ pyve_link_project_guide_shim() {
 # as "skip project-guide", never as a hard abort). Install-method-agnostic:
 # works for Homebrew and source installs alike, independent of `self install`.
 pyve_project_guide_ensure() {
+    # An explicit override is already a runnable project-guide — never
+    # provision (no venv build, no network pip) when it is set.
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        [[ -x "$PYVE_PROJECT_GUIDE_BIN" ]]
+        return
+    fi
     local venv_dir target pip
     venv_dir="$(pyve_toolchain_venv_dir)"
     target="$venv_dir/bin/project-guide"

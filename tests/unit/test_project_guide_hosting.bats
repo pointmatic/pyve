@@ -27,6 +27,7 @@ setup() {
     export HOME="$TEST_DIR/home"          # redirect ~/.local/bin shim target
     export DEFAULT_PYTHON_VERSION="3.14.4"
     unset PYVE_PYTHON
+    unset PYVE_PROJECT_GUIDE_BIN
     cd "$TEST_DIR"
 }
 
@@ -168,6 +169,62 @@ SH
     _make_toolchain_venv ok
     run pyve_project_guide_available
     assert_status_equals 0
+}
+
+#------------------------------------------------------------
+# PYVE_PROJECT_GUIDE_BIN override — the explicit test/power-user seam,
+# mirroring PYVE_PYTHON in pyve_toolchain_python. Internal callsites resolve
+# project-guide by absolute path (toolchain venv → shim), which deliberately
+# ignores PATH; an env override is the only way for a test to redirect the
+# resolution to a stub. Honored at top precedence by every project-guide
+# predicate so a set override is treated as a fully hosted, runnable binary.
+#------------------------------------------------------------
+
+# A standalone executable that is NOT under the toolchain venv or ~/.local/bin,
+# proving the override outranks (and works without) real hosting.
+_make_pg_override() {
+    local script="$TEST_DIR/override-pg"
+    cat > "$script" <<SH
+#!/bin/sh
+echo "OVERRIDE_PG ran: \$*"
+exit ${1:-0}
+SH
+    chmod +x "$script"
+    printf '%s' "$script"
+}
+
+@test "pyve_project_guide: PYVE_PROJECT_GUIDE_BIN overrides the toolchain venv console script" {
+    _make_toolchain_venv ok            # real hosting present...
+    local ov; ov="$(_make_pg_override)"
+    export PYVE_PROJECT_GUIDE_BIN="$ov" # ...but the override wins
+    run pyve_project_guide
+    [[ "$output" == "$ov" ]]
+}
+
+@test "pyve_project_guide_is_hosted: true when PYVE_PROJECT_GUIDE_BIN points at an executable (no real hosting)" {
+    local ov; ov="$(_make_pg_override)"
+    export PYVE_PROJECT_GUIDE_BIN="$ov"
+    run pyve_project_guide_is_hosted   # no toolchain venv, no shim
+    assert_status_equals 0
+}
+
+@test "pyve_project_guide_ensure: no-op (no provisioning) when PYVE_PROJECT_GUIDE_BIN is set" {
+    local ov; ov="$(_make_pg_override)"
+    export PYVE_PROJECT_GUIDE_BIN="$ov"
+    # No toolchain venv → ensure would normally try to build + pip-install.
+    # With the override it must short-circuit to success without either.
+    run pyve_project_guide_ensure
+    assert_status_equals 0
+    [[ ! -d "$(pyve_toolchain_venv_dir)" ]]
+}
+
+@test "run_project_guide_update_in_env: PYVE_PROJECT_GUIDE_BIN failure surfaces as a non-fatal warning" {
+    local ov; ov="$(_make_pg_override 1)"   # override exits non-zero on update
+    export PYVE_PROJECT_GUIDE_BIN="$ov"
+    run run_project_guide_update_in_env
+    assert_status_equals 0                   # non-fatal by design
+    [[ "$output" == *"OVERRIDE_PG ran: update"* ]]
+    [[ "$output" == *"failed"* ]]
 }
 
 @test "run_project_guide_init_in_env: invokes the hosted project-guide, not an asdf shim on PATH" {
