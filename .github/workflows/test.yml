@@ -111,11 +111,6 @@ jobs:
           export PYENV_ROOT="$HOME/.pyenv"
           export PATH="$PYENV_ROOT/bin:$PYENV_ROOT/shims:$PATH"
 
-          # TEMP insurance: confirm the SIGPIPE fix held on macOS-CI. Drives the
-          # one-line gate verdict in ensure_python_version_installed. Survives
-          # the clean_env fixture (no PYVE_ prefix). Remove once CI is green.
-          export PIN_DIAG=1
-
           # Verify pyenv is working
           which pyenv
           pyenv version

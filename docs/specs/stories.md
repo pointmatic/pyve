@@ -37,7 +37,7 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 **Two release tags (exception to Version Cadence).** Phase N ships **two** releases — the only post-1.0 phase to do so:
 
 - **v3.0.0** at the end of Subphase N-9 (after the architectural cutover).
-- **v3.1.0** at the end of Subphase N-10 (UX visual refinement + hard migration gate).
+- **v3.1.0** at the end of Phase O (UX visual refinement + hard migration gate).
 
 Within each subphase, stories run unversioned during work; the subphase contributes to its assigned release bundle. **No intermediate release tags between subphases within a bundle.**
 
@@ -219,14 +219,14 @@ The dev's shell wasn't direnv-activated, so `python` resolved to `~/.asdf/shims/
 
 ### Story N.i: Read-compat layer — v3.0 reads legacy sources [Done]
 
-**Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Subphase N-10 removes the layer.
+**Motivation.** v3.0 still reads `[tool.pyve.testenvs.*]` and `.pyve/config` so v2-configured projects continue to work without migration. This is **v3.0-only**; Phase O removes the layer.
 
 **Tasks**
 
 - [x] In [lib/manifest.sh](../../lib/manifest.sh): when `pyve.toml` is absent but legacy sources exist, synthesize the v3 array shape directly (no intermediate TOML text). Three new helpers: `_manifest_has_legacy_sources` (detection), `_manifest_synthesize_from_legacy` (population), `_manifest_deprecation_warn_legacy` (one-shot warn). The existing `manifest_load` empty-state setup was extracted into `_manifest_reset_state` so the "no sources at all" and "synthesis" paths both start from the same clean baseline. Synthesis mapping mirrors N.g's `pyve self migrate` render — `[env.root]` (`purpose = "utility"`, `backend` from `.pyve/config`) plus one `[env.<name>]` per declared testenv (`purpose = "test"` + per-env attrs); the env named `testenv` (or first declared) carries `default = "1"`.
 - [x] Each legacy-source read emits a one-shot `warning: pyve is reading legacy v2 sources …` line on stderr. Memoization mirrors N.h's banner — `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/legacy-read-warn-<session>-<cksum-of-cwd>`, with session key `${PYVE_V2_BANNER_SESSION:-$PPID}` so the same test override seam works for both surfaces.
 - [x] Bats tests: 15 cases in [tests/unit/test_n_i_read_compat.bats](../../tests/unit/test_n_i_read_compat.bats) covering — synthesis from .pyve/config alone, from `[tool.pyve.testenvs.*]` alone, from both; purpose='test' for testenvs; default='1' on the `testenv`-named env; backend/lazy/extra/manifest preserved; v3 (pyve.toml present) takes priority over legacy; empty config on bare directory; bare `.pyve/testenvs/` on disk does NOT trigger synthesis (state, not config); deprecation warn fires once per shell; silent on second call; silent under v3; the N-10 removal marker is grep-visible. Full unit suite: 1223 ok / 0 fail.
-- [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Subphase N-10)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-10.
+- [x] Document the v3.0-only nature in [tech-spec.md](tech-spec.md) — new "v3.0-only read-compat layer (Story N.i, removed in Phase O)" subsection covering trigger conditions, synthesis mapping, the one-shot deprecation warn, and a 4-item mechanical-sweep checklist for N-10.
 - [x] The legacy-read code path is clearly marked with the literal comment `v3.0-only: remove in N-10` at every helper boundary and at the conditional inside `manifest_load`. A dedicated bats test asserts the marker is grep-visible from `lib/manifest.sh` so accidental removal during refactors gets caught.
 
 ### Story N.j: Append project-essentials entries for N-1 [Done]
@@ -2677,17 +2677,18 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 ---
 
-### Story N.bn: Remove N.bm's SIGPIPE-fix instrumentation once macOS-CI confirms green [Planned]
+### Story N.bn: Remove N.bm's SIGPIPE-fix instrumentation once macOS-CI confirms green [Done]
 
 **Motivation.** N.bm shipped a temporary one-line `PIN_DIAG` gate-verdict dump in `ensure_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)) plus `export PIN_DIAG=1` in the integration job ([.github/workflows/test.yml](../../.github/workflows/test.yml)) as **insurance**. The macOS-3.12 SIGPIPE failure is order-dependent and only reproduces in the full suite, so rather than de-instrument before a real CI run confirms the fix (the mistake made earlier in this investigation), the diagnostic stays in until macOS-3.12 is observed green. On a *failing* run the dump rides the test's `result.stderr` (`version=… -> NOT_INSTALLED list=[…]`, or `INSTALLED` meaning a *different* failure) for immediate diagnosis with no re-instrument round-trip; on a *green* run it is silent (pytest suppresses passing tests' captured output). This story closes the loop: confirm green, then remove the insurance.
 
 **Tasks**
 
-- [ ] Confirm macОS-3.12 and the rest of the matrix are green on a full-suite CI run carrying the N.bm fix.
-- [ ] Remove the `PIN_DIAG` gate-verdict block from `ensure_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)).
-- [ ] Remove `export PIN_DIAG=1` from the integration step in [.github/workflows/test.yml](../../.github/workflows/test.yml).
+- [x] Confirm macОS-3.12 and the rest of the matrix are green on a full-suite CI run carrying the N.bm fix. **Confirmed** on the run that also carried N.bo (the project-guide stub-bypass fix that was the last failure blocking all-green): the `PIN_DIAG` dump read `version=3.12.13 VM=pyenv -> INSTALLED list=[3.12.13 3.14.5]` — the exact match-followed-by-more-output scenario, now correct — and the full matrix passed.
+- [x] Remove the `PIN_DIAG` gate-verdict block from `ensure_python_version_installed` ([lib/env_detect.sh](../../lib/env_detect.sh)).
+- [x] Remove `export PIN_DIAG=1` from the integration step in [.github/workflows/test.yml](../../.github/workflows/test.yml).
+- [x] No lingering `PIN_DIAG` references anywhere (`grep -r PIN_DIAG lib/ tests/ pyve.sh .github/` → none); full bats unit suite green (1932 ok, 0 fail) — the N.bm SIGPIPE regression test in [tests/unit/test_env_detect.bats](../../tests/unit/test_env_detect.bats) still passes.
 - [ ] (Optional follow-up) Dedicated Node regression test for the `_is_asdf_node_active` SIGPIPE fix — the env_detect test proves the pattern; a Node-shim noise test would lock it in locally.
-- [ ] No `CHANGELOG.md` entry (Phase N runs unversioned).
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned).
 
 ---
 
@@ -2730,7 +2731,7 @@ Final integration verification matrix across Python-only, Node-only, and polyglo
 
 ---
 
-## Subphase N-10: UX visual refinement + hard migration gate (post-v3.0.0)
+## Phase O: UX visual refinement + hard migration gate (post-v3.0.0)
 
 Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred. Ships **v3.1.0** as the second Phase N release tag.
 
@@ -2772,7 +2773,9 @@ The process exit code is correct (non-zero); only the visual footer lies.
 
 ---
 
-## Subphase N-11: Harden and heal Pyve
+## Phase P: Harden and heal Pyve
+
+Note: there are several stories in `## Future` that need to be reviewed and considered whether to include in this Subphase
 
 Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). Theme: make Pyve's environment resolution **bulletproof**, and — when the armor is pierced — give Pyve a **healing mechanism**. This is the "calm the chaos" mission applied to Pyve's own substrate: the developer should never have to hand-trace PATH order, version-manager pins, and venv symlinks to understand why a command misbehaves, and never have to hand-repair Pyve-managed state.
 
@@ -2792,7 +2795,7 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 3. **Healing mechanism (`pyve heal`, or `pyve check --fix`).** Safe, idempotent, **confirm-before-destroy** repairs for every failure class the probes detect: rebuild a toolchain venv with a dead interpreter; re-link a dangling `~/.local/bin` shim; rebuild a `.venv` whose interpreter drifted from the pin (destructive → explicit confirmation); install a missing managed command into the *selected* interpreter. Reversible and re-runnable; never silently mutates without surfacing what it will do.
 4. **Close the upstream cause — the test-isolation leak.** The triggering incident was *manufactured by Pyve's own test suite*: [`_isolate_home`](../../tests/integration/test_project_guide_integration.py#L211-L217) (integration harness) symlinks the developer's **real** `~/.asdf` and `~/.local` into the test's fake `$HOME`, so any project-guide/toolchain-provisioning test writes hosting artifacts into real developer state — which dangles when the test's tmpdir is cleaned up. Re-scope `_isolate_home` so the suite can never again mutate a real home (provision into a fully self-contained fake `$HOME`, or stub provisioning entirely). N.bo's `PYVE_PROJECT_GUIDE_BIN` seam closes one path; the version-manager (`.asdf`) and self-install paths remain open.
 
-**Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Subphase N-10 (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
+**Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Phase O (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
 
 ---
 

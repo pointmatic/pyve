@@ -192,17 +192,6 @@ install_python_version() {
 ensure_python_version_installed() {
     local version="$1"
 
-    # TEMP insurance (gated on PIN_DIAG): confirm the SIGPIPE fix held on the
-    # macOS-CI validation run — one line with the gate verdict + the version
-    # list it saw. Silent unless PIN_DIAG is set. Remove once CI is green.
-    if [[ -n "${PIN_DIAG:-}" ]]; then
-        local _pin_list _pin_res
-        _pin_list="$(pyenv versions --bare 2>/dev/null || true)"
-        if is_python_version_installed "$version"; then _pin_res="INSTALLED"; else _pin_res="NOT_INSTALLED"; fi
-        printf 'PIN_DIAG gate: version=%s VM=%s -> %s  list=[%s]\n' \
-            "$version" "${VERSION_MANAGER:-}" "$_pin_res" "$(printf '%s' "$_pin_list" | tr '\n' ' ')" >&2
-    fi
-
     # Check if already installed
     if is_python_version_installed "$version"; then
         return 0
