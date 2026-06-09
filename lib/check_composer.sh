@@ -103,6 +103,39 @@ _compose_check_env_spec_drift() {
     return 0
 }
 
+# Story N.bi: environment-level [pyve] addendum — reports the hosted
+# toolchain Python + project-guide hosting state. INFO-ONLY by contract:
+# hosting is optional (pyve falls back to bare `python` and lazily
+# provisions project-guide on first use), so this NEVER contributes to the
+# severity verdict — the composer prints it without reading a return code
+# into `worst`, and the helper always returns 0. The "not provisioned"
+# project-guide line carries a remediation hint ONLY when project-guide is
+# not project-managed (a project dep means pyve intentionally defers). The
+# `declare -F` guards keep it silent in piecemeal test subshells.
+_compose_check_pyve_hosting() {
+    declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0
+    declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 || return 0
+
+    local venv_dir
+    venv_dir="$(pyve_toolchain_venv_dir)"
+    if [[ -x "$venv_dir/bin/python" ]]; then
+        printf 'Toolchain Python: provisioned (%s)\n' "${DEFAULT_PYTHON_VERSION:-unknown}"
+    else
+        printf 'Toolchain Python: not provisioned (falls back to python on PATH)\n'
+    fi
+
+    local src
+    src="$(project_guide_deps_source 2>/dev/null || true)"
+    if [[ -n "$src" ]]; then
+        printf 'project-guide: managed by your project (%s)\n' "$src"
+    elif pyve_project_guide_is_hosted 2>/dev/null; then
+        printf 'project-guide hosting: provisioned\n'
+    else
+        printf "project-guide hosting: not provisioned — run 'pyve self provision' to enable\n"
+    fi
+    return 0
+}
+
 # Orchestrate per-plugin checks and roll up the worst severity.
 #
 # Returns 2 when any plugin reports an error; 0 otherwise (warn-only or
@@ -200,6 +233,17 @@ compose_check() {
     if [[ -n "$adv_out" ]]; then
         printf '[advisories]\n'
         printf '%s\n' "$adv_out"
+        printf '\n'
+    fi
+
+    # environment-level [pyve] addendum (Story N.bi) — hosted toolchain +
+    # project-guide hosting. INFO-ONLY: deliberately does NOT touch `worst`,
+    # so an unprovisioned (optional) toolchain never affects the verdict.
+    local pyve_out
+    pyve_out="$(_compose_check_pyve_hosting)"
+    if [[ -n "$pyve_out" ]]; then
+        printf '[pyve]\n'
+        printf '%s\n' "$pyve_out"
         printf '\n'
     fi
 

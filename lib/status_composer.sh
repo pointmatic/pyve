@@ -29,6 +29,32 @@ fi
 # Orchestrate per-plugin status sections. Always returns 0; usage errors
 # (unknown flag / positional argument) exit 1 via the shared helpers,
 # mirroring the pre-composition `show_status`.
+# Story N.bi: project-level [project-guide] addendum — reports HOW
+# project-guide is integrated into THIS project. Any-stack (composer-level,
+# not bound to the python plugin), informational like the rest of status.
+# Modes:
+#   project-managed (pip|conda) — declared in the project's dep files; pyve
+#       defers to it (this case explains why pyve isn't hosting it).
+#   pyve-hosted (toolchain)     — pyve manages a global copy (Story N.bh).
+#   not integrated              — neither.
+# project-managed wins over pyve-hosted: it is how this project uses it.
+# Silent in piecemeal test subshells where the helpers aren't sourced.
+_compose_status_project_guide() {
+    declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 || return 0
+    local src mode
+    src="$(project_guide_deps_source 2>/dev/null || true)"
+    if [[ -n "$src" ]]; then
+        mode="project-managed ($src)"
+    elif pyve_project_guide_is_hosted 2>/dev/null; then
+        mode="pyve-hosted (toolchain)"
+    else
+        mode="not integrated"
+    fi
+    printf '[project-guide]\n'
+    printf '  %s\n\n' "$mode"
+    return 0
+}
+
 compose_status() {
     # Argument validation moved here from show_status when the composer
     # took over dispatch. `--help` / `-h` are handled by the dispatcher in
@@ -84,6 +110,9 @@ compose_status() {
 
         printf '\n'
     done < <(plugin_list_active)
+
+    # project-guide integration mode (Story N.bi) — project-level, any-stack.
+    _compose_status_project_guide
 
     # project-level advisory addendum (spec-ahead attributes
     # recorded in pyve.toml, not materialized). Informational, like the rest

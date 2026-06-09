@@ -2547,6 +2547,54 @@ python 3.14.3
 - [x] Test: unhosted → auto-provisions (or generic skip with no asdf-internal text on failure); hosted → invokes the hosted path (N.bf.22 preserved); `pyve init` continues either way. — covered across [test_project_guide_hosting.bats](../../tests/unit/test_project_guide_hosting.bats), [test_project_guide_orchestration.bats](../../tests/unit/test_project_guide_orchestration.bats), [test_project_guide.bats](../../tests/unit/test_project_guide.bats).
 - [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1929 ok / 0 not ok.
 
+### Story N.bi: surface project-guide / toolchain integration in `pyve check` (info) and `pyve status` (snapshot) [Done]
+
+**Motivation.** After N.bh, project-guide hosting and the toolchain venv provision **lazily and silently** — no command reports whether they're set up, so a user (or LLM) can't confirm hosting state without hand-inspecting `~/.local/share/pyve/toolchain/...`. project-guide is also *optional* and has two integration models, so the surfacing must match each command's purpose, not duplicate one diagnostic.
+
+**Design — command-appropriate, not identical (developer-directed 2026-06-08).**
+
+- **`pyve check`** (environment problems + fix hints): an environment-level `[pyve]` addendum, composer-level so it is **any-stack** (mirrors `[env-spec]`). **Info/pass only — never warn/error**, since hosting is optional and falls back; it must not affect `check`'s overall severity verdict. Lines:
+  - Toolchain Python: provisioned (`<ver>`) / not provisioned (info; pyve falls back to bare `python`).
+  - project-guide hosting: provisioned / not provisioned. The "not provisioned" line carries the fix hint *"run `pyve self provision`"* **only when project-guide is not project-managed** — if it's a project dep, pyve intentionally defers, so no hint.
+- **`pyve status`** (read-only project snapshot): a project-level `[project-guide]` addendum (composer-level) reporting the **integration mode** for this project:
+  - `pyve-hosted (toolchain)` — pyve manages the global copy (N.bh).
+  - `project-managed (pip)` / `project-managed (conda)` — declared in pyproject/requirements (pip) or environment.yml (conda); pyve defers to it.
+  - `not integrated`.
+
+**Why distinct, not duplicated.** `check` answers "is anything wrong / what do I run?" (optional → info + conditional hint). `status` answers "how is project-guide wired into THIS project?" (the integration mode — including the project-managed case that explains *why* pyve isn't hosting it).
+
+**Out of scope.** N-10 visual styling of these sections (they inherit whatever `check`/`status` render today). Changing provisioning behavior (N.bh). A toolchain-Python line in `status` (it's pyve-internal, not a project attribute — keep it to `check`). Making absence a warning/error in `check` (it is optional by contract).
+
+**Tasks**
+
+- [x] Add `project_guide_deps_source` (echoes `pip` | `conda` | empty) — a source-reporting variant of `project_guide_in_project_deps` ([lib/utils.sh](../../lib/utils.sh)); `project_guide_in_project_deps` now delegates to it (single source of truth). Unit-tested pyproject/requirements→`pip`, environment.yml→`conda`, none→empty.
+- [x] `pyve check`: added info-only `[pyve]` composer addendum `_compose_check_pyve_hosting` ([lib/check_composer.sh](../../lib/check_composer.sh)) reporting toolchain Python + project-guide hosting; fix hint only when unhosted AND not project-managed; helper always returns 0 so it never touches `worst` (verdict-neutral). Tested provisioned / unprovisioned / project-managed.
+- [x] `pyve status`: added project-level `[project-guide]` composer addendum `_compose_status_project_guide` ([lib/status_composer.sh](../../lib/status_composer.sh)) reporting the integration mode (pyve-hosted / project-managed pip|conda / not integrated; project-managed wins over hosted). Tested each mode.
+- [x] Verify any-stack: subprocess tests confirm both sections render on a Node-shaped project (package.json, no Python markers) — composer-level, not python-plugin-bound. New tests in [tests/unit/test_pyve_hosting_diagnostic.bats](../../tests/unit/test_pyve_hosting_diagnostic.bats).
+- [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1945 ok / 0 not ok.
+
+### Story N.bj: hosted-toolchain lifecycle symmetry — `pyve self unprovision`, hosted-version upgrade path, brew-uninstall cleanup [Planned]
+
+**Motivation.** N.bh added lazy provisioning + a brew `post_install` for the hosted project-guide/toolchain, but the teardown/upgrade side is asymmetric (surfaced by developer questions 2026-06-08):
+
+- **No granular unprovision.** Only `pyve self uninstall` removes the hosted tools, and it removes the *entire* toolchain (incl. toolchain Python) and **no-ops for Homebrew** ([self.sh](../../lib/commands/self.sh) brew guard). There is no "remove just the hosted project-guide" command.
+- **No upgrade path for the hosted project-guide package** except re-running `pyve self provision` (which `pip install --upgrade`s). `pyve update` refreshes the *project's* scaffolding (`project-guide update`) but does **not** bump the hosted package version — surprising, undocumented.
+- **`brew uninstall` orphans** `~/.local/share/pyve/toolchain/` + `~/.local/bin/project-guide` (both outside the Homebrew prefix; the formula has no cleanup hook). Combined with `pyve self uninstall` no-opping for brew, **brew users have no supported teardown** for the hosted tools.
+
+**Design (decide during debug).**
+1. **`pyve self unprovision`** — brew-safe granular teardown: remove the project-guide shim + the hosted project-guide package, WITHOUT removing pyve or PATH (mirror `self provision`'s brew-safety). `--all` flag also drops the toolchain Python tree (the teardown `self uninstall` does today, but reachable by brew users).
+2. **Hosted-version upgrade.** Document re-running `pyve self provision` as the "upgrade the hosted tools" path, and document explicitly that `pyve update` ≠ toolchain upgrade. Decide between an explicit `pyve self provision --upgrade` vs. always-`--upgrade`-on-explicit-provision (keep the lazy steady-state path a cheap no-op either way).
+3. **brew-uninstall cleanup.** Homebrew has no supported post_uninstall for files outside its prefix, so add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing brew users at `pyve self unprovision --all` for full teardown, and document the orphan behavior. (Auto-deleting user-dir state on `brew uninstall` is neither supported nor desirable.)
+
+**Out of scope.** Changing N.bh's provisioning behavior. The N.bi diagnostic (separate). Deleting user data without consent.
+
+**Tasks**
+
+- [ ] Add `pyve self unprovision` (brew-safe: removes the project-guide shim + hosted package; `--all` also drops the toolchain Python tree) + dispatcher arm + help. Tests: removes shim + hosted PG, leaves the pyve binary + PATH untouched; `--all` drops the toolchain tree.
+- [ ] Decide + implement the hosted-version upgrade semantics (`self provision --upgrade` vs always-upgrade-on-explicit-provision); test the chosen behavior; document that `pyve update` does not bump the hosted version.
+- [ ] Add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing at `pyve self unprovision --all` for full teardown (developer copies back to the tap). Document the orphan behavior.
+- [ ] Full suite; zero regressions.
+
 ---
 
 ## Subphase N-9: v3.0.0 release tag

@@ -668,14 +668,21 @@ run_project_guide_update_in_env() {
 #   - Word boundary: "project-guide-extras" does NOT match
 #   - Comments: "# project-guide==..." does NOT match
 #   - Quoted strings in pyproject.toml: both "project-guide" and 'project-guide'
-project_guide_in_project_deps() {
+# Story N.bi: report WHICH dependency source declares project-guide, so
+# `pyve status` can show the integration mode (pip vs conda). Echoes:
+#   pip    — declared in pyproject.toml or requirements.txt
+#   conda  — declared in environment.yml
+#   (empty)— not declared in any project dep file
+# This is the single source of truth for the detection patterns;
+# project_guide_in_project_deps is a thin boolean wrapper over it.
+project_guide_deps_source() {
     # pyproject.toml — any line mentioning project-guide (in quotes or not),
-    # ignoring comment lines.
+    # ignoring comment lines. Bounded by a quote, comma, whitespace, version
+    # specifier, or end-of-line.
     if [[ -f "pyproject.toml" ]]; then
-        # Strip comment lines, then look for project-guide bounded by a
-        # quote, comma, whitespace, version specifier, or end-of-line.
         if grep -v '^[[:space:]]*#' pyproject.toml \
            | grep -qE '(^|[[:space:]"'\''[,(])project-guide([[:space:]"'\''<>=!~,)]|$)'; then
+            printf 'pip'
             return 0
         fi
     fi
@@ -685,6 +692,7 @@ project_guide_in_project_deps() {
     if [[ -f "requirements.txt" ]]; then
         if grep -v '^[[:space:]]*#' requirements.txt \
            | grep -qE '^[[:space:]]*project-guide([[:space:]<>=!~]|$)'; then
+            printf 'pip'
             return 0
         fi
     fi
@@ -693,11 +701,16 @@ project_guide_in_project_deps() {
     if [[ -f "environment.yml" ]]; then
         if grep -v '^[[:space:]]*#' environment.yml \
            | grep -qE '(^|[[:space:]"'\''=-])project-guide([[:space:]"'\''<>=!~]|$)'; then
+            printf 'conda'
             return 0
         fi
     fi
 
-    return 1
+    return 0
+}
+
+project_guide_in_project_deps() {
+    [[ -n "$(project_guide_deps_source)" ]]
 }
 
 #============================================================

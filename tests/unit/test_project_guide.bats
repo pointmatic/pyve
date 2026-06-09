@@ -786,6 +786,52 @@ EOF
 }
 
 #============================================================
+# project_guide_deps_source — reports the dep source (Story N.bi)
+#============================================================
+
+@test "project_guide_deps_source: empty when no dep files declare it" {
+    run project_guide_deps_source
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "project_guide_deps_source: 'pip' when declared in pyproject.toml" {
+    cat > pyproject.toml << 'EOF'
+[project]
+dependencies = ["project-guide==2.0.20"]
+EOF
+    run project_guide_deps_source
+    [ "$output" = "pip" ]
+}
+
+@test "project_guide_deps_source: 'pip' when declared in requirements.txt" {
+    printf 'project-guide\n' > requirements.txt
+    run project_guide_deps_source
+    [ "$output" = "pip" ]
+}
+
+@test "project_guide_deps_source: 'conda' when declared in environment.yml" {
+    cat > environment.yml << 'EOF'
+name: myenv
+dependencies:
+  - python=3.11
+  - project-guide
+EOF
+    run project_guide_deps_source
+    [ "$output" = "conda" ]
+}
+
+@test "project_guide_deps_source: stays the single source of truth for project_guide_in_project_deps" {
+    # in_project_deps is true iff deps_source is non-empty.
+    printf 'project-guide\n' > requirements.txt
+    run project_guide_in_project_deps
+    [ "$status" -eq 0 ]
+    rm -f requirements.txt
+    run project_guide_in_project_deps
+    [ "$status" -eq 1 ]
+}
+
+#============================================================
 # install_project_guide — uses --upgrade
 #============================================================
 
