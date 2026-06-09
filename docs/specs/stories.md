@@ -2727,7 +2727,46 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 ## Subphase N-8: Documentation refresh + brand alignment
 
-Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. Description only; story breakdown deferred to its `plan_production_phase` session.
+Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. **Story breakdown drafted 2026-06-05: N.bp–N.br below** (grouped by artifact, not one-per-doc).
+
+### Story N.bp: brand-descriptions.md v3 reflow — complete the brand alignment [Planned]
+
+**Motivation.** [brand-descriptions.md](brand-descriptions.md) is the source-of-truth for Pyve's positioning copy (it feeds the site home + feature cards). Its **Benefits**, **Technical Description**, **Keywords**, and **Feature Cards** still carry the *v3 baseline — deferred to N-8* annotations; N-8 completes the full narrative reflow pivoting the positioning from "Python virtual-environment manager" to "declarative, polyglot project-environment orchestrator." Run via `refactor_document`.
+
+**Tasks**
+
+- [ ] `refactor_document` over **Benefits**, **Technical Description**, **Keywords**, **Feature Cards** — full reflow, clearing the deferred annotations; reflect plugins, named envs, multi-stack (Python + Node), the `pyve.toml` manifest, and `pyve self migrate`.
+- [ ] Reconcile the upstream framing (Name / Tagline / One-liner / Two-clause Technical Description, and the `# descriptions.md — Pyve (Python)` title) for the polyglot pivot — they must not still scope Pyve to "Python virtual environments" once the body says polyglot orchestrator (consistency pass).
+- [ ] **Do not market unshipped surfaces** as available — advisory backends and the `pyve lint` verb are roadmap, not shipped v3.0 capability.
+
+### Story N.bq: Canonical spec docs cascade — concept / features / tech-spec [Planned]
+
+**Motivation.** The internal spec docs still describe v2-era Pyve — [concept.md](concept.md) is wholly Python-only (scope lists "Docker / Windows out of scope"; one-liner "wrangles your Python virtual environments"), and features/tech-spec predate the plugin architecture. Cascade the v3 refresh from the reflowed brand copy (N.bp) into the spec docs, against the now clean, story-ref-free codebase (post-N-7).
+
+**Tasks**
+
+- [ ] **[concept.md](concept.md)** — v3 rewrite: problem / solution / scope / constraints for the polyglot orchestrator (retire the Python-only framing; reflect named envs, the plugin model, multi-stack, the v2→v3 migration).
+- [ ] **[features.md](features.md)** — enumerate v3 capabilities: the `pyve.toml` manifest + `[env.<name>]`/`purpose`, the plugin/backend-provider model, Python + Node plugins, composed `init`/`check`/`status`/`purge`/`.envrc`, `pyve self migrate`, `pyve package` (reserved). Mark advisory / post-v3.0 surfaces honestly.
+- [ ] **[tech-spec.md](tech-spec.md)** — consolidate the per-component **N.k–N.r** subsections into one unified **"Plugin layer"** section (architecture, the contract, the registry, the composers); fold the env-spec vocabulary in **by pointer** to the env-dependencies template/glossary, not by duplicating the enumeration.
+- [ ] Reconcile the testing-strategy narrative (two-env model, named test envs) wherever it lives in features / tech-spec.
+- [ ] Cross-reference integrity: links to spike docs / `wizard-env-contract` / the env-dependencies template resolve to their current `project-guide-requests/` locations.
+
+### Story N.br: MkDocs public site + README — v3 pages (update + create) [Planned]
+
+**Motivation.** The public site ([docs/site/](../site/), `mkdocs.yml`) and [README.md](../../README.md) still document v2 (Python-only; `migration.md` is *v1.x → v2.0*). Refresh the site for v3 and add the new-capability pages. **One story, organized as a page checklist** — not one story per page.
+
+**Tasks**
+
+- [ ] **Update existing pages to v3:** `getting-started.md`, `usage.md`, `backends.md` (closed vocabulary + the three S6 categories + canonical-vs-advisory), `testing.md` (named test envs / two-env model), `ci-cd.md`, the site home (`index`), and `README.md`.
+- [ ] **Retheme `migration.md`** from *v1.x → v2.0* to the **v2 → v3** guide: `pyve self migrate`, the soft banner, the read-compat window, and the v3.1 hard gate.
+- [ ] **Create new pages:**
+  - **Named Environments** — `[env.<name>]`, `purpose ∈ {run, test, utility, temp}`, the multi-env model, name-based defaults.
+  - **Plugins** — the plugin architecture; Python + Node/SvelteKit reference plugins.
+  - **Multi-stack / Polyglot projects** — Python + Node, the `path` model, composed init/activation.
+  - **`pyve.toml` reference** — the manifest schema (the projectable subset).
+  - **Packaging** — `pyve package` + the `packaging` vocabulary (note: verb reserved/scaffolded in v3.0; providers post-v3.0).
+- [ ] Register the new pages in `mkdocs.yml` nav in a sensible order.
+- [ ] **Do not present unshipped surfaces** (`pyve lint`, advisory backends) as available — describe them as roadmap where mentioned.
 
 ---
 
