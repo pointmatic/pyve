@@ -50,7 +50,6 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/micromamba_core.sh"
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
     source "$PYVE_ROOT/lib/micromamba_env.sh"
-    source "$PYVE_ROOT/lib/distutils_shim.sh"
     # envs.sh is now a core dependency: the Python plugin, utils.sh, and
     # micromamba_env.sh resolve the main micromamba env path through
     # envs.sh helpers (micromamba_root_prefix / resolve_main_micromamba_path

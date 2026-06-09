@@ -121,7 +121,7 @@ With one command (`pyve init`), Pyve auto-detects the right backend, pins a Pyth
 
 **venv_setup_complexity**:
   - Pyve encodes the "right way" to create and configure a venv so users don't take shortcuts to avoid friction
-  - Micromamba projects get correct `.vscode/settings.json` and distutils shim handling automatically
+  - Micromamba projects get correct `.vscode/settings.json` handling automatically
   - Reserved venv directory names are rejected before they cause confusion
 
 **tool_coordination**:

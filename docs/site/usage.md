@@ -636,7 +636,6 @@ pyve check
 - Environment path exists and has `bin/python`
 - Python version matches the pinned source-of-truth (`.tool-versions` / `.python-version` / config)
 - Venv path sanity (warns if project was relocated after creation)
-- `distutils_shim` status on Python 3.12+
 - `.envrc` / `.env` presence
 - `conda-lock.yml` presence and freshness (micromamba only)
 - Duplicate `.dist-info` directories in `site-packages` (micromamba only)
@@ -687,7 +686,7 @@ pyve status
 **Output sections:**
 
 - **Project** — path, backend, config version, configured Python
-- **Environment** — path, Python, package count, backend-specific rows (distutils shim for venv; environment.yml + lock status for micromamba)
+- **Environment** — path, Python, package count, backend-specific rows (environment.yml + lock status for micromamba)
 - **Integrations** — direnv, `.env`, project-guide, testenv
 
 **Exit code:** always `0` unless pyve itself errors (e.g., unreadable config). Never signals problems via non-zero exit — for that contract use `pyve check`.
@@ -708,7 +707,6 @@ Environment
   Path:           .venv
   Python:         3.14.4
   Packages:       127 installed
-  distutils shim: installed (Python 3.12+)
 
 Integrations
   direnv:         .envrc present

@@ -2597,7 +2597,7 @@ python 3.14.3
 - [x] Add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing at `pyve self unprovision --all` for full teardown (developer copies back to the tap). Document the orphan behavior.
 - [x] Full suite; zero regressions. — 1957 unit tests pass; the new file's 12 tests pass; shellcheck clean on the new code.
 
-### Story N.bk: retire (or narrow) the distutils compatibility shim — it's a 2023-era band-aid stamped into 3.14 envs [Planned]
+### Story N.bk: retire (or narrow) the distutils compatibility shim — it's a 2023-era band-aid stamped into 3.14 envs [Done]
 
 **Discovered:** 2026-06-08 micromamba `pyve init` smoke on a fresh `python=3.14.5` project.
 
@@ -2626,14 +2626,16 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 **Out of scope.** The broader packaging-prereqs redesign beyond the setuptools/wheel sub-decision above. N-10 visual styling. Changing `DEFAULT_PYTHON_VERSION`.
 
+**Decision.** **Option A — retire fully** (developer-confirmed). The shim mechanism is gone, not flipped to opt-in: distutils was removed in CPython 3.12 (PEP 632), `SETUPTOOLS_USE_DISTUTILS=local` is now the setuptools default (the `setdefault` was a no-op), and modern build backends use PEP 517 build isolation. **Sub-decision: drop the forced setuptools/wheel install** — the `pyve_ensure_*_packaging_prereqs` helpers were *only* called from the shim path, and pip is provisioned independently (venv built-in; the starter `environment.yml` declares `- pip`), so retiring the shim cleanly drops the forced setuptools/wheel without making fresh envs pip-less. The only casualty is a legacy `setup.py`-only `pip install -e .` (no `pyproject.toml` build-system → no build isolation), covered by the documented manual fallback.
+
 **Tasks**
 
-- [ ] Decide Option A (retire) vs B (opt-in); capture the rationale.
-- [ ] Implement: remove or gate the shim install in both callsites ([plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888), [plugin.sh:1993](../../lib/plugins/python/plugin.sh#L1993)); update/retire [lib/distutils_shim.sh](../../lib/distutils_shim.sh) accordingly (keep the `PYVE_DISABLE_*`/`PYVE_ENABLE_*` env surface consistent with the choice).
-- [ ] Resolve the setuptools/wheel sub-decision; adjust `pyve_ensure_{venv,micromamba}_packaging_prereqs` if agreed (verify the editable-install path still works).
-- [ ] Update tests: [tests/unit/test_distutils_shim.bats](../../tests/unit/test_distutils_shim.bats) + [tests/unit/test_distutils_shim_coverage.bats](../../tests/unit/test_distutils_shim_coverage.bats) to the new behavior (no shim by default / opt-in gating).
-- [ ] Smoke: a fresh `pyve init` on 3.14 (venv + micromamba) no longer writes the sitecustomize shim by default; document the manual fallback.
-- [ ] Full suite; zero regressions.
+- [x] Decide Option A (retire) vs B (opt-in); capture the rationale. — Option A + drop setuptools/wheel (see Decision above).
+- [x] Implement: removed both callsites in [plugin.sh](../../lib/plugins/python/plugin.sh) (venv + micromamba init paths), deleted `lib/distutils_shim.sh` entirely, dropped its `source` line in [pyve.sh](../../pyve.sh) and `tests/helpers/test_helper.bash`, and removed the `distutils shim:` row from `pyve status` (`_status_env_venv`). The whole `PYVE_DISABLE_DISTUTILS_SHIM` env surface is gone (full retire, not opt-in).
+- [x] Resolve the setuptools/wheel sub-decision; adjust `pyve_ensure_{venv,micromamba}_packaging_prereqs` — dropped along with the module (their only caller was the shim). pip remains via venv built-in / `environment.yml` `- pip`. Editable-install path verified intact (modern PEP 517 build isolation; manual fallback documented for legacy setup.py).
+- [x] Update tests: deleted `test_distutils_shim.bats` + `test_distutils_shim_coverage.bats`; added [tests/unit/test_distutils_shim_retired.bats](../../tests/unit/test_distutils_shim_retired.bats) — a 3-test regression sentinel (no retired name referenced in lib/pyve.sh; module file gone; not sourced).
+- [x] Document the manual fallback: FR-13 in [features.md](features.md) rewritten as "retired" + fallback; removed from `README.md`, `usage.md` (status examples + check list), `tech-spec.md` (module section, file trees, test tables, sourcing order, helper rows), `testing-spec.md`, `concept.md`, `CONTRIBUTING.md`. (Original tasks named a 3.14 init smoke; covered by the sentinel + the unchanged init path under the full unit suite.)
+- [x] Full suite; zero regressions. — 1927 unit tests pass (net −30 = removed 33 old shim tests + 3 new sentinel tests); shellcheck clean on the touched code; `pyve --version` loads cleanly with the module unsourced.
 
 ### Story N.bl: fix two CI integration failures — N.bf.20 rebrand assertion + auto-pin installed-version robustness [Done]
 

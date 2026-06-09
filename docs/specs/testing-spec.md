@@ -64,7 +64,6 @@ tests/
 ├── unit/                           # Bats tests (white-box) — 10 files, 265 tests
 │   ├── test_backend_detect.bats
 │   ├── test_config_parse.bats
-│   ├── test_distutils_shim.bats
 │   ├── test_env_naming.bats
 │   ├── test_lock_validation.bats
 │   ├── test_micromamba_bootstrap.bats
@@ -366,7 +365,7 @@ Key details:
 | `test_utils.bats` | `lib/utils.sh` | Logging, gitignore, config parsing, validation |
 | `test_backend_detect.bats` | `lib/backend_detect.sh` | File detection, priority chain, validation |
 | `test_config_parse.bats` | `lib/utils.sh` (config) | read_config_value edge cases |
-| `test_distutils_shim.bats` | `lib/distutils_shim.sh` | Shim disabled check, version parsing, write paths |
+| `test_distutils_shim_retired.bats` | sentinel | Regression guard: the retired distutils shim must not reappear |
 | `test_env_naming.bats` | `lib/micromamba_env.sh` | Sanitization, reserved names, resolution |
 | `test_lock_validation.bats` | `lib/micromamba_env.sh` | Stale/missing lock files, strict mode |
 | `test_micromamba_bootstrap.bats` | `lib/micromamba_bootstrap.sh` | Download URL, install locations |

@@ -1877,17 +1877,6 @@ init_project() {
             warn "Environment created but verification failed"
         fi
 
-        # Apply Python 3.12+ distutils shim if needed. The main micromamba
-        # env lives at the v3 root slot (Story N.bf.14), not the flat
-        # configured-name path.
-        local env_prefix
-        env_prefix="$(micromamba_root_prefix)"
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path)"
-        if [[ -n "$micromamba_path" ]]; then
-            pyve_install_distutils_shim_for_micromamba_prefix "$micromamba_path" "$env_prefix"
-        fi
-
         # .envrc is composed below, AFTER .pyve/config and
         # pyve.toml exist (see the venv branch for the rationale).
         local env_path
@@ -1987,11 +1976,6 @@ EOF
 
     # Create virtual environment
     _init_venv "$venv_dir"
-
-    # Apply Python 3.12+ distutils shim if needed
-    if [[ -x "$venv_dir/bin/python" ]]; then
-        pyve_install_distutils_shim_for_python "$venv_dir/bin/python"
-    fi
 
     # .envrc is composed below, AFTER .pyve/config and
     # pyve.toml exist — the composer's Python activate hook resolves the
@@ -3326,21 +3310,6 @@ _status_env_venv() {
     fi
 
     _status_row "Packages:" "$(_status_venv_package_count "$venv_dir")"
-
-    # distutils shim: check for the sitecustomize.py marker under
-    # $venv_dir/lib/python*/site-packages/ (Python 3.12+ install).
-    # Guard: `find` on a nonexistent .venv/lib exits non-zero, which
-    # would kill the script under `set -euo pipefail` — trailing
-    # `|| true` absorbs it.
-    if [[ -d "$venv_dir/lib" ]]; then
-        local sitecustomize
-        sitecustomize="$(find "$venv_dir/lib" -maxdepth 3 -name "sitecustomize.py" 2>/dev/null | head -1 || true)"
-        if [[ -n "$sitecustomize" ]] && grep -qF "$PYVE_DISTUTILS_SHIM_MARKER" "$sitecustomize" 2>/dev/null; then
-            _status_row "distutils shim:" "installed"
-        else
-            _status_row "distutils shim:" "${DIM}not installed${RESET}"
-        fi
-    fi
 }
 
 _status_venv_package_count() {

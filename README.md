@@ -269,8 +269,6 @@ pyve init --backend venv         # Force venv (skip prompt)
 - Cross-platform reproducibility needed
 - Projects already using conda/mamba
 
-Note: On Python 3.12+, Pyve installs a lightweight distutils compatibility shim (via `sitecustomize.py`) to avoid TensorFlow/Keras import failures in environments that still import `distutils`. Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
-
 #### Pip Dependency Installation
 
 After creating the environment, Pyve prompts to install pip dependencies if `pyproject.toml` or `requirements.txt` exists:

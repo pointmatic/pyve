@@ -61,7 +61,6 @@ lib/
   ├── micromamba_core.sh    # Micromamba detection and version
   ├── micromamba_bootstrap.sh  # Micromamba installation
   ├── micromamba_env.sh     # Environment creation and naming
-  ├── distutils_shim.sh     # Python 3.12+ distutils compatibility shim helpers
   └── version.sh            # Version tracking and validation
 ```
 

@@ -64,7 +64,6 @@ pyve/
 │   ├── micromamba_core.sh           # Micromamba binary detection, version, location
 │   ├── micromamba_env.sh            # Environment file parsing, naming, creation, lock file validation
 │   ├── micromamba_bootstrap.sh      # Micromamba download and installation (interactive + auto)
-│   ├── distutils_shim.sh            # Python 3.12+ distutils compatibility shim (sitecustomize.py)
 │   ├── version.sh                   # Version comparison, installation validation, config writing
 │   ├── testenvs.sh                  # Named-testenv config foundation (M.g): read [tool.pyve.testenvs], predicates, path resolver
 │   ├── pyve_testenvs_helper.py      # Python tomllib helper for lib/testenvs.sh (V3 bash-array-literal wire format)
@@ -85,7 +84,6 @@ pyve/
 │   │   ├── test_utils.bats
 │   │   ├── test_backend_detect.bats
 │   │   ├── test_config_parse.bats
-│   │   ├── test_distutils_shim.bats
 │   │   ├── test_env_naming.bats
 │   │   ├── test_lock_validation.bats
 │   │   ├── test_micromamba_bootstrap.bats
@@ -174,7 +172,7 @@ The line-count floor is set by the explicit-sourcing rule (project-essentials): 
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
 | `TESTENV_DIR_NAME` | `"testenv"` | Dev/test runner environment directory |
 
-**Library sourcing order (helpers first, then commands).** Helpers: `utils.sh` → `ui/core.sh` → `ui/run.sh` → `ui/progress.sh` → `ui/select.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `distutils_shim.sh` → `version.sh`. `ui/core.sh` is sourced early so later modules can use its color/symbol constants, banner helpers, and `is_verbose()` gate; `ui/run.sh`, `ui/progress.sh`, and `ui/select.sh` follow because they depend on those. Commands are sourced after all helpers, in alphabetical order: `commands/check.sh` → `commands/init.sh` → `commands/lock.sh` → `commands/purge.sh` → `commands/python.sh` → `commands/run.sh` → `commands/self.sh` → `commands/status.sh` → `commands/test.sh` → `commands/testenv.sh` → `commands/update.sh`. Sourcing is **explicit**, not glob-based, so dependency ordering is auditable. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern above for the remaining hard-error form.)
+**Library sourcing order (helpers first, then commands).** Helpers: `utils.sh` → `ui/core.sh` → `ui/run.sh` → `ui/progress.sh` → `ui/select.sh` → `env_detect.sh` → `backend_detect.sh` → `micromamba_core.sh` → `micromamba_env.sh` → `micromamba_bootstrap.sh` → `version.sh`. `ui/core.sh` is sourced early so later modules can use its color/symbol constants, banner helpers, and `is_verbose()` gate; `ui/run.sh`, `ui/progress.sh`, and `ui/select.sh` follow because they depend on those. Commands are sourced after all helpers, in alphabetical order: `commands/check.sh` → `commands/init.sh` → `commands/lock.sh` → `commands/purge.sh` → `commands/python.sh` → `commands/run.sh` → `commands/self.sh` → `commands/status.sh` → `commands/test.sh` → `commands/testenv.sh` → `commands/update.sh`. Sourcing is **explicit**, not glob-based, so dependency ordering is auditable. (The Phase-H-era `deprecation_warn` helper was removed in Story J.d when the last Category A delegation paths were ripped; see the Category B `legacy_flag_error` pattern above for the remaining hard-error form.)
 
 Each library and command file guards against direct execution and is designed to be sourced only.
 
@@ -321,7 +319,7 @@ Read-only state dashboard. Three sections (Project / Environment / Integrations)
 | `_status_section_project` | `()` | Project section: path, backend, recorded `pyve_version` (with drift comparison vs. running `$VERSION` via `compare_versions`), and configured Python. |
 | `_status_configured_python` | `()` → string | Resolve and format the configured Python version source — `.tool-versions via asdf`, `.python-version via pyenv`, or `.pyve/config`. Returns `"not pinned"` when none are present. |
 | `_status_section_environment` | `()` | Environment section header + dispatch to `_status_env_venv` or `_status_env_micromamba` based on configured backend. |
-| `_status_env_venv` | `()` | Venv-backend rows: path, Python version, package count (via `_status_venv_package_count`), distutils shim status. |
+| `_status_env_venv` | `()` | Venv-backend rows: path, Python version, package count (via `_status_venv_package_count`). |
 | `_status_venv_package_count` | `(<venv_dir>)` → string | Count `*.dist-info` directories under `<venv_dir>/lib/python*/site-packages/`; returns "N installed" or "unknown". `find`-pipefail safe. |
 | `_status_env_micromamba` | `()` | Micromamba-backend rows: name, path, Python, package count via `conda-meta`, `environment.yml` presence, `conda-lock.yml` freshness via `is_lock_file_stale`. |
 | `_status_section_integrations` | `()` | Integrations section: `.envrc` presence, `.env` (with empty/non-empty distinction), `project-guide` (probes `<env>/bin/project-guide --version`), `testenv` (probes `<testenv>/bin/python -c 'import pytest'`). |
@@ -330,7 +328,7 @@ Read-only state dashboard. Three sections (Project / Environment / Integrations)
 
 **No private-helper rename** — all 9 helpers already follow the `_status_*` prefix convention from when they were inlined in `pyve.sh` (Story H.e.4). They stay named exactly as-is; only the orchestrator was renamed.
 
-**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui/core.sh) and `PYVE_DISTUTILS_SHIM_MARKER` (defined in lib/distutils_shim.sh).
+**Cross-command helpers (lib/) used:** `config_file_exists`, `read_config_value`, `is_file_empty` (lib/utils.sh); `compare_versions` (lib/version.sh); `is_lock_file_stale` (lib/micromamba_env.sh); `unknown_flag_error`, `log_error` (pyve.sh / lib/utils.sh). Reads `BOLD`, `DIM`, `RESET` color globals (defined in lib/ui/core.sh).
 
 #### `lib/commands/check.sh` (Story K.i — v2.4.0)
 
@@ -392,7 +390,7 @@ Largest extraction in the phase. The orchestrator (`init_project`, ~545 lines) p
 
 | Function | Signature | Description |
 |---|---|---|
-| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), apply distutils shim, configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_testenv_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
+| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_testenv_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
 | `_init_python_version` | `(<version>)` | Write `.tool-versions` or `.python-version` (via `set_local_python_version`). No-op if file already exists. |
 | `_init_venv` | `(<venv_dir>)` | `python -m venv <venv_dir>` if directory absent. |
 | `_init_direnv_venv` | `(<venv_dir>)` | Wrapper around `write_envrc_template` with `VIRTUAL_ENV` sentinel. |
@@ -579,21 +577,9 @@ Download and install micromamba binary.
 
 ---
 
-### `lib/distutils_shim.sh` — Python 3.12+ Compatibility
+### `lib/distutils_shim.sh` — retired
 
-Install a `sitecustomize.py` shim to prevent `distutils` import failures.
-
-| Function | Signature | Description |
-|----------|-----------|-------------|
-| `pyve_is_distutils_shim_disabled` | `()` → 0/1 | Check `PYVE_DISABLE_DISTUTILS_SHIM` env var |
-| `pyve_get_python_major_minor` | `(python_path)` → string | Return `"3.12"` etc. |
-| `pyve_get_site_packages_dir` | `(python_path)` → string | Return site-packages path |
-| `pyve_write_sitecustomize_shim` | `(site_packages_dir)` | Write the shim file |
-| `pyve_distutils_shim_probe` | `(python_path)` | Lightweight check if shim is needed |
-| `pyve_ensure_venv_packaging_prereqs` | `(python_path)` | Ensure pip, setuptools, wheel in venv |
-| `pyve_ensure_micromamba_packaging_prereqs` | `(micromamba_path, env_prefix)` | Ensure pip, setuptools, wheel in micromamba env |
-| `pyve_install_distutils_shim_for_python` | `(python_path)` | Full shim installation for venv |
-| `pyve_install_distutils_shim_for_micromamba_prefix` | `(micromamba_path, env_prefix)` | Full shim installation for micromamba |
+The Python 3.12+ `sitecustomize.py` distutils shim (and its forced `pip install setuptools wheel`) was retired: distutils was removed in CPython 3.12 (PEP 632), `SETUPTOOLS_USE_DISTUTILS=local` is now the setuptools default, and modern build backends use PEP 517 build isolation. Fresh environments keep `pip` but no longer carry the shim or a forced setuptools/wheel. See FR-13 in `features.md` for the manual fallback. A regression sentinel ([tests/unit/test_distutils_shim_retired.bats](../../tests/unit/test_distutils_shim_retired.bats)) fails the build if any retired shim function reappears.
 
 ---
 
@@ -1961,7 +1947,6 @@ White-box tests that source individual `lib/*.sh` modules and test functions dir
 | `test_utils.bats` | `lib/utils.sh` | — |
 | `test_backend_detect.bats` | `lib/backend_detect.sh` | — |
 | `test_config_parse.bats` | `lib/utils.sh` (config) | — |
-| `test_distutils_shim.bats` | `lib/distutils_shim.sh` | — |
 | `test_env_naming.bats` | `lib/micromamba_env.sh` | — |
 | `test_lock_validation.bats` | `lib/micromamba_env.sh` | — |
 | `test_micromamba_bootstrap.bats` | `lib/micromamba_bootstrap.sh` | — |
@@ -1969,7 +1954,7 @@ White-box tests that source individual `lib/*.sh` modules and test functions dir
 | `test_reinit.bats` | `lib/version.sh` | — |
 | `test_version.bats` | `lib/version.sh` | — |
 | `test_env_detect.bats` | `lib/env_detect.sh` (Story I.j) | 33 |
-| `test_distutils_shim_coverage.bats` | `lib/distutils_shim.sh` coverage gap-filler (Story I.k) | 17 |
+| `test_distutils_shim_retired.bats` | Regression sentinel: the retired distutils shim must not reappear | 3 |
 | `test_asdf_compat.bats` | `is_asdf_active` + `.envrc` guard + `pyve run` guard (Phase J) | 15 |
 | `test_bash32_compat.bats` | Grep-invariant over `pyve.sh` + `lib/*.sh` + `lib/completion/pyve.bash` — fails on any bash-4+ construct (declare/typeset/local `-A`, mapfile/readarray, case-mod/@-transform parameter expansions, `declare -n`, named `coproc`, `shopt -s globstar`). Scope excludes `lib/completion/_pyve` (zsh). Story J.e. | 10 |
 

@@ -122,13 +122,6 @@ else
     exit 1
 fi
 
-if [[ -f "$SCRIPT_DIR/lib/distutils_shim.sh" ]]; then
-    source "$SCRIPT_DIR/lib/distutils_shim.sh"
-else
-    printf "ERROR: Cannot find lib/distutils_shim.sh\n" >&2
-    exit 1
-fi
-
 if [[ -f "$SCRIPT_DIR/lib/version.sh" ]]; then
     source "$SCRIPT_DIR/lib/version.sh"
 else

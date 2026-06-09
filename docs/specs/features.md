@@ -583,11 +583,14 @@ Refuse to initialize an environment inside a known cloud-synced directory.
 - **`--allow-synced-dir` flag** (or `PYVE_ALLOW_SYNCED_DIR=1`) bypasses the check for users who have disabled sync on that directory.
 - **Rationale:** Cloud sync daemons race against micromamba extraction, causing non-deterministic environment corruption. A warning is insufficient — the failure is silent, delayed, and not recoverable without a full rebuild.
 
-### FR-13: Distutils Compatibility Shim
+### FR-13: Distutils Compatibility Shim — retired
 
-On Python 3.12+, install a lightweight `sitecustomize.py` shim to prevent TensorFlow/Keras import failures from missing `distutils`.
+Pyve previously wrote a `sitecustomize.py` shim (`SETUPTOOLS_USE_DISTUTILS=local` + forced `import setuptools`) into every Python 3.12+ environment, plus a forced `pip install setuptools wheel`. This was a 2023-era band-aid for `import distutils` (removed from CPython in 3.12, PEP 632) and is obsolete in the 3.14 era: `SETUPTOOLS_USE_DISTUTILS=local` is now the setuptools default, the per-startup `import setuptools` is pure overhead, and modern build backends use PEP 517 build isolation. **The shim is retired** — fresh environments keep `pip` (the venv built-in / the `- pip` line in the starter `environment.yml`) but no longer carry the shim or a forced setuptools/wheel.
 
-- Disable with `PYVE_DISABLE_DISTUTILS_SHIM=1`.
+**Manual fallback** (rare legacy projects):
+
+- Code that still does `import distutils` at runtime: `pip install setuptools` and set `SETUPTOOLS_USE_DISTUTILS=local` yourself.
+- A legacy `setup.py`-only `pip install -e .` (no `pyproject.toml` build-system, so no build isolation): `pip install setuptools wheel` into the env first.
 
 ### FR-16: project-guide Integration (`pyve init`)
 
@@ -706,7 +709,6 @@ No CLI flag (`--no-asdf-compat` or similar). Env var is sufficient for CI ergono
 | Variable | Purpose |
 |----------|---------|
 | `PYVE_PYTHON` | Absolute path to the Python interpreter Pyve uses to run its **own** helpers (manifest/config parsing). Overrides Pyve's hidden toolchain venv. Use it to pin a specific interpreter in CI or constrained environments. Does **not** affect your project's Python. |
-| `PYVE_DISABLE_DISTUTILS_SHIM` | Set to `1` to disable the Python 3.12+ distutils shim |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Set to `1` to auto-install pytest without prompting (CI) |
 | `PYVE_NO_TESTENV_ADVISORY` | Set to `1` to suppress the `pyve test` silent-skip advisory (the nudge toward `--env root` when the root env also has pytest). For users who keep pytest in the root env deliberately. (Story M.c; renamed `main → root` in M.e v2.7.1) |
 | `PYVE_NO_AUTO_PROVISION` | Set to `1` to suppress lazy auto-provisioning on `pyve test --env <lazy-name>` (Story M.n). Restores the M.m hard-error with a `pyve testenv install <name>` hint. For strict CI that wants "is this env already built?" semantics. |
