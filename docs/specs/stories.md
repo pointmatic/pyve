@@ -2595,6 +2595,59 @@ python 3.14.3
 - [ ] Add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing at `pyve self unprovision --all` for full teardown (developer copies back to the tap). Document the orphan behavior.
 - [ ] Full suite; zero regressions.
 
+### Story N.bk: retire (or narrow) the distutils compatibility shim — it's a 2023-era band-aid stamped into 3.14 envs [Planned]
+
+**Discovered:** 2026-06-08 micromamba `pyve init` smoke on a fresh `python=3.14.5` project.
+
+**Symptom.** On a brand-new Python 3.14 environment, `pyve init` reports `Python >= 3.12 detected; installing distutils compatibility shim` and writes a `sitecustomize.py` ([lib/distutils_shim.sh:75-79](../../lib/distutils_shim.sh#L75)) that runs on **every interpreter startup**:
+
+```python
+# pyve-managed: distutils shim
+import os
+os.environ.setdefault("SETUPTOOLS_USE_DISTUTILS", "local")
+import setuptools  # noqa: F401
+```
+
+**Why it's wrong now.** distutils was removed from CPython in **3.12** (PEP 632, 2023). The shim exists to keep `import distutils` working via setuptools' vendored copy, but by **3.14** (this 2026 timeline) it is stale on every axis:
+
+1. **Redundant.** `SETUPTOOLS_USE_DISTUTILS=local` is already the default (and effectively the only) mode in current setuptools — the toggle is obsolete, so `setdefault(...)` is a no-op-equivalent.
+2. **Per-startup cost / overreach.** The sitecustomize force-`import setuptools` on every `python` invocation in the env — real startup overhead for a capability most fresh projects never use, and setuptools' own bundled distutils is itself being sunset.
+3. **Blanket trigger.** `pyve_python_is_312_plus` ([distutils_shim.sh:40-59](../../lib/distutils_shim.sh#L40)) means a 3.12-era workaround is applied to **all** future Pythons, unconditionally, opt-**out** only (`PYVE_DISABLE_DISTUTILS_SHIM=1`).
+4. **Pulls in setuptools/wheel** via `pyve_ensure_{venv,micromamba}_packaging_prereqs` partly to satisfy the shim, growing fresh envs the 3.14 ecosystem is trying to slim down.
+
+Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamba prefix), [plugin.sh:1993](../../lib/plugins/python/plugin.sh#L1993) (venv).
+
+**Proposed fix (decide during debug).**
+- **Option A — retire (recommended).** Remove the shim install + its sitecustomize write; stop advertising the `>= 3.12` message. Keep a documented manual fallback for the rare legacy project (`pip install setuptools` + set the env var yourself). Cleanest; matches the "fewer implicit setuptools/distutils assumptions" direction of modern Python.
+- **Option B — flip to opt-in.** Default OFF; a `PYVE_ENABLE_DISTUTILS_SHIM=1` (or `pyve init --distutils-shim`) turns it on for users with legacy `import distutils` code. Preserves an escape hatch without imposing on new projects. (Mirror image of today's opt-out.)
+- **Sub-decision:** whether retiring the shim also lets `pyve_ensure_*_packaging_prereqs` drop the forced `setuptools`/`wheel` install (modern pip uses build isolation and doesn't need them in the target env) — weigh against legacy `pip install -e .` / `setup.py` projects that still expect setuptools in-env. Likely keep `pip`, make `setuptools`/`wheel` not-forced; confirm against the editable-install workflow before changing.
+
+**Out of scope.** The broader packaging-prereqs redesign beyond the setuptools/wheel sub-decision above. N-10 visual styling. Changing `DEFAULT_PYTHON_VERSION`.
+
+**Tasks**
+
+- [ ] Decide Option A (retire) vs B (opt-in); capture the rationale.
+- [ ] Implement: remove or gate the shim install in both callsites ([plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888), [plugin.sh:1993](../../lib/plugins/python/plugin.sh#L1993)); update/retire [lib/distutils_shim.sh](../../lib/distutils_shim.sh) accordingly (keep the `PYVE_DISABLE_*`/`PYVE_ENABLE_*` env surface consistent with the choice).
+- [ ] Resolve the setuptools/wheel sub-decision; adjust `pyve_ensure_{venv,micromamba}_packaging_prereqs` if agreed (verify the editable-install path still works).
+- [ ] Update tests: [tests/unit/test_distutils_shim.bats](../../tests/unit/test_distutils_shim.bats) + [tests/unit/test_distutils_shim_coverage.bats](../../tests/unit/test_distutils_shim_coverage.bats) to the new behavior (no shim by default / opt-in gating).
+- [ ] Smoke: a fresh `pyve init` on 3.14 (venv + micromamba) no longer writes the sitecustomize shim by default; document the manual fallback.
+- [ ] Full suite; zero regressions.
+
+### Story N.bl: fix two CI integration failures — N.bf.20 rebrand assertion + auto-pin installed-version robustness [Done]
+
+**Motivation.** A CI integration run on the branch surfaced two failures. One was a missed follow-up from N.bf.20's `testenv`→`env` rebrand; the other a pre-existing test-harness fragility unrelated to any feature work. Bundled as one story because both landed together to get integration CI green. (Placement note: documented `[Done]` after the still-`[Planned]` N.bj/N.bk — the developer's `project-guide` ≥ v2.14.0 auto-commits a single out-of-sequence story.)
+
+**Fix 1 — N.bf.20 rebrand: stale integration assertion.** N.bf.20 rebranded the not-initialized hint `Run: pyve testenv init` → `Run: pyve env init` and updated the code + bats unit tests, but missed [tests/integration/test_testenv.py](../../tests/integration/test_testenv.py)'s `test_testenv_run_before_init_shows_error`, which still asserted `'testenv init'`. Updated it to assert the canonical `'pyve env init'` and that `'testenv init'` is absent (the deprecated `testenv run` alias re-dispatches to `env` and still emits its own deprecation warning; the hint correctly points at the canonical surface).
+
+**Fix 2 — auto-pin installed-version robustness.** `_detect_version_manager_python_version` ([tests/helpers/pyve_test_helpers.py](../../tests/helpers/pyve_test_helpers.py)) returned `pyenv version-name` — the *configured* version — without verifying it is **installed**, violating `_auto_pin_python_for_init`'s "already-installed" contract. On a runner where pyenv had `3.12.10` configured-but-unbuilt, `pyve init` got pinned to it and prompted "Install Python 3.12.10 now?"; a test that deliberately clears `CI`/`PYVE_FORCE_YES` to exercise the interactive project-guide default (`test_project_guide_integration.py::TestRealInstall::test_update_refreshes_managed_templates`) then cancelled non-interactively → `rc 1`. Added `_pyenv_version_installed()` (checks `pyenv versions --bare`) and gated the pyenv branch on it; falls through to asdf / `python3` when the configured version isn't built. Root-cause fix — benefits every auto-pinned test, not just this one. (Not caused by N.bf.20/N.bh/N.bi; the N.bg "pre-existing CI-environment integration failures" class.)
+
+**Tasks**
+
+- [x] Update `test_testenv_run_before_init_shows_error` to assert `pyve env init` (+ assert `testenv init` absent). Verified locally: PASSED (6.65s).
+- [x] Add `_pyenv_version_installed()`; pin only installed pyenv versions in `_detect_version_manager_python_version` (else fall through to asdf/python3). Verified locally: the previously-failing `test_update_refreshes_managed_templates` PASSED (11.86s).
+- [x] Swept the integration suite for other assertions affected by the N.bf.20 rebrand / N.bh orchestration+message / N.bi `[pyve]`/`[project-guide]` sections — none others broken (next-steps `testenv install`, self-help `pyve self install`, completion `command -v project-guide` all legitimately still pass).
+- [x] No `CHANGELOG.md` entry (Phase N runs unversioned).
+
 ---
 
 ## Subphase N-9: v3.0.0 release tag

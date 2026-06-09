@@ -48,9 +48,12 @@ class TestTestenvRun:
         result = pyve.run('testenv', 'run', 'python', '--version', check=False)
         assert result.returncode == 1
         assert 'not initialized' in result.stderr.lower()
-        # H.f.3 standardized the hint on v2.0 grammar (`pyve testenv init`)
-        # instead of the deprecated `pyve testenv --init` flag form.
-        assert 'testenv init' in result.stderr.lower()
+        # Story N.bf.20 rebranded the canonical hint to `pyve env init`
+        # (the deprecated `testenv` alias re-dispatches to `env` and already
+        # emits its own deprecation warning). Assert the canonical form and
+        # that the stale `testenv init` hint is gone.
+        assert 'pyve env init' in result.stderr.lower()
+        assert 'testenv init' not in result.stderr.lower()
 
     @pytest.mark.venv
     def test_testenv_run_python_version(self, pyve, project_builder):
