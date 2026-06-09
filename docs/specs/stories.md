@@ -2654,6 +2654,12 @@ Callsites: [plugin.sh:1888](../../lib/plugins/python/plugin.sh#L1888) (micromamb
 
 ---
 
+## Subphase N-8: Documentation refresh + brand alignment
+
+Holistic documentation reflow via `refactor_document`, run **after** N-7's test consolidation (so the docs reference the final capability-named tests N.bc/N.bd leave) and **before** the N-9 release cut; bundles into the **v3.0.0** release. `refactor_document` runs over [brand-descriptions.md](brand-descriptions.md) — Benefits, Technical Description, Keywords, and Feature Cards (the sections currently carrying the *v3 baseline — deferred to N-8* annotations) → full narrative reflow, completing the v3 brand alignment — then cascades the refresh across [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md) (consolidating the per-component N.k–N.r subsections into a unified "Plugin layer" section), [README.md](../../README.md), the mkdocs site copy, and the testing spec, against the clean, story-ref-free codebase. Adds a user-facing migration guide referencing `pyve self migrate`. Description only; story breakdown deferred to its `plan_production_phase` session.
+
+---
+
 ## Subphase N-9: v3.0.0 release tag
 
 Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **First Phase N release tag.** Story breakdown deferred.
@@ -2699,8 +2705,6 @@ The process exit code is correct (non-zero); only the visual footer lies.
 - [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
 - [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
 - [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
-
-`refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
 
