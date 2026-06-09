@@ -201,3 +201,99 @@ SH
     [[ "$output" != *"ASDF_SHIM_PG"* ]]
     [[ "$output" == *"project-guide artifacts refreshed"* ]]
 }
+
+#------------------------------------------------------------
+# Story N.bh: lazy, install-method-agnostic provisioning. project-guide
+# hosting is provisioned on first opt-in use (not only by `self install`,
+# which no-ops for Homebrew). The ensure is idempotent + presence-gated —
+# a no-op stat when already hosted, a provision when missing. On a genuine
+# provisioning failure the callsites skip generically and NEVER invoke the
+# bare asdf shim (no asdf-internal error leak).
+#------------------------------------------------------------
+
+# A toolchain-build stub: fabricates the venv + a `pip` that, on
+# `install … project-guide…`, writes a project-guide console script next
+# to itself. Wire it in as the `pyve_toolchain_python_ensure` stub.
+_stub_toolchain_build_ok() {
+    pyve_toolchain_python_ensure() {
+        local bin; bin="$(pyve_toolchain_venv_dir)/bin"; mkdir -p "$bin"
+        cat > "$bin/pip" <<'SH'
+#!/bin/sh
+dir="$(cd "$(dirname "$0")" && pwd)"
+case "$*" in
+  *project-guide*) printf '#!/bin/sh\necho "HOSTED_PG ran: $*"\n' > "$dir/project-guide"; chmod +x "$dir/project-guide" ;;
+esac
+exit 0
+SH
+        chmod +x "$bin/pip"
+        return 0
+    }
+}
+
+@test "pyve_project_guide_ensure: no-op (no pip call) when already hosted" {
+    _make_toolchain_venv ok
+    # Replace pip with a recorder; the fast path must not invoke it.
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"
+    cat > "$bin/pip" <<SH
+#!/bin/sh
+echo CALLED > "$TEST_DIR/pip-called"
+exit 0
+SH
+    chmod +x "$bin/pip"
+    run pyve_project_guide_ensure
+    assert_status_equals 0
+    [ ! -f "$TEST_DIR/pip-called" ]
+}
+
+@test "pyve_project_guide_ensure: provisions (venv + project-guide + shim) when missing" {
+    _stub_toolchain_build_ok
+    run pyve_project_guide_ensure
+    assert_status_equals 0
+    [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]]
+    [[ -L "$HOME/.local/bin/project-guide" ]]
+}
+
+@test "pyve_project_guide_ensure: returns non-zero when the toolchain build fails" {
+    pyve_toolchain_python_ensure() { return 1; }
+    run pyve_project_guide_ensure
+    [ "$status" -ne 0 ]
+}
+
+@test "pyve_project_guide_is_hosted: true when hosted, false when only a bare/asdf shim resolves" {
+    run pyve_project_guide_is_hosted
+    [ "$status" -ne 0 ]          # nothing hosted yet
+    _make_toolchain_venv ok
+    run pyve_project_guide_is_hosted
+    assert_status_equals 0       # toolchain console script present
+}
+
+@test "run_project_guide_init_in_env: unhosted + asdf shim → auto-provisions, no asdf leak" {
+    _prepend_asdf_shim
+    _stub_toolchain_build_ok
+    run run_project_guide_init_in_env
+    assert_status_equals 0
+    [[ "$output" == *"HOSTED_PG ran: init"* ]]
+    [[ "$output" != *"No version is set"* ]]
+    [[ "$output" != *"ASDF_SHIM_PG"* ]]
+}
+
+@test "run_project_guide_init_in_env: unhosted + provision fails → generic skip, no asdf leak, non-fatal" {
+    _prepend_asdf_shim
+    pyve_toolchain_python_ensure() { return 1; }
+    run run_project_guide_init_in_env
+    assert_status_equals 0
+    [[ "$output" != *"No version is set"* ]]
+    [[ "$output" != *"ASDF_SHIM_PG"* ]]
+}
+
+@test "self provision: provisions hosting without installing the pyve binary or touching PATH" {
+    _stub_toolchain_build_ok
+    run self_provision
+    assert_status_equals 0
+    # project-guide hosting is provisioned...
+    [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]]
+    [[ -L "$HOME/.local/bin/project-guide" ]]
+    # ...but the pyve binary is NOT installed and PATH is not rewritten
+    # (that's `self install`'s job; provision is brew-safe).
+    [ ! -e "$HOME/.local/bin/pyve" ]
+}

@@ -33,9 +33,30 @@ setup() {
     unset PYVE_PROJECT_GUIDE_COMPLETION PYVE_NO_PROJECT_GUIDE_COMPLETION
     unset CI PYVE_FORCE_YES
 
+    # Story N.bh: the project-guide callsites lazily provision via
+    # pyve_project_guide_ensure. Stub it to a no-op so these tests never
+    # trigger a real toolchain-venv build; tests that need an invokable
+    # project-guide host the fake at the ~/.local/bin shim (HOME is
+    # isolated) via _make_hosted_pg.
+    pyve_project_guide_ensure() { return 0; }
+
     # Sentinel comments we test against — must match the real helper output.
     SENTINEL_OPEN="# >>> project-guide completion (added by pyve) >>>"
     SENTINEL_CLOSE="# <<< project-guide completion <<<"
+}
+
+# Story N.bh: install a HOSTED fake project-guide (at the ~/.local/bin shim
+# tier, under the isolated HOME) that logs its args to <logfile>. The
+# callsites only invoke project-guide when it is pyve-hosted.
+_make_hosted_pg() {
+    local log="$1" rc="${2:-0}"
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/project-guide" << EOF
+#!/bin/bash
+echo "\$@" > "$log"
+exit $rc
+EOF
+    chmod +x "$HOME/.local/bin/project-guide"
 }
 
 teardown() {
@@ -801,16 +822,8 @@ EOF
 #============================================================
 
 @test "run_project_guide_init_in_env: passes --no-input to project-guide init" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << EOF
-#!/bin/bash
-echo "\$@" > "$TEST_DIR/pg-args.log"
-exit 0
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_init_in_env
+    _make_hosted_pg "$TEST_DIR/pg-args.log"
+    run run_project_guide_init_in_env
     [ "$status" -eq 0 ]
     [ -f "$TEST_DIR/pg-args.log" ]
     grep -qF "init --no-input" "$TEST_DIR/pg-args.log"
@@ -820,35 +833,20 @@ EOF
 # project-guide init emits no stdout chatter into pyve init's log stream.
 # Requires project-guide >= 2.5.0 (the version that introduced --quiet).
 @test "run_project_guide_init_in_env: passes --quiet to project-guide init" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << EOF
-#!/bin/bash
-echo "\$@" > "$TEST_DIR/pg-args.log"
-exit 0
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_init_in_env
+    _make_hosted_pg "$TEST_DIR/pg-args.log"
+    run run_project_guide_init_in_env
     [ "$status" -eq 0 ]
     grep -qF -- "--quiet" "$TEST_DIR/pg-args.log"
 }
 
-@test "run_project_guide_init_in_env: safe no-op when project-guide not on PATH" {
+@test "run_project_guide_init_in_env: safe no-op when project-guide hosting not set up" {
     PATH="/usr/bin:/bin" run run_project_guide_init_in_env
     [ "$status" -eq 0 ]  # Always returns 0 (failure non-fatal)
 }
 
 @test "run_project_guide_init_in_env: failure-non-fatal when project-guide fails" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << 'EOF'
-#!/bin/bash
-exit 17
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_init_in_env
+    _make_hosted_pg "$TEST_DIR/pg-args.log" 17
+    run run_project_guide_init_in_env
     [ "$status" -eq 0 ]  # Returns 0 even when project-guide exits non-zero
 }
 
@@ -857,16 +855,8 @@ EOF
 #============================================================
 
 @test "run_project_guide_update_in_env: passes --no-input to project-guide update" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << EOF
-#!/bin/bash
-echo "\$@" > "$TEST_DIR/pg-update-args.log"
-exit 0
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_update_in_env
+    _make_hosted_pg "$TEST_DIR/pg-update-args.log"
+    run run_project_guide_update_in_env
     [ "$status" -eq 0 ]
     [ -f "$TEST_DIR/pg-update-args.log" ]
     grep -qF "update --no-input" "$TEST_DIR/pg-update-args.log"
@@ -874,34 +864,19 @@ EOF
 
 # Story L.d — see init counterpart above.
 @test "run_project_guide_update_in_env: passes --quiet to project-guide update" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << EOF
-#!/bin/bash
-echo "\$@" > "$TEST_DIR/pg-update-args.log"
-exit 0
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_update_in_env
+    _make_hosted_pg "$TEST_DIR/pg-update-args.log"
+    run run_project_guide_update_in_env
     [ "$status" -eq 0 ]
     grep -qF -- "--quiet" "$TEST_DIR/pg-update-args.log"
 }
 
-@test "run_project_guide_update_in_env: safe no-op when project-guide not on PATH" {
+@test "run_project_guide_update_in_env: safe no-op when project-guide hosting not set up" {
     PATH="/usr/bin:/bin" run run_project_guide_update_in_env
     [ "$status" -eq 0 ]  # Always returns 0 (failure non-fatal)
 }
 
 @test "run_project_guide_update_in_env: failure-non-fatal when project-guide fails" {
-    local pgbin="$TEST_DIR/pgbin"
-    mkdir -p "$pgbin"
-    cat > "$pgbin/project-guide" << 'EOF'
-#!/bin/bash
-exit 3
-EOF
-    chmod +x "$pgbin/project-guide"
-
-    PATH="$pgbin:$PATH" run run_project_guide_update_in_env
+    _make_hosted_pg "$TEST_DIR/pg-update-args.log" 3
+    run run_project_guide_update_in_env
     [ "$status" -eq 0 ]  # Non-fatal: exits 0 even on update failure (incl. future SchemaVersionError)
 }

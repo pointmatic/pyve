@@ -104,19 +104,15 @@ run_project_guide_orchestration() {
         return 0
     fi
 
-    #--- Step 1: ensure project-guide is globally available --------------
-    # project-guide is a Pyve-managed GLOBAL tool (pyve self
-    # install → toolchain venv + ~/.local/bin shim), not a per-project pip
-    # install. Nothing to install here — we only need it resolvable on PATH
-    # to scaffold. If it isn't, point the user at `pyve self install` and
-    # skip (non-fatal): scaffolding or wiring completion for a missing tool
-    # would just leave dead state.
-    if ! command -v project-guide >/dev/null 2>&1; then
-        log_warning "project-guide is not installed — run 'pyve self install' to host it, then re-run."
-        return 0
-    fi
-
-    #--- Step 2: scaffold or refresh managed artifacts --------------------
+    #--- Step 1: scaffold or refresh managed artifacts --------------------
+    # project-guide is a Pyve-managed GLOBAL tool hosted in the toolchain
+    # venv. Story N.bh: provisioning is now LAZY and install-method-agnostic
+    # — the init/update callsites below call pyve_project_guide_ensure on
+    # first use (so Homebrew and source installs both self-provision), and
+    # if hosting genuinely can't be set up they skip with a pyve-actionable
+    # "run pyve self provision" message. No bare `command -v project-guide`
+    # guard here: under active asdf that resolves the version-gated shim
+    # trap, not a real tool.
     # Branch on `.project-guide.yml` presence (Story G.h):
     #   - absent → first-time scaffolding: `project-guide init --no-input`
     #   - present → refresh: `project-guide update --no-input` — preserves

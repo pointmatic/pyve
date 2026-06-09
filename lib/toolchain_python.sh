@@ -112,6 +112,51 @@ pyve_project_guide_available() {
     fi
 }
 
+# True (0) when project-guide is pyve-HOSTED (the toolchain venv console
+# script or the ~/.local/bin shim), as opposed to merely resolvable as a
+# bare-PATH command. Story N.bh uses this to decide whether to trust the
+# resolution or (re)provision — a bare-PATH `project-guide` under active
+# asdf is a trap, not a real hosted tool.
+pyve_project_guide_is_hosted() {
+    [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]] || [[ -x "$HOME/.local/bin/project-guide" ]]
+}
+
+# Point ~/.local/bin/project-guide at the toolchain venv's console script.
+# Shared helper (Story N.bh): used by both `pyve self install`/`self
+# provision` and the lazy `pyve_project_guide_ensure`. `ln -sf` makes this
+# a refresh (idempotent + bump-reconcile). No-op if the target is absent.
+pyve_link_project_guide_shim() {
+    local venv_dir="$1"
+    local target="$venv_dir/bin/project-guide"
+    [[ -x "$target" ]] || return 0
+    local bin_dir="$HOME/.local/bin"
+    mkdir -p "$bin_dir"
+    ln -sf "$target" "$bin_dir/project-guide"
+}
+
+# Idempotent, presence-gated provisioning of the pyve-hosted project-guide
+# (Story N.bh). Fast path: a stat — no-op (and no network) when the
+# toolchain venv's console script already exists. When missing: build the
+# toolchain venv if absent (pyve_toolchain_python_ensure), pip-install
+# project-guide into it, then link the shim. Returns 0 once hosted; non-zero
+# if the venv could not be built or the install failed (callers treat that
+# as "skip project-guide", never as a hard abort). Install-method-agnostic:
+# works for Homebrew and source installs alike, independent of `self install`.
+pyve_project_guide_ensure() {
+    local venv_dir target pip
+    venv_dir="$(pyve_toolchain_venv_dir)"
+    target="$venv_dir/bin/project-guide"
+    [[ -x "$target" ]] && return 0
+    if declare -F pyve_toolchain_python_ensure >/dev/null 2>&1; then
+        pyve_toolchain_python_ensure >/dev/null 2>&1 || return 1
+    fi
+    pip="$venv_dir/bin/pip"
+    [[ -x "$pip" ]] || return 1
+    "$pip" install --upgrade 'project-guide>=2.13.0' >/dev/null 2>&1 || return 1
+    pyve_link_project_guide_shim "$venv_dir"
+    [[ -x "$target" ]]
+}
+
 # True (0) when the resolved toolchain interpreter can `import yaml`
 # (PyYAML), which lib/pyve_env_spec_helper.py requires for `pyve env sync`
 #. PyYAML is provisioned into the toolchain venv by

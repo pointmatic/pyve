@@ -2498,11 +2498,9 @@ The N.aw global-hosting design intends `project-guide` to resolve independent of
 - [x] Test: the hosted shim wins over an asdf shim on PATH; the bare-PATH fallback still works when no toolchain/hosted shim exists. — covered for the toolchain-venv tier, the `~/.local/bin` shim tier, and the bare-PATH tier; orchestration tests ([tests/unit/test_project_guide_orchestration.bats](../../tests/unit/test_project_guide_orchestration.bats)) updated to source the resolver + isolate `HOME`/`XDG_DATA_HOME` so the fake-on-PATH resolves via the bare tier.
 - [x] Full suite; zero regressions. Re-run the `pyve init` smoke on an asdf project pinned off `DEFAULT_PYTHON_VERSION` to confirm `project-guide init` succeeds. — `bats tests/unit/*.bats` → 1922 ok / 0 not ok. **Live `pyve init` asdf-smoke re-run still pending the developer (requires `pyve self install` to provision the toolchain shim in the real environment).**
 
-`refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
-
 ---
 
-### >Story N.bg: Fix pre-existing integration test failure [Done]
+### Story N.bg: Fix pre-existing integration test failure [Done]
 
 **Motivation**: surfaced during story K.a.1 regression sweep, confirmed still problematic in story N.s.9. One integration test remains to re-check: `test_invalid_backend_in_config`, originally pinned for an `stderr`/`stdout` output-stream drift. Its original sibling failures are gone — the assertion fixes landed during Phase N, and a flaky cross-platform timeout was pushed to a future story. Re-checking the remaining one so it doesn't mask real regressions in `make test-integration`.
 
@@ -2511,6 +2509,43 @@ The N.aw global-hosting design intends `project-guide` to resolve independent of
 - [x] `test_auto_detection.py::TestEdgeCases::test_invalid_backend_in_config` — reinvestigated by running it: **it passes** (both non-CI and `CI=true`). The original "moved to stdout" hypothesis was wrong, and so was the story's "read-compat ignores the bad backend" guess. True behavior: the legacy `.pyve/config` is **synthesized** into a v3 manifest by `_manifest_synthesize_from_legacy` (pure bash — no interpreter needed), and the **v3 manifest/plugin** layer rejects it: `error: python plugin: env 'root' declares unregistered backend 'invalid_backend'`. No code fix needed; corrected the test's docstring/assertions to the real behavior and dropped the stale non-CI-only guard (the error is uniform across CI/non-CI since init runs without `--force`).
 - [x] **v2-ism note** — chose **retire-with-read-compat** over porting. Porting to `pyve.toml` is genuinely fragile in this harness: the `pyve.toml` validator probes the project interpreter and *defers* when none resolves (N.bf.1/.2), and the harness pins no Python — so the invalid-backend error would be environment-dependent there, whereas the legacy-synthesis path validates deterministically (pure bash). The canonical `pyve.toml` invalid-backend validation is already unit-covered by N.bf.1's `test_init_pyve_toml.bats`. Tagged the test `v3.0-only: remove in N-10` so the read-compat sweep removes it; removed now-unused `os` / `Path` imports (ruff-clean).
 - [x] Re-run `make test-integration` after the fix — **target test green in both modes.** ⚠️ The full `make test-integration` is **not** all-green on this dev machine: `TestPriorityOrder::test_priority_cli_over_all` and (flakily) `TestBackendAutoDetection::test_detects_venv_from_pyproject_toml` fail because there is no resolvable Python in pytest's `tmp_path` (asdf shim, no pin) → `pyve init` returns 0 but creates no `.venv`. **Confirmed pre-existing** (identical failure on clean HEAD via `git stash`), **out of N.bg's scope** (N.bg targets only `test_invalid_backend_in_config`), and environment-dependent — they belong to the existing `## Future` "Fix pre-existing integration test failures" story, not here. Recommend routing them there.
+
+### Story N.bh: project-guide hosting is never provisioned on Homebrew / fresh-source installs → lazy auto-provision + brew `post_install` (replaces the asdf-error leak) [Done]
+
+**Discovered:** 2026-06-08 smoke test (`pyve init` on a fresh asdf-active project, on a machine where `pyve self install` has never provisioned the hosted project-guide).
+
+**Symptom.** With no hosted project-guide on disk (no `~/.local/share/pyve/toolchain/<ver>/venv`, no `~/.local/bin/project-guide` shim) but asdf active with a stale `project-guide` shim, `pyve init`'s project-guide step leaks asdf's internal error:
+
+```
+  ▸ Running 'project-guide init'...
+No version is set for command project-guide
+Consider adding one of the following versions in your config file at .../.tool-versions
+python 3.14.3
+  ⚠ 'project-guide init' failed (skip with --no-project-guide)
+```
+
+**Root cause.** Story N.bf.22 made the `run_project_guide_*_in_env` callsites resolve via `pyve_project_guide` (toolchain venv → `~/.local/bin` shim → bare PATH). When neither hosted tier exists, the resolver correctly falls back to bare `project-guide`, and `pyve_project_guide_available` returns true because `command -v project-guide` finds the **asdf** shim. The callsite then invokes that shim, which rejects the command (its shim is version-pinned to a python the project doesn't pin) and prints asdf's raw "No version is set" text. The N.bf.22 bare fallback is correct for non-asdf / hand-installed project-guide, but under active asdf with nothing hosted it's a trap: the bare name is an unreliable shim, and the failure surfaces asdf internals rather than a pyve-actionable next step. Confirmed live: `~/.local/share/pyve/toolchain/` absent, no `~/.local/bin/project-guide`, `pyve_project_guide` → bare `project-guide` → `~/.asdf/shims/project-guide` (pinned to 3.14.3) on a project pinned to 3.14.2.
+
+**The deeper finding (2026-06-08).** The hosted project-guide (and the toolchain venv it lives in) is provisioned **only** by `self_install()` ([self.sh:294,354,370](../../lib/commands/self.sh#L294)), which **no-ops for Homebrew-managed installs** ([self.sh:33-40](../../lib/commands/self.sh#L33-L40)); and the idempotent `pyve_toolchain_python_ensure` ([toolchain_python.sh:216](../../lib/toolchain_python.sh#L216)) has **zero lazy callers**. So Homebrew users (and any source user who runs `pyve` before `pyve self install`) get **no hosted project-guide at all** — `pyve init`'s project-guide step then falls to the bare tier and, under active asdf, leaks asdf's error. Telling these users to "run `pyve self install`" is *wrong*: from a brew install it no-ops, and from a git clone it creates a competing `~/.local/bin` install that shadows Homebrew (see [self.sh:154](../../lib/commands/self.sh#L154)).
+
+**Proposed fix — install-method-agnostic lazy provisioning + a Homebrew `post_install` (decided with the developer 2026-06-08).**
+
+1. **Lazy ensure.** Add an idempotent, presence-gated `pyve_project_guide_ensure` (in [lib/toolchain_python.sh](../../lib/toolchain_python.sh) or [lib/project_guide.sh](../../lib/project_guide.sh)): if the toolchain venv's `bin/project-guide` is missing → `pyve_toolchain_python_ensure` (build the venv if absent) then `pip install 'project-guide>=2.13.0'` into it + link the shim; **no-op (just a stat) when already present** — never `--upgrade` on the hot path. Call it from `run_project_guide_init_in_env` / `run_project_guide_update_in_env` *before* resolving, so first opt-in use self-provisions regardless of install method. project-guide is only ensured where it's actually used (the init/update callsites, which only run when the user opted in) — not unconditionally.
+2. **No more asdf leak / "run self install" advice.** If `pyve_project_guide_ensure` genuinely can't provision (no network, build failure), emit a generic non-asdf-leaking warning and **skip** the invocation (never run the bare asdf shim). Keep a `pyve_project_guide_is_hosted` predicate to drive the skip decision.
+3. **Brew-safe provision command.** Add a `pyve self provision` leaf that runs the ensures (toolchain venv → deps → project-guide + shim) **without** the file-copy / PATH / brew-guard parts of `self install`, so it's safe on a Homebrew install.
+4. **Homebrew `post_install`.** Edit [docs/specs/pyve.rb](pyve.rb) (a copy of `pointmatic/homebrew-tap`'s `pyve.rb`; developer copies it back) to add a best-effort `post_install` that runs `pyve self provision` so brew users are provisioned eagerly at install/upgrade time. Also bump the formula `url`/`sha256` is the developer's release step — not this story.
+
+**Out of scope.** Unconditional toolchain-venv provisioning on every `pyve env`/`pyve run` (the toolchain Python already falls back to bare `python`, and building a venv on first `env`/`run` is a surprising network/CPU hit — revisit separately if the fallback proves insufficient). Changing `pyve_project_guide`'s resolution precedence (that's N.bf.22). Making `~/.local/bin` reachable for brew users whose PATH omits it (pyve resolves project-guide via the toolchain venv absolute path regardless; the user-facing shim reachability is a separate concern). The visual-style unification (N-10 / [cli-output-contract.md](cli-output-contract.md)).
+
+**Tasks**
+
+- [x] Reproduce (red): with no hosted project-guide + an asdf `project-guide` shim on PATH, `run_project_guide_init_in_env` leaked asdf's "No version is set" text. — captured in [tests/unit/test_project_guide_hosting.bats](../../tests/unit/test_project_guide_hosting.bats) "unhosted + provision fails → generic skip, no asdf leak"; red against the pre-fix bare-invocation.
+- [x] Add idempotent, presence-gated `pyve_project_guide_ensure` (build toolchain venv if missing → install project-guide if its console script is missing → link shim; no-op when present). — [lib/toolchain_python.sh](../../lib/toolchain_python.sh), alongside `pyve_project_guide_is_hosted` and a shared `pyve_link_project_guide_shim` (moved out of self.sh's `_self_link_project_guide_shim` so both the installer and the lazy path share it). Unit-tested no-op-when-present, provision-when-missing, and build-failure paths.
+- [x] Wire the ensure into `run_project_guide_init_in_env` / `run_project_guide_update_in_env` (refactored to a shared `_run_project_guide` in [lib/utils.sh](../../lib/utils.sh)); on ensure failure/unhosted, emit a generic "run `pyve self provision`" warning and **skip** — never invoke the bare asdf shim. Also removed the duplicate bare `command -v project-guide` guard in `run_project_guide_orchestration` ([lib/project_guide.sh](../../lib/project_guide.sh)) that emitted the wrong "run `pyve self install`" advice.
+- [x] Add `pyve self provision` (brew-safe: ensures only, no copy/PATH/brew-guard) + dispatcher arm + `show_self_provision_help` + `show_self_help` listing ([lib/commands/self.sh](../../lib/commands/self.sh)); unit-tested it provisions hosting without writing `~/.local/bin/pyve` or touching PATH.
+- [x] Edit [docs/specs/pyve.rb](pyve.rb): added a best-effort `post_install` running `pyve self provision` (rescues `BuildError` so a provisioning hiccup never fails `brew install`). `ruby -c` clean. **Developer copies this back to `pointmatic/homebrew-tap`.**
+- [x] Test: unhosted → auto-provisions (or generic skip with no asdf-internal text on failure); hosted → invokes the hosted path (N.bf.22 preserved); `pyve init` continues either way. — covered across [test_project_guide_hosting.bats](../../tests/unit/test_project_guide_hosting.bats), [test_project_guide_orchestration.bats](../../tests/unit/test_project_guide_orchestration.bats), [test_project_guide.bats](../../tests/unit/test_project_guide.bats).
+- [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1929 ok / 0 not ok.
 
 ---
 
@@ -2523,6 +2558,44 @@ Final integration verification matrix across Python-only, Node-only, and polyglo
 ## Subphase N-10: UX visual refinement + hard migration gate (post-v3.0.0)
 
 Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred. Ships **v3.1.0** as the second Phase N release tag.
+
+### Story N.?: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
+
+**Discovered:** 2026-06-08 smoke test (`pyve env install` and `pyve env init testenv` on a `.git`-only `pyve-v3-smoke`).
+
+**Symptom.** A failed box command renders its `✘` error and then a green success footer directly beneath it:
+
+```
+$ ../pyve/pyve.sh env init testenv
+  ╭─────────────────────────────────────────╮
+  │  pyve env                               │
+  ╰─────────────────────────────────────────╯
+  ▸ Creating dev/test runner environment in '.pyve/envs/testenv/venv'...
+  ✘ Cannot resolve 'python' — version-manager shim has no version pinned for this directory.
+  ✘ This directory isn't an initialized Pyve project.
+  ✘ Run 'pyve init' to set one up.
+  ╭─────────────────────────────────────────╮
+  │  ✔ All done.                            │   ← contradicts the ✘ errors above
+  ╰─────────────────────────────────────────╯
+```
+
+The process exit code is correct (non-zero); only the visual footer lies.
+
+**Root cause — `footer_box` is hardcoded to success.** [`footer_box`](../../lib/ui/core.sh#L141-L145) unconditionally prints `✔ All done.` with no status parameter, and every namespace/composer dispatcher calls it before returning the real result — e.g. [env.sh:1314](../../lib/commands/env.sh#L1314) does `footer_box` then `return "$leaf_rc"`. So whenever a leaf fails, the user sees the error *and* a green "done" box. Affected callsites (~11): [env.sh:1223](../../lib/commands/env.sh#L1223) (sync) + [env.sh:1314](../../lib/commands/env.sh#L1314), [self.sh:912](../../lib/commands/self.sh#L912) + [self.sh:939](../../lib/commands/self.sh#L939), [init_composer.sh:197](../../lib/init_composer.sh#L197), [purge_composer.sh:153](../../lib/purge_composer.sh#L153) + [purge_composer.sh:240](../../lib/purge_composer.sh#L240), and the python plugin ([plugin.sh:643](../../lib/plugins/python/plugin.sh#L643), [1763](../../lib/plugins/python/plugin.sh#L1763), [2393](../../lib/plugins/python/plugin.sh#L2393), [2724](../../lib/plugins/python/plugin.sh#L2724)).
+
+**Proposed fix (decide during debug).** Make `footer_box` status-aware: `footer_box [exit_code]` — `0`/absent renders today's `✔ All done.` (backward-compatible default); non-zero renders a failure variant using the existing `CROSS` glyph + red (`R`) box (e.g. `✘ Failed.`). Thread the real result through each dispatcher that already computes one (`env_command`'s `leaf_rc`, `self_command`, the composers, the plugin paths) — `footer_box "$leaf_rc"`. Callsites with no meaningful failure path at that point keep the no-arg success default. The UI primitive stays pyve-agnostic per the `lib/ui/` boundary invariant.
+
+**Out of scope.** Broader N-10 UX visual refinement beyond the success/failure footer (spacing, color theming, box width); changing any command's exit code or error text; suppressing the footer entirely on failure (the decision here is a *failure* footer, not *no* footer — revisit only if a cleaner shape emerges during debug).
+
+**Tasks**
+
+- [ ] Reproduce (red): a failed box command (e.g. `env init` on an uninitialized project, or any dispatcher with a non-zero leaf) emits `✔ All done.`. Assert the success footer is present on failure (red), then absent after the fix.
+- [ ] Make `footer_box` accept an optional exit code; non-zero → failure variant (`CROSS` + red box); zero/absent → unchanged success footer. Keep it pyve-agnostic (extend the `lib/ui/` boundary test if needed).
+- [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
+- [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
+- [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
+
+`refactor_document` mode runs over [brand-descriptions.md](brand-descriptions.md) (Benefits, Technical Description, Keywords, Feature Cards — all currently flagged **NEEDS REVISION for Pyve 3.0**). Cascade refresh of [concept.md](concept.md), [features.md](features.md), [tech-spec.md](tech-spec.md), [README.md](../../README.md), mkdocs site copy. User-facing migration guide referencing `pyve self migrate`. Story breakdown deferred. Bundles into **v3.0.0**.
 
 ---
 

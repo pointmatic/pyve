@@ -379,25 +379,13 @@ _self_install_project_guide() {
     fi
     if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.13.0'; then
         log_success "Installed project-guide into the Pyve toolchain"
-        _self_link_project_guide_shim "$venv_dir"
+        # Shared shim-link helper (Story N.bh, lib/toolchain_python.sh).
+        pyve_link_project_guide_shim "$venv_dir"
+        log_info "Linked project-guide → $HOME/.local/bin/project-guide"
     else
         log_warning "Could not install project-guide into the toolchain (skip; re-run 'pyve self install' later)"
     fi
     return 0
-}
-
-# Point ~/.local/bin/project-guide at the toolchain venv's console script.
-# `self install` owns ~/.local/bin (it installs pyve there and adds it to
-# PATH), so the shim is immediately resolvable. `ln -sf` makes this a
-# refresh, not just a create (bump-reconcile + re-run idempotency).
-_self_link_project_guide_shim() {
-    local venv_dir="$1"
-    local target="$venv_dir/bin/project-guide"
-    [[ -x "$target" ]] || return 0
-    local bin_dir="$HOME/.local/bin"
-    mkdir -p "$bin_dir"
-    ln -sf "$target" "$bin_dir/project-guide"
-    log_info "Linked project-guide → $bin_dir/project-guide"
 }
 
 # Remove the project-guide shim on `self uninstall`. Only our own symlink
@@ -953,6 +941,27 @@ _self_migrate_summary() {
     fi
 }
 
+#------------------------------------------------------------
+# Leaf: pyve self provision (Story N.bh)
+#
+# Provisions Pyve's toolchain venv + hosted tools (toolchain Python,
+# PyYAML/tomlkit, project-guide + shim) WITHOUT the file-copy / PATH /
+# prompt-hook parts of `self install`. Brew-safe: it never writes a second
+# pyve binary into ~/.local/bin or rewrites PATH, so a Homebrew formula's
+# post_install can call it to provision hosting that `self install` itself
+# refuses to do for Homebrew-managed installs. Best-effort (each step warns
+# but never aborts), so it always returns 0 — safe for a non-fatal hook.
+#------------------------------------------------------------
+
+self_provision() {
+    printf "\nProvisioning Pyve toolchain + hosted tools...\n"
+    _self_install_toolchain_python
+    _self_install_toolchain_deps
+    _self_install_project_guide
+    printf "\n✓ Provisioning complete.\n"
+    return 0
+}
+
 self_command() {
     if [[ $# -eq 0 ]]; then
         show_self_help
@@ -995,6 +1004,18 @@ self_command() {
                 return 0
             fi
             self_migrate "$@"
+            ;;
+        provision)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_self_provision_help
+                return 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-provision %s\n' "$*"
+                return 0
+            fi
+            self_provision
             ;;
         --help|-h)
             show_self_help
@@ -1085,6 +1106,31 @@ See also:
   pyve check                     Verify the v3 layout after migration
 EOF
 }
+show_self_provision_help() {
+    cat << 'EOF'
+pyve self provision - Provision Pyve's toolchain venv + hosted tools
+
+Usage:
+  pyve self provision
+
+Description:
+  Provisions Pyve's hidden toolchain Python venv and the tools hosted in
+  it (PyYAML/tomlkit for `pyve env sync`, and project-guide), then links
+  the project-guide shim onto ~/.local/bin.
+
+  Unlike `pyve self install`, this does NOT copy the pyve binary into
+  ~/.local/bin or modify your PATH — so it is safe to run on a
+  Homebrew-managed pyve. A Homebrew formula's post_install step calls it
+  to set up hosting that `pyve self install` itself refuses to do for
+  Homebrew installs. Provisioning also happens lazily on first use, so you
+  rarely need to run this by hand.
+
+  Best-effort: each step warns but never aborts; the command always exits 0.
+
+See also:
+  pyve self install      Full source install (copies pyve + wires PATH, then provisions)
+EOF
+}
 show_self_help() {
     cat << 'EOF'
 pyve self - Manage pyve's own installation
@@ -1095,6 +1141,7 @@ Subcommands:
   pyve self install      Install pyve to ~/.local/bin (and add to PATH if needed)
   pyve self uninstall    Remove pyve from ~/.local/bin
   pyve self migrate      Migrate a v2.7/v2.8 project to v3 (pyve.toml + state-layout cutover)
+  pyve self provision    Provision the toolchain venv + hosted tools (brew-safe; no PATH changes)
 
 See `pyve --help` for the full command list.
 EOF
