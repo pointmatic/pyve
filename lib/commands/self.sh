@@ -962,6 +962,79 @@ self_provision() {
     return 0
 }
 
+#------------------------------------------------------------
+# Leaf: pyve self unprovision
+#
+# Brew-safe granular teardown — the mirror of `self provision`. Removes
+# the project-guide shim + the hosted project-guide PACKAGE while keeping
+# the toolchain Python (and its other deps) in place. `--all` additionally
+# drops the entire toolchain Python tree (the teardown `self uninstall`
+# does today, but which no-ops for Homebrew). Like `self provision` it makes
+# NO PATH or binary changes, so a Homebrew-managed pyve can run it for full
+# teardown of the hosted tools. Best-effort: always returns 0.
+#------------------------------------------------------------
+
+self_unprovision() {
+    local all=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --all)
+                all=true
+                shift
+                ;;
+            --help|-h)
+                show_self_unprovision_help
+                return 0
+                ;;
+            *)
+                log_error "Unknown 'pyve self unprovision' flag: $1"
+                log_error "See: pyve self unprovision --help"
+                exit 1
+                ;;
+        esac
+    done
+
+    printf "\nUnprovisioning Pyve hosted tools...\n"
+
+    # Always remove the project-guide shim (only our own symlink).
+    _self_uninstall_project_guide
+
+    if [[ "$all" == "true" ]]; then
+        # Drop the whole toolchain tree: Python + every hosted package.
+        _self_uninstall_toolchain_python
+    else
+        # Keep the toolchain Python; remove only the hosted project-guide.
+        _self_unprovision_project_guide_package
+    fi
+
+    printf "\n✓ Unprovisioning complete.\n"
+    return 0
+}
+
+#------------------------------------------------------------
+# Private helper: pip-uninstall the hosted project-guide package from the
+# toolchain venv, leaving the toolchain Python (and its other deps) intact.
+# Best-effort: a missing venv/pip is a clean no-op; a failed uninstall warns
+# but never aborts. Used by `self unprovision` (without --all) for granular
+# teardown that doesn't drop the whole toolchain tree.
+#------------------------------------------------------------
+
+_self_unprovision_project_guide_package() {
+    declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0
+    local venv_dir pip_cmd
+    venv_dir="$(pyve_toolchain_venv_dir)"
+    pip_cmd="$venv_dir/bin/pip"
+    if [[ ! -x "$pip_cmd" ]]; then
+        return 0
+    fi
+    if run_quiet "$pip_cmd" uninstall -y project-guide; then
+        log_success "Removed hosted project-guide from the Pyve toolchain"
+    else
+        log_warning "Could not remove hosted project-guide from the toolchain (skip)"
+    fi
+    return 0
+}
+
 self_command() {
     if [[ $# -eq 0 ]]; then
         show_self_help
@@ -1016,6 +1089,18 @@ self_command() {
                 return 0
             fi
             self_provision
+            ;;
+        unprovision)
+            shift
+            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+                show_self_unprovision_help
+                return 0
+            fi
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:self-unprovision %s\n' "$*"
+                return 0
+            fi
+            self_unprovision "$@"
             ;;
         --help|-h)
             show_self_help
@@ -1127,8 +1212,45 @@ Description:
 
   Best-effort: each step warns but never aborts; the command always exits 0.
 
+  Upgrade path: re-running `pyve self provision` always pip-installs the
+  hosted tools with --upgrade, so it doubles as the way to bump the hosted
+  project-guide to its latest release. (`pyve update` refreshes a project's
+  scaffolding; it does NOT bump the hosted project-guide version.)
+
 See also:
   pyve self install      Full source install (copies pyve + wires PATH, then provisions)
+  pyve self unprovision   Brew-safe teardown of the hosted tools (--all drops the toolchain)
+EOF
+}
+show_self_unprovision_help() {
+    cat << 'EOF'
+pyve self unprovision - Remove the hosted project-guide (brew-safe teardown)
+
+Usage:
+  pyve self unprovision [--all]
+
+Description:
+  Granular, brew-safe teardown — the mirror of `pyve self provision`.
+  Removes the project-guide shim (~/.local/bin/project-guide) and the
+  hosted project-guide package from Pyve's toolchain venv, while leaving
+  the toolchain Python (and its other deps) in place.
+
+  Like `pyve self provision`, this makes NO PATH or binary changes (no
+  second pyve in ~/.local/bin), so it is safe to run on a Homebrew-managed
+  pyve — it gives Homebrew users a supported teardown for the hosted tools
+  that `pyve self uninstall` no-ops on.
+
+Options:
+  --all   Also remove the entire toolchain Python tree
+          (~/.local/share/pyve/toolchain/), not just project-guide.
+
+Note:
+  `brew uninstall pyve` does not remove these (they live outside the
+  Homebrew prefix). Run `pyve self unprovision --all` for full teardown.
+
+See also:
+  pyve self provision    Provision the toolchain venv + hosted tools
+  pyve self uninstall     Full source-install teardown (non-Homebrew)
 EOF
 }
 show_self_help() {
@@ -1142,6 +1264,7 @@ Subcommands:
   pyve self uninstall    Remove pyve from ~/.local/bin
   pyve self migrate      Migrate a v2.7/v2.8 project to v3 (pyve.toml + state-layout cutover)
   pyve self provision    Provision the toolchain venv + hosted tools (brew-safe; no PATH changes)
+  pyve self unprovision  Remove the hosted project-guide (--all also drops the toolchain; brew-safe)
 
 See `pyve --help` for the full command list.
 EOF

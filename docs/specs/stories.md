@@ -2573,7 +2573,7 @@ python 3.14.3
 - [x] Verify any-stack: subprocess tests confirm both sections render on a Node-shaped project (package.json, no Python markers) — composer-level, not python-plugin-bound. New tests in [tests/unit/test_pyve_hosting_diagnostic.bats](../../tests/unit/test_pyve_hosting_diagnostic.bats).
 - [x] Full suite; zero regressions. — `bats tests/unit/*.bats` → 1945 ok / 0 not ok.
 
-### Story N.bj: hosted-toolchain lifecycle symmetry — `pyve self unprovision`, hosted-version upgrade path, brew-uninstall cleanup [Planned]
+### Story N.bj: hosted-toolchain lifecycle symmetry — `pyve self unprovision`, hosted-version upgrade path, brew-uninstall cleanup [Done]
 
 **Motivation.** N.bh added lazy provisioning + a brew `post_install` for the hosted project-guide/toolchain, but the teardown/upgrade side is asymmetric (surfaced by developer questions 2026-06-08):
 
@@ -2588,12 +2588,14 @@ python 3.14.3
 
 **Out of scope.** Changing N.bh's provisioning behavior. The N.bi diagnostic (separate). Deleting user data without consent.
 
+**Decision (upgrade semantics).** Chose **always-`--upgrade`-on-explicit-provision** over a new `--upgrade` flag: `self provision` → `_self_install_project_guide` already runs `pip install --upgrade 'project-guide>=2.13.0'`, and the lazy `pyve_project_guide_ensure` stays a presence-gated no-op. So re-running `pyve self provision` *is* the upgrade path — no new surface; the work was to ratify it with a test and document it.
+
 **Tasks**
 
-- [ ] Add `pyve self unprovision` (brew-safe: removes the project-guide shim + hosted package; `--all` also drops the toolchain Python tree) + dispatcher arm + help. Tests: removes shim + hosted PG, leaves the pyve binary + PATH untouched; `--all` drops the toolchain tree.
-- [ ] Decide + implement the hosted-version upgrade semantics (`self provision --upgrade` vs always-upgrade-on-explicit-provision); test the chosen behavior; document that `pyve update` does not bump the hosted version.
-- [ ] Add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing at `pyve self unprovision --all` for full teardown (developer copies back to the tap). Document the orphan behavior.
-- [ ] Full suite; zero regressions.
+- [x] Add `pyve self unprovision` (brew-safe: removes the project-guide shim + hosted package; `--all` also drops the toolchain Python tree) + dispatcher arm + help. Tests: removes shim + hosted PG, leaves the pyve binary + PATH untouched; `--all` drops the toolchain tree. — `self_unprovision` + `_self_unprovision_project_guide_package` + `unprovision` dispatcher arm + `show_self_unprovision_help` in [lib/commands/self.sh](../../lib/commands/self.sh); 11 tests in [tests/unit/test_self_unprovision.bats](../../tests/unit/test_self_unprovision.bats).
+- [x] Decide + implement the hosted-version upgrade semantics (`self provision --upgrade` vs always-upgrade-on-explicit-provision); test the chosen behavior; document that `pyve update` does not bump the hosted version. — Chose always-upgrade (see Decision above); ratified by the "explicit provision upgrades" bats test; documented in `show_self_provision_help`, `show_update_help` ([plugin.sh](../../lib/plugins/python/plugin.sh)), and the brew `caveats`.
+- [x] Add a `caveats` block to [docs/specs/pyve.rb](pyve.rb) pointing at `pyve self unprovision --all` for full teardown (developer copies back to the tap). Document the orphan behavior.
+- [x] Full suite; zero regressions. — 1957 unit tests pass; the new file's 12 tests pass; shellcheck clean on the new code.
 
 ### Story N.bk: retire (or narrow) the distutils compatibility shim — it's a 2023-era band-aid stamped into 3.14 envs [Planned]
 
@@ -2780,6 +2782,35 @@ Per the *Per-command help blocks live with their commands* rule in [project-esse
 ### Story ?.?: Auto-Remediation for Diagnostics (`pyve check --fix`) [Planned]
 
 After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common auto-remediable issues (missing venv → run init, stale `.pyve/config` version → run update, missing distutils shim on 3.12+ → re-install, etc.). Deliberately deferred to collect real usage data on `pyve check` before deciding which fixes to automate and with what safety gates.
+
+### Story ?.?: `pyve check` surfaces available updates for the hosted tools and pyve itself [Planned]
+
+**Raised:** 2026-06-08 (developer, during Story N.bj). Post-v3.0.0.
+
+**Motivation.** `pyve check` is **local-only** today: the `[pyve]` diagnostic reports whether the toolchain is provisioned, the toolchain Python version, and whether project-guide is pyve-hosted vs project-managed — but it never asks *"is a newer version available?"* for either the globally-hosted `project-guide` (on PyPI) or `pyve` itself (on the Homebrew tap / GitHub releases). N.bj established the remediation *mechanics* (`pyve self provision` is the hosted-tool upgrade path; `brew upgrade …/pyve` or a source `git pull && pyve self install` upgrades pyve) but nothing tells a user *when* to run them. This story closes that loop: detect staleness, then print the exact remediation command for the user's install source.
+
+**Why a separate story (not folded into N.bj).** N.bj is purely local teardown/upgrade plumbing. Staleness *detection* adds a **network dimension** to a command that is currently offline and CI-safe — a different design surface with its own risk profile. Pairs naturally with the `pyve check --fix` auto-remediation story above (detection here; auto-apply there).
+
+**Design considerations (decide when picked up).**
+
+- **CI-safety is the hard constraint.** `pyve check` returns structured 0/1/2 exit codes consumed by CI. A network probe must NOT flip the verdict (a stale hosted tool is *info*, never `warn`/`error`), must NOT hang CI (short connect timeout + offline-graceful: a failed/absent network degrades silently to "couldn't check"), and wants an explicit opt-out (`--offline` / `PYVE_NO_NETWORK=1`) plus short-TTL caching so every `check` isn't a fresh round-trip.
+- **Two sources, two mechanics.**
+  - *project-guide latest* → PyPI JSON API (`https://pypi.org/pypi/project-guide/json`), compared against the version installed in the toolchain venv (`pyve_toolchain_venv_dir`/bin/pip show, or import metadata).
+  - *pyve latest* → the Homebrew tap (or GitHub releases), compared against `$VERSION`.
+- **Remediation routing keys off `detect_install_source`** (already known to `check`):
+  - stale project-guide → `pyve self provision`
+  - stale pyve (Homebrew) → `brew upgrade pointmatic/tap/pyve`
+  - stale pyve (source clone) → `git pull && pyve self install`
+
+**Out of scope.** Auto-*applying* upgrades (that is the `pyve check --fix` story). Version *pinning* of the hosted tools. Any change to the 0/1/2 exit-code contract.
+
+**Tasks (sketch).**
+
+- [ ] Decide the network model: opt-in vs opt-out, timeout, cache TTL + location, and the `--offline` / `PYVE_NO_NETWORK` surface. Confirm a network failure can never change the exit code.
+- [ ] Implement a best-effort latest-version probe for project-guide (PyPI JSON) and pyve (tap / GitHub releases), each degrading silently offline.
+- [ ] Wire an `info`-level staleness line into the `[pyve]` check section with the install-source-correct remediation command.
+- [ ] Tests: stubbed-network "newer available → correct hint", "up-to-date → no hint", and "offline/timeout → silent, exit code unchanged".
+- [ ] Document the new env var / flag in the Environment Variables table and `pyve check --help`.
 
 ---
 

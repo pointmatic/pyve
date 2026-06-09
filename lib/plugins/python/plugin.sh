@@ -2748,6 +2748,8 @@ Description:
     - rebuild the virtual environment (use 'pyve init --force' for that)
     - create .env or .envrc when absent (those are user opt-in at init)
     - re-prompt for backend (the recorded backend is preserved)
+    - bump the hosted project-guide package version (run 'pyve self
+      provision' to upgrade the globally-hosted project-guide)
 
 Options:
   --no-project-guide          Skip the project-guide refresh step
