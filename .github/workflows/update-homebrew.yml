@@ -8,6 +8,17 @@ jobs:
   update-formula:
     runs-on: ubuntu-latest
     steps:
+      # Homebrew >= 5.1.15 refuses to load formulae from non-official taps
+      # unless they are explicitly trusted (becomes default in 6.0 / 5.2).
+      # The bump action taps and loads pyve in one internal step, so trust
+      # must be recorded beforehand. update-reset first guarantees a brew new
+      # enough to have the `trust` subcommand.
+      - name: Trust the pointmatic tap
+        run: |
+          brew update-reset
+          brew tap pointmatic/tap
+          brew trust pointmatic/tap
+
       - name: Update Homebrew formula
         uses: dawidd6/action-homebrew-bump-formula@v4
         with:

@@ -2797,8 +2797,19 @@ Final integration verification matrix across Python-only, Node-only, and polyglo
 
 **Motivation.** Ensure the v3.0.0 tag flows cleanly to the published Homebrew formula via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). The actual `project-guide bump-version 3.0.0` + tag push + release publish are the developer's terminal release actions (mode Step 10).
 
+**Field fix — `UntrustedTapError` on tag push (2026-06-09).** A `v*` tag push exercised this workflow for real and the `dawidd6/action-homebrew-bump-formula@v4` step aborted non-zero:
+
+```
+Refusing to load formula pointmatic/tap/pyve from untrusted tap pointmatic/tap. (Homebrew::UntrustedTapError)
+Run `brew trust --formula pointmatic/tap/pyve` or `brew trust pointmatic/tap` to trust it.
+```
+
+The tag was cut but the formula never updated — the publish was blocked. **Root cause is upstream, not a pyve regression:** Homebrew ≥ 5.1.15 (PR Homebrew/brew#22470, late May 2026) added tap-trust enforcement — loading a formula runs Ruby from its tap, so Homebrew now refuses non-official ("untrusted") taps unless explicitly trusted, and the action's `main.rb` calls `Formula["pointmatic/tap/pyve"]`. This becomes the **default** at Homebrew 6.0.0 / 5.2.0 (whichever lands first); the trigger was simply the runner's bundled `brew` crossing the 5.1.15 line. No local/unit reproduction exists — the failure mode is purely a function of the runner's `brew` version, a different axis than the v3-command-surface audit below. Fixed by a `brew update-reset && brew tap pointmatic/tap && brew trust pointmatic/tap` pre-step (forward-compatible; survives the 6.0/5.2 default flip — preferred over the `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` env shim, which is transition-only and slated for removal). The other workflows ([test.yml](../../.github/workflows/test.yml), [deploy-docs.yml](../../.github/workflows/deploy-docs.yml)) only `brew install` official homebrew-core formulae, so the same class of failure can't surface there.
+
 **Tasks**
 
+- [x] **Fix `UntrustedTapError`:** add a `Trust the pointmatic tap` pre-step (`brew update-reset` → `brew tap pointmatic/tap` → `brew trust pointmatic/tap`) before the bump action in `update-homebrew.yml`. — *`update-reset` first guarantees a `brew` new enough to have the `trust` subcommand regardless of the runner's preinstalled version.*
+- [ ] **Verify on the next `v*` tag push** that the workflow reaches the bump action without `UntrustedTapError` and the formula updates. CI-only verification (developer-owned tag push); if a future runner somehow predates `brew trust` even after `update-reset`, fall back to the `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` env shim until it catches up.
 - [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
 - [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
 - [ ] Verify the workflow trigger shape so the v3.0.0 tag updates the formula without manual patching.
