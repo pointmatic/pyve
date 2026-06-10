@@ -161,7 +161,7 @@ jobs:
           pip install pytest pytest-cov pytest-xdist
       
       - name: Install micromamba
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           micromamba-version: 'latest'
           environment-name: test-env
@@ -297,7 +297,7 @@ jobs:
         # integration tests use `bootstrap_isolation` to scrub PATH when they
         # need to exercise the bootstrap/download path, so a pre-installed
         # micromamba doesn't interfere with those tests.
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           micromamba-version: 'latest'
           environment-name: test-env
