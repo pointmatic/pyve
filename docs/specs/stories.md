@@ -2739,17 +2739,17 @@ Holistic documentation reflow via `refactor_document`, run **after** N-7's test 
 - [x] Reconcile the upstream framing (Name / Tagline / One-liner / Two-clause Technical Description, and the title) for the polyglot pivot — title de-scoped to `# brand-descriptions.md — Pyve`; Friendly Brief / Two-clause trimmed to shipped languages/backends; Note block de-changelogged. Taglines kept as brand heritage by developer call.
 - [x] **Do not market unshipped surfaces** as available — Ruby / Docker / Podman / Homebrew / apt moved to an explicit **Future (roadmap)** line; no `pyve lint` claims.
 
-### Story N.bq: Canonical spec docs cascade — concept / features / tech-spec [Planned]
+### Story N.bq: Canonical spec docs cascade — concept / features / tech-spec + Phase N pre-cleanup [Done]
 
 **Motivation.** The internal spec docs still describe v2-era Pyve — [concept.md](concept.md) is wholly Python-only (scope lists "Docker / Windows out of scope"; one-liner "wrangles your Python virtual environments"), and features/tech-spec predate the plugin architecture. Cascade the v3 refresh from the reflowed brand copy (N.bp) into the spec docs, against the now clean, story-ref-free codebase (post-N-7).
 
 **Tasks**
 
-- [ ] **[concept.md](concept.md)** — v3 rewrite: problem / solution / scope / constraints for the polyglot orchestrator (retire the Python-only framing; reflect named envs, the plugin model, multi-stack, the v2→v3 migration).
-- [ ] **[features.md](features.md)** — enumerate v3 capabilities: the `pyve.toml` manifest + `[env.<name>]`/`purpose`, the plugin/backend-provider model, Python + Node plugins, composed `init`/`check`/`status`/`purge`/`.envrc`, `pyve self migrate`, `pyve package` (reserved). Mark advisory / post-v3.0 surfaces honestly.
-- [ ] **[tech-spec.md](tech-spec.md)** — consolidate the per-component **N.k–N.r** subsections into one unified **"Plugin layer"** section (architecture, the contract, the registry, the composers); fold the env-spec vocabulary in **by pointer** to the env-dependencies template/glossary, not by duplicating the enumeration.
-- [ ] Reconcile the testing-strategy narrative (two-env model, named test envs) wherever it lives in features / tech-spec.
-- [ ] Cross-reference integrity: links to spike docs / `wizard-env-contract` / the env-dependencies template resolve to their current `project-guide-requests/` locations.
+- [x] **[concept.md](concept.md)** — v3 rewrite: problem / solution / scope / constraints for the polyglot orchestrator (retire the Python-only framing; reflect named envs, the plugin model, multi-stack, the v2→v3 migration). *(Generated via `plan_concept`.)*
+- [x] **[features.md](features.md)** — enumerate v3 capabilities: the `pyve.toml` manifest + `[env.<name>]`/`purpose`, the plugin/backend-provider model, Python + Node plugins, composed `init`/`check`/`status`/`purge`/`.envrc`, `pyve self migrate`, `pyve package` (reserved). Mark advisory / post-v3.0 surfaces honestly. *(Regenerated via `plan_features`; clean FR renumber, v2 `[tool.pyve.testenvs]` folded into the `[env.<name>]` model, FR-20 reframed to "easy and pleasant UI/UX".)*
+- [x] **[tech-spec.md](tech-spec.md)** — consolidate the per-component **N.k–N.r** subsections into one unified **"Plugin layer"** section (architecture, the contract, the registry, the composers); fold the env-spec vocabulary in **by pointer** to the env-dependencies template/glossary, not by duplicating the enumeration. *(Targeted in-place refactor: plugin region → one `## Plugin layer` (Architecture & contract → Registries → Input safety → Python plugin w/ hooks inline → Node plugin → Composition); env-spec vocab folded by pointer to `wizard-env-contract.md` + `env-dependencies-template.md`; header archeology stripped; v2 remnants refreshed (`pyve.toml`, `.pyve/envs/`, `env` namespace, VERSION/DEFAULT_PYTHON_VERSION).)*
+- [x] Reconcile the testing-strategy narrative (two-env model, named test envs) wherever it lives in features / tech-spec. *(tech-spec Testing Strategy refreshed: named-environment / purpose model, perf suite, CI matrix 3.12/3.14, current test families.)*
+- [x] Cross-reference integrity: links to spike docs / `wizard-env-contract` / the env-dependencies template resolve to their current `project-guide-requests/` (and `.archive/`) locations.
 
 ### Story N.br: MkDocs public site + README — v3 pages (update + create) [Planned]
 
@@ -2869,6 +2869,24 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 - [ ] Write the dumb line-by-line applier (parse `clean.txt`; replace source `path:lineno` with content; `<<<DELETE>>>` removes the line; bottom-up per file) and apply.
 - [ ] Diff-review the full source change (comments-don't-execute — the only prose-quality net) + run the full suite; zero regressions.
 - [ ] Optionally wire the detector into CI to enforce the guard on new refs.
+
+### Story ?.?: Reconcile tech-spec.md command/module tables to the v3 plugin file-layout [Planned]
+
+**Raised:** 2026-06-09 (developer, during the N.bq tech-spec cascade).
+
+**Motivation.** The N.bq pass (Subphase N-8) consolidated the plugin region of [tech-spec.md](tech-spec.md) into one `## Plugin layer` section, stripped header archeology, refreshed the enumerated v2 remnants (`pyve.toml`, `.pyve/envs/`, `env` namespace, version globals), and repointed cross-refs — but **deliberately left the deeper file-layout drift** in the `## Key Component Design` command/module tables. Those tables' *behavior/signature* descriptions are still accurate; their *file locations* and inline story refs are stale relative to the v3 relocation: `init`/`purge`/`update`/`check`/`status`/`run`/`test` and the `python` namespace now live in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh); `lib/testenvs.sh` → `lib/envs.sh`; `lib/commands/testenv.sh` → `lib/commands/env.sh`; `lib/commands/` retains only `env.sh` / `lock.sh` / `package.sh` / `self.sh`. A stopgap v3.0 file-layout orientation note was added at the section head; this story removes the need for it.
+
+**Why deferred.** N.bq was scoped as a *targeted in-place refactor*, not a regenerate — a full rewrite of the ~240-line command-table block risked dropping correct technical detail for no release benefit, and release functionality (N-9) outranks doc-table reconciliation. The orientation note keeps the doc honest in the interim. This pairs with the **"Complete phase/story-ref comment sanitization"** Future story above (same story-ref archeology, different surface — code comments there, spec-doc tables here) and could be bundled into one doc/ref-cleanup pass.
+
+**Tasks (sketched; refine when picked up).**
+
+- [ ] Reconcile the `### lib/commands/<name>.sh — Command Implementations` block to the v3 layout: relocate/cross-link the Python command function tables under the Plugin layer's `### Python plugin`, and keep only `env` / `lock` / `package` / `self` as `lib/commands/` residents. Remove the stopgap orientation note once done.
+- [ ] Strip inline `Story X.y` / `Phase`/`Subphase` refs from the function-table bodies (`lib/envs.sh`, `lib/manifest.sh`, the command tables, the `lib/utils.sh` / `lib/version.sh` notes), preserving load-bearing markers (`v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>`).
+- [ ] Fix the `## Package Structure` tree (`tech-spec.md` ~L50): drop the deleted `lib/commands/{init,purge,update,check,status,run,test,testenv,python}.sh` and `lib/testenvs.sh` / `pyve_testenvs_helper.py`; add `lib/plugins/**`, `lib/*_composer.sh`, `lib/envs.sh`, `lib/manifest.sh`, `lib/toolchain_python.sh`, `lib/project_guide.sh`, `pyve.toml`.
+- [ ] Fix the `### pyve.sh — Thin Entry Point` sourcing-order paragraph: it still enumerates deleted command files and a "~500–650 lines post-K.l" framing; replace with the actual v3 source order (helpers → `manifest.sh` → registries → plugins → composers → `env`/`lock`/`package`/`self`).
+- [ ] Diff-review against the live codebase; confirm no surviving reference to a deleted file or non-existent function.
+
+---
 
 ### Story ?.?: Deeper TypeScript integration for the Node plugin [Planned]
 
