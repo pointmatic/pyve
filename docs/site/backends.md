@@ -1,15 +1,43 @@
 # Backends Guide
 
-Pyve supports two virtual environment backends: **venv** (Python's built-in) and **micromamba** (conda-compatible). This guide explains when to use each, how they work, and how to switch between them.
+A **backend** is what actually materializes an environment. In v3.0, backends are owned and registered by [language plugins](plugins.md): the **Python** plugin ships **venv** and **micromamba**; the **Node** plugin ships **pnpm**, **npm**, and **yarn**. This guide focuses on the two Python backends — when to use each, how they work, and how to switch — after first explaining the v3 backend model.
 
-## Overview
+## The backend model
+
+### Each backend is registered by a plugin
+
+You don't pick a backend from a global list — you pick one a plugin has registered. The `backend` value on an `[env.<name>]` block in [`pyve.toml`](pyve-toml.md) must be one the owning plugin knows:
+
+| Plugin | Registered backends (the closed vocabulary) |
+|---|---|
+| Python | `venv`, `micromamba`, `inherit` |
+| Node | `pnpm`, `npm`, `yarn` |
+
+`inherit` (Python) means "use whatever the main env uses" — handy for a test env that should track the run env's backend.
+
+### Three categories
+
+Every backend declares one of three **categories**, which determines its `init` / `purge` / `activate` behavior:
+
+| Category | Behavior | Examples |
+|---|---|---|
+| `virtualized` | Per-project environment directory; activation puts its `bin/` on PATH. | `venv`, `micromamba`, `pnpm`, `npm`, `yarn` |
+| `cache-backed` | Shared user-level cache + project lockfile; `purge` never touches the shared cache; activation adds nothing to PATH. | *(designed-in; no providers yet)* |
+| `check-only` | Pyve verifies the tool's presence/version and installs nothing. | *(designed-in; no providers yet)* |
+
+### Canonical vs. advisory
+
+- **Canonical (shipped in v3.0):** the `virtualized` backends above — `venv`, `micromamba` (Python) and `pnpm`, `npm`, `yarn` (Node). These do real work today.
+- **Advisory / roadmap (not shipped):** the `cache-backed` and `check-only` categories are designed into the schema and dispatcher but have **no providers yet**. Things like Rust/Go (cache-backed) or Docker/Homebrew/mobile toolchains (check-only) are roadmap — described here so the model is clear, not because they're available. Don't declare a backend Pyve hasn't registered; it's a manifest error.
+
+## Overview (Python backends)
 
 | Feature | venv | micromamba |
 |---------|------|------------|
 | **Type** | Python-only | Multi-language (Python, R, C++) |
 | **Package Source** | PyPI (pip) | conda-forge, PyPI |
 | **Binary Packages** | Limited | Extensive |
-| **Environment Location** | `.venv/` | `.pyve/envs/<hash>/` |
+| **Environment Location** | `.venv/` (or `.pyve/envs/<name>/venv/`) | `.pyve/envs/<name>/conda/` |
 | **Lock Files** | `requirements.txt` | `conda-lock.yml` |
 | **Speed** | Fast | Slower (dependency solving) |
 | **Disk Usage** | Smaller | Larger |
@@ -416,7 +444,7 @@ pip install custom-internal-package
 # Both work together in same environment
 ```
 
-> **Note:** `pyve init` requires `conda-lock.yml` to exist. During initial project setup before the file has been generated, use `pyve init --no-lock`.
+> **Note:** A lock is required only when `conda-lock` is declared in `environment.yml`. In that case, non-strict `pyve init` proceeds and nudges you to run `pyve lock` (and `--strict` errors until a fresh lock exists). Use `pyve init --no-lock` to skip the lock for a run, or remove `conda-lock` from `environment.yml` to opt out permanently.
 
 ### ML/Data Science Project with Both Files (v1.6.2+)
 
@@ -520,10 +548,10 @@ conda-lock -f environment.yml -p osx-arm64   # macOS Apple Silicon
 conda-lock -f environment.yml -p linux-64     # Linux
 ```
 
-During initial project setup before the lock file exists:
+To skip the lock for a run (e.g. before you've generated one):
 
 ```bash
-pyve init --no-lock   # not recommended for shared projects
+pyve init --no-lock   # resolve from environment.yml; not recommended for shared projects
 ```
 
 ### venv: Package Won't Install
@@ -634,7 +662,7 @@ pip-compile --generate-hashes requirements.in
 ```bash
 pyve lock
 # Commit conda-lock.yml to git — it must be committed, not ignored
-# (pyve init hard-fails if conda-lock.yml is missing; use --no-lock only during initial setup)
+# (with conda-lock declared, non-strict init nudges for a missing lock and --strict errors; --no-lock skips it for a run)
 ```
 
 ### Document Your Choice
@@ -669,8 +697,10 @@ micromamba install --file environment.yml
 
 ## Next Steps
 
+- [Plugins](plugins.md) - The plugin contract and the Node backends (pnpm / npm / yarn)
+- [`pyve.toml` Reference](pyve-toml.md) - Declaring an env's `backend`
 - [Usage Guide](usage.md) - Full command reference
-- [Testing](testing.md) - Two-environment model, testenv lifecycle, backend deltas
+- [Testing](testing.md) - Two-environment model, test-env lifecycle, backend deltas
 - [CI/CD Integration](ci-cd.md) - Using Pyve in automated pipelines
 - [Getting Started](getting-started.md) - Installation and quick start
 

@@ -18,8 +18,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -31,25 +31,25 @@ teardown() {
     cleanup_test_dir
 }
 
-# Stub testenv_run to record args without exec'ing. The dispatcher calls
-# `testenv_run "$testenv_venv" "$@"` with the resolved venv path then
+# Stub env_run to record args without exec'ing. The dispatcher calls
+# `env_run "$testenv_venv" "$@"` with the resolved venv path then
 # the command + args.
 _stub_testenv_run() {
-    testenv_run() {
+    env_run() {
         printf 'TESTENV_RUN_ARGS:%s\n' "$*"
     }
 }
 
 # Pre-create a fake testenv at a named path so the dispatcher's call
-# chain into ensure_testenv_exists (if any) short-circuits on existence.
+# chain into ensure_env_exists (if any) short-circuits on existence.
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
 }
 
 _fixture_named_envs() {
@@ -73,9 +73,9 @@ TOML
 @test "testenv run <cmd> [args]: routes to default testenv, command is first positional" {
     _make_fake_named_venv testenv
     _stub_testenv_run
-    run testenv_command run ruff check .
+    run env_command run ruff check .
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv ruff check ."* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv ruff check ."* ]]
 }
 
 # ============================================================
@@ -85,9 +85,9 @@ TOML
 @test "testenv run -- <cmd> [args]: explicit '--' with no name routes to default testenv" {
     _make_fake_named_venv testenv
     _stub_testenv_run
-    run testenv_command run -- pytest -v
+    run env_command run -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv pytest -v"* ]]
 }
 
 # ============================================================
@@ -98,17 +98,17 @@ TOML
     _fixture_named_envs
     _make_fake_named_venv smoke
     _stub_testenv_run
-    run testenv_command run smoke -- pytest -v
+    run env_command run smoke -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/smoke/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/smoke/venv pytest -v"* ]]
 }
 
 @test "testenv run testenv -- <cmd>: explicit default name + '--' separator works" {
     _make_fake_named_venv testenv
     _stub_testenv_run
-    run testenv_command run testenv -- pytest -v
+    run env_command run testenv -- pytest -v
     [ "$status" -eq 0 ]
-    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/testenvs/testenv/venv pytest -v"* ]]
+    [[ "$output" == *"TESTENV_RUN_ARGS:.pyve/envs/testenv/venv pytest -v"* ]]
 }
 
 # ============================================================
@@ -117,14 +117,15 @@ TOML
 
 @test "testenv run root -- <cmd>: reserved 'root' rejected (selection-only)" {
     _fixture_named_envs
-    run testenv_command run root -- pytest
+    run env_command run root -- pytest
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
 }
 
 @test "testenv run <undeclared> -- <cmd>: undeclared name rejected" {
     _fixture_named_envs
-    run testenv_command run bogus -- pytest
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    run env_command run bogus -- pytest
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
 }
@@ -135,7 +136,7 @@ TOML
     # CONDA_PYTHON_EXE. The hard-error points at the `micromamba run`
     # workaround.
     _fixture_named_envs
-    run testenv_command run hardware -- pytest
+    run env_command run hardware -- pytest
     [ "$status" -ne 0 ]
     [[ "$output" == *"hardware"* ]]
     [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
@@ -147,7 +148,7 @@ TOML
 
 @test "testenv run --: '--' with no command errors with usage hint" {
     _make_fake_named_venv testenv
-    run testenv_command run --
+    run env_command run --
     [ "$status" -ne 0 ]
     [[ "$output" == *"command"* || "$output" == *"Usage"* ]]
 }
@@ -155,7 +156,7 @@ TOML
 @test "testenv run <name> --: name with '--' but no command errors" {
     _fixture_named_envs
     _make_fake_named_venv smoke
-    run testenv_command run smoke --
+    run env_command run smoke --
     [ "$status" -ne 0 ]
 }
 
@@ -165,7 +166,7 @@ TOML
 
 @test "testenv run: no args at all errors with usage hint (preserved behavior)" {
     _make_fake_named_venv testenv
-    run testenv_command run
+    run env_command run
     [ "$status" -ne 0 ]
     [[ "$output" == *"command"* || "$output" == *"Usage"* ]]
 }

@@ -45,8 +45,21 @@ class TestInitWizard:
             f"Expected wizard backend render in stdout; got:\n{result.stdout!r}"
         )
 
+    @pytest.mark.micromamba
+    @pytest.mark.requires_micromamba
     def test_wizard_environment_yml_defaults_to_micromamba(self, pyve, project_builder):
-        """`pyve init` in a dir with environment.yml resolves the backend prompt to micromamba."""
+        """`pyve init` in a dir with environment.yml resolves the backend prompt to micromamba.
+
+        Marked micromamba/requires_micromamba (overriding the class-level venv
+        marker for routing): although the assertion only checks the wizard's
+        auto-detect render line, `pyve init` runs the full micromamba
+        materialization before returning, so the test genuinely requires a
+        micromamba binary. Without these markers it was selected by the
+        venv-only CI job (`-m "venv and not requires_micromamba"`), which does
+        NOT install micromamba — forcing a cold binary bootstrap + conda solve
+        that exceeded the 120s subprocess timeout. The markers route it to the
+        micromamba job where micromamba is pre-installed and the work is fast.
+        """
         # Pre-populate environment.yml so the wizard's backend-default helper
         # picks micromamba. Don't pass --backend; the wizard's auto-detect path
         # (under PYVE_INIT_NONINTERACTIVE=1, which the test harness sets) is

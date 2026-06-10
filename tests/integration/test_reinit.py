@@ -25,33 +25,61 @@ from pathlib import Path
 from pyve_test_helpers import get_pyve_version
 
 
+@pytest.fixture(autouse=True)
+def _suppress_asdf_install_prompt(clean_env):
+    """Auto-accept the (flaky) asdf "Install Python <ver>?" prompt.
+
+    N.am test-hardening. ``pyve init`` runs ``ensure_python_version_installed``,
+    whose asdf-list check is intermittently flaky under rapid repeated
+    invocation: it reports an already-installed version as missing and fires an
+    interactive ``Install Python <ver>? [y/n]`` prompt. That prompt consumes the
+    test's stdin (the menu/confirm input that follows) and derails whichever
+    reinit test happens to hit the transient — a different one each full-file
+    run. ``PYVE_FORCE_YES=1`` auto-accepts it; the version is in fact installed,
+    so the "install" is a ~0ms no-op. It also skips the ``--force`` confirmation,
+    so the one test that asserts on that confirm unsets it (see below).
+
+    Depends on ``clean_env`` so it runs *after* the PYVE_* stripper.
+    """
+    clean_env.setenv("PYVE_FORCE_YES", "1")
+    return clean_env
+
+
 class TestReinitForce:
     """Test pyve init --force (destructive re-initialization)."""
     
     def test_force_purges_existing_venv(self, pyve, project_builder):
         """Test that --force purges existing venv."""
         pyve.init()
-        
+
         venv_marker = project_builder.project_dir / ".venv" / "marker.txt"
         venv_marker.write_text("test marker")
-        
+
         result = pyve.run("init", "--force", input="y\n")
-        
-        assert result.returncode == 0
-        # In CI mode, prompts are skipped - just verify purge happened
-        if not os.environ.get('CI'):
-            assert "Force re-initialization" in result.stderr
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        # The "Force re-initialization" notice is emitted via warn(), which the
+        # lib/ui/core.sh primitives route to stdout (not stderr).
+        assert "Force re-initialization" in result.stdout
         assert not venv_marker.exists()
     
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
-    def test_force_prompts_for_confirmation(self, pyve, project_builder):
+    def test_force_prompts_for_confirmation(self, pyve, project_builder, clean_env):
         """Test that --force prompts for confirmation."""
         pyve.init()
-        
+
+        # This call must SHOW the --force confirmation, which the autouse
+        # PYVE_FORCE_YES suppresses — so unset it for this invocation. Answering
+        # "n" cancels at the confirm, which runs *before* version-ensure, so the
+        # flaky asdf install prompt is unreachable here regardless.
+        clean_env.delenv("PYVE_FORCE_YES", raising=False)
         result = pyve.run("init", "--force", input="n\n")
-        
+
         assert result.returncode == 0
-        assert "Proceed?" in result.stdout
+        # The confirmation presents a purge/rebuild summary (via info(), stdout)
+        # before the "Proceed [y/N]" prompt; answering "n" cancels cleanly.
+        assert "Purge:" in result.stdout
+        assert "Rebuild:" in result.stdout
         assert "cancelled" in result.stdout.lower()
     
     def test_force_allows_backend_change(self, pyve, project_builder):
@@ -82,7 +110,7 @@ class TestReinitInteractive:
     def test_interactive_option_2_purges(self, pyve, project_builder):
         """Test interactive mode option 2 (purge and re-init)."""
         pyve.init()
-        
+
         result = pyve.run("init", input="2\n")
         
         assert result.returncode == 0
@@ -140,15 +168,19 @@ class TestConflictDetection:
         pyve.init()
         
         result = pyve.run("init", "--backend", "micromamba", input="1\n")
-        
+
         assert result.returncode == 1
-        assert "Cannot update in-place" in result.stderr or "Backend change" in result.stderr
+        # warn()/fail() route to stdout via lib/ui/core.sh.
+        assert (
+            "Cannot update in-place" in result.stdout
+            or "Use option 2 to purge" in result.stdout
+        )
     
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
     def test_no_conflict_without_backend_flag(self, pyve, project_builder):
         """Test no conflict when backend not specified."""
         pyve.init()
-        
+
         result = pyve.run("init", input="1\n")
         
         assert result.returncode == 0
@@ -211,10 +243,10 @@ class TestEdgeCases:
     def test_force_with_missing_venv(self, pyve, project_builder):
         """Test force re-init when venv is missing."""
         project_builder.create_pyve_config(backend="venv")
-        
+
         result = pyve.run("init", "--force", input="y\n")
-        
-        assert result.returncode == 0
+
+        assert result.returncode == 0, result.stdout + result.stderr
     
 
 class TestReinitUpdateMissingEnv:

@@ -5,21 +5,21 @@
 #
 # Unit tests for M.i.1 internal helpers:
 #
-#   assert_testenv_name_actionable <name>
-#     in lib/testenvs.sh — name-legality gate. 0 if <name> is declared
+#   assert_env_name_actionable <name>
+#     in lib/envs.sh — name-legality gate. 0 if <name> is declared
 #     or equals the reserved `testenv`; 1 (stderr error) for `root` and
 #     undeclared names.
 #
-#   assert_testenv_venv_backend <name>
-#     in lib/testenvs.sh — venv-only gate (still used by `pyve testenv
+#   assert_env_venv_backend <name>
+#     in lib/envs.sh — venv-only gate (still used by `pyve testenv
 #     run` since M.k landed init/install for conda but not run). 0 if
 #     the resolved backend is venv; 1 (stderr error) for micromamba
 #     and `inherit` resolving to micromamba.
 #
-#   ensure_testenv_exists [<name>]
+#   ensure_env_exists [<name>]
 #     in lib/utils.sh — name-aware existence-or-create. No arg defaults
 #     to the reserved `testenv` (today's behavior). With arg: validates
-#     via the two gates above, then creates `.pyve/testenvs/<name>/venv`
+#     via the two gates above, then creates `.pyve/envs/<name>/venv`
 #     for venv-backed envs.
 #
 # Bundle scope: M.i.1 is internal-helpers-only — no leaf CLI changes.
@@ -28,12 +28,12 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    # Story M.k: ensure_testenv_exists now dispatches into
-    # `_testenv_init_conda` (defined in lib/commands/testenv.sh) for
+    source "$PYVE_ROOT/lib/envs.sh"
+    # Story M.k: ensure_env_exists now dispatches into
+    # `_env_init_conda` (defined in lib/commands/env.sh) for
     # conda-backed envs, so the testenv command file must be sourced
     # alongside the testenvs library to exercise the full call path.
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 }
@@ -82,64 +82,67 @@ TOML
 }
 
 # ============================================================
-# assert_testenv_name_actionable
+# assert_env_name_actionable
 # ============================================================
 
-@test "assert_testenv_name_actionable: declared name passes" {
+@test "assert_env_name_actionable: declared name passes" {
     _fixture_named_envs
-    read_testenv_config
-    assert_testenv_name_actionable smoke
-    assert_testenv_name_actionable testenv
-    assert_testenv_name_actionable hardware    # declared; conda-stub is a SEPARATE gate
+    read_env_config
+    assert_env_name_actionable smoke
+    assert_env_name_actionable testenv
+    assert_env_name_actionable hardware    # declared; conda-stub is a SEPARATE gate
 }
 
-@test "assert_testenv_name_actionable: reserved 'root' is rejected with selection-only hint" {
+@test "assert_env_name_actionable: reserved 'root' is rejected with selection-only hint" {
     _fixture_named_envs
-    read_testenv_config
-    run assert_testenv_name_actionable root
+    read_env_config
+    run assert_env_name_actionable root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
     [[ "$output" == *"selection-only"* || "$output" == *"pyve test --env root"* || "$output" == *"not a testenv"* ]]
 }
 
-@test "assert_testenv_name_actionable: undeclared name is rejected with [tool.pyve.testenvs] hint" {
+@test "assert_env_name_actionable: undeclared name is rejected with [env.<name>] hint" {
     _fixture_named_envs
-    read_testenv_config
-    run assert_testenv_name_actionable bogus
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    read_env_config
+    run assert_env_name_actionable bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
-    [[ "$output" == *"tool.pyve.testenvs"* ]]
+    # N.bf.19: points at the v3 surface, not the v2 [tool.pyve.testenvs].
+    [[ "$output" == *"[env.bogus]"* ]]
+    [[ "$output" != *"tool.pyve.testenvs"* ]]
 }
 
-@test "assert_testenv_name_actionable: empty config still accepts reserved 'testenv'" {
+@test "assert_env_name_actionable: empty config still accepts reserved 'testenv'" {
     # No pyproject.toml — implicit-default config has `testenv` only.
-    read_testenv_config
-    assert_testenv_name_actionable testenv
-    run assert_testenv_name_actionable smoke
+    read_env_config
+    assert_env_name_actionable testenv
+    run assert_env_name_actionable smoke
     [ "$status" -ne 0 ]
 }
 
 # ============================================================
-# assert_testenv_venv_backend
+# assert_env_venv_backend
 # ============================================================
 
-@test "assert_testenv_venv_backend: venv-backed name passes" {
+@test "assert_env_venv_backend: venv-backed name passes" {
     _fixture_named_envs
-    read_testenv_config
-    assert_testenv_venv_backend smoke
-    assert_testenv_venv_backend testenv
+    read_env_config
+    assert_env_venv_backend smoke
+    assert_env_venv_backend testenv
 }
 
-@test "assert_testenv_venv_backend: micromamba-backed name is rejected (run is venv-only)" {
+@test "assert_env_venv_backend: micromamba-backed name is rejected (run is venv-only)" {
     _fixture_named_envs
-    read_testenv_config
-    run assert_testenv_venv_backend hardware
+    read_env_config
+    run assert_env_venv_backend hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"hardware"* ]]
     [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
 }
 
-@test "assert_testenv_venv_backend: 'inherit' + main=micromamba is rejected" {
+@test "assert_env_venv_backend: 'inherit' + main=micromamba is rejected" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
@@ -147,87 +150,90 @@ manifest = "environment.yml"
 TOML
     mkdir -p .pyve
     printf 'backend: micromamba\n' > .pyve/config
-    read_testenv_config
-    run assert_testenv_venv_backend mirror
+    read_env_config
+    run assert_env_venv_backend mirror
     [ "$status" -ne 0 ]
     [[ "$output" == *"mirror"* ]]
 }
 
-@test "assert_testenv_venv_backend: 'inherit' + main=venv passes (M.k inherit resolution)" {
+@test "assert_env_venv_backend: 'inherit' + main=venv passes (M.k inherit resolution)" {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.mirror]
 backend = "inherit"
 TOML
     mkdir -p .pyve
     printf 'backend: venv\n' > .pyve/config
-    read_testenv_config
-    assert_testenv_venv_backend mirror
+    read_env_config
+    assert_env_venv_backend mirror
 }
 
 # ============================================================
-# ensure_testenv_exists (no arg) — back-compat
+# ensure_env_exists (no arg) — back-compat
 # ============================================================
 
-@test "ensure_testenv_exists: no arg creates the default testenv venv at new path" {
+@test "ensure_env_exists: no arg creates the default testenv venv at new path" {
     _stub_run_cmd_creates_venv
-    ensure_testenv_exists
-    [ -d ".pyve/testenvs/testenv/venv" ]
-    [ -x ".pyve/testenvs/testenv/venv/bin/python" ]
+    ensure_env_exists
+    [ -d ".pyve/envs/testenv/venv" ]
+    [ -x ".pyve/envs/testenv/venv/bin/python" ]
 }
 
-@test "ensure_testenv_exists: no arg is idempotent" {
+@test "ensure_env_exists: no arg is idempotent" {
     _stub_run_cmd_creates_venv
-    ensure_testenv_exists
+    ensure_env_exists
     local marker_mtime_a
-    marker_mtime_a=$(stat -f %m ".pyve/testenvs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/testenvs/testenv/venv/bin/python")
-    ensure_testenv_exists
+    marker_mtime_a=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
+    ensure_env_exists
     local marker_mtime_b
-    marker_mtime_b=$(stat -f %m ".pyve/testenvs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/testenvs/testenv/venv/bin/python")
+    marker_mtime_b=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
     [ "$marker_mtime_a" = "$marker_mtime_b" ]
 }
 
 # ============================================================
-# ensure_testenv_exists (with arg) — name-aware
+# ensure_env_exists (with arg) — name-aware
 # ============================================================
 
-@test "ensure_testenv_exists: with declared venv-backed name creates at .pyve/testenvs/<name>/venv" {
+@test "ensure_env_exists: with declared venv-backed name creates at .pyve/envs/<name>/venv" {
     _fixture_named_envs
     _stub_run_cmd_creates_venv
-    ensure_testenv_exists smoke
-    [ -d ".pyve/testenvs/smoke/venv" ]
-    [ -x ".pyve/testenvs/smoke/venv/bin/python" ]
+    ensure_env_exists smoke
+    [ -d ".pyve/envs/smoke/venv" ]
+    [ -x ".pyve/envs/smoke/venv/bin/python" ]
     # The default testenv is NOT created as a side effect.
-    [ ! -d ".pyve/testenvs/testenv/venv" ]
+    [ ! -d ".pyve/envs/testenv/venv" ]
 }
 
-@test "ensure_testenv_exists: reserved 'root' is rejected (not a testenv)" {
+@test "ensure_env_exists: reserved 'root' is rejected (not a testenv)" {
     _fixture_named_envs
-    run ensure_testenv_exists root
+    run ensure_env_exists root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
-    [ ! -d ".pyve/testenvs/root" ]
+    [ ! -d ".pyve/envs/root" ]
 }
 
-@test "ensure_testenv_exists: undeclared name is rejected with [tool.pyve.testenvs] hint" {
+@test "ensure_env_exists: undeclared name is rejected with [env.<name>] hint" {
     _fixture_named_envs
-    run ensure_testenv_exists bogus
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    run ensure_env_exists bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
-    [[ "$output" == *"tool.pyve.testenvs"* ]]
-    [ ! -d ".pyve/testenvs/bogus" ]
+    # N.bf.19: points at the v3 surface, not the v2 [tool.pyve.testenvs].
+    [[ "$output" == *"[env.bogus]"* ]]
+    [[ "$output" != *"tool.pyve.testenvs"* ]]
+    [ ! -d ".pyve/envs/bogus" ]
 }
 
-@test "ensure_testenv_exists: conda-backed name with missing manifest file hard-errors (M.k)" {
+@test "ensure_env_exists: conda-backed name with missing manifest file hard-errors (M.k)" {
     # M.k landed conda init for declared envs whose manifest exists.
     # When the manifest is declared but the file is missing, surface
     # a clear error (no half-created env).
     _fixture_named_envs
     # hardware's manifest = "tests/env.yml" — intentionally NOT created.
-    run ensure_testenv_exists hardware
+    run ensure_env_exists hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
     # Conda env was not created.
-    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
+    [ ! -d ".pyve/envs/hardware/conda/conda-meta" ]
 }
 
 # ============================================================
@@ -243,14 +249,14 @@ TOML
         source '$PYVE_ROOT/lib/ui/core.sh'
         source '$PYVE_ROOT/lib/ui/run.sh'
         source '$PYVE_ROOT/lib/utils.sh'
-        source '$PYVE_ROOT/lib/testenvs.sh'
+        source '$PYVE_ROOT/lib/envs.sh'
         workdir=\$(mktemp -d)
         cd \"\$workdir\"
-        read_testenv_config
-        assert_testenv_name_actionable testenv
-        assert_testenv_venv_backend testenv
-        assert_testenv_name_actionable root 2>/dev/null || true
-        assert_testenv_name_actionable bogus 2>/dev/null || true
+        read_env_config
+        assert_env_name_actionable testenv
+        assert_env_venv_backend testenv
+        assert_env_name_actionable root 2>/dev/null || true
+        assert_env_name_actionable bogus 2>/dev/null || true
         rm -rf \"\$workdir\"
     " 2>&1)" || true
     [[ "$output" != *"unbound variable"* ]] || {

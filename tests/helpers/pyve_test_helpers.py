@@ -25,6 +25,27 @@ from pathlib import Path
 from typing import List, Optional, Union
 
 
+def _pyenv_version_installed(version: str, env: dict) -> bool:
+    """True iff <version> is an INSTALLED pyenv version (not merely the
+    configured `version-name`). `pyenv version-name` reports the selected
+    version even when it isn't built on the runner; pinning such a version
+    makes `pyve init` prompt to install it (and cancel, non-interactively).
+    """
+    try:
+        result = subprocess.run(
+            ["pyenv", "versions", "--bare"],
+            capture_output=True,
+            text=True,
+            check=False,
+            env=env,
+        )
+        if result.returncode == 0:
+            return version in result.stdout.split()
+    except FileNotFoundError:
+        pass
+    return False
+
+
 def _detect_version_manager_python_version(env: dict) -> Optional[str]:
     try:
         result = subprocess.run(
@@ -36,7 +57,14 @@ def _detect_version_manager_python_version(env: dict) -> Optional[str]:
         )
         if result.returncode == 0:
             version = result.stdout.strip()
-            if version and version not in {"system", ""}:
+            # Only pin a pyenv version that is actually installed, honoring
+            # _auto_pin_python_for_init's "already-installed" contract. A
+            # configured-but-unbuilt version would otherwise trigger an
+            # install prompt during `pyve init` and fail non-interactively
+            # (the case where a test also clears CI / PYVE_FORCE_YES). Fall
+            # through to asdf / python3 when it isn't installed.
+            if version and version not in {"system", ""} \
+               and _pyenv_version_installed(version, env):
                 return version
     except FileNotFoundError:
         pass

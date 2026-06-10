@@ -25,6 +25,7 @@ _pyve() {
                 init) _pyve_init ;;
                 purge) _pyve_purge ;;
                 lock) _pyve_lock ;;
+                package) _arguments '--env[Target environment]:name' '--help[Show help]' ;;
                 update) _pyve_update ;;
                 check) _arguments '--help[Show help]' ;;
                 status) _arguments '--help[Show help]' ;;
@@ -43,6 +44,7 @@ _pyve_subcommands() {
         'init:Initialize the project environment'
         'purge:Remove pyve artifacts'
         'lock:Generate or verify conda-lock.yml (micromamba)'
+        'package:Materialize an env packaging artifact (reserved in v3.0)'
         'run:Run a command inside the pyve environment'
         'test:Run pytest via the dev/test runner environment'
         'testenv:Manage the dev/test runner environment'

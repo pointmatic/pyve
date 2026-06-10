@@ -13,14 +13,14 @@
 # manifest source declared in [tool.pyve.testenvs.<name>]
 # (`requirements`/`extra`) is intentionally NOT consumed here — M.l
 # flips that switch. M.i.3 preserves today's `-r <file>` or bare-pytest
-# install semantics from `testenv_install`.
+# install semantics from `env_install`.
 
 load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -32,16 +32,16 @@ teardown() {
     cleanup_test_dir
 }
 
-# Pre-create a fake testenv venv at .pyve/testenvs/<name>/venv/bin/python
-# so testenv_install passes the existence guard without invoking real python.
+# Pre-create a fake testenv venv at .pyve/envs/<name>/venv/bin/python
+# so env_install passes the existence guard without invoking real python.
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
 }
 
 # Stub run_cmd to record the pip invocation rather than execute it.
@@ -87,9 +87,9 @@ TOML
 @test "testenv install: no-arg without config installs into default testenv (today's behavior)" {
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
+    [[ "$output" == *"envs/testenv/venv/bin/python"* ]]
 }
 
 # ============================================================
@@ -105,7 +105,7 @@ TOML
     # micromamba binary so iteration successfully passes through it.
     mkdir -p tests
     printf 'name: hardware\ndependencies: [python]\n' > tests/env.yml
-    mkdir -p .pyve/testenvs/hardware/conda/conda-meta   # `install` requires existing env
+    mkdir -p .pyve/envs/hardware/conda/conda-meta   # `install` requires existing env
     mkdir -p .pyve/bin
     cat > .pyve/bin/micromamba <<'SH'
 #!/usr/bin/env bash
@@ -115,15 +115,15 @@ SH
     chmod +x .pyve/bin/micromamba
     _stub_run_cmd_records
 
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
     # testenv + smoke are non-lazy → both installed via pip.
-    [[ "$output" == *"testenvs/testenv/venv/bin/python"* ]]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/testenv/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     # heavy is lazy → NOT installed.
-    [[ "$output" != *"testenvs/heavy/venv/bin/python"* ]]
+    [[ "$output" != *"envs/heavy/venv/bin/python"* ]]
     # hardware is conda-backed → installed via micromamba (M.k landed).
-    [[ "$output" == *"MICROMAMBA:install -p .pyve/testenvs/hardware/conda -f tests/env.yml -y"* ]]
+    [[ "$output" == *"MICROMAMBA:install -p .pyve/envs/hardware/conda -f tests/env.yml -y"* ]]
 }
 
 @test "testenv install: no-arg with only lazy envs prints info, exits 0" {
@@ -137,10 +137,10 @@ TOML
     # default testenv venv exist so it can be installed.
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install
+    run env_command install
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/testenv/"* ]]
-    [[ "$output" != *"testenvs/heavy/"* ]]
+    [[ "$output" == *"envs/testenv/"* ]]
+    [[ "$output" != *"envs/heavy/"* ]]
 }
 
 # ============================================================
@@ -151,11 +151,11 @@ TOML
     _fixture_named_envs
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke
+    run env_command install smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     # Default testenv NOT installed as a side effect.
-    [[ "$output" != *"testenvs/testenv/"* ]]
+    [[ "$output" != *"envs/testenv/"* ]]
 }
 
 @test "testenv install <lazy-name>: explicit install bypasses lazy-skip (M.n regression)" {
@@ -167,9 +167,9 @@ TOML
     printf 'pytest\n' > tests/heavy.txt
     _make_fake_named_venv heavy
     _stub_run_cmd_records
-    run testenv_command install heavy
+    run env_command install heavy
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/heavy/venv/bin/python"* ]]
+    [[ "$output" == *"envs/heavy/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/heavy.txt"* ]]
 }
 
@@ -179,28 +179,34 @@ TOML
 
 @test "testenv install root: reserved 'root' hard-errors" {
     _fixture_named_envs
-    run testenv_command install root
+    run env_command install root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
 }
 
-@test "testenv install <undeclared>: hard-errors with [tool.pyve.testenvs] hint" {
+@test "testenv install <undeclared>: hard-errors with [env.<name>] hint" {
     _fixture_named_envs
-    run testenv_command install bogus
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    run env_command install bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
-    [[ "$output" == *"tool.pyve.testenvs"* ]]
+    # N.bf.19: points at the v3 surface, not the v2 [tool.pyve.testenvs].
+    [[ "$output" == *"[env.bogus]"* ]]
+    [[ "$output" != *"tool.pyve.testenvs"* ]]
 }
 
-@test "testenv install <conda-backed>: missing manifest file hard-errors (M.k landed)" {
-    # Story M.k landed: conda install routes through `_testenv_install_conda`.
-    # When the declared manifest is missing on disk, surface a clear
-    # error (the fixture declares manifest = "tests/env.yml" without
-    # creating it).
+@test "testenv install <conda-backed>: uninitialized env hard-errors before lock (N.bf.20)" {
+    # Story M.k landed: conda install routes through `_env_install_conda`.
+    # Story N.bf.20: the env-initialized gate now runs BEFORE the install
+    # lock (and before _env_install_conda's manifest check), so installing
+    # into a conda env that was never created reports "not initialized"
+    # and materializes no `.pyve` stray — init must precede install.
     _fixture_named_envs
-    run testenv_command install hardware
+    run env_command install hardware
     [ "$status" -ne 0 ]
-    [[ "$output" == *"tests/env.yml"* ]]
+    [[ "$output" == *"not initialized"* ]]
+    [[ "$output" == *"pyve env init hardware"* ]]
+    [ ! -e ".pyve/envs/hardware" ]
 }
 
 # ============================================================
@@ -213,7 +219,7 @@ ruff
 EOF
     _make_fake_named_venv testenv
     _stub_run_cmd_records
-    run testenv_command install -r requirements-dev.txt
+    run env_command install -r requirements-dev.txt
     [ "$status" -eq 0 ]
     [[ "$output" == *"-r requirements-dev.txt"* ]]
 }
@@ -226,9 +232,9 @@ ruff
 EOF
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install smoke -r tests/smoke-requirements.txt
+    run env_command install smoke -r tests/smoke-requirements.txt
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]
 }
 
@@ -240,8 +246,8 @@ ruff
 EOF
     _make_fake_named_venv smoke
     _stub_run_cmd_records
-    run testenv_command install -r tests/smoke-requirements.txt smoke
+    run env_command install -r tests/smoke-requirements.txt smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == *"testenvs/smoke/venv/bin/python"* ]]
+    [[ "$output" == *"envs/smoke/venv/bin/python"* ]]
     [[ "$output" == *"-r tests/smoke-requirements.txt"* ]]
 }

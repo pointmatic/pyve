@@ -6,7 +6,7 @@
 # Unit tests for `pyve testenv purge [<name>] [--force]` (Story M.i.4).
 #
 # Routing:
-#   - with-arg <name>     → remove .pyve/testenvs/<name>/  (no confirm)
+#   - with-arg <name>     → remove .pyve/envs/<name>/  (no confirm)
 #   - no-arg, single env  → confirm-or-skip(non-TTY)+remove (scriptable)
 #   - no-arg, multi env   → confirm+remove all (interactive only)
 #   - no-arg, --force     → skip confirm, remove all
@@ -17,8 +17,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -32,14 +32,14 @@ teardown() {
 
 _make_fake_named_venv() {
     local name="$1"
-    mkdir -p ".pyve/testenvs/$name/venv/bin"
-    cat > ".pyve/testenvs/$name/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/venv/bin"
+    cat > ".pyve/envs/$name/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/venv/bin/python"
+    chmod +x ".pyve/envs/$name/venv/bin/python"
     # Marker so we can verify the dir was removed.
-    printf '%s' "$name" > ".pyve/testenvs/$name/.state"
+    printf '%s' "$name" > ".pyve/envs/$name/.state"
 }
 
 _fixture_multi_envs() {
@@ -56,49 +56,50 @@ TOML
 }
 
 # ============================================================
-# With-arg single-env: removes .pyve/testenvs/<name>/ root
+# With-arg single-env: removes .pyve/envs/<name>/ root
 # ============================================================
 
 @test "testenv purge <name>: removes the named env root (includes .state)" {
     _fixture_multi_envs
     _make_fake_named_venv smoke
     _make_fake_named_venv testenv
-    run testenv_command purge smoke
+    run env_command purge smoke
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/smoke" ]
+    [ ! -d ".pyve/envs/smoke" ]
     # Default testenv NOT removed as a side effect.
-    [ -d ".pyve/testenvs/testenv" ]
+    [ -d ".pyve/envs/testenv" ]
 }
 
 @test "testenv purge testenv: explicit default removes only that env" {
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
-    run testenv_command purge testenv
+    run env_command purge testenv
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ -d ".pyve/testenvs/smoke" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ -d ".pyve/envs/smoke" ]
 }
 
 @test "testenv purge <conda-backed>: also purges (backend-agnostic)" {
     _fixture_multi_envs
-    mkdir -p ".pyve/testenvs/hardware/conda"
-    printf 'hw' > ".pyve/testenvs/hardware/.state"
-    run testenv_command purge hardware
+    mkdir -p ".pyve/envs/hardware/conda"
+    printf 'hw' > ".pyve/envs/hardware/.state"
+    run env_command purge hardware
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/hardware" ]
+    [ ! -d ".pyve/envs/hardware" ]
 }
 
 @test "testenv purge root: reserved 'root' hard-errors" {
     _fixture_multi_envs
-    run testenv_command purge root
+    run env_command purge root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
 }
 
 @test "testenv purge <undeclared>: hard-errors with [tool.pyve.testenvs] hint" {
     _fixture_multi_envs
-    run testenv_command purge bogus
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    run env_command purge bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
 }
@@ -106,7 +107,7 @@ TOML
 @test "testenv purge <name>: missing env prints info, no error" {
     _fixture_multi_envs
     # smoke is declared but not provisioned on disk
-    run testenv_command purge smoke
+    run env_command purge smoke
     [ "$status" -eq 0 ]
 }
 
@@ -117,9 +118,9 @@ TOML
 @test "testenv purge: no-arg, single env, non-TTY (bats) — purges without prompt" {
     # No pyproject.toml → implicit-default config (one env: testenv).
     _make_fake_named_venv testenv
-    run testenv_command purge
+    run env_command purge
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
+    [ ! -d ".pyve/envs/testenv" ]
 }
 
 # ============================================================
@@ -131,14 +132,14 @@ TOML
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
-    mkdir -p ".pyve/testenvs/hardware/conda"
-    printf 'hw' > ".pyve/testenvs/hardware/.state"
+    mkdir -p ".pyve/envs/hardware/conda"
+    printf 'hw' > ".pyve/envs/hardware/.state"
 
-    run testenv_command purge
+    run env_command purge
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
-    [ ! -d ".pyve/testenvs/hardware" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ ! -d ".pyve/envs/hardware" ]
 }
 
 # ============================================================
@@ -149,18 +150,18 @@ TOML
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
-    run testenv_command purge --force
+    run env_command purge --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
 }
 
 @test "testenv purge <name> --force: --force accepted on with-arg path (no-op)" {
     _fixture_multi_envs
     _make_fake_named_venv smoke
-    run testenv_command purge smoke --force
+    run env_command purge smoke --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/smoke" ]
+    [ ! -d ".pyve/envs/smoke" ]
 }
 
 # ============================================================
@@ -178,18 +179,18 @@ TOML
         source '$PYVE_ROOT/lib/ui/core.sh'
         source '$PYVE_ROOT/lib/ui/run.sh'
         source '$PYVE_ROOT/lib/utils.sh'
-        source '$PYVE_ROOT/lib/testenvs.sh'
-        source '$PYVE_ROOT/lib/commands/testenv.sh'
+        source '$PYVE_ROOT/lib/envs.sh'
+        source '$PYVE_ROOT/lib/commands/env.sh'
         export PYVE_PYTHON='$PYVE_PYTHON'
         export TESTENV_DIR_NAME='testenv'
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'n' | testenv_command purge
+        echo 'n' | env_command purge
     "
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
-    [ -d ".pyve/testenvs/smoke" ]
+    [ -d ".pyve/envs/testenv" ]
+    [ -d ".pyve/envs/smoke" ]
 }
 
 @test "testenv purge: simulated TTY with 'y' confirms and removes all" {
@@ -201,16 +202,16 @@ TOML
         source '$PYVE_ROOT/lib/ui/core.sh'
         source '$PYVE_ROOT/lib/ui/run.sh'
         source '$PYVE_ROOT/lib/utils.sh'
-        source '$PYVE_ROOT/lib/testenvs.sh'
-        source '$PYVE_ROOT/lib/commands/testenv.sh'
+        source '$PYVE_ROOT/lib/envs.sh'
+        source '$PYVE_ROOT/lib/commands/env.sh'
         export PYVE_PYTHON='$PYVE_PYTHON'
         export TESTENV_DIR_NAME='testenv'
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'y' | testenv_command purge
+        echo 'y' | env_command purge
     "
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
 }

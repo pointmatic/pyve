@@ -38,7 +38,6 @@ functions in isolation — this file only verifies pyve-init wiring.
 import os
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 import pytest
@@ -119,6 +118,85 @@ def _project_guide_importable(project_dir) -> bool:
         capture_output=True,
     )
     return result.returncode == 0
+
+
+# ---------------------------------------------------------------------------
+# project-guide stub
+#
+# Under N.aw, project-guide is a Pyve-managed GLOBAL tool resolved on PATH
+# (toolchain venv + ~/.local/bin shim), NOT a per-project pip install. These
+# integration tests therefore put a network-free `project-guide` stub on PATH
+# that emulates the contract pyve drives (`init`/`update` with backup/restore,
+# per lib/project_guide.sh + lib/utils.sh), instead of a real PyPI install.
+# ---------------------------------------------------------------------------
+
+# Canonical content the stub writes for the managed template; tests assert a
+# user-tampered copy is restored to exactly this and backed up.
+_PG_STUB_CANON = "CANONICAL debug-guide -- managed by project-guide (stub)"
+
+_PG_STUB_SCRIPT = """#!/usr/bin/env bash
+# Network-free project-guide stub. Emulates `project-guide init/update
+# --no-input --quiet` as pyve invokes them, in the project cwd.
+set -euo pipefail
+CANON="__CANON__"
+tmpl="docs/project-guide/developer/debug-guide.md"
+sub="${1:-}"
+case "$sub" in
+  --version) echo "project-guide 2.13.0 (stub)"; exit 0 ;;
+  init)
+    mkdir -p "docs/project-guide/developer"
+    printf '%s\\n' "$CANON" > "$tmpl"
+    cat > .project-guide.yml <<'YML'
+installed_version: 2.13.0
+target_dir: docs/project-guide
+current_mode: code_test_first
+pyve_version: stub
+env_spec_path: docs/specs/env-dependencies.md
+YML
+    exit 0
+    ;;
+  update)
+    if [ "${PG_STUB_FAIL_UPDATE:-0}" = "1" ]; then
+      echo "project-guide update: simulated failure" >&2
+      exit 1
+    fi
+    if [ ! -f .project-guide.yml ]; then
+      echo "project-guide update: No .project-guide.yml found" >&2
+      exit 1
+    fi
+    mkdir -p "docs/project-guide/developer"
+    if [ -f "$tmpl" ] && [ "$(cat "$tmpl")" != "$CANON" ]; then
+      cp "$tmpl" "$tmpl.bak.$(date +%s)"
+    fi
+    printf '%s\\n' "$CANON" > "$tmpl"
+    exit 0
+    ;;
+  *) echo "project-guide stub: unknown subcommand: $sub" >&2; exit 2 ;;
+esac
+"""
+
+
+def _install_pg_stub(monkeypatch, tmp_path):
+    """Put the network-free `project-guide` stub first on PATH.
+
+    Returns the bin dir. Pair with PYVE_TEST_ALLOW_PROJECT_GUIDE=1 so pyve's
+    orchestration actually runs the hook (the test-runner default otherwise
+    sets PYVE_NO_PROJECT_GUIDE=1).
+    """
+    bin_dir = tmp_path / "pg_stub_bin"
+    bin_dir.mkdir(exist_ok=True)
+    stub = bin_dir / "project-guide"
+    stub.write_text(_PG_STUB_SCRIPT.replace("__CANON__", _PG_STUB_CANON))
+    stub.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    # pyve's internal callsites resolve project-guide by HOSTED absolute path
+    # (toolchain venv → ~/.local/bin shim), which deliberately ignores PATH
+    # (lib/toolchain_python.sh § pyve_project_guide). A PATH-only stub is
+    # therefore never invoked — pyve runs whatever real project-guide the
+    # runner has hosted. Pin the override seam to this stub so the hook
+    # genuinely routes here and stays network-free + runner-independent.
+    monkeypatch.setenv("PYVE_PROJECT_GUIDE_BIN", str(stub))
+    return bin_dir
 
 
 def _isolate_home(monkeypatch, tmp_path):
@@ -297,7 +375,7 @@ class TestAutoSkipWhenInProjectDeps:
     def test_auto_skip_when_in_requirements_txt(
         self, pyve, test_project, project_builder, tmp_path, monkeypatch
     ):
-        fake_home = _isolate_home(monkeypatch, tmp_path)
+        _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.delenv("PYVE_PROJECT_GUIDE", raising=False)
@@ -319,7 +397,7 @@ class TestAutoSkipWhenInProjectDeps:
         is in project deps, the flag forces pyve to manage it. The auto-skip
         info message must NOT appear.
         """
-        fake_home = _isolate_home(monkeypatch, tmp_path)
+        _isolate_home(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         # Opt in to the project-guide hook (the explicit --project-guide flag
         # below would otherwise be neutralised by the test-runner default).
@@ -374,6 +452,7 @@ class TestRealInstall:
         SHELL=/bin/zsh, isolated $HOME.
         """
         fake_home = _isolate_home(monkeypatch, tmp_path)
+        _install_pg_stub(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
@@ -385,12 +464,10 @@ class TestRealInstall:
         result = pyve.run("init", "--no-direnv", "--force", timeout=300)
         assert result.returncode == 0, f"pyve init failed: {result.stderr}"
 
-        # Step 1: project-guide must be importable from the project venv.
-        assert _project_guide_importable(test_project), (
-            "Expected project-guide to be installed in the project venv"
-        )
-
-        # Step 2: project-guide init must have created the artifact files.
+        # project-guide is toolchain-hosted (resolved on PATH),
+        # NOT installed into the project venv — so the assertion is that pyve
+        # drove the hosted `project-guide init` to scaffold, not that the
+        # package imports from .venv.
         assert (test_project / ".project-guide.yml").exists(), (
             "Expected .project-guide.yml to be created by 'project-guide init'"
         )
@@ -416,6 +493,7 @@ class TestRealInstall:
         files in unattended environments).
         """
         fake_home = _isolate_home(monkeypatch, tmp_path)
+        _install_pg_stub(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("CI", "1")
         # Opt in to the project-guide hook so the CI default path runs.
@@ -431,9 +509,10 @@ class TestRealInstall:
         result = pyve.run("init", "--no-direnv", "--force", timeout=300)
         assert result.returncode == 0, f"pyve init failed: {result.stderr}"
 
-        # CI default for install = YES, so project-guide is installed.
-        assert _project_guide_importable(test_project), (
-            "CI mode should install project-guide (matches interactive default)"
+        # CI default for install = YES, so pyve drives the hosted
+        # `project-guide init` (toolchain model — not a project-venv install).
+        assert (test_project / ".project-guide.yml").exists(), (
+            "CI mode should scaffold project-guide (matches interactive default)"
         )
 
         # CI default for completion = SKIP, so rc file is untouched.
@@ -443,15 +522,18 @@ class TestRealInstall:
                 "CI mode must NOT edit the user rc file (deliberate asymmetry)"
             )
 
-    def test_idempotent_reinstall_is_fast(
+    def test_update_refreshes_managed_templates(
         self, pyve, test_project, tmp_path, monkeypatch
     ):
         """
-        Second invocation with project-guide already installed must short-circuit
-        (no second pip install). Timed: re-run must be at least 3x faster than
-        the first run. Also asserts that the helper log line fires.
+        Toolchain model: `pyve init` scaffolds via the hosted `project-guide
+        init`; the lightweight `pyve update` then drives `project-guide
+        update` to REFRESH managed templates (restoring a user-tampered file
+        and leaving a `.bak.<ts>` sibling) — without rebuilding the venv or
+        re-scaffolding from scratch.
         """
-        fake_home = _isolate_home(monkeypatch, tmp_path)
+        _isolate_home(monkeypatch, tmp_path)
+        _install_pg_stub(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
@@ -459,29 +541,26 @@ class TestRealInstall:
         monkeypatch.delenv("CI", raising=False)
         monkeypatch.delenv("PYVE_FORCE_YES", raising=False)
 
-        # First run — real install
-        t0 = time.time()
+        # First run — scaffold via the hosted `project-guide init`.
         result1 = pyve.run("init", "--no-direnv", "--force", timeout=300)
-        t1 = time.time()
-        first_duration = t1 - t0
         assert result1.returncode == 0, f"first pyve init failed: {result1.stderr}"
-        assert _project_guide_importable(test_project)
+        tmpl = test_project / TestRefreshOnReinit.TEMPLATE_FILE
+        assert (test_project / ".project-guide.yml").exists()
+        assert tmpl.exists(), "first init should scaffold the managed template"
 
-        # Second run — lightweight `pyve update` (H.e.9a: replaces the
-        # v1 `init --update` path that was removed in v2.0).
-        t2 = time.time()
+        # User tampers the managed template; `pyve update` must refresh it.
+        marker = "PYVE_UPDATE_REFRESH_SENTINEL"
+        tmpl.write_text(f"# tampered\n{marker}\n")
+
         result2 = pyve.run("update", timeout=60)
-        t3 = time.time()
-        second_duration = t3 - t2
         assert result2.returncode == 0, f"pyve update failed: {result2.stderr}"
-        # `pyve update` refreshes managed files + project-guide scaffolding but
-        # never rebuilds the venv. What we validate here is that the second
-        # run is substantially faster than the first (real init), proving the
-        # idempotency path doesn't re-pip-install.
-        assert second_duration < first_duration, (
-            f"second run ({second_duration:.1f}s) should be faster than "
-            f"first ({first_duration:.1f}s)"
+
+        assert marker not in tmpl.read_text(), (
+            "Expected `pyve update` to refresh the managed template via "
+            "`project-guide update`"
         )
+        backups = list(tmpl.parent.glob(f"{tmpl.name}.bak.*"))
+        assert backups, "Expected `project-guide update` to back up the user's edits"
 
 
 # ---------------------------------------------------------------------------
@@ -508,6 +587,7 @@ class TestRefreshOnReinit:
     def _first_install(self, pyve, monkeypatch, tmp_path):
         """Run pyve init to install + scaffold project-guide. Returns fake_home."""
         fake_home = _isolate_home(monkeypatch, tmp_path)
+        _install_pg_stub(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         monkeypatch.setenv("PYVE_TEST_ALLOW_PROJECT_GUIDE", "1")
         monkeypatch.setenv("PYVE_PROJECT_GUIDE", "1")
@@ -639,9 +719,11 @@ class TestRefreshOnReinit:
         """
         self._first_install(pyve, monkeypatch, tmp_path)
 
-        config = test_project / ".project-guide.yml"
-        # Corrupt YAML → `project-guide update` exits 3.
-        config.write_text("not: valid: yaml: ::\n")
+        # Force the hosted `project-guide update` to exit non-zero (stands in
+        # for a corrupt config / future SchemaVersionError). The stub honors
+        # PG_STUB_FAIL_UPDATE=1; .project-guide.yml stays present so the
+        # orchestration takes the update (not init) branch.
+        monkeypatch.setenv("PG_STUB_FAIL_UPDATE", "1")
 
         result = pyve.run("init", "--no-direnv", "--force", timeout=300)
         assert result.returncode == 0, (

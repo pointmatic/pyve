@@ -17,6 +17,101 @@ teardown() {
 }
 
 #============================================================
+# N.bf.10: conda-lock.yml is committed source — never deleted by pyve
+#============================================================
+
+@test "no executable code path deletes conda-lock.yml (committed source survives --force/--no-lock)" {
+    # conda-lock.yml is committed source (like environment.yml), not pyve state.
+    # --no-lock ignores it; --force purges materialized state only. Guard: no
+    # line in lib/ or pyve.sh is an `rm` command targeting conda-lock.yml. (The
+    # one occurrence is inside a log_error *message*, which starts with
+    # log_error, not rm — so this anchored pattern won't match it.)
+    run grep -rnE '^[[:space:]]*rm[[:space:]].*conda-lock\.yml' "$PYVE_ROOT/lib" "$PYVE_ROOT/pyve.sh"
+    [ "$status" -ne 0 ]
+}
+
+#============================================================
+# is_conda_lock_declared() tests (Story N.bf.8)
+#============================================================
+# The declarative signal for "a lock is required": conda-lock present as a
+# dependency in environment.yml. Must match bare / version-pinned / pip-nested
+# forms, must NOT match longer names (conda-lock-foo), and must be false when
+# there is no environment.yml.
+
+@test "is_conda_lock_declared: bare 'conda-lock' dependency → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - conda-lock
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: version-pinned 'conda-lock=2.5.0' → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock=2.5.0
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: space-separated 'conda-lock >=2' → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock >=2
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: nested under 'pip:' subsection → true" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - conda-lock
+      - requests
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 0 ]
+}
+
+@test "is_conda_lock_declared: absent → false" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - numpy
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+}
+
+@test "is_conda_lock_declared: longer name 'conda-lock-foo' is NOT a match → false" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock-foo
+YAML
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+}
+
+@test "is_conda_lock_declared: no environment.yml → false (clean, no error)" {
+    run is_conda_lock_declared
+    [ "$status" -eq 1 ]
+    [ -z "$output" ]
+}
+
+#============================================================
 # is_lock_file_stale() tests
 #============================================================
 
@@ -137,12 +232,21 @@ teardown() {
     [ "$status" -eq 0 ]
 }
 
-@test "validate_lock_file_status: returns 1 when only environment.yml exists (missing lock file is now a hard error)" {
+@test "validate_lock_file_status: non-strict, env.yml only, conda-lock NOT declared → proceeds (no lock expected)" {
+    # Declarative model (N.bf.9): a lock is required only when conda-lock is a
+    # declared dependency. Pre-production projects proceed silently.
     create_environment_yml "test-env" "python=3.11"
 
     run validate_lock_file_status "false"
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"No conda-lock.yml found"* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"requires a lock file"* ]]
+}
+
+@test "validate_lock_file_status: non-strict, env.yml only, conda-lock declared → proceeds (nudge handled post-init)" {
+    create_environment_yml "test-env" "python=3.11" "conda-lock"
+
+    run validate_lock_file_status "false"
+    [ "$status" -eq 0 ]
 }
 
 @test "validate_lock_file_status: returns 1 when only conda-lock.yml exists" {
@@ -182,11 +286,21 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-@test "validate_lock_file_status: strict mode returns 1 when lock file missing" {
-    create_environment_yml "test-env" "python=3.11"
-    
+@test "validate_lock_file_status: strict, env.yml only, conda-lock declared → barks (requires a lock)" {
+    create_environment_yml "test-env" "python=3.11" "conda-lock"
+
     run validate_lock_file_status "true"
     [ "$status" -eq 1 ]
+    [[ "$output" == *"requires a lock file"* ]]
+    [[ "$output" == *"pyve lock"* ]]
+    [[ "$output" == *"remove conda-lock"* ]]
+}
+
+@test "validate_lock_file_status: strict, env.yml only, conda-lock NOT declared → proceeds (no lock required)" {
+    create_environment_yml "test-env" "python=3.11"
+
+    run validate_lock_file_status "true"
+    [ "$status" -eq 0 ]
 }
 
 @test "validate_lock_file_status: strict mode returns 1 when environment.yml missing" {
@@ -242,25 +356,24 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-@test "validate_lock_file_status: defaults to non-strict when no argument (still fails on missing lock)" {
+@test "validate_lock_file_status: defaults to non-strict when no argument (undeclared → proceeds)" {
     create_environment_yml "test-env" "python=3.11"
 
-    # Missing lock file is now a hard error regardless of strict mode
     run validate_lock_file_status
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
 }
 
-@test "validate_lock_file_status: handles empty string as non-strict (still fails on missing lock)" {
+@test "validate_lock_file_status: handles empty string as non-strict (undeclared → proceeds)" {
     create_environment_yml "test-env" "python=3.11"
 
     run validate_lock_file_status ""
-    [ "$status" -eq 1 ]
+    [ "$status" -eq 0 ]
 }
 
-@test "validate_lock_file_status: PYVE_NO_LOCK=1 bypasses missing lock file error" {
-    create_environment_yml "test-env" "python=3.11"
+@test "validate_lock_file_status: PYVE_NO_LOCK=1 relaxes the requirement even when conda-lock is declared (--no-lock beats --strict)" {
+    create_environment_yml "test-env" "python=3.11" "conda-lock"
 
-    PYVE_NO_LOCK=1 run validate_lock_file_status "false"
+    PYVE_NO_LOCK=1 run validate_lock_file_status "true"
     [ "$status" -eq 0 ]
 }
 
@@ -376,10 +489,10 @@ EOF
     [[ "$output" != *"conda-lock -f"* ]]
 }
 
-@test "validate_lock_file_status: missing lock error references 'pyve lock'" {
-    create_environment_yml "test-env" "python=3.11"
+@test "validate_lock_file_status: strict declared-missing bark references 'pyve lock'" {
+    create_environment_yml "test-env" "python=3.11" "conda-lock"
 
-    run validate_lock_file_status "false"
+    run validate_lock_file_status "true"
     [ "$status" -eq 1 ]
     [[ "$output" == *"pyve lock"* ]]
     [[ "$output" != *"conda-lock -f"* ]]

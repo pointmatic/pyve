@@ -8,7 +8,7 @@
 # Dispatcher accepts an optional positional <name> after `init`.
 # Routing rules:
 #   - no arg                  → default `testenv`
-#   - declared venv-backed    → create at .pyve/testenvs/<name>/venv
+#   - declared venv-backed    → create at .pyve/envs/<name>/venv
 #   - reserved `root`         → hard-error (selection-only)
 #   - undeclared              → hard-error (with [tool.pyve.testenvs] hint)
 #   - conda-backed declared   → M.k stub hard-error
@@ -17,8 +17,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -67,40 +67,43 @@ TOML
 
 @test "testenv init: no arg creates the default testenv at the new path" {
     _stub_run_cmd_creates_venv
-    run testenv_command init
+    run env_command init
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv/venv" ]
+    [ -d ".pyve/envs/testenv/venv" ]
 }
 
 # ============================================================
 # with-arg routing
 # ============================================================
 
-@test "testenv init <name>: declared venv-backed name creates at .pyve/testenvs/<name>/venv" {
+@test "testenv init <name>: declared venv-backed name creates at .pyve/envs/<name>/venv" {
     _fixture_named_envs
     _stub_run_cmd_creates_venv
-    run testenv_command init smoke
+    run env_command init smoke
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/smoke/venv" ]
+    [ -d ".pyve/envs/smoke/venv" ]
     # Default testenv NOT created as a side effect.
-    [ ! -d ".pyve/testenvs/testenv/venv" ]
+    [ ! -d ".pyve/envs/testenv/venv" ]
 }
 
 @test "testenv init <name>: reserved 'root' hard-errors" {
     _fixture_named_envs
-    run testenv_command init root
+    run env_command init root
     [ "$status" -ne 0 ]
     [[ "$output" == *"root"* ]]
-    [ ! -d ".pyve/testenvs/root" ]
+    [ ! -d ".pyve/envs/root" ]
 }
 
-@test "testenv init <name>: undeclared name hard-errors with [tool.pyve.testenvs] hint" {
+@test "testenv init <name>: undeclared name hard-errors with [env.<name>] hint" {
     _fixture_named_envs
-    run testenv_command init bogus
+    : > pyve.toml  # N.bf.18: initialized project → 'bogus' reaches the not-declared path
+    run env_command init bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"bogus"* ]]
-    [[ "$output" == *"tool.pyve.testenvs"* ]]
-    [ ! -d ".pyve/testenvs/bogus" ]
+    # N.bf.19: points at the v3 surface, not the v2 [tool.pyve.testenvs].
+    [[ "$output" == *"[env.bogus]"* ]]
+    [[ "$output" != *"tool.pyve.testenvs"* ]]
+    [ ! -d ".pyve/envs/bogus" ]
 }
 
 @test "testenv init <name>: conda-backed name with missing manifest file hard-errors (M.k)" {
@@ -110,8 +113,8 @@ TOML
     # half-created env is left behind.
     _fixture_named_envs
     # hardware's manifest = "tests/env.yml" — intentionally NOT created.
-    run testenv_command init hardware
+    run env_command init hardware
     [ "$status" -ne 0 ]
     [[ "$output" == *"tests/env.yml"* ]]
-    [ ! -d ".pyve/testenvs/hardware/conda/conda-meta" ]
+    [ ! -d ".pyve/envs/hardware/conda/conda-meta" ]
 }

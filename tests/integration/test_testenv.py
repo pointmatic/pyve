@@ -39,18 +39,21 @@ class TestTestenvRun:
         project_builder.create_requirements([])
         pyve.init(backend='venv')
         # pyve init auto-creates the testenv, so remove it to test the guard.
-        # v2.8+ layout: .pyve/testenvs/testenv/venv (was .pyve/testenv/venv pre-M.h.3).
+        # v3 layout: .pyve/envs/testenv/venv.
         import shutil
-        testenv_venv = pyve.cwd / '.pyve' / 'testenvs' / 'testenv' / 'venv'
+        testenv_venv = pyve.cwd / '.pyve' / 'envs' / 'testenv' / 'venv'
         if testenv_venv.exists():
             shutil.rmtree(testenv_venv)
 
         result = pyve.run('testenv', 'run', 'python', '--version', check=False)
         assert result.returncode == 1
         assert 'not initialized' in result.stderr.lower()
-        # H.f.3 standardized the hint on v2.0 grammar (`pyve testenv init`)
-        # instead of the deprecated `pyve testenv --init` flag form.
-        assert 'testenv init' in result.stderr.lower()
+        # Story N.bf.20 rebranded the canonical hint to `pyve env init`
+        # (the deprecated `testenv` alias re-dispatches to `env` and already
+        # emits its own deprecation warning). Assert the canonical form and
+        # that the stale `testenv init` hint is gone.
+        assert 'pyve env init' in result.stderr.lower()
+        assert 'testenv init' not in result.stderr.lower()
 
     @pytest.mark.venv
     def test_testenv_run_python_version(self, pyve, project_builder):
@@ -79,8 +82,8 @@ def test_testenv_survives_force_reinit(pyve, project_builder):
 
     # `pyve test` should auto-create the dev/test runner env and (in tests/CI)
     # auto-install pytest without prompting.
-    # Post-M.h.3 layout: `.pyve/testenvs/<name>/{venv,conda}/`.
-    testenv_python = project_builder.project_dir / ".pyve" / "testenvs" / "testenv" / "venv" / "bin" / "python"
+    # v3 layout: `.pyve/envs/<name>/{venv,conda}/`.
+    testenv_python = project_builder.project_dir / ".pyve" / "envs" / "testenv" / "venv" / "bin" / "python"
 
     result = pyve.run("test", "-q", check=False)
     # If there are no tests, pytest exits 5. Accept that as success signal for wiring.
@@ -115,8 +118,8 @@ def test_testenv_rebuilt_when_python_version_stale(pyve, project_builder):
     project_builder.create_requirements([])
     pyve.init(backend='venv')
 
-    # v2.8+ layout: .pyve/testenvs/testenv/venv (was .pyve/testenv/venv pre-M.h.3).
-    testenv_venv = pyve.cwd / '.pyve' / 'testenvs' / 'testenv' / 'venv'
+    # v3 layout: .pyve/envs/testenv/venv.
+    testenv_venv = pyve.cwd / '.pyve' / 'envs' / 'testenv' / 'venv'
     assert testenv_venv.exists(), "testenv was not created by pyve init"
 
     pyvenv_cfg = testenv_venv / 'pyvenv.cfg'

@@ -93,23 +93,30 @@ parse_environment_name() {
     return 0
 }
 
-# Parse environment.yml for channels
-# Returns: space-separated list of channels or empty string
-parse_environment_channels() {
+# Detect whether `conda-lock` is declared as a dependency in environment.yml.
+# This is the declarative signal for "a lock is required" (Story N.bf.8): its
+# presence — and only its presence — makes a missing conda-lock.yml a nudge
+# (non-strict) or a bark (--strict) in the init flow downstream. It is
+# independent of which file drives the install (that stays detect_environment_file's
+# lock-if-present rule).
+#
+# Matches conda-lock as a dependency list item in any form:
+#   - conda-lock              (bare)
+#   - conda-lock=2.5.0        (version-pinned)
+#   - conda-lock >=2          (space-separated spec)
+#   - pip: \ - conda-lock     (nested under pip: — deeper indentation)
+# Does NOT match longer names (e.g. conda-lock-foo): the item must terminate at
+# whitespace, a version operator (= < > ! ~), or end-of-line.
+#
+# Arguments:
+#   $1 - env_file (default: environment.yml)
+# Returns: 0 if conda-lock is declared, 1 otherwise (including no env file)
+is_conda_lock_declared() {
     local env_file="${1:-environment.yml}"
-    
-    if [[ ! -f "$env_file" ]]; then
-        echo ""
-        return 1
-    fi
-    
-    # Extract channels from YAML (simple parsing)
-    # This handles: channels:\n  - channel1\n  - channel2
-    local channels
-    channels="$(awk '/^channels:$/,/^[a-z]/ {if ($1 == "-") print $2}' "$env_file" | tr '\n' ' ')"
-    
-    echo "$channels"
-    return 0
+
+    [[ -f "$env_file" ]] || return 1
+
+    grep -Eq '^[[:space:]]*-[[:space:]]+conda-lock([[:space:]=<>!~]|$)' "$env_file"
 }
 
 # Validate environment.yml exists and is readable
@@ -159,30 +166,6 @@ validate_environment_file() {
     fi
     
     return 0
-}
-
-# Error if no environment file found
-# Returns: 1 (always errors)
-error_no_environment_file() {
-    log_error "No environment file found for micromamba backend"
-    log_error ""
-    log_error "Micromamba requires either:"
-    log_error "  - conda-lock.yml (for reproducible builds)"
-    log_error "  - environment.yml (for flexible dependencies)"
-    log_error ""
-    log_error "Create environment.yml with:"
-    log_error ""
-    printf "  name: myproject\n"
-    printf "  channels:\n"
-    printf "    - conda-forge\n"
-    printf "  dependencies:\n"
-    printf "    - python=3.11\n"
-    printf "    - numpy\n"
-    log_error ""
-    log_error "Or generate a lock file:"
-    log_error "  pyve lock"
-
-    return 1
 }
 
 #============================================================
@@ -350,21 +333,42 @@ validate_lock_file_status() {
         return 0
     fi
     
-    # Case 2: Only environment.yml exists (no lock file) — hard error
+    # Case 2: Only environment.yml exists (no lock file).
+    #
+    # Declarative lock-requirement model (Story N.bf.9). "Is a lock required?"
+    # is answered by the project's own declaration — `conda-lock` present as a
+    # dependency in environment.yml — NOT by file existence or a transient
+    # init-time flag. This makes `pyve init` and `pyve init --force` behave
+    # identically (both call this gate) and replaces the v3.0 hard error with a
+    # gentle nudge for the common pre-production case.
     if [[ "$has_env_yml" == true ]] && [[ "$has_lock_yml" == false ]]; then
-        # Allow explicit bypass via --no-lock / PYVE_NO_LOCK=1
+        # Explicit per-run opt-out (`--no-lock`). Beats everything, including
+        # --strict (explicit instruction > policy): proceed, resolve from
+        # environment.yml.
         if [[ "${PYVE_NO_LOCK:-}" == "1" ]]; then
             log_warning "Proceeding without conda-lock.yml (--no-lock)"
             return 0
         fi
 
-        printf "\n" >&2
-        printf "ERROR: No conda-lock.yml found.\n\n" >&2
-        printf "For reproducible builds, generate one first:\n" >&2
-        printf "  pyve lock\n\n" >&2
-        printf "To proceed without a lock file (not recommended):\n" >&2
-        printf "  pyve init --no-lock\n" >&2
-        return 1
+        # No lock declared ⇒ no lock required (pre-production): proceed silently.
+        if ! is_conda_lock_declared; then
+            return 0
+        fi
+
+        # conda-lock IS declared ⇒ a lock is required.
+        if [[ "$strict_mode" == true ]]; then
+            # The bark — production gate (--strict).
+            printf "\n" >&2
+            printf "No conda-lock.yml found. conda-lock is in your environment.yml, so Pyve requires a lock file.\n" >&2
+            printf "  → Run \`pyve lock\` to generate it.\n" >&2
+            printf "  → Or pass --no-lock to skip the check for this run.\n" >&2
+            printf "  → Or remove conda-lock from environment.yml to opt out permanently.\n" >&2
+            return 1
+        fi
+
+        # Non-strict: proceed. The init flow emits the gentle nudge after a
+        # successful build (see _init_lock_nudge); validation just permits it.
+        return 0
     fi
     
     # Case 3: Only conda-lock.yml exists — missing source file.
@@ -412,9 +416,14 @@ validate_lock_file_status() {
 # `pyve lock`. Story H.f.7.
 #
 # Arguments:
-#   $1 - python_version  (e.g. "3.12.13")
-#   $2 - env_name_flag   (explicit `--env-name` value; empty => use cwd basename)
-#   $3 - strict_mode     ("true" or "false")
+#   $1 - python_version    (e.g. "3.12.13")
+#   $2 - env_name_flag     (explicit `--env-name` value; empty => use cwd basename)
+#   $3 - strict_mode       ("true" or "false")
+#   $4 - include_conda_lock ("true" or "false", default "true") — Story N.bf.11.
+#        When "true", declare `conda-lock` as a dependency so the scaffolded env
+#        can run `pyve lock` out of the box (and the declarative lock model's
+#        nudge fires). Omitted under `--no-lock`. Default "true" = the
+#        non-interactive "locking desired" default.
 #
 # Returns:
 #   0 if environment.yml was scaffolded
@@ -423,6 +432,7 @@ scaffold_starter_environment_yml() {
     local python_version="$1"
     local env_name_flag="$2"
     local strict_mode="${3:-false}"
+    local include_conda_lock="${4:-true}"
 
     # --strict opts out of any inference or synthesis — hand-authored files only.
     if [[ "$strict_mode" == "true" ]]; then
@@ -458,6 +468,13 @@ dependencies:
   - python=${python_version}
   - pip
 EOF
+
+    # conda-lock opt-in (Story N.bf.11): declaring it here means the env can run
+    # `pyve lock` immediately — no edit-then-rebuild dance. Omitted under
+    # --no-lock (include_conda_lock="false").
+    if [[ "$include_conda_lock" == "true" ]]; then
+        printf '  - conda-lock\n' >> environment.yml
+    fi
 
     return 0
 }
@@ -609,9 +626,12 @@ resolve_environment_name() {
 #   $1 - Environment name
 # Returns: 0 if exists, 1 if not exists
 check_micromamba_env_exists() {
-    local env_name="$1"
-    local env_path=".pyve/envs/$env_name"
-    
+    # Story N.bf.14: the main micromamba env is the reserved `root` env at
+    # the uniform `.pyve/envs/root/conda/` slot. `$1` (the configured name)
+    # is accepted for caller compat but no longer keys the path.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+
     if [[ -d "$env_path" ]]; then
         return 0
     else
@@ -663,20 +683,38 @@ create_micromamba_env() {
         return 1
     fi
     
-    # Create environment directory
-    local env_path=".pyve/envs/$env_name"
-    mkdir -p ".pyve/envs" || {
-        log_error "Failed to create .pyve/envs directory"
+    # Story N.bf.14: materialize the main env at the uniform v3 slot
+    # `.pyve/envs/root/conda/` (the reserved `root` env), with a sibling
+    # `.pyve/envs/root/.state`. `$env_name` stays the conda env's metadata
+    # name (environment.yml `name:`) and is used only for logging.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+    mkdir -p "$(dirname "$env_path")" || {
+        log_error "Failed to create .pyve/envs/root directory"
         return 1
     }
-    
-    log_info "Creating micromamba environment '$env_name' from $env_file..."
-    
+
+    log_info "Creating micromamba environment '$env_name' at $env_path from $env_file..."
+
     # Execute micromamba create command
     # Use -p for prefix (path-based environment)
     # Use -f for file (environment.yml or conda-lock.yml)
     # Use -y for yes (non-interactive)
     if "$micromamba_path" create -p "$env_path" -f "$env_file" -y; then
+        # Sibling .state (Story N.bf.14). The drift-tracked manifest is
+        # `environment.yml` — the human-edited declarative source — even
+        # when the env builds from `conda-lock.yml` (the derived lock).
+        # `manifest_sha256` is its SHA-256 so the re-init "Update in-place"
+        # path can detect environment.yml edits (Story N.bf.15). When
+        # environment.yml is absent, fall back to the file actually used.
+        local _state_manifest="environment.yml" _state_sha=""
+        if [[ -f "environment.yml" ]]; then
+            _state_sha="$(pyve_file_sha256 environment.yml 2>/dev/null || true)"
+        else
+            _state_manifest="$env_file"
+            _state_sha="$(pyve_file_sha256 "$env_file" 2>/dev/null || true)"
+        fi
+        state_write root micromamba manifest="$_state_manifest" manifest_sha256="$_state_sha"
         log_success "Micromamba environment '$env_name' created successfully"
         return 0
     else
@@ -694,9 +732,11 @@ create_micromamba_env() {
 #   $1 - Environment name
 # Returns: 0 if functional, 1 if not
 verify_micromamba_env() {
-    local env_name="$1"
-    local env_path=".pyve/envs/$env_name"
-    
+    # Story N.bf.14: verify the reserved `root` env at the uniform
+    # `.pyve/envs/root/conda/` slot. `$1` accepted for caller compat.
+    local env_path
+    env_path="$(micromamba_root_prefix)"
+
     # Check if environment directory exists
     if [[ ! -d "$env_path" ]]; then
         log_error "Environment directory not found: $env_path"

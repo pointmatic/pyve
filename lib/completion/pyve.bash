@@ -33,12 +33,13 @@ _pyve() {
     cur="${COMP_WORDS[COMP_CWORD]}"
     cword=$COMP_CWORD
 
-    local top_subcommands="init purge lock run test testenv check status update python self"
+    local top_subcommands="init purge lock package run test testenv check status update python self"
     local top_flags="--help --version --config -h -v -c"
 
     local init_flags="--allow-synced-dir --auto-bootstrap --auto-install-deps --backend --bootstrap-to --env-name --force --local-env --no-direnv --no-install-deps --no-lock --no-project-guide --no-project-guide-completion --project-guide --project-guide-completion --python-version --strict --help"
     local purge_flags="--keep-testenv --help"
     local lock_flags="--check --help"
+    local package_flags="--env --help"
     local update_flags="--no-project-guide --help"
     local check_flags="--help"
     local status_flags="--help"
@@ -71,6 +72,9 @@ _pyve() {
             ;;
         lock)
             COMPREPLY=( $(compgen -W "$lock_flags" -- "$cur") )
+            ;;
+        package)
+            COMPREPLY=( $(compgen -W "$package_flags" -- "$cur") )
             ;;
         update)
             COMPREPLY=( $(compgen -W "$update_flags" -- "$cur") )

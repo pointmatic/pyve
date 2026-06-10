@@ -23,7 +23,7 @@ setup() {
     # are available for direct invocation. init.sh's external deps
     # (log_error, header_box, etc.) come from ui/core.sh and utils.sh,
     # both sourced by setup_pyve_env.
-    source "$PYVE_ROOT/lib/commands/init.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
     # Default: stub asdf so wizard tests that exercise the venv +
     # --python-version flag-driven path don't hard-fail on Linux CI
@@ -345,7 +345,7 @@ EOF
     mkdir -p "$TEST_DIR/.emptybin"
     run /bin/bash -c "set -euo pipefail; \
         source '$PYVE_ROOT/lib/ui/core.sh'; \
-        source '$PYVE_ROOT/lib/commands/init.sh'; \
+        source '$PYVE_ROOT/lib/plugins/python/plugin.sh'; \
         PATH='$TEST_DIR/.emptybin' _init_detect_version_managers_available"
     [ "$status" -eq 0 ]
     [[ "$output" != *"unbound variable"* ]]
@@ -370,6 +370,166 @@ EOF
     run _init_detect_version_managers_available
     [ "$status" -eq 0 ]
     [[ "$output" == "asdf,pyenv" ]]
+}
+
+#============================================================
+# N.bf.6: materialization honors the wizard's version-manager pick
+#============================================================
+
+@test "_init_resolve_version_manager: honors an explicit pick over re-detection" {
+    # Bug 2: materialization re-ran detect_version_manager unconditionally,
+    # discarding the user's wizard selection. With an explicit pick recorded
+    # in VERSION_MANAGER, the resolver must keep it even when detection would
+    # land on a different manager.
+    _stub_managers pyenv          # only pyenv is detectable
+    VERSION_MANAGER="asdf"        # but the wizard picked asdf
+    _init_resolve_version_manager
+    [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "_init_resolve_version_manager: re-detects when no explicit pick recorded" {
+    _stub_managers asdf
+    VERSION_MANAGER=""
+    _init_resolve_version_manager
+    [[ "$VERSION_MANAGER" == "asdf" ]]
+}
+
+@test "_init_resolve_version_manager: returns non-zero when nothing resolvable and no pick" {
+    mkdir -p "$TEST_DIR/.emptybin"
+    VERSION_MANAGER=""
+    PATH="$TEST_DIR/.emptybin" run _init_resolve_version_manager
+    [ "$status" -ne 0 ]
+}
+
+#============================================================
+# N.bf.9: end-of-init lock nudge (_init_lock_nudge)
+#============================================================
+
+@test "_init_lock_nudge: conda-lock declared + no lock → prints the nudge" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+  - conda-lock
+YAML
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"expects a conda-lock.yml"* ]]
+    [[ "$output" == *"pyve lock"* ]]
+}
+
+@test "_init_lock_nudge: conda-lock NOT declared → silent" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - python=3.11
+YAML
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+@test "_init_lock_nudge: lock already present → silent" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock
+YAML
+    touch conda-lock.yml
+    run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+@test "_init_lock_nudge: --no-lock (PYVE_NO_LOCK=1) → silent even when declared" {
+    cat > environment.yml <<'YAML'
+name: demo
+dependencies:
+  - conda-lock
+YAML
+    PYVE_NO_LOCK=1 run _init_lock_nudge
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"expects a conda-lock.yml"* ]]
+}
+
+#============================================================
+# N.bf.13: re-init menu label is honest about what update applies
+#============================================================
+
+@test "_init_print_reinit_menu: option 1 states it does NOT apply environment.yml/dependency edits" {
+    run _init_print_reinit_menu
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Update in-place"* ]]
+    [[ "$output" == *"does NOT apply"* ]]
+    [[ "$output" == *"environment.yml"* ]]
+    [[ "$output" == *"Purge and re-initialize"* ]]
+    [[ "$output" == *"Cancel"* ]]
+}
+
+#============================================================
+# N.bf.11: scaffold conda-lock opt-in decision (_init_resolve_scaffold_conda_lock)
+#============================================================
+# Return code: 0 = include conda-lock in the scaffold, 1 = omit. The interactive
+# prompt branch needs a TTY (not available under bats `run`), so these cover the
+# non-interactive default + the opt-out / no-scaffold short-circuits.
+
+@test "_init_resolve_scaffold_conda_lock: --no-lock → omit" {
+    PYVE_NO_LOCK=1 run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: non-interactive clean dir → include (default = locking desired)" {
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 0 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: strict → omit (no scaffold will occur)" {
+    run _init_resolve_scaffold_conda_lock "true"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: existing environment.yml → omit (no scaffold)" {
+    touch environment.yml
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+@test "_init_resolve_scaffold_conda_lock: existing conda-lock.yml → omit (no scaffold)" {
+    touch conda-lock.yml
+    run _init_resolve_scaffold_conda_lock "false"
+    [ "$status" -eq 1 ]
+}
+
+#============================================================
+# N.bf.10: --no-lock install-source override (_init_select_env_file)
+#============================================================
+
+@test "_init_select_env_file: default prefers conda-lock.yml when present" {
+    touch environment.yml conda-lock.yml
+    run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "conda-lock.yml" ]
+}
+
+@test "_init_select_env_file: --no-lock resolves from environment.yml even when a lock is present" {
+    touch environment.yml conda-lock.yml
+    PYVE_NO_LOCK=1 run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "environment.yml" ]
+}
+
+@test "_init_select_env_file: --no-lock with only conda-lock.yml falls back to the lock (nothing to resolve from)" {
+    touch conda-lock.yml
+    PYVE_NO_LOCK=1 run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "conda-lock.yml" ]
+}
+
+@test "_init_select_env_file: only environment.yml → environment.yml" {
+    touch environment.yml
+    run _init_select_env_file
+    [ "$status" -eq 0 ]
+    [ "$output" = "environment.yml" ]
 }
 
 #============================================================
@@ -558,7 +718,7 @@ EOF
 
 @test "_init_wizard: project-guide-in-deps leaves project_guide_mode unset (hook runs auto-skip-from-deps)" {
     # The wizard renders the summary line but does NOT pre-set pg_mode —
-    # leaving it empty so the post-env `_init_run_project_guide_hooks`
+    # leaving it empty so the post-env `run_project_guide_orchestration`
     # runs its detailed "Detected 'project-guide'..." auto-skip path.
     # Pre-setting "no" here would short-circuit that message and emit
     # the misleading "Skipping project-guide install (--no-project-guide)"
@@ -584,7 +744,7 @@ EOF
     # pg_mode. The post-env hook then consults
     # PYVE_NO_PROJECT_GUIDE / PYVE_PROJECT_GUIDE / CI / PYVE_FORCE_YES
     # to decide. Pre-setting "no" here would break the documented
-    # CI-default-install behavior (`_init_run_project_guide_hooks`
+    # CI-default-install behavior (`run_project_guide_orchestration`
     # priority 5).
     local backend_flag="venv" project_guide_mode=""
     PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "$project_guide_mode" >/dev/null 2>&1

@@ -68,8 +68,14 @@ detect_version_manager() {
     
     # Check for asdf first (preferred)
     if command -v asdf >/dev/null 2>&1; then
-        # Verify asdf has Python plugin
-        if asdf plugin list 2>/dev/null | grep -q "^python$"; then
+        # Verify asdf has Python plugin. Capture-then-grep (not a pipe into
+        # `grep -q`): `grep -q` exits on first match, which closes the pipe
+        # while `asdf plugin list` may still be writing — the producer then
+        # takes SIGPIPE (141), and under `set -o pipefail` that propagates as
+        # the pipeline status, false-negating an installed plugin.
+        local asdf_plugins=""
+        asdf_plugins="$(asdf plugin list 2>/dev/null)" || true
+        if grep -qx "python" <<<"$asdf_plugins"; then
             VERSION_MANAGER="asdf"
             return 0
         else
@@ -101,13 +107,22 @@ detect_version_manager() {
 # Returns 0 if installed, 1 if not
 is_python_version_installed() {
     local version="$1"
-    
+    local installed
+
+    # Capture the manager's version list first, then match with a here-string.
+    # Piping straight into `grep -q` lets grep close the pipe on its first
+    # match while the manager is still writing later versions — the producer
+    # then takes SIGPIPE (141), and under `set -o pipefail` that propagates as
+    # a false "not installed" (e.g. 3.12.10 matched, 3.14.5 written after it).
+    # Same trap captured-then-greped in detect_version_manager above.
     case "$VERSION_MANAGER" in
         asdf)
-            asdf list python 2>/dev/null | grep -q "$version"
+            installed="$(asdf list python 2>/dev/null || true)"
+            grep -q "$version" <<<"$installed"
             ;;
         pyenv)
-            pyenv versions --bare 2>/dev/null | grep -q "^${version}$"
+            installed="$(pyenv versions --bare 2>/dev/null || true)"
+            grep -q "^${version}$" <<<"$installed"
             ;;
         *)
             return 1
@@ -176,7 +191,7 @@ install_python_version() {
 # Returns 0 on success, 1 on failure
 ensure_python_version_installed() {
     local version="$1"
-    
+
     # Check if already installed
     if is_python_version_installed "$version"; then
         return 0
@@ -302,6 +317,84 @@ check_direnv_installed() {
         log_error "  brew install direnv"
     else
         log_error "  https://direnv.net/docs/installation.html"
+    fi
+    return 1
+}
+
+#============================================================
+# Python pre-flight check
+#============================================================
+
+# Detect the recurring "asdf/pyenv shim with no resolvable version"
+# trap before pyve invokes `python` (e.g. `python -m venv` for testenv
+# creation). At shell-init / non-direnv-active shells, `python`
+# resolves to the version-manager's shim; with no `.tool-versions` /
+# `.python-version` and no global pin, the shim errors noisily.
+# Without this guard the user sees asdf's "No version is set for
+# command python" and reads it as a pyve bug — they don't realize the
+# real cause is "the project env isn't active in this shell."
+#
+# Returns:
+#   0 — `python` is resolvable; safe to invoke.
+#   1 — trap detected (or generic unresolvable python); pyve-owned
+#       error printed to stderr, naming the actual fix.
+#
+# This guard does NOT depend on detect_version_manager being run
+# first; it probes `python` directly. Callers can invoke it pre-flight
+# without ordering concerns.
+assert_python_resolvable() {
+    # BOUNDARY: this guards the *project* python — the
+    # developer's interpreter for `pyve run python`, version-manager
+    # activation, the project venv. It is deliberately NOT routed through
+    # pyve_toolchain_python (that resolves Pyve's *own* toolchain
+    # interpreter, a different concern). Keep this on `${PYVE_PYTHON:-python}`.
+    #
+    # Respect PYVE_PYTHON for callers that have already resolved a
+    # specific interpreter (the tests' setup pre-resolves this before
+    # cd'ing to a tmp dir). Fall back to bare `python` otherwise —
+    # which is exactly where the asdf-shim trap bites.
+    local py="${PYVE_PYTHON:-python}"
+
+    # Fast path: python runs cleanly → resolved regardless of how.
+    # `--version` is the cheapest universally-supported probe.
+    if "$py" --version >/dev/null 2>&1; then
+        return 0
+    fi
+
+    # python failed. Inspect what it resolved to and emit the most
+    # actionable error possible.
+    local python_path
+    python_path="$(command -v "$py" 2>/dev/null || true)"
+
+    # Cause line — shim-specific where we can name the shim, generic
+    # otherwise (python missing entirely, or some other unresolvable case).
+    if [[ "$python_path" == *"/.asdf/shims/python"* ]] \
+       || [[ "$python_path" == *"/.pyenv/shims/python"* ]]; then
+        log_error "Cannot resolve 'python' — version-manager shim has no version pinned for this directory."
+        log_error "  Shim path: $python_path"
+    else
+        log_error "Cannot resolve 'python' on PATH."
+    fi
+    log_error ""
+
+    # Fix advice — gated on whether this is an activatable / initialized
+    # Pyve project. The shim trap only fires when there is NO version pin in
+    # this directory, which a properly-initialized project always has; so by
+    # the time we reach here, `direnv allow` / `pyve run` only make sense if
+    # there is actually an `.envrc` to allow and an env to activate. With no
+    # `.envrc` the project is purged or uninitialized — the real fix is to
+    # (re)initialize, not to "activate" an env that doesn't exist.
+    if [[ -f .envrc ]]; then
+        log_error "Most likely cause: the project environment isn't active in this shell."
+        log_error "Fix one of these:"
+        log_error "  • Run 'direnv allow' in the project root (one-time per shell session)"
+        log_error "  • Re-run wrapped: 'pyve run <cmd>' (one-shot, works without direnv)"
+    elif [[ -f pyve.toml ]]; then
+        log_error "This Pyve project has no active environment (its '.envrc' is gone)."
+        log_error "Run 'pyve init' to (re)create the environment."
+    else
+        log_error "This directory isn't an initialized Pyve project."
+        log_error "Run 'pyve init' to set one up."
     fi
     return 1
 }

@@ -1,42 +1,45 @@
 # Testing
 
-Pyve separates the project's **runtime environment** from a dedicated **dev/test runner environment** (the *testenv*). This guide explains the two-environment model, the testenv lifecycle, how testenv Python inheritance differs by backend, and the activation-context rules that matter when you run testenv commands from a non-activated shell (or from an LLM agent).
+Pyve separates the project's **runtime environment** from a dedicated **test environment** (a `test`-purpose env, named `testenv` by default). This guide explains the two-environment model, the test-env lifecycle, how its Python inheritance differs by backend, and the activation-context rules that matter when you run env commands from a non-activated shell (or from an LLM agent).
 
-If you only want command reference, see the [`testenv` subcommand](usage.md#testenv-subcommand) in the Usage Guide. This page is the concept and how-to companion.
+!!! note "v3 names and paths"
+    In v3.0 test environments are declared as `[env.<name>]` blocks in [`pyve.toml`](pyve-toml.md) (with `purpose = "test"`) and materialize at `.pyve/envs/<name>/<backend>/`. They are managed with the **`pyve env`** namespace. This page predates the rename in places: read `pyve testenv …` as `pyve env …` (the old spelling still works, with a warning), `.pyve/testenvs/<name>/` as `.pyve/envs/<name>/`, and `[tool.pyve.testenvs]` as the manifest's `[env.<name>]` blocks. See [Named Environments](environments.md) for the canonical model.
+
+If you only want command reference, see the [`env` namespace](usage.md) in the Usage Guide. This page is the concept and how-to companion.
 
 ## Overview
 
-Most Python projects install their test tooling (`pytest`, `ruff`, `mypy`, etc.) into the same virtual environment as their application dependencies. Pyve takes a different default: test tooling lives in a **separate environment** at `.pyve/testenvs/testenv/venv/`, isolated from the project's runtime environment.
+Most Python projects install their test tooling (`pytest`, `ruff`, `mypy`, etc.) into the same virtual environment as their application dependencies. Pyve takes a different default: test tooling lives in a **separate environment** at `.pyve/envs/testenv/venv/`, isolated from the project's runtime environment.
 
 The benefit is durability:
 
-- `pyve init --force` rebuilds the runtime environment from scratch but **preserves the testenv**.
+- `pyve init --force` rebuilds the runtime environment from scratch but **preserves the test env**.
 - `pyve purge --keep-testenv` removes runtime artifacts but keeps your test tooling intact.
 - Swapping Python versions or backends in the runtime env doesn't force you to reinstall pytest, ruff, and friends every time.
 
-The trade-off is one extra command (`pyve testenv install`) when you first set up dev tooling — a small price for a test environment that survives every destructive operation pyve offers.
+The trade-off is one extra command (`pyve env install testenv`) when you first set up dev tooling — a small price for a test environment that survives every destructive operation pyve offers.
 
-Two envs is the **minimum**, not the maximum. Since v2.8, pyve supports **named test environments** — declared in `pyproject.toml` under `[tool.pyve.testenvs]`, each with its own backend, dependency source, and lifecycle policy. The two-env defaults below describe the implicit configuration when no `[tool.pyve.testenvs]` block exists; see [Named test environments](#named-test-environments) for the opt-in multi-env surface.
+Two envs is the **minimum**, not the maximum. Pyve supports **named environments** — declared in [`pyve.toml`](pyve-toml.md) as `[env.<name>]` blocks, each with its own `purpose`, backend, dependency source, and lifecycle policy. The two-env defaults below describe the implicit configuration; see [Named Environments](environments.md) for the full multi-env model.
 
 ## The two-environment model
 
-A pyve project has two environments after `pyve init` and `pyve testenv init`:
+A pyve project has two environments after `pyve init` and `pyve env init testenv`:
 
-| Concern | Project environment | Testenv |
+| Concern | Project environment | Test env |
 |---|---|---|
 | **What for** | Your application and its runtime dependencies | Test runner + dev tooling (pytest, ruff, mypy, black, …) |
-| **Created by** | `pyve init` | `pyve testenv init` |
-| **Location (venv backend)** | `.venv/` | `.pyve/testenvs/testenv/venv/` |
-| **Location (micromamba backend)** | `.pyve/envs/<name>/` | `.pyve/testenvs/testenv/venv/` (default testenv is always a plain venv) |
-| **Activated by direnv?** | Yes (via `.envrc`) | No — invoked explicitly via `pyve test` / `pyve testenv run` |
+| **Created by** | `pyve init` | `pyve env init testenv` |
+| **Location (venv backend)** | `.venv/` | `.pyve/envs/testenv/venv/` |
+| **Location (micromamba backend)** | `.pyve/envs/root/conda/` | `.pyve/envs/testenv/venv/` (default test env is always a plain venv) |
+| **Activated by direnv?** | Yes (via `.envrc`) | No — invoked explicitly via `pyve test` / `pyve env run` |
 | **Survives `pyve init --force`?** | No (rebuilt) | Yes |
 | **Removed by `pyve purge`?** | Yes | Yes (unless `--keep-testenv`) |
 
-The default testenv is **always a plain Python venv** regardless of the project backend. Only its *base Python* differs by backend — see the next section. (Named test environments may opt into the `micromamba` backend on a per-env basis; see [Named test environments](#named-test-environments).)
+The default test env is **always a plain Python venv** regardless of the project backend. Only its *base Python* differs by backend — see the next section. (Named environments may opt into the `micromamba` backend on a per-env basis; see [Named Environments](environments.md).)
 
-!!! note "v2.8 layout boundary"
+!!! note "Migrating from v2"
 
-    Projects created (or last `pyve update`d) on v2.7 or earlier carried the testenv at `.pyve/testenv/venv/` (singular `testenv`, hard-coded path). v2.8+ uses `.pyve/testenvs/testenv/venv/` (plural `testenvs/`, name-keyed) to make room for additional named envs. Pyve migrates existing projects transparently the first time `pyve update` runs or a `pyve test` / `pyve testenv …` invocation needs the testenv — no manual move required.
+    v2 projects carried test environments under `.pyve/testenvs/<name>/` and declared them in `pyproject.toml` under `[tool.pyve.testenvs]`. v3 consolidates state under `.pyve/envs/<name>/` and moves the declaration into `pyve.toml`'s `[env.<name>]` blocks. `pyve self migrate` performs the move; opportunistic migration also relocates a legacy testenv the first time it's needed. See the [Migration guide](migration.md).
 
 ## Backend deltas
 
@@ -212,7 +215,7 @@ The auto-provision path acquires the same install lock (`mkdir`-based at `.pyve/
 
 ### Conda-backed test environments
 
-Set `backend = "micromamba"` (with `manifest = "env.yml"`) on any named env to provision it through `micromamba create -p <path> -f <env.yml>`. This is independent of the main project backend — you can have a venv main env and a conda testenv, or vice versa. The `inherit` value resolves to whichever backend `.pyve/config` declares for the main env.
+Set `backend = "micromamba"` (with `manifest = "env.yml"`) on any named env to provision it through `micromamba create -p <path> -f <env.yml>`. This is independent of the main project backend — you can have a venv main env and a conda testenv, or vice versa. The `inherit` value resolves to whichever backend the main (`root`) env declares in `pyve.toml`.
 
 Conda-backed envs have two current limitations:
 

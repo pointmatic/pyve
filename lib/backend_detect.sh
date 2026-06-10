@@ -29,32 +29,17 @@ fi
 #============================================================
 
 # Detect backend from project files
-# Returns: "venv", "micromamba", or "none"
+# Returns: "venv", "micromamba", "ambiguous", or "none"
+#
+# thin delegator over the Python plugin's detect hook.
+# The plugin owns the file-signal probes (broader signal set:
+# `pyproject.toml | requirements*.txt | setup.py | *.py` for Python;
+# `environment*.yml | conda-lock.yml` for conda). This wrapper is
+# kept as a public entry point so existing callers in `pyve.sh` and
+# `lib/commands/init.sh` don't churn — N.o onward can drop them in
+# favor of `plugin_dispatch python detect` directly.
 detect_backend_from_files() {
-    local has_conda_files=false
-    local has_python_files=false
-    
-    # Check for conda/micromamba files
-    if [[ -f "environment.yml" ]] || [[ -f "conda-lock.yml" ]]; then
-        has_conda_files=true
-    fi
-    
-    # Check for Python/pip files
-    if [[ -f "pyproject.toml" ]] || [[ -f "requirements.txt" ]]; then
-        has_python_files=true
-    fi
-    
-    # Determine backend based on files present
-    if [[ "$has_conda_files" == true ]] && [[ "$has_python_files" == true ]]; then
-        # Both present - ambiguous
-        echo "ambiguous"
-    elif [[ "$has_conda_files" == true ]]; then
-        echo "micromamba"
-    elif [[ "$has_python_files" == true ]]; then
-        echo "venv"
-    else
-        echo "none"
-    fi
+    plugin_dispatch python detect
 }
 
 # Get backend priority based on CLI flag, config file, and file detection

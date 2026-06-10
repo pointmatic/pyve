@@ -1,6 +1,6 @@
 # MkDocs configuration for Pyve documentation
 site_name: Pyve
-site_description: A single, easy entry point for Python virtual environments
+site_description: A single, declarative entry point for your project's environments — across Python, Node, and more
 site_url: https://pointmatic.github.io/pyve
 repo_url: https://github.com/pointmatic/pyve
 repo_name: pointmatic/pyve
@@ -42,10 +42,15 @@ nav:
   - Home: index.html
   - Getting Started: getting-started.md
   - Usage Guide: usage.md
+  - pyve.toml Reference: pyve-toml.md
+  - Named Environments: environments.md
   - Backends: backends.md
+  - Plugins: plugins.md
+  - Polyglot Projects: polyglot.md
   - Testing: testing.md
+  - Packaging: packaging.md
   - CI/CD Integration: ci-cd.md
-  - Migration (v1.x → v2.0): migration.md
+  - Migration (v2 → v3): migration.md
 
 # Extensions
 markdown_extensions:

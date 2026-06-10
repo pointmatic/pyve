@@ -29,8 +29,8 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"
-    source "$PYVE_ROOT/lib/commands/testenv.sh"
+    source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/commands/env.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
 
@@ -49,12 +49,12 @@ _make_env_on_disk() {
     local name="$1" backend="${2:-venv}" last_used="${3:-0}"
     local kind="venv"
     [[ "$backend" == "micromamba" ]] && kind="conda"
-    mkdir -p ".pyve/testenvs/$name/$kind/bin"
-    cat > ".pyve/testenvs/$name/$kind/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/$name/$kind/bin"
+    cat > ".pyve/envs/$name/$kind/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/$name/$kind/bin/python"
+    chmod +x ".pyve/envs/$name/$kind/bin/python"
     state_write "$name" "$backend" provisioned_at=1735689600 last_used_at="$last_used"
 }
 
@@ -73,7 +73,7 @@ _stub_du() {
 
 @test "testenv list: empty project prints a header and 'no testenvs' info" {
     _stub_du
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"NAME"* ]]
     [[ "$output" == *"BACKEND"* ]]
@@ -85,7 +85,7 @@ _stub_du() {
 @test "testenv list: declared venv-backed env on disk → state=ready" {
     _stub_du
     _make_env_on_disk testenv venv 1735776000
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"testenv"* ]]
     [[ "$output" == *"venv"* ]]
@@ -98,7 +98,7 @@ _stub_du() {
 @test "testenv list: declared but never used → LAST-USED shows 'never'" {
     _stub_du
     _make_env_on_disk testenv venv 0
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"never"* ]]
 }
@@ -110,7 +110,7 @@ requirements = ["tests/heavy.txt"]
 lazy = true
 TOML
     _stub_du
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"heavy"* ]]
     [[ "$output" == *"lazy"* ]]
@@ -124,7 +124,7 @@ TOML
     _stub_du
     _make_env_on_disk testenv venv 1735776000
     _make_env_on_disk old-stuff venv 1735776000
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"old-stuff"* ]]
     [[ "$output" == *"orphaned"* ]]
@@ -138,7 +138,7 @@ manifest = "tests/env.yml"
 TOML
     _stub_du
     _make_env_on_disk hardware micromamba 1735776000
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"hardware"* ]]
     [[ "$output" == *"micromamba"* ]]
@@ -150,7 +150,7 @@ TOML
 requirements = ["tests/smoke-requirements.txt"]
 TOML
     _stub_du
-    run testenv_command list
+    run env_command list
     [ "$status" -eq 0 ]
     [[ "$output" == *"smoke"* ]]
     [[ "$output" == *"not provisioned"* ]]
@@ -167,17 +167,17 @@ requirements = ["requirements-dev.txt"]
 TOML
     _make_env_on_disk testenv venv 1735776000
     _make_env_on_disk old-stuff venv 1735776000
-    run testenv_command prune --force
+    run env_command prune --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/old-stuff" ]
+    [ -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/old-stuff" ]
 }
 
 @test "testenv prune (no args): reserved 'testenv' is never orphaned (no pyproject)" {
     _make_env_on_disk testenv venv 1735776000
-    run testenv_command prune --force
+    run env_command prune --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
+    [ -d ".pyve/envs/testenv" ]
 }
 
 @test "testenv prune (no args): nothing to do prints info and exits 0" {
@@ -186,7 +186,7 @@ TOML
 requirements = ["requirements-dev.txt"]
 TOML
     _make_env_on_disk testenv venv 1735776000
-    run testenv_command prune --force
+    run env_command prune --force
     [ "$status" -eq 0 ]
     [[ "$output" == *"No orphaned"* || "$output" == *"nothing to prune"* || "$output" == *"no orphans"* ]]
 }
@@ -207,11 +207,11 @@ TOML
     _make_env_on_disk smoke venv 1734220800
     # fresh last used 2026-04-01 → newer than the cutoff.
     _make_env_on_disk fresh venv 1775347200
-    run testenv_command prune --unused-since 2026-01-01 --force
+    run env_command prune --unused-since 2026-01-01 --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
-    [ -d ".pyve/testenvs/fresh" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/fresh" ]
 }
 
 @test "testenv prune --unused-since: 'never used' envs (last_used=0) are preserved" {
@@ -220,14 +220,14 @@ TOML
 TOML
     # last_used=0 → "never used"; do NOT remove freshly-provisioned envs.
     _make_env_on_disk testenv venv 0
-    run testenv_command prune --unused-since 2026-01-01 --force
+    run env_command prune --unused-since 2026-01-01 --force
     [ "$status" -eq 0 ]
-    [ -d ".pyve/testenvs/testenv" ]
+    [ -d ".pyve/envs/testenv" ]
 }
 
 @test "testenv prune --unused-since: bad date format hard-errors" {
     _make_env_on_disk testenv venv 1733011200
-    run testenv_command prune --unused-since not-a-date --force
+    run env_command prune --unused-since not-a-date --force
     [ "$status" -ne 0 ]
     [[ "$output" == *"not-a-date"* ]]
 }
@@ -244,11 +244,11 @@ TOML
     _make_env_on_disk testenv venv 1735776000
     _make_env_on_disk smoke venv 1735776000
     _make_env_on_disk old-stuff venv 1735776000
-    run testenv_command prune --all --force
+    run env_command prune --all --force
     [ "$status" -eq 0 ]
-    [ ! -d ".pyve/testenvs/testenv" ]
-    [ ! -d ".pyve/testenvs/smoke" ]
-    [ ! -d ".pyve/testenvs/old-stuff" ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ ! -d ".pyve/envs/old-stuff" ]
 }
 
 # ============================================================
@@ -256,7 +256,7 @@ TOML
 # ============================================================
 
 @test "testenv --help: documents list and prune" {
-    run testenv_command --help
+    run env_command --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"list"* ]]
     [[ "$output" == *"prune"* ]]
@@ -264,6 +264,6 @@ TOML
 }
 
 @test "testenv prune: unknown flag hard-errors" {
-    run testenv_command prune --bogus
+    run env_command prune --bogus
     [ "$status" -ne 0 ]
 }

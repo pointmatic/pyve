@@ -15,12 +15,47 @@ setup_pyve_env() {
     source "$PYVE_ROOT/lib/ui/core.sh"
     source "$PYVE_ROOT/lib/ui/run.sh"
     source "$PYVE_ROOT/lib/utils.sh"
+    # tests that exercise selectors which consult the v3
+    # manifest (e.g. lib/plugins/python/plugin.sh's purpose gate) need
+    # manifest_resolve_purpose available. Adding to the default helper
+    # so every test file inherits it without per-file source bloat.
+    source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/env_detect.sh"
+    # manifest_load / read_env_config now resolve Pyve's
+    # toolchain interpreter via pyve_toolchain_python. Source it here (after
+    # env_detect, mirroring pyve.sh) so every helper-using suite has the
+    # resolver defined; without it the rewired callsites hit "command not
+    # found". The override path (PYVE_PYTHON) is unaffected.
+    source "$PYVE_ROOT/lib/toolchain_python.sh"
+    # backend_detect.sh's detect_backend_from_files now
+    # delegates to the Python plugin's detect hook via plugin_dispatch.
+    # Source the plugin chain before backend_detect so every existing
+    # test that calls detect_backend_from_files inherits the new chain
+    # without per-file source bloat (mirrors the N.d note for
+    # manifest_resolve_purpose).
+    source "$PYVE_ROOT/lib/plugins/contract.sh"
+    source "$PYVE_ROOT/lib/plugins/registry.sh"
+    source "$PYVE_ROOT/lib/plugins/backend_registry.sh"
+    # the Python plugin's gitignore_entries output runs
+    # through validate_gitignore_snippet, invoked by
+    # the gitignore composer. Source envrc_safety.sh before the plugin so
+    # the validator is available when the plugin file is sourced/called.
+    source "$PYVE_ROOT/lib/envrc_safety.sh"
+    # init_project calls run_project_guide_orchestration
+    # (lib/project_guide.sh). Source it before the Python plugin so tests
+    # that drive init_project have the orchestration defined.
+    source "$PYVE_ROOT/lib/project_guide.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"
     source "$PYVE_ROOT/lib/micromamba_bootstrap.sh"
     source "$PYVE_ROOT/lib/micromamba_env.sh"
-    source "$PYVE_ROOT/lib/distutils_shim.sh"
+    # envs.sh is now a core dependency: the Python plugin, utils.sh, and
+    # micromamba_env.sh resolve the main micromamba env path through
+    # envs.sh helpers (micromamba_root_prefix / resolve_main_micromamba_path
+    # / resolve_env_path — Story N.bf.14). Source it so every helper-using
+    # suite inherits them (mirrors pyve.sh, which sources envs.sh at L66).
+    source "$PYVE_ROOT/lib/envs.sh"
 
     # Story L.k.2: bats fixtures invoke `pyve init` with various flag
     # subsets that pre-date the interactive wizard. Default the bypass
@@ -166,17 +201,4 @@ mock_command() {
 unmock_command() {
     local cmd="$1"
     unset -f "$cmd"
-}
-
-# Set environment variable for test
-set_test_env() {
-    local var="$1"
-    local value="$2"
-    export "$var=$value"
-}
-
-# Unset environment variable
-unset_test_env() {
-    local var="$1"
-    unset "$var"
 }

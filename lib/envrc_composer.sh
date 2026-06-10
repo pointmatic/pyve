@@ -1,0 +1,225 @@
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
+# SPDX-License-Identifier: Apache-2.0
+# shellcheck shell=bash
+#============================================================
+# lib/envrc_composer.sh — composed `.envrc` builder
+#
+# Stands up the central composer that gathers every active plugin's
+# activation snippet into one `.envrc` body with sentinel-marked plugin
+# sections (the PC-2 composition layer from the Phase N plan).
+#
+# Two halves, two stories:
+#   - N.ae.3 (here): `_compose_envrc_body` — pure assembly + PC-1
+#     validation. Enumerates active plugins, dispatches each plugin's
+#     `pyve_plugin_activate` (snippet emitter, per N.ae.2 / N.y),
+#     concatenates the sentinel-wrapped sections, validates the plugin
+#     sections through `validate_envrc_snippet`, and wraps everything in
+#     the managed envelope with composer-owned infrastructure appended
+#     AFTER validation. Emits the managed body to stdout — no file write.
+#   - N.ae.4: `compose_envrc <path>` — the atomic writer (`.tmp` → `.prev`
+#     → `mv`) with user-content preservation below the end marker.
+#
+# Contract reference: docs/specs/spike-n-ae-envrc-composer-contract.md.
+#============================================================
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    printf "Error: %s is a library and cannot be executed directly.\n" "${BASH_SOURCE[0]}" >&2
+    exit 1
+fi
+
+# Managed-section sentinels. User-authored content lives below the end
+# marker (preserved verbatim by compose_envrc in N.ae.4).
+ENVRC_MANAGED_START="# >>> pyve:managed:start >>>"
+ENVRC_MANAGED_END="# <<< pyve:managed:end <<<"
+
+# Assemble the managed `.envrc` body and emit it to stdout.
+#
+# Steps:
+#   1. Enumerate active plugins (plugin_list_active, N.k).
+#   2. For each, dispatch `pyve_plugin_activate "<manifest path>"`; the
+#      hook emits a sentinel-wrapped section to stdout (N.ae.2 / N.y).
+#      A failing hook (e.g. PC-1 caught smuggling inside the plugin)
+#      halts the whole compose.
+#   3. Validate the concatenated plugin sections via PC-1
+#      (validate_envrc_snippet). Defense in depth — each plugin already
+#      validates its own snippet — and the composer's contract gate.
+#   4. Wrap in the managed envelope. Composer-owned infrastructure (the
+#      dotenv block + the asdf reshim guard when `is_asdf_active`) is
+#      appended AFTER validation: it is static pyve text that cannot pass
+#      the strict PC-1 allow-list (multi-line `if`; unquoted export).
+#
+# Returns non-zero (emitting nothing usable) when any plugin hook fails
+# or the composed plugin sections fail PC-1.
+# portable wall-clock marker, microsecond resolution.
+# Sets REPLY to "now" in integer MICROSECONDS — by design it does NOT use
+# command substitution, so when bash 5 `$EPOCHREALTIME` is available the read
+# is fork-free and adds no measurable overhead to the timed region. Falls back
+# to GNU `date +%s%N`; sets REPLY=-1 and returns 1 when no precise timer exists
+# (e.g. clean macOS bash 3.2 + BSD `date`, which has no `%N`).
+_pyve_bench_mark() {
+    if [[ -n "${EPOCHREALTIME:-}" ]]; then
+        local _er="$EPOCHREALTIME"
+        # EPOCHREALTIME is "<seconds>.<6-digit-microseconds>".
+        REPLY=$(( ${_er%.*} * 1000000 + 10#${_er#*.} ))
+        return 0
+    fi
+    local ns
+    ns="$(date +%s%N 2>/dev/null)"
+    if [[ "$ns" =~ ^[0-9]{16,}$ ]]; then
+        REPLY=$(( ns / 1000 ))
+        return 0
+    fi
+    REPLY=-1
+    return 1
+}
+
+# Thin millisecond wrapper used by the perf test's timer-availability probe
+# (`_require_precise_timer`). Prints ms, or -1 (and returns 1) when no precise
+# timer exists.
+_pyve_bench_now_ms() {
+    _pyve_bench_mark || { printf '%s' '-1'; return 1; }
+    printf '%s' $(( REPLY / 1000 ))
+}
+
+_compose_envrc_body() {
+    local name path section
+    local plugin_body=""
+    # optional per-plugin activate timing. Gated by
+    # PYVE_LATENCY_BENCH=1; emits a `# pyve:bench:<plugin>:activate_ms=<n>`
+    # trailer line per plugin (after the managed end marker) for the latency
+    # regression in tests/perf/. Off by default — zero overhead and no output
+    # change for production `pyve init` / `update`.
+    local bench=0 bench_lines="" _t0 _t1
+    [[ "${PYVE_LATENCY_BENCH:-}" == "1" ]] && bench=1
+
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+        path="$(manifest_get_plugin_path "$name" 2>/dev/null || true)"
+        # Fork-free clock read (REPLY in microseconds) brackets ONLY the
+        # activate dispatch, so the sample reflects the plugin's contribution
+        # plus the composer's inherent capture, not timer overhead.
+        _t0=-1; (( bench )) && { _pyve_bench_mark || true; _t0=$REPLY; }
+        if ! section="$(plugin_dispatch "$name" activate "$path")"; then
+            log_error "envrc_composer: plugin '$name' activate hook failed — no .envrc composed"
+            return 1
+        fi
+        if (( bench )); then
+            _pyve_bench_mark || true; _t1=$REPLY
+            if (( _t0 < 0 || _t1 < 0 )); then
+                bench_lines+="# pyve:bench:${name}:activate_ms=-1"$'\n'
+            else
+                bench_lines+="# pyve:bench:${name}:activate_ms=$(( (_t1 - _t0) / 1000 ))"$'\n'
+            fi
+        fi
+        plugin_body+="${section}"$'\n'
+    done < <(plugin_list_active)
+
+    if ! validate_envrc_snippet "$plugin_body"; then
+        log_error "envrc_composer: composed plugin sections failed PC-1 validation"
+        return 1
+    fi
+
+    # ── Emit the managed section ────────────────────────────────────
+    printf '# pyve-managed direnv configuration\n'
+    printf '# Generated by pyve. Do not edit between the managed markers below;\n'
+    printf '# add your own direnv configuration beneath the end marker.\n'
+    printf '%s\n' "$ENVRC_MANAGED_START"
+    printf '%s' "$plugin_body"
+
+    # ── Composer-owned infrastructure (appended after PC-1) ─────────
+    printf '\nif [[ -f ".env" ]]; then\n    dotenv\nfi\n'
+    if is_asdf_active; then
+        printf '\n# Prevent asdf Python plugin from reshimming venv-installed CLIs.\n'
+        printf '# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.\n'
+        printf 'export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1\n'
+    fi
+
+    printf '%s\n' "$ENVRC_MANAGED_END"
+
+    # bench trailer, emitted only under PYVE_LATENCY_BENCH=1
+    # and read by tests/perf/. It sits below the managed end marker, so it is
+    # NOT part of the managed section; production writers never set the flag,
+    # so the on-disk `.envrc` is unaffected.
+    (( bench )) && printf '%s' "$bench_lines"
+    return 0
+}
+
+# Compose the managed `.envrc` body (via _compose_envrc_body) and write it
+# to <output_path> with PC-2 crash-safe semantics:
+#
+#   1. Capture user-authored content below the `# <<< pyve:managed:end <<<`
+#      marker of the existing file (if any), to re-emit verbatim.
+#   2. Compose the body. On failure (a plugin smuggled, or PC-1 rejected
+#      the sections), HALT — leave the existing <output_path> untouched and
+#      do not create a backup or leave a half-written tmp.
+#   3. Write `<body> + <user tail>` to `<output_path>.tmp`. A fresh scaffold
+#      (no prior user tail) gets a trailing invitation comment instead.
+#   4. Back the current file up to `<output_path>.prev` (one-step rollback:
+#      `mv -f <output_path>.prev <output_path>`), then promote the tmp with
+#      `mv -f`.
+#
+# Legacy note: a pre-composer `.envrc` (no managed end marker) has no
+# delimitable user region, so it is fully replaced — but the `.prev` backup
+# is the recovery path. Files the composer itself wrote carry the marker and
+# round-trip their user tail cleanly thereafter.
+#
+# Usage: compose_envrc [<output_path>]   (default: .envrc)
+compose_envrc() {
+    local output_path="${1:-.envrc}"
+    local tmp="${output_path}.tmp"
+
+    # 1. Capture the user region (content strictly below the end marker).
+    local user_tail=""
+    if [[ -f "$output_path" ]]; then
+        user_tail="$(awk -v m="$ENVRC_MANAGED_END" 'f{print} $0==m{f=1}' "$output_path")"
+    fi
+
+    # 2. Compose the managed body; halt without side effects on failure.
+    local body
+    if ! body="$(_compose_envrc_body)"; then
+        log_error "envrc_composer: compose failed — '$output_path' left unchanged"
+        return 1
+    fi
+
+    # 3. Write the new content to a temp file first (atomic-write pattern).
+    if ! {
+        printf '%s\n' "$body"
+        if [[ -n "$user_tail" ]]; then
+            printf '%s\n' "$user_tail"
+        else
+            printf '\n# Add your own direnv configuration below this line.\n'
+        fi
+    } > "$tmp"; then
+        log_error "envrc_composer: failed to write '$tmp' — '$output_path' left unchanged"
+        rm -f "$tmp"
+        return 1
+    fi
+
+    # 4. Back up the current file, then atomically promote the temp.
+    if [[ -f "$output_path" ]]; then
+        cp -p "$output_path" "${output_path}.prev"
+    fi
+    mv -f "$tmp" "$output_path"
+}
+
+# Init/update entry point: reload the manifest + plugin
+# registry from the on-disk pyve.toml, THEN compose `.envrc`.
+#
+# The reload is required because pyve.sh's main() loads the manifest +
+# registers plugins BEFORE the subcommand runs — but `pyve init` writes /
+# `pyve update` may change pyve.toml + .pyve/config afterward. Without
+# re-loading, plugin_list_active is stale (e.g. implicit-Python only,
+# missing a freshly-scaffolded [plugins.node]). See spike decision 3 in
+# docs/specs/spike-n-ae-envrc-composer-contract.md.
+#
+# Usage: compose_project_envrc [<output_path>]   (default: .envrc)
+compose_project_envrc() {
+    local output_path="${1:-.envrc}"
+    manifest_load >/dev/null 2>&1 || true
+    plugin_registry_reset
+    if ! plugin_load_all_from_manifest; then
+        log_error "envrc_composer: could not load plugins from pyve.toml"
+        return 1
+    fi
+    compose_envrc "$output_path"
+}

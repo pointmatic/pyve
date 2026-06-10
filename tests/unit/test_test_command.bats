@@ -28,9 +28,9 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
-    source "$PYVE_ROOT/lib/testenvs.sh"   # M.h.3: test.sh now reads paths via resolve_testenv_path
-    source "$PYVE_ROOT/lib/commands/run.sh"
-    source "$PYVE_ROOT/lib/commands/test.sh"
+    source "$PYVE_ROOT/lib/envs.sh"   # M.h.3: test.sh now reads paths via resolve_env_path
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
+    source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     create_test_dir
 
     # Globals normally defined in pyve.sh.
@@ -51,12 +51,12 @@ teardown() {
 # Provide a fake testenv python so the final `exec` in the testenv
 # branch succeeds without a real venv.
 _make_fake_testenv_python() {
-    mkdir -p ".pyve/testenvs/testenv/venv/bin"
-    cat > ".pyve/testenvs/testenv/venv/bin/python" <<'SH'
+    mkdir -p ".pyve/envs/testenv/venv/bin"
+    cat > ".pyve/envs/testenv/venv/bin/python" <<'SH'
 #!/usr/bin/env bash
 exit 0
 SH
-    chmod +x ".pyve/testenvs/testenv/venv/bin/python"
+    chmod +x ".pyve/envs/testenv/venv/bin/python"
 }
 
 #============================================================
@@ -64,7 +64,7 @@ SH
 #============================================================
 
 @test "pyve test --env root: delegates to run_command python -m pytest <args>" {
-    ensure_testenv_exists() { :; }   # guard against real venv creation
+    ensure_env_exists() { :; }   # guard against real venv creation
     run_command() { printf 'RUN_COMMAND_ARGS:%s\n' "$*"; }
 
     run test_tests --env root -q tests/test_x.py
@@ -73,7 +73,7 @@ SH
 }
 
 @test "pyve test --env root: works with no extra pytest args" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     run_command() { printf 'RUN_COMMAND_ARGS:%s\n' "$*"; }
 
     run test_tests --env root
@@ -82,7 +82,7 @@ SH
 }
 
 @test "pyve test --env=root: '=' form is accepted" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     run_command() { printf 'RUN_COMMAND_ARGS:%s\n' "$*"; }
 
     run test_tests --env=root -k smoke
@@ -91,7 +91,7 @@ SH
 }
 
 @test "pyve test: invalid --env value errors" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     run test_tests --env bogus
     [ "$status" -ne 0 ]
     [[ "$output" == *"Invalid --env"* ]]
@@ -102,7 +102,7 @@ SH
 #============================================================
 
 @test "pyve test --env main: Category-B hard-error with rename hint" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     run test_tests --env main
     [ "$status" -ne 0 ]
     [[ "$output" == *"--env main"* ]]
@@ -111,7 +111,7 @@ SH
 }
 
 @test "pyve test --env=main: '=' form also catches the legacy value" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     run test_tests --env=main
     [ "$status" -ne 0 ]
     [[ "$output" == *"--env root"* ]]
@@ -122,7 +122,7 @@ SH
 #============================================================
 
 @test "pyve test (testenv routing): advisory when root env has pytest" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }          # testenv already has pytest
     _test_env_has_pytest() { return 0; } # ROOT env ALSO has pytest
     _make_fake_testenv_python
@@ -133,7 +133,7 @@ SH
 }
 
 @test "pyve test (testenv routing): PYVE_NO_TESTENV_ADVISORY=1 suppresses the advisory" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 0; } # root env HAS pytest — would normally warn
     _make_fake_testenv_python
@@ -145,7 +145,7 @@ SH
 }
 
 @test "pyve test (testenv routing): no advisory when root env lacks pytest" {
-    ensure_testenv_exists() { :; }
+    ensure_env_exists() { :; }
     _test_has_pytest() { return 0; }
     _test_env_has_pytest() { return 1; } # ROOT env has NO pytest
     _make_fake_testenv_python

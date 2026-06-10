@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-06-09
+
+**Plugin architecture, named environments, and multi-stack projects.** Pyve v3 re-founds the tool on a **plugin / backend-provider contract**: every stack (Python, Node, and future ecosystems) plugs in behind one uniform 8-hook interface, and a project declares its environments in a single root-level **`pyve.toml`** manifest. The one-main-venv model is generalized into any number of **named environments** (`[env.<name>]`), each carrying a `purpose` (`run` / `test` / `utility` / `temp`) and a backend, materialized at `.pyve/envs/<name>/<backend>/`. A project can now be **polyglot** — a Python+Node app gets one composed `.envrc`, a composed `pyve check` / `status` / `purge`, and per-plugin env materialization at `init` time — so a Node-only project no longer gets a Python venv it never asked for. The deterministic **`pyve self migrate`** command moves a v2 project onto the v3 shape in one shot; a soft banner and a v3.0-only read-compat layer let users defer the migration through the v3.0 window. Phase N ran as alpha pre-releases (`3.0.0a1`–`3.0.0a3`) and ships as one major release.
+
+See [docs/site/migration.md](docs/site/migration.md) for the v2→v3 migration guide, [docs/site/pyve-toml.md](docs/site/pyve-toml.md) for the manifest schema, [docs/site/plugins.md](docs/site/plugins.md) for the plugin contract, and [docs/site/polyglot.md](docs/site/polyglot.md) for multi-stack projects.
+
+### Added
+
+- **Declarative `pyve.toml` manifest** — root-level, stack-neutral declaration with a `[project]` block and one `[env.<name>]` block per environment (`pyve_schema = "3.0"`). `.pyve/` now holds **materialized state only** (envs, locks, sentinels, the `.v2-legacy/` backup tree) — never configuration. `lib/pyve_toml_helper.py` (tomllib) is the single reader; `lib/manifest.sh` exposes the parsed result through `manifest_load` + flat accessors.
+- **`purpose` vocabulary** — every env carries a `purpose` from the closed set `{run, test, utility, temp}`. Omitted `purpose` resolves by name (`testenv → test`, `root → utility`, else `utility`) via `manifest_resolve_purpose`. Purpose-keyed selectors gate on it (`pyve test --env <name>` hard-errors when the resolved purpose is not `test`).
+- **Plugin / backend-provider contract** — an 8-hook interface (manifest namespace, backend declaration, detection, lifecycle, activation, diagnostics, `.gitignore`, smart-purge) that every stack implements. The Python ecosystem is re-seated behind it as the dog-food reference plugin; existing Python behavior is preserved through the contract. Resolves **PC-1**.
+- **Node / SvelteKit plugin** — a second reference plugin with `pnpm` / `npm` / `yarn` backend-providers and a SvelteKit detection rule, proving the contract generalizes beyond Python.
+- **Composed, cross-stack `pyve init`** — materializes **all** declared envs (each plugin stands up its own), composes one `.envrc` with sentinel-marked per-plugin sections, and self-heals one `.gitignore`. The stack-agnostic project-guide orchestration (prompt + install + scaffold + completion) is lifted into a shared `lib/` locus. Monorepo `path` support included. Resolves **PC-2** and **PC-4**.
+- **Composed `pyve check` / `pyve status`** — aggregate per-plugin / per-env diagnostics with a worst-severity exit-code roll-up. A Node-only project's Python plugin stays suppressed (no Python noise).
+- **Composed `pyve purge`** — builds a created-vs-authored inventory from each plugin for safe, plugin-aware teardown.
+- **`pyve self migrate`** — deterministic v2→v3 migrator: writes `pyve.toml` from legacy sources, moves them into `.pyve/.v2-legacy/` for one release cycle, and rebuilds envs at the v3 state layout via `pyve init --force`. Idempotent; `--dry-run` / `--no-rebuild` flags expose intermediate states.
+- **v3.0 soft migration banner** — a one-shot-per-shell pre-dispatch notice for not-yet-migrated projects, memoized per `(PPID, cwd)` under `$XDG_STATE_HOME/pyve/`, suppressible with `PYVE_QUIET=1`. Backed by a read-compat layer (`_manifest_synthesize_from_legacy`) so v2-configured projects keep working through the v3.0 window.
+- **`pyve package [--env <name>]`** (reserved) — the artifact-materialization verb is scaffolded along with the packaging-provider contract. v3.0 **reserves the verb**; no provider materializes yet — it emits a clean advisory when none is registered, exactly like `pyve lint`. Package config lives on `[env.<name>]` via the `packaging` attribute.
+- **Closed-vocabulary trichotomy enforcement** — manifest values classify as `implemented` / `advisory` / `unknown` (`classify_value`); an unknown value on a closed axis (`purpose` / `backend` / `packaging` / `app_type`) is a hard error (`validate` → exit 2). Advisory values (declared-but-not-yet-implemented backends/frameworks) are recognized and surfaced without materializing.
+- **`pyve env sync`** — ingests a `§4` environment spec, diffs it against `pyve.toml`, and applies with a `[Y/n]` confirmation.
+- **Pyve-managed toolchain Python** — Pyve's own Python helpers run under a hidden, version-keyed toolchain venv (`$XDG_DATA_HOME/pyve/toolchain/<DEFAULT_PYTHON_VERSION>/venv`) provisioned by `pyve self install`, independent of the developer's project interpreter. `project-guide` is hosted once as a Pyve-managed global tool (toolchain venv + `~/.local/bin` shim) rather than installed per-project.
+
+### Changed
+
+- **`testenv` → `env` namespace rename** — `pyve env <sub>` is the v3 surface for environment management. The legacy `pyve testenv <sub>` namespace still works via delegation (Category A) and emits a one-shot `deprecation_warn` per shell; hard-error replacement is scheduled for v4.0. (Documented exception to the project's Category-B-by-default deprecation policy, justified by `testenv`'s install base.)
+- **State layout** — all declared envs materialize at `.pyve/envs/<name>/<backend>/` (`venv` for venv-backed, `conda` for micromamba-backed). The reserved `root` env's micromamba prefix lands at `.pyve/envs/root/conda/`. Path construction routes through `lib/envs.sh` helpers (`resolve_env_path`, `state_path`); pre-v3 flat / `.pyve/testenvs/` layouts are migrated opportunistically on access.
+- **Configuration source of truth** — consolidated from the v2 split (`.pyve/config` YAML + `[tool.pyve.testenvs.*]` in `pyproject.toml`) onto the single root-level `pyve.toml`. Two sources of truth removed.
+
+### Deprecated
+
+- **v2 configuration** (`.pyve/config`, `[tool.pyve.testenvs.*]`) — read-compat is **v3.0-only** and is removed in **v3.1.0**, when the soft banner is replaced by a hard interactive migration gate. Migrate with `pyve self migrate` before upgrading to v3.1.
+- **`pyve testenv <sub>`** — superseded by `pyve env <sub>`; works via delegation in v3.x with a deprecation warning, hard-errors in v4.0.
+
+### Scope — shipped vs. deferred
+
+- **Shipped:** plugin contract + Python and Node reference plugins; `pyve.toml` + named envs + `purpose` trichotomy (F4 `pyve env sync` and F6 closed-vocabulary enforcement **both landed**); composed `init` / `check` / `status` / `purge` / `.envrc` / `.gitignore`; `pyve self migrate` + soft banner + read-compat; toolchain Python + hosted project-guide.
+- **Deferred (post-v3.0, no breaking change):** **advisory backends** (`cargo`, `bundler`, `xcode`, `go`, `gradle`, `maven`, …) are declarable as advisory but no provider materializes; the **`pyve lint`** verb is reserved (advisory only, no provider); **`pyve package`** providers are scoped but none ship in v3.0. The v3.1 **hard migration gate** and read-compat removal are the second Phase N release (Phase O).
+
+### Documentation
+
+- New v3 site pages — [pyve-toml.md](docs/site/pyve-toml.md), [plugins.md](docs/site/plugins.md), [polyglot.md](docs/site/polyglot.md), [environments.md](docs/site/environments.md), [packaging.md](docs/site/packaging.md), [migration.md](docs/site/migration.md) — plus refreshed `getting-started`, `usage`, `testing`, `backends`, `ci-cd`, and `README`. Canonical specs (`concept.md`, `features.md`, `tech-spec.md`) and the brand descriptions were reflowed for the v3 plugin model. Source/test files were swept of story/phase-ID comments (capability-named tests; the `v3.0-only: remove in N-10` removal markers retained as load-bearing contracts).
+
 ## [2.8.0] - 2026-06-01
 
 **Testenv-DX bundle.** Generalizes pyve's one-main + one-testenv model into **named, multi-backend, multi-manifest test environments** declared in `pyproject.toml` under `[tool.pyve.testenvs]`. The default behavior is unchanged for projects that don't declare the block — a single venv-backed testenv at the implicit default path — but projects can now declare any number of additional named envs, each with its own backend (`venv` / `micromamba` / `inherit`), dependency source (`requirements` / `extra` / `manifest`), lifecycle policy (`lazy = true` for on-demand provisioning), and `.state` tracking for `pyve testenv list` / `prune`. `pyve test --env <name>` (single) or `--env a,b,c` (matrix) routes the suite; `pyve lock --env <name>` / `--all` covers conda-backed envs. Skips v2.7.2–v2.7.x — Stories M.f–M.s accumulated on the phase branch without per-story bumps and ship as one minor release.

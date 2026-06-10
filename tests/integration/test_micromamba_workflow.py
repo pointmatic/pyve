@@ -141,24 +141,30 @@ class TestMicromambaWorkflow:
             dependencies=['python=3.11']
         )
         pyve.init(backend='micromamba')
-        
+
         # Create testenv
         pyve.run('testenv', 'init')
 
-        # Verify both exist. v2.8+ layout: testenv lives under .pyve/testenvs/testenv/
-        # (was .pyve/testenv/ pre-M.h.3). `--keep-testenv` preserves the
-        # whole .pyve/testenvs/ tree post-M.h.3.
-        assert (pyve.cwd / '.pyve' / 'envs').exists()
-        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
+        # v3 layout (Story N.bf.14): the micromamba main env is the
+        # reserved `root` env at `.pyve/envs/root/conda/` (with a sibling
+        # `.pyve/envs/root/.state`); the testenv lives at
+        # `.pyve/envs/testenv/`. The configured `test-env` name from
+        # environment.yml is now conda metadata only, not a directory.
+        # `pyve purge --keep-testenv` surgically deletes the main-env
+        # subdir (`.pyve/envs/root`) and preserves the rest of `.pyve/envs/`.
+        assert (pyve.cwd / '.pyve' / 'envs' / 'root' / 'conda').exists()
+        assert (pyve.cwd / '.pyve' / 'envs' / 'root' / '.state').exists()
+        assert not (pyve.cwd / '.pyve' / 'envs' / 'test-env').exists()
+        assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
 
         # Purge with keep-testenv
         result = pyve.run('purge', '--keep-testenv', input='y\n')
 
         assert result.returncode == 0
-        # Micromamba env should be removed
-        assert not (pyve.cwd / '.pyve' / 'envs').exists()
-        # Testenv should be preserved
-        assert (pyve.cwd / '.pyve' / 'testenvs' / 'testenv').exists()
+        # Micromamba main env should be removed
+        assert not (pyve.cwd / '.pyve' / 'envs' / 'root').exists()
+        # Testenv should be preserved (now under `.pyve/envs/testenv/`)
+        assert (pyve.cwd / '.pyve' / 'envs' / 'testenv').exists()
     
     def test_reinit_after_purge(self, pyve, project_builder):
         """Test that we can re-initialize after purge."""
@@ -205,9 +211,10 @@ dependencies:
         gitignore_content = gitignore_path.read_text()
         lines = gitignore_content.splitlines()
         
-        # Template section headers and entries should be present
+        # Template section headers and entries should be present (N.af composed-
+        # gitignore format: legacy "# Pyve virtual environment" → "# Pyve-managed").
         assert '# Python build and test artifacts' in lines
-        assert '# Pyve virtual environment' in lines
+        assert '# Pyve-managed' in lines
         assert '__pycache__' in lines
         assert '*.egg-info' in lines
         

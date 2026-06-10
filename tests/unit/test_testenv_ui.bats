@@ -30,7 +30,10 @@ teardown() {
     run "$PYVE_SCRIPT" testenv purge
     [ "$status" -eq 0 ]
     [[ "$output" == *"╭─────────────────────────────────────────╮"* ]]
-    [[ "$output" == *"pyve testenv"* ]]
+    # Story N.bf.20: the namespace box reads the canonical `pyve env` even
+    # when reached via the deprecated `testenv` alias (which re-dispatches
+    # to env_command and emits its own deprecation warning).
+    [[ "$output" == *"pyve env"* ]]
     [[ "$output" == *"╰─────────────────────────────────────────╯"* ]]
 }
 

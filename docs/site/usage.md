@@ -2,17 +2,10 @@
 
 Complete reference for all Pyve commands, options, and workflows.
 
-!!! note "Upgrading from v1.x to v2.0"
-    v2.0 completes the CLI-unification arc. See [migration.md](migration.md) for a tactical upgrade guide. Quick summary:
+!!! note "v3.0 — the declarative manifest"
+    Pyve 3.0 describes each project with a root-level [`pyve.toml`](pyve-toml.md) manifest and a [plugin model](plugins.md). The command surface below is stable from v2; the main additions are the `pyve env` namespace (named environments — `pyve testenv` is now a deprecated alias), `pyve package` (reserved), and `pyve self migrate`. See the [Migration guide](migration.md) for moving a v2 project to v3.
 
-    - `pyve doctor` → `pyve check` (diagnostics with 0/1/2 CI-safe exit codes)
-    - `pyve validate` → `pyve check` (same semantics; folded together)
-    - `pyve init --update` → `pyve update` (a dedicated subcommand; broader semantics)
-    - `pyve python-version <ver>` → `pyve python set <ver>` (delegation removed in v2.3.0; the legacy form now falls through to the dispatcher's unknown-command path)
-    - `pyve testenv --init|--install|--purge` → `pyve testenv init|install|purge` (delegation removed in v2.3.0; same fall-through)
-    - New: `pyve status` — read-only project-state dashboard
-
-    The legacy-flag catches (`pyve --init`, `pyve --purge`, etc.) remain — typing one prints a precise migration error pointing at the current subcommand.
+    Carried over from earlier: `pyve doctor` / `pyve validate` were replaced by `pyve check` (CI-safe `0`/`1`/`2`) and `pyve status` (read-only snapshot); both removed forms now hard-error with a migration hint.
 
 ## Command Overview
 
@@ -35,35 +28,42 @@ Organized into four categories (same as `pyve --help`):
 
 | Command | Description |
 |---------|-------------|
-| `init [<dir>]` | Initialize a Python virtual environment (auto-detects backend) |
-| `purge [<dir>]` | Remove all Python environment artifacts |
-| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds the venv) |
+| `init [<dir>]` | Initialize the project's environment(s) — auto-detects each stack, composed across plugins |
+| `purge [<dir>]` | Remove Pyve-managed environment artifacts (composed across plugins) |
+| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds an env) |
 | `python set <ver>` | Pin the project Python version |
 | `python show` | Print the currently pinned Python version + source |
-| `lock [--check]` | Generate or verify `conda-lock.yml` (micromamba only) |
+| `lock [--check] [--env <name>] [--all]` | Generate or verify `conda-lock.yml` (micromamba-backed envs) |
+| `env init\|install\|purge\|run\|list\|prune` | Manage named environments (see [Named Environments](environments.md)) |
+| `env sync` | Reconcile `pyve.toml` with the env spec (`env-dependencies.md` §4): diff → `[Y/n]`-apply |
 
 #### Execution
 
 | Command | Description |
 |---------|-------------|
 | `run <command> [args...]` | Run a command inside the project environment |
-| `test [pytest args...]` | Run pytest via the dev/test runner environment |
-| `testenv init\|install\|purge\|run\|list\|prune` | Manage one or more dev/test runner environments |
+| `test [--env <name>[,…]] [args...]` | Run tests in a `test`-purpose environment (comma-separated `--env` runs a matrix) |
+| `package` | Reserved artifact-materialization verb (prints an advisory until a provider ships) |
 
 #### Diagnostics
 
 | Command | Description |
 |---------|-------------|
-| `check` | Diagnose environment problems with CI-safe 0/1/2 exit codes |
-| `status` | Read-only project-state dashboard (always exit 0) |
+| `check` | Diagnose problems with CI-safe 0/1/2 exit codes (composed across plugins) |
+| `status` | Read-only project-state dashboard, always exit 0 (composed across plugins) |
 
 #### Self management
 
 | Command | Description |
 |---------|-------------|
-| `self install` | Install pyve to `~/.local/bin` |
-| `self uninstall` | Remove pyve from `~/.local/bin` |
+| `self install` | Install pyve (provisions the toolchain venv) |
+| `self uninstall` | Remove pyve |
+| `self provision` / `unprovision` | Provision / remove Pyve-managed global tooling (e.g. hosted project-guide) |
+| `self migrate` | Migrate a v2 project to the v3 `pyve.toml` manifest |
 | `self` | Show the self-namespace help |
+
+!!! note "`pyve testenv` → `pyve env`"
+    The `pyve testenv <sub>` namespace is a **deprecated alias** for `pyve env <sub>`; it re-dispatches with a one-shot warning and is removed in v4.0. Command examples below that say `testenv` apply equally to `env`.
 
 ### Universal Flags
 
@@ -99,8 +99,8 @@ pyve init [<dir>] [options]
   - If both `environment.yml` and `pyproject.toml` exist, prompts interactively (defaults to micromamba)
 - `--auto-bootstrap`: Install micromamba without prompting (if needed)
 - `--bootstrap-to <location>`: Where to install micromamba: `project` or `user`
-- `--strict`: Error on stale or missing lock files
-- `--no-lock`: Bypass missing `conda-lock.yml` hard error (use during initial setup before the lock file has been generated)
+- `--strict`: Error on a stale lock, or a missing lock when `conda-lock` is declared in `environment.yml` (non-strict only nudges); also opts out of scaffolding/inference
+- `--no-lock`: Don't use a lock this run — resolve from `environment.yml`, ignore any present lock (never deletes it), skip the requirement (beats `--strict`), and omit `conda-lock` from a fresh scaffold
 - `--env-name <name>`: Environment name (micromamba backend)
 - `--no-direnv`: Skip `.envrc` creation (for CI/CD or when direnv isn't used)
 - `--auto-install-deps`: Automatically install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
@@ -147,7 +147,7 @@ pyve init --no-direnv
 # Force re-initialization (purges and rebuilds)
 pyve init --force
 
-# Bypass missing conda-lock.yml error (initial setup only, before lock file exists)
+# Skip the lock for this run (resolve from environment.yml; a present lock is ignored, not deleted)
 pyve init --no-lock
 
 # Bypass cloud-sync directory check (only if you have disabled sync)
@@ -636,7 +636,6 @@ pyve check
 - Environment path exists and has `bin/python`
 - Python version matches the pinned source-of-truth (`.tool-versions` / `.python-version` / config)
 - Venv path sanity (warns if project was relocated after creation)
-- `distutils_shim` status on Python 3.12+
 - `.envrc` / `.env` presence
 - `conda-lock.yml` presence and freshness (micromamba only)
 - Duplicate `.dist-info` directories in `site-packages` (micromamba only)
@@ -687,7 +686,7 @@ pyve status
 **Output sections:**
 
 - **Project** — path, backend, config version, configured Python
-- **Environment** — path, Python, package count, backend-specific rows (distutils shim for venv; environment.yml + lock status for micromamba)
+- **Environment** — path, Python, package count, backend-specific rows (environment.yml + lock status for micromamba)
 - **Integrations** — direnv, `.env`, project-guide, testenv
 
 **Exit code:** always `0` unless pyve itself errors (e.g., unreadable config). Never signals problems via non-zero exit — for that contract use `pyve check`.
@@ -708,7 +707,6 @@ Environment
   Path:           .venv
   Python:         3.14.4
   Packages:       127 installed
-  distutils shim: installed (Python 3.12+)
 
 Integrations
   direnv:         .envrc present
@@ -895,7 +893,7 @@ Pyve recognizes the following environment variables:
 | `PYVE_AUTO_INSTALL_DEPS` | Auto-install dependencies without prompting | `0` (prompt) |
 | `PYVE_NO_INSTALL_DEPS` | Skip dependency installation prompt | `0` (prompt) |
 | `PYVE_FORCE_YES` | Skip all interactive prompts (CI mode) | `0` (interactive) |
-| `PYVE_NO_LOCK` | Bypass missing `conda-lock.yml` hard error (same as `--no-lock`) | `0` |
+| `PYVE_NO_LOCK` | `--no-lock` semantics: don't use a lock this run (resolve from `environment.yml`, ignore a present lock without deleting it), skip the requirement (beats `--strict`), omit `conda-lock` from a fresh scaffold | `0` |
 | `PYVE_ALLOW_SYNCED_DIR` | Bypass cloud-synced directory check (same as `--allow-synced-dir`) | `0` |
 | `PYVE_PROJECT_GUIDE` | Run the project-guide three-step hook (same as `--project-guide`) | Unset |
 | `PYVE_NO_PROJECT_GUIDE` | Skip the project-guide three-step hook (same as `--no-project-guide`) | Unset |

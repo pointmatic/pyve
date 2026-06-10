@@ -160,7 +160,7 @@ def resolve_extra(pyproject, extra_name):
 
 def main():
     # Story M.l: `--resolve-extra <pyproject> <extra_name>` is a side
-    # mode used by `_testenv_install_venv` to expand a declared
+    # mode used by `_env_install_venv` to expand a declared
     # `extra = "<name>"` into its concrete package list. Default mode
     # (no flag) is M.g's V3-array emission.
     if len(sys.argv) >= 4 and sys.argv[1] == "--resolve-extra":

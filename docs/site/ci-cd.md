@@ -2,6 +2,9 @@
 
 This guide provides comprehensive examples for integrating Pyve into CI/CD pipelines across different platforms.
 
+!!! note "v3 commands"
+    Use `pyve check` for CI-safe diagnostics (exit `0` pass / `2` warnings / `1` errors) — the removed `pyve doctor` / `pyve validate` commands hard-error. Dev/test environments are managed with the `pyve env` namespace (`pyve testenv …` still works as a deprecated alias). See [Migration](migration.md) and [Named Environments](environments.md).
+
 ## Table of Contents
 
 - [GitHub Actions](#github-actions)
@@ -48,7 +51,7 @@ jobs:
         run: pyve run pytest tests/ -v
       
       - name: Check environment
-        run: pyve doctor
+        run: pyve check
 ```
 
 ### Basic Micromamba Workflow
@@ -79,7 +82,7 @@ jobs:
         run: pyve run pytest tests/ -v
       
       - name: Check environment
-        run: pyve doctor
+        run: pyve check
 ```
 
 ### Advanced Workflow with Caching
@@ -133,7 +136,7 @@ jobs:
                --strict
       
       - name: Verify setup
-        run: pyve doctor
+        run: pyve check
       
       - name: Run tests
         run: pyve run pytest tests/ --cov --cov-report=xml
@@ -194,7 +197,7 @@ jobs:
         run: pyve run pytest tests/
       
       - name: Check environment
-        run: pyve doctor
+        run: pyve check
 ```
 
 ### Release Workflow
@@ -306,7 +309,7 @@ test:
   stage: test
   script:
     - pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
-    - pyve doctor
+    - pyve check
     - pyve run pytest tests/ -v
 ```
 
@@ -340,7 +343,7 @@ setup:
     - /tmp/pyve/pyve.sh --install
     - export PATH="$HOME/.local/bin:$PATH"
     - pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
-    - pyve doctor
+    - pyve check
   artifacts:
     paths:
       - .pyve/envs/
@@ -465,7 +468,7 @@ RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict
 COPY . .
 
 # Verify setup
-RUN pyve doctor
+RUN pyve check
 
 # Run application
 CMD ["pyve", "run", "python", "app.py"]
@@ -634,12 +637,12 @@ Cache everything that doesn't change often:
 - Python environments
 - Package caches
 
-### 5. Run `pyve doctor` for Verification
+### 5. Run `pyve check` for Verification
 
 Verify environment setup:
 
 ```bash
-pyve doctor
+pyve check
 ```
 
 ### 6. Use `pyve run` for All Commands
@@ -749,7 +752,7 @@ chmod +x /tmp/pyve/pyve.sh
 
 ```bash
 pyve init --no-direnv
-pyve doctor  # Verify setup
+pyve check  # Verify setup
 pyve run python --version
 ```
 
@@ -789,7 +792,7 @@ dependencies:
 
 ```dockerfile
 RUN pyve init --backend micromamba --auto-bootstrap --no-direnv --strict && \
-    pyve doctor
+    pyve check
 ```
 
 ### GitLab CI PATH Issues
@@ -817,7 +820,7 @@ before_script:
 
 ## Additional Resources
 
-- [Testing](testing.md) - Two-environment model and the `pyve test` / `pyve testenv` flow used in CI
+- [Testing](testing.md) - Two-environment model and the `pyve test` / `pyve env` flow used in CI
 - [Pyve Repository](https://github.com/pointmatic/pyve)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [GitLab CI Documentation](https://docs.gitlab.com/ee/ci/)

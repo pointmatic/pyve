@@ -101,10 +101,10 @@ EOF
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
 
-    # Pyve template section now present
-    grep -q "# Pyve virtual environment" .gitignore
+    # Pyve-managed section now present.
+    grep -q "# >>> pyve:managed:gitignore >>>" .gitignore
     grep -q "__pycache__" .gitignore
-    # User section preserved
+    # User section preserved (carried below the managed section).
     grep -q "my-secret-file" .gitignore
 }
 
@@ -214,7 +214,7 @@ EOF
     run "$PYVE_SCRIPT" update --no-project-guide
     [ "$status" -eq 0 ]
     # Step framing (Story L.j) renders the skip as
-    # "[4/4] project-guide refresh skipped (--no-project-guide)".
+    # "[5/5] project-guide refresh skipped (--no-project-guide)".
     [[ "$output" == *"--no-project-guide"* ]] && [[ "$output" == *"skip"* ]]
 }
 
@@ -253,22 +253,31 @@ EOF
 # Step counter framing (Story L.j)
 #============================================================
 
-@test "update: prints [1/4] step header for pyve_version step" {
+@test "update: prints [1/5] step header for pyve_version step" {
     create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
-    [[ "$output" == *"[1/4]"* ]]
+    [[ "$output" == *"[1/5]"* ]]
     [[ "$output" == *"pyve_version"* ]]
 }
 
-@test "update: prints all four [N/4] step headers in sequence" {
+@test "update: prints all five [N/5] step headers in sequence" {
     create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
-    [[ "$output" == *"[1/4]"* ]]
-    [[ "$output" == *"[2/4]"* ]]
-    [[ "$output" == *"[3/4]"* ]]
-    [[ "$output" == *"[4/4]"* ]]
+    [[ "$output" == *"[1/5]"* ]]
+    [[ "$output" == *"[2/5]"* ]]
+    [[ "$output" == *"[3/5]"* ]]
+    [[ "$output" == *"[4/5]"* ]]
+    [[ "$output" == *"[5/5]"* ]]
+}
+
+@test "update: [3/5] .envrc step skips cleanly when no .envrc exists" {
+    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+    run "$PYVE_SCRIPT" update
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"[3/5]"* ]]
+    [[ "$output" == *".envrc"* ]]
 }
 
 @test "update: emits a footer-box close after the last step" {

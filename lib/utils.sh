@@ -63,7 +63,13 @@ prompt_yes_no() {
     
     while true; do
         printf "%s [y/n]: " "$prompt"
-        read -r response
+        # EOF (closed/empty stdin — e.g. a non-interactive caller) returns
+        # non-zero from `read`. Treat it as a decline rather than looping
+        # forever on the "invalid answer" arm. Matches the
+        # default-negative semantics of ask_yn in lib/ui/core.sh.
+        if ! read -r response; then
+            return 1
+        fi
         case "$response" in
             [Yy]|[Yy][Ee][Ss])
                 return 0
@@ -587,39 +593,44 @@ install_project_guide() {
 # `--upgrade project-guide` install path keeps fresh installs current.
 # Failure is non-fatal by design.
 #
-# Usage: run_project_guide_init_in_env <backend> <env_path>
+# project-guide is globally hosted (pyve self install →
+# toolchain venv + ~/.local/bin shim), so scaffolding runs the global
+# `project-guide` on PATH — not a per-project install. The (backend,
+# env_path) args are accepted for call-site compatibility but unused; the
+# `_in_env` name is retained pending the N-7 naming cleanup.
+#
+# Usage: run_project_guide_init_in_env [<backend>] [<env_path>]
 # Returns 0 always — failure is non-fatal by design.
-run_project_guide_init_in_env() {
-    local backend="$1"
-    local env_path="$2"
-
-    local pg_cmd=""
-    if [[ "$backend" == "venv" ]]; then
-        pg_cmd="$env_path/bin/project-guide"
-        if [[ ! -x "$pg_cmd" ]]; then
-            log_warning "Cannot run 'project-guide init': binary not found at $pg_cmd"
-            return 0
-        fi
-    elif [[ "$backend" == "micromamba" ]]; then
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-        if [[ -z "$micromamba_path" ]]; then
-            log_warning "Cannot run 'project-guide init': micromamba not found"
-            return 0
-        fi
-        pg_cmd="$micromamba_path run -p $env_path project-guide"
-    else
-        log_warning "Cannot run 'project-guide init': unknown backend '$backend'"
+# Story N.bh: invoke the pyve-HOSTED project-guide for <subcommand>,
+# lazily provisioning hosting on first use (install-method-agnostic — works
+# for Homebrew and source installs, not only `self install`). The bare-PATH
+# tier from N.bf.22 is no longer *invoked* here: a bare `project-guide`
+# under active asdf is the version-gated shim trap, so the callsite only
+# runs project-guide when it is genuinely pyve-hosted. If hosting can't be
+# provisioned, skip generically (non-fatal) — never leak asdf's internal
+# "No version is set" error.
+_run_project_guide() {
+    local sub="$1" ok_msg="$2" fail_msg="$3"
+    pyve_project_guide_ensure || true   # idempotent; no-op when already hosted
+    if ! pyve_project_guide_is_hosted; then
+        log_warning "project-guide hosting isn't set up — skipping 'project-guide $sub' (run 'pyve self provision' to enable it)"
         return 0
     fi
-
-    log_info "Running 'project-guide init' in the project environment..."
-    if $pg_cmd init --no-input --quiet; then
-        log_success "project-guide artifacts generated"
+    local pg
+    pg="$(pyve_project_guide)"
+    log_info "Running 'project-guide $sub'..."
+    if "$pg" "$sub" --no-input --quiet; then
+        log_success "$ok_msg"
     else
-        log_warning "'project-guide init' failed (skip with --no-project-guide)"
+        log_warning "$fail_msg"
     fi
     return 0
+}
+
+run_project_guide_init_in_env() {
+    _run_project_guide init \
+        "project-guide artifacts generated" \
+        "'project-guide init' failed (skip with --no-project-guide)"
 }
 
 # Run `project-guide update` inside the project environment to refresh the
@@ -633,39 +644,13 @@ run_project_guide_init_in_env() {
 # and is non-fatal — pyve must never auto-run `project-guide init --force`,
 # since that is destructive.
 #
-# Usage: run_project_guide_update_in_env <backend> <env_path>
-# Returns 0 always — failure is non-fatal by design.
+# Usage: run_project_guide_update_in_env [<backend>] [<env_path>]
+# Returns 0 always — failure is non-fatal by design. (See the N.aw note on
+# run_project_guide_init_in_env: globally hosted, args accepted-but-unused.)
 run_project_guide_update_in_env() {
-    local backend="$1"
-    local env_path="$2"
-
-    local pg_cmd=""
-    if [[ "$backend" == "venv" ]]; then
-        pg_cmd="$env_path/bin/project-guide"
-        if [[ ! -x "$pg_cmd" ]]; then
-            log_warning "Cannot run 'project-guide update': binary not found at $pg_cmd"
-            return 0
-        fi
-    elif [[ "$backend" == "micromamba" ]]; then
-        local micromamba_path
-        micromamba_path="$(get_micromamba_path 2>/dev/null || true)"
-        if [[ -z "$micromamba_path" ]]; then
-            log_warning "Cannot run 'project-guide update': micromamba not found"
-            return 0
-        fi
-        pg_cmd="$micromamba_path run -p $env_path project-guide"
-    else
-        log_warning "Cannot run 'project-guide update': unknown backend '$backend'"
-        return 0
-    fi
-
-    log_info "Running 'project-guide update' in the project environment..."
-    if $pg_cmd update --no-input --quiet; then
-        log_success "project-guide artifacts refreshed"
-    else
-        log_warning "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"
-    fi
-    return 0
+    _run_project_guide update \
+        "project-guide artifacts refreshed" \
+        "'project-guide update' failed (continuing; run 'project-guide update' manually to retry)"
 }
 
 # Detect whether project-guide is declared as a dependency in the project's
@@ -683,14 +668,21 @@ run_project_guide_update_in_env() {
 #   - Word boundary: "project-guide-extras" does NOT match
 #   - Comments: "# project-guide==..." does NOT match
 #   - Quoted strings in pyproject.toml: both "project-guide" and 'project-guide'
-project_guide_in_project_deps() {
+# Story N.bi: report WHICH dependency source declares project-guide, so
+# `pyve status` can show the integration mode (pip vs conda). Echoes:
+#   pip    — declared in pyproject.toml or requirements.txt
+#   conda  — declared in environment.yml
+#   (empty)— not declared in any project dep file
+# This is the single source of truth for the detection patterns;
+# project_guide_in_project_deps is a thin boolean wrapper over it.
+project_guide_deps_source() {
     # pyproject.toml — any line mentioning project-guide (in quotes or not),
-    # ignoring comment lines.
+    # ignoring comment lines. Bounded by a quote, comma, whitespace, version
+    # specifier, or end-of-line.
     if [[ -f "pyproject.toml" ]]; then
-        # Strip comment lines, then look for project-guide bounded by a
-        # quote, comma, whitespace, version specifier, or end-of-line.
         if grep -v '^[[:space:]]*#' pyproject.toml \
            | grep -qE '(^|[[:space:]"'\''[,(])project-guide([[:space:]"'\''<>=!~,)]|$)'; then
+            printf 'pip'
             return 0
         fi
     fi
@@ -700,6 +692,7 @@ project_guide_in_project_deps() {
     if [[ -f "requirements.txt" ]]; then
         if grep -v '^[[:space:]]*#' requirements.txt \
            | grep -qE '^[[:space:]]*project-guide([[:space:]<>=!~]|$)'; then
+            printf 'pip'
             return 0
         fi
     fi
@@ -708,11 +701,16 @@ project_guide_in_project_deps() {
     if [[ -f "environment.yml" ]]; then
         if grep -v '^[[:space:]]*#' environment.yml \
            | grep -qE '(^|[[:space:]"'\''=-])project-guide([[:space:]"'\''<>=!~]|$)'; then
+            printf 'conda'
             return 0
         fi
     fi
 
-    return 1
+    return 0
+}
+
+project_guide_in_project_deps() {
+    [[ -n "$(project_guide_deps_source)" ]]
 }
 
 #============================================================
@@ -747,42 +745,6 @@ append_pattern_to_gitignore() {
     printf "%s\n" "$pattern" >> "$gitignore"
 }
 
-# Insert a pattern after a section comment in .gitignore if not already present
-# Falls back to append if the section comment is not found.
-# Usage: insert_pattern_in_gitignore_section "pattern" "section_comment"
-#   pattern:         the gitignore entry (e.g. ".venv")
-#   section_comment: the full comment line to insert after (e.g. "# Pyve virtual environment")
-insert_pattern_in_gitignore_section() {
-    local pattern="$1"
-    local section="$2"
-    local gitignore=".gitignore"
-    
-    if [[ ! -f "$gitignore" ]]; then
-        touch "$gitignore"
-    fi
-    
-    if gitignore_has_pattern "$pattern"; then
-        return 0  # Already present
-    fi
-    
-    # Try to insert after the section comment
-    if grep -qxF "$section" "$gitignore" 2>/dev/null; then
-        # Insert pattern on the line after the section comment
-        local tmpfile
-        tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            printf '%s\n' "$line" >> "$tmpfile"
-            if [[ "$line" == "$section" ]]; then
-                printf '%s\n' "$pattern" >> "$tmpfile"
-            fi
-        done < "$gitignore"
-        mv "$tmpfile" "$gitignore"
-    else
-        # Section not found — fall back to append
-        printf "%s\n" "$pattern" >> "$gitignore"
-    fi
-}
-
 # Remove a pattern from .gitignore (exact line match)
 # Usage: remove_pattern_from_gitignore "pattern"
 remove_pattern_from_gitignore() {
@@ -802,120 +764,6 @@ remove_pattern_from_gitignore() {
     else
         sed -i "/^${escaped}$/d" "$gitignore"
     fi
-}
-
-# Write (or rebuild) the .gitignore from the Pyve template.
-#
-# The Pyve-managed section is written to a temporary file first.  If an
-# existing .gitignore is present, every line that is NOT already in the
-# template is appended verbatim, preserving the user's formatting, blank
-# lines, section headers, and comments.
-#
-# The result is: Pyve-managed entries at the top, user entries below.
-# Running `pyve init` (or --force) is therefore idempotent — the file
-# converges to a stable layout without unnecessary git diffs.
-#
-# Note: .gitignore does not support inline comments.  A `#` is only a
-# comment when it is the first non-whitespace character on the line.
-#
-# Usage: write_gitignore_template
-write_gitignore_template() {
-    local gitignore=".gitignore"
-    local tmpfile
-    tmpfile="$(mktemp "${gitignore}.tmp.XXXXXX")"
-
-    # --- 1. Write the Pyve-managed section ---
-    # The Pyve virtual environment block below bakes in every pyve-managed
-    # ignore pattern that is NOT user-overridable at init time. Before
-    # Story H.e.2a only `.pyve/envs` for micromamba and `.venv` for venv
-    # were added dynamically per-backend, which meant a venv-init'd project
-    # that later had a micromamba env drop into `.pyve/envs/` leaked
-    # thousands of files to `git status`. Static patterns eliminate that
-    # asymmetry — `pyve update` restores them on any pre-fix project.
-    cat > "$tmpfile" << 'GITIGNORE_EOF'
-# macOS only
-.DS_Store
-
-# Python build and test artifacts
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-*.egg-info
-*.egg
-.coverage
-coverage.xml
-htmlcov/
-.pytest_cache/
-dist/
-build/
-
-# Jupyter notebooks
-.ipynb_checkpoints/
-*.ipynb_checkpoints
-
-# Pyve virtual environment
-.pyve/envs
-.pyve/testenvs
-.envrc
-.env
-.vscode/settings.json
-GITIGNORE_EOF
-
-    # --- 2. Append non-template lines from the existing file ---
-    if [[ -f "$gitignore" ]]; then
-        # Build set of ALL template lines (including comments) for deduplication
-        local -a template_lines=()
-        while IFS= read -r tline; do
-            [[ -n "$tline" ]] && template_lines+=("$tline")
-        done < "$tmpfile"
-
-        # The only pyve-managed pattern still inserted dynamically is the
-        # venv directory name — the user can override it via
-        # `pyve init <custom_dir>`, so it can't be baked into the template.
-        local -a dynamic_patterns=(
-            "${DEFAULT_VENV_DIR:-.venv}"
-        )
-        template_lines+=("${dynamic_patterns[@]}")
-
-        # Pass through every line from the existing file. Blank lines are
-        # buffered and only emitted when followed by a non-skipped (user) line
-        # — otherwise they'd accumulate at the boundary between the Pyve
-        # section and user content across purge/reinit cycles (Story H.a).
-        local pending_blank=false
-        while IFS= read -r line || [[ -n "$line" ]]; do
-            if [[ -z "$line" ]]; then
-                pending_blank=true
-                continue
-            fi
-
-            # Skip if this exact line is already in the template
-            local found=false
-            for tl in "${template_lines[@]}"; do
-                if [[ "$line" == "$tl" ]]; then
-                    found=true
-                    break
-                fi
-            done
-
-            if [[ "$found" == false ]]; then
-                if [[ "$pending_blank" == true ]]; then
-                    printf '\n' >> "$tmpfile"
-                fi
-                printf '%s\n' "$line" >> "$tmpfile"
-            fi
-            pending_blank=false
-        done < "$gitignore"
-    fi
-
-    # --- 3. Strip trailing blank lines and replace atomically ---
-    # When dynamic entries are deduped, their surrounding blank lines may
-    # leak through as trailing whitespace.
-    local content
-    content="$(cat "$tmpfile")"
-    printf '%s\n' "$content" > "$tmpfile"
-
-    mv -f "$tmpfile" "$gitignore"
 }
 
 #============================================================
@@ -1286,7 +1134,10 @@ write_vscode_settings() {
     local env_name="$1"
     local vscode_dir=".vscode"
     local settings_file="$vscode_dir/settings.json"
-    local interpreter_path=".pyve/envs/${env_name}/bin/python"
+    # The main micromamba env lives at the v3 root slot (Story N.bf.14),
+    # not the flat configured-name path. `$1` accepted for caller compat.
+    local interpreter_path
+    interpreter_path="$(micromamba_root_prefix)/bin/python"
 
     if [[ -f "$settings_file" ]] && [[ "${PYVE_REINIT_MODE:-}" != "force" ]]; then
         log_info "Skipping .vscode/settings.json (already exists; use --force to overwrite)"
@@ -1302,6 +1153,35 @@ write_vscode_settings() {
 }
 EOF
     log_success "Created .vscode/settings.json (interpreter: ${interpreter_path})"
+}
+
+#============================================================
+# Content hashing
+#============================================================
+
+# Story N.bf.15: portable SHA-256 of a file's contents. Probes the two
+# tools that cover the OSes pyve supports — `sha256sum` (Linux/coreutils)
+# then `shasum -a 256` (macOS, where `sha256sum` is absent) — and prints
+# the 64-hex digest to stdout.
+#
+# Deliberately NO `cksum`/CRC fallback: this is a *true* SHA-256 so the
+# same helper is safe to reuse for N.bh's bootstrap-download verification
+# (comparing against a published SHA-256 checksum — a CRC would never
+# match and would defeat the security check). When neither tool exists,
+# returns non-zero with no output, so callers degrade safely:
+#   - drift detection (N.bf.15): treat as "can't tell" → no nudge.
+#   - download verification (N.bh): treat as "can't verify" → hard error.
+# Also returns non-zero if <file> is missing/unreadable.
+pyve_file_sha256() {
+    local file="$1"
+    [[ -r "$file" ]] || return 1
+    if command -v sha256sum >/dev/null 2>&1; then
+        sha256sum "$file" | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        shasum -a 256 "$file" | awk '{print $1}'
+    else
+        return 1
+    fi
 }
 
 #============================================================
@@ -1402,75 +1282,6 @@ detect_install_source() {
 }
 
 #============================================================
-# Uniform .envrc Template (v2.3.2)
-#============================================================
-
-# write_envrc_template <rel_bin_dir> <sentinel_var> <rel_env_root>
-#                      <backend_name> <env_name>
-#
-# Emits the uniform `.envrc` template shared by every backend. Paths are
-# written relative to the project directory so the generated file remains
-# project-dir-independent — `PATH_add` resolves relative entries against
-# `.envrc`'s directory at runtime, and `$PWD` in the sentinel export
-# expands to that same directory when direnv sources the file.
-#
-# Skips the write when `.envrc` already exists (leaving user customizations
-# intact) but always tops up the asdf reshim guard when `is_asdf_active`.
-write_envrc_template() {
-    local rel_bin_dir="$1"
-    local sentinel_var="$2"
-    local rel_env_root="$3"
-    local backend_name="$4"
-    local env_name="$5"
-    local envrc_file=".envrc"
-
-    # Absolute inputs are passed through as-is (callers in pyve.sh pass
-    # relative; bats tests occasionally pass absolute). Relative inputs
-    # are prefixed with $PWD at runtime so direnv resolves against the
-    # .envrc dir rather than the outer shell's cwd.
-    local env_root_expr
-    if [[ "$rel_env_root" == /* ]]; then
-        env_root_expr="$rel_env_root"
-    else
-        env_root_expr="\$PWD/$rel_env_root"
-    fi
-
-    if [[ -f "$envrc_file" ]]; then
-        info ".envrc already exists, skipping"
-    else
-        cat > "$envrc_file" << EOF
-# pyve-managed direnv configuration
-# Uniform template — all backends share this shape (v2.3.2).
-
-PATH_add "$rel_bin_dir"
-export $sentinel_var="$env_root_expr"
-export PYVE_BACKEND="$backend_name"
-export PYVE_ENV_NAME="$env_name"
-export PYVE_PROMPT_PREFIX="($backend_name:$env_name) "
-
-if [[ -f ".env" ]]; then
-    dotenv
-fi
-EOF
-        success "Created .envrc"
-    fi
-
-    # Asdf reshim guard (Story J.b): append when asdf is the active version
-    # manager, unless the sentinel is already present. Applies to freshly
-    # generated and pre-existing .envrc alike, so the guard migrates onto
-    # files created by pyve < v2.3.0.
-    if is_asdf_active && ! grep -qF "Prevent asdf Python plugin from reshimming" "$envrc_file" 2>/dev/null; then
-        cat >> "$envrc_file" << 'EOF'
-
-# Prevent asdf Python plugin from reshimming venv-installed CLIs.
-# Override with PYVE_NO_ASDF_COMPAT=1 to restore default asdf reshim behavior.
-export ASDF_PYTHON_PLUGIN_DISABLE_RESHIM=1
-EOF
-        info "Added asdf reshim guard (set PYVE_NO_ASDF_COMPAT=1 if you install CLIs globally via pip)"
-    fi
-}
-
-#============================================================
 # File Utilities
 #============================================================
 
@@ -1494,25 +1305,25 @@ is_file_empty() {
 #
 # Three cross-command helpers — each shared by 2+ of `init`,
 # `testenv`, `purge`, `test`. Moved out of `pyve.sh` by Story K.g per
-# audit F-7 (`purge_testenv_dir` shared with `purge`) and F-8
-# (`testenv_paths` + `ensure_testenv_exists` shared with `init` and
+# audit F-7 (`purge_env_dir` shared with `purge`) and F-8
+# (`env_paths` + `ensure_env_exists` shared with `init` and
 # `test`).
 #
-# Post-M.h.3: derive both paths from `resolve_testenv_path testenv`
-# in lib/testenvs.sh — the single source of truth for the new
-# `.pyve/testenvs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
+# Post-M.h.3 / N.f: derive both paths from `resolve_env_path testenv`
+# in lib/envs.sh — the single source of truth for the v3
+# `.pyve/envs/<name>/{venv,conda}/` layout. The `TESTENV_DIR_NAME`
 # global in pyve.sh is retained as a back-compat constant for any
 # external scripts referencing it, but no internal code reads it.
 #============================================================
 
 # Emit two lines: testenv_root, then testenv_venv. Single source of
-# truth for both paths so callers do not hard-code `.pyve/testenvs/...`.
-# `resolve_testenv_path testenv` may trigger opportunistic migration
+# truth for both paths so callers do not hard-code `.pyve/envs/...`.
+# `resolve_env_path testenv` may trigger opportunistic migration
 # (M.h.3); we tolerate that side effect because every caller of
-# `testenv_paths` is about to act on the testenv anyway.
-testenv_paths() {
+# `env_paths` is about to act on the testenv anyway.
+env_paths() {
     local testenv_venv
-    testenv_venv="$(resolve_testenv_path testenv)"
+    testenv_venv="$(resolve_env_path testenv)"
     local testenv_root="${testenv_venv%/venv}"
     printf "%s\n" "$testenv_root" "$testenv_venv"
 }
@@ -1523,40 +1334,46 @@ testenv_paths() {
 #
 # Story M.i.1: accepts an optional `<name>` argument. No-arg defaults
 # to the reserved `testenv` (today's behavior). With-arg: load config
-# (idempotent if caller already ran read_testenv_config), validate name
-# via `assert_testenv_name_actionable`, resolve path via
-# `resolve_testenv_path`.
+# (idempotent if caller already ran read_env_config), validate name
+# via `assert_env_name_actionable`, resolve path via
+# `resolve_env_path`.
 #
 # Story M.k: dispatches on the resolved backend — venv envs go through
 # `python -m venv`; conda envs (`backend = "micromamba"` or `inherit`
-# resolving to micromamba) go through `_testenv_init_conda` in
-# `lib/commands/testenv.sh`, which calls `micromamba create -p <path>
+# resolving to micromamba) go through `_env_init_conda` in
+# `lib/commands/env.sh`, which calls `micromamba create -p <path>
 # -f <manifest> -y` from the env's declared `manifest`.
-ensure_testenv_exists() {
+ensure_env_exists() {
     local name="${1:-testenv}"
 
     # Always load config so we can validate names + dispatch on backend.
     # Idempotent if the caller already populated the V3 arrays.
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
-    assert_testenv_name_actionable "$name" || return 1
+    assert_env_name_actionable "$name" || return 1
 
     local backend
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
 
     local testenv_env_path testenv_root
-    testenv_env_path="$(resolve_testenv_path "$name")"
+    testenv_env_path="$(resolve_env_path "$name")"
     # Strip either the /venv or /conda suffix to get the env root.
     testenv_root="${testenv_env_path%/venv}"
     testenv_root="${testenv_root%/conda}"
 
-    mkdir -p "$testenv_root"
+    # Story N.bf.17: do NOT mkdir the env root here. Materialize only
+    # AFTER the relevant resolvability gate passes, so a failed gate (e.g.
+    # the asdf-shim trap on an uninitialized / non-activated project)
+    # leaves no `.pyve/envs/<name>` stray for a later `pyve purge` to
+    # "find" and remove. Each branch below mkdir's once it commits to
+    # creating the env.
 
     if [[ "$backend" == "micromamba" ]]; then
+        mkdir -p "$testenv_root"
         local manifest
-        manifest="$(_testenv_manifest_of "$name")" || manifest=""
-        _testenv_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
+        manifest="$(_env_manifest_of "$name")" || manifest=""
+        _env_init_conda "$name" "$testenv_env_path" "$manifest" || return $?
         # Story M.m: write initial `.state` for the conda env (parallel
         # to the venv branch below). Idempotent: skipped when .state
         # already exists.
@@ -1571,9 +1388,18 @@ ensure_testenv_exists() {
     # the project Python was changed after the initial pyve init, then pyve init
     # --force preserved the old testenv via --keep-testenv), rebuild it.
     if [[ -d "$testenv_env_path" ]] && [[ -f "$testenv_env_path/pyvenv.cfg" ]]; then
+        # pre-flight before invoking `python -c` for the
+        # drift check. Previously this silently no-op'd when python
+        # errored — `current_ver` came back empty, the comparison
+        # short-circuited, and the stale testenv stayed in place with
+        # no signal to the user. Now we surface the same actionable
+        # asdf-shim error here. `|| true` removed from `current_ver`
+        # since python is pre-flighted; a failure now means something
+        # unexpected, not the routine asdf-trap.
+        assert_python_resolvable || return 1
         local testenv_ver current_ver
         testenv_ver="$(awk -F' *= *' '/^version/{print $2; exit}' "$testenv_env_path/pyvenv.cfg" 2>/dev/null || true)"
-        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null || true)"
+        current_ver="$(python -c 'import sys; print(".".join(str(x) for x in sys.version_info[:3]))' 2>/dev/null)"
         if [[ -n "$testenv_ver" && -n "$current_ver" && "$testenv_ver" != "$current_ver" ]]; then
             warn "Testenv Python ($testenv_ver) differs from project Python ($current_ver) — rebuilding testenv..."
             rm -rf "$testenv_env_path"
@@ -1582,6 +1408,19 @@ ensure_testenv_exists() {
 
     if [[ ! -d "$testenv_env_path" ]]; then
         info "Creating dev/test runner environment in '$testenv_env_path'..."
+        # pre-flight check for the asdf/pyenv shim trap. Gate BEFORE the
+        # mkdir below (Story N.bf.17) so a failed resolution materializes
+        # nothing.
+        # The next call invokes `python` directly. In a non-activated
+        # shell with no resolvable version pin, the shim errors with
+        # asdf's confusing "No version is set for command python" — a
+        # leak that reads as a pyve bug. Catch it here and emit a
+        # pyve-owned error pointing at `direnv allow` / `pyve run`.
+        # Placed AFTER the banner so the user sees the intent first,
+        # and the existing testenv-grammar tests still observe the
+        # banner before the eventual error.
+        assert_python_resolvable || return 1
+        mkdir -p "$testenv_root"
         run_cmd python -m venv "$testenv_env_path"
         success "Created dev/test runner environment"
     fi
@@ -1599,15 +1438,16 @@ ensure_testenv_exists() {
 # Remove the testenv directory (no-op message if absent).
 #
 # Story M.i.4: accepts an optional `<name>` argument (default `testenv`).
-# Removes the env root (`.pyve/testenvs/<name>/`), not just the inner
-# `venv/` — covers `.state` and any future siblings. Backend-agnostic
-# (rm -rf doesn't care whether the env is venv or conda underneath).
-purge_testenv_dir() {
+# Removes the env root (`.pyve/envs/<name>/` in v3, was `.pyve/testenvs/<name>/`
+# pre-N.f), not just the inner `venv/` — covers `.state` and any future
+# siblings. Backend-agnostic (rm -rf doesn't care whether the env is
+# venv or conda underneath).
+purge_env_dir() {
     local name="${1:-testenv}"
     local testenv_venv testenv_root
-    testenv_venv="$(resolve_testenv_path "$name")"
-    # `dirname` handles both layout shapes — .pyve/testenvs/<name>/venv
-    # (venv-backed) and .pyve/testenvs/<name>/conda (conda-backed) —
+    testenv_venv="$(resolve_env_path "$name")"
+    # `dirname` handles both layout shapes — .pyve/envs/<name>/venv
+    # (venv-backed) and .pyve/envs/<name>/conda (conda-backed) —
     # without hard-coding the suffix.
     testenv_root="$(dirname "$testenv_venv")"
     if [[ -d "$testenv_root" ]]; then

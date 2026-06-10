@@ -144,7 +144,7 @@ _lock_main_env() {
     # Guard 3: conda-lock must be on PATH
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force --no-lock'."
         exit 1
     fi
 
@@ -227,7 +227,7 @@ _lock_one_env() {
 
     # Load named-env config (idempotent).
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
 
     if [[ "$name" == "root" ]]; then
@@ -235,14 +235,14 @@ _lock_one_env() {
         log_error "Use: pyve lock (no args) to lock the main env."
         return 1
     fi
-    if ! is_testenv_declared "$name"; then
+    if ! is_env_declared "$name"; then
         log_error "pyve lock --env: testenv '$name' is not declared in [tool.pyve.testenvs]."
         log_error "Declare it under [tool.pyve.testenvs.$name] in pyproject.toml."
         return 1
     fi
 
     local backend
-    backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
     if [[ "$backend" != "micromamba" ]]; then
         log_error "pyve lock --env: testenv '$name' (backend=$backend) is not conda-backed."
         log_error "Only micromamba-backed testenvs can be locked via conda-lock."
@@ -250,7 +250,7 @@ _lock_one_env() {
     fi
 
     local manifest
-    manifest="$(_testenv_manifest_of "$name")" || manifest=""
+    manifest="$(_env_manifest_of "$name")" || manifest=""
     if [[ -z "$manifest" ]]; then
         log_error "pyve lock --env: testenv '$name' has no 'manifest' declared."
         log_error "Add: [tool.pyve.testenvs.$name]"
@@ -264,7 +264,7 @@ _lock_one_env() {
 
     if ! command -v conda-lock >/dev/null 2>&1; then
         log_error "conda-lock is not available in the current environment."
-        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force'."
+        log_error "Add 'conda-lock' to environment.yml dependencies and run 'pyve init --force --no-lock'."
         return 1
     fi
 
@@ -289,11 +289,11 @@ _lock_one_env() {
 # `pyve lock`). Errors per-env are warned but do not halt iteration.
 _lock_all_conda_testenvs() {
     if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
-        read_testenv_config
+        read_env_config
     fi
     local name backend rc=0
     for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
-        backend="$(_testenv_resolve_backend "$name")" || backend="venv"
+        backend="$(_env_resolve_backend "$name")" || backend="venv"
         [[ "$backend" == "micromamba" ]] || continue
         if ! _lock_one_env "$name"; then
             warn "Failed to lock testenv '$name' (continuing)"

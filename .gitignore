@@ -19,9 +19,10 @@ build/
 .ipynb_checkpoints/
 *.ipynb_checkpoints
 
-# Pyve virtual environment
+# Pyve virtual environment (materialized state — never tracked)
 .pyve/envs
 .pyve/testenv
+.pyve/testenvs
 .envrc
 .env
 .vscode/settings.json
@@ -38,3 +39,6 @@ tmp/
 
 # MkDocs build output (configured as site_dir in mkdocs.yml)
 /site/
+
+# Claude Code: nothing tracked
+.claude/*

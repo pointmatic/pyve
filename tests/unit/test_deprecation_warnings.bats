@@ -38,9 +38,12 @@ teardown() {
 @test "J.d: 'pyve testenv --init' exits non-zero and does not delegate" {
     run bash -c "'$PYVE_SCRIPT' testenv --init 2>&1"
     [ "$status" -ne 0 ]
-    # The old delegate-with-warning path fired the warning AND executed
-    # the new-form action. Neither happens now.
-    [[ "$output" != *"deprecated"* ]]
+    # The old Category A flag-delegation path fired a per-flag warning
+    # AND executed the new-form action. The v3 rename re-introduced
+    # Category A at the *namespace* layer (`pyve testenv` → `pyve env`),
+    # so a "deprecated" substring legitimately appears now from the
+    # namespace deprecation_warn — but the flag-delegation behavior
+    # itself must still be absent.
     [[ "$output" != *"Creating dev/test runner environment"* ]]
     # Standard unknown-flag error fires instead.
     [[ "$output" == *"--init"* ]]
@@ -49,14 +52,18 @@ teardown() {
 @test "J.d: 'pyve testenv --install' exits non-zero and does not delegate" {
     run bash -c "'$PYVE_SCRIPT' testenv --install 2>&1"
     [ "$status" -ne 0 ]
-    [[ "$output" != *"deprecated"* ]]
+    # See N.c note in 'pyve testenv --init' test above; the namespace
+    # deprecation_warn now prints "deprecated" so we no longer assert
+    # its absence. The J.d guarantee — no flag-level Category A
+    # delegation — is preserved by the unknown-flag exit status.
     [[ "$output" == *"--install"* ]]
 }
 
 @test "J.d: 'pyve testenv --purge' exits non-zero and does not delegate" {
     run bash -c "'$PYVE_SCRIPT' testenv --purge 2>&1"
     [ "$status" -ne 0 ]
-    [[ "$output" != *"deprecated"* ]]
+    # See N.c note above. The flag-delegation guarantee is preserved
+    # via the env-purge absence assertion below.
     # Does NOT reach the "No dev/test runner environment found" message
     # that the old delegate path produced.
     [[ "$output" != *"No dev/test runner environment found"* ]]

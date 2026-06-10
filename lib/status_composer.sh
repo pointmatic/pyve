@@ -1,0 +1,129 @@
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
+# SPDX-License-Identifier: Apache-2.0
+# shellcheck shell=bash
+#============================================================
+# lib/status_composer.sh — composed `pyve status` builder
+#
+# The informational sibling of lib/check_composer.sh. Iterates every active
+# plugin, dispatches its `pyve_plugin_status` hook, and emits a per-plugin
+# (path-aware) section. Unlike `pyve check`, status has NO severity ladder:
+# it reports reality and ALWAYS exits 0 — a broken-environment reading is
+# `pyve check`'s job (status is the read-only snapshot, per phase-H design).
+#
+#   compose_status [args]  — orchestrate per-plugin status sections
+#
+# Section labels mirror the check composer: visitor plugins (path != ".")
+# are prefixed with their path (`[node @ src/frontend]`) for monorepo
+# disambiguation; root plugins get a bare label (`[python]`).
+#
+# No-Python noise suppression seam (shared with N.ag, refined in N.aj): the
+# composer only dispatches plugins in `plugin_list_active`, so a Node-only
+# project never surfaces a Python section.
+#============================================================
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    printf "Error: %s is a library and cannot be executed directly.\n" "${BASH_SOURCE[0]}" >&2
+    exit 1
+fi
+
+# Orchestrate per-plugin status sections. Always returns 0; usage errors
+# (unknown flag / positional argument) exit 1 via the shared helpers,
+# mirroring the pre-composition `show_status`.
+# Story N.bi: project-level [project-guide] addendum — reports HOW
+# project-guide is integrated into THIS project. Any-stack (composer-level,
+# not bound to the python plugin), informational like the rest of status.
+# Modes:
+#   project-managed (pip|conda) — declared in the project's dep files; pyve
+#       defers to it (this case explains why pyve isn't hosting it).
+#   pyve-hosted (toolchain)     — pyve manages a global copy (Story N.bh).
+#   not integrated              — neither.
+# project-managed wins over pyve-hosted: it is how this project uses it.
+# Silent in piecemeal test subshells where the helpers aren't sourced.
+_compose_status_project_guide() {
+    declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 || return 0
+    local src mode
+    src="$(project_guide_deps_source 2>/dev/null || true)"
+    if [[ -n "$src" ]]; then
+        mode="project-managed ($src)"
+    elif pyve_project_guide_is_hosted 2>/dev/null; then
+        mode="pyve-hosted (toolchain)"
+    else
+        mode="not integrated"
+    fi
+    printf '[project-guide]\n'
+    printf '  %s\n\n' "$mode"
+    return 0
+}
+
+compose_status() {
+    # Argument validation moved here from show_status when the composer
+    # took over dispatch. `--help` / `-h` are handled by the dispatcher in
+    # pyve.sh before compose_status is reached.
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -*)
+                unknown_flag_error "status" "$1" --help
+                ;;
+            *)
+                log_error "pyve status takes no positional arguments (got: $1)"
+                log_error "See: pyve status --help"
+                exit 1
+                ;;
+        esac
+    done
+
+    # Top-level title — owned by the composer so per-plugin sections don't
+    # each reprint it. BOLD title + DIM rule, matching the phase-H design.
+    printf "\n%sPyve project status%s\n" "${BOLD:-}" "${RESET:-}"
+    printf "%s───────────────────%s\n\n" "${DIM:-}" "${RESET:-}"
+
+    # Signal dispatched hooks that the composer owns the top-level title, so
+    # a plugin's own status (the Python plugin's show_status) does not
+    # reprint it. Exported so it crosses the command-substitution subshell.
+    export PYVE_STATUS_COMPOSED=1
+
+    local name path label out
+    while IFS= read -r name; do
+        [[ -z "$name" ]] && continue
+
+        path="$(manifest_get_plugin_path "$name" 2>/dev/null || true)"
+        [[ -z "$path" ]] && path="."
+
+        # Capture in a subshell so a hook that calls `exit` (defensive: some
+        # plugin status paths may) cannot tear down the composer, and so the
+        # composer owns the per-section framing. Status is informational, so
+        # the hook's return code is intentionally ignored.
+        out="$(plugin_dispatch "$name" status "$path" 2>&1)" || true
+
+        # a plugin that contributes nothing (e.g. the Python
+        # plugin suppressed by the PC-4a gate) gets no section — no empty
+        # `[plugin]` header in the composed status output.
+        [[ -z "$out" ]] && continue
+
+        if [[ "$path" == "." ]]; then
+            label="$name"
+        else
+            label="$name @ $path"
+        fi
+        printf '[%s]\n' "$label"
+        printf '%s\n' "$out"
+
+        printf '\n'
+    done < <(plugin_list_active)
+
+    # project-guide integration mode (Story N.bi) — project-level, any-stack.
+    _compose_status_project_guide
+
+    # project-level advisory addendum (spec-ahead attributes
+    # recorded in pyve.toml, not materialized). Informational, like the rest
+    # of status; absent when there are no advisory attributes.
+    local adv_out
+    adv_out="$(manifest_advisory_notes)"
+    if [[ -n "$adv_out" ]]; then
+        printf '[advisories]\n'
+        printf '%s\n' "$adv_out"
+        printf '\n'
+    fi
+
+    return 0
+}
