@@ -222,11 +222,32 @@ _fake_build_succeeds() {
     run bash -c '
         set -euo pipefail
         source "'"$PYVE_ROOT"'/lib/toolchain_python.sh"
-        _pyve_stdin_is_tty() { return 0; }            # force the interactive branch
+        _pyve_is_interactive() { return 0; }          # force the interactive branch
         _pyve_toolchain_path_python() { return 1; }   # no python3/python on PATH
         unset CI PYVE_FORCE_YES || true
         printf "n\n" | _pyve_toolchain_confirm_install "3.14.5"
     '
     [[ "$output" != *"unbound variable"* ]]
     assert_output_contains "Pyve prefers Python 3.14.5"
+}
+
+@test "_pyve_is_interactive: gates on output visibility, not just stdin (brew 3.0.2 hang)" {
+    # Homebrew `post_install` keeps stdin attached to the tty but redirects
+    # stdout/stderr to a logfile. A stdin-only gate (`[[ -t 0 ]]`) therefore
+    # prompts to the invisible log and blocks on `read`. The gate must also
+    # require an OUTPUT stream to be a terminal so the prompt is answerable.
+    local body
+    body="$(declare -f _pyve_is_interactive)"
+    [[ "$body" == *"-t 1"* || "$body" == *"-t 2"* ]]
+}
+
+@test "_pyve_is_interactive: false when an output stream is redirected (no prompt → no hang)" {
+    # stderr (the prompt's destination) redirected to a file → not interactive,
+    # so _pyve_toolchain_confirm_install must decline rather than prompt+block.
+    run bash -c '
+        set -euo pipefail
+        source "'"$PYVE_ROOT"'/lib/toolchain_python.sh"
+        _pyve_is_interactive 2>/dev/null && echo INTERACTIVE || echo NONINTERACTIVE
+    '
+    assert_output_contains "NONINTERACTIVE"
 }
