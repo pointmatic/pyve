@@ -2751,22 +2751,22 @@ Holistic documentation reflow via `refactor_document`, run **after** N-7's test 
 - [x] Reconcile the testing-strategy narrative (two-env model, named test envs) wherever it lives in features / tech-spec. *(tech-spec Testing Strategy refreshed: named-environment / purpose model, perf suite, CI matrix 3.12/3.14, current test families.)*
 - [x] Cross-reference integrity: links to spike docs / `wizard-env-contract` / the env-dependencies template resolve to their current `project-guide-requests/` (and `.archive/`) locations.
 
-### Story N.br: MkDocs public site + README — v3 pages (update + create) [Planned]
+### Story N.br: MkDocs public site + README — v3 pages (update + create) [Done]
 
 **Motivation.** The public site ([docs/site/](../site/), `mkdocs.yml`) and [README.md](../../README.md) still document v2 (Python-only; `migration.md` is *v1.x → v2.0*). Refresh the site for v3 and add the new-capability pages. **One story, organized as a page checklist** — not one story per page.
 
 **Tasks**
 
-- [ ] **Update existing pages to v3:** `getting-started.md`, `usage.md`, `backends.md` (closed vocabulary + the three S6 categories + canonical-vs-advisory), `testing.md` (named test envs / two-env model), `ci-cd.md`, the site home (`index`), and `README.md`.
-- [ ] **Retheme `migration.md`** from *v1.x → v2.0* to the **v2 → v3** guide: `pyve self migrate`, the soft banner, the read-compat window, and the v3.1 hard gate.
-- [ ] **Create new pages:**
-  - **Named Environments** — `[env.<name>]`, `purpose ∈ {run, test, utility, temp}`, the multi-env model, name-based defaults.
-  - **Plugins** — the plugin architecture; Python + Node/SvelteKit reference plugins.
-  - **Multi-stack / Polyglot projects** — Python + Node, the `path` model, composed init/activation.
-  - **`pyve.toml` reference** — the manifest schema (the projectable subset).
-  - **Packaging** — `pyve package` + the `packaging` vocabulary (note: verb reserved/scaffolded in v3.0; providers post-v3.0).
-- [ ] Register the new pages in `mkdocs.yml` nav in a sensible order.
-- [ ] **Do not present unshipped surfaces** (`pyve lint`, advisory backends) as available — describe them as roadmap where mentioned.
+- [x] **Update existing pages to v3:** `getting-started.md`, `usage.md`, `backends.md` (closed vocabulary + the three S6 categories + canonical-vs-advisory), `testing.md` (named test envs / two-env model), `ci-cd.md`, the site home (`index.html`), and `README.md`. *(getting-started / index / ci-cd / backends / README got full v3 passes — front-door framing, command surface, `.pyve/config`→`pyve.toml`, all removed `doctor`/`validate` invocations fixed, backends gained the closed-vocab + 3-category + canonical-vs-advisory section. usage.md / testing.md got v3 orientation + command-overview/two-env-model updates; a deeper line-by-line `testenv`→`env` / `.pyve/testenvs`→`.pyve/envs` sweep of their lower-body examples remains as polish — noted at the gate.)*
+- [x] **Retheme `migration.md`** from *v1.x → v2.0* to the **v2 → v3** guide: `pyve self migrate` (incl. `--dry-run`/`--no-rebuild`), the soft banner, the read-compat window, and the v3.1 hard gate.
+- [x] **Create new pages:**
+  - [x] **Named Environments** (`environments.md`) — `[env.<name>]`, `purpose ∈ {run, test, utility, temp}`, the multi-env model, name-based defaults, the `pyve env` namespace, lazy provisioning.
+  - [x] **Plugins** (`plugins.md`) — the plugin architecture; Python + Node/SvelteKit reference plugins; backend categories; roadmap.
+  - [x] **Multi-stack / Polyglot projects** (`polyglot.md`) — Python + Node, the root-vs-visitor `path` model, composed init/activation/`.envrc`.
+  - [x] **`pyve.toml` reference** (`pyve-toml.md`) — schema, field semantics, validation, worked examples (single / Node-only / polyglot).
+  - [x] **Packaging** (`packaging.md`) — `pyve package` + the `packaging` attribute; verb reserved/scaffolded in v3.0, providers post-v3.0, `package` vs `deploy`.
+- [x] Register the new pages in `mkdocs.yml` nav in a sensible order (intro → usage → manifest → environments → backends → plugins → polyglot → testing → packaging → ci-cd → migration); retheme the Migration nav label to *v2 → v3*; refresh `site_description`.
+- [x] **Do not present unshipped surfaces** (`pyve lint`, advisory `cache-backed`/`check-only` backends, packaging providers, deeper TS) as available — described as roadmap throughout (plugins.md, backends.md, packaging.md).
 
 ---
 
@@ -2885,6 +2885,33 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 - [ ] Fix the `## Package Structure` tree (`tech-spec.md` ~L50): drop the deleted `lib/commands/{init,purge,update,check,status,run,test,testenv,python}.sh` and `lib/testenvs.sh` / `pyve_testenvs_helper.py`; add `lib/plugins/**`, `lib/*_composer.sh`, `lib/envs.sh`, `lib/manifest.sh`, `lib/toolchain_python.sh`, `lib/project_guide.sh`, `pyve.toml`.
 - [ ] Fix the `### pyve.sh — Thin Entry Point` sourcing-order paragraph: it still enumerates deleted command files and a "~500–650 lines post-K.l" framing; replace with the actual v3 source order (helpers → `manifest.sh` → registries → plugins → composers → `env`/`lock`/`package`/`self`).
 - [ ] Diff-review against the live codebase; confirm no surviving reference to a deleted file or non-existent function.
+
+---
+
+### Story ?.?: Finish the v3 site — drop v2 spellings in usage/testing + document the env planning/sync workflow [Planned]
+
+**Raised:** 2026-06-09 (developer, after the N.br site refresh).
+
+**Motivation.** N.br (Subphase N-8) refreshed the public site and README for v3 — new pages (`pyve-toml`, `environments`, `plugins`, `polyglot`, `packaging`), a v2→v3 `migration.md`, and full v3 passes on `index` / `getting-started` / `ci-cd` / `backends` / `README`. Two follow-ups were scoped out of N.br to avoid a rushed mechanical edit and surfaced a real content gap:
+
+1. **`usage.md` and `testing.md` got v3 *orientation* passes, not full rewrites.** Their intros, command overviews, and the two-env-model table are v3, and each carries a prominent note mapping `pyve testenv`→`pyve env`, `.pyve/testenvs/`→`.pyve/envs/`, and `[tool.pyve.testenvs]`→`[env.<name>]`. But their **lower-body examples still use the v2 spellings** (~37 in usage, ~60 in testing). The old forms resolve (the `testenv` alias works; legacy paths migrate opportunistically), so nothing is *broken* — but the running examples should be canonical v3.
+2. **The environment planning/sync workflow is undocumented, and `pyve env sync` was omitted from the command references.** The site documents declaring `[env.<name>]` by hand / via `init` / via `migrate`, but **not** the `project-guide mode plan_envs` → `pyve env sync` → `pyve.toml` loop that is the intended "configure your environments" path. `pyve env sync` (shipped: N.az.2 / N.ba) is missing from `environments.md` / `usage.md` / `README` command lists, and the `pyve check` env-spec **drift** surface is undocumented.
+
+**Tasks**
+
+*Group A — drop the v2 spellings (mechanical sweep).*
+
+- [ ] **`usage.md`** — convert the lower-body Command Reference examples: `pyve testenv …` → `pyve env …`, `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`, `[tool.pyve.testenvs]` → `pyve.toml`'s `[env.<name>]`. Fix the `#testenv-subcommand` anchor/link references. Keep one explicit "`pyve testenv` is a deprecated alias (removed v4.0)" note; make every running example canonical.
+- [ ] **`testing.md`** — same sweep across the lifecycle / named-test-env / activation-context / backend-deltas sections; rewrite the `[tool.pyve.testenvs]` worked examples as `pyve.toml` `[env.<name>]` blocks; fix the `.pyve/testenvs/testenv/venv` and `.pyve/envs/<name>/` path references in "Backend deltas".
+- [ ] Re-run the link/anchor check; confirm no dead `#…` fragments after the rename.
+
+*Group B — document the planning/sync workflow (new content; the gap).*
+
+- [ ] **Add `pyve env sync` to every command reference** where it's missing (`environments.md`, `usage.md`, `README.md`): discover the spec → diff vs the current `pyve.toml` → `[Y/n]` apply (default `Y`; **destructive** drops/backend-flips default `N`); writes `pyve.toml` only, never materializes; note exit `6` (spec invalid under the closed vocabulary).
+- [ ] **Add a "Planning environments with project-guide" section** to `environments.md` (with pointers from `getting-started.md` / `usage.md`): `project-guide mode plan_envs` authors `docs/specs/env-dependencies.md` §4 (the analyzed-*ideal* env config at the current `spec_version`) → `pyve env sync` reconciles it into `pyve.toml` → lifecycle commands materialize. Explain the *why*: one declarative source of intent; the spec may legitimately run ahead of what's materialized.
+- [ ] **Document the `pyve check` env-spec drift surface** — non-empty §4-vs-`pyve.toml` diff → **warn (exit 0)**, with the "run `pyve env sync` to reconcile" hint; note Pyve reads `env_spec_path` from `.project-guide.yml` (default `docs/specs/env-dependencies.md`).
+- [ ] **Document the projectable subset** that syncs/diffs (`name`, `purpose`, `backend`, `default`, `path`, `languages`, `frameworks`, `packaging`) vs. advisory/prose that never triggers drift (`app_type`, `require_min_version`, `manual_steps`, §5–§9 narrative).
+- [ ] **Link, don't duplicate** — reference the env-spec contract (`project-guide-requests/wizard-env-contract.md`) rather than re-deriving the vocabulary; keep roadmap surfaces honest.
 
 ---
 

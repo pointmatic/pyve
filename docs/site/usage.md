@@ -2,17 +2,10 @@
 
 Complete reference for all Pyve commands, options, and workflows.
 
-!!! note "Upgrading from v1.x to v2.0"
-    v2.0 completes the CLI-unification arc. See [migration.md](migration.md) for a tactical upgrade guide. Quick summary:
+!!! note "v3.0 — the declarative manifest"
+    Pyve 3.0 describes each project with a root-level [`pyve.toml`](pyve-toml.md) manifest and a [plugin model](plugins.md). The command surface below is stable from v2; the main additions are the `pyve env` namespace (named environments — `pyve testenv` is now a deprecated alias), `pyve package` (reserved), and `pyve self migrate`. See the [Migration guide](migration.md) for moving a v2 project to v3.
 
-    - `pyve doctor` → `pyve check` (diagnostics with 0/1/2 CI-safe exit codes)
-    - `pyve validate` → `pyve check` (same semantics; folded together)
-    - `pyve init --update` → `pyve update` (a dedicated subcommand; broader semantics)
-    - `pyve python-version <ver>` → `pyve python set <ver>` (delegation removed in v2.3.0; the legacy form now falls through to the dispatcher's unknown-command path)
-    - `pyve testenv --init|--install|--purge` → `pyve testenv init|install|purge` (delegation removed in v2.3.0; same fall-through)
-    - New: `pyve status` — read-only project-state dashboard
-
-    The legacy-flag catches (`pyve --init`, `pyve --purge`, etc.) remain — typing one prints a precise migration error pointing at the current subcommand.
+    Carried over from earlier: `pyve doctor` / `pyve validate` were replaced by `pyve check` (CI-safe `0`/`1`/`2`) and `pyve status` (read-only snapshot); both removed forms now hard-error with a migration hint.
 
 ## Command Overview
 
@@ -35,35 +28,42 @@ Organized into four categories (same as `pyve --help`):
 
 | Command | Description |
 |---------|-------------|
-| `init [<dir>]` | Initialize a Python virtual environment (auto-detects backend) |
-| `purge [<dir>]` | Remove all Python environment artifacts |
-| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds the venv) |
+| `init [<dir>]` | Initialize the project's environment(s) — auto-detects each stack, composed across plugins |
+| `purge [<dir>]` | Remove Pyve-managed environment artifacts (composed across plugins) |
+| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds an env) |
 | `python set <ver>` | Pin the project Python version |
 | `python show` | Print the currently pinned Python version + source |
-| `lock [--check]` | Generate or verify `conda-lock.yml` (micromamba only) |
+| `lock [--check] [--env <name>] [--all]` | Generate or verify `conda-lock.yml` (micromamba-backed envs) |
+| `env init\|install\|purge\|run\|list\|prune` | Manage named environments (see [Named Environments](environments.md)) |
+| `env sync` | Reconcile `pyve.toml` with the env spec (`env-dependencies.md` §4): diff → `[Y/n]`-apply |
 
 #### Execution
 
 | Command | Description |
 |---------|-------------|
 | `run <command> [args...]` | Run a command inside the project environment |
-| `test [pytest args...]` | Run pytest via the dev/test runner environment |
-| `testenv init\|install\|purge\|run\|list\|prune` | Manage one or more dev/test runner environments |
+| `test [--env <name>[,…]] [args...]` | Run tests in a `test`-purpose environment (comma-separated `--env` runs a matrix) |
+| `package` | Reserved artifact-materialization verb (prints an advisory until a provider ships) |
 
 #### Diagnostics
 
 | Command | Description |
 |---------|-------------|
-| `check` | Diagnose environment problems with CI-safe 0/1/2 exit codes |
-| `status` | Read-only project-state dashboard (always exit 0) |
+| `check` | Diagnose problems with CI-safe 0/1/2 exit codes (composed across plugins) |
+| `status` | Read-only project-state dashboard, always exit 0 (composed across plugins) |
 
 #### Self management
 
 | Command | Description |
 |---------|-------------|
-| `self install` | Install pyve to `~/.local/bin` |
-| `self uninstall` | Remove pyve from `~/.local/bin` |
+| `self install` | Install pyve (provisions the toolchain venv) |
+| `self uninstall` | Remove pyve |
+| `self provision` / `unprovision` | Provision / remove Pyve-managed global tooling (e.g. hosted project-guide) |
+| `self migrate` | Migrate a v2 project to the v3 `pyve.toml` manifest |
 | `self` | Show the self-namespace help |
+
+!!! note "`pyve testenv` → `pyve env`"
+    The `pyve testenv <sub>` namespace is a **deprecated alias** for `pyve env <sub>`; it re-dispatches with a one-shot warning and is removed in v4.0. Command examples below that say `testenv` apply equally to `env`.
 
 ### Universal Flags
 
