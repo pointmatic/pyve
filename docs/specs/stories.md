@@ -2835,16 +2835,37 @@ The tag was cut but the formula never updated — the publish was blocked. **Roo
 - [x] Prevention scan — other callers of `ensure_python_version_installed` / `prompt_yes_no` reachable from a suppressed non-interactive hook. Findings: the only other callers ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) env creation, [lib/micromamba_env.sh](../../lib/micromamba_env.sh) "Continue anyway?") are reached from **interactive `pyve init`** with **visible** prompts — not the same bug class. No additional inline fix required.
 - [x] Bump version to v3.0.1
 
+### Story N.bw: v3.0.1 hotfix — `fallback_ver` unbound variable aborts `pyve self provision` on the interactive branch [Done]
+
+**Symptom (field, 2026-06-10).** A real `brew upgrade pyve 3.0.0 → 3.0.1` (the release carrying N.bv) printed the new prompt's first line and then died:
+
+```
+Provisioning Pyve toolchain + hosted tools...
+  Pyve prefers Python 3.14.5 for its toolchain.
+…/lib/toolchain_python.sh: line 283: fallback_ver: unbound variable
+Warning: pyve: toolchain/project-guide provisioning was skipped; run 'pyve self provision' later.
+```
+
+**Root cause (the three questions).**
+
+1. *Why did the bug exist?* `_pyve_toolchain_confirm_install` (added in N.bv) declared `local fallback fallback_ver` and assigned `fallback_ver` **only** inside `if [[ -n "$fallback" ]]`. On the brew post-install PATH there was **no** `python3`/`python` (`_pyve_toolchain_path_python` returned empty), so the block was skipped, `fallback_ver` stayed **unset**, and the subsequent `[[ -n "$fallback_ver" ]]` read aborted under `pyve.sh`'s `set -euo pipefail` with "unbound variable" — killing provisioning. Same class as the documented Bash empty-array / `set -u` traps: invisible where a PATH python happens to exist, fatal on the runner where it doesn't.
+2. *Why didn't tests catch it?* N.bv's 7 tests never exercised the **interactive** branch: bats has no TTY, so `[[ -t 0 ]]` was false and `_pyve_toolchain_confirm_install` returned at that guard *before* reaching the `fallback_ver` lines. Compounded by bats not re-enabling `set -u`, so even a test that reached the line wouldn't have raised the error in bats's own shell.
+3. *How do we prevent this class of bug?* Factor the TTY check into a stubbable `_pyve_stdin_is_tty` so the interactive body is reachable in tests without a real terminal, and run the regression in an explicit `set -euo pipefail` subshell (the canonical empty-`set -u` test pattern). Initialize every `local` that a later branch may read.
+
+**Fix.** [lib/toolchain_python.sh](../../lib/toolchain_python.sh): initialize `local fallback="" fallback_ver=""` (both empty, not merely declared); extract `_pyve_stdin_is_tty() { [[ -t 0 ]]; }` and call it instead of the inline `[[ -t 0 ]]`.
+
+**Tasks**
+
+- [x] Reproduce: failing bats running `_pyve_toolchain_confirm_install` in a `set -euo pipefail` subshell with `_pyve_stdin_is_tty` stubbed true and no PATH python — asserts no "unbound variable" and that the prompt still renders ([test_toolchain_python_lifecycle.bats](../../tests/unit/test_toolchain_python_lifecycle.bats); confirmed red on the 3.0.1 code first).
+- [x] Fix [lib/toolchain_python.sh](../../lib/toolchain_python.sh): `local fallback="" fallback_ver=""` + the `_pyve_stdin_is_tty` seam.
+- [x] Verify: lifecycle suite 16/16 green; toolchain + provisioning + resolver suites green; full unit suite — only the 3 pre-existing `test_composed_init_matrix.bats` env failures (identical on the prior tree), 0 new regressions.
+- [x] Prevention scan — every other `local a b …` multi-declare in [lib/toolchain_python.sh](../../lib/toolchain_python.sh) for the same declared-then-conditionally-read shape under `set -u`. Only `fallback_ver` had it; `local venv_dir target pip` (project-guide host helper) assigns all three unconditionally before use — safe.
+- [x] Bump version to v3.0.2 (patch)
+- [x] *(tap-formula, relates to N.bu)* Fix the `caveats` wording in the Homebrew formula: it advises running `pyve self unprovision --all` "before (**or after**) uninstalling" — but after `brew uninstall pyve` the `pyve` command no longer exists. Reword to "run **before** uninstalling (while `pyve` still exists); if already uninstalled, remove `~/.local/share/pyve/toolchain` and `~/.local/bin/project-guide` manually." Lives in the `pointmatic/homebrew-tap` formula, not this repo.
+
 ---
 
 ## Future
-
-### Story ?.?: Homebrew update formula validation + CLI install/upgrade improvements [Planned]
-- [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
-- [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
-- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
-- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
-- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
 
 ## Phase O: UX visual refinement + hard migration gate (post-v3.0.0)
 
@@ -2914,6 +2935,15 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 
 ---
 
+### Story ?.?: Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+- [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
+- [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
+- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
+- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
+- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
+
+---
+
 ### Story ?.?: Fix pre-existing integration test failures [Planned]
 
 **Motivation**: surfaced during story K.a.1 regression sweep. One test in [tests/integration/](../../tests/integration/) fails against `main` unrelated to any in-flight change; it is a flaky timeout. Pinning this now so it doesn't mask real regressions in future `make test-integration` runs. Confirmed still problematic in story N.s.9 and again in N.bg.
@@ -2936,6 +2966,20 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 - [ ] Decide scope: Phase-N-only vs all-phase (the 416 older-phase refs are pre-Phase-N historical context).
 - [ ] Write the dumb line-by-line applier (parse `clean.txt`; replace source `path:lineno` with content; `<<<DELETE>>>` removes the line; bottom-up per file) and apply.
 - [ ] Diff-review the full source change (comments-don't-execute — the only prose-quality net) + run the full suite; zero regressions.
+
+### Story ?.?: `pyve self provision --status` — machine-readable hosting-readiness query (project-guide coordination seam) [Planned]
+
+**Motivation.** Other tools — project-guide first — need to know whether Pyve's global hosting is *ready* (toolchain venv runnable **and** the hosted `project-guide` shim runnable), without a project context and without reaching into Pyve's version-keyed, `XDG_DATA_HOME`-relative internal paths. Today the only hosting surface is the human-formatted, project-scoped `pyve check` ([`_compose_check_pyve_hosting`](../../lib/check_composer.sh#L115)); there is no scriptable query. The driving consumer is project-guide's **local-install warning**, which currently advises `pip uninstall project-guide` *unconditionally* — destructive when global hosting isn't provisioned (it reproduced on a machine whose `self provision` had hung per Story N.bv, leaving the `.venv` copy as the only working project-guide). The cross-repo design lives in [project-guide-requests/local-install-warning-readiness-gate.md](project-guide-requests/local-install-warning-readiness-gate.md); this story is the Pyve half — the stable query project-guide keys off. Naturally pairs with this subphase's **runnability-probe** pillar (existence ≠ runnability).
+
+**Tasks**
+
+- [ ] Add `pyve self provision --status [--json]` ([lib/commands/self.sh](../../lib/commands/self.sh)) — read-only, side-effect-free, no network, no provisioning.
+- [ ] Exit-code contract: `0` = hosting ready (toolchain + hosted shim both **runnable**); `1` = Pyve-managed but not ready (never provisioned, or provisioned-but-broken); `2` = not Pyve-managed here (project owns project-guide via `.project-guide.yml` deps source, or hosting disabled).
+- [ ] **Runnability, not existence:** classify by *executing* the artifacts (`python --version`, `project-guide --version`) — never `[[ -x ]]` alone (a dangling shim / dead shebang passes existence and would falsely report "ready"). Reuse the `_compose_check_pyve_hosting` predicates (`pyve_toolchain_venv_dir`, `pyve_project_guide_is_hosted`), upgraded to the probe; honor the `PYVE_PROJECT_GUIDE_BIN` / `PYVE_PYTHON` overrides.
+- [ ] `--json` payload: `{ pyve_managed, toolchain:{provisioned,runnable,version}, project_guide:{hosted,runnable,version,shim} }`.
+- [ ] Bats coverage for all four states: ready / not-provisioned / provisioned-but-broken (dangling shim + dead-shebang interpreter) / not-managed; assert the probe fires (not a stat).
+- [ ] Document the `--status` exit-code + JSON contract in [project-essentials.md](project-essentials.md) alongside the `.project-guide.yml` and hosting entries; note it as a cross-repo contract project-guide pins a minimum Pyve version against.
+- [ ] After project-guide ships the readiness-gated warning, pin `project-guide ≥ <release>` and close the loop (consumer-side handled in project-guide; Pyve only provides the query).
 - [ ] Optionally wire the detector into CI to enforce the guard on new refs.
 
 ### Story ?.?: Reconcile tech-spec.md command/module tables to the v3 plugin file-layout [Planned]
