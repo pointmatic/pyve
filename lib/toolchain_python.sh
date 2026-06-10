@@ -256,6 +256,11 @@ _pyve_toolchain_ensure_interpreter() {
     return 0
 }
 
+# Is stdin an interactive terminal? Factored out (rather than an inline
+# `[[ -t 0 ]]`) so tests can drive the interactive prompt path without a
+# real TTY.
+_pyve_stdin_is_tty() { [[ -t 0 ]]; }
+
 # Ask whether to install the pinned toolchain Python. Returns 0 (yes) / 1 (no).
 #
 # Decision policy — must never block a non-interactive caller (the brew
@@ -271,9 +276,13 @@ _pyve_toolchain_confirm_install() {
     local version="$1"
     [[ "${PYVE_FORCE_YES:-}" == "1" ]] && return 0
     [[ -n "${CI:-}" ]] && return 1
-    [[ -t 0 ]] || return 1
+    _pyve_stdin_is_tty || return 1
 
-    local fallback fallback_ver
+    # Both initialized to empty: under `set -u` the fallback block may not
+    # run (no python3/python on PATH — the brew post-install shape), and a
+    # bare `local fallback_ver` would leave it UNSET, so the `[[ -n ... ]]`
+    # read below would abort with "unbound variable".
+    local fallback="" fallback_ver=""
     fallback="$(_pyve_toolchain_path_python)" || fallback=""
     if [[ -n "$fallback" ]]; then
         fallback_ver="$("$fallback" --version 2>&1 | awk '{print $2}')"

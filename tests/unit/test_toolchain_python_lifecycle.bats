@@ -212,3 +212,21 @@ _fake_build_succeeds() {
     assert_status_equals 0
     assert_output_contains "INSTALLER-RAN"
 }
+
+@test "_pyve_toolchain_confirm_install: interactive branch with no PATH python — no 'unbound variable' under set -u (brew 3.0.1 regression)" {
+    # The brew post-install shape: an interactive TTY (so the prompt path
+    # runs) but NO python3/python on PATH (so the fallback-version block is
+    # skipped). A bare `local fallback_ver` leaves it unset → `set -u` aborts
+    # on the `[[ -n "$fallback_ver" ]]` read. bats doesn't re-enable `set -u`,
+    # so the regression only surfaces in an explicit `set -euo pipefail` shell.
+    run bash -c '
+        set -euo pipefail
+        source "'"$PYVE_ROOT"'/lib/toolchain_python.sh"
+        _pyve_stdin_is_tty() { return 0; }            # force the interactive branch
+        _pyve_toolchain_path_python() { return 1; }   # no python3/python on PATH
+        unset CI PYVE_FORCE_YES || true
+        printf "n\n" | _pyve_toolchain_confirm_install "3.14.5"
+    '
+    [[ "$output" != *"unbound variable"* ]]
+    assert_output_contains "Pyve prefers Python 3.14.5"
+}
