@@ -2793,7 +2793,7 @@ Final integration verification matrix across Python-only, Node-only, and polyglo
 - [x] **Honest scope line:** what shipped vs deferred — advisory backends (`cargo`/`bundler`/`xcode`/…), the `pyve lint` verb, and F4/F6 if they slipped with `plan_envs` (note the lenient-validation window). — *`Scope — shipped vs. deferred` section. Recorded that **F4/F6 landed** (trichotomy enforcement live, not the lenient fallback — confirmed in N.bs); deferred items are advisory backends, the `pyve lint` verb, and `pyve package` providers.*
 - [x] Reconcile the recorded version-bump target (the O-series settled `v3.0.0`); confirm no unanticipated breaking change reopened it. — *Confirmed v3.0.0. The breaking surface (`testenv`→`env`, root-level `pyve.toml`, `.pyve/envs/<name>/<backend>/` layout) was all anticipated by the major bump; nothing reopened the target. Note: the `pyve.sh` `VERSION` stamp stays `3.0.0a3` here — the final `bump-version 3.0.0` + date stamp is the developer's terminal release action (N.bu).*
 
-### Story N.bu: Homebrew formula release readiness [Planned]
+### Story N.bu: Homebrew formula release readiness [Done]
 
 **Motivation.** Ensure the v3.0.0 tag flows cleanly to the published Homebrew formula via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). The actual `project-guide bump-version 3.0.0` + tag push + release publish are the developer's terminal release actions (mode Step 10).
 
@@ -2811,16 +2811,40 @@ The tag was cut but the formula never updated — the publish was blocked. **Roo
 **Tasks**
 
 - [x] **Fix `UntrustedTapError`:** set `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` in the bump action step's `env:` in `update-homebrew.yml`. — *Chosen after the `brew trust` pre-step proved non-viable in CI (interactive-only, broken-pipes); see Resolution arc.*
-- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
-- [ ] **Verify on the next `v*` tag push** that the action loads `pointmatic/tap/pyve` without `UntrustedTapError` and the formula updates. CI-only verification; the tag push + release are developer-owned (mode Step 10 / hand-off below).
-- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
-- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
-- [ ] Verify the workflow trigger shape so the v3.0.0 tag updates the formula without manual patching.
-- [ ] Hand-off note: the developer invokes `project-guide bump-version 3.0.0`, pushes the tag, and publishes the release (git/release actions are developer-owned).
+- [x] **Verify on the next `v*` tag push** that the action loads `pointmatic/tap/pyve` without `UntrustedTapError` and the formula updates. CI-only verification; the tag push + release are developer-owned (mode Step 10 / hand-off below).
+- [x] Verify the workflow trigger shape so the v3.0.0 tag updates the formula without manual patching.
+- [x] Hand-off note: the developer invokes `project-guide bump-version 3.0.0`, pushes the tag, and publishes the release (git/release actions are developer-owned).
+
+### Story N.bv: `brew upgrade` hangs silently in `pyve self provision` — suppressed interactive prompt in the toolchain bootstrap [Done]
+
+**Symptom (field, 2026-06-10).** A real `brew upgrade pointmatic/tap/pyve` (2.8.0 → 3.0.0) printed the post-install line `==> /opt/homebrew/Cellar/pyve/3.0.0/bin/pyve self provision` and then hung indefinitely with no further output. The process was alive but stuck; no compiler or `python-build` child was running.
+
+**Root cause (the three questions).**
+
+1. *Why did the bug exist?* `self provision` (a non-interactive Homebrew post-install hook) builds the toolchain venv when it is absent: `_self_install_toolchain_python` → `pyve_toolchain_python_ensure` → `_pyve_toolchain_build` → `_pyve_toolchain_bootstrap_python` → `ensure_python_version_installed "$DEFAULT_PYTHON_VERSION"`. The pinned version (`3.14.5`) was absent from asdf (which had `3.14.2/3/4`), so `ensure_python_version_installed` reached the **interactive** `prompt_yes_no "Install Python 3.14.5 now?"`. That call sat inside a `>/dev/null 2>&1` wrapper, so the prompt text was swallowed while `read` blocked on the live terminal stdin — a silent, infinite hang. A non-interactive, output-suppressed code path must never reach an interactive prompt.
+2. *Why didn't tests catch it?* The lifecycle tests **stubbed** `ensure_python_version_installed` ([test_toolchain_python_lifecycle.bats](../../tests/unit/test_toolchain_python_lifecycle.bats)), so the real install/prompt branch was never exercised. The hang also only manifests with a live TTY + suppressed output — a shape bats can't reproduce (its `read` hits EOF and returns immediately), so the invariant had to be encoded structurally.
+3. *How do we prevent this class of bug?* Move the install decision **out of** the captured-stdout resolver and gate it on a real interactive context; in any non-interactive context (no TTY / `CI` / not force-yes) decline and fall back to a PATH python instead of blocking. Keep the resolver pure so it is safe inside command substitution.
+
+**Fix.** In [lib/toolchain_python.sh](../../lib/toolchain_python.sh): split the old `_pyve_toolchain_bootstrap_python` into (a) a **pure resolver** (`_pyve_toolchain_bootstrap_python` — exact-version-if-present else PATH python; no prompt, no install; safe under `$()`), and (b) a new `_pyve_toolchain_ensure_interpreter` that runs the install decision **before** the resolver capture so any prompt/build output streams to the developer. A new `_pyve_toolchain_confirm_install` gates the prompt: `PYVE_FORCE_YES=1` → yes; `CI` set or no TTY (`[[ -t 0 ]]`) → no (fall back, never block); interactive TTY → ask (default **Y**), showing the fallback interpreter's version per the developer's preferred wording ("Pyve prefers Python X.Y.Z … If not, I'll use your Python A.B.C"). The prompt writes only to stderr/the terminal, never stdout. `ensure_python_version_installed` is invoked under `PYVE_FORCE_YES=1` after consent so it does not raise its own second prompt.
+
+**Tasks**
+
+- [x] Reproduce: encode the invariant as failing bats — the resolver must not reference the interactive installer; `_pyve_toolchain_confirm_install` must decline (not block) with no TTY, force-yes when `PYVE_FORCE_YES=1`, decline under `CI`; `_pyve_toolchain_ensure_interpreter` must skip the installer non-interactively and invoke it under force-yes. ([test_toolchain_python_lifecycle.bats](../../tests/unit/test_toolchain_python_lifecycle.bats), 7 new tests; confirmed red first).
+- [x] Fix [lib/toolchain_python.sh](../../lib/toolchain_python.sh): pure resolver + `_pyve_toolchain_ensure_interpreter` + `_pyve_toolchain_confirm_install` + extracted `_pyve_toolchain_path_python`; the interpreter decision runs outside command substitution and never blocks a non-interactive caller.
+- [x] Verify: 7 new tests green; full unit suite **1939 tests, 0 regressions** (the only 3 failures — `test_composed_init_matrix.bats` — are pre-existing and fail identically on the unmodified tree; they need a resolvable PATH `python` in the runner shell).
+- [x] Prevention scan — other callers of `ensure_python_version_installed` / `prompt_yes_no` reachable from a suppressed non-interactive hook. Findings: the only other callers ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) env creation, [lib/micromamba_env.sh](../../lib/micromamba_env.sh) "Continue anyway?") are reached from **interactive `pyve init`** with **visible** prompts — not the same bug class. No additional inline fix required.
+- [x] Bump version to v3.0.1
 
 ---
 
 ## Future
+
+### Story ?.?: Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+- [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
+- [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
+- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
+- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
+- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
 
 ## Phase O: UX visual refinement + hard migration gate (post-v3.0.0)
 

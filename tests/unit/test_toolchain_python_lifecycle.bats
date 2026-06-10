@@ -140,3 +140,75 @@ _fake_build_succeeds() {
     assert_status_equals 0
     assert_output_contains "python3"
 }
+
+#------------------------------------------------------------
+# Non-interactive safety — the brew `self provision` hang
+#
+# Regression guard: `self provision` runs as a Homebrew post-install hook
+# (non-interactive, output-suppressed). When the pinned DEFAULT_PYTHON_VERSION
+# is absent from the active version manager, the toolchain build must NOT
+# reach an interactive prompt — a swallowed `prompt_yes_no` whose `read`
+# blocks on the terminal is the silent, infinite hang we are fixing.
+#------------------------------------------------------------
+
+@test "_pyve_toolchain_bootstrap_python: pure resolver — never reaches the interactive installer" {
+    # The captured-stdout resolver must not call ensure_python_version_installed
+    # (which can block on prompt_yes_no) nor prompt directly. The install
+    # decision belongs in _pyve_toolchain_ensure_interpreter, outside capture.
+    local body
+    body="$(declare -f _pyve_toolchain_bootstrap_python)"
+    [[ "$body" != *"ensure_python_version_installed"* ]]
+    [[ "$body" != *"prompt_yes_no"* ]]
+}
+
+@test "_pyve_toolchain_confirm_install: declines in a non-interactive context (no TTY) — never blocks" {
+    unset CI PYVE_FORCE_YES
+    run _pyve_toolchain_confirm_install "3.14.5"
+    assert_status_equals 1
+}
+
+@test "_pyve_toolchain_confirm_install: PYVE_FORCE_YES=1 forces yes without a TTY" {
+    PYVE_FORCE_YES=1 run _pyve_toolchain_confirm_install "3.14.5"
+    assert_status_equals 0
+}
+
+@test "_pyve_toolchain_confirm_install: CI declines (no unattended source build)" {
+    CI=1 run _pyve_toolchain_confirm_install "3.14.5"
+    assert_status_equals 1
+}
+
+@test "_pyve_toolchain_ensure_interpreter: no-op when the exact version is already installed" {
+    detect_version_manager() { VERSION_MANAGER="asdf"; }
+    local install="$TEST_DIR/py"
+    mkdir -p "$install/bin"
+    printf '#!/bin/sh\necho 3.14.5\n' > "$install/bin/python"
+    chmod +x "$install/bin/python"
+    export FAKE_EXACT="$install/bin/python"
+    _pyve_toolchain_versioned_python() { printf '%s' "$FAKE_EXACT"; }
+    ensure_python_version_installed() { printf 'INSTALLER-RAN\n'; return 0; }
+
+    run _pyve_toolchain_ensure_interpreter "3.14.5"
+    assert_status_equals 0
+    [[ "$output" != *"INSTALLER-RAN"* ]]
+}
+
+@test "_pyve_toolchain_ensure_interpreter: absent exact + non-interactive → does not invoke the installer (no hang)" {
+    detect_version_manager() { VERSION_MANAGER="asdf"; }
+    _pyve_toolchain_versioned_python() { :; }              # exact version absent
+    ensure_python_version_installed() { printf 'INSTALLER-RAN\n'; return 0; }
+    unset CI PYVE_FORCE_YES
+
+    run _pyve_toolchain_ensure_interpreter "3.14.5"
+    assert_status_equals 0
+    [[ "$output" != *"INSTALLER-RAN"* ]]
+}
+
+@test "_pyve_toolchain_ensure_interpreter: absent exact + PYVE_FORCE_YES → invokes the installer" {
+    detect_version_manager() { VERSION_MANAGER="asdf"; }
+    _pyve_toolchain_versioned_python() { :; }              # exact version absent
+    ensure_python_version_installed() { printf 'INSTALLER-RAN\n'; return 0; }
+
+    PYVE_FORCE_YES=1 run _pyve_toolchain_ensure_interpreter "3.14.5"
+    assert_status_equals 0
+    assert_output_contains "INSTALLER-RAN"
+}
