@@ -2809,6 +2809,7 @@ The tag was cut but the formula never updated — the publish was blocked. **Roo
 **Tasks**
 
 - [x] **Fix `UntrustedTapError`:** add a `Trust the pointmatic tap` pre-step (`brew update-reset` → `brew tap pointmatic/tap` → `brew trust pointmatic/tap`) before the bump action in `update-homebrew.yml`. — *`update-reset` first guarantees a `brew` new enough to have the `trust` subcommand regardless of the runner's preinstalled version.*
+- [x] **Follow-on: `brew: command not found` (exit 127) in the pre-step.** `brew` is preinstalled on the runner but not on `PATH` in a custom `run:` step — the action only adds `/home/linuxbrew/.linuxbrew/bin` to `PATH` for its *own* steps (which run after the pre-step). Fixed by `eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"` at the top of the pre-step.
 - [ ] **Verify on the next `v*` tag push** that the workflow reaches the bump action without `UntrustedTapError` and the formula updates. CI-only verification (developer-owned tag push); if a future runner somehow predates `brew trust` even after `update-reset`, fall back to the `HOMEBREW_NO_REQUIRE_TAP_TRUST=1` env shim until it catches up.
 - [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
 - [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
