@@ -13,8 +13,13 @@ jobs:
       # The bump action taps and loads pyve in one internal step, so trust
       # must be recorded beforehand. update-reset first guarantees a brew new
       # enough to have the `trust` subcommand.
+      #
+      # brew is preinstalled but not on PATH in a custom run step (the action
+      # only adds it for its own steps, which run after this one), so load its
+      # shellenv from the known runner location first.
       - name: Trust the pointmatic tap
         run: |
+          eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
           brew update-reset
           brew tap pointmatic/tap
           brew trust pointmatic/tap
