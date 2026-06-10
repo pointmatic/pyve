@@ -32,14 +32,9 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 **Theme.** Generalize Pyve from a Python-only virtual-environment manager into a declarative, polyglot project-environment orchestrator. Introduce the canonical root-level `pyve.toml` manifest with `[env.<name>]` blocks carrying `purpose ∈ {run, test, utility, temp}`; re-seat the Python ecosystem as the first reference plugin behind a backend-provider contract; ship Node/SvelteKit as the second reference plugin; compose `.envrc`, `pyve check`, `pyve status`, and `pyve purge` across plugins and envs; introduce `pyve package` as an artifact-materialization hook (materializes an env's `packaging`; `deploy` reserved for a future ship step, per O1). Driving artifact: [phase-n-plugin-architecture-named-envs-plan.md](phase-n-plugin-architecture-named-envs-plan.md). Concept input: [phase-n-framework-plugin-architecture.md](phase-n-framework-plugin-architecture.md).
 
-**Structure — read before drafting any Phase N story.** Phase N is split into **10 subphases** because of its size. Stories are authored **one subphase at a time** — each subphase's stories get drafted in its own `plan_production_phase` session immediately before that subphase's implementation begins. This planning session drafted only **Subphase N-1**; N-2 through N-10 carry descriptions only. Subphase IDs are arabic-numeral-hyphenated (`N-1`, `N-2`, …) and are **structural markers in this file, not part of the story-ID scheme**. Story letters (`N.a`, `N.b`, …) continue monotonically **across subphases** — if N-1 ends at `N.j`, N-2 starts at `N.k`. Subphase headings in this file use `##` (same level as the phase heading) per the project convention.
+**Structure — read before drafting any Phase N story.** Phase N is split into **9 subphases** because of its size. Stories are authored **one subphase at a time** — each subphase's stories get drafted in its own `plan_production_phase` session immediately before that subphase's implementation begins. This planning session drafted only **Subphase N-1**; N-2 through N-9 carry descriptions only. Subphase IDs are arabic-numeral-hyphenated (`N-1`, `N-2`, …) and are **structural markers in this file, not part of the story-ID scheme**. Story letters (`N.a`, `N.b`, …) continue monotonically **across subphases** — if N-1 ends at `N.j`, N-2 starts at `N.k`. Subphase headings in this file use `##` (same level as the phase heading) per the project convention.
 
-**Two release tags (exception to Version Cadence).** Phase N ships **two** releases — the only post-1.0 phase to do so:
-
-- **v3.0.0** at the end of Subphase N-9 (after the architectural cutover).
-- **v3.1.0** at the end of Phase O (UX visual refinement + hard migration gate).
-
-Within each subphase, stories run unversioned during work; the subphase contributes to its assigned release bundle. **No intermediate release tags between subphases within a bundle.**
+**Single release tag (normal Version Cadence).** Phase N ships **one** bundled release — **v3.0.0** at the end of Subphase N-9 (after the architectural cutover). The post-v3.0 UX refinement + hard migration gate that originally rode in this phase as Subphase N-10 was promoted to its own **Phase O** (shipping **v3.1.0** on its own cadence), so Phase N is no longer a multi-release exception. Within each subphase, stories run unversioned during work; **no intermediate release tags between subphases within the v3.0.0 bundle.**
 
 ---
 
@@ -2772,9 +2767,44 @@ Holistic documentation reflow via `refactor_document`, run **after** N-7's test 
 
 ## Subphase N-9: v3.0.0 release tag
 
-Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **First Phase N release tag.** Story breakdown deferred.
+Final integration verification matrix across Python-only, Node-only, and polyglot Python+Node project shapes. `CHANGELOG.md` entry. `project-guide bump-version 3.0.0`. Homebrew formula update via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). **Phase N's single release tag.** **Story breakdown drafted 2026-06-05: N.bs–N.bu below.**
+
+### Story N.bs: Final integration verification matrix — Python-only / Node-only / polyglot [Planned]
+
+**Motivation.** The release gate for v3.0.0: confirm the full integration suite is green across the three canonical project shapes the plugin architecture must support — Python-only, Node-only, and polyglot Python+Node — on the CI matrix, before the version is cut. Surfaces any last-mile release blocker.
+
+**Tasks**
+
+- [ ] Run the full integration suite across all three project shapes (Python-only, Node-only, polyglot) on the CI matrix (3.12 / 3.14 where applicable); confirm green.
+- [ ] Verify the composed surfaces end-to-end on each shape: `init` (composed/cross-stack), `check`, `status`, `purge`, `.envrc`, `run`, `test`, `self migrate`.
+- [ ] Confirm the **shipped** vocabulary surface matches what landed — if F4/F6 (N.az / N.ba, blocked-on-`plan_envs`) slipped, verify the lenient-validation fallback (no hard-error regressions); if they landed, verify the trichotomy.
+- [ ] Triage any failure: fix in-place if last-mile, or flag as a release blocker for developer decision.
+
+### Story N.bt: v3.0.0 CHANGELOG + release notes [Planned]
+
+**Motivation.** Author the `## [3.0.0]` CHANGELOG entry + release notes summarizing the Phase N arc for users upgrading from v2. (`project-guide bump-version 3.0.0` seeds the skeleton per the mode's release step; this story fills the content.)
+
+**Tasks**
+
+- [ ] Flesh out the `## [3.0.0]` CHANGELOG entry: the headline capability arc (plugin architecture; named envs / `pyve.toml`; multi-stack Python+Node; composed `init`/`check`/`status`/`purge`/`.envrc`; `pyve self migrate`; `pyve package` reserved).
+- [ ] **Breaking changes + migration:** the v2→v3 surface (`testenv` → `env` deprecation, the root-level `pyve.toml` declaration, the `.pyve/envs/<name>/<backend>/` state layout); point to `pyve self migrate` and the migration guide (N.br).
+- [ ] **Honest scope line:** what shipped vs deferred — advisory backends (`cargo`/`bundler`/`xcode`/…), the `pyve lint` verb, and F4/F6 if they slipped with `plan_envs` (note the lenient-validation window).
+- [ ] Reconcile the recorded version-bump target (the O-series settled `v3.0.0`); confirm no unanticipated breaking change reopened it.
+
+### Story N.bu: Homebrew formula release readiness [Planned]
+
+**Motivation.** Ensure the v3.0.0 tag flows cleanly to the published Homebrew formula via the existing [.github/workflows/update-homebrew.yml](../../.github/workflows/update-homebrew.yml). The actual `project-guide bump-version 3.0.0` + tag push + release publish are the developer's terminal release actions (mode Step 10).
+
+**Tasks**
+
+- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
+- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
+- [ ] Verify the workflow trigger shape so the v3.0.0 tag updates the formula without manual patching.
+- [ ] Hand-off note: the developer invokes `project-guide bump-version 3.0.0`, pushes the tag, and publishes the release (git/release actions are developer-owned).
 
 ---
+
+## Future
 
 ## Phase O: UX visual refinement + hard migration gate (post-v3.0.0)
 
@@ -2843,8 +2873,6 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 **Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Phase O (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
 
 ---
-
-## Future
 
 ### Story ?.?: Fix pre-existing integration test failures [Planned]
 

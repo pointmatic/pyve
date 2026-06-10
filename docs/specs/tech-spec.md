@@ -166,7 +166,7 @@ The line-count floor is set by the explicit-sourcing rule (project-essentials): 
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `VERSION` | `"3.0.0a3"` | Current Pyve version (v3.0 pre-release) |
+| `VERSION` | `"3.0.0"` | Current Pyve version |
 | `DEFAULT_PYTHON_VERSION` | `"3.14.5"` | Default Python version for new environments (also keys the toolchain venv) |
 | `DEFAULT_VENV_DIR` | `".venv"` | Default venv directory name |
 | `ENV_FILE_NAME` | `".env"` | Environment variables filename |
