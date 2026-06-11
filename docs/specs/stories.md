@@ -64,17 +64,34 @@ There may be random bugfixes and minor improvements interspersed within the stor
 
 ---
 
-### Story O.?: General housekeeping +Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+### Story O.b: Extend the `.pyve/` gitignore-contract update across the integration suite + keep the emitted file clean (CI follow-up to O.a) [Done]
+
+**Discovered:** 2026-06-10, CI on the O.a branch — `test_micromamba_workflow.py::test_gitignore_updated_for_micromamba` failed: `assert '.pyve/envs' in lines` no longer holds now that the composer emits a single `.pyve/`.
+
+**Root cause.** O.a's prevention scan for old-contract gitignore-line assertions was scoped to `*.bats` / `*.sh` and never searched the pytest integration suite (which isn't run locally — it mutates real `$HOME`). Four integration assertions still encoded the pre-O.a enumerated-subdir contract (`.pyve/envs` / `.pyve/testenvs` as exact gitignore lines). Separately, O.a wrote its whole-tree rationale comment *inside* the composer heredoc, so those 5 rationale lines were being emitted into every user's generated `.gitignore` — and the embedded `.pyve/testenvs` text could false-pass a substring assertion.
+
+**Fix.**
+1. Update the four integration assertions to the `.pyve/` contract; convert the one substring check (`'.pyve/testenvs' in content_before`) to an exact line-membership check so the managed comment block can't false-pass it.
+2. Move the rationale out of the heredoc into a source comment in `_gitignore_infra_block`, so the emitted `.gitignore` carries only `.pyve/` under `# Pyve-managed`.
+
+**Version:** rides v3.0.4 (O.a owns the bump; no separate version).
+
+**Tasks**
+
+- [x] Fix the failing assertion + 3 siblings: [test_micromamba_workflow.py](../../tests/integration/test_micromamba_workflow.py) (1), [test_venv_workflow.py](../../tests/integration/test_venv_workflow.py) (3, incl. the substring→exact-line conversion).
+- [x] Slim the emitted `.gitignore`: whole-tree rationale moved to a source comment outside the heredoc in [gitignore_composer.sh](../../lib/gitignore_composer.sh); verified the emitted block is `.pyve/` only (no `.pyve/{envs,testenvs}` leak into user output).
+- [x] All-language prevention re-scan: swept `tests/` + `lib/` for any remaining exact `.pyve/{envs,testenvs}` gitignore-line assertions (none).
+- [x] Unit suites green (composer / update / self_migrate, 68 tests); both edited Python test files compile; integration suite validated by CI (not run locally — real-`$HOME` hazard).
+
+---
+
+### Story O.?: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
 
 - [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
 - [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
 - [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
 - [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
 - [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
-
----
-
-
 - [ ] *(housekeeping)* Stale comments referencing "lib/utils.sh's gitignore template" ([test_testenvs_activate.bats:15](../../tests/unit/test_testenvs_activate.bats#L15), [test_state_layout.bats:165](../../tests/unit/test_state_layout.bats#L165)) point at the pre-composer emitter; refresh to name `lib/gitignore_composer.sh` when next touching those files.
 
 ---

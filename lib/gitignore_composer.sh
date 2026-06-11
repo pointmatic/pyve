@@ -31,16 +31,18 @@ GITIGNORE_MANAGED_END="# <<< pyve:managed:gitignore <<<"
 # before the composer. The venv directory is dynamic (a custom `pyve init
 # <dir>` overrides it), so it is appended from DEFAULT_VENV_DIR.
 _gitignore_infra_block() {
+    # Everything under .pyve/ is materialized state (envs, locks, sentinels,
+    # the bin/ bootstrap dir, the .v2-legacy/ backup tree), never config — so
+    # ignore the whole tree with a single `.pyve/`. An enumerated subdir list
+    # (`.pyve/envs`, `.pyve/testenvs`) is anchored and silently misses nested
+    # state the migrator and bootstrap create below the top level. (This is a
+    # source comment, deliberately outside the heredoc, so it stays out of the
+    # user's emitted .gitignore.)
     cat <<'EOF'
 # macOS
 .DS_Store
 
 # Pyve-managed
-# Everything under .pyve/ is materialized state (envs, locks, sentinels,
-# the bin/ bootstrap dir, the .v2-legacy/ backup tree), never config — so
-# ignore the whole tree. An enumerated subdir list (`.pyve/envs`,
-# `.pyve/testenvs`) is anchored and silently misses nested state the
-# migrator and bootstrap create below the top level.
 .pyve/
 .envrc
 .env
