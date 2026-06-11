@@ -80,7 +80,7 @@ EOF
     [[ "$output" == *"__pycache__"* ]]
     # Composer-owned infrastructure.
     [[ "$output" == *".DS_Store"* ]]
-    [[ "$output" == *".pyve/envs"* ]]
+    [[ "$output" == *".pyve/"* ]]
     [[ "$output" == *".envrc"* ]]
     [[ "$output" == *".env"* ]]
 }
@@ -110,6 +110,37 @@ EOF
     rm -f .gitignore
     _compose_gitignore_body >/dev/null
     [ ! -f .gitignore ]
+}
+
+# ════════════════════════════════════════════════════════════════════
+# Materialized-state coverage.
+#
+# Everything under `.pyve/` is materialized state, never config — so the
+# composed `.gitignore` must ignore the WHOLE tree, not an enumerated set
+# of top-level subdirs. The trap: a gitignore pattern carrying a
+# non-trailing slash (`.pyve/testenvs`) is anchored to the path root, so
+# it matches `.pyve/testenvs` but NOT `.pyve/.v2-legacy/testenvs/...` (the
+# layout `pyve self migrate` creates) nor `.pyve/bin/...` (the micromamba
+# bootstrap's download dir). Asserted behaviorally via `git check-ignore`
+# because a literal-line grep would pass on the buggy enumerated form yet
+# still miss the nested paths. Regression: a migrate run committed 1000+
+# legacy-venv files because none of these paths were ignored.
+# ════════════════════════════════════════════════════════════════════
+
+@test "infra: composed .gitignore ignores every materialized-state path under .pyve/" {
+    _load_pure_python
+    compose_gitignore .gitignore
+    git init -q .
+    # Nested paths created by the migrator / bootstrap / env provisioning —
+    # exactly the ones an anchored top-level subdir pattern silently misses.
+    local p
+    for p in \
+        .pyve/.v2-legacy/testenvs/testenv/venv/bin/pytest \
+        .pyve/bin/micromamba \
+        .pyve/envs/root/conda/conda-meta/history; do
+        run git -c core.excludesFile=/dev/null check-ignore "$p"
+        [ "$status" -eq 0 ] || { echo "NOT ignored: $p"; false; }
+    done
 }
 
 # ════════════════════════════════════════════════════════════════════

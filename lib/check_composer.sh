@@ -116,9 +116,11 @@ _compose_check_pyve_hosting() {
     declare -F pyve_toolchain_venv_dir >/dev/null 2>&1 || return 0
     declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 || return 0
 
-    local venv_dir
-    venv_dir="$(pyve_toolchain_venv_dir)"
-    if [[ -x "$venv_dir/bin/python" ]]; then
+    # Runnability, not existence: a dead-shebang interpreter / dangling shim
+    # passes `[[ -x ]]` but cannot run. Share the same probe `--status` uses
+    # (pyve_toolchain_runnable / pyve_project_guide_runnable) so the human
+    # `pyve check` and the machine query can never disagree about "ready".
+    if pyve_toolchain_runnable >/dev/null 2>&1; then
         printf 'Toolchain Python: provisioned (%s)\n' "${DEFAULT_PYTHON_VERSION:-unknown}"
     else
         printf 'Toolchain Python: not provisioned (falls back to python on PATH)\n'
@@ -128,7 +130,7 @@ _compose_check_pyve_hosting() {
     src="$(project_guide_deps_source 2>/dev/null || true)"
     if [[ -n "$src" ]]; then
         printf 'project-guide: managed by your project (%s)\n' "$src"
-    elif pyve_project_guide_is_hosted 2>/dev/null; then
+    elif pyve_project_guide_is_hosted 2>/dev/null && pyve_project_guide_runnable >/dev/null 2>&1; then
         printf 'project-guide hosting: provisioned\n'
         printf "  Upgrade: 'pyve self provision'  ·  Remove: 'pyve self unprovision --all'\n"
     else

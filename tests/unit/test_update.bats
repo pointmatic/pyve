@@ -108,11 +108,14 @@ EOF
     grep -q "my-secret-file" .gitignore
 }
 
-@test "update: venv-init'd project gains .pyve/envs ignore after update (H.e.2a)" {
+@test "update: venv-init'd project gains whole-.pyve/ ignore after update (H.e.2a)" {
     # Regression for H.e.2a: a project originally venv-init'd with the
-    # pre-fix template would have .gitignore missing .pyve/envs. After
-    # `pyve update`, the refreshed template must include it so a later
-    # micromamba env dropping into .pyve/envs/ stays out of git.
+    # pre-fix template would have .gitignore missing any .pyve/ state
+    # ignore. After `pyve update`, the refreshed template must ignore the
+    # whole .pyve/ tree so a later micromamba env dropping into
+    # .pyve/envs/ — or the migrator's .pyve/.v2-legacy/ backup — stays out
+    # of git. (The earlier enumerated `.pyve/envs` line was widened to
+    # `.pyve/` because anchored subdir patterns miss nested state.)
     create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
     cat > .gitignore << 'EOF'
 # Pyve virtual environment
@@ -125,8 +128,8 @@ EOF
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
 
-    # .pyve/envs must now be in .gitignore.
-    run grep -qxF ".pyve/envs" .gitignore
+    # The whole .pyve/ tree must now be ignored.
+    run grep -qxF ".pyve/" .gitignore
     [ "$status" -eq 0 ]
 }
 

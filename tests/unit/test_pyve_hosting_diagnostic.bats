@@ -66,6 +66,26 @@ _host_pg_shim() {
     [[ "$output" == *"pyve self unprovision --all"* ]]
 }
 
+@test "check [pyve]: dead-shebang toolchain python is NOT 'provisioned' (runnability, not existence)" {
+    # File exists and is executable (passes [[ -x ]]) but cannot exec — the
+    # existence != runnability trap. check must not rubber-stamp it.
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"; mkdir -p "$bin"
+    printf '#!/nonexistent/interp\n' > "$bin/python"; chmod +x "$bin/python"
+    run _compose_check_pyve_hosting
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Toolchain Python: not provisioned"* ]]
+}
+
+@test "check [pyve]: hosted-but-broken project-guide shim is NOT 'provisioned'" {
+    _host_toolchain_python
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/nonexistent/interp\n' > "$HOME/.local/bin/project-guide"
+    chmod +x "$HOME/.local/bin/project-guide"
+    run _compose_check_pyve_hosting
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"project-guide hosting: not provisioned"* ]]
+}
+
 @test "check [pyve]: project-managed (pip) → 'managed by your project (pip)', no provision hint" {
     printf 'project-guide\n' > requirements.txt
     run _compose_check_pyve_hosting
