@@ -283,6 +283,26 @@ EOF
     [ ! -d .pyve/.v2-legacy ]
 }
 
+@test "self_migrate: no longer rebuilds — never invokes init_project, points at pyve init --force" {
+    _write_v2_venv_config
+    # Sentinel stub: migrate must NOT call init_project anymore. The
+    # rebuild was the dangerous, backend-converting step; migrate's job
+    # is now just to seed pyve.toml + back up legacy sources.
+    init_project() { printf 'called\n' > .init_was_called; }
+    run self_migrate
+    [ "$status" -eq 0 ]
+    [ -f pyve.toml ]
+    [ ! -f .init_was_called ]
+    [[ "$output" == *"pyve init --force"* ]]
+}
+
+@test "self_migrate --dry-run: plan does not promise a rebuild" {
+    _write_v2_venv_config
+    run self_migrate --dry-run
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"Would invoke 'pyve init --force' to rebuild"* ]]
+}
+
 @test "self_migrate --no-rebuild: writes pyve.toml + backup, skips init --force" {
     _write_v2_venv_config
     _write_v2_pyproject_with_testenvs
