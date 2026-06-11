@@ -894,6 +894,7 @@ self_migrate() {
         info "Migration plan (--dry-run; no writes):"
         info "  Would write pyve.toml ($project_name, backend=${_MIGRATE_V2_BACKEND:-?})"
         _self_migrate_backup true
+        info "  Would refresh .gitignore so the .pyve/ state tree is ignored"
         if [[ "$no_rebuild" != "true" ]]; then
             info "  Would invoke 'pyve init --force' to rebuild envs at the v3 layout"
         fi
@@ -908,6 +909,18 @@ self_migrate() {
     # Step 2: back up legacy sources.
     _self_migrate_backup false
     success "Backed up legacy sources to .pyve/.v2-legacy/"
+
+    # Refresh .gitignore so the freshly-created .pyve/.v2-legacy/ backup
+    # (and all other .pyve/ state) is ignored. The rebuild path calls
+    # init_project directly, which skips the gitignore compose tail, and
+    # --no-rebuild skips init entirely — so without this the legacy venv
+    # tree the backup just captured stays committable, the exact failure
+    # that dumped 1000+ files into a commit.
+    if compose_project_gitignore ".gitignore" >/dev/null 2>&1; then
+        success "Refreshed .gitignore (.pyve/ state ignored)"
+    else
+        warn "Could not refresh .gitignore — ensure '.pyve/' is git-ignored before committing."
+    fi
 
     # Step 3: rebuild via `pyve init --force` unless suppressed.
     if [[ "$no_rebuild" == "true" ]]; then

@@ -295,6 +295,30 @@ EOF
     [ -f .pyve/.v2-legacy/pyproject-testenvs.toml ]
 }
 
+@test "self_migrate: refreshes .gitignore so the .v2-legacy backup is ignored" {
+    # Regression: migrate moves the legacy venv into .pyve/.v2-legacy/ but
+    # left .gitignore untouched, so the whole backup tree (1000+ files)
+    # became committable. Driven end-to-end through the binary so the real
+    # gitignore composer runs (the unit setup doesn't source it).
+    _write_v2_venv_config
+    mkdir -p .pyve/testenvs/testenv/venv/bin
+    printf '#fake\n' > .pyve/testenvs/testenv/venv/bin/pytest
+    # A v2-era .gitignore predating the whole-.pyve/ ignore.
+    cat > .gitignore <<'EOF'
+.pyve/testenv
+.envrc
+.env
+.venv
+EOF
+    git init -q .
+    run "$PYVE_ROOT/pyve.sh" self migrate --no-rebuild
+    [ "$status" -eq 0 ]
+    # The moved legacy venv must be ignored after migration.
+    run git -c core.excludesFile=/dev/null check-ignore \
+        .pyve/.v2-legacy/testenvs/testenv/venv/bin/pytest
+    [ "$status" -eq 0 ]
+}
+
 @test "self_migrate --dry-run: no disk writes" {
     _write_v2_venv_config
     _write_v2_pyproject_with_testenvs

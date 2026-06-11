@@ -26,11 +26,60 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ---
 
-## Phase O: UX visual refinement + hard migration gate (post-v3.0.0)
+## Phase O: UX visual refinement + hard migration gate + bugfixes and minor improvements (post-v3.0.0)
 
-Begins **after v3.0.0 ships**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred. Ships **v3.1.0** as the second Phase N release tag.
+Begins **after v3.0.0 ships**, with the goal of shipping **v3.1.0**. Extends [lib/ui/](../../lib/ui/) with color and glyph primitives (TTY-detected, `NO_COLOR` respected); adds expand/collapse sections in `pyve check` / `pyve status` long-form output; structural lines between plugin sections in aggregated commands. **Migration hardening:** removes the v3.0 read-compat layer (from Story N.i); replaces the soft banner (from Story N.h) with the hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate to v3.x.x? [Y/n]"* — invoking `self_migrate()` on accept. Resolves **PC-5** (UX visual structure). Story breakdown deferred.
 
-### Story N.?: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
+There may be random bugfixes and minor improvements interspersed within the stories below. 
+
+---
+
+### Story O.a: v3.0.4 `pyve migrate` clunkiness — `pyve self migrate` commits the entire `.v2-legacy` backup (`.gitignore` never covers `.pyve/` state) [Done]
+
+**Discovered:** 2026-06-10, developer report — a migration commit dragged in 1000+ files (`.pyve/.v2-legacy/testenvs/testenv/venv/lib/python3.12/site-packages/_pytest/*.py`, the whole legacy testenv venv).
+
+**Symptom.** After `pyve self migrate`, `git` wanted to track the entire moved legacy venv tree under `.pyve/.v2-legacy/`. `git check-ignore .pyve/.v2-legacy/testenvs/testenv/venv/bin/pytest` returned nothing → committable.
+
+**Root cause — two facets of one gap (materialized `.pyve/` state not ignored):**
+
+1. **Anchored gitignore patterns.** [`_gitignore_infra_block`](../../lib/gitignore_composer.sh) emitted `.pyve/envs` + `.pyve/testenvs`. A gitignore pattern carrying a non-trailing slash is **anchored to the path root**, so `.pyve/testenvs` matches `.pyve/testenvs` but **not** the nested `.pyve/.v2-legacy/testenvs/…` the migrator creates (nor `.pyve/bin/…`, the micromamba bootstrap's download dir — a latent twin of the same bug).
+2. **Migrate never refreshes `.gitignore`.** [`self_migrate`](../../lib/commands/self.sh) moves legacy sources into `.pyve/.v2-legacy/`, then rebuilds by calling `init_project` **directly** — bypassing `compose_init`'s tail (`_compose_init_run_tail` → `compose_project_gitignore`) where the `.gitignore` recompose lives. `--no-rebuild` skips init entirely. So in **both** paths migrate created a fresh committable backup tree and left `.gitignore` byte-identical. Even after fixing the composer, a migrating project's stale v2 `.gitignore` would only gain coverage on a *later* `pyve init`/`update`, not during the migrate that creates the exposure.
+
+**Why tests didn't catch it.** The composer suite asserted *which lines* get emitted, never that the emitted file actually *ignores* the materialized-state paths the migrator creates (a literal-line grep passes on the buggy enumerated form yet still misses the nested paths). No test exercised migrate's effect on `.gitignore` at all.
+
+**Fix.** (1) Composer emits a single `.pyve/` (whole-tree ignore) — matches the documented invariant *"everything under `.pyve/` is materialized state, never config"*, and closes the `.pyve/bin/` gap in the same stroke. (2) `self_migrate` calls `compose_project_gitignore` right after the backup, **unconditionally** (covers `--no-rebuild` and rebuild), with a non-fatal warn on failure and a matching `--dry-run` plan line.
+
+**Version:** v3.0.4 (patch) per Version Cadence.
+
+**Tasks**
+
+- [x] Reproduce (red): behavioral `git check-ignore` test in [test_gitignore_composer.bats](../../tests/unit/test_gitignore_composer.bats) — composed `.gitignore` must ignore `.pyve/.v2-legacy/…`, `.pyve/bin/…`, `.pyve/envs/…`; fails on the enumerated form.
+- [x] Reproduce (red): end-to-end test in [test_self_migrate.bats](../../tests/unit/test_self_migrate.bats) — `pyve self migrate --no-rebuild` must leave the moved legacy venv git-ignored.
+- [x] Fix composer: collapse `.pyve/envs` + `.pyve/testenvs` → `.pyve/` in `_gitignore_infra_block`.
+- [x] Fix migrate: `compose_project_gitignore` after backup (unconditional) + `--dry-run` plan line.
+- [x] Update the H.e.2a regression in [test_update.bats](../../tests/unit/test_update.bats): widen the exact-line `.pyve/envs` assertion to `.pyve/` (the contract changed; intent preserved and strengthened).
+- [x] Prevention scan: closed the `.pyve/bin/micromamba` latent gap (now covered by `.pyve/`); swept tests/lib for other anchored `.pyve/{envs,testenvs}` gitignore-emit assertions (none beyond the two updated); no story-ID comments introduced (per project-essentials).
+- [x] Full unit suite green (1944 tests, 0 failures); live `pyve self migrate` repro now prints `✔ Refreshed .gitignore (.pyve/ state ignored)` and the backup is ignored.
+- [x] Update version in [pyve.sh](../../pyve.sh) to v3.0.4
+
+---
+
+### Story O.?: General housekeeping +Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+
+- [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
+- [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
+- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
+- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
+- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
+
+---
+
+
+- [ ] *(housekeeping)* Stale comments referencing "lib/utils.sh's gitignore template" ([test_testenvs_activate.bats:15](../../tests/unit/test_testenvs_activate.bats#L15), [test_state_layout.bats:165](../../tests/unit/test_state_layout.bats#L165)) point at the pre-composer emitter; refresh to name `lib/gitignore_composer.sh` when next touching those files.
+
+---
+
+### Story O.?: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
 
 **Discovered:** 2026-06-08 smoke test (`pyve env install` and `pyve env init testenv` on a `.git`-only `pyve-v3-smoke`).
 
@@ -93,15 +142,6 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 4. **Close the upstream cause — the test-isolation leak.** The triggering incident was *manufactured by Pyve's own test suite*: [`_isolate_home`](../../tests/integration/test_project_guide_integration.py#L211-L217) (integration harness) symlinks the developer's **real** `~/.asdf` and `~/.local` into the test's fake `$HOME`, so any project-guide/toolchain-provisioning test writes hosting artifacts into real developer state — which dangles when the test's tmpdir is cleaned up. Re-scope `_isolate_home` so the suite can never again mutate a real home (provision into a fully self-contained fake `$HOME`, or stub provisioning entirely). N.bo's `PYVE_PROJECT_GUIDE_BIN` seam closes one path; the version-manager (`.asdf`) and self-install paths remain open.
 
 **Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Phase O (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
-
----
-
-### Story ?.?: Homebrew update formula validation + CLI install/upgrade improvements [Planned]
-- [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
-- [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
-- [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
-- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
-- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
 
 ---
 

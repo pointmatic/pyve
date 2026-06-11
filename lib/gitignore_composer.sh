@@ -36,8 +36,12 @@ _gitignore_infra_block() {
 .DS_Store
 
 # Pyve-managed
-.pyve/envs
-.pyve/testenvs
+# Everything under .pyve/ is materialized state (envs, locks, sentinels,
+# the bin/ bootstrap dir, the .v2-legacy/ backup tree), never config — so
+# ignore the whole tree. An enumerated subdir list (`.pyve/envs`,
+# `.pyve/testenvs`) is anchored and silently misses nested state the
+# migrator and bootstrap create below the top level.
+.pyve/
 .envrc
 .env
 .vscode/settings.json
