@@ -41,17 +41,21 @@ fi
 # Silent in piecemeal test subshells where the helpers aren't sourced.
 _compose_status_project_guide() {
     declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 || return 0
-    local src mode
+    local src mode hint=""
     src="$(project_guide_deps_source 2>/dev/null || true)"
     if [[ -n "$src" ]]; then
         mode="project-managed ($src)"
     elif pyve_project_guide_is_hosted 2>/dev/null; then
         mode="pyve-hosted (toolchain)"
+        hint="  Upgrade: 'pyve self provision'  ·  Remove: 'pyve self unprovision --all'"
     else
         mode="not integrated"
+        hint="  Run 'pyve self provision' to install Project-Guide (Pyve-hosted)."
     fi
     printf '[project-guide]\n'
-    printf '  %s\n\n' "$mode"
+    printf '  %s\n' "$mode"
+    [[ -n "$hint" ]] && printf '%s\n' "$hint"
+    printf '\n'
     return 0
 }
 

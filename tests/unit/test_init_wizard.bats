@@ -24,6 +24,11 @@ setup() {
     # (log_error, header_box, etc.) come from ui/core.sh and utils.sh,
     # both sourced by setup_pyve_env.
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
+    # Capture an absolute path to a working python BEFORE _stub_managers
+    # restricts PATH. The manifest-honoring backend tests below call
+    # manifest_load, which shells out to Pyve's toolchain python; PYVE_PYTHON
+    # at top precedence keeps that resolvable under the stubbed PATH.
+    export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
     # Default: stub asdf so wizard tests that exercise the venv +
     # --python-version flag-driven path don't hard-fail on Linux CI
@@ -261,6 +266,105 @@ teardown() {
     local backend_flag="venv"
     PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "" "false" "yes" >/dev/null 2>&1
     [[ "$backend_flag" == "venv" ]]
+}
+
+#============================================================
+# A forced/refresh rebuild honors the backend declared in pyve.toml
+# over the filesystem heuristic. Before the fix, a bare rebuild
+# re-derived the backend from repo signals (environment.yml →
+# micromamba, else venv), silently converting a project whose manifest
+# declares a backend the heuristic disagrees with.
+#============================================================
+
+# Write a minimal pyve.toml declaring the root env's backend.
+_write_manifest_root_backend() {
+    cat > pyve.toml <<TOML
+pyve_schema = "3.0"
+
+[project]
+name = "proj"
+
+[env.root]
+purpose = "utility"
+backend = "$1"
+TOML
+}
+
+@test "_init_manifest_root_backend: returns the root backend declared in pyve.toml" {
+    _write_manifest_root_backend micromamba
+    run _init_manifest_root_backend
+    [ "$status" -eq 0 ]
+    [[ "$output" == "micromamba" ]]
+}
+
+@test "_init_manifest_root_backend: empty when no pyve.toml" {
+    run _init_manifest_root_backend
+    [ "$status" -eq 0 ]
+    [[ -z "$output" ]]
+}
+
+@test "_init_wizard: pyve.toml backend (micromamba) wins over venv heuristic" {
+    _write_manifest_root_backend micromamba
+    # A repo signal the heuristic would read as venv. Without the fix the
+    # wizard auto-detects venv and orphans the declared micromamba env.
+    touch .python-version
+    PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "" "3.13.7" "true" "yes"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: micromamba (from pyve.toml)"* ]]
+}
+
+@test "_init_wizard: pyve.toml backend (venv) wins over micromamba heuristic" {
+    _write_manifest_root_backend venv
+    # environment.yml would make the heuristic pick micromamba.
+    touch environment.yml
+    local backend_flag=""
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "yes" >/dev/null 2>&1
+    [[ "$backend_flag" == "venv" ]]
+}
+
+@test "_init_wizard: explicit --backend overrides the pyve.toml backend" {
+    _write_manifest_root_backend micromamba
+    local backend_flag="venv"
+    PYVE_INIT_NONINTERACTIVE=1 _init_wizard "$backend_flag" "3.13.7" "true" "yes" >/dev/null 2>&1
+    [[ "$backend_flag" == "venv" ]]
+}
+
+#============================================================
+# A forced rebuild must not silently orphan a materialized env whose
+# backend differs from the target the manifest declares. Such a stray
+# (e.g. a .venv left alongside a micromamba manifest) is moved to the
+# .v2-legacy backup tree, not abandoned.
+#============================================================
+
+@test "_init_backup_foreign_env: micromamba target backs up a stray .venv" {
+    mkdir -p .venv/bin
+    printf 'stub\n' > .venv/bin/python
+    run _init_backup_foreign_env micromamba
+    [ "$status" -eq 0 ]
+    [ ! -d .venv ]
+    # The stray venv is preserved under the legacy backup tree.
+    run bash -c 'ls -d .pyve/.v2-legacy/orphaned-venv-* 2>/dev/null'
+    [ "$status" -eq 0 ]
+}
+
+@test "_init_backup_foreign_env: venv target backs up a stray micromamba env" {
+    mkdir -p .pyve/envs/root/conda/bin
+    printf 'stub\n' > .pyve/envs/root/conda/bin/python
+    run _init_backup_foreign_env venv
+    [ "$status" -eq 0 ]
+    [ ! -d .pyve/envs/root/conda ]
+    run bash -c 'ls -d .pyve/.v2-legacy/orphaned-conda-* 2>/dev/null'
+    [ "$status" -eq 0 ]
+}
+
+@test "_init_backup_foreign_env: leaves the target backend's own env untouched" {
+    # venv target + an existing .venv (the target's own env) must NOT be
+    # backed up — only a foreign-backend env is.
+    mkdir -p .venv/bin
+    run _init_backup_foreign_env venv
+    [ "$status" -eq 0 ]
+    [ -d .venv ]
+    [ ! -d .pyve/.v2-legacy ]
 }
 
 #============================================================

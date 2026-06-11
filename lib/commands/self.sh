@@ -340,7 +340,8 @@ _self_prune_stale_toolchain_versions() {
 # missing toolchain venv or a failed pip install WARNS but never aborts.
 # Idempotent: `ln -sf` re-points the shim to the current version-keyed
 # venv, so a DEFAULT_PYTHON_VERSION bump self-heals on the next install.
-# Requires project-guide >= 2.13.0 (the pyve-toolchain-hosting contract).
+# Requires project-guide >= 2.15.0 (ships the readiness-gated local-install
+# warning that consumes `pyve self provision --status`).
 #------------------------------------------------------------
 
 # Install Pyve's toolchain Python dependencies into the toolchain venv
@@ -377,7 +378,7 @@ _self_install_project_guide() {
     if [[ ! -x "$pip_cmd" ]]; then
         return 0
     fi
-    if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.13.0'; then
+    if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.15.0'; then
         log_success "Installed project-guide into the Pyve toolchain"
         # Shared shim-link helper (Story N.bh, lib/toolchain_python.sh).
         pyve_link_project_guide_shim "$venv_dir"
@@ -578,15 +579,18 @@ _self_uninstall_prompt_hook() {
 # ============================================================
 #
 # Deterministic, idempotent path that brings a v2.7/v2.8 project to
-# v3 in one invocation: writes `pyve.toml` from legacy artifacts,
-# backs them up under `.pyve/.v2-legacy/`, optionally invokes
-# `pyve init --force` to rebuild envs at the v3 state layout
-#.
+# v3: writes `pyve.toml` from legacy artifacts and backs them up under
+# `.pyve/.v2-legacy/`. It does NOT rebuild envs — the rebuild was the
+# dangerous, backend-converting step: it re-derived the backend from
+# filesystem heuristics and could convert a micromamba project to venv,
+# orphaning the intact conda env. Rebuilding is a separate, explicit step
+# the developer runs when ready: `pyve init --force` now honors the
+# backend the manifest declares.
 #
 # Flags:
 #   --dry-run     Print the migration plan; perform no writes.
-#   --no-rebuild  Write pyve.toml + back up legacy sources; skip
-#                 the `pyve init --force` rebuild step.
+#   --no-rebuild  Accepted for back-compat; redundant now that migrate
+#                 never rebuilds.
 #
 # Idempotency: re-running on a fully-migrated project (pyve.toml
 # present, no v2 sources) is a clean no-op with an informational
@@ -894,9 +898,8 @@ self_migrate() {
         info "Migration plan (--dry-run; no writes):"
         info "  Would write pyve.toml ($project_name, backend=${_MIGRATE_V2_BACKEND:-?})"
         _self_migrate_backup true
-        if [[ "$no_rebuild" != "true" ]]; then
-            info "  Would invoke 'pyve init --force' to rebuild envs at the v3 layout"
-        fi
+        info "  Would refresh .gitignore so the .pyve/ state tree is ignored"
+        info "  Next step (run yourself): 'pyve init --force' to rebuild envs at the v3 layout"
         footer_box
         return 0
     fi
@@ -909,36 +912,41 @@ self_migrate() {
     _self_migrate_backup false
     success "Backed up legacy sources to .pyve/.v2-legacy/"
 
-    # Step 3: rebuild via `pyve init --force` unless suppressed.
-    if [[ "$no_rebuild" == "true" ]]; then
-        info "Skipped rebuild (--no-rebuild). Run 'pyve init --force' when ready."
+    # Refresh .gitignore so the freshly-created .pyve/.v2-legacy/ backup
+    # (and all other .pyve/ state) is ignored. The rebuild path calls
+    # init_project directly, which skips the gitignore compose tail, and
+    # --no-rebuild skips init entirely — so without this the legacy venv
+    # tree the backup just captured stays committable, the exact failure
+    # that dumped 1000+ files into a commit.
+    if compose_project_gitignore ".gitignore" >/dev/null 2>&1; then
+        success "Refreshed .gitignore (.pyve/ state ignored)"
     else
-        info "Rebuilding environments at the v3 state layout..."
-        PYVE_REINIT_MODE="force" PYVE_FORCE_YES=1 init_project || {
-            log_error "pyve init --force failed during migration."
-            log_error "Your legacy sources are preserved at .pyve/.v2-legacy/."
-            log_error "Resolve the init error, then re-run 'pyve self migrate'."
-            return 1
-        }
+        warn "Could not refresh .gitignore — ensure '.pyve/' is git-ignored before committing."
     fi
 
+    # Migrate no longer rebuilds. The rebuild was the dangerous step: it
+    # ran `pyve init --force`, which re-derived the backend from filesystem
+    # heuristics and could silently convert a micromamba project to venv,
+    # orphaning the intact conda env. Migrate's durable value is the
+    # deterministic `pyve.toml` seed + legacy backup; the rebuild is a
+    # separate, explicit step the developer runs when ready. `init --force`
+    # now honors the manifest backend, so the standalone rebuild is safe.
+    # `--no-rebuild` is accepted but redundant — it now describes the only
+    # behavior.
+    info "Skipped rebuild (migrate no longer rebuilds). Run 'pyve init --force' when ready."
+
     # Step 4: summary.
-    _self_migrate_summary "$no_rebuild"
+    _self_migrate_summary
     footer_box
 }
 
 _self_migrate_summary() {
-    local no_rebuild="$1"
     info ""
     info "Migration complete."
     info "  Manifest:      pyve.toml"
     info "  Legacy backup: .pyve/.v2-legacy/"
-    if [[ "$no_rebuild" == "true" ]]; then
-        info "  Rebuild:       skipped (--no-rebuild)"
-        info "  Next step:     'pyve init --force' to rebuild envs at the v3 layout"
-    else
-        info "  Verify with:   'pyve check'"
-    fi
+    info "  Rebuild:       not performed by migrate"
+    info "  Next step:     'pyve init --force' to rebuild envs at the v3 layout"
 }
 
 #------------------------------------------------------------
@@ -960,6 +968,133 @@ self_provision() {
     _self_install_project_guide
     printf "\n✓ Provisioning complete.\n"
     return 0
+}
+
+#------------------------------------------------------------
+# Leaf: pyve self provision --status [--json]
+#
+# Read-only, side-effect-free hosting-readiness query for other tools
+# (project-guide first) to consult WITHOUT a project context and WITHOUT
+# reaching into Pyve's version-keyed, XDG-relative internal paths. It is a
+# pure reader: it NEVER provisions (kept separate from self_provision, which
+# always calls the _self_install_* helpers). Classification probes
+# RUNNABILITY — it executes `python --version` / `project-guide --version`
+# rather than stat-ing the artifacts, so a dangling symlink or dead-shebang
+# install is reported broken, not "ready".
+#
+# Exit-code contract (the surface consumers key off):
+#   0 — hosting ready (toolchain venv runnable AND hosted project-guide runnable)
+#   1 — Pyve-managed but not ready (never provisioned, or provisioned-but-broken)
+#   2 — not Pyve-managed here (the project owns project-guide via a deps source)
+#------------------------------------------------------------
+
+self_provision_status() {
+    local json=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json=true; shift ;;
+            --help|-h) show_self_provision_help; return 0 ;;
+            *) unknown_flag_error "self provision --status" "$1" --json ;;
+        esac
+    done
+
+    # A project that declares project-guide as its own dependency owns the
+    # tool deliberately — "not my department". Report not-managed (exit 2)
+    # before probing Pyve hosting at all.
+    local src
+    src="$(project_guide_deps_source 2>/dev/null || true)"
+    if [[ -n "$src" ]]; then
+        if [[ "$json" == true ]]; then
+            printf '{"pyve_managed":false,"toolchain":{"provisioned":false,"runnable":false,"version":null},"project_guide":{"hosted":false,"runnable":false,"version":null,"shim":null}}\n'
+        else
+            printf 'Pyve hosting: managed by your project (%s) — not Pyve-managed here\n' "$src"
+        fi
+        return 2
+    fi
+
+    # Toolchain Python: existence (provisioned) vs runnability (executes).
+    local tc_provisioned=false tc_runnable=false tc_version="" venv_py
+    if [[ -n "${PYVE_PYTHON:-}" ]]; then
+        venv_py="$PYVE_PYTHON"
+    else
+        venv_py="$(pyve_toolchain_venv_dir)/bin/python"
+    fi
+    [[ -x "$venv_py" ]] && tc_provisioned=true
+    if tc_version="$(pyve_toolchain_runnable 2>/dev/null)"; then
+        tc_runnable=true
+    else
+        tc_version=""
+    fi
+
+    # project-guide: hosted (existence) vs runnability (executes).
+    local pg_hosted=false pg_runnable=false pg_version="" pg_shim=""
+    if pyve_project_guide_is_hosted 2>/dev/null; then
+        pg_hosted=true
+        pg_shim="$(pyve_project_guide)"
+    fi
+    if pg_version="$(pyve_project_guide_runnable 2>/dev/null)"; then
+        pg_runnable=true
+    else
+        pg_version=""
+    fi
+
+    local rc=1
+    if [[ "$tc_runnable" == true && "$pg_hosted" == true && "$pg_runnable" == true ]]; then
+        rc=0
+    fi
+
+    if [[ "$json" == true ]]; then
+        _self_provision_status_json \
+            "$tc_provisioned" "$tc_runnable" "$tc_version" \
+            "$pg_hosted" "$pg_runnable" "$pg_version" "$pg_shim"
+    else
+        _self_provision_status_human \
+            "$rc" "$tc_provisioned" "$tc_runnable" "$tc_version" \
+            "$pg_hosted" "$pg_runnable" "$pg_version" "$pg_shim"
+    fi
+    return "$rc"
+}
+
+# Emit a JSON bool/null field value: `true`/`false` pass through; a non-empty
+# string becomes a quoted JSON string; empty becomes `null`.
+_json_str_or_null() {
+    if [[ -z "$1" ]]; then printf 'null'; else printf '"%s"' "$1"; fi
+}
+
+_self_provision_status_json() {
+    local tc_prov="$1" tc_run="$2" tc_ver="$3" pg_host="$4" pg_run="$5" pg_ver="$6" pg_shim="$7"
+    printf '{"pyve_managed":true,"toolchain":{"provisioned":%s,"runnable":%s,"version":%s},"project_guide":{"hosted":%s,"runnable":%s,"version":%s,"shim":%s}}\n' \
+        "$tc_prov" "$tc_run" "$(_json_str_or_null "$tc_ver")" \
+        "$pg_host" "$pg_run" "$(_json_str_or_null "$pg_ver")" "$(_json_str_or_null "$pg_shim")"
+}
+
+_self_provision_status_human() {
+    local rc="$1" tc_prov="$2" tc_run="$3" tc_ver="$4" pg_host="$5" pg_run="$6" pg_ver="$7" pg_shim="$8"
+    if [[ "$rc" == "0" ]]; then
+        printf 'Pyve hosting: ready\n'
+    else
+        printf 'Pyve hosting: not ready\n'
+    fi
+
+    if [[ "$tc_run" == true ]]; then
+        printf '  Toolchain Python: runnable (%s)\n' "${tc_ver:-${DEFAULT_PYTHON_VERSION:-unknown}}"
+    elif [[ "$tc_prov" == true ]]; then
+        printf '  Toolchain Python: provisioned but not runnable\n'
+    else
+        printf '  Toolchain Python: not provisioned\n'
+    fi
+
+    if [[ "$pg_run" == true ]]; then
+        printf '  project-guide:    runnable (%s) → %s\n' "${pg_ver:-unknown}" "$pg_shim"
+    elif [[ "$pg_host" == true ]]; then
+        printf '  project-guide:    hosted but not runnable → %s\n' "$pg_shim"
+    else
+        printf '  project-guide:    not hosted\n'
+    fi
+
+    if [[ "$rc" != "0" ]]; then
+        printf "  Run 'pyve self provision' to provision Pyve hosting.\n"
+    fi
 }
 
 #------------------------------------------------------------
@@ -1080,15 +1215,33 @@ self_command() {
             ;;
         provision)
             shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_self_provision_help
-                return 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:self-provision %s\n' "$*"
-                return 0
-            fi
-            self_provision
+            # The ONLY form that provisions is bare `provision` (no args).
+            # `--status` is the read-only query; `--help` prints help; any
+            # other flag/argument is a HARD ERROR. This makes the old
+            # silent-fall-through-to-provision (a typo or a future flag
+            # re-provisioning the whole toolchain and returning 0) impossible
+            # by construction — no input can reach self_provision by accident.
+            case "${1:-}" in
+                --status)
+                    shift
+                    self_provision_status "$@"
+                    return $?
+                    ;;
+                --help|-h)
+                    show_self_provision_help
+                    return 0
+                    ;;
+                "")
+                    if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                        printf 'DISPATCH:self-provision %s\n' "$*"
+                        return 0
+                    fi
+                    self_provision
+                    ;;
+                *)
+                    unknown_flag_error "self provision" "$1" --status --help
+                    ;;
+            esac
             ;;
         unprovision)
             shift
@@ -1167,27 +1320,29 @@ Description:
        testenv becomes [env.<name>] with purpose = "test".
     3. Moves legacy sources to .pyve/.v2-legacy/ (preserved for one
        release cycle so you can roll back manually if needed).
-    4. Invokes 'pyve init --force' to rebuild envs at the v3 state
-       layout (.pyve/envs/<name>/<backend>/).
-    5. Prints a summary.
+    4. Prints a summary.
+
+  Migrate does NOT rebuild your environments. The rebuild was the
+  dangerous step — it could re-derive the backend from filesystem
+  heuristics and convert a micromamba project to venv. Run the rebuild
+  yourself when ready: 'pyve init --force' now honors the backend your
+  pyve.toml declares.
 
   Re-running on a fully-migrated project (pyve.toml present, no v2
   sources) is a clean no-op.
 
 Options:
   --dry-run        Print the migration plan; perform no writes.
-  --no-rebuild     Write pyve.toml + back up legacy sources, but
-                   skip the 'pyve init --force' rebuild step. Useful
-                   when you want to inspect the manifest or stage the
-                   rebuild for a specific moment.
+  --no-rebuild     Accepted for back-compat. Redundant now that migrate
+                   never rebuilds — its presence changes nothing.
 
 Examples:
-  pyve self migrate              # Full migration + rebuild
+  pyve self migrate              # Seed pyve.toml + back up legacy sources
   pyve self migrate --dry-run    # Inspect the plan without touching disk
-  pyve self migrate --no-rebuild # Manifest + backup only; you run init later
+  pyve init --force              # Then rebuild envs at the v3 layout
 
 See also:
-  pyve init --force              Rebuild envs after a --no-rebuild migration
+  pyve init --force              Rebuild envs after migration (manifest-honoring)
   pyve check                     Verify the v3 layout after migration
 EOF
 }
@@ -1197,11 +1352,22 @@ pyve self provision - Provision Pyve's toolchain venv + hosted tools
 
 Usage:
   pyve self provision
+  pyve self provision --status [--json]
 
 Description:
   Provisions Pyve's hidden toolchain Python venv and the tools hosted in
   it (PyYAML/tomlkit for `pyve env sync`, and project-guide), then links
   the project-guide shim onto ~/.local/bin.
+
+  --status [--json]
+    Read-only, side-effect-free hosting-readiness query — NEVER provisions.
+    Probes runnability (executes `python --version` / `project-guide
+    --version`, not a stat). Exit codes: 0 = hosting ready (toolchain +
+    hosted project-guide both runnable); 1 = Pyve-managed but not ready
+    (never provisioned, or provisioned-but-broken); 2 = not Pyve-managed
+    here (your project owns project-guide via a dependency). --json prints
+    the machine-readable detail. Any other flag is rejected (it never
+    provisions by accident).
 
   Unlike `pyve self install`, this does NOT copy the pyve binary into
   ~/.local/bin or modify your PATH — so it is safe to run on a

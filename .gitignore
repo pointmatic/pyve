@@ -20,9 +20,7 @@ build/
 *.ipynb_checkpoints
 
 # Pyve virtual environment (materialized state — never tracked)
-.pyve/envs
-.pyve/testenv
-.pyve/testenvs
+.pyve/
 .envrc
 .env
 .vscode/settings.json
