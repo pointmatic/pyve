@@ -140,6 +140,56 @@ pyve_project_guide_is_hosted() {
     [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]] || [[ -x "$HOME/.local/bin/project-guide" ]]
 }
 
+# Runnability probe: EXECUTE "<bin> --version" and classify. Existence is
+# necessary but NOT sufficient — a dangling symlink or a dead-shebang script
+# passes `[[ -x ]]` yet cannot exec, and reporting it "ready" is exactly the
+# corruption that strands a developer (the health-checks-probe-runnability
+# rule). On a successful run, prints the first version-like token (may be
+# empty if the artifact runs but emits no version) and returns 0; on any exec
+# failure prints nothing and returns non-zero.
+pyve_runnable_version() {
+    local bin="$1" out ver
+    if ! out="$("$bin" --version 2>&1)"; then
+        return 1
+    fi
+    # Capture-then-extract with `|| true` so a no-match grep (artifact ran but
+    # printed no version) doesn't flip the result to "not runnable" under
+    # `set -o pipefail`.
+    ver="$(printf '%s\n' "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
+    printf '%s' "$ver"
+    return 0
+}
+
+# Runnability of the hosted toolchain Python. Honors PYVE_PYTHON, else probes
+# the version-keyed toolchain venv interpreter. Echoes the probed version on
+# success; returns non-zero when the interpreter is absent or cannot run.
+pyve_toolchain_runnable() {
+    local py
+    if [[ -n "${PYVE_PYTHON:-}" ]]; then
+        py="$PYVE_PYTHON"
+    else
+        py="$(pyve_toolchain_venv_dir)/bin/python"
+    fi
+    [[ -x "$py" ]] || return 1
+    pyve_runnable_version "$py"
+}
+
+# Runnability of the pyve-HOSTED project-guide. Deliberately does NOT honor a
+# bare-PATH `project-guide`: the readiness contract is about Pyve's hosted
+# tool (toolchain venv console script or ~/.local/bin shim), and a bare-PATH
+# resolution under active asdf is the version-gated shim trap, not a hosted
+# tool (the N.bf.22 framing). An explicit PYVE_PROJECT_GUIDE_BIN override
+# always wins (tests / power users). Echoes the probed version on success;
+# returns non-zero when project-guide is not hosted or cannot run.
+pyve_project_guide_runnable() {
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        pyve_runnable_version "$PYVE_PROJECT_GUIDE_BIN"
+        return
+    fi
+    pyve_project_guide_is_hosted || return 1
+    pyve_runnable_version "$(pyve_project_guide)"
+}
+
 # Point ~/.local/bin/project-guide at the toolchain venv's console script.
 # Shared helper (Story N.bh): used by both `pyve self install`/`self
 # provision` and the lazy `pyve_project_guide_ensure`. `ln -sf` makes this
@@ -177,7 +227,7 @@ pyve_project_guide_ensure() {
     fi
     pip="$venv_dir/bin/pip"
     [[ -x "$pip" ]] || return 1
-    "$pip" install --upgrade 'project-guide>=2.13.0' >/dev/null 2>&1 || return 1
+    "$pip" install --upgrade 'project-guide>=2.15.0' >/dev/null 2>&1 || return 1
     pyve_link_project_guide_shim "$venv_dir"
     [[ -x "$target" ]]
 }
@@ -198,14 +248,18 @@ pyve_toolchain_has_pyyaml() {
 # orchestration (idempotency, error surfacing) is unit-testable without
 # shelling out to a version manager — tests stub this function.
 #
-# Best-effort: resolves a bootstrap interpreter (the version manager's
-# install for DEFAULT_PYTHON_VERSION, else a PATH python3), then
-# `python -m venv`. The thorough version-manager integration (install
-# the version if absent, exact-path resolution) is hardened in the
-# N.at.3 lifecycle story; here it does the minimal viable build.
+# Best-effort: ensures an interpreter exists (may prompt to install the
+# pinned version on an interactive TTY), then resolves it and runs
+# `python -m venv`. The interpreter decision runs OUTSIDE the resolver's
+# command substitution so any prompt or install progress streams to the
+# developer instead of being swallowed.
 _pyve_toolchain_build() {
     local venv_dir="$1"
     local version="${DEFAULT_PYTHON_VERSION:-}"
+
+    # May prompt/install (interactive) or no-op (non-interactive). Its
+    # stdout is NOT captured, so prompts and build progress are visible.
+    _pyve_toolchain_ensure_interpreter "$version"
 
     local boot
     boot="$(_pyve_toolchain_bootstrap_python "$version")" || return 1
@@ -218,23 +272,107 @@ _pyve_toolchain_build() {
     [[ -x "$venv_dir/bin/python" ]]
 }
 
+# Ensure an interpreter for the toolchain venv is available — installing the
+# EXACT DEFAULT_PYTHON_VERSION when it is absent, so Pyve's toolchain tracks
+# that version. Best-effort and non-blocking: never reaches a prompt unless
+# it can actually be answered (see _pyve_toolchain_confirm_install). On a
+# decline (or any non-interactive context), the build falls back to a PATH
+# python via _pyve_toolchain_bootstrap_python. Returns 0 regardless.
+#
+# This is the seam that must stay out of command substitution: it may write
+# a prompt and stream `asdf install` / `pyenv install` output to the user.
+_pyve_toolchain_ensure_interpreter() {
+    local version="$1"
+    [[ -n "$version" ]] || return 0
+
+    if declare -F detect_version_manager >/dev/null 2>&1; then
+        detect_version_manager >/dev/null 2>&1 || true
+    fi
+
+    # Already installed at the exact version → nothing to do, no prompt.
+    local exact
+    exact="$(_pyve_toolchain_versioned_python "$version")"
+    if [[ -n "$exact" && -x "$exact" ]]; then
+        return 0
+    fi
+
+    declare -F ensure_python_version_installed >/dev/null 2>&1 || return 0
+
+    if _pyve_toolchain_confirm_install "$version"; then
+        # Force-yes so ensure_python_version_installed does not raise its own
+        # (separate) prompt — the consent was already collected above.
+        PYVE_FORCE_YES=1 ensure_python_version_installed "$version" || true
+    fi
+    return 0
+}
+
+# Is this a fully interactive session — can the user both SEE a prompt and
+# answer it? All three std streams must be terminals:
+#   - stdin (fd 0): the user can type an answer (else `read` blocks)
+#   - stdout/stderr (fd 1/2): the user can see the prompt
+# Checking only stdin is insufficient: Homebrew's `post_install` keeps stdin
+# attached to the tty but redirects stdout/stderr to a logfile, so a
+# stdin-only gate prompts to the (invisible) log and then blocks on `read` —
+# the brew `self provision` hang. Factored out so tests can drive the
+# interactive path without a real TTY.
+_pyve_is_interactive() { [[ -t 0 && -t 1 && -t 2 ]]; }
+
+# Ask whether to install the pinned toolchain Python. Returns 0 (yes) / 1 (no).
+#
+# Decision policy — must never block a non-interactive caller (the brew
+# `self provision` hang was a prompt the user could not see, blocking on a
+# live stdin):
+#   - PYVE_FORCE_YES=1        → yes  (explicit opt-in; CI/automation that wants it)
+#   - CI set, or not a TTY    → no   (fall back to an existing interpreter; no
+#                                     unattended multi-minute source build)
+#   - fully interactive TTY   → ask, default YES
+#
+# The prompt and `read` go to the terminal; this function prints nothing to
+# stdout, so it is safe even if a caller is inside command substitution.
+_pyve_toolchain_confirm_install() {
+    local version="$1"
+    [[ "${PYVE_FORCE_YES:-}" == "1" ]] && return 0
+    [[ -n "${CI:-}" ]] && return 1
+    _pyve_is_interactive || return 1
+
+    # Both initialized to empty: under `set -u` the fallback block may not
+    # run (no python3/python on PATH — the brew post-install shape), and a
+    # bare `local fallback_ver` would leave it UNSET, so the `[[ -n ... ]]`
+    # read below would abort with "unbound variable".
+    local fallback="" fallback_ver=""
+    fallback="$(_pyve_toolchain_path_python)" || fallback=""
+    if [[ -n "$fallback" ]]; then
+        fallback_ver="$("$fallback" --version 2>&1 | awk '{print $2}')"
+    fi
+
+    printf '\n  Pyve prefers Python %s for its toolchain.\n' "$version" >&2
+    if [[ -n "$fallback_ver" ]]; then
+        printf "  Install it now (several minutes)? If not, I'll use your Python %s.\n" \
+            "$fallback_ver" >&2
+    else
+        printf '  Install it now (several minutes)?\n' >&2
+    fi
+
+    local answer
+    read -rp "  Install Python $version? [Y/n] " answer
+    answer="${answer:-y}"
+    [[ "$answer" =~ ^[Yy]$ ]]
+}
+
 # Resolve a bootstrap interpreter capable of building the toolchain venv.
-# Prints the interpreter path on success; non-zero / empty on failure.
+# Pure resolver — no prompt, no install, so it is safe inside command
+# substitution (its only stdout is the interpreter path).
 #
 # Order (version-tracking fidelity):
-#   1. the version manager's install for the EXACT DEFAULT_PYTHON_VERSION
-#      (so Pyve's toolchain tracks that version, per the developer's
-#      decision), installing it first if absent;
+#   1. the version manager's install for the EXACT DEFAULT_PYTHON_VERSION,
+#      if present (installation is handled earlier by
+#      _pyve_toolchain_ensure_interpreter);
 #   2. a PATH python3 / python (legacy fallback — the version may differ;
 #      best-effort so a venv is still built when no version manager exists).
 _pyve_toolchain_bootstrap_python() {
     local version="$1"
     if declare -F detect_version_manager >/dev/null 2>&1; then
         detect_version_manager >/dev/null 2>&1 || true
-    fi
-    if declare -F ensure_python_version_installed >/dev/null 2>&1 \
-       && [[ -n "$version" ]]; then
-        ensure_python_version_installed "$version" >/dev/null 2>&1 || true
     fi
     # Exact-version interpreter via the active version manager.
     local exact
@@ -244,6 +382,11 @@ _pyve_toolchain_bootstrap_python() {
         return 0
     fi
     # Fall back to a PATH python3 / python (the legacy bootstrap source).
+    _pyve_toolchain_path_python
+}
+
+# Print the first runnable `python3` / `python` on PATH; non-zero if none.
+_pyve_toolchain_path_python() {
     local cand
     for cand in python3 python; do
         if command -v "$cand" >/dev/null 2>&1 && "$cand" --version >/dev/null 2>&1; then

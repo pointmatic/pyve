@@ -197,7 +197,7 @@ dependencies:
         assert result.returncode in [0, 1]
     
     def test_gitignore_updated_for_micromamba(self, pyve, project_builder):
-        """Test that .gitignore has template entries and .pyve/envs but not env name."""
+        """Test that .gitignore has template entries and ignores the whole .pyve/ tree but not the env name."""
         project_builder.create_environment_yml(
             name='test-env',
             dependencies=['python=3.11']
@@ -218,13 +218,13 @@ dependencies:
         assert '__pycache__' in lines
         assert '*.egg-info' in lines
         
-        # Micromamba-specific entries in Pyve section
-        assert '.pyve/envs' in lines
+        # The whole .pyve/ tree is ignored (materialized state, never config).
+        # An enumerated subdir list (`.pyve/envs`, `.pyve/testenvs`) was
+        # anchored and silently missed nested state — e.g. the micromamba
+        # bootstrap's `.pyve/bin/` and the migrator's `.pyve/.v2-legacy/`.
+        assert '.pyve/' in lines
         assert '.env' in lines
         assert '.envrc' in lines
-        # v2.8+ layout: gitignore covers .pyve/testenvs (parent of all
-        # named testenvs); was .pyve/testenv (singular) pre-M.h.3.
-        assert '.pyve/testenvs' in lines
 
         # Environment name should NOT be in gitignore
         assert 'test-env' not in gitignore_content

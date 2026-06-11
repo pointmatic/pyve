@@ -639,6 +639,22 @@ check_micromamba_env_exists() {
     fi
 }
 
+# Probe whether a micromamba env is actually runnable, not merely present.
+# A conda env's python is a binary that keeps running even after a
+# directory move leaves every console script with a dead absolute-prefix
+# shebang — so existence (and `python --version`) is NOT runnability. Probe
+# a console script (pip), which carries the baked shebang. Returns 0 when
+# the env has no pip to break or pip executes; 1 when pip exists but cannot
+# run. Args: $1 = env prefix path.
+_micromamba_env_runnable() {
+    local env_path="$1"
+    [[ -d "$env_path/conda-meta" ]] || return 1
+    if [[ -f "$env_path/bin/pip" ]]; then
+        "$env_path/bin/pip" --version >/dev/null 2>&1 || return 1
+    fi
+    return 0
+}
+
 # Create micromamba environment from environment file
 # Arguments:
 #   $1 - Environment name
@@ -669,10 +685,19 @@ create_micromamba_env() {
         return 1
     fi
     
-    # Check if environment already exists
+    # Check if environment already exists — but skip only when it is
+    # actually runnable. A relocated conda env exists (and python runs) yet
+    # every console script is dead-shebang'd; "skip, already exists" would
+    # rubber-stamp the breakage. Rebuild a non-runnable env instead.
     if check_micromamba_env_exists "$env_name"; then
-        log_info "Micromamba environment '$env_name' already exists, skipping creation"
-        return 0
+        local _existing_prefix
+        _existing_prefix="$(micromamba_root_prefix)"
+        if _micromamba_env_runnable "$_existing_prefix"; then
+            log_info "Micromamba environment '$env_name' already exists, skipping creation"
+            return 0
+        fi
+        log_warning "Existing micromamba environment is not runnable (dead-shebang console scripts) — rebuilding"
+        rm -rf "$_existing_prefix"
     fi
     
     # Get micromamba path
