@@ -119,7 +119,7 @@ jobs:
           pytest tests/integration/ -v -m "venv and not requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: integration-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -173,7 +173,7 @@ jobs:
           pytest tests/integration/ -v -m "micromamba or requires_micromamba" --cov=. --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage.xml
           flags: micromamba-${{ matrix.os }}-py${{ matrix.python-version }}
@@ -319,7 +319,7 @@ jobs:
           pytest tests/integration/ -v -m "micromamba or requires_micromamba"
 
       - name: Upload Bash coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           files: ./coverage-kcov/bats/cobertura.xml,./coverage-kcov/kcov-merged/cobertura.xml
           flags: bash
