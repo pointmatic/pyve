@@ -579,15 +579,18 @@ _self_uninstall_prompt_hook() {
 # ============================================================
 #
 # Deterministic, idempotent path that brings a v2.7/v2.8 project to
-# v3 in one invocation: writes `pyve.toml` from legacy artifacts,
-# backs them up under `.pyve/.v2-legacy/`, optionally invokes
-# `pyve init --force` to rebuild envs at the v3 state layout
-#.
+# v3: writes `pyve.toml` from legacy artifacts and backs them up under
+# `.pyve/.v2-legacy/`. It does NOT rebuild envs — the rebuild was the
+# dangerous, backend-converting step: it re-derived the backend from
+# filesystem heuristics and could convert a micromamba project to venv,
+# orphaning the intact conda env. Rebuilding is a separate, explicit step
+# the developer runs when ready: `pyve init --force` now honors the
+# backend the manifest declares.
 #
 # Flags:
 #   --dry-run     Print the migration plan; perform no writes.
-#   --no-rebuild  Write pyve.toml + back up legacy sources; skip
-#                 the `pyve init --force` rebuild step.
+#   --no-rebuild  Accepted for back-compat; redundant now that migrate
+#                 never rebuilds.
 #
 # Idempotency: re-running on a fully-migrated project (pyve.toml
 # present, no v2 sources) is a clean no-op with an informational
@@ -896,9 +899,7 @@ self_migrate() {
         info "  Would write pyve.toml ($project_name, backend=${_MIGRATE_V2_BACKEND:-?})"
         _self_migrate_backup true
         info "  Would refresh .gitignore so the .pyve/ state tree is ignored"
-        if [[ "$no_rebuild" != "true" ]]; then
-            info "  Would invoke 'pyve init --force' to rebuild envs at the v3 layout"
-        fi
+        info "  Next step (run yourself): 'pyve init --force' to rebuild envs at the v3 layout"
         footer_box
         return 0
     fi
@@ -923,36 +924,29 @@ self_migrate() {
         warn "Could not refresh .gitignore — ensure '.pyve/' is git-ignored before committing."
     fi
 
-    # Step 3: rebuild via `pyve init --force` unless suppressed.
-    if [[ "$no_rebuild" == "true" ]]; then
-        info "Skipped rebuild (--no-rebuild). Run 'pyve init --force' when ready."
-    else
-        info "Rebuilding environments at the v3 state layout..."
-        PYVE_REINIT_MODE="force" PYVE_FORCE_YES=1 init_project || {
-            log_error "pyve init --force failed during migration."
-            log_error "Your legacy sources are preserved at .pyve/.v2-legacy/."
-            log_error "Resolve the init error, then re-run 'pyve self migrate'."
-            return 1
-        }
-    fi
+    # Migrate no longer rebuilds. The rebuild was the dangerous step: it
+    # ran `pyve init --force`, which re-derived the backend from filesystem
+    # heuristics and could silently convert a micromamba project to venv,
+    # orphaning the intact conda env. Migrate's durable value is the
+    # deterministic `pyve.toml` seed + legacy backup; the rebuild is a
+    # separate, explicit step the developer runs when ready. `init --force`
+    # now honors the manifest backend, so the standalone rebuild is safe.
+    # `--no-rebuild` is accepted but redundant — it now describes the only
+    # behavior.
+    info "Skipped rebuild (migrate no longer rebuilds). Run 'pyve init --force' when ready."
 
     # Step 4: summary.
-    _self_migrate_summary "$no_rebuild"
+    _self_migrate_summary
     footer_box
 }
 
 _self_migrate_summary() {
-    local no_rebuild="$1"
     info ""
     info "Migration complete."
     info "  Manifest:      pyve.toml"
     info "  Legacy backup: .pyve/.v2-legacy/"
-    if [[ "$no_rebuild" == "true" ]]; then
-        info "  Rebuild:       skipped (--no-rebuild)"
-        info "  Next step:     'pyve init --force' to rebuild envs at the v3 layout"
-    else
-        info "  Verify with:   'pyve check'"
-    fi
+    info "  Rebuild:       not performed by migrate"
+    info "  Next step:     'pyve init --force' to rebuild envs at the v3 layout"
 }
 
 #------------------------------------------------------------
@@ -1326,27 +1320,29 @@ Description:
        testenv becomes [env.<name>] with purpose = "test".
     3. Moves legacy sources to .pyve/.v2-legacy/ (preserved for one
        release cycle so you can roll back manually if needed).
-    4. Invokes 'pyve init --force' to rebuild envs at the v3 state
-       layout (.pyve/envs/<name>/<backend>/).
-    5. Prints a summary.
+    4. Prints a summary.
+
+  Migrate does NOT rebuild your environments. The rebuild was the
+  dangerous step — it could re-derive the backend from filesystem
+  heuristics and convert a micromamba project to venv. Run the rebuild
+  yourself when ready: 'pyve init --force' now honors the backend your
+  pyve.toml declares.
 
   Re-running on a fully-migrated project (pyve.toml present, no v2
   sources) is a clean no-op.
 
 Options:
   --dry-run        Print the migration plan; perform no writes.
-  --no-rebuild     Write pyve.toml + back up legacy sources, but
-                   skip the 'pyve init --force' rebuild step. Useful
-                   when you want to inspect the manifest or stage the
-                   rebuild for a specific moment.
+  --no-rebuild     Accepted for back-compat. Redundant now that migrate
+                   never rebuilds — its presence changes nothing.
 
 Examples:
-  pyve self migrate              # Full migration + rebuild
+  pyve self migrate              # Seed pyve.toml + back up legacy sources
   pyve self migrate --dry-run    # Inspect the plan without touching disk
-  pyve self migrate --no-rebuild # Manifest + backup only; you run init later
+  pyve init --force              # Then rebuild envs at the v3 layout
 
 See also:
-  pyve init --force              Rebuild envs after a --no-rebuild migration
+  pyve init --force              Rebuild envs after migration (manifest-honoring)
   pyve check                     Verify the v3 layout after migration
 EOF
 }
