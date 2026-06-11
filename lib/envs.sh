@@ -446,6 +446,9 @@ _migrate_legacy_env_v27_to_v3() {
 
     mkdir -p "$new_root"
     mv "$legacy" "$new_venv"
+    # venvs bake their absolute prefix into bin/ console-script shebangs;
+    # repair it so the moved env's scripts still run.
+    _env_repair_baked_prefix "$PWD/$legacy" "$PWD/$new_venv" "$new_venv"
     rmdir ".pyve/testenv" 2>/dev/null || true
 
     local state_args=("testenv" "venv")
@@ -485,8 +488,17 @@ _migrate_legacy_env_v28_to_v3() {
         # Per-env case 1: at least one inner artifact (venv/, conda/,
         # or .state) exists under legacy and the v3 dest is empty.
         mkdir -p "$new_dir"
-        [[ -d "$entry/venv"  ]] && mv "$entry/venv"  "$new_dir/venv"
-        [[ -d "$entry/conda" ]] && mv "$entry/conda" "$new_dir/conda"
+        # Repair the baked absolute prefix after each move — both venv
+        # (bin/ shebangs) and conda (shebangs + conda-meta + .pth) bake it.
+        local _src="${entry%/}"
+        if [[ -d "$entry/venv" ]]; then
+            mv "$entry/venv" "$new_dir/venv"
+            _env_repair_baked_prefix "$PWD/$_src/venv" "$PWD/$new_dir/venv" "$new_dir/venv"
+        fi
+        if [[ -d "$entry/conda" ]]; then
+            mv "$entry/conda" "$new_dir/conda"
+            _env_repair_baked_prefix "$PWD/$_src/conda" "$PWD/$new_dir/conda" "$new_dir/conda"
+        fi
         [[ -f "$entry/.state" ]] && mv "$entry/.state" "$new_dir/.state"
         # Drop the now-empty legacy entry; leave it alone if anything
         # else (lock dirs, future contrib state) was tucked inside.
@@ -543,11 +555,59 @@ resolve_main_micromamba_path() {
 # (conda-meta directly inside, no `conda/` subdir, no `.state`). This
 # moves it to `.pyve/envs/root/conda/` and writes the sibling `.state`.
 #
+# conda/micromamba (and venv) environments are NOT relocatable: at
+# creation, conda bakes the env's absolute prefix into console-script
+# shebangs (`bin/*`), `conda-meta/*.json` package records, and
+# site-packages `*.pth` files. A bare directory move leaves every one
+# pointing at the old, now-nonexistent prefix — so `pip` and every
+# console script die with "bad interpreter", while the python *binary*
+# (not a shebang script) keeps running and masks the breakage. After
+# relocating an env, rewrite the baked prefix in those text artifacts so
+# the moved env stays runnable. Binary files are skipped — never `sed` a
+# Mach-O/ELF. Args: $1 = old absolute prefix, $2 = new absolute prefix,
+# $3 = relocated env directory.
+_env_repair_baked_prefix() {
+    local old_abs="$1" new_abs="$2" env_dir="$3"
+    [[ "$old_abs" == "$new_abs" ]] && return 0
+    # Escape BRE metacharacters in the search; escape `\`/`&` in the
+    # replacement. `|` is the sed delimiter (absent from filesystem paths).
+    local esc rep
+    esc="$(printf '%s' "$old_abs" | sed 's/[][\\.*^$]/\\&/g')"
+    rep="$(printf '%s' "$new_abs" | sed 's/[\\&]/\\&/g')"
+    local f
+    # Console scripts (bin/) — text only; the guard skips the python binary.
+    if [[ -d "$env_dir/bin" ]]; then
+        for f in "$env_dir"/bin/*; do
+            [[ -f "$f" ]] || continue
+            grep -Iq . "$f" 2>/dev/null || continue
+            sed -i.bak "s|$esc|$rep|g" "$f" && rm -f "$f.bak"
+        done
+    fi
+    # conda-meta package records.
+    if [[ -d "$env_dir/conda-meta" ]]; then
+        for f in "$env_dir"/conda-meta/*.json; do
+            [[ -f "$f" ]] || continue
+            sed -i.bak "s|$esc|$rep|g" "$f" && rm -f "$f.bak"
+        done
+    fi
+    # site-packages .pth files.
+    while IFS= read -r f; do
+        [[ -f "$f" ]] || continue
+        sed -i.bak "s|$esc|$rep|g" "$f" && rm -f "$f.bak"
+    done < <(find "$env_dir" -name '*.pth' -type f 2>/dev/null)
+    return 0
+}
+
 # Discriminator: a flat main env has `conda-meta` DIRECTLY inside
 # `.pyve/envs/<name>/`. Named micromamba testenvs nest it one level
 # deeper (`.pyve/envs/<name>/conda/conda-meta`), so they are never
 # matched. Idempotent: if `.pyve/envs/root/conda/` already exists the
 # v3 env is preserved and any stray flat dir is left untouched.
+#
+# The relocation is a move-then-repair: conda envs are not relocatable,
+# so after the `mv` the baked absolute prefix is rewritten in place (see
+# _env_repair_baked_prefix) — a bare move would leave dead-shebang
+# console scripts.
 _migrate_main_micromamba_to_v3() {
     local dest_root=".pyve/envs/root"
     local dest="$dest_root/conda"
@@ -589,8 +649,12 @@ _migrate_main_micromamba_to_v3() {
         legacy_mtime="$(stat -c %Y "$flat" 2>/dev/null || true)"
     fi
 
+    local old_abs="$PWD/$flat"
     mkdir -p "$dest_root"
     mv "$flat" "$dest"
+    # conda envs are not relocatable — repair the baked prefix the move
+    # just invalidated, or every console script is left dead-shebang'd.
+    _env_repair_baked_prefix "$old_abs" "$PWD/$dest" "$dest"
 
     local state_args=("root" "micromamba" "manifest=environment.yml")
     if [[ -n "$legacy_mtime" ]]; then

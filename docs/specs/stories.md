@@ -111,6 +111,117 @@ There may be random bugfixes and minor improvements interspersed within the stor
 
 ---
 
+### Story O.d: `pyve init --force` (and `self migrate`'s rebuild) is blind to v3 `pyve.toml` content — re-derives backend/python from filesystem heuristics, silently converting backend [Done]
+
+**Discovered:** 2026-06-11, migrating the micromamba `modelfoundry` repo (a "test-only" repo whose target is `root = none` + a micromamba `testenv`). Generalized to `pyve init --force` while writing this story.
+
+**Symptom.** `pyve self migrate` on a micromamba project wrote a *correct* `pyve.toml` (`[env.root] backend = "micromamba"`), then its rebuild dropped into the **interactive `pyve init` wizard**, which re-prompted for backend / version-manager / Python and produced a **`.venv` on Python 3.14.5** — converting the project to venv and orphaning the intact conda env (`environment.yml` + `.pyve/envs/root/conda`). It also wrote a **stray v2-style `.pyve/config`** (`backend: venv`, `python.version: 3.14.5`) alongside `pyve.toml`, reintroducing dual config; `.envrc` still activates the micromamba root, so the on-disk state is now self-contradictory.
+
+**Root cause — `pyve init --force` ignores the *content* of an existing `pyve.toml`.** `init_project` calls `_init_validate_existing_manifest` ([plugin.sh:1628](../../lib/plugins/python/plugin.sh#L1628)), which only **validates the schema** of an existing manifest — it never reads the declared backend/python. `backend_flag` is populated *only* from the `--backend` CLI flag; a bare `pyve init --force` leaves it empty, so `_init_wizard` ([plugin.sh:1110](../../lib/plugins/python/plugin.sh#L1110)) resolves the backend from `_init_detect_backend_default` ([plugin.sh:760](../../lib/plugins/python/plugin.sh#L760)) — a pure **filesystem heuristic** (`environment.yml` → micromamba, else venv) — in every branch (interactive prompt default *and* non-interactive value). The manifest is honored for *existence/validity* but never for *content*.
+
+It survives **by luck** when filesystem agrees with manifest (a micromamba project with `environment.yml` heuristics back to micromamba); it silently **converts** when they disagree — a declared backend with no matching filesystem marker, a future plugin backend (uv/poetry/node), or the user accepting a wrong wizard default.
+
+**Migrate is the most dangerous caller, not the bug's locus.** `self_migrate` step 3 runs `PYVE_REINIT_MODE=force PYVE_FORCE_YES=1 init_project` ([self.sh:917](../../lib/commands/self.sh#L917)) — inheriting the blindness whole. `PYVE_FORCE_YES=1` suppresses only the destroy-confirmation, not the wizard (the gate is `PYVE_INIT_NONINTERACTIVE=1`, which migrate doesn't set — and even if it did, the non-interactive path still uses the filesystem heuristic, not the manifest). So the migrator's "deterministic" docstring claim is false on rebuild.
+
+**Why it matters.** Any forced rebuild of a non-default-backend project (micromamba today; future plugin backends) silently risks converting it to venv — data-loss-class for the abandoned env — and re-asks decisions the v3 manifest already encodes. The fix belongs in `init` (honor the manifest on a forced/refresh rebuild); migrate is fixed for free once init reads the manifest. This is the architectural twin of O.a: the forced-init / migrate-rebuild path is the recurring weak seam.
+
+**Fix (decide during implementation).**
+1. **`init` honors the manifest on a forced/refresh rebuild.** When `pyve.toml` exists, `init_project` reads backend/python/version-manager from it (`manifest_get_backend` etc.) as authoritative — prompting only for what the manifest doesn't declare, and running fully non-interactively under `--force`. The fix lives in `init`, not migrate; `self migrate` is corrected for free (its rebuild *is* `init_project`) and should additionally pass `PYVE_INIT_NONINTERACTIVE=1` so it can never prompt.
+2. **Consider defaulting migrate to `--no-rebuild`.** The env is frequently already at the v3 `.pyve/envs/<name>/<backend>/` path (modelfoundry's micromamba root was), making the rebuild unnecessary and risky; opt into `--rebuild` only for the layout-move case. (Pairs with the developer's observation that migrate's real value is the `pyve.toml` seed, not the rebuild.)
+3. **Stop the rebuild writing a v2-style `.pyve/config`** when `pyve.toml` is canonical — confirm whether that write is read-compat scaffolding or a stray, and kill the dual-source-of-truth (project-essentials: "`pyve.toml` is canonical; `.pyve/` holds state only").
+
+**Decisions taken during implementation.**
+- **Backend is the load-bearing field.** `pyve.toml`'s `[env.root]` carries `backend` but no python/version-manager; python follows from the existing `environment.yml` (micromamba) / `.tool-versions` (venv) the wizard already honors. The fix therefore seeds the resolved backend from the manifest; python/version-manager need no separate manifest read.
+- **Migrate drops its rebuild entirely (Q1-b)**, rather than defaulting to `--no-rebuild`. Migrate now only seeds `pyve.toml` + backs up legacy sources; `pyve init --force` is the separate, documented next step. `--no-rebuild` is kept as an accepted no-op for back-compat. This removes the migrate-level corruption path by construction.
+- **`.pyve/config` is justified, not killed (deferred to N-10).** Investigation showed it is not a stray: it is deliberate v3.0 read-compat scaffolding with **64 read-sites across 11 files** (gitignore composer, `.envrc` activate hook, `backend_detect`, `lock`, `envs`, `micromamba_env`, re-init detection). The O.d symptom (`.pyve/config` recording `backend: venv`) was a *downstream* effect of the backend conversion; the core fix makes the same write record the manifest's backend, eliminating the *contradiction*. Eliminating the *file* means migrating all 64 read-sites + composers onto `pyve.toml` — that is the N-10 read-compat sweep, out of scope here. Developer-confirmed.
+- **Q2-a — never orphan a foreign-backend env.** On a forced rebuild, a stray env of a backend differing from the manifest's target is moved to `.pyve/.v2-legacy/` (recoverable), not abandoned.
+
+**Tasks**
+
+- [x] Reproduce (red) at the **backend-resolution level**: a project whose `pyve.toml` declares a backend the filesystem heuristic disagrees with (`[env.root] backend = micromamba` with a `.python-version`, or `backend = venv` with an `environment.yml`) → the rebuild resolves the *heuristic's* backend, not the manifest's. (Unit, at the wizard seam where the bug lived — full materialization is exercised by integration; the resolution decision is the defect.)
+- [x] Reproduce (red) at the **migrate level**: a bare `pyve self migrate` invokes `init_project` (the rebuild) → red via a sentinel stub.
+- [x] Fix in `init`: when `pyve.toml` declares a root backend and no `--backend` is given, the wizard seeds `backend_flag` from the manifest (`_init_manifest_root_backend`), outranking the filesystem heuristic and suppressing the backend prompt. Flows into `get_backend_priority` as Priority 1, so the manifest wins on both `--force` (config skipped) and non-force (config outranked) paths.
+- [x] Decide + implement the rebuild question: **migrate drops its rebuild entirely** (Q1-b). `self_migrate` no longer calls `init_project`; help + summary + dry-run plan + docstring updated; `--no-rebuild` kept as accepted no-op.
+- [x] Justify the `.pyve/config` write: load-bearing v3.0 read-compat (64 read-sites), consistency restored by the core fix, removal deferred to N-10 (developer-confirmed). No dual-source *contradiction* remains.
+- [x] Q2-a: `_init_backup_foreign_env` moves a stray foreign-backend env to `.pyve/.v2-legacy/` on a forced rebuild; wired into the force path after re-init handling. Bats covers micromamba-target/venv-target/own-env-untouched.
+- [x] Bats: migrate no longer rebuilds (no `init_project` invocation, points at `pyve init --force`); dry-run plan no longer promises a rebuild.
+- [x] project-essentials: documented that a forced rebuild / `pyve init --force` honors the manifest backend (no heuristic re-derivation when `pyve.toml` declares it), and that migrate no longer rebuilds.
+
+**Version:** **v3.0.5** — part of the combined "sane migration path + manifest-honoring `pyve init --force`" bundle; shares the release with the sibling O-series migration/init stories (no separate per-story bump; the bump + CHANGELOG land at O.f).
+
+---
+
+### Story O.e: v3 root-env relocation `mv`s a micromamba env — breaks every console script (dead shebangs); env looks healthy because python still runs [Done]
+
+**Discovered:** 2026-06-11, modelfoundry — `pyve init --force` → "Install pip dependencies from pyproject.toml?" → `bad interpreter: No such file or directory` for `.pyve/envs/root/conda/bin/pip`.
+
+**Symptom.** Every console script in the relocated micromamba env (`pip`, `pip3`, … — **23 scripts**) carries a dead absolute shebang `#!/…/.pyve/envs/modelfoundry/bin/python3.12`, pointing at the env's *original* prefix, which no longer exists. `pip install` fails; any entry point fails. The env's **python binary still runs** (`python --version` → 3.12.13), so existence checks pass and the breakage is invisible until pip / a console script is invoked.
+
+**Root cause — conda/micromamba envs are not relocatable.** The v3 layout mover `migrate_legacy_env_layout` (a side effect of `resolve_env_path`, [lib/envs.sh](../../lib/envs.sh)) **`mv`s** a flat name-keyed prefix `.pyve/envs/<configured>/` → the reserved root slot `.pyve/envs/root/conda/`. conda bakes the absolute prefix into every script's shebang (and into `conda-meta` records, `.pth` files, and pkg metadata) at creation; a bare `mv` moves the directory but rewrites none of it. The python *binary* survives (Mach-O/ELF, not a shebang script), masking the damage. `pyve init --force` can't heal it — it sees the dir exists and prints "environment already exists, skipping creation."
+
+**Why it matters.** Every v2.x→v3 migration of a micromamba project silently produces a broken env (pip + all entry points dead) the instant the opportunistic mover runs — surfacing only when the user installs deps or runs a console script. The canonical existence-≠-runnability trap, in the migration path. Companion to O.d: O.d converts the backend, O.e corrupts the env it relocates — together they are why `pyve self migrate` on a micromamba project is presently unsafe.
+
+**Fix (decide during implementation).**
+1. **Don't `mv` a conda prefix — recreate it at the destination** from `environment.yml` (+ `conda-lock.yml` if present). Relocation becomes create-new-then-remove-old, not move-in-place.
+2. **Or repair-on-move:** after relocation, rewrite the baked prefix everywhere conda put it (script shebangs in `bin/`, `conda-meta/*.json`, `*.pth`, pkg records) — the conda prefix-replacement mechanism. Heavier and easy to under-cover; (1) is safer.
+3. **Heal, don't skip.** `pyve init --force` and `pyve check` must **probe runnability** (execute `pip --version` / a console script, not `[[ -x ]]`) and, on a dead-shebang env, rebuild rather than report healthy / "skip, already exists." Reuses the runnability-probe pillar (Phase P) and the O.c `--status` probe helper.
+
+**Decision taken during implementation.** **Repair-on-move + recreate backstop** (developer-confirmed), not recreate-in-mover. The mover fires as a side effect of `resolve_env_path` on routine read commands (`check` / `status` / `run`), so a conda solve+download there is unacceptable — fix #1 (recreate) is wrong *at the mover*. Instead: the mover does a cheap local prefix-repair after the `mv`, and the *explicit* `pyve init --force` path gains a runnability probe that recreates a non-runnable env (the backstop for any baked-prefix location the repair misses). Fix #3 is delivered via `create_micromamba_env` (which `init --force` calls), not a separate `init` branch.
+
+**Tasks**
+
+- [x] Reproduce (red): a flat name-keyed micromamba env relocated to `.pyve/envs/root/conda/` leaves dead-shebang console scripts. Hermetic stub `bin/`/`conda-meta`/`.pth` tree with an absolute-prefix shebang; assert the relocated shebang targets the *new* prefix (red: bare `mv` left the old one).
+- [x] `migrate_legacy_env_layout` relocates safely — `_env_repair_baked_prefix` rewrites the baked prefix (`bin/*` shebangs, `conda-meta/*.json`, `*.pth`; **binaries skipped**) after every `mv` in the main-micromamba mover. **venv audit done**: the v2.7 + v2.8 movers (which `mv` testenv `venv/` and `conda/`) call the same repair — a moved venv's `bin/` shebangs are repaired too.
+- [x] `init --force` runnability-aware: `create_micromamba_env` probes `_micromamba_env_runnable` (executes `bin/pip --version`) and rebuilds a non-runnable existing env instead of "already exists, skipping."
+- [x] Bats: relocate a fixture env → console-script shebang targets the new prefix; conda-meta records repaired; python binary untouched; venv testenv shebang repaired; runnability helper + rebuild-vs-skip decision. (12 new tests in [test_main_micromamba_env_layout.bats](../../tests/unit/test_main_micromamba_env_layout.bats).)
+- [x] project-essentials: added "conda/venv envs are not relocatable — repair the baked prefix on move, and probe runnability (not existence) before trusting one."
+
+**Version:** v3.0.5 — part of the combined "sane migration path" bundle (shares the release with O.d and siblings; bump + CHANGELOG owned by O.z).
+
+---
+
+### Story O.f: v3.0.5 — bundle version bump + final testing [Done]
+
+*(Placeholder. Owns the single `pyve.sh` → v3.0.5 bump and the end-of-bundle validation for the "sane migration path + manifest-honoring `pyve init --force`" effort. The story number and the bundle's member references will be adjusted when the bundle is resolved and locked for release.)*
+
+**Purpose.** The v3.0.5 bundle (O.d, O.e, + any siblings added before lock) ships as one release; per the Version Cadence phase-bundling rule, exactly one story owns the bump. This is that story — it carries the `pyve.sh` version bump and the final cross-bundle validation, and lands **last** in the bundle.
+
+**Tasks**
+
+- [x] Confirm every v3.0.5 bundle story is `[Done]` and its fix verified — **locked member set: O.d** (manifest-honoring `init --force`) **+ O.e** (safe micromamba relocation), both `[Done]`. No other siblings; the following `O.?` stories are explicitly outside this bundle.
+- [x] Bump `VERSION` in [pyve.sh](../../pyve.sh) to `3.0.5` (the single bump for the bundle).
+- [x] Full unit suite green (bats) — 0 failures locally. Integration suite runs in CI.
+- [x] End-to-end migration smoke — **deferred to CI** (developer-chosen): a real-micromamba local run would bootstrap over the network and mutate the developer's real `~/.local` / `~/.asdf`. Covered by O.d's wizard-resolution unit tests + O.e's relocation/runnability unit tests plus the integration suite in CI.
+- [x] Update [project-essentials.md](project-essentials.md) — cross-bundle facts landed with their stories: manifest-honoring rebuild (O.d entry) and "conda/venv envs are not relocatable — repair-on-move + probe runnability" (O.e entry).
+- [x] CHANGELOG: added the `[3.0.5]` release entry (O.d + O.e).
+- [x] *(at lock — developer)* Renumber this story to its final position and reconcile the member-story references. Left to the developer (story sequencing/renumbering is developer-owned).
+
+**Version:** v3.0.5 — this story owns the bump.
+
+---
+
+### Story O.?: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Planned]
+
+*(Innocuous — the wiring is correctly idempotent; only the prompt ordering is wrong. Outside the v3.0.5 migration bundle.)*
+
+**Discovered:** 2026-06-11, modelfoundry `pyve init --force` (project-guide-perspective diagnosis).
+
+**Symptom.** `pyve init`'s FR-16 post-init project-guide hook (Step 3, shell-completion wiring) prints `Add project-guide shell completion to your rc file? [Y/n]:` ([utils.sh:350](../../lib/utils.sh#L350)) **before** checking whether the completion block already exists. Only *after* the user answers does it find the sentinel and print `▸ project-guide completion already present in ~/.zshrc` ([project_guide.sh:163](../../lib/project_guide.sh#L163)). So every `pyve init --force` re-asks a question whose answer is already determinable for a one-time-ever configuration.
+
+**Root cause.** The sentinel-presence check (`PROJECT_GUIDE_COMPLETION_OPEN` = `# >>> project-guide completion (added by pyve) >>>`, [utils.sh:223](../../lib/utils.sh#L223); FR-16 idempotency, Step 3) runs *inside* the post-prompt wiring path instead of as a *pre-prompt* guard.
+
+**Note — pure Pyve bug.** No project-guide code is involved: the prompt strings exist nowhere in `project_guide`; the behavior is specified in the synced `features.md` FR-16 and implemented entirely in Pyve. (project-guide repo: diagnosis only, no story there.)
+
+**Fix.** Hoist the sentinel check above the interactive prompt. If the block is already present in the target rc file (`~/.zshrc` / `~/.bashrc`), skip the prompt entirely — silently, or with the existing one-line `▸ … already present` note. No changes to the flag/env handling (`--project-guide-completion`, `--no-project-guide-completion`, `PYVE_PROJECT_GUIDE_COMPLETION`, the CI auto-skip asymmetry) — those paths only matter when the block is **absent**.
+
+**Tasks**
+
+- [ ] Reproduce (red): with a temp rc file already containing the sentinel block, invoke the completion-wiring step in interactive mode → assert (a) no `[Y/n]` prompt is emitted and (b) the rc file is unchanged. Fails today (prompt fires).
+- [ ] Hoist the sentinel-presence check above the prompt in the completion-wiring path ([utils.sh](../../lib/utils.sh) FR-16 Step 3): present → skip prompt (keep the one-line "already present" note); absent → unchanged flag/env/prompt handling.
+- [ ] Confirm the flag/env paths (`--project-guide-completion` / `--no-project-guide-completion` / `PYVE_PROJECT_GUIDE_COMPLETION` / CI auto-skip) are untouched and still only matter when the block is absent.
+
+---
+
 ### Story O.?: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
 
 - [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.

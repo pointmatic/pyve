@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.5] - 2026-06-11
+
+**A sane v2→v3 migration path: `pyve init --force` and `pyve self migrate` stop silently corrupting micromamba projects.** Two coupled bugs made migrating a micromamba project unsafe — a forced rebuild re-derived the backend from filesystem heuristics (converting micromamba → venv and orphaning the conda env), and relocating a conda env with a bare `mv` left every console script with a dead-shebang. Both are fixed; migrate no longer rebuilds at all.
+
+### Fixed
+
+- **`pyve init --force` (and `self migrate`'s rebuild) ignored the backend declared in `pyve.toml`** (Story O.d) — `init_project` validated an existing manifest's *schema* but never read its *content*, so a bare forced rebuild left the backend unset and the wizard re-derived it from filesystem signals (`environment.yml` → micromamba, else venv). A declared micromamba `root` with no root-level `environment.yml` was silently materialized as a `.venv`, orphaning the intact conda env and writing a contradictory `.pyve/config`. The wizard now seeds the backend from the manifest's `[env.root] backend` (outranking the heuristic, suppressing the prompt) on both `--force` and non-force re-init; an explicit `--backend` still wins. A forced rebuild also never orphans a foreign-backend env — a stray `.venv`/conda dir that disagrees with the manifest is moved to `.pyve/.v2-legacy/` (recoverable) before the new env is built.
+- **`pyve self migrate` re-derived backend on its rebuild and could convert the project** (Story O.d) — migrate now **does not rebuild** at all; it seeds `pyve.toml` + backs up legacy sources to `.pyve/.v2-legacy/` and stops. `pyve init --force` (now manifest-honoring) is the separate, developer-run rebuild step. `--no-rebuild` is accepted as a no-op.
+- **Relocating a micromamba (or venv) env with a bare `mv` left dead-shebang console scripts** (Story O.e) — conda/venv envs bake their absolute prefix into `bin/*` shebangs, `conda-meta/*.json`, and `*.pth` at creation, so the v3 layout mover's `mv` left `pip` and every entry point failing with "bad interpreter" while `python` (a binary) still ran and masked the breakage. The mover now repairs the baked prefix in place after every move (binaries are skipped, never `sed`'d); the v2.7/v2.8 testenv movers do the same for relocated venvs. As a backstop, `create_micromamba_env` probes runnability (executes `pip --version`) and **rebuilds** a non-runnable existing env instead of "already exists, skipping."
+
 ## [3.0.4] - 2026-06-10
 
 **Migration cleanliness + a hosting-readiness query that closes a destructive cross-repo trap.** `pyve self migrate` no longer drags the entire `.v2-legacy` backup into a commit, and `pyve self provision` gains a read-only `--status` query — plus a dispatcher hardening that stops an unknown flag from silently re-provisioning the toolchain (the live root cause of project-guide advising a destructive `pip uninstall`).

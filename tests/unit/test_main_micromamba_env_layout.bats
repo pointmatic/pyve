@@ -128,6 +128,163 @@ _make_flat_main_env() {
 }
 
 # ============================================================
+# Relocation repairs the baked absolute prefix (conda envs are not
+# relocatable: console scripts, conda-meta records and .pth files bake
+# the env's absolute prefix at creation; a bare `mv` leaves them dead).
+# ============================================================
+
+# Like _make_flat_main_env, but the env carries the artifacts conda bakes
+# the absolute prefix into: a console-script shebang, a conda-meta JSON,
+# and a site-packages .pth. python stays a plain binary (survives a move).
+_make_flat_main_env_with_baked_prefix() {
+    local name="$1"
+    local old_prefix="$PWD/.pyve/envs/$name"
+    mkdir -p ".pyve/envs/$name/conda-meta" \
+             ".pyve/envs/$name/bin" \
+             ".pyve/envs/$name/lib/python3.12/site-packages"
+    : > ".pyve/envs/$name/conda-meta/history"
+    : > ".pyve/envs/$name/bin/python"
+    chmod +x ".pyve/envs/$name/bin/python"
+    printf '#!%s/bin/python\n# pip console script\n' "$old_prefix" \
+        > ".pyve/envs/$name/bin/pip"
+    chmod +x ".pyve/envs/$name/bin/pip"
+    printf '{"extracted_package_dir": "%s/pkgs/pip"}\n' "$old_prefix" \
+        > ".pyve/envs/$name/conda-meta/pip-24.0.json"
+    printf '%s/lib/python3.12/site-packages\n' "$old_prefix" \
+        > ".pyve/envs/$name/lib/python3.12/site-packages/distutils.pth"
+    create_pyve_config "backend: micromamba" "micromamba:" "  env_name: $name"
+}
+
+@test "migrate_legacy_env_layout: repairs console-script shebangs to the new prefix" {
+    _make_flat_main_env_with_baked_prefix myproj
+    migrate_legacy_env_layout
+    local new_prefix="$PWD/.pyve/envs/root/conda"
+    run head -1 ".pyve/envs/root/conda/bin/pip"
+    [ "$status" -eq 0 ]
+    [ "$output" = "#!$new_prefix/bin/python" ]
+}
+
+@test "migrate_legacy_env_layout: leaves no dead reference to the old flat prefix" {
+    _make_flat_main_env_with_baked_prefix myproj
+    migrate_legacy_env_layout
+    # The old prefix string must survive nowhere in the relocated tree
+    # (bin shebang, conda-meta records, .pth).
+    ! grep -rqF "/.pyve/envs/myproj" ".pyve/envs/root/conda"
+}
+
+@test "migrate_legacy_env_layout: repairs the baked prefix in conda-meta records" {
+    _make_flat_main_env_with_baked_prefix myproj
+    migrate_legacy_env_layout
+    run grep -cF "$PWD/.pyve/envs/root/conda" \
+        ".pyve/envs/root/conda/conda-meta/pip-24.0.json"
+    [ "$status" -eq 0 ]
+    [ "$output" -ge 1 ]
+}
+
+@test "migrate_legacy_env_layout: does not corrupt the python binary during repair" {
+    _make_flat_main_env_with_baked_prefix myproj
+    migrate_legacy_env_layout
+    # python is relocated as-is (a real Mach-O/ELF must never be sed'd).
+    [ -f ".pyve/envs/root/conda/bin/python" ]
+    [ -x ".pyve/envs/root/conda/bin/python" ]
+}
+
+# ============================================================
+# Runnability backstop: an existing env with dead-shebang console
+# scripts is rebuilt, not skipped (existence ≠ runnability).
+# ============================================================
+
+_make_root_conda_dead() {
+    mkdir -p .pyve/envs/root/conda/conda-meta .pyve/envs/root/conda/bin
+    : > .pyve/envs/root/conda/conda-meta/history
+    # Shebang points at an interpreter that does not exist.
+    printf '#!%s/.pyve/envs/GONE/bin/python\n' "$PWD" > .pyve/envs/root/conda/bin/pip
+    chmod +x .pyve/envs/root/conda/bin/pip
+}
+
+_make_root_conda_healthy() {
+    mkdir -p .pyve/envs/root/conda/conda-meta .pyve/envs/root/conda/bin
+    : > .pyve/envs/root/conda/conda-meta/history
+    printf '#!/bin/sh\necho "pip 24.0"\n' > .pyve/envs/root/conda/bin/pip
+    chmod +x .pyve/envs/root/conda/bin/pip
+}
+
+@test "_micromamba_env_runnable: dead-shebang console script -> non-runnable" {
+    _make_root_conda_dead
+    run _micromamba_env_runnable ".pyve/envs/root/conda"
+    [ "$status" -ne 0 ]
+}
+
+@test "_micromamba_env_runnable: working console script -> runnable" {
+    _make_root_conda_healthy
+    run _micromamba_env_runnable ".pyve/envs/root/conda"
+    [ "$status" -eq 0 ]
+}
+
+@test "_micromamba_env_runnable: env with no console scripts -> runnable" {
+    mkdir -p .pyve/envs/root/conda/conda-meta
+    run _micromamba_env_runnable ".pyve/envs/root/conda"
+    [ "$status" -eq 0 ]
+}
+
+# A fake micromamba whose `create -p <path>` materializes a healthy env
+# and drops a sentinel, so tests can tell "rebuilt" from "skipped".
+_install_fake_micromamba() {
+    mkdir -p .fakebin
+    cat > .fakebin/micromamba <<'EOF'
+#!/usr/bin/env bash
+path=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in -p) path="$2"; shift 2;; *) shift;; esac
+done
+mkdir -p "$path/conda-meta" "$path/bin"
+: > "$path/conda-meta/history"
+printf '#!/bin/sh\necho ok\n' > "$path/bin/pip"; chmod +x "$path/bin/pip"
+touch ".micromamba_create_called"
+EOF
+    chmod +x .fakebin/micromamba
+    get_micromamba_path() { printf '%s/.fakebin/micromamba' "$PWD"; }
+}
+
+@test "create_micromamba_env: rebuilds a non-runnable existing env instead of skipping" {
+    _make_root_conda_dead
+    printf 'name: myproj\n' > environment.yml
+    _install_fake_micromamba
+    run create_micromamba_env myproj environment.yml
+    [ "$status" -eq 0 ]
+    [ -f .micromamba_create_called ]
+}
+
+@test "create_micromamba_env: skips a runnable existing env (no rebuild)" {
+    _make_root_conda_healthy
+    printf 'name: myproj\n' > environment.yml
+    _install_fake_micromamba
+    run create_micromamba_env myproj environment.yml
+    [ "$status" -eq 0 ]
+    [ ! -f .micromamba_create_called ]
+}
+
+# ============================================================
+# venv relocation is shebang-bearing too — the v2.8 testenv mover must
+# repair the baked prefix the same way (audit follow-on).
+# ============================================================
+
+@test "migrate_legacy_env_layout: repairs venv console-script shebangs on a v2.8 testenv move" {
+    local old_prefix="$PWD/.pyve/testenvs/lint/venv"
+    mkdir -p ".pyve/testenvs/lint/venv/bin"
+    : > ".pyve/testenvs/lint/venv/bin/python"
+    chmod +x ".pyve/testenvs/lint/venv/bin/python"
+    printf '#!%s/bin/python\n# pytest console script\n' "$old_prefix" \
+        > ".pyve/testenvs/lint/venv/bin/pytest"
+    chmod +x ".pyve/testenvs/lint/venv/bin/pytest"
+    migrate_legacy_env_layout
+    local new_prefix="$PWD/.pyve/envs/lint/venv"
+    run head -1 ".pyve/envs/lint/venv/bin/pytest"
+    [ "$status" -eq 0 ]
+    [ "$output" = "#!$new_prefix/bin/python" ]
+}
+
+# ============================================================
 # create_micromamba_env — materializes at root/conda + .state
 # ============================================================
 

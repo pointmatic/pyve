@@ -767,6 +767,45 @@ _init_detect_backend_default() {
     fi
 }
 
+# Print the backend declared for the reserved `root` env in pyve.toml,
+# or empty when no manifest exists / root declares no backend. On a
+# forced or refresh rebuild this is authoritative: the manifest records
+# the project's chosen backend, so a rebuild must honor it rather than
+# re-derive from filesystem heuristics (which silently convert the
+# backend when the heuristic disagrees — e.g. a declared micromamba env
+# whose root has no environment.yml). Empty output keeps the heuristic
+# as the fresh-init fallback. Failures to load (no usable interpreter)
+# degrade to empty, never abort.
+_init_manifest_root_backend() {
+    [[ -f pyve.toml ]] || return 0
+    manifest_load pyve.toml >/dev/null 2>&1 || return 0
+    manifest_get_backend root 2>/dev/null || true
+}
+
+# On a forced rebuild, never silently orphan a materialized env whose
+# backend differs from the target backend. The re-init purge only removes
+# the env that `.pyve/config` records; a stray foreign-backend env (e.g. a
+# `.venv` materialized alongside a micromamba manifest, when the config is
+# absent or contradictory) would otherwise survive the rebuild and leave
+# the project straddling two backends. Move any
+# such foreign env into the `.pyve/.v2-legacy/` backup tree (recoverable,
+# never deleted) and warn. The target backend's OWN env is left untouched.
+# Arg: $1 = target backend (venv|micromamba). Always returns 0.
+_init_backup_foreign_env() {
+    local target="$1"
+    local stamp; stamp="$(date +%s)"
+    if [[ "$target" == "micromamba" ]] && [[ -d .venv ]]; then
+        mkdir -p .pyve/.v2-legacy
+        mv .venv ".pyve/.v2-legacy/orphaned-venv-$stamp"
+        warn "Backed up a stray venv (.venv) to .pyve/.v2-legacy/ — pyve.toml declares the micromamba backend."
+    elif [[ "$target" == "venv" ]] && [[ -d .pyve/envs/root/conda ]]; then
+        mkdir -p .pyve/.v2-legacy
+        mv .pyve/envs/root/conda ".pyve/.v2-legacy/orphaned-conda-$stamp"
+        warn "Backed up a stray micromamba env to .pyve/.v2-legacy/ — pyve.toml declares the venv backend."
+    fi
+    return 0
+}
+
 # Detect which Python version managers are available on PATH.
 # Returns one of: "" | "asdf" | "pyenv" | "asdf,pyenv".
 # Used by the venv branch of the L.k.4 Python prompt.
@@ -1140,9 +1179,22 @@ _init_wizard() {
     # backend_flag. Without this, backend_flag stays "auto" through the
     # Python prompt, which would then fall to the venv branch and
     # hard-fail on no managers — even when env.yml says micromamba.
+    # When no --backend flag is given, an existing pyve.toml's declared
+    # root backend is authoritative (a refresh / forced rebuild must not
+    # re-derive the backend and silently convert the project). It outranks
+    # the filesystem heuristic and suppresses the interactive prompt, but
+    # an explicit --backend still wins.
+    local manifest_backend=""
+    if [[ -z "$arg_backend_flag" ]]; then
+        manifest_backend="$(_init_manifest_root_backend)"
+    fi
+
     if [[ -n "$arg_backend_flag" ]] && [[ "$arg_backend_flag" != "auto" ]]; then
         info "Backend: $arg_backend_flag (--backend)"
         backend_flag="$arg_backend_flag"
+    elif [[ -n "$manifest_backend" ]]; then
+        info "Backend: $manifest_backend (from pyve.toml)"
+        backend_flag="$manifest_backend"
     elif [[ "$arg_backend_flag" == "auto" ]]; then
         local default_backend
         default_backend="$(_init_detect_backend_default)"
@@ -1781,6 +1833,16 @@ init_project() {
                     ;;
             esac
         fi
+    fi
+
+    # On a forced rebuild, back up any materialized env whose backend
+    # differs from the target (manifest-declared) backend before creating
+    # the new one. The re-init purge above only removes the env that
+    # `.pyve/config` records; this catches a stray foreign-backend env the
+    # config doesn't account for, so the rebuild never leaves the project
+    # straddling two backends. No-op when nothing foreign is present.
+    if [[ "${PYVE_REINIT_MODE:-}" == "force" ]] && [[ -n "$backend_flag" ]]; then
+        _init_backup_foreign_env "$backend_flag"
     fi
 
     # Validate backend if specified
