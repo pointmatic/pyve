@@ -256,19 +256,26 @@ _pyve_toolchain_ensure_interpreter() {
     return 0
 }
 
-# Is stdin an interactive terminal? Factored out (rather than an inline
-# `[[ -t 0 ]]`) so tests can drive the interactive prompt path without a
-# real TTY.
-_pyve_stdin_is_tty() { [[ -t 0 ]]; }
+# Is this a fully interactive session — can the user both SEE a prompt and
+# answer it? All three std streams must be terminals:
+#   - stdin (fd 0): the user can type an answer (else `read` blocks)
+#   - stdout/stderr (fd 1/2): the user can see the prompt
+# Checking only stdin is insufficient: Homebrew's `post_install` keeps stdin
+# attached to the tty but redirects stdout/stderr to a logfile, so a
+# stdin-only gate prompts to the (invisible) log and then blocks on `read` —
+# the brew `self provision` hang. Factored out so tests can drive the
+# interactive path without a real TTY.
+_pyve_is_interactive() { [[ -t 0 && -t 1 && -t 2 ]]; }
 
 # Ask whether to install the pinned toolchain Python. Returns 0 (yes) / 1 (no).
 #
 # Decision policy — must never block a non-interactive caller (the brew
-# `self provision` hang was a swallowed prompt blocking on a live stdin):
-#   - PYVE_FORCE_YES=1     → yes  (explicit opt-in; CI/automation that wants it)
-#   - CI set, or no TTY    → no   (fall back to an existing interpreter; no
-#                                  unattended multi-minute source build)
-#   - interactive TTY      → ask, default YES
+# `self provision` hang was a prompt the user could not see, blocking on a
+# live stdin):
+#   - PYVE_FORCE_YES=1        → yes  (explicit opt-in; CI/automation that wants it)
+#   - CI set, or not a TTY    → no   (fall back to an existing interpreter; no
+#                                     unattended multi-minute source build)
+#   - fully interactive TTY   → ask, default YES
 #
 # The prompt and `read` go to the terminal; this function prints nothing to
 # stdout, so it is safe even if a caller is inside command substitution.
@@ -276,7 +283,7 @@ _pyve_toolchain_confirm_install() {
     local version="$1"
     [[ "${PYVE_FORCE_YES:-}" == "1" ]] && return 0
     [[ -n "${CI:-}" ]] && return 1
-    _pyve_stdin_is_tty || return 1
+    _pyve_is_interactive || return 1
 
     # Both initialized to empty: under `set -u` the fallback block may not
     # run (no python3/python on PATH — the brew post-install shape), and a

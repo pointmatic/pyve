@@ -2863,6 +2863,50 @@ Warning: pyve: toolchain/project-guide provisioning was skipped; run 'pyve self 
 - [x] Bump version to v3.0.2 (patch)
 - [x] *(tap-formula, relates to N.bu)* Fix the `caveats` wording in the Homebrew formula: it advises running `pyve self unprovision --all` "before (**or after**) uninstalling" — but after `brew uninstall pyve` the `pyve` command no longer exists. Reword to "run **before** uninstalling (while `pyve` still exists); if already uninstalled, remove `~/.local/share/pyve/toolchain` and `~/.local/bin/project-guide` manually." Lives in the `pointmatic/homebrew-tap` formula, not this repo.
 
+### Story N.bx: v3.0.2 hotfix — `brew upgrade` hangs again; the prompt gate checked stdin only, but Homebrew logs the prompt out of view [Done]
+
+**Symptom (field, 2026-06-10).** `brew upgrade pyve 3.0.1 → 3.0.2` (the release with N.bw's unbound-variable fix) hung again at `pyve self provision` — no crash this time, just a silent stall. The prompt **did** render, but into `~/Library/Logs/Homebrew/pyve/post_install.01.pyve.log`, not the terminal:
+
+```
+  Pyve prefers Python 3.14.5 for its toolchain.
+  Install it now (several minutes)?
+  Install Python 3.14.5? [Y/n]
+```
+
+**Root cause (the three questions).**
+
+1. *Why did the bug exist?* N.bv's interactivity gate was `_pyve_stdin_is_tty() { [[ -t 0 ]]; }` — it checked only **stdin**. Homebrew's `post_install` keeps stdin attached to the controlling tty but **redirects stdout/stderr to a logfile** (surfaced only on failure). So `[[ -t 0 ]]` was true → the code prompted, the prompt went to the invisible log (stderr), and `read` blocked on the tty stdin. A prompt is only answerable when the user can **see** it *and* **type** an answer; the gate must require an output stream to be a terminal too, not just stdin. (This also means the "prompt the developer during `brew upgrade`" design from N.bv can't work at all — brew never shows post-install output live — so the right behavior is for the brew hook to fall back silently and reserve the prompt for a *manual* `pyve self provision`.)
+2. *Why didn't tests catch it?* N.bv/N.bw tests stubbed the helper to force the interactive branch; none asserted the *real* gate's condition, and bats can't reproduce "stdin-tty + stdout/stderr-redirected" (no pty). The gate's stream coverage was never pinned.
+3. *How do we prevent this class of bug?* Require full interactivity (`[[ -t 0 && -t 1 && -t 2 ]]`) and pin it with a test that asserts the gate consults an output stream, not just stdin.
+
+**Fix.** [lib/toolchain_python.sh](../../lib/toolchain_python.sh): rename `_pyve_stdin_is_tty` → `_pyve_is_interactive` and define it as `[[ -t 0 && -t 1 && -t 2 ]]` (can read an answer *and* the prompt is visible). In any output-redirected context — brew `post_install`, `nohup`, CI capturing logs — provisioning now declines to prompt and falls back instead of blocking.
+
+**Tasks**
+
+- [x] Reproduce: confirmed via the live stuck process + the post-install log showing the prompt rendered to the logfile, not the terminal.
+- [x] Failing test: structural assertion that `_pyve_is_interactive` gates on an output stream (`-t 1`/`-t 2`), not stdin alone — red on the 3.0.2 `[[ -t 0 ]]` gate, green after; plus a behavioral guard that a redirected output stream reads as non-interactive ([test_toolchain_python_lifecycle.bats](../../tests/unit/test_toolchain_python_lifecycle.bats)).
+- [x] Fix [lib/toolchain_python.sh](../../lib/toolchain_python.sh): `_pyve_is_interactive() { [[ -t 0 && -t 1 && -t 2 ]]; }`; update the call site and the test stub name.
+- [x] Verify: lifecycle suite 18/18; toolchain + provisioning + resolver + self suites green; full unit suite — only the 3 pre-existing `test_composed_init_matrix.bats` env failures, 0 new regressions. No lingering refs to the old helper name.
+- [x] Bump version to v3.0.3 (patch) — `VERSION` in `pyve.sh` is still `3.0.2`; developer-owned release action.
+
+### Story N.by: Stop auto-provisioning at brew time — make `pyve self provision` an explicit user step, surfaced in `check`/`status` [Done]
+
+**Decision.** Three consecutive field failures on the same code path — silent hang (N.bv), `unbound variable` crash (N.bw), silent hang again (N.bx) — are clear evidence that auto-provisioning inside Homebrew's `post_install` fights the tool rather than working with it. Two structural facts make brew-time provisioning a losing battle: (1) **brew redirects `post_install` stdout/stderr to a logfile** shown only on failure, so any prompt is invisible and any `read` hangs; and (2) the **post-install sandbox has no `python3` on PATH** (the `python@3.12` dep is keg-only), so even non-interactively the toolchain often can't build. Rather than keep hardening against brew's model, **remove the coupling**: provisioning becomes an explicit, developer-run `pyve self provision`. This also reads better as product behavior — the developer purposefully manages the Pyve toolchain + Project-Guide instead of it happening invisibly mid-`brew upgrade`.
+
+**Changes.**
+
+- **Homebrew formula (`pointmatic/homebrew-tap`, drafted here — not this repo):** delete `def post_install` (no more `system pyve, "self", "provision"`). A message placed in `post_install` would itself be swallowed into the log, so the user-visible guidance goes in `caveats` (which brew *does* display): a concise "First-time setup — run `pyve self provision`" line + the Project-Guide landing-page link, above the existing teardown/upgrade caveat.
+- **`pyve check`** ([lib/check_composer.sh](../../lib/check_composer.sh)): the `[pyve]` hosting block surfaces the lifecycle — not-provisioned → "Run 'pyve self provision' to install the Pyve toolchain + Project-Guide"; provisioned → "Upgrade: 'pyve self provision' · Remove: 'pyve self unprovision --all'". Still INFO-only (never affects the verdict).
+- **`pyve status`** ([lib/status_composer.sh](../../lib/status_composer.sh)): the `[project-guide]` block gains the same reminder — `not integrated` → provision hint; `pyve-hosted` → upgrade/remove hint; `project-managed` → no hint (the project owns it).
+
+**Tasks**
+
+- [x] `pyve check`: enrich `_compose_check_pyve_hosting` with the provision (unprovisioned) and upgrade/remove (provisioned) reminders.
+- [x] `pyve status`: enrich `_compose_status_project_guide` with the same lifecycle reminders.
+- [x] Update [test_pyve_hosting_diagnostic.bats](../../tests/unit/test_pyve_hosting_diagnostic.bats) for the new wording on every state; full unit suite — only the 3 pre-existing `test_composed_init_matrix.bats` env failures, 0 new regressions.
+- [x] *(tap-formula)* Remove `def post_install`; add the concise `pyve self provision` setup line + landing-page link to `caveats`. Lives in `pointmatic/homebrew-tap`, not this repo.
+- [x] Bump version to v3.0.3 (patch) — ships together with N.bx (the prompt-gate hardening stays as defense for non-interactive *manual* `pyve self provision` runs); `VERSION` in `pyve.sh` is still `3.0.2`. Developer-owned release action.
+
 ---
 
 ## Future

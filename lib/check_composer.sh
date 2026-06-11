@@ -130,8 +130,10 @@ _compose_check_pyve_hosting() {
         printf 'project-guide: managed by your project (%s)\n' "$src"
     elif pyve_project_guide_is_hosted 2>/dev/null; then
         printf 'project-guide hosting: provisioned\n'
+        printf "  Upgrade: 'pyve self provision'  ·  Remove: 'pyve self unprovision --all'\n"
     else
-        printf "project-guide hosting: not provisioned — run 'pyve self provision' to enable\n"
+        printf 'project-guide hosting: not provisioned\n'
+        printf "  Run 'pyve self provision' to install the Pyve toolchain + Project-Guide.\n"
     fi
     return 0
 }

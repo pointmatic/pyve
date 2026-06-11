@@ -51,17 +51,19 @@ _host_pg_shim() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"Toolchain Python: not provisioned"* ]]
     [[ "$output" == *"project-guide hosting: not provisioned"* ]]
-    [[ "$output" == *"pyve self provision"* ]]
+    [[ "$output" == *"Run 'pyve self provision' to install"* ]]
 }
 
-@test "check [pyve]: provisioned → toolchain version + hosting provisioned, no hint" {
+@test "check [pyve]: provisioned → toolchain version + hosting provisioned + upgrade/remove reminder" {
     _host_toolchain_python
     _host_pg_shim
     run _compose_check_pyve_hosting
     [ "$status" -eq 0 ]
     [[ "$output" == *"Toolchain Python: provisioned (9.9.9)"* ]]
     [[ "$output" == *"project-guide hosting: provisioned"* ]]
-    [[ "$output" != *"pyve self provision"* ]]
+    # Healthy path still surfaces the lifecycle commands (upgrade / remove).
+    [[ "$output" == *"Upgrade: 'pyve self provision'"* ]]
+    [[ "$output" == *"pyve self unprovision --all"* ]]
 }
 
 @test "check [pyve]: project-managed (pip) → 'managed by your project (pip)', no provision hint" {
@@ -84,23 +86,27 @@ _host_pg_shim() {
 # status: [project-guide] addendum (_compose_status_project_guide)
 #============================================================
 
-@test "status [project-guide]: not integrated" {
+@test "status [project-guide]: not integrated → provision reminder" {
     run _compose_status_project_guide
     [ "$status" -eq 0 ]
     [[ "$output" == *"[project-guide]"* ]]
     [[ "$output" == *"not integrated"* ]]
+    [[ "$output" == *"Run 'pyve self provision' to install"* ]]
 }
 
-@test "status [project-guide]: pyve-hosted (toolchain)" {
+@test "status [project-guide]: pyve-hosted (toolchain) → upgrade/remove reminder" {
     _host_pg_shim
     run _compose_status_project_guide
     [[ "$output" == *"pyve-hosted (toolchain)"* ]]
+    [[ "$output" == *"Upgrade: 'pyve self provision'"* ]]
+    [[ "$output" == *"pyve self unprovision --all"* ]]
 }
 
-@test "status [project-guide]: project-managed (pip)" {
+@test "status [project-guide]: project-managed (pip) → no provision reminder" {
     printf 'project-guide\n' > requirements.txt
     run _compose_status_project_guide
     [[ "$output" == *"project-managed (pip)"* ]]
+    [[ "$output" != *"pyve self provision"* ]]
 }
 
 @test "status [project-guide]: project-managed (conda)" {
