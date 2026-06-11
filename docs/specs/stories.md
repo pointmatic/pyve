@@ -147,11 +147,11 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 - [x] Bats: migrate no longer rebuilds (no `init_project` invocation, points at `pyve init --force`); dry-run plan no longer promises a rebuild.
 - [x] project-essentials: documented that a forced rebuild / `pyve init --force` honors the manifest backend (no heuristic re-derivation when `pyve.toml` declares it), and that migrate no longer rebuilds.
 
-**Version:** **v3.0.5** — part of the combined "sane migration path + manifest-honoring `pyve init --force`" bundle; shares the release with the sibling O-series migration/init stories (no separate per-story bump; the bump + CHANGELOG land at O.z).
+**Version:** **v3.0.5** — part of the combined "sane migration path + manifest-honoring `pyve init --force`" bundle; shares the release with the sibling O-series migration/init stories (no separate per-story bump; the bump + CHANGELOG land at O.f).
 
 ---
 
-### Story O.e: v3 root-env relocation `mv`s a micromamba env — breaks every console script (dead shebangs); env looks healthy because python still runs [Planned]
+### Story O.e: v3 root-env relocation `mv`s a micromamba env — breaks every console script (dead shebangs); env looks healthy because python still runs [Done]
 
 **Discovered:** 2026-06-11, modelfoundry — `pyve init --force` → "Install pip dependencies from pyproject.toml?" → `bad interpreter: No such file or directory` for `.pyve/envs/root/conda/bin/pip`.
 
@@ -166,19 +166,21 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 2. **Or repair-on-move:** after relocation, rewrite the baked prefix everywhere conda put it (script shebangs in `bin/`, `conda-meta/*.json`, `*.pth`, pkg records) — the conda prefix-replacement mechanism. Heavier and easy to under-cover; (1) is safer.
 3. **Heal, don't skip.** `pyve init --force` and `pyve check` must **probe runnability** (execute `pip --version` / a console script, not `[[ -x ]]`) and, on a dead-shebang env, rebuild rather than report healthy / "skip, already exists." Reuses the runnability-probe pillar (Phase P) and the O.c `--status` probe helper.
 
+**Decision taken during implementation.** **Repair-on-move + recreate backstop** (developer-confirmed), not recreate-in-mover. The mover fires as a side effect of `resolve_env_path` on routine read commands (`check` / `status` / `run`), so a conda solve+download there is unacceptable — fix #1 (recreate) is wrong *at the mover*. Instead: the mover does a cheap local prefix-repair after the `mv`, and the *explicit* `pyve init --force` path gains a runnability probe that recreates a non-runnable env (the backstop for any baked-prefix location the repair misses). Fix #3 is delivered via `create_micromamba_env` (which `init --force` calls), not a separate `init` branch.
+
 **Tasks**
 
-- [ ] Reproduce (red): a flat name-keyed micromamba env `.pyve/envs/<name>/` relocated to `.pyve/envs/root/conda/` → assert `pip --version` runs (fails today: dead shebang). Use a fixture micromamba env, or a stub `bin/` tree with an absolute shebang to keep it hermetic.
-- [ ] Make `migrate_legacy_env_layout` relocate micromamba envs safely — recreate-at-destination (preferred) or full prefix-repair — never a bare `mv` of a conda prefix. Audit venv relocation (also shebang-bearing) the same way.
-- [ ] Make `init --force` runnability-aware: detect a dead-shebang / non-runnable existing env and rebuild instead of "skip, already exists."
-- [ ] Bats: relocate a fixture env → assert console scripts run post-move (shebang targets the new prefix; `conda-meta` prefix records consistent).
-- [ ] project-essentials: add "conda/venv envs are not relocatable — never `mv` a prefix; recreate or prefix-repair" alongside the env-layout and existence-≠-runnability entries.
+- [x] Reproduce (red): a flat name-keyed micromamba env relocated to `.pyve/envs/root/conda/` leaves dead-shebang console scripts. Hermetic stub `bin/`/`conda-meta`/`.pth` tree with an absolute-prefix shebang; assert the relocated shebang targets the *new* prefix (red: bare `mv` left the old one).
+- [x] `migrate_legacy_env_layout` relocates safely — `_env_repair_baked_prefix` rewrites the baked prefix (`bin/*` shebangs, `conda-meta/*.json`, `*.pth`; **binaries skipped**) after every `mv` in the main-micromamba mover. **venv audit done**: the v2.7 + v2.8 movers (which `mv` testenv `venv/` and `conda/`) call the same repair — a moved venv's `bin/` shebangs are repaired too.
+- [x] `init --force` runnability-aware: `create_micromamba_env` probes `_micromamba_env_runnable` (executes `bin/pip --version`) and rebuilds a non-runnable existing env instead of "already exists, skipping."
+- [x] Bats: relocate a fixture env → console-script shebang targets the new prefix; conda-meta records repaired; python binary untouched; venv testenv shebang repaired; runnability helper + rebuild-vs-skip decision. (12 new tests in [test_main_micromamba_env_layout.bats](../../tests/unit/test_main_micromamba_env_layout.bats).)
+- [x] project-essentials: added "conda/venv envs are not relocatable — repair the baked prefix on move, and probe runnability (not existence) before trusting one."
 
-**Version:** v3.0.5 — part of the combined "sane migration path" bundle (shares the release with O.d and siblings; bump owned by one bundle story).
+**Version:** v3.0.5 — part of the combined "sane migration path" bundle (shares the release with O.d and siblings; bump + CHANGELOG owned by O.z).
 
 ---
 
-### Story O.z: v3.0.5 — bundle version bump + final testing [Planned]
+### Story O.f: v3.0.5 — bundle version bump + final testing [Planned]
 
 *(Placeholder. Owns the single `pyve.sh` → v3.0.5 bump and the end-of-bundle validation for the "sane migration path + manifest-honoring `pyve init --force`" effort. The story number and the bundle's member references will be adjusted when the bundle is resolved and locked for release.)*
 
