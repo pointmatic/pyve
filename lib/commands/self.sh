@@ -340,7 +340,8 @@ _self_prune_stale_toolchain_versions() {
 # missing toolchain venv or a failed pip install WARNS but never aborts.
 # Idempotent: `ln -sf` re-points the shim to the current version-keyed
 # venv, so a DEFAULT_PYTHON_VERSION bump self-heals on the next install.
-# Requires project-guide >= 2.13.0 (the pyve-toolchain-hosting contract).
+# Requires project-guide >= 2.15.0 (ships the readiness-gated local-install
+# warning that consumes `pyve self provision --status`).
 #------------------------------------------------------------
 
 # Install Pyve's toolchain Python dependencies into the toolchain venv
@@ -377,7 +378,7 @@ _self_install_project_guide() {
     if [[ ! -x "$pip_cmd" ]]; then
         return 0
     fi
-    if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.13.0'; then
+    if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.15.0'; then
         log_success "Installed project-guide into the Pyve toolchain"
         # Shared shim-link helper (Story N.bh, lib/toolchain_python.sh).
         pyve_link_project_guide_shim "$venv_dir"
@@ -976,6 +977,133 @@ self_provision() {
 }
 
 #------------------------------------------------------------
+# Leaf: pyve self provision --status [--json]
+#
+# Read-only, side-effect-free hosting-readiness query for other tools
+# (project-guide first) to consult WITHOUT a project context and WITHOUT
+# reaching into Pyve's version-keyed, XDG-relative internal paths. It is a
+# pure reader: it NEVER provisions (kept separate from self_provision, which
+# always calls the _self_install_* helpers). Classification probes
+# RUNNABILITY — it executes `python --version` / `project-guide --version`
+# rather than stat-ing the artifacts, so a dangling symlink or dead-shebang
+# install is reported broken, not "ready".
+#
+# Exit-code contract (the surface consumers key off):
+#   0 — hosting ready (toolchain venv runnable AND hosted project-guide runnable)
+#   1 — Pyve-managed but not ready (never provisioned, or provisioned-but-broken)
+#   2 — not Pyve-managed here (the project owns project-guide via a deps source)
+#------------------------------------------------------------
+
+self_provision_status() {
+    local json=false
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --json) json=true; shift ;;
+            --help|-h) show_self_provision_help; return 0 ;;
+            *) unknown_flag_error "self provision --status" "$1" --json ;;
+        esac
+    done
+
+    # A project that declares project-guide as its own dependency owns the
+    # tool deliberately — "not my department". Report not-managed (exit 2)
+    # before probing Pyve hosting at all.
+    local src
+    src="$(project_guide_deps_source 2>/dev/null || true)"
+    if [[ -n "$src" ]]; then
+        if [[ "$json" == true ]]; then
+            printf '{"pyve_managed":false,"toolchain":{"provisioned":false,"runnable":false,"version":null},"project_guide":{"hosted":false,"runnable":false,"version":null,"shim":null}}\n'
+        else
+            printf 'Pyve hosting: managed by your project (%s) — not Pyve-managed here\n' "$src"
+        fi
+        return 2
+    fi
+
+    # Toolchain Python: existence (provisioned) vs runnability (executes).
+    local tc_provisioned=false tc_runnable=false tc_version="" venv_py
+    if [[ -n "${PYVE_PYTHON:-}" ]]; then
+        venv_py="$PYVE_PYTHON"
+    else
+        venv_py="$(pyve_toolchain_venv_dir)/bin/python"
+    fi
+    [[ -x "$venv_py" ]] && tc_provisioned=true
+    if tc_version="$(pyve_toolchain_runnable 2>/dev/null)"; then
+        tc_runnable=true
+    else
+        tc_version=""
+    fi
+
+    # project-guide: hosted (existence) vs runnability (executes).
+    local pg_hosted=false pg_runnable=false pg_version="" pg_shim=""
+    if pyve_project_guide_is_hosted 2>/dev/null; then
+        pg_hosted=true
+        pg_shim="$(pyve_project_guide)"
+    fi
+    if pg_version="$(pyve_project_guide_runnable 2>/dev/null)"; then
+        pg_runnable=true
+    else
+        pg_version=""
+    fi
+
+    local rc=1
+    if [[ "$tc_runnable" == true && "$pg_hosted" == true && "$pg_runnable" == true ]]; then
+        rc=0
+    fi
+
+    if [[ "$json" == true ]]; then
+        _self_provision_status_json \
+            "$tc_provisioned" "$tc_runnable" "$tc_version" \
+            "$pg_hosted" "$pg_runnable" "$pg_version" "$pg_shim"
+    else
+        _self_provision_status_human \
+            "$rc" "$tc_provisioned" "$tc_runnable" "$tc_version" \
+            "$pg_hosted" "$pg_runnable" "$pg_version" "$pg_shim"
+    fi
+    return "$rc"
+}
+
+# Emit a JSON bool/null field value: `true`/`false` pass through; a non-empty
+# string becomes a quoted JSON string; empty becomes `null`.
+_json_str_or_null() {
+    if [[ -z "$1" ]]; then printf 'null'; else printf '"%s"' "$1"; fi
+}
+
+_self_provision_status_json() {
+    local tc_prov="$1" tc_run="$2" tc_ver="$3" pg_host="$4" pg_run="$5" pg_ver="$6" pg_shim="$7"
+    printf '{"pyve_managed":true,"toolchain":{"provisioned":%s,"runnable":%s,"version":%s},"project_guide":{"hosted":%s,"runnable":%s,"version":%s,"shim":%s}}\n' \
+        "$tc_prov" "$tc_run" "$(_json_str_or_null "$tc_ver")" \
+        "$pg_host" "$pg_run" "$(_json_str_or_null "$pg_ver")" "$(_json_str_or_null "$pg_shim")"
+}
+
+_self_provision_status_human() {
+    local rc="$1" tc_prov="$2" tc_run="$3" tc_ver="$4" pg_host="$5" pg_run="$6" pg_ver="$7" pg_shim="$8"
+    if [[ "$rc" == "0" ]]; then
+        printf 'Pyve hosting: ready\n'
+    else
+        printf 'Pyve hosting: not ready\n'
+    fi
+
+    if [[ "$tc_run" == true ]]; then
+        printf '  Toolchain Python: runnable (%s)\n' "${tc_ver:-${DEFAULT_PYTHON_VERSION:-unknown}}"
+    elif [[ "$tc_prov" == true ]]; then
+        printf '  Toolchain Python: provisioned but not runnable\n'
+    else
+        printf '  Toolchain Python: not provisioned\n'
+    fi
+
+    if [[ "$pg_run" == true ]]; then
+        printf '  project-guide:    runnable (%s) → %s\n' "${pg_ver:-unknown}" "$pg_shim"
+    elif [[ "$pg_host" == true ]]; then
+        printf '  project-guide:    hosted but not runnable → %s\n' "$pg_shim"
+    else
+        printf '  project-guide:    not hosted\n'
+    fi
+
+    if [[ "$rc" != "0" ]]; then
+        printf "  Run 'pyve self provision' to provision Pyve hosting.\n"
+    fi
+}
+
+#------------------------------------------------------------
 # Leaf: pyve self unprovision
 #
 # Brew-safe granular teardown — the mirror of `self provision`. Removes
@@ -1093,15 +1221,33 @@ self_command() {
             ;;
         provision)
             shift
-            if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
-                show_self_provision_help
-                return 0
-            fi
-            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
-                printf 'DISPATCH:self-provision %s\n' "$*"
-                return 0
-            fi
-            self_provision
+            # The ONLY form that provisions is bare `provision` (no args).
+            # `--status` is the read-only query; `--help` prints help; any
+            # other flag/argument is a HARD ERROR. This makes the old
+            # silent-fall-through-to-provision (a typo or a future flag
+            # re-provisioning the whole toolchain and returning 0) impossible
+            # by construction — no input can reach self_provision by accident.
+            case "${1:-}" in
+                --status)
+                    shift
+                    self_provision_status "$@"
+                    return $?
+                    ;;
+                --help|-h)
+                    show_self_provision_help
+                    return 0
+                    ;;
+                "")
+                    if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                        printf 'DISPATCH:self-provision %s\n' "$*"
+                        return 0
+                    fi
+                    self_provision
+                    ;;
+                *)
+                    unknown_flag_error "self provision" "$1" --status --help
+                    ;;
+            esac
             ;;
         unprovision)
             shift
@@ -1210,11 +1356,22 @@ pyve self provision - Provision Pyve's toolchain venv + hosted tools
 
 Usage:
   pyve self provision
+  pyve self provision --status [--json]
 
 Description:
   Provisions Pyve's hidden toolchain Python venv and the tools hosted in
   it (PyYAML/tomlkit for `pyve env sync`, and project-guide), then links
   the project-guide shim onto ~/.local/bin.
+
+  --status [--json]
+    Read-only, side-effect-free hosting-readiness query — NEVER provisions.
+    Probes runnability (executes `python --version` / `project-guide
+    --version`, not a stat). Exit codes: 0 = hosting ready (toolchain +
+    hosted project-guide both runnable); 1 = Pyve-managed but not ready
+    (never provisioned, or provisioned-but-broken); 2 = not Pyve-managed
+    here (your project owns project-guide via a dependency). --json prints
+    the machine-readable detail. Any other flag is rejected (it never
+    provisions by accident).
 
   Unlike `pyve self install`, this does NOT copy the pyve binary into
   ~/.local/bin or modify your PATH — so it is safe to run on a
