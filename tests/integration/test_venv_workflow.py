@@ -174,13 +174,13 @@ class TestVenvWorkflow:
         assert '.pytest_cache/' in lines
         assert '.DS_Store' in lines
         
-        # Venv-specific entries in Pyve section. v2.8+ layout: gitignore
-        # covers .pyve/testenvs (parent of all named testenvs); was
-        # .pyve/testenv (singular) pre-M.h.3.
+        # Venv-specific entries in Pyve section. The whole .pyve/ tree is
+        # ignored (materialized state, never config) — an enumerated subdir
+        # list was anchored and missed nested state like .pyve/.v2-legacy/.
         assert '.venv' in lines
         assert '.env' in lines
         assert '.envrc' in lines
-        assert '.pyve/testenvs' in lines
+        assert '.pyve/' in lines
 
 
 @pytest.mark.venv
@@ -235,8 +235,10 @@ class TestGitignoreManagement:
         content_before = gitignore_path.read_text()
         assert '.venv' in content_before
         assert '__pycache__' in content_before
-        # v2.8+ layout: gitignore covers .pyve/testenvs (was .pyve/testenv pre-M.h.3).
-        assert '.pyve/testenvs' in content_before
+        # The whole .pyve/ tree is ignored. Exact line check, not a substring:
+        # the managed comment block itself mentions `.pyve/testenvs`, so an
+        # `in content_before` substring check would pass for the wrong reason.
+        assert '.pyve/' in content_before.splitlines()
         
         pyve.purge(auto_yes=True)
         
@@ -253,7 +255,7 @@ class TestGitignoreManagement:
         # Permanent entries should remain
         assert '__pycache__' in lines
         assert '*.egg-info' in lines
-        assert '.pyve/testenvs' in lines
+        assert '.pyve/' in lines
         assert '.coverage' in lines
         assert '.pytest_cache/' in lines
 

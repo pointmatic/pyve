@@ -140,6 +140,56 @@ pyve_project_guide_is_hosted() {
     [[ -x "$(pyve_toolchain_venv_dir)/bin/project-guide" ]] || [[ -x "$HOME/.local/bin/project-guide" ]]
 }
 
+# Runnability probe: EXECUTE "<bin> --version" and classify. Existence is
+# necessary but NOT sufficient — a dangling symlink or a dead-shebang script
+# passes `[[ -x ]]` yet cannot exec, and reporting it "ready" is exactly the
+# corruption that strands a developer (the health-checks-probe-runnability
+# rule). On a successful run, prints the first version-like token (may be
+# empty if the artifact runs but emits no version) and returns 0; on any exec
+# failure prints nothing and returns non-zero.
+pyve_runnable_version() {
+    local bin="$1" out ver
+    if ! out="$("$bin" --version 2>&1)"; then
+        return 1
+    fi
+    # Capture-then-extract with `|| true` so a no-match grep (artifact ran but
+    # printed no version) doesn't flip the result to "not runnable" under
+    # `set -o pipefail`.
+    ver="$(printf '%s\n' "$out" | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -n1 || true)"
+    printf '%s' "$ver"
+    return 0
+}
+
+# Runnability of the hosted toolchain Python. Honors PYVE_PYTHON, else probes
+# the version-keyed toolchain venv interpreter. Echoes the probed version on
+# success; returns non-zero when the interpreter is absent or cannot run.
+pyve_toolchain_runnable() {
+    local py
+    if [[ -n "${PYVE_PYTHON:-}" ]]; then
+        py="$PYVE_PYTHON"
+    else
+        py="$(pyve_toolchain_venv_dir)/bin/python"
+    fi
+    [[ -x "$py" ]] || return 1
+    pyve_runnable_version "$py"
+}
+
+# Runnability of the pyve-HOSTED project-guide. Deliberately does NOT honor a
+# bare-PATH `project-guide`: the readiness contract is about Pyve's hosted
+# tool (toolchain venv console script or ~/.local/bin shim), and a bare-PATH
+# resolution under active asdf is the version-gated shim trap, not a hosted
+# tool (the N.bf.22 framing). An explicit PYVE_PROJECT_GUIDE_BIN override
+# always wins (tests / power users). Echoes the probed version on success;
+# returns non-zero when project-guide is not hosted or cannot run.
+pyve_project_guide_runnable() {
+    if [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]]; then
+        pyve_runnable_version "$PYVE_PROJECT_GUIDE_BIN"
+        return
+    fi
+    pyve_project_guide_is_hosted || return 1
+    pyve_runnable_version "$(pyve_project_guide)"
+}
+
 # Point ~/.local/bin/project-guide at the toolchain venv's console script.
 # Shared helper (Story N.bh): used by both `pyve self install`/`self
 # provision` and the lazy `pyve_project_guide_ensure`. `ln -sf` makes this
@@ -177,7 +227,7 @@ pyve_project_guide_ensure() {
     fi
     pip="$venv_dir/bin/pip"
     [[ -x "$pip" ]] || return 1
-    "$pip" install --upgrade 'project-guide>=2.13.0' >/dev/null 2>&1 || return 1
+    "$pip" install --upgrade 'project-guide>=2.15.0' >/dev/null 2>&1 || return 1
     pyve_link_project_guide_shim "$venv_dir"
     [[ -x "$target" ]]
 }
