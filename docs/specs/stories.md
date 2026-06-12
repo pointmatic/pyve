@@ -326,7 +326,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.k.1: migrate the env-lifecycle config reader onto the `pyve.toml` manifest [Planned]
+### Story O.k.1: migrate the env-lifecycle config reader onto the `pyve.toml` manifest [Done]
 
 **Goal.** Make `pyve env init/install/run/lock` source env config (`backend`/`manifest`/`requirements`/`extra`/`lazy`/declaration) from `pyve.toml [env.*]` (the manifest, `PYVE_ENV_*`) instead of `pyproject.toml [tool.pyve.testenvs]` (`PYVE_TESTENV_*`). When `pyve.toml` is absent, v2 `[tool.pyve.testenvs]` keeps working via the manifest's existing legacy synthesis (read-compat). After this, `pyve env sync` (writes `pyve.toml`) and the lifecycle (reads `pyve.toml`) are coherent.
 
@@ -336,11 +336,13 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): a project with `[env.testenv]` declared in `pyve.toml` (backend/manifest/requirements) but NO `[tool.pyve.testenvs]` in pyproject → the lifecycle accessors (`_env_manifest_of` etc.) return empty. Assert they resolve from `pyve.toml` after the fix.
-- [ ] Route the lifecycle reader/accessors through the manifest (`PYVE_ENV_*`); preserve v2 pyproject read-compat via the manifest's legacy synthesis; avoid the synthesis↔reader recursion.
-- [ ] Parity: existing pyproject-`[tool.pyve.testenvs]` fixtures still drive `env init/install/run/lock` (via read-compat); new `pyve.toml [env.*]` fixtures now drive them too.
-- [ ] `pyve env sync` → `pyve env init <name>` coherent end-to-end (sync writes pyve.toml, init reads it).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): a `pyve.toml`-only project with `[env.testenv]` (backend/manifest) + `[env.lint]` (requirements) and NO `[tool.pyve.testenvs]` → the lifecycle accessors returned empty. Now resolve from `pyve.toml` ([test_env_name_manifest_decl.bats](../../tests/unit/test_env_name_manifest_decl.bats), 3 tests: resolves / precedence / read-compat).
+- [x] Routed `read_env_config` through the manifest: a **no-arg** call with `pyve.toml` present maps `PYVE_ENV_*` → `PYVE_TESTENV_*` via the new `_env_config_from_manifest` ([envs.sh](../../lib/envs.sh)); an explicit-path call stays on pyproject. Recursion-safe (manifest_load reads pyve.toml directly here; synthesis only fires when pyve.toml is absent). The migrator now reads the v2 source explicitly (`read_env_config pyproject.toml`, [self.sh](../../lib/commands/self.sh)).
+- [x] Parity: existing pyproject-`[tool.pyve.testenvs]` fixtures still drive the lifecycle (read-compat); new `pyve.toml [env.*]` fixtures now drive it too.
+- [x] Coherent end-to-end: a `lint` env declared **only** in `pyve.toml` materializes via `pyve env init lint` (`.pyve/envs/lint/venv` created, exit 0) — before O.k.1 the lifecycle read pyproject and couldn't see it.
+- [x] Full suite green: **1995 tests, 0 failures** (read-compat preserved every pyproject-testenv test). Shellcheck clean on changed lines.
+
+*(Note: the project-essentials wording "`pyve.toml` … the manifest accessors are the only sanctioned read path" is now substantially true for the lifecycle; a formal essentials edit is `plan_phase`'s job, deferred.)*
 
 ---
 

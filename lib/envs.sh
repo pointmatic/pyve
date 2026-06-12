@@ -45,8 +45,60 @@ _PYVE_TESTENVS_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_testen
 # and populate the V3 array state. Missing file or missing block yields
 # the implicit default (single venv `testenv`). Validation errors from
 # the helper propagate via non-zero exit and stderr.
+# Map the v3 manifest (`pyve.toml [env.*]`, the `PYVE_ENV_*` arrays
+# populated by manifest_load) into the lifecycle `PYVE_TESTENV_*` arrays the
+# accessors/consumers read. Every non-`root` declared env becomes a lifecycle
+# env. A no-`backend` env defaults to `venv` (matching the v2 helper's
+# implicit default; the mirror-root semantics are a separate, later change).
+# The default env is the one flagged `default`, else `testenv` if present,
+# else the first declared — mirroring the legacy-synthesis default rule.
+_env_config_from_manifest() {
+    manifest_load >/dev/null 2>&1 || true
+    PYVE_TESTENVS_DEFAULT=""
+    PYVE_TESTENVS_NAMES=()
+    PYVE_TESTENV_BACKEND=()
+    PYVE_TESTENV_LAZY=()
+    PYVE_TESTENV_EXTRA=()
+    PYVE_TESTENV_MANIFEST=()
+    PYVE_TESTENV_REQUIREMENTS_Q=()
+    local n=0
+    [[ -n "${PYVE_ENV_NAMES+x}" ]] && n=${#PYVE_ENV_NAMES[@]}
+    local i name be
+    for ((i=0; i<n; i++)); do
+        name="${PYVE_ENV_NAMES[$i]}"
+        [[ "$name" == "root" ]] && continue
+        be="${PYVE_ENV_BACKEND[$i]}"
+        [[ -z "$be" ]] && be="venv"
+        PYVE_TESTENVS_NAMES+=("$name")
+        PYVE_TESTENV_BACKEND+=("$be")
+        PYVE_TESTENV_LAZY+=("${PYVE_ENV_LAZY[$i]}")
+        PYVE_TESTENV_EXTRA+=("${PYVE_ENV_EXTRA[$i]}")
+        PYVE_TESTENV_MANIFEST+=("${PYVE_ENV_MANIFEST[$i]}")
+        PYVE_TESTENV_REQUIREMENTS_Q+=("${PYVE_ENV_REQUIREMENTS_Q[$i]}")
+        [[ "${PYVE_ENV_DEFAULT[$i]}" == "1" ]] && PYVE_TESTENVS_DEFAULT="$name"
+    done
+    if [[ -z "$PYVE_TESTENVS_DEFAULT" && "${#PYVE_TESTENVS_NAMES[@]}" -gt 0 ]]; then
+        local j
+        for j in "${!PYVE_TESTENVS_NAMES[@]}"; do
+            [[ "${PYVE_TESTENVS_NAMES[$j]}" == "testenv" ]] && { PYVE_TESTENVS_DEFAULT="testenv"; break; }
+        done
+        [[ -z "$PYVE_TESTENVS_DEFAULT" ]] && PYVE_TESTENVS_DEFAULT="${PYVE_TESTENVS_NAMES[0]}"
+    fi
+}
+
 read_env_config() {
     local pyproject="${1:-pyproject.toml}"
+    # v3 lifecycle read: with NO explicit pyproject path AND a `pyve.toml`
+    # present, source env config from the canonical manifest (`pyve.toml
+    # [env.*]`) rather than the v2 `[tool.pyve.testenvs]` table. An explicit
+    # pyproject arg (the migrator) always reads the v2 source. Recursion-safe:
+    # manifest_load reads `pyve.toml` directly here (no legacy synthesis →
+    # no read_env_config re-entry); synthesis only fires when `pyve.toml` is
+    # absent, which this branch excludes.
+    if [[ $# -eq 0 && -f pyve.toml ]]; then
+        _env_config_from_manifest
+        return 0
+    fi
     # Short-circuit: no pyproject.toml → synthesize the implicit-default
     # config (single venv `testenv`) in pure bash. The Python helper
     # would have returned the same shape, but invoking python would
