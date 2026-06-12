@@ -258,14 +258,14 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.i: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+### Story O.i: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Done]
 
 - [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
 - [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
 - [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
-- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
-- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
-- [ ] *(housekeeping)* Stale comments referencing "lib/utils.sh's gitignore template" ([test_testenvs_activate.bats:15](../../tests/unit/test_testenvs_activate.bats#L15), [test_state_layout.bats:165](../../tests/unit/test_state_layout.bats#L165)) point at the pre-composer emitter; refresh to name `lib/gitignore_composer.sh` when next touching those files.
+- [x] Audit `update-homebrew.yml` against the v3 surface — **clean**: it's only a `dawidd6/action-homebrew-bump-formula` version bump on `v*` tags; references no pyve commands, file names, or `caveats` text, so nothing v2-specific to fix.
+- [x] Confirm the formula's test/install block exercises a v3 smoke path. Audited the reference copy [docs/specs/pyve.rb](../../docs/specs/pyve.rb): `install` / `caveats` (`pyve self provision`, `self unprovision --all`, `pyve update`) / `depends_on python@3.12` already v3-correct. Strengthened `test do` from a `--version`-only check to a real **v3 `init` smoke** (shims the formula Python as bare `python`, runs `pyve init --backend venv` non-interactively + no network, asserts `pyve.toml` + `.venv/bin/python`); validated the sandbox steps locally. Developer deployed the `test do` block to `pointmatic/homebrew/tap`. (`url`/`sha256` left untouched — auto-bumped by the `dawidd6` release action.)
+- [x] *(housekeeping)* Refreshed the stale gitignore-template comments — but **not** as a simple rename: the sweep test ([test_state_layout.bats](../../tests/unit/test_state_layout.bats)) only scans `lib/commands/` + `pyve.sh` (not `utils.sh`), and `utils.sh` has no gitignore-template line (gitignore moved to `lib/gitignore_composer.sh`, which ignores the whole `.pyve/` tree). Both comments ([test_testenvs_activate.bats:13-15](../../tests/unit/test_testenvs_activate.bats#L13-L15), [test_state_layout.bats:165-168](../../tests/unit/test_state_layout.bats#L165-L168)) corrected to reflect that reality.
 
 ---
 
@@ -430,6 +430,53 @@ The process exit code is correct (non-zero); only the visual footer lies.
 ---
 
 ## Future
+
+### Story ?.?: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments [Planned]
+
+*(Design correction surfaced 2026-06-11. What `pyve init` actually *promises* to materialize from a `pyve.toml` is muddy: init eagerly builds a bare-Python `testenv` regardless of declaration, a no-backend testenv hardcodes `venv` instead of mirroring the root, a code comment claims the opposite of what the code does, and no docs state the contract. Correct the ergonomics + comments + docs so "initialize" has one clear, declared-driven meaning.)*
+
+**Discovered:** 2026-06-11, tracing `pyve init` behavior for a `[env.root] venv` + `[env.testenv] purpose="test", default=true` (no backend) config. Empirically, init materialized **both** `.venv/` **and** `.pyve/envs/testenv/venv/` — the latter a bare venv (Python only, no pytest), which `pyve check` then flags as "present but pytest not installed."
+
+**Three defects of one muddy promise.**
+1. **Eager undeclared materialization.** `pyve init` calls `ensure_env_exists` ([plugin.sh:2075](../../lib/plugins/python/plugin.sh#L2075)) which builds a default `testenv` venv even when no test env is declared — creating an env the user never asked for, that immediately reads as "broken" in `check`.
+2. **No-backend testenv hardcodes `venv`, doesn't mirror root.** `_env_resolve_backend` ([envs.sh](../../lib/envs.sh)) returns `venv` for a testenv with no `backend`; only an *explicit* `inherit` mirrors the main backend. So a micromamba project's no-backend testenv wrongly resolves to venv.
+3. **Stale comment contradicts behavior.** [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) claims *"`pyve init` materializes the run env (`.venv/`) and `pyve testenv init` later materializes the test env … even before the testenv venv exists on disk"* — the opposite of what init does (it eagerly creates it).
+
+**Proposed model — a graduated "declared → materialized → operable" ladder (minimal magic).**
+
+- **No test env declared** → **no test env initialized.** Init materializes only what's declared (the root env). No injected bare-Python `testenv`.
+- **Test env declared, `purpose="test"`, `default=true`, no backend** → Pyve **mirrors the root backend** (`inherit` semantics) and uses the block name (`testenv`) as the env name. `pyve test` autowires to the `default` test env. Very little magic — a declared default with an inferred backend.
+- **Test env declared, `purpose="test"` only (no `default`, no backend)** → a **skeleton** declaration: Pyve initializes it with a backend that **mirrors the root**, and nothing more. No autowiring, no dep mechanics. Purely declarative for non-Python stacks (Rust, C++) or `none`/advisory roots — Pyve provides mechanics only for backends it implements. (Consistent with the `none`-root model in O.l and the "declared ≠ operable" framing in O.m/O.n.)
+  - **Python-root special promotion (decided 2026-06-11).** Drawing on Pyve's Python origins and Python-friendly slant: when the **root is a Python backend** (venv / micromamba), the declared env collection is **homogeneous** (all envs share one backend — see the homogeneity guard below), and **exactly one** test env is declared with **nothing else** (no other test envs, no explicit `default`), Pyve **promotes** that sole test env to the default and **autowires `pyve test`** to it (PyTest autowiring) — no explicit `default = true` required. The promotion is Python-only: a non-Python / `none`-root, or multiple test envs with no declared default, stays skeleton (no autowiring; `pyve test` reports no default test env).
+  - **Homogeneity guard (decided 2026-06-11) — no magic when backends are mixed.** All of the above gentle assumptions (sole-env promotion, autowiring) apply **only when the declared env collection is homogeneous in backend.** The moment the repo declares a **mix of backends** (e.g. a venv root with a micromamba test env, or several test envs spanning backends), the assumptions break: Pyve requires **specificity**. It will happily **configure every env the developer declares** (materialization is unchanged), but does **no autowiring** — `pyve test` needs an explicit `default = true`. No heuristics, no magic: a non-homogeneous repo has too many edge cases to guess a sane default safely.
+
+**Corrections in scope.**
+1. **Ergonomics (code).** Gate init's testenv materialization on an actual test-env declaration; default a no-backend testenv to `inherit` (mirror root) rather than hardcoded `venv`; ensure "mirror root" reads the **manifest** (`manifest_get_backend root`), not `.pyve/config` (the current `inherit` path reads the v2 config — coordinate with O.g / the N-10 read sweep). When the mirrored backend is `none`/advisory, the testenv is declarative-only (no materialization, no mechanics — reuse `_env_backend_is_advisory`).
+2. **Comments.** Fix [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) and any sibling comments to state the *actual* promise.
+3. **Docs.** State the init contract plainly (project-essentials + the site/usage docs): what "initialize" guarantees per declaration shape; that a declared env is not automatically an operable or dependency-populated env; that `purpose="test"` without `default` is a skeleton.
+
+**Decided (2026-06-11).**
+- **Sole Python test env → auto-promote** to default with PyTest autowiring (no explicit `default` needed); non-Python / skeleton roots get no promotion (see the Python-root special-promotion note above).
+- **Homogeneity guard.** The gentle assumptions apply only to a **single-backend** repo. A mixed-backend collection → Pyve still configures every declared env but does **no autowiring**; `pyve test` requires an explicit `default`. No heuristics under ambiguity.
+- **"Mirror root" reads the manifest** (`manifest_get_backend root`), not `.pyve/config` (coordinate with O.g / the N-10 read sweep); root `none`/advisory → mirror yields `none` → skeleton, no mechanics.
+
+**Open decisions (developer owns — do not silently resolve).**
+- **Dependency seeding.** Does an initialized Python testenv stay empty until `pyve test` / `pyve env install` installs pytest on demand (today's behavior, now intentional + documented — the natural partner of the autowiring promotion), or should init eagerly seed `requirements-dev.txt` / declared `requirements`? (Relates to O.n's pip layer.)
+- **Backward-compat.** Gating eager testenv creation changes init output for existing v3 projects that relied on the auto-created empty testenv. Acceptable in the early-v3 line, but call it out in the release notes.
+
+**Tasks (refine once the open decisions land).**
+
+- [ ] Decide the remaining open questions (dependency seeding; back-compat note).
+- [ ] Gate init testenv materialization on a declared test env (Case 1: none declared → none created).
+- [ ] Default a no-backend declared testenv to `inherit` (mirror root), reading the manifest; `none`/advisory mirror → declarative-only (no materialization).
+- [ ] `pyve test` autowires to the `default` test env; **Python root + sole declared test env + homogeneous backends → auto-promote to default** (no explicit `default` needed); non-Python / multi-env-no-default / **mixed-backend repo** → no autowiring (require explicit `default`).
+- [ ] Fix the stale comment(s) at [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) to match actual behavior.
+- [ ] Document the init contract (project-essentials + usage/site docs): declaration vs. materialization vs. mechanics.
+- [ ] Tests across the three declaration shapes (none / default+no-backend / skeleton) and root backends (venv / micromamba / none); full suite green.
+
+**Version:** Future — a cross-cutting init-semantics + docs correction, larger than the v3.0.6 bugfix line. Scope/placement (own subphase vs. folded into a release) is the developer's at planning time.
+
+---
 
 ## Phase P: Harden and heal Pyve
 
