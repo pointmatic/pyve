@@ -1220,7 +1220,7 @@ EOF
         header_box "pyve env"
         local sync_rc=0
         env_sync "${sync_args[@]+"${sync_args[@]}"}" || sync_rc=$?
-        footer_box
+        footer_box "$sync_rc"
         return "$sync_rc"
     fi
 
@@ -1311,6 +1311,6 @@ EOF
             ;;
     esac
 
-    footer_box
+    footer_box "$leaf_rc"
     return "$leaf_rc"
 }

@@ -146,3 +146,19 @@ run_pyve() {
     [[ "$stderr_content" == *"pyve testenv"* ]]
     [[ "$stderr_content" == *"pyve env"* ]]
 }
+
+#============================================================
+# Story O.j — the box footer must reflect the real outcome. A failed
+# leaf used to render the green '✔ All done.' under its ✘ errors because
+# footer_box was status-blind; env_command now threads leaf_rc into it.
+#============================================================
+
+@test "env: a failed 'env init' shows the failure footer, never '✔ All done.'" {
+    # Uninitialized project (no pyve.toml in TEST_DIR) → 'env init' fails.
+    run bash "$PYVE_BIN" env init testenv
+    [ "$status" -ne 0 ]
+    # The bug: a green success box printed beneath the ✘ errors.
+    ! printf '%s' "$output" | grep -qF "All done."
+    # The failure footer renders instead.
+    printf '%s' "$output" | grep -qF "Failed."
+}

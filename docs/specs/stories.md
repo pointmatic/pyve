@@ -269,7 +269,7 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.j: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
+### Story O.j: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Done]
 
 **Discovered:** 2026-06-08 smoke test (`pyve env install` and `pyve env init testenv` on a `.git`-only `pyve-v3-smoke`).
 
@@ -299,11 +299,11 @@ The process exit code is correct (non-zero); only the visual footer lies.
 
 **Tasks**
 
-- [ ] Reproduce (red): a failed box command (e.g. `env init` on an uninitialized project, or any dispatcher with a non-zero leaf) emits `✔ All done.`. Assert the success footer is present on failure (red), then absent after the fix.
-- [ ] Make `footer_box` accept an optional exit code; non-zero → failure variant (`CROSS` + red box); zero/absent → unchanged success footer. Keep it pyve-agnostic (extend the `lib/ui/` boundary test if needed).
-- [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
-- [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
-- [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
+- [x] Reproduce (red): `footer_box 1` still printed `✔ All done.` ([test_ui.bats](../../tests/unit/test_ui.bats)); e2e, `pyve env init testenv` on an uninitialized dir emitted the green success box under its `✘` errors.
+- [x] Made `footer_box [exit_code]` status-aware ([core.sh:141](../../lib/ui/core.sh#L141)): `0`/absent → `✔ All done.`; non-zero → red `✘ Failed.`. Padding is computed (not hardcoded) so the box stays 41 wide for either message. Pyve-agnostic (no `PYVE_*`/paths introduced).
+- [x] Threaded the result code at the only two callsites that compute one at the footer point — `env_command`'s `leaf_rc` ([env.sh:1314](../../lib/commands/env.sh#L1314)) and the sync path's `sync_rc` ([env.sh:1223](../../lib/commands/env.sh#L1223)). The other 9 callsites are success-only (their failure paths `return`/`exit` before the footer, or `set -e` aborts) → kept the no-arg success default.
+- [x] Tests: 3 `footer_box` unit tests (success / explicit-0 / non-zero→Failed) + 1 e2e dispatcher test (failed `env init` → `Failed.`, never `All done.`, exit unchanged).
+- [x] Full suite green (1992 tests, 0 failures); re-ran the `pyve env init testenv` smoke — footer now renders red `✘ Failed.` and exits 1.
 
 ---
 
