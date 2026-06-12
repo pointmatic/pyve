@@ -236,7 +236,7 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.h: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Planned]
+### Story O.h: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Done]
 
 *(Innocuous — the wiring is correctly idempotent; only the prompt ordering is wrong. Outside the v3.0.5 migration bundle.)*
 
@@ -252,9 +252,9 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 **Tasks**
 
-- [ ] Reproduce (red): with a temp rc file already containing the sentinel block, invoke the completion-wiring step in interactive mode → assert (a) no `[Y/n]` prompt is emitted and (b) the rc file is unchanged. Fails today (prompt fires).
-- [ ] Hoist the sentinel-presence check above the prompt in the completion-wiring path ([utils.sh](../../lib/utils.sh) FR-16 Step 3): present → skip prompt (keep the one-line "already present" note); absent → unchanged flag/env/prompt handling.
-- [ ] Confirm the flag/env paths (`--project-guide-completion` / `--no-project-guide-completion` / `PYVE_PROJECT_GUIDE_COMPLETION` / CI auto-skip) are untouched and still only matter when the block is absent.
+- [x] Reproduce (red): with a temp rc file already containing the sentinel block, drive the completion-wiring step in interactive mode → assert the prompt is **not consulted** and the rc file is unchanged. (Tested via a prompt spy in [test_project_guide.bats](../../tests/unit/test_project_guide.bats) rather than real stdin — the prompt's `read` is nondeterministic under bats.) Fails today (prompt consulted).
+- [x] Hoist the sentinel-presence check above the prompt in the completion-wiring path — the wiring lives in [`run_project_guide_orchestration`](../../lib/project_guide.sh#L129) (Step 3), not `utils.sh`: resolve the rc path up front, and if the block is present → one-line "already present" note + return *before* the prompt; absent → unchanged flag/env/prompt handling.
+- [x] Confirm the flag/env paths (`--project-guide-completion` / `--no-project-guide-completion` / `PYVE_PROJECT_GUIDE_COMPLETION` / CI auto-skip) are untouched and still only matter when the block is absent (absent-path test green; full suite green).
 
 ---
 
@@ -372,7 +372,60 @@ The process exit code is correct (non-zero); only the visual footer lies.
 - [ ] Bats: `init` green on a `none`-root fixture (root skipped + note emitted); `--backend bogus` still hard-errors; existing `init` tests unaffected.
 - [ ] Full suite; zero regressions.
 
-**Version:** part of the **v3.0.6** Phase O bundle (ships with O.g–O.k). Developer owns the final number/version.
+**Version:** part of the **v3.0.6** Phase O bundle (ships with O.g–O.n). Developer owns the final number/version.
+
+---
+
+### Story O.m: `pyve test` / `pyve env run` cannot operate a conda-backed testenv — primary dev loop hard-gated off conda [Planned]
+
+*(Critical bug, field-reported 2026-06-11. A conda-backed testenv **builds and runs fine** — but only via direct `micromamba run -p …`, bypassing pyve entirely. The `pyve test` ergonomics that are the whole reason to declare a pyve testenv don't work against conda in 3.0.5, so the primary dev loop is broken for every conda project.)*
+
+**Discovered:** 2026-06-11, field report. A `[tool.pyve.testenvs.testenv]` (`backend="micromamba"`, `manifest="environment.yml"`) materialized a real conda env at `.pyve/envs/testenv/conda` (python 3.12.13 + torch etc.), but `pyve test` and `pyve env run` both refuse to operate it.
+
+**Symptom.** `pyve env run testenv …` and `pyve test` (which is built on the same exec path) hard-error: *"'pyve env run' does not yet support conda-backed env 'testenv' (resolved backend: micromamba). Workaround: 'micromamba run -p .pyve/envs/testenv/conda <command>'."* So the user must run the conda env directly, outside pyve.
+
+**Root cause.** `pyve env run` activates via **PATH-prepend** (`<env>/bin` ahead of `PATH`) — correct for a venv, **wrong for conda**. A conda env needs `CONDA_PREFIX` / `CONDA_DEFAULT_ENV`, its `etc/conda/activate.d` scripts, and conda's library paths (which compiled wheels like torch depend on); PATH-prepend alone doesn't set those up. M.i.1 deliberately **gated conda out** ([`assert_env_venv_backend`](../../lib/envs.sh#L271)) rather than ship half-working activation. The gate fires at both callsites: `pyve env run` ([env.sh:1241](../../lib/commands/env.sh#L1241)) and `pyve test` ([plugin.sh:3937](../../lib/plugins/python/plugin.sh#L3937)).
+
+**Fix — exec conda envs the conda way (proper support, not a workaround).** When the resolved env backend is micromamba, exec via `micromamba run -p <env_path> <cmd>` — the canonical conda exec primitive that sets `CONDA_PREFIX`, runs the activate scripts, and fixes lib paths. This is the same command the error currently tells the user to run by hand, moved *inside* pyve. Replace the `assert_env_venv_backend` hard-gate at both callsites with a backend dispatch: venv → today's PATH activation; micromamba → `micromamba run -p`. Preserve exit codes, argument passing, stdin/TTY. Requires micromamba on PATH (`get_micromamba_path`); error actionably if absent.
+
+**Out of scope.** The conda **pip-requirements layer** (O.n — `pyve env install -r` for conda). Which declaration table *drives* a conda env (`[tool.pyve.testenvs.*]` in pyproject vs `pyve.toml [env.*]`) — that duality is O.k / N-10 territory; this story consumes whatever `_env_resolve_backend` / `_env_manifest_of` already resolve. The main (`root`) conda env's `pyve run` path if it needs the same treatment — note it, fix here only if it shares the exec helper cheaply.
+
+**Tasks**
+
+- [ ] Reproduce (red): `pyve env run <conda-testenv> -- python -c …` (and `pyve test` against it) → hard-errors "does not yet support conda-backed env". Assert it instead executes inside the conda env.
+- [ ] Add a micromamba exec branch (`micromamba run -p <env_path> <cmd>`) and route `pyve env run` + `pyve test` through it for micromamba-backed envs; keep venv on PATH activation. Remove/replace the `assert_env_venv_backend` gate at both callsites.
+- [ ] Verify exit codes, argument/flag passing, and stdin/TTY are preserved through `micromamba run`; actionable error when micromamba is absent.
+- [ ] `pyve test` runs the suite inside a conda-backed testenv end-to-end (pytest resolves from the conda env).
+- [ ] Confirm the venv-backed `env run` / `test` path is unchanged (existing tests green).
+- [ ] Full suite; zero regressions.
+
+**Version:** **v3.0.6** Phase O critical-bugfix bundle. Developer owns the final number/version.
+
+---
+
+### Story O.n: `pyve env install -r` silently drops pip requirements for conda testenvs — no conda+pip layer [Planned]
+
+*(Critical bug, field-reported 2026-06-11. The standard conda workflow — conda for heavy deps (torch), pip for dev tooling (pytest/ruff) — is unexpressible: `-r` is silently ignored against a conda env, so dev tools never land and the silent data loss masks it. Pairs with O.m to make conda testenvs fully operable.)*
+
+**Discovered:** 2026-06-11, field report. `pyve env install testenv -r requirements-dev.txt` against a conda-backed testenv synced only `environment.yml`; the pip requirements were silently dropped, forcing a manual `pip install` via the conda env's own python.
+
+**Symptom.** For a micromamba-backed env, `pyve env install <name> -r <file>` runs only `micromamba install -p <env> -f <manifest> -y` and **never pip-installs `<file>`** — with no warning.
+
+**Root cause.** [`_env_install_conda`](../../lib/commands/env.sh#L802) takes only `(name, env_path, manifest)` and syncs the conda manifest. The `-r` file (`cli_req_file`) is threaded into [`_env_install_with_lock`](../../lib/commands/env.sh#L747) but consumed **only by the venv branch** (`_env_install_venv`); the micromamba branch ignores it. The conda backend was designed as "manifest is the single source" with no pip fallback — so a conda+pip split has nowhere to live.
+
+**Fix — a real pip layer for conda envs (proper support).** After the conda manifest sync, pip-install the requested pip sources **into the conda env** via `micromamba run -p <env_path> python -m pip install -r <file>` (reusing O.m's conda exec). Honor the same source precedence the venv path already supports where it makes sense for conda — CLI `-r`, then a declared `requirements`/`extra` — layered on top of the manifest solve (conda solves heavy deps; pip adds the rest). **Never silently drop `-r`**: if a source is given and can't be applied, it must be an error or a loud warning, never silent.
+
+**Out of scope.** The conda exec primitive itself (O.m — this story depends on it). Lockfile/`conda-lock` interaction with the pip layer (note if it surfaces; don't expand). Reconciling which table declares conda sources (`[tool.pyve.testenvs.*]` vs `pyve.toml [env.*]`) — O.k / N-10.
+
+**Tasks**
+
+- [ ] Reproduce (red): `pyve env install <conda-testenv> -r requirements-dev.txt` → the file's packages are NOT installed into the conda env and no warning is emitted. Assert they are installed after the fix.
+- [ ] Thread `cli_req_file` (and declared `requirements`/`extra`) into the conda install path; pip-install into the env via `micromamba run -p <env> python -m pip install …` after the manifest sync (depends on O.m's exec helper).
+- [ ] Guarantee no silent drop: a supplied/declared pip source that can't be applied errors or warns loudly.
+- [ ] Confirm the conda manifest sync still runs first (conda solves heavy deps; pip layers dev tools on top); venv install path unchanged.
+- [ ] Full suite; zero regressions.
+
+**Version:** **v3.0.6** Phase O critical-bugfix bundle. Depends on O.m. Developer owns the final number/version.
 
 ---
 
