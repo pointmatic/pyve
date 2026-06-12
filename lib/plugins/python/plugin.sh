@@ -148,9 +148,13 @@ python_pyve_plugin_validate_env_blocks() {
         fi
 
         # backend check — bp_lookup returns 1 (no output) for
-        # unregistered backends.
-        if [[ -n "$backend" ]]; then
-            if ! bp_lookup "$backend" >/dev/null 2>&1; then
+        # unregistered backends. An *advisory* backend (e.g. `none`) is
+        # intentionally unregistered: it is declarable but not materialized
+        # by pyve (a runtime-less / non-Python root), so the materializer
+        # skips it with a note rather than building an env. Let it through
+        # here; only a genuinely-unknown backend hard-errors.
+        if [[ -n "$backend" ]] && ! bp_lookup "$backend" >/dev/null 2>&1; then
+            if ! _env_backend_is_advisory "$backend"; then
                 printf "error: python plugin: env '%s' declares unregistered backend '%s'\n" \
                     "$name" "$backend" >&2
                 return 1
@@ -572,6 +576,13 @@ python_pyve_plugin_activate() {
             env_path="$(micromamba_root_prefix)"
             ;;
         *)
+            # An advisory root backend (e.g. `none`) is a runtime-less /
+            # non-Python root: there is no Python env to activate, so the
+            # Python plugin contributes no .envrc section (the composer
+            # assembles the rest). A genuinely-unknown backend still errors.
+            if _env_backend_is_advisory "$backend"; then
+                return 0
+            fi
             log_error "python plugin: activate: unknown backend '$backend'"
             return 1
             ;;
@@ -1681,6 +1692,13 @@ init_project() {
         exit 1
     fi
 
+    # Capture whether the backend came from an explicit --backend before the
+    # wizard resolves backend_flag (it may seed it from pyve.toml's [env.root]
+    # backend via dynamic scope). The advisory-root skip below keys off this:
+    # a manifest-declared advisory backend is skipped, but an explicit
+    # --backend stays strict (an unknown value still hard-errors).
+    local arg_backend_explicit="$backend_flag"
+
     _init_wizard "$backend_flag" "$python_version" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
@@ -1843,6 +1861,25 @@ init_project() {
     # straddling two backends. No-op when nothing foreign is present.
     if [[ "${PYVE_REINIT_MODE:-}" == "force" ]] && [[ -n "$backend_flag" ]]; then
         _init_backup_foreign_env "$backend_flag"
+    fi
+
+    # An advisory root backend (e.g. `none`) declared in pyve.toml is not
+    # something pyve materializes — it marks a runtime-less / non-Python root
+    # (Node, Rust, Go, advisory tool envs, a polyglot coordination root). Skip
+    # root env creation with the same note the per-env install path emits,
+    # rather than crashing in validate_backend, then let the composition tail
+    # still wire up .envrc/.gitignore + named concrete-backend envs. Gated on
+    # the manifest-derived value: an explicit --backend stays strict below, so
+    # a genuinely-unknown `--backend bogus` still hard-errors.
+    if [[ -z "$arg_backend_explicit" ]] && _env_backend_is_advisory "$backend_flag"; then
+        info "env 'root' declares backend '$backend_flag', which pyve does not yet materialize; skipping root env creation (provision it manually per the env spec)"
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        PYVE_INIT_TAIL_BACKEND="$backend_flag"
+        PYVE_INIT_TAIL_ENV_PATH=""
+        PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+        PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+        PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
+        return 0
     fi
 
     # Validate backend if specified

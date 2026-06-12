@@ -369,7 +369,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.l: `pyve init` crashes on a declared `none` / advisory root backend — can't materialize a no-Python-root topology (e.g. `none`-root + micromamba-testenv) [Planned]
+### Story O.l: `pyve init` crashes on a declared `none` / advisory root backend — can't materialize a no-Python-root topology (e.g. `none`-root + micromamba-testenv) [Done]
 
 *(Field feedback surfaced 2026-06-11 while investigating O.g/O.k. `backend = "none"` is declarable in `pyve.toml` but `pyve init` hard-errors on it, so a no-Python-root project can't be built. Also folds in the documentation gap: what `none` is actually for.)*
 
@@ -389,12 +389,12 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): `pyve init` on a project whose `pyve.toml` declares `[env.root] backend = "none"` → exits non-zero with `Invalid backend: none`. Assert init instead completes, skips the root env, and emits the advisory "not materialized" note.
-- [ ] Skip root env creation when the resolved root backend classifies advisory (reuse `_env_backend_is_advisory`); emit the advisory note; continue to declared concrete-backend envs. Keep `validate_backend` strict for an explicit `--backend` (unknown flag values still hard-error).
-- [ ] Confirm a declared concrete-backend env (e.g. a micromamba `testenv`) materializes on a `none`-root project once `init` no longer aborts.
-- [ ] Document what `none` is for: project-essentials entry (non-Python languages/backends/environments not yet materialized) + refresh any backends help/docs implying a venv/micromamba-only root; note declarable + init-safe, root materialization is future work.
-- [ ] Bats: `init` green on a `none`-root fixture (root skipped + note emitted); `--backend bogus` still hard-errors; existing `init` tests unaffected.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new black-box [test_init_none_root.bats](../../tests/unit/test_init_none_root.bats) drives `pyve init` (non-interactive, offline) on a `[env.root] backend = "none"` + micromamba-`testenv` fixture. **Root-cause correction:** the live crash is not `Invalid backend: none` from `validate_backend` (the story's stale diagnosis) but the *earlier* `python plugin: env 'root' declares unregistered backend 'none'` — there are in fact **three** gates that each reject an advisory backend (see next task). The 4 "init succeeds" assertions failed red; the `--backend bogus` strictness assertion was already green.
+- [x] Skip root env creation when the resolved root backend classifies advisory — routed all **three** gates through the single classifier `_env_backend_is_advisory` (no inline `== none`): (1) the plugin's env-block validation [plugin.sh:152](../../lib/plugins/python/plugin.sh#L152) (`bp_lookup` miss → advisory carve-out), (2) `init`'s `validate_backend` gate [plugin.sh:1855](../../lib/plugins/python/plugin.sh#L1855) — an advisory **manifest** backend emits the per-env "does not yet materialize" note, scaffolds the manifest, sets the composition-tail globals (so `.envrc`/`.gitignore` + project-guide + next-steps still run), and returns before materializing; an explicit `--backend` stays strict via a captured `arg_backend_explicit`, so `--backend bogus` still hard-errors, and (3) the `.envrc` activate hook [plugin.sh:578](../../lib/plugins/python/plugin.sh#L578) (advisory root → contribute no section instead of erroring).
+- [x] Confirmed: on the `none`-root fixture the declared micromamba `testenv` reads cleanly from the manifest (`is_env_declared testenv` → yes, `_env_resolve_backend testenv` → micromamba) — the advisory root never gates it off; it materializes via `pyve env init <name>` like any project (env-init path untouched).
+- [x] Documented in [project-essentials.md](project-essentials.md): new "`backend = "none"` declares a runtime-less / non-Python root" entry (advisory category + the closed `classify backend` vocabulary, declarable + init-safe, root materialization is future per-plugin work, the single-classifier `how-to-apply`). The `--backend` CLI help stays `venv, micromamba, auto` — `none` is a manifest declaration, never a flag value, so the help is already correct.
+- [x] Bats green: 5 `init` tests on the `none`-root fixture (exit 0, no `.venv`/`.pyve/envs/root`, advisory note emitted, `pyve.toml` preserved) + `--backend bogus` still hard-errors with no advisory note.
+- [x] Full suite: **2007 tests**, only 2 failures — `test_asdf_compat.bats` `J.c` guard tests — confirmed **pre-existing** (fail identically with my lib changes stashed; environment-dependent on this machine's asdf state; tracked by Phase P "Fix pre-existing integration test failures"). Zero regressions attributable to O.l. Shellcheck clean on changed lines.
 
 **Version:** part of the **v3.0.6** Phase O bundle (ships with O.g–O.n). Developer owns the final number/version.
 
