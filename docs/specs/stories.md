@@ -429,7 +429,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.n: `pyve env install -r` silently drops pip requirements for conda testenvs — no conda+pip layer [Planned]
+### Story O.n: `pyve env install -r` silently drops pip requirements for conda testenvs — no conda+pip layer [Done]
 
 *(Critical bug, field-reported 2026-06-11. The standard conda workflow — conda for heavy deps (torch), pip for dev tooling (pytest/ruff) — is unexpressible: `-r` is silently ignored against a conda env, so dev tools never land and the silent data loss masks it. Pairs with O.m to make conda testenvs fully operable.)*
 
@@ -445,19 +445,19 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): `pyve env install <conda-testenv> -r requirements-dev.txt` → the file's packages are NOT installed into the conda env and no warning is emitted. Assert they are installed after the fix.
-- [ ] Thread `cli_req_file` (and declared `requirements`/`extra`) into the conda install path; pip-install into the env via `micromamba run -p <env> python -m pip install …` after the manifest sync (depends on O.m's exec helper).
-- [ ] Guarantee no silent drop: a supplied/declared pip source that can't be applied errors or warns loudly.
-- [ ] Confirm the conda manifest sync still runs first (conda solves heavy deps; pip layers dev tools on top); venv install path unchanged.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new [test_conda_pip_layer.bats](../../tests/unit/test_conda_pip_layer.bats) drives `_env_install_with_lock` against a conda env with a stub micromamba logging argv — pre-fix only the `install -f <manifest>` line appeared, never a `run -p … pip install -r` line (the `-r` was silently dropped). The "no -r → sync-only" case was already green.
+- [x] Threaded `cli_req_file` into the micromamba branch of `_env_install_with_lock` → `_env_install_conda` (new optional 4th param). Added `_env_conda_pip_layer` ([env.sh](../../lib/commands/env.sh)): after the manifest sync, resolves the pip source by precedence (CLI `-r` > declared `requirements` > declared `extra`) and installs it INTO the conda env via `micromamba run -p <env> python -m pip install …`. The venv-only conveniences (auto `requirements-dev.txt`, bare-pytest fallback) are intentionally not carried over — for conda the manifest is the base and the pip layer is opt-in.
+- [x] No silent drop: a CLI `-r` (or declared `requirements`) file that doesn't exist is a hard error before any pip attempt (asserted — error names the missing file, `mm.log` shows no `pip install`).
+- [x] Manifest sync runs first, then the pip layer (asserted via log line ordering); the venv install path (`_env_install_venv`) is untouched — zero changes to its precedence chain.
+- [x] Full suite: **2013 tests**, only the 2 pre-existing `test_asdf_compat.bats` `J.c` failures (environment-dependent, confirmed pre-existing — same as O.l/O.m; Phase P backlog). Zero regressions from O.n. Shellcheck clean on changed lines.
+
+*(Scope note on declared sources: the schema mutex `requirements ⊕ extra ⊕ manifest` means a conda env — which requires `manifest` — cannot also declare `requirements`/`extra` today, so the **CLI `-r`** flag is the live pip-source path for conda. The declared-`requirements`/`extra` precedence branches are implemented for parity and are future-proof if the mutex is relaxed to allow conda+pip declarations, but are currently unreachable for a conda env. Relaxing the mutex was not in this story's scope.)*
 
 **Version:** **v3.0.6** Phase O critical-bugfix bundle. Depends on O.m. Developer owns the final number/version.
 
 ---
 
-## Future
-
-### Story ?.?: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments [Planned]
+### Story O.p: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments [Planned]
 
 *(Design correction surfaced 2026-06-11. What `pyve init` actually *promises* to materialize from a `pyve.toml` is muddy: init eagerly builds a bare-Python `testenv` regardless of declaration, a no-backend testenv hardcodes `venv` instead of mirroring the root, a code comment claims the opposite of what the code does, and no docs state the contract. Correct the ergonomics + comments + docs so "initialize" has one clear, declared-driven meaning.)*
 
@@ -501,6 +501,10 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 - [ ] Tests across the three declaration shapes (none / default+no-backend / skeleton) and root backends (venv / micromamba / none); full suite green.
 
 **Version:** Future — a cross-cutting init-semantics + docs correction, larger than the v3.0.6 bugfix line. Scope/placement (own subphase vs. folded into a release) is the developer's at planning time.
+
+---
+
+## Future
 
 ---
 
