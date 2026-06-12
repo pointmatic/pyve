@@ -2893,46 +2893,67 @@ check_environment() {
         printf "======================\n\n"
     fi
 
-    # --- Check 1: .pyve/config present ------------------------------------
-    if ! config_file_exists; then
-        _check_fail "Configuration: .pyve/config missing" "→ Run: pyve init"
+    # --- Check 1: pyve project present ------------------------------------
+    # Route presence + backend through the v3 manifest. `manifest_load`
+    # handles both a native `pyve.toml` and the v3.0 read-compat synthesis
+    # from `.pyve/config`, so a pyve.toml-only project is recognized. The
+    # old bare `config_file_exists` gate was v2-blind: a migrated project
+    # (pyve.toml present, no .pyve/config) hard-failed here.
+    manifest_load 2>/dev/null || true
+    local has_pyve_toml=false
+    [[ -f "pyve.toml" ]] && has_pyve_toml=true
+    if [[ "$has_pyve_toml" == false ]] && ! config_file_exists; then
+        _check_fail "Configuration: no pyve.toml (not a pyve project)" "→ Run: pyve init"
         _check_summary_and_exit
     fi
-    _check_pass "Configuration: .pyve/config"
+    if [[ "$has_pyve_toml" == true ]]; then
+        _check_pass "Configuration: pyve.toml"
+    else
+        _check_pass "Configuration: .pyve/config (v2)"
+    fi
 
     # --- Check 3: backend configured --------------------------------------
-    # (Check 2 slots below — runs after we know the backend so we can
-    # point the user at either `pyve update` or `pyve init --force` as
-    # appropriate.)
+    # Read the main (`root`) env's backend from the manifest accessor —
+    # works for v3-native (pyve.toml) and v2 (read-compat synthesis from
+    # .pyve/config) alike. (Check 2 slots below — runs after we know the
+    # backend so we can point the user at either `pyve update` or
+    # `pyve init --force` as appropriate.)
     local backend
-    backend="$(read_config_value "backend")"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
-        _check_fail "Backend: not configured in .pyve/config" \
+        _check_fail "Backend: not configured in pyve.toml" \
             "→ Run: pyve init --backend venv|micromamba"
         _check_summary_and_exit
     fi
     _check_pass "Backend: $backend"
 
     # --- Check 2: pyve_version drift --------------------------------------
-    local recorded_version
-    recorded_version="$(read_config_value "pyve_version")"
-    if [[ -z "$recorded_version" ]]; then
-        _check_warn "Pyve version: not recorded (legacy project)" \
-            "→ Run: pyve update"
-    else
-        case "$(compare_versions "$recorded_version" "$VERSION")" in
-            equal)
-                _check_pass "Pyve version: $recorded_version (current)"
-                ;;
-            less)
-                _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
-                    "→ Run: pyve update"
-                ;;
-            greater)
-                _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
-                    "→ Upgrade pyve or re-initialize the project"
-                ;;
-        esac
+    # The recorded-version drift check is a v2 `.pyve/config` concept —
+    # `pyve.toml` carries no pyve_version. Only run it when a `.pyve/config`
+    # is present; a pyve.toml-only project legitimately has no recorded
+    # version there, and the "legacy project → pyve update" nudge would be
+    # misleading on a native v3 project.
+    if config_file_exists; then
+        local recorded_version
+        recorded_version="$(read_config_value "pyve_version")"
+        if [[ -z "$recorded_version" ]]; then
+            _check_warn "Pyve version: not recorded (legacy project)" \
+                "→ Run: pyve update"
+        else
+            case "$(compare_versions "$recorded_version" "$VERSION")" in
+                equal)
+                    _check_pass "Pyve version: $recorded_version (current)"
+                    ;;
+                less)
+                    _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
+                        "→ Run: pyve update"
+                    ;;
+                greater)
+                    _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
+                        "→ Upgrade pyve or re-initialize the project"
+                    ;;
+            esac
+        fi
     fi
 
     # --- Backend-specific checks ------------------------------------------
@@ -3203,7 +3224,13 @@ show_status() {
         printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
     fi
 
-    if ! config_file_exists; then
+    # Recognize a v3-native project (pyve.toml) as well as a v2 one
+    # (.pyve/config). `manifest_load` covers both — a native pyve.toml or
+    # the v3.0 read-compat synthesis from .pyve/config. Gating on bare
+    # `config_file_exists` was v2-blind: a migrated project reported as
+    # "Not a pyve-managed project".
+    manifest_load 2>/dev/null || true
+    if [[ ! -f "pyve.toml" ]] && ! config_file_exists; then
         # Non-project fallback. Don't treat it as an error; status reports
         # reality, and "not a pyve project" is a valid reality.
         _status_row "Not a pyve-managed project" ""
@@ -3234,17 +3261,24 @@ _status_section_project() {
     _status_header "Project"
     _status_row "Path:" "$(pwd -P)"
 
+    # Read the main (`root`) env's backend from the manifest accessor —
+    # works for v3-native (pyve.toml) and v2 (read-compat synthesis) alike.
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -n "$backend" ]]; then
         _status_row "Backend:" "$backend"
     else
         _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
 
+    # The recorded pyve_version is a v2 `.pyve/config` concept (pyve.toml
+    # carries none). Only surface the row when a `.pyve/config` is present;
+    # a pyve.toml-only project legitimately has no recorded version there.
     local recorded_version
     recorded_version="$(read_config_value "pyve_version" 2>/dev/null || true)"
-    if [[ -z "$recorded_version" ]]; then
+    if [[ ! -f ".pyve/config" ]]; then
+        _status_row "Declaration:" "pyve.toml"
+    elif [[ -z "$recorded_version" ]]; then
         _status_row "Pyve config:" "${DIM}version not recorded${RESET}"
     else
         case "$(compare_versions "$recorded_version" "$VERSION")" in

@@ -200,7 +200,43 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.?: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Planned]
+### Release v3.0.6: General Housekeeping and Fixes (Stories O.g, O.h, O.i)
+
+---
+
+### Story O.g: `pyve check` is v3-blind — hard-errors "`.pyve/config` missing" on a valid `pyve.toml` project (and `init` papers over it by re-writing the v2 config) [Done]
+
+*(Post-v3.0.5 escapee. The v3.0.5 bundle (O.d/O.e) made `self migrate` + `init --force` honor `pyve.toml`, but `pyve check` was not in scope — and O.d's facet #3 "stop writing `.pyve/config`" was correctly **deferred** here because it's coupled to this fix. Number/version are placeholders for the developer to finalize.)*
+
+**Discovered:** 2026-06-11, migrating the `project-guide` repo with the v3.0.5 binary. After `pyve self migrate` (writes `pyve.toml`, skips rebuild) and before any `.pyve/config` is recreated, `pyve check` reports `✗ Configuration: .pyve/config missing → Run: pyve init` — on a project whose canonical v3 `pyve.toml` is present and valid.
+
+**Symptom.** `check_environment` Check 1 gates on `config_file_exists` (`[[ -f ".pyve/config" ]]`, [plugin.sh:2897](../../lib/plugins/python/plugin.sh#L2897)) and hard-exits if absent; Check 3 reads the backend via `read_config_value "backend"` ([plugin.sh:2908](../../lib/plugins/python/plugin.sh#L2908)) — both pure v2 `.pyve/config` (YAML), never `manifest_load` / `pyve.toml`. A v3-native project (pyve.toml present, no `.pyve/config`) fails `pyve check` outright.
+
+**Root cause — the check path never adopted the v3 manifest.** `pyve.toml` is canonical, and `manifest_load` already handles both native pyve.toml and the v3.0 read-compat synthesis from `.pyve/config`. But `pyve check` bypasses that layer, pivoting on `config_file_exists` + `read_config_value`, so it only "sees" a project that still carries the legacy `.pyve/config`.
+
+**The squirrely coupling — why `init` re-writes `.pyve/config`.** `pyve init` writes a v2-style `.pyve/config` (the "✔ Created .pyve/config" line) — which is the *only* reason `pyve check` passes afterward. Removing that write (the dual-config anti-pattern project-essentials forbids) **without** fixing check would leave check permanently broken. The two are **one change**: check must read `pyve.toml`, and `init` must stop writing `.pyve/config` — together. This is the home for O.d's deferred facet #3.
+
+**Fix.**
+1. Route `pyve check`'s config-presence + backend/python reads through `manifest_load` + the flat accessors (`manifest_get_backend`, `manifest_resolve_purpose`, …) — never `config_file_exists` / `read_config_value`. Works for v3-native (pyve.toml) and v2 (read-compat synthesis) alike.
+2. Stop `init` writing the v2 `.pyve/config`; `pyve.toml` is the sole declaration.
+3. Audit the remaining `config_file_exists` / `read_config_value` / `[[ -f ".pyve/config" ]]` consumers ([plugin.sh:341](../../lib/plugins/python/plugin.sh#L341), [:2399](../../lib/plugins/python/plugin.sh#L2399), [:3559](../../lib/plugins/python/plugin.sh#L3559)) and route the v3 ones through the manifest; keep only the deliberate read-compat reads (tagged `v3.0-only: remove in N-10`).
+
+**Scope decision (2026-06-11).** Task 2 alone (route `check` reads through the manifest) fixes the user-facing symptom: once `check` reads `pyve.toml`, a migrated project passes regardless of whether `init` still writes `.pyve/config`. Stopping the `.pyve/config` write (Fix #2 / original task 3) has a 57-`read_config_value` + 13-`config_file_exists` blast radius — every *direct* (non-manifest) reader returns empty on a fresh v3 project — which is exactly the N-10 read-compat sweep the O.d project-essentials note scopes *"not to ad-hoc edits here."* So this story lands the **check-read fix** (+ the parallel `status` presence/backend read-fix, same one-line risk profile); the **`init` write-removal + the broader read-site migration move to N-10.**
+
+**Tasks**
+
+- [x] Reproduce (red): a v3-native project (valid `pyve.toml`, no `.pyve/config`) → `pyve check` exits non-zero with "`.pyve/config` missing." Assert check passes on `pyve.toml` alone.
+- [x] Route check's config/backend reads through `manifest_load` + accessors; drop the `config_file_exists` hard-gate.
+- [x] Fix the parallel `pyve status` v3-blindness: presence gate + backend read through the manifest, so a `pyve.toml`-only project is recognized (no "Not a pyve-managed project" false negative).
+- [ ] ~~Stop `init` writing `.pyve/config`~~ → **deferred to N-10** (O.d's facet #3; coupled to the 57-site read migration below).
+- [ ] ~~Audit + route other v3 consumers off `.pyve/config`~~ → **deferred to N-10** (the ~64-site read-compat sweep, per the `v3.0-only: remove in N-10` markers).
+- [x] Bats: `pyve check` green on a pyve.toml-only fixture (venv + micromamba); still green on a v2 `.pyve/config`-only fixture via read-compat.
+
+**Version:** v3.0.6 (recommended) — the "sane migration path" follow-up: a migrated project must pass `pyve check` without an `init --force` that re-creates the v2 config. Developer owns the final number/version.
+
+---
+
+### Story O.h: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Planned]
 
 *(Innocuous — the wiring is correctly idempotent; only the prompt ordering is wrong. Outside the v3.0.5 migration bundle.)*
 
@@ -222,7 +258,7 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.?: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+### Story O.i: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
 
 - [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
 - [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
@@ -233,7 +269,7 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.?: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
+### Story O.j: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
 
 **Discovered:** 2026-06-08 smoke test (`pyve env install` and `pyve env init testenv` on a `.git`-only `pyve-v3-smoke`).
 
@@ -268,6 +304,75 @@ The process exit code is correct (non-zero); only the visual footer lies.
 - [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
 - [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
 - [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
+
+---
+
+### Story O.k: stale v2 `[tool.pyve.testenvs]` / `pyproject.toml` spelling in `pyve env` / `testenv` help + `pyve lock` / `env` error text — v3 declares envs in `pyve.toml [env.<name>]` [Planned]
+
+*(Surfaced 2026-06-11 while investigating O.g. The O.g story task text itself assumed the v2 `pyproject.toml [tool.pyve.testenvs]` path; that path now appears **only** in stale help/error strings. v3.0.5 declares envs in `pyve.toml` `[env.<name>]` tables, reconciled by `pyve env sync` from the project-guide env-dependencies §4.0 spec.)*
+
+**Discovered:** 2026-06-11, auditing the `.pyve/config` read surface for O.g. The user-facing help and error text still instructs developers to declare envs in `pyproject.toml`'s `[tool.pyve.testenvs.<name>]` table — the v2 spelling that v3 replaced with root-level `pyve.toml` `[env.<name>]` (see project-essentials *"`pyve.toml` is the canonical declaration; `.pyve/` holds state only"*).
+
+**Confirmed facts (v3.0.5).**
+
+- Env config lives in `pyve.toml` `[env.<name>]` tables — **not** `pyproject.toml` `[tool.pyve.testenvs]`. The TOML reader is `lib/pyve_toml_helper.py`; the manifest accessors are the only sanctioned read path.
+- `pyve env sync` reconciles `pyve.toml` from the authoritative project-guide **env-dependencies §4.0** spec (discover → diff → confirm → write), already documented in `pyve env --help` and implemented in the N.az.2 sync code.
+- `backend = "none"` for the `root` env is **fully expressible** — `none` is in `VALID_BACKENDS` ([pyve_toml_helper.py:74](../../lib/pyve_toml_helper.py#L74)), so a Node-only (or no-Python) project can declare `[env.root] backend = "none"`.
+- The `pyproject.toml [tool.pyve.testenvs]` references in [self.sh:606](../../lib/commands/self.sh#L606) / [self.sh:831](../../lib/commands/self.sh#L831) are **correct and must stay** — the migrator legitimately reads the v2 source it is extracting.
+
+**Stale sites (user-facing).**
+
+- `pyve env --help` / `pyve testenv --help` ([env.sh:1150](../../lib/commands/env.sh#L1150)): *"Declare them in `[tool.pyve.testenvs.<name>]` inside pyproject.toml."*
+- `pyve lock` errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)): *"not declared in `[tool.pyve.testenvs]` … Declare it under `[tool.pyve.testenvs.$name]` in pyproject.toml … Add: `[tool.pyve.testenvs.$name]`."*
+- `pyve env` errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809)): same `[tool.pyve.testenvs.$name]` spelling.
+
+**Stale sites (comments — refresh while touching the file, not user-facing).** [env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798).
+
+**Fix.** Rewrite the stale help/error strings to the v3 spelling: declare envs under `[env.<name>]` in **`pyve.toml`**, point at `pyve env sync` (and the env-dependencies §4.0 spec) as the reconciliation path, and where relevant note that `backend = "none"` is valid for a no-Python `root`. Leave the `self.sh` migrator references untouched.
+
+**Out of scope.** The ~57 `read_config_value` / `config_file_exists` read-sites that still consult `.pyve/config` (the N-10 read-compat sweep — see the O.d project-essentials note and `v3.0-only: remove in N-10` markers); any change to the `pyve env sync` workflow itself; the v2 `lib/pyve_testenvs_helper.py` reader (read-compat, removed in N-10).
+
+**Tasks**
+
+- [ ] Reproduce (red): bats asserts `pyve env --help`, `pyve testenv --help`, and the `pyve lock` / `pyve env` error paths emit `[tool.pyve.testenvs]` / `pyproject.toml`. They do today.
+- [ ] Rewrite the help text ([env.sh:1150](../../lib/commands/env.sh#L1150)) to `[env.<name>]` in `pyve.toml` + the `pyve env sync` / env-dependencies §4.0 pointer.
+- [ ] Rewrite the `pyve lock` ([lock.sh:239-256](../../lib/commands/lock.sh#L239-L256)) and `pyve env` ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809)) error strings to the v3 spelling.
+- [ ] Refresh the non-user-facing comments ([env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798)) opportunistically.
+- [ ] Green: bats asserts none of the rewritten help/error strings contain `tool.pyve.testenvs` or `pyproject.toml`; the `self.sh` migrator references remain present (regression guard that the sweep didn't over-reach).
+- [ ] Full suite; zero regressions.
+
+**Version:** patch (recommended) — help/error-text correction with no behavior change; folds into the post-v3.0.0 Phase O bundle. Developer owns the final number/version.
+
+---
+
+### Story O.l: `pyve init` crashes on a declared `none` / advisory root backend — can't materialize a no-Python-root topology (e.g. `none`-root + micromamba-testenv) [Planned]
+
+*(Field feedback surfaced 2026-06-11 while investigating O.g/O.k. `backend = "none"` is declarable in `pyve.toml` but `pyve init` hard-errors on it, so a no-Python-root project can't be built. Also folds in the documentation gap: what `none` is actually for.)*
+
+**Discovered:** 2026-06-11, field report that v3.0.5 cannot materialize a `none`-root + micromamba-testenv topology.
+
+**Symptom.** A `pyve.toml` declaring `[env.root] backend = "none"` (or any advisory backend) makes `pyve init` abort with `Invalid backend: none / Valid backends: venv, micromamba, auto` (exit 1) **before materializing anything** — so neither the skipped root nor the concrete-backend test env (e.g. a micromamba `testenv`) gets built. Micromamba itself works fine both as a root backend and as a named test-env backend; the **only** blocker is the `none` root.
+
+**Root cause.** `pyve init`'s root-backend resolution seeds `backend_flag` from the manifest ([`_init_manifest_root_backend`](../../lib/plugins/python/plugin.sh#L779) → `"none"`), then runs it through [`validate_backend`](../../lib/backend_detect.sh#L122), which only accepts `venv|micromamba|auto` → `exit 1` ([plugin.sh:1849-1853](../../lib/plugins/python/plugin.sh#L1849-L1853)). The **per-env** install path already handles this gracefully — [`_env_install_with_lock`](../../lib/commands/env.sh#L754) calls [`_env_backend_is_advisory`](../../lib/envs.sh#L254) (the single classifier, backed by `pyve_toml_helper.py classify`) and records-but-does-not-materialize an advisory-backend env with a "provision it manually" note. Init's **root** path predates that and chokes.
+
+**What `none` is for (the documentation gap).** `backend = "none"` declares that the project **root has no Pyve-managed Python/virtualenv runtime** — for non-Python languages / backends / environments Pyve does **not yet materialize**: a Node root (npm/pnpm/yarn), Rust (cargo), Go, advisory cache-backed toolchains, or a polyglot coordination root. It lets a project use Pyve's declaration + `.envrc`/direnv wiring + named **purpose-driven** envs (e.g. a micromamba `test` env, advisory tool envs) **without a vestigial root `.venv` or a forced Python pin**. It is currently *expressible* in `pyve.toml` (advisory backend, validates) but **not materializable** (this story makes `init` skip it rather than crash; actually creating non-Python root envs is future per-plugin work). For a pure-Python project `none` gains nothing over `venv` — it exists specifically for the non-Python / runtime-less root.
+
+**Fix.**
+1. **`init` skips an advisory/`none` root instead of crashing.** When the resolved root backend classifies as advisory (reuse `_env_backend_is_advisory` — do **not** inline a `== none` check; per the single-classifier rule), skip root env creation and emit the same advisory note the per-env path uses ("declares backend '<x>', which pyve does not yet materialize; provision it manually"), then continue to materialize the declared concrete-backend envs. Prefer an **init-level skip** so `validate_backend` stays strict for an explicit `--backend` flag (a genuinely-unknown `--backend bogus` must still hard-error).
+2. **Document what `none` is for.** Add a project-essentials entry (and refresh any backends help/docs that imply root must be venv/micromamba) explaining the non-Python/unsupported-root use case, that `none` is declarable + (after this fix) init-safe, and that root materialization for those backends is future work. Cross-link the closed `VALID_BACKENDS` vocabulary.
+
+**Out of scope.** Actually **materializing** non-Python root backends (npm/pnpm/yarn/cargo/go root env creation) — per-plugin future work; this story only stops the crash, skips the root, and documents the concept. The `pyve env run` conda-activation limitation (micromamba test envs install/create fine; PATH-only `run` is venv-only — use `micromamba run -p`). The N-10 `.pyve/config` read sweep.
+
+**Tasks**
+
+- [ ] Reproduce (red): `pyve init` on a project whose `pyve.toml` declares `[env.root] backend = "none"` → exits non-zero with `Invalid backend: none`. Assert init instead completes, skips the root env, and emits the advisory "not materialized" note.
+- [ ] Skip root env creation when the resolved root backend classifies advisory (reuse `_env_backend_is_advisory`); emit the advisory note; continue to declared concrete-backend envs. Keep `validate_backend` strict for an explicit `--backend` (unknown flag values still hard-error).
+- [ ] Confirm a declared concrete-backend env (e.g. a micromamba `testenv`) materializes on a `none`-root project once `init` no longer aborts.
+- [ ] Document what `none` is for: project-essentials entry (non-Python languages/backends/environments not yet materialized) + refresh any backends help/docs implying a venv/micromamba-only root; note declarable + init-safe, root materialization is future work.
+- [ ] Bats: `init` green on a `none`-root fixture (root skipped + note emitted); `--backend bogus` still hard-errors; existing `init` tests unaffected.
+- [ ] Full suite; zero regressions.
+
+**Version:** part of the **v3.0.6** Phase O bundle (ships with O.g–O.k). Developer owns the final number/version.
 
 ---
 
