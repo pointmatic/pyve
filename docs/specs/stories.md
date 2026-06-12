@@ -304,6 +304,7 @@ The process exit code is correct (non-zero); only the visual footer lies.
 - [x] Threaded the result code at the only two callsites that compute one at the footer point — `env_command`'s `leaf_rc` ([env.sh:1314](../../lib/commands/env.sh#L1314)) and the sync path's `sync_rc` ([env.sh:1223](../../lib/commands/env.sh#L1223)). The other 9 callsites are success-only (their failure paths `return`/`exit` before the footer, or `set -e` aborts) → kept the no-arg success default.
 - [x] Tests: 3 `footer_box` unit tests (success / explicit-0 / non-zero→Failed) + 1 e2e dispatcher test (failed `env init` → `Failed.`, never `All done.`, exit unchanged).
 - [x] Full suite green (1992 tests, 0 failures); re-ran the `pyve env init testenv` smoke — footer now renders red `✘ Failed.` and exits 1.
+- [x] **CI follow-up:** the e2e dispatcher test was environment-dependent — a bare `env init` *succeeds* whenever `python` resolves (it just creates the venv), so it passed locally but green-passed on CI and tripped `[ status -ne 0 ]`. Made deterministic by forcing the leaf failure via `PYVE_PYTHON=/nonexistent/python` (overrides the project interpreter regardless of the runner's Python); verified the fix holds with a valid `python` on PATH.
 
 ---
 

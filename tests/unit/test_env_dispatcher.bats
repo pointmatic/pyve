@@ -154,7 +154,13 @@ run_pyve() {
 #============================================================
 
 @test "env: a failed 'env init' shows the failure footer, never '✔ All done.'" {
-    # Uninitialized project (no pyve.toml in TEST_DIR) → 'env init' fails.
+    # Force a deterministic leaf failure, independent of the runner's
+    # installed Python: point the project interpreter at a nonexistent path
+    # so `env init` fails at python resolution and RETURNS to the footer.
+    # (A bare `env init` on a clean dir SUCCEEDS whenever `python` resolves —
+    # it just creates the venv — so the failure must be forced.) The footer
+    # must render red '✘ Failed.', not green '✔ All done.'.
+    export PYVE_PYTHON=/nonexistent/python
     run bash "$PYVE_BIN" env init testenv
     [ "$status" -ne 0 ]
     # The bug: a green success box printed beneath the ✘ errors.
