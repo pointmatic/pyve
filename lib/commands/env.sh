@@ -1239,10 +1239,17 @@ EOF
             shift 2
         fi
         assert_env_name_actionable "$run_name" || exit 1
-        assert_env_venv_backend     "$run_name" || exit 1
-        local run_venv
+        local run_venv run_backend
         run_venv="$(resolve_env_path "$run_name")"
-        env_run "$run_venv" "$@"
+        run_backend="$(_env_resolve_backend "$run_name")" || run_backend="venv"
+        # Backend dispatch: venv → PATH activation (env_run); micromamba →
+        # `micromamba run -p` (sets CONDA_PREFIX, runs activate.d, fixes lib
+        # paths). Both exec, so neither returns on success.
+        if [[ "$run_backend" == "micromamba" ]]; then
+            env_exec_conda "$run_venv" "$@"
+        else
+            env_run "$run_venv" "$@"
+        fi
         return  # not reached on success (exec) but kept for clarity
     fi
 

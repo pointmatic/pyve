@@ -3967,12 +3967,6 @@ _test_run_one_env() {
         exit 1
     fi
 
-    # Conda-backed envs are not yet supported by `pyve test`'s exec
-    # path (PATH-only activation doesn't set CONDA_PREFIX/CONDA_PYTHON_EXE).
-    # Same M.k gate that `pyve testenv run` uses; use `--env root`
-    # against a conda main env, or `micromamba run -p <path> pytest`.
-    assert_env_venv_backend "$env_target" || exit 1
-
     local testenv_venv
     testenv_venv="$(resolve_env_path "$env_target")"
 
@@ -4070,5 +4064,14 @@ _test_run_one_env() {
     # is bookkeeping, not user-facing.
     state_touch_last_used "$env_target" >/dev/null 2>&1 || true
 
-    exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
+    # Backend dispatch (mirrors `pyve env run`): venv execs the env's python
+    # directly; micromamba routes through `micromamba run -p` so CONDA_PREFIX /
+    # activate.d / conda lib paths are set up (compiled deps depend on them).
+    local test_backend
+    test_backend="$(_env_resolve_backend "$env_target")" || test_backend="venv"
+    if [[ "$test_backend" == "micromamba" ]]; then
+        env_exec_conda "$testenv_venv" python -m pytest "${args[@]+"${args[@]}"}"
+    else
+        exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
+    fi
 }

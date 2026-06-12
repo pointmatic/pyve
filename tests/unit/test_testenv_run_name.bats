@@ -130,16 +130,18 @@ TOML
     [[ "$output" == *"bogus"* ]]
 }
 
-@test "testenv run <conda-backed> -- <cmd>: micromamba backend rejected (run is venv-only)" {
-    # Story M.k landed conda init/install but kept `pyve testenv run`
-    # venv-only — PATH-only activation does not set CONDA_PREFIX /
-    # CONDA_PYTHON_EXE. The hard-error points at the `micromamba run`
-    # workaround.
+@test "testenv run <conda-backed> -- <cmd>: dispatches to micromamba run -p" {
+    # A micromamba-backed env now execs via `micromamba run -p` (sets
+    # CONDA_PREFIX / activate.d / lib paths) instead of hard-erroring. The
+    # dispatcher routes the conda branch through env_exec_conda; stub it to a
+    # marker so the routing (not a real conda exec) is what's asserted.
     _fixture_named_envs
+    env_run()        { printf 'VENV_RUN:%s\n' "$*"; }
+    env_exec_conda() { printf 'CONDA_EXEC:%s\n' "$*"; }
     run env_command run hardware -- pytest
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"hardware"* ]]
-    [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CONDA_EXEC:.pyve/envs/hardware/conda pytest"* ]]
+    [[ "$output" != *"VENV_RUN:"* ]]
 }
 
 # ============================================================

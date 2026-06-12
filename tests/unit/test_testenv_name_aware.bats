@@ -10,16 +10,16 @@
 #     or equals the reserved `testenv`; 1 (stderr error) for `root` and
 #     undeclared names.
 #
-#   assert_env_venv_backend <name>
-#     in lib/envs.sh — venv-only gate (still used by `pyve testenv
-#     run` since M.k landed init/install for conda but not run). 0 if
-#     the resolved backend is venv; 1 (stderr error) for micromamba
-#     and `inherit` resolving to micromamba.
+#   _env_resolve_backend <name>
+#     in lib/envs.sh — resolves <name> to a concrete backend (venv /
+#     micromamba), following `inherit` to the main env's backend. The
+#     `pyve env run` / `pyve test` callsites dispatch on its result
+#     (venv → PATH activation; micromamba → `micromamba run -p`).
 #
 #   ensure_env_exists [<name>]
 #     in lib/utils.sh — name-aware existence-or-create. No arg defaults
 #     to the reserved `testenv` (today's behavior). With arg: validates
-#     via the two gates above, then creates `.pyve/envs/<name>/venv`
+#     via the name gate above, then creates `.pyve/envs/<name>/venv`
 #     for venv-backed envs.
 #
 # Bundle scope: M.i.1 is internal-helpers-only — no leaf CLI changes.
@@ -123,51 +123,6 @@ TOML
 }
 
 # ============================================================
-# assert_env_venv_backend
-# ============================================================
-
-@test "assert_env_venv_backend: venv-backed name passes" {
-    _fixture_named_envs
-    read_env_config
-    assert_env_venv_backend smoke
-    assert_env_venv_backend testenv
-}
-
-@test "assert_env_venv_backend: micromamba-backed name is rejected (run is venv-only)" {
-    _fixture_named_envs
-    read_env_config
-    run assert_env_venv_backend hardware
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"hardware"* ]]
-    [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
-}
-
-@test "assert_env_venv_backend: 'inherit' + main=micromamba is rejected" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.mirror]
-backend = "inherit"
-manifest = "environment.yml"
-TOML
-    mkdir -p .pyve
-    printf 'backend: micromamba\n' > .pyve/config
-    read_env_config
-    run assert_env_venv_backend mirror
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"mirror"* ]]
-}
-
-@test "assert_env_venv_backend: 'inherit' + main=venv passes (M.k inherit resolution)" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.mirror]
-backend = "inherit"
-TOML
-    mkdir -p .pyve
-    printf 'backend: venv\n' > .pyve/config
-    read_env_config
-    assert_env_venv_backend mirror
-}
-
-# ============================================================
 # ensure_env_exists (no arg) — back-compat
 # ============================================================
 
@@ -254,7 +209,7 @@ TOML
         cd \"\$workdir\"
         read_env_config
         assert_env_name_actionable testenv
-        assert_env_venv_backend testenv
+        _env_resolve_backend testenv
         assert_env_name_actionable root 2>/dev/null || true
         assert_env_name_actionable bogus 2>/dev/null || true
         rm -rf \"\$workdir\"

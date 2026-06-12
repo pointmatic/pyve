@@ -400,7 +400,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.m: `pyve test` / `pyve env run` cannot operate a conda-backed testenv — primary dev loop hard-gated off conda [Planned]
+### Story O.m: `pyve test` / `pyve env run` cannot operate a conda-backed testenv — primary dev loop hard-gated off conda [Done]
 
 *(Critical bug, field-reported 2026-06-11. A conda-backed testenv **builds and runs fine** — but only via direct `micromamba run -p …`, bypassing pyve entirely. The `pyve test` ergonomics that are the whole reason to declare a pyve testenv don't work against conda in 3.0.5, so the primary dev loop is broken for every conda project.)*
 
@@ -416,12 +416,14 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): `pyve env run <conda-testenv> -- python -c …` (and `pyve test` against it) → hard-errors "does not yet support conda-backed env". Assert it instead executes inside the conda env.
-- [ ] Add a micromamba exec branch (`micromamba run -p <env_path> <cmd>`) and route `pyve env run` + `pyve test` through it for micromamba-backed envs; keep venv on PATH activation. Remove/replace the `assert_env_venv_backend` gate at both callsites.
-- [ ] Verify exit codes, argument/flag passing, and stdin/TTY are preserved through `micromamba run`; actionable error when micromamba is absent.
-- [ ] `pyve test` runs the suite inside a conda-backed testenv end-to-end (pytest resolves from the conda env).
-- [ ] Confirm the venv-backed `env run` / `test` path is unchanged (existing tests green).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new [test_conda_env_exec.bats](../../tests/unit/test_conda_env_exec.bats) drives both callsites against a conda env — the dispatch assertions failed red (the gate hard-errored before any exec). The two pre-existing reject-tests asserting the old policy ([test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats), [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats)) were flipped/retired since this story reverses the behavior they pinned.
+- [x] Added the shared exec primitive `env_exec_conda <env_path> <cmd…>` ([envs.sh](../../lib/envs.sh)) — execs `micromamba run -p <env_path> <cmd>` (sets CONDA_PREFIX / activate.d / lib paths). Routed both callsites through a backend dispatch on `_env_resolve_backend`: `pyve env run` ([env.sh:1242](../../lib/commands/env.sh#L1242)) and `pyve test`'s exec tail ([plugin.sh](../../lib/plugins/python/plugin.sh)); venv stays on PATH activation (`env_run` / direct `python -m pytest`). Removed the now-dead venv-only gate `assert_env_venv_backend` (+ its 4 unit tests; `inherit`-resolution coverage already lives in [test_testenv_conda.bats:147](../../tests/unit/test_testenv_conda.bats#L147)).
+- [x] `exec` preserves exit code / arg passing / stdin / TTY by construction (`micromamba run` runs in the same process tree); micromamba-absent and env-not-materialized (no `conda-meta`) paths hard-error actionably (covered in the new test).
+- [x] `pyve test --env <conda>` execs `micromamba run -p <path> python -m pytest <args>` (asserted via a stubbed micromamba in the new test). A *real* conda solve + run is an integration/manual check, not a hermetic bats unit (the suite avoids network) — the exec dispatch and arg threading are what the unit pins.
+- [x] Venv path unchanged: a venv-backed `env run` still routes to `env_run` (regression test in the new file) and the venv `pyve test` exec is untouched; existing resolver/run tests green.
+- [x] Full suite: **2009 tests**, only the 2 pre-existing `test_asdf_compat.bats` `J.c` failures (environment-dependent, confirmed pre-existing — same as O.l; Phase P backlog). Zero regressions from O.m. Shellcheck clean on changed lines.
+
+*(Out-of-scope note resolved: the `root` conda env's `pyve run` path **already** execs via `micromamba run -p` in `run_command` [plugin.sh:3718](../../lib/plugins/python/plugin.sh#L3718) — no change needed there.)*
 
 **Version:** **v3.0.6** Phase O critical-bugfix bundle. Developer owns the final number/version.
 

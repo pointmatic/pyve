@@ -313,26 +313,39 @@ _env_backend_is_advisory() {
     [[ "$cls" == "advisory" ]]
 }
 
-# Story M.i.1 / M.k: venv-only gate for `pyve testenv run`. Returns 0
-# when the resolved backend is `venv`; 1 (with a stderr error) for
-# `micromamba` (and `inherit` that resolves to micromamba). M.k landed
-# conda-backed init/install, but `pyve testenv run` still uses PATH-only
-# activation and does not set CONDA_PREFIX / CONDA_PYTHON_EXE, so it is
-# kept venv-only for now. Use `micromamba run -p <path> <cmd>` for the
-# conda case (manual workaround).
-assert_env_venv_backend() {
-    local name="${1:-}"
-    if [[ -z "$name" ]]; then
-        printf "error: testenv name is required\n" >&2
-        return 1
+# Exec <cmd> [args...] inside a micromamba-backed env materialized at
+# <env_path>, via `micromamba run -p <env_path>` — the canonical conda exec
+# primitive. Unlike PATH-prepend activation (correct for a venv), it sets
+# CONDA_PREFIX / CONDA_DEFAULT_ENV, runs the env's etc/conda/activate.d
+# scripts, and fixes conda's library paths, which compiled wheels (torch &c.)
+# depend on at runtime. Used by both `pyve env run` and `pyve test` for
+# micromamba-backed envs; the venv path stays on PATH activation (env_run /
+# direct python exec).
+#
+# Replaces the shell via exec on success, so exit code, argument passing, and
+# stdin/TTY pass straight through. Hard-errors (exit 1) when no command is
+# given, the env is not materialized (no conda-meta), or micromamba is absent.
+env_exec_conda() {
+    local env_path="$1"
+    shift
+    if [[ $# -lt 1 ]]; then
+        log_error "No command provided"
+        log_error "Usage: pyve env run <name> -- <command> [args...]"
+        exit 1
     fi
-    local backend
-    backend="$(_env_resolve_backend "$name")" || backend="venv"
-    if [[ "$backend" == "venv" ]]; then
-        return 0
+    if [[ ! -d "$env_path/conda-meta" ]]; then
+        log_error "Conda-backed environment not initialized at '$env_path'"
+        log_error "Run: pyve env init <name>"
+        exit 1
     fi
-    printf "error: 'pyve env run' does not yet support conda-backed env '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/envs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
-    return 1
+    local micromamba_path
+    micromamba_path="$(get_micromamba_path)" || micromamba_path=""
+    if [[ -z "$micromamba_path" ]]; then
+        log_error "micromamba not found — required to run a conda-backed env"
+        log_error "(\`pyve init --backend micromamba\` bootstraps it)"
+        exit 1
+    fi
+    exec "$micromamba_path" run -p "$env_path" "$@"
 }
 
 # =====================================================================
