@@ -83,9 +83,9 @@ env_init() {
 # install source available (1 = top precedence):
 #
 #   1. CLI `-r <file>` (today's explicit-override behavior).
-#   2. Declared `[tool.pyve.testenvs.<name>].requirements = ["a","b",...]`
+#   2. Declared `[env.<name>].requirements = ["a","b",...]` in pyve.toml
 #      → `pip install -r a -r b ...`.
-#   3. Declared `[tool.pyve.testenvs.<name>].extra = "<extra>"`
+#   3. Declared `[env.<name>].extra = "<extra>"` in pyve.toml
 #      → resolve `[project.optional-dependencies].<extra>` via the
 #      Python helper, `pip install <pkg1> <pkg2> ...`.
 #   4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
@@ -128,7 +128,7 @@ _env_install_venv() {
         for r in "${declared_reqs[@]}"; do
             if [[ ! -f "$r" ]]; then
                 log_error "Declared requirements file not found: $r"
-                log_error "(declared as [tool.pyve.testenvs.$name].requirements)"
+                log_error "(declared as [env.$name].requirements in pyve.toml)"
                 exit 1
             fi
             r_args+=("-r" "$r")
@@ -795,7 +795,7 @@ _env_install_with_lock() {
 # `micromamba install -p <path> -f <manifest> -y`. If the env does not
 # exist, errors with a hint pointing at `pyve testenv init <name>`.
 #
-# Both require `manifest` to be declared in `[tool.pyve.testenvs.<name>]`
+# Both require `manifest` to be declared in `[env.<name>]` in pyve.toml
 # — the conda backend has no implicit pip-style fallback.
 #------------------------------------------------------------
 
@@ -805,8 +805,8 @@ _env_init_conda() {
     local manifest="$3"
 
     if [[ -z "$manifest" ]]; then
-        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
-        log_error "Add: [tool.pyve.testenvs.$name]"
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyve.toml"
+        log_error "Add: [env.$name]"
         log_error "     manifest = \"<environment.yml path>\""
         return 1
     fi
@@ -843,7 +843,7 @@ _env_install_conda() {
     local manifest="$3"
 
     if [[ -z "$manifest" ]]; then
-        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyve.toml ([env.$name])"
         return 1
     fi
     if [[ ! -f "$manifest" ]]; then
@@ -1146,8 +1146,9 @@ Notes:
     delegation alias through the v3.x deprecation window (removal in v4.0).
     Every invocation prints a one-shot deprecation warning to stderr.
   - Default `testenv` lives at .pyve/envs/testenv/venv
-  - Named environments (Story M.i+) live at .pyve/envs/<name>/{venv,conda}/
-    Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
+  - Named environments live at .pyve/envs/<name>/{venv,conda}/
+    Declare them in [env.<name>] inside pyve.toml (run `pyve env sync` to
+    reconcile the manifest with what's on disk).
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
     only into that env.

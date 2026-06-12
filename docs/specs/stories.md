@@ -346,7 +346,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.k.2: rewrite the now-accurate env/lock help + error strings to `pyve.toml [env.<name>]` [Planned]
+### Story O.k.2: rewrite the now-accurate env/lock help + error strings to `pyve.toml [env.<name>]` [Done]
 
 *(Depends on O.k.1 — the strings can only truthfully say `pyve.toml` once the lifecycle reads it.)*
 
@@ -360,10 +360,10 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): bats asserts the env/lock help + error strings emit `[tool.pyve.testenvs]` / `pyproject.toml` today.
-- [ ] Rewrite the help ([env.sh:1150](../../lib/commands/env.sh#L1150)) + lock/env error strings + comments to `pyve.toml [env.<name>]`.
-- [ ] Green: no `tool.pyve.testenvs` / `pyproject.toml` in the rewritten user-facing strings; the `self.sh` migrator refs remain (regression guard the sweep didn't over-reach).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new [test_env_v3_strings.bats](../../tests/unit/test_env_v3_strings.bats) asserts the env/lock help + error paths emit the **v3** spelling (`pyve.toml` / `[env.<name>]`) and **not** `tool.pyve.testenvs` / `pyproject.toml`; all 6 string assertions failed before the rewrite.
+- [x] Rewrite the help ([env.sh:1150](../../lib/commands/env.sh#L1150)) → `[env.<name>]` in `pyve.toml` + a `pyve env sync` pointer; lock errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)); env conda/requirements errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809), [env.sh:846](../../lib/commands/env.sh#L846)); comments ([env.sh:86-88](../../lib/commands/env.sh#L86), [env.sh:798](../../lib/commands/env.sh#L798)). Also fixed the now-stale lock surface header comment ([lock.sh:34](../../lib/commands/lock.sh#L34)) — beyond the enumerated sites but the same O.k.1-induced lie.
+- [x] Green: the rewritten user-facing strings carry no `tool.pyve.testenvs` / `pyproject.toml`; a regression-guard test confirms the `self.sh` migrator refs ([self.sh:606](../../lib/commands/self.sh#L606), [self.sh:831](../../lib/commands/self.sh#L831)) survive (the migrator legitimately reads the v2 source). The two remaining `pyproject.toml` refs in `env.sh` ([env.sh:174](../../lib/commands/env.sh#L174), [env.sh:183](../../lib/commands/env.sh#L183)) are the `extra` resolver reading `[project.optional-dependencies]` — correct, left untouched.
+- [x] Full suite green: **2002 tests, 0 failures** (`bats tests/unit/*.bats`, exit 0). Shellcheck clean on changed lines (only pre-existing baseline findings remain).
 
 **Version:** v3.0.6 Phase O bundle. Depends on O.k.1. Developer owns the final number/version.
 
