@@ -307,41 +307,62 @@ The process exit code is correct (non-zero); only the visual footer lies.
 
 ---
 
-### Story O.k: stale v2 `[tool.pyve.testenvs]` / `pyproject.toml` spelling in `pyve env` / `testenv` help + `pyve lock` / `env` error text — v3 declares envs in `pyve.toml [env.<name>]` [Planned]
+### Story O.k: env-config duality — lifecycle commands read `pyproject.toml [tool.pyve.testenvs]` while the v3 canonical is `pyve.toml [env.*]` (umbrella) [Planned]
 
-*(Surfaced 2026-06-11 while investigating O.g. The O.g story task text itself assumed the v2 `pyproject.toml [tool.pyve.testenvs]` path; that path now appears **only** in stale help/error strings. v3.0.5 declares envs in `pyve.toml` `[env.<name>]` tables, reconciled by `pyve env sync` from the project-guide env-dependencies §4.0 spec.)*
+*(Reframed 2026-06-11. The original O.k assumed the `[tool.pyve.testenvs]` / pyproject references in env/lock help + errors were merely **stale strings** to rewrite. The investigation for O.k's own red step disproved that: the env **lifecycle** path (`init`/`install`/`run`/`lock`) still **reads** `pyproject.toml [tool.pyve.testenvs]`, so those strings are **accurate**, not stale. Rewriting them to `pyve.toml` without migrating the reader would make them lie. The real work is resolving the duality — broken into the bundle below.)*
 
-**Discovered:** 2026-06-11, auditing the `.pyve/config` read surface for O.g. The user-facing help and error text still instructs developers to declare envs in `pyproject.toml`'s `[tool.pyve.testenvs.<name>]` table — the v2 spelling that v3 replaced with root-level `pyve.toml` `[env.<name>]` (see project-essentials *"`pyve.toml` is the canonical declaration; `.pyve/` holds state only"*).
+**The duality (verified).** Two env-config readers coexist:
+- `lib/manifest.sh` → `PYVE_ENV_*` ← `pyve.toml [env.*]` (v3 canonical; used by `check`/`status`/`test --env` purpose-gating + init backend resolution).
+- `lib/envs.sh` `read_env_config` → `PYVE_TESTENV_*` ← `pyproject.toml [tool.pyve.testenvs]` via `pyve_testenvs_helper.py` (used by `pyve env init/install/run/lock` for backend/manifest/requirements/extra/declaration).
 
-**Confirmed facts (v3.0.5).**
+So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **reads** `pyproject.toml` — a user who declares only in `pyve.toml` gets an empty lifecycle read. This is the field-reported "mirror vs driver" gap (the duality O.m/O.n deferred to "O.k / N-10").
 
-- Env config lives in `pyve.toml` `[env.<name>]` tables — **not** `pyproject.toml` `[tool.pyve.testenvs]`. The TOML reader is `lib/pyve_toml_helper.py`; the manifest accessors are the only sanctioned read path.
-- `pyve env sync` reconciles `pyve.toml` from the authoritative project-guide **env-dependencies §4.0** spec (discover → diff → confirm → write), already documented in `pyve env --help` and implemented in the N.az.2 sync code.
-- `backend = "none"` for the `root` env is **fully expressible** — `none` is in `VALID_BACKENDS` ([pyve_toml_helper.py:74](../../lib/pyve_toml_helper.py#L74)), so a Node-only (or no-Python) project can declare `[env.root] backend = "none"`.
-- The `pyproject.toml [tool.pyve.testenvs]` references in [self.sh:606](../../lib/commands/self.sh#L606) / [self.sh:831](../../lib/commands/self.sh#L831) are **correct and must stay** — the migrator legitimately reads the v2 source it is extracting.
+**Enabling facts (already in place — no schema work).** The `pyve.toml [env.*]` schema already recognizes `backend`/`manifest`/`extra`/`lazy`/`requirements` (`KNOWN_ENV_KEYS`, [pyve_toml_helper.py:230](../../lib/pyve_toml_helper.py#L230)); the manifest arrays already carry them (`PYVE_ENV_MANIFEST`/`_EXTRA`/`_REQUIREMENTS_Q`, [manifest.sh:23-28](../../lib/manifest.sh#L23-L28)); and the manifest's legacy synthesis already maps `PYVE_TESTENV_*` → `PYVE_ENV_*` for read-compat. So the migration is a **re-pointing**, not a schema build.
 
-**Stale sites (user-facing).**
+**Bundle.** **O.k.1** (behavioral reader migration) → **O.k.2** (truthful strings, depends on O.k.1). Removal of the standalone v2 `pyve_testenvs_helper.py` reader stays in the N-10 read-compat sweep.
 
-- `pyve env --help` / `pyve testenv --help` ([env.sh:1150](../../lib/commands/env.sh#L1150)): *"Declare them in `[tool.pyve.testenvs.<name>]` inside pyproject.toml."*
-- `pyve lock` errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)): *"not declared in `[tool.pyve.testenvs]` … Declare it under `[tool.pyve.testenvs.$name]` in pyproject.toml … Add: `[tool.pyve.testenvs.$name]`."*
-- `pyve env` errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809)): same `[tool.pyve.testenvs.$name]` spelling.
+**Version:** v3.0.6 Phase O bundle (O.k.1 + O.k.2). Developer owns the final number/version.
 
-**Stale sites (comments — refresh while touching the file, not user-facing).** [env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798).
+---
 
-**Fix.** Rewrite the stale help/error strings to the v3 spelling: declare envs under `[env.<name>]` in **`pyve.toml`**, point at `pyve env sync` (and the env-dependencies §4.0 spec) as the reconciliation path, and where relevant note that `backend = "none"` is valid for a no-Python `root`. Leave the `self.sh` migrator references untouched.
+### Story O.k.1: migrate the env-lifecycle config reader onto the `pyve.toml` manifest [Planned]
 
-**Out of scope.** The ~57 `read_config_value` / `config_file_exists` read-sites that still consult `.pyve/config` (the N-10 read-compat sweep — see the O.d project-essentials note and `v3.0-only: remove in N-10` markers); any change to the `pyve env sync` workflow itself; the v2 `lib/pyve_testenvs_helper.py` reader (read-compat, removed in N-10).
+**Goal.** Make `pyve env init/install/run/lock` source env config (`backend`/`manifest`/`requirements`/`extra`/`lazy`/declaration) from `pyve.toml [env.*]` (the manifest, `PYVE_ENV_*`) instead of `pyproject.toml [tool.pyve.testenvs]` (`PYVE_TESTENV_*`). When `pyve.toml` is absent, v2 `[tool.pyve.testenvs]` keeps working via the manifest's existing legacy synthesis (read-compat). After this, `pyve env sync` (writes `pyve.toml`) and the lifecycle (reads `pyve.toml`) are coherent.
+
+**Approach (decide during impl).** Route the lifecycle accessors (`_env_backend_of` / `_env_manifest_of` / `_env_extra_of` / `_env_requirements_of` / `is_env_declared` / `is_env_lazy`) — and/or `read_env_config` — through `manifest_load` + the `PYVE_ENV_*` arrays. **Avoid the recursion trap:** `_manifest_synthesize_from_legacy` calls `read_env_config`, so `read_env_config` must NOT call `manifest_load` unconditionally — when `pyve.toml` is present, map `PYVE_ENV_*` → `PYVE_TESTENV_*`; the synthesis path keeps using the lower-level pyproject helper directly. Filter the manifest envs to the lifecycle-relevant set (declared named/test envs; exclude `root`).
+
+**Out of scope.** Rewriting the user-facing strings (O.k.2 — must follow this). Removing `pyve_testenvs_helper.py` (N-10). Conda exec / pip layer (O.m/O.n).
 
 **Tasks**
 
-- [ ] Reproduce (red): bats asserts `pyve env --help`, `pyve testenv --help`, and the `pyve lock` / `pyve env` error paths emit `[tool.pyve.testenvs]` / `pyproject.toml`. They do today.
-- [ ] Rewrite the help text ([env.sh:1150](../../lib/commands/env.sh#L1150)) to `[env.<name>]` in `pyve.toml` + the `pyve env sync` / env-dependencies §4.0 pointer.
-- [ ] Rewrite the `pyve lock` ([lock.sh:239-256](../../lib/commands/lock.sh#L239-L256)) and `pyve env` ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809)) error strings to the v3 spelling.
-- [ ] Refresh the non-user-facing comments ([env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798)) opportunistically.
-- [ ] Green: bats asserts none of the rewritten help/error strings contain `tool.pyve.testenvs` or `pyproject.toml`; the `self.sh` migrator references remain present (regression guard that the sweep didn't over-reach).
+- [ ] Reproduce (red): a project with `[env.testenv]` declared in `pyve.toml` (backend/manifest/requirements) but NO `[tool.pyve.testenvs]` in pyproject → the lifecycle accessors (`_env_manifest_of` etc.) return empty. Assert they resolve from `pyve.toml` after the fix.
+- [ ] Route the lifecycle reader/accessors through the manifest (`PYVE_ENV_*`); preserve v2 pyproject read-compat via the manifest's legacy synthesis; avoid the synthesis↔reader recursion.
+- [ ] Parity: existing pyproject-`[tool.pyve.testenvs]` fixtures still drive `env init/install/run/lock` (via read-compat); new `pyve.toml [env.*]` fixtures now drive them too.
+- [ ] `pyve env sync` → `pyve env init <name>` coherent end-to-end (sync writes pyve.toml, init reads it).
 - [ ] Full suite; zero regressions.
 
-**Version:** patch (recommended) — help/error-text correction with no behavior change; folds into the post-v3.0.0 Phase O bundle. Developer owns the final number/version.
+---
+
+### Story O.k.2: rewrite the now-accurate env/lock help + error strings to `pyve.toml [env.<name>]` [Planned]
+
+*(Depends on O.k.1 — the strings can only truthfully say `pyve.toml` once the lifecycle reads it.)*
+
+**Sites (stale only after O.k.1 lands).**
+- `pyve env` / `testenv` `--help` ([env.sh:1150](../../lib/commands/env.sh#L1150)): *"Declare them in `[tool.pyve.testenvs.<name>]` inside pyproject.toml."*
+- `pyve lock` errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)).
+- `pyve env` conda/requirements errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:808-809](../../lib/commands/env.sh#L808-L809), [env.sh:846](../../lib/commands/env.sh#L846)).
+- Comments ([env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798)).
+
+**Fix.** Rewrite `[tool.pyve.testenvs.<name>]` / pyproject → `[env.<name>]` in `pyve.toml`; point at `pyve env sync` as the reconciliation path. **Keep** the `self.sh` migrator refs ([self.sh:606](../../lib/commands/self.sh#L606), [self.sh:831](../../lib/commands/self.sh#L831)) — the migrator legitimately reads the v2 source.
+
+**Tasks**
+
+- [ ] Reproduce (red): bats asserts the env/lock help + error strings emit `[tool.pyve.testenvs]` / `pyproject.toml` today.
+- [ ] Rewrite the help ([env.sh:1150](../../lib/commands/env.sh#L1150)) + lock/env error strings + comments to `pyve.toml [env.<name>]`.
+- [ ] Green: no `tool.pyve.testenvs` / `pyproject.toml` in the rewritten user-facing strings; the `self.sh` migrator refs remain (regression guard the sweep didn't over-reach).
+- [ ] Full suite; zero regressions.
+
+**Version:** v3.0.6 Phase O bundle. Depends on O.k.1. Developer owns the final number/version.
 
 ---
 
