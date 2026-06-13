@@ -16,6 +16,12 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
+    # Capture an absolute working python BEFORE create_test_dir cd's into a
+    # temp dir with no version-manager pin (an asdf shim there errors "No
+    # version is set"). manifest_load needs it to parse pyve.toml via the
+    # tomllib helper. Harmless for v2 .pyve/config tests (synthesis is pure
+    # bash, no python). Mirrors test_manifest.bats.
+    export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
     export PYVE_SCRIPT="$PYVE_ROOT/pyve.sh"
 }
@@ -265,6 +271,93 @@ YAML
     [[ "$output" == *"PASS:"* ]]
     [[ "$output" == *"not required"* ]]
     [[ "$output" != *"WARN:"* ]]
+}
+
+#============================================================
+# Story O.g — v3-native (pyve.toml-only) projects pass check.
+# `pyve check` must read the v3 manifest, not gate on the v2
+# `.pyve/config` file. A migrated project (pyve.toml present, no
+# .pyve/config) was hard-failing "Configuration: .pyve/config missing".
+#============================================================
+
+@test "check: v3-native venv project (pyve.toml, no .pyve/config) passes" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+TOML
+    mkdir -p .venv/bin
+    cat > .venv/bin/python << 'PY'
+#!/usr/bin/env bash
+echo "Python 3.14.4"
+PY
+    chmod +x .venv/bin/python
+    cat > .venv/pyvenv.cfg << EOF
+home = $PWD/.venv/bin
+version = 3.14.4
+EOF
+    touch .envrc .env
+
+    run "$PYVE_SCRIPT" check
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"Backend: venv"* ]]
+    # Must not claim the v2 config is missing on a valid v3 project.
+    ! printf '%s' "$output" | grep -q ".pyve/config missing"
+}
+
+@test "check: v3-native micromamba project gets past the config gate" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "micromamba"
+TOML
+
+    run "$PYVE_SCRIPT" check
+    # The env isn't built, so check still fails downstream — but it must
+    # get *past* Check 1/3 (recognize the project + backend), never
+    # hard-error on a missing .pyve/config.
+    [[ "$output" == *"Backend: micromamba"* ]]
+    ! printf '%s' "$output" | grep -q ".pyve/config missing"
+}
+
+@test "check: v3-native project does not emit the misleading 'legacy project' version nudge" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+TOML
+    mkdir -p .venv/bin
+    cat > .venv/bin/python << 'PY'
+#!/usr/bin/env bash
+echo "Python 3.14.4"
+PY
+    chmod +x .venv/bin/python
+    cat > .venv/pyvenv.cfg << EOF
+home = $PWD/.venv/bin
+version = 3.14.4
+EOF
+    touch .envrc .env
+
+    run "$PYVE_SCRIPT" check
+    [ "$status" -eq 0 ]
+    # pyve.toml carries no recorded pyve_version; the "legacy project →
+    # pyve update" nudge is a v2 .pyve/config concept and must not fire.
+    ! printf '%s' "$output" | grep -q "legacy project"
 }
 
 #============================================================

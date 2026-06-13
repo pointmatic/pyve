@@ -83,6 +83,26 @@ pyve test --env testenv         # a specific test env
 pyve test --env unit,integration   # run both, serially, aggregating exit codes
 ```
 
+## What `pyve init` materializes
+
+`pyve init` materializes only what your `pyve.toml` **declares**, on a graduated *declared → materialized → operable* ladder:
+
+- **The run (root) env** is materialized to its declared backend (`venv` / `micromamba`); an advisory `none` root is declarative-only — nothing is built (see [Backends](backends.md)).
+- **The default test env** is materialized when it is declared *and* resolves to a `venv` backend — created **empty** (no dependencies). A conda-backed or additional named test env is **not** built at init (a conda solve is never run implicitly); run `pyve env init <name>` to materialize it.
+- **No test env declared → none created.** `pyve init` never injects an undeclared `testenv`.
+
+A materialized env is **not automatically operable**: it comes up empty and its dependencies install on first `pyve test` / `pyve env install` (*empty until demand*). Declaring an env, materializing it, and populating its dependencies are three distinct steps — a `[env.<name>]` block does not by itself install anything.
+
+A test env declared `purpose = "test"` with **no `default`** that Pyve can't unambiguously resolve is a **skeleton**: declared (so `pyve test --env <name>` and other purpose-keyed selectors resolve) and materialized on demand, but never autowired.
+
+### Which env `pyve test` runs
+
+With no `--env`, `pyve test` resolves the default test env:
+
+- an explicit `default = true` always wins;
+- otherwise, on a **single-backend** project (all declared envs share one backend) rooted on a Python backend with **exactly one** test env, that sole test env is auto-promoted to the default — no `default` needed;
+- a **mixed-backend** project, **multiple** test envs without a default, or a non-Python / `none` root has **no** default: `pyve test` asks for an explicit `--env` rather than guessing.
+
 ## Dependency sources
 
 A test or utility env declares **where its dependencies come from** via one of three mutually-exclusive fields on its `[env.<name>]` block:

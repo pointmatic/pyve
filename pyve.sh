@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.0.5"
+VERSION="3.0.6"
 DEFAULT_PYTHON_VERSION="3.14.5"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"

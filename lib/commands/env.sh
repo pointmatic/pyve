@@ -83,9 +83,9 @@ env_init() {
 # install source available (1 = top precedence):
 #
 #   1. CLI `-r <file>` (today's explicit-override behavior).
-#   2. Declared `[tool.pyve.testenvs.<name>].requirements = ["a","b",...]`
+#   2. Declared `[env.<name>].requirements = ["a","b",...]` in pyve.toml
 #      → `pip install -r a -r b ...`.
-#   3. Declared `[tool.pyve.testenvs.<name>].extra = "<extra>"`
+#   3. Declared `[env.<name>].extra = "<extra>"` in pyve.toml
 #      → resolve `[project.optional-dependencies].<extra>` via the
 #      Python helper, `pip install <pkg1> <pkg2> ...`.
 #   4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
@@ -128,7 +128,7 @@ _env_install_venv() {
         for r in "${declared_reqs[@]}"; do
             if [[ ! -f "$r" ]]; then
                 log_error "Declared requirements file not found: $r"
-                log_error "(declared as [tool.pyve.testenvs.$name].requirements)"
+                log_error "(declared as [env.$name].requirements in pyve.toml)"
                 exit 1
             fi
             r_args+=("-r" "$r")
@@ -774,7 +774,7 @@ _env_install_with_lock() {
     if [[ "$backend" == "micromamba" ]]; then
         local manifest
         manifest="$(_env_manifest_of "$name")" || manifest=""
-        _env_install_conda "$name" "$env_path" "$manifest" || rc=$?
+        _env_install_conda "$name" "$env_path" "$manifest" "$req_file" || rc=$?
     else
         _env_install_venv "$name" "$env_path" "$req_file" || rc=$?
     fi
@@ -795,7 +795,7 @@ _env_install_with_lock() {
 # `micromamba install -p <path> -f <manifest> -y`. If the env does not
 # exist, errors with a hint pointing at `pyve testenv init <name>`.
 #
-# Both require `manifest` to be declared in `[tool.pyve.testenvs.<name>]`
+# Both require `manifest` to be declared in `[env.<name>]` in pyve.toml
 # — the conda backend has no implicit pip-style fallback.
 #------------------------------------------------------------
 
@@ -805,8 +805,8 @@ _env_init_conda() {
     local manifest="$3"
 
     if [[ -z "$manifest" ]]; then
-        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
-        log_error "Add: [tool.pyve.testenvs.$name]"
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyve.toml"
+        log_error "Add: [env.$name]"
         log_error "     manifest = \"<environment.yml path>\""
         return 1
     fi
@@ -841,9 +841,10 @@ _env_install_conda() {
     local name="$1"
     local env_path="$2"
     local manifest="$3"
+    local cli_req_file="${4:-}"
 
     if [[ -z "$manifest" ]]; then
-        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyproject.toml"
+        log_error "conda-backed testenv '$name' requires 'manifest' to be declared in pyve.toml ([env.$name])"
         return 1
     fi
     if [[ ! -f "$manifest" ]]; then
@@ -864,12 +865,84 @@ _env_install_conda() {
     fi
 
     info "Syncing conda-backed testenv '$name' from $manifest..."
-    if "$micromamba_path" install -p "$env_path" -f "$manifest" -y; then
-        success "Synced conda-backed testenv '$name'"
+    if ! "$micromamba_path" install -p "$env_path" -f "$manifest" -y; then
+        log_error "Failed to sync conda-backed testenv '$name'"
+        return 1
+    fi
+    success "Synced conda-backed testenv '$name'"
+
+    # Pip layer: conda solves the heavy deps from the manifest; pip layers
+    # the rest (dev tooling) on top, installed INTO the conda env via
+    # `micromamba run -p` so it lands in this env's site-packages. Source
+    # precedence mirrors the venv path's CLI -r > declared `requirements` >
+    # declared `extra`; the venv-only conveniences (auto requirements-dev.txt,
+    # bare-pytest fallback) do not apply — for conda the manifest is the base
+    # and the pip layer is opt-in. A supplied/declared source that can't be
+    # applied errors here; it is never silently dropped.
+    _env_conda_pip_layer "$name" "$env_path" "$micromamba_path" "$cli_req_file" || return $?
+    return 0
+}
+
+# Apply the pip layer for a conda-backed env. Resolves the highest-precedence
+# pip source (CLI -r > declared `requirements` > declared `extra`) and installs
+# it into <env_path> via `micromamba run -p <env_path> python -m pip install`.
+# No source → no-op (the manifest sync already ran). A missing requirements
+# file (CLI or declared) is a hard error, never a silent skip.
+_env_conda_pip_layer() {
+    local name="$1" env_path="$2" micromamba_path="$3" cli_req_file="$4"
+
+    # Precedence 1: CLI `-r <file>`.
+    if [[ -n "$cli_req_file" ]]; then
+        if [[ ! -f "$cli_req_file" ]]; then
+            log_error "Requirements file not found: $cli_req_file"
+            return 1
+        fi
+        info "Installing pip requirements ($cli_req_file) into conda env '$name'..."
+        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install -r "$cli_req_file"
+        success "Pip requirements installed into '$name'"
         return 0
     fi
-    log_error "Failed to sync conda-backed testenv '$name'"
-    return 1
+
+    # Precedence 2: declared `requirements = [...]`.
+    local -a declared_reqs=()
+    _env_requirements_of "$name" declared_reqs 2>/dev/null || true
+    if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
+        local r
+        local -a r_args=()
+        for r in "${declared_reqs[@]}"; do
+            if [[ ! -f "$r" ]]; then
+                log_error "Declared requirements file not found: $r"
+                log_error "(declared as [env.$name].requirements in pyve.toml)"
+                return 1
+            fi
+            r_args+=("-r" "$r")
+        done
+        info "Installing declared pip requirements into conda env '$name'..."
+        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${r_args[@]}"
+        success "Pip requirements installed into '$name'"
+        return 0
+    fi
+
+    # Precedence 3: declared `extra = "<name>"`.
+    local declared_extra
+    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+    if [[ -n "$declared_extra" ]]; then
+        local -a pkgs=()
+        if ! _env_resolve_extra_packages "$declared_extra" pkgs; then
+            return 1
+        fi
+        if [[ "${#pkgs[@]}" -eq 0 ]]; then
+            info "Extra '$declared_extra' has no packages — skipping pip layer"
+            return 0
+        fi
+        info "Installing declared extra '$declared_extra' into conda env '$name'..."
+        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${pkgs[@]}"
+        success "Pip requirements installed into '$name'"
+        return 0
+    fi
+
+    # No pip source — the manifest sync is the whole install.
+    return 0
 }
 
 #------------------------------------------------------------
@@ -1146,8 +1219,9 @@ Notes:
     delegation alias through the v3.x deprecation window (removal in v4.0).
     Every invocation prints a one-shot deprecation warning to stderr.
   - Default `testenv` lives at .pyve/envs/testenv/venv
-  - Named environments (Story M.i+) live at .pyve/envs/<name>/{venv,conda}/
-    Declare them in [tool.pyve.testenvs.<name>] inside pyproject.toml.
+  - Named environments live at .pyve/envs/<name>/{venv,conda}/
+    Declare them in [env.<name>] inside pyve.toml (run `pyve env sync` to
+    reconcile the manifest with what's on disk).
   - `install` no-arg iterates over every non-lazy declared env. Conda-backed
     envs are skipped (M.k will provide provisioning). `install <name>` installs
     only into that env.
@@ -1220,7 +1294,7 @@ EOF
         header_box "pyve env"
         local sync_rc=0
         env_sync "${sync_args[@]+"${sync_args[@]}"}" || sync_rc=$?
-        footer_box
+        footer_box "$sync_rc"
         return "$sync_rc"
     fi
 
@@ -1238,10 +1312,17 @@ EOF
             shift 2
         fi
         assert_env_name_actionable "$run_name" || exit 1
-        assert_env_venv_backend     "$run_name" || exit 1
-        local run_venv
+        local run_venv run_backend
         run_venv="$(resolve_env_path "$run_name")"
-        env_run "$run_venv" "$@"
+        run_backend="$(_env_resolve_backend "$run_name")" || run_backend="venv"
+        # Backend dispatch: venv → PATH activation (env_run); micromamba →
+        # `micromamba run -p` (sets CONDA_PREFIX, runs activate.d, fixes lib
+        # paths). Both exec, so neither returns on success.
+        if [[ "$run_backend" == "micromamba" ]]; then
+            env_exec_conda "$run_venv" "$@"
+        else
+            env_run "$run_venv" "$@"
+        fi
         return  # not reached on success (exec) but kept for clarity
     fi
 
@@ -1311,6 +1392,6 @@ EOF
             ;;
     esac
 
-    footer_box
+    footer_box "$leaf_rc"
     return "$leaf_rc"
 }
