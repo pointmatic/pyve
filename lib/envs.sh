@@ -68,7 +68,11 @@ _env_config_from_manifest() {
         name="${PYVE_ENV_NAMES[$i]}"
         [[ "$name" == "root" ]] && continue
         be="${PYVE_ENV_BACKEND[$i]}"
-        [[ -z "$be" ]] && be="venv"
+        # A declared env with no backend mirrors the root (inherit
+        # semantics, resolved against the manifest by _env_resolve_backend),
+        # rather than hardcoding venv — so a no-backend testenv on a
+        # micromamba root is micromamba, not venv.
+        [[ -z "$be" ]] && be="inherit"
         PYVE_TESTENVS_NAMES+=("$name")
         PYVE_TESTENV_BACKEND+=("$be")
         PYVE_TESTENV_LAZY+=("${PYVE_ENV_LAZY[$i]}")
@@ -84,6 +88,10 @@ _env_config_from_manifest() {
         done
         [[ -z "$PYVE_TESTENVS_DEFAULT" ]] && PYVE_TESTENVS_DEFAULT="${PYVE_TESTENVS_NAMES[0]}"
     fi
+    # Explicit success: the trailing `&&` above returns non-zero whenever the
+    # default was already set (the common case), which would otherwise make
+    # read_env_config report failure to a `set -e` caller.
+    return 0
 }
 
 read_env_config() {
@@ -263,11 +271,15 @@ _env_declared_in_manifest() {
     manifest_get_env "$1"
 }
 
-# Story M.k: resolve <name>'s effective backend. Returns the concrete
-# literal `venv` or `micromamba` — never `inherit`. For `inherit`, reads
-# the main env's backend from `.pyve/config` via `read_config_value`;
-# falls back to `venv` if no config (matches the bash-only / greenfield
-# project case). For undeclared names, returns `venv`.
+# Resolve <name>'s effective backend. An explicit concrete backend
+# (`venv` / `micromamba`) is returned as-is. `inherit` — which a
+# no-backend env now defaults to — mirrors the ROOT backend, read from the
+# canonical manifest first (`pyve.toml [env.root]` via `manifest_get_backend
+# root`), falling back to `.pyve/config` (v3.0-only read-compat, removed in
+# N-10), then `venv`. The root value passes through verbatim, including an
+# advisory `none` — so a no-backend testenv on a `none` root resolves to
+# `none` and is treated as declarative-only downstream. Undeclared names
+# resolve to `venv`.
 _env_resolve_backend() {
     local name="$1"
     local raw
@@ -277,12 +289,10 @@ _env_resolve_backend() {
         return 0
     fi
     local main_backend
-    main_backend="$(read_config_value backend 2>/dev/null || printf '')"
-    if [[ "$main_backend" == "micromamba" ]]; then
-        printf '%s' "micromamba"
-    else
-        printf '%s' "venv"
-    fi
+    main_backend="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$main_backend" ]] && main_backend="$(read_config_value backend 2>/dev/null || true)"
+    [[ -z "$main_backend" ]] && main_backend="venv"
+    printf '%s' "$main_backend"
 }
 
 # Story N.bf.14: resolve the reserved `root` env's backend. `root` is
