@@ -870,11 +870,14 @@ _init_detect_project_guide_present() {
 #   [env.root]    purpose = "utility"
 #   [env.testenv] purpose = "test", default = true
 #
-# The `[env.testenv]` declaration matches today's two-env init shape:
-# `pyve init` materializes the run env (`.venv/`) and `pyve testenv
-# init` later materializes the test env. Declaring testenv here means
-# `pyve test --env testenv` and other purpose-keyed selectors resolve
-# correctly even before the testenv venv exists on disk.
+# The `[env.testenv]` declaration is the project's default test env.
+# `pyve init` materializes the run env (`.venv/`) and, gated on an actual
+# declaration, the default test env when it is venv-backed (empty until
+# demand — dependencies install on first `pyve test` / `pyve env install`);
+# conda-backed or additional named envs materialize via `pyve env init
+# <name>`. A root-only manifest (no test env declared) materializes no test
+# env. Declaring testenv here also lets purpose-keyed selectors
+# (`pyve test --env testenv`) resolve.
 _init_write_pyve_toml() {
     local project_name="$1"
     if [[ -f pyve.toml ]]; then
@@ -893,6 +896,24 @@ purpose = "utility"
 purpose = "test"
 default = true
 EOF
+}
+
+# Which test env, if any, `pyve init` materializes: the declared default test
+# env — but only when it resolves to a venv backend. No test env declared (a
+# root-only manifest) → nothing, so init never injects an undeclared `testenv`.
+# A conda-backed default needs a manifest + solve and is deferred to
+# `pyve env init <name>`; an advisory/`none` mirror is declarative-only. Prints
+# the env name to materialize, or nothing.
+_init_testenv_to_materialize() {
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_env_config
+    fi
+    local name="${PYVE_TESTENVS_DEFAULT:-}"
+    [[ -z "$name" ]] && return 0
+    local be
+    be="$(_env_resolve_backend "$name")" || be="venv"
+    [[ "$be" == "venv" ]] && printf '%s' "$name"
+    return 0
 }
 
 # refresh-path guard. When `pyve.toml` exists, validate
@@ -2108,8 +2129,12 @@ EOF
     # that read-compat layer is removed.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
-    # Ensure dev/test runner environment exists (upgrade-friendly)
-    ensure_env_exists
+    # Materialize the declared default test env (venv-backed only), gated on an
+    # actual declaration — never inject an undeclared `testenv`. Conda/advisory
+    # test envs and additional named envs materialize via `pyve env init <name>`.
+    local _init_te
+    _init_te="$(_init_testenv_to_materialize)"
+    [[ -n "$_init_te" ]] && ensure_env_exists "$_init_te"
 
     # Absolute venv path — used by dep install and the composition tail.
     local _venv_abs
@@ -3898,6 +3923,70 @@ test_tests() {
 # lazy auto-provision (M.n), pytest install prompt, silent-skip
 # advisory (M.o), `last_used_at` touch (M.m), then `exec pytest`.
 # Returns only on error paths (the success tail execs).
+
+# Resolve the test env `pyve test` targets when no `--env` is given. An
+# explicit `default = true` always wins. Otherwise autowire only when the
+# project is unambiguous: the root is a Python backend (venv/micromamba), the
+# declared env collection is homogeneous in backend, AND exactly one test env
+# is declared — then promote that sole test env. A mixed-backend collection,
+# multiple test envs without a default, or a non-Python/`none` root yields no
+# default (the caller then requires an explicit `--env`). Prints the env name,
+# or nothing. No heuristics under ambiguity — we never guess a default.
+_test_default_env() {
+    # read_env_config populates BOTH the manifest arrays (PYVE_ENV_*, for
+    # list/default/purpose) and the lifecycle arrays (PYVE_TESTENV_*, which
+    # _env_resolve_backend reads) — manifest_load alone leaves the latter empty,
+    # so a no-backend testenv would mis-resolve to the venv default.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_env_config
+    fi
+    local -a envs=() test_envs=()
+    local env
+    while IFS= read -r env; do
+        [[ -n "$env" ]] && envs+=("$env")
+    done < <(manifest_list_envs 2>/dev/null)
+
+    if [[ "${#envs[@]}" -gt 0 ]]; then
+        # 1. Explicit default wins.
+        for env in "${envs[@]}"; do
+            if manifest_is_default "$env" 2>/dev/null; then
+                printf '%s' "$env"
+                return 0
+            fi
+        done
+
+        # 2. Autowire a sole test env on a homogeneous, Python-rooted project.
+        local root_be be homogeneous=1
+        root_be="$(_env_resolve_root_backend 2>/dev/null || printf 'venv')"
+        for env in "${envs[@]}"; do
+            if [[ "$env" == "root" ]]; then
+                be="$root_be"
+            else
+                be="$(_env_resolve_backend "$env" 2>/dev/null)" || be="venv"
+            fi
+            [[ "$be" != "$root_be" ]] && homogeneous=0
+            [[ "$(manifest_resolve_purpose "$env" 2>/dev/null)" == "test" ]] && test_envs+=("$env")
+        done
+
+        if [[ "$homogeneous" == "1" ]] \
+           && [[ "${#test_envs[@]}" -eq 1 ]] \
+           && { [[ "$root_be" == "venv" ]] || [[ "$root_be" == "micromamba" ]]; }; then
+            printf '%s' "${test_envs[0]}"
+            return 0
+        fi
+    fi
+
+    # 3. Reserved/implicit `testenv` fallback: a bare project (no manifest)
+    # where read_env_config synthesized the conventional single `testenv`.
+    # Fires only when the manifest declared NO test env of its own — a
+    # manifest that omits testenv on purpose leaves PYVE_TESTENVS_DEFAULT
+    # empty and gets no magic default (it must declare one or pass --env).
+    if [[ "${#test_envs[@]}" -eq 0 ]] && [[ "${PYVE_TESTENVS_DEFAULT:-}" == "testenv" ]]; then
+        printf '%s' "testenv"
+    fi
+    return 0
+}
+
 _test_run_one_env() {
     local env_target="$1"
     local env_target_explicit="$2"
@@ -3929,7 +4018,21 @@ _test_run_one_env() {
     fi
 
     if [[ "$env_target_explicit" == "0" ]]; then
-        env_target="${PYVE_TESTENVS_DEFAULT:-testenv}"
+        # No --env: resolve the default test env (explicit `default = true`,
+        # or a sole test env auto-promoted on a homogeneous Python-rooted
+        # project). No unambiguous default → require an explicit --env rather
+        # than guessing.
+        env_target="$(_test_default_env)"
+        if [[ -z "$env_target" ]]; then
+            log_error "pyve test: no default test env to run."
+            log_error "Declare 'default = true' on a test env in pyve.toml, or pass --env <name>."
+            local _te
+            while IFS= read -r _te; do
+                [[ -z "$_te" ]] && continue
+                [[ "$(manifest_resolve_purpose "$_te" 2>/dev/null)" == "test" ]] && log_error "  --env $_te"
+            done < <(manifest_list_envs 2>/dev/null)
+            exit 1
+        fi
     fi
 
     # Validate the target name. Accept the reserved `testenv` and any

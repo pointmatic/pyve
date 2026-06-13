@@ -518,7 +518,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.o.2: gate `pyve init` testenv materialization on a declared test env (+ fix the stale promise comment) [Planned]
+### Story O.o.2: gate `pyve init` testenv materialization on a declared test env (+ fix the stale promise comment) [Done]
 
 *(Defect 1 + Defect 3 of the O.o umbrella. Depends on O.o.1.)*
 
@@ -530,17 +530,17 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): `pyve init` on a project with **no** declared test env creates `.pyve/envs/testenv/venv`; assert it does **not** (only the root env materializes).
-- [ ] Gate init testenv materialization on a declared test env; materialize each declared test env (mirrored backend via O.o.1), no deps; `none`/advisory → declarative-only (skip).
-- [ ] Fix the stale comment(s) at [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) to match actual behavior.
-- [ ] Back-compat: behavior change noted for the release notes (no shim).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new [test_oo2_init_gate.bats](../../tests/unit/test_oo2_init_gate.bats) — the materialization decision is factored into `_init_testenv_to_materialize` (full `init_project` is too expensive to exercise per-test, per the `test_init_pyve_toml` convention). Red on a root-only manifest (the helper would have returned `testenv` via the old bare no-arg call).
+- [x] Gated init testenv materialization on a declared test env: `_init_testenv_to_materialize` ([plugin.sh](../../lib/plugins/python/plugin.sh)) returns the **declared default** test env, and only when it resolves (via O.o.1) to **venv**; `init_project` replaces the bare no-arg `ensure_env_exists` with a gated call on that name. No test env declared (root-only manifest) → nothing materialized — init never injects an undeclared `testenv`. **Scope note:** materializes the *default* venv-backed test env (matching today's single-env cardinality, "materialization is unchanged"), not every declared env; a conda-backed/advisory default is **deferred to `pyve env init <name>`** (no surprise conda solve at init), not silently created. Empty until demand (no deps). A fresh `pyve init` still materializes a testenv because the scaffold declares `[env.testenv] default`.
+- [x] Rewrote the stale comment ([plugin.sh ~L873](../../lib/plugins/python/plugin.sh#L873)) — it claimed `pyve testenv init` materializes the test env "later … before the testenv venv exists on disk" (false: init eagerly created it). Now states the gated/empty-until-demand reality.
+- [x] Back-compat: hand-authored root-only manifests no longer get a spurious `.pyve/envs/testenv/venv` — a behavior change for the release notes (no shim; accepted in the early-v3 line). Fresh-init / scaffold-declared projects are unaffected.
+- [x] Full suite: **2023 tests**, only the 2 pre-existing `J.c` asdf flakes. Zero regressions. Shellcheck clean on changed lines.
 
 **Version:** part of the O.o bundle. Developer owns the number.
 
 ---
 
-### Story O.o.3: `pyve test` autowiring + homogeneity guard [Planned]
+### Story O.o.3: `pyve test` autowiring + homogeneity guard [Done]
 
 *(Task 4 of the O.o umbrella. Depends on O.o.1; independent of O.o.2.)*
 
@@ -552,11 +552,11 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] Reproduce (red): a single declared Python test env with no explicit `default` is not autowired by `pyve test` today; assert it is promoted + autowired on a homogeneous Python project.
-- [ ] Default resolution: explicit `default=true` wins; else Python root + homogeneous backends + sole test env → promote; else no default.
-- [ ] Homogeneity guard: a mixed-backend collection → no autowiring; `pyve test` requires an explicit `default`.
-- [ ] Non-Python / `none` root, or multi-env-no-default → no promotion (no autowiring).
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): new [test_oo3_autowire.bats](../../tests/unit/test_oo3_autowire.bats) — 7 cases over the new `_test_default_env` resolver (explicit default wins; sole venv / sole micromamba-mirror promote; two-test-envs / mixed-backend / `none`-root → no autowire; source-grep that `_test_run_one_env` routes through it and the permissive `:-testenv` fallback is gone).
+- [x] Default resolution implemented as `_test_default_env` ([plugin.sh](../../lib/plugins/python/plugin.sh)), wired into `_test_run_one_env`'s no-`--env` path: explicit `default = true` wins; else Python root + homogeneous backend (all declared envs share one backend, root resolved via `_env_resolve_root_backend`, test envs via O.o.1's `_env_resolve_backend`) + exactly one `purpose=test` env → promote it. No unambiguous default → `pyve test` hard-errors listing the declared test envs (no guessing).
+- [x] Homogeneity guard: a mixed-backend collection (e.g. venv root + explicit micromamba testenv) → no autowire → explicit `--env`/`default` required.
+- [x] Non-Python/`none` root, or multiple test envs without a default → no promotion. **Reserved-`testenv` fallback preserved:** a *bare* project (no manifest) where `read_env_config` synthesizes the conventional single `testenv` still resolves to it — the fallback fires only when the manifest declares no test env of its own (a manifest that omits testenv on purpose leaves `PYVE_TESTENVS_DEFAULT` empty and gets no magic default), so the bare-project `pyve test` UX is unchanged while the ambiguity guard is added.
+- [x] Full suite: **2028 tests**, only the 2 pre-existing `J.c` asdf flakes. The 4 `pyve test`-default tests that initially broke (advisory-routing + bare-fallback in [test_test_command.bats](../../tests/unit/test_test_command.bats) / [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats)) pass unmodified once the reserved-`testenv` fallback was added — confirming the change adds the ambiguity guard without altering the unambiguous bare/sole cases. Shellcheck clean on changed lines.
 
 **Version:** part of the O.o bundle. Developer owns the number.
 
