@@ -457,7 +457,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.o: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments (umbrella) [Planned]
+### Story O.o: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments (umbrella) [Done]
 
 *(Design correction surfaced 2026-06-11. What `pyve init` actually *promises* to materialize from a `pyve.toml` is muddy: init eagerly builds a bare-Python `testenv` regardless of declaration, a no-backend testenv hardcodes `venv` instead of mirroring the root, a code comment claims the opposite of what the code does, and no docs state the contract. Correct the ergonomics + comments + docs so "initialize" has one clear, declared-driven meaning.)*
 
@@ -562,7 +562,7 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 ---
 
-### Story O.o.4: document the `pyve init` contract — declaration vs. materialization vs. mechanics [Planned]
+### Story O.o.4: document the `pyve init` contract — declaration vs. materialization vs. mechanics [Done]
 
 *(Task 6 of the O.o umbrella. Last — after O.o.2 / O.o.3 settle the behavior.)*
 
@@ -574,9 +574,10 @@ So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **
 
 **Tasks**
 
-- [ ] `project-essentials.md` entry: the ladder; declared ≠ operable; empty-until-demand; mirror-root; skeleton (`purpose=test` w/o `default`); the Python-root promotion + homogeneity guard.
-- [ ] Usage/site docs state the init contract per declaration shape.
-- [ ] Cross-link O.l (`none`-root) and O.m/O.n (conda exec + pip layer).
+- [x] `project-essentials.md` entry "`pyve init` materializes only what's declared; declared ≠ operable (empty-until-demand)": the ladder, declared ≠ operable, empty-until-demand, mirror-root, skeleton (`purpose=test` w/o `default`), the `_test_default_env` promotion + homogeneity guard + reserved-`testenv` bare fallback. Cross-links the `none`-root and `purpose` entries, and points the deeper rework at the Phase P seed ([env-lifecycle-concept.md](env-lifecycle-concept.md)).
+- [x] Site docs: new "What `pyve init` materializes" + "Which env `pyve test` runs" sections in [docs/site/environments.md](../../docs/site/environments.md) stating the contract per declaration shape (focused addition; the full v2→v3 site sweep stays the deferred Phase P site story).
+- [x] Cross-linked the `none`-root model (O.l) and the conda exec/pip layer (O.m/O.n) framing ("declared ≠ operable").
+- [x] Docs-only — no code/tests touched; full suite re-run confirms **2028 tests**, only the 2 pre-existing `J.c` flakes.
 
 **Version:** part of the O.o bundle. Developer owns the number.
 
