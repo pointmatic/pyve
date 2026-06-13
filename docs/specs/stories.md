@@ -200,7 +200,43 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 ---
 
-### Story O.?: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Planned]
+### Release v3.0.6: General Housekeeping and Fixes (Stories O.g, O.h, O.i, O.j, O.k group, O.l, O.m, O.n, O.o)
+
+---
+
+### Story O.g: `pyve check` is v3-blind — hard-errors "`.pyve/config` missing" on a valid `pyve.toml` project (and `init` papers over it by re-writing the v2 config) [Done]
+
+*(Post-v3.0.5 escapee. The v3.0.5 bundle (O.d/O.e) made `self migrate` + `init --force` honor `pyve.toml`, but `pyve check` was not in scope — and O.d's facet #3 "stop writing `.pyve/config`" was correctly **deferred** here because it's coupled to this fix. Number/version are placeholders for the developer to finalize.)*
+
+**Discovered:** 2026-06-11, migrating the `project-guide` repo with the v3.0.5 binary. After `pyve self migrate` (writes `pyve.toml`, skips rebuild) and before any `.pyve/config` is recreated, `pyve check` reports `✗ Configuration: .pyve/config missing → Run: pyve init` — on a project whose canonical v3 `pyve.toml` is present and valid.
+
+**Symptom.** `check_environment` Check 1 gates on `config_file_exists` (`[[ -f ".pyve/config" ]]`, [plugin.sh:2897](../../lib/plugins/python/plugin.sh#L2897)) and hard-exits if absent; Check 3 reads the backend via `read_config_value "backend"` ([plugin.sh:2908](../../lib/plugins/python/plugin.sh#L2908)) — both pure v2 `.pyve/config` (YAML), never `manifest_load` / `pyve.toml`. A v3-native project (pyve.toml present, no `.pyve/config`) fails `pyve check` outright.
+
+**Root cause — the check path never adopted the v3 manifest.** `pyve.toml` is canonical, and `manifest_load` already handles both native pyve.toml and the v3.0 read-compat synthesis from `.pyve/config`. But `pyve check` bypasses that layer, pivoting on `config_file_exists` + `read_config_value`, so it only "sees" a project that still carries the legacy `.pyve/config`.
+
+**The squirrely coupling — why `init` re-writes `.pyve/config`.** `pyve init` writes a v2-style `.pyve/config` (the "✔ Created .pyve/config" line) — which is the *only* reason `pyve check` passes afterward. Removing that write (the dual-config anti-pattern project-essentials forbids) **without** fixing check would leave check permanently broken. The two are **one change**: check must read `pyve.toml`, and `init` must stop writing `.pyve/config` — together. This is the home for O.d's deferred facet #3.
+
+**Fix.**
+1. Route `pyve check`'s config-presence + backend/python reads through `manifest_load` + the flat accessors (`manifest_get_backend`, `manifest_resolve_purpose`, …) — never `config_file_exists` / `read_config_value`. Works for v3-native (pyve.toml) and v2 (read-compat synthesis) alike.
+2. Stop `init` writing the v2 `.pyve/config`; `pyve.toml` is the sole declaration.
+3. Audit the remaining `config_file_exists` / `read_config_value` / `[[ -f ".pyve/config" ]]` consumers ([plugin.sh:341](../../lib/plugins/python/plugin.sh#L341), [:2399](../../lib/plugins/python/plugin.sh#L2399), [:3559](../../lib/plugins/python/plugin.sh#L3559)) and route the v3 ones through the manifest; keep only the deliberate read-compat reads (tagged `v3.0-only: remove in N-10`).
+
+**Scope decision (2026-06-11).** Task 2 alone (route `check` reads through the manifest) fixes the user-facing symptom: once `check` reads `pyve.toml`, a migrated project passes regardless of whether `init` still writes `.pyve/config`. Stopping the `.pyve/config` write (Fix #2 / original task 3) has a 57-`read_config_value` + 13-`config_file_exists` blast radius — every *direct* (non-manifest) reader returns empty on a fresh v3 project — which is exactly the N-10 read-compat sweep the O.d project-essentials note scopes *"not to ad-hoc edits here."* So this story lands the **check-read fix** (+ the parallel `status` presence/backend read-fix, same one-line risk profile); the **`init` write-removal + the broader read-site migration move to N-10.**
+
+**Tasks**
+
+- [x] Reproduce (red): a v3-native project (valid `pyve.toml`, no `.pyve/config`) → `pyve check` exits non-zero with "`.pyve/config` missing." Assert check passes on `pyve.toml` alone.
+- [x] Route check's config/backend reads through `manifest_load` + accessors; drop the `config_file_exists` hard-gate.
+- [x] Fix the parallel `pyve status` v3-blindness: presence gate + backend read through the manifest, so a `pyve.toml`-only project is recognized (no "Not a pyve-managed project" false negative).
+- [ ] ~~Stop `init` writing `.pyve/config`~~ → **deferred to N-10** (O.d's facet #3; coupled to the 57-site read migration below).
+- [ ] ~~Audit + route other v3 consumers off `.pyve/config`~~ → **deferred to N-10** (the ~64-site read-compat sweep, per the `v3.0-only: remove in N-10` markers).
+- [x] Bats: `pyve check` green on a pyve.toml-only fixture (venv + micromamba); still green on a v2 `.pyve/config`-only fixture via read-compat.
+
+**Version:** v3.0.6 (recommended) — the "sane migration path" follow-up: a migrated project must pass `pyve check` without an `init --force` that re-creates the v2 config. Developer owns the final number/version.
+
+---
+
+### Story O.h: `pyve init` re-asks the project-guide completion prompt every run — sentinel check runs *after* the prompt, not before [Done]
 
 *(Innocuous — the wiring is correctly idempotent; only the prompt ordering is wrong. Outside the v3.0.5 migration bundle.)*
 
@@ -216,24 +252,24 @@ It survives **by luck** when filesystem agrees with manifest (a micromamba proje
 
 **Tasks**
 
-- [ ] Reproduce (red): with a temp rc file already containing the sentinel block, invoke the completion-wiring step in interactive mode → assert (a) no `[Y/n]` prompt is emitted and (b) the rc file is unchanged. Fails today (prompt fires).
-- [ ] Hoist the sentinel-presence check above the prompt in the completion-wiring path ([utils.sh](../../lib/utils.sh) FR-16 Step 3): present → skip prompt (keep the one-line "already present" note); absent → unchanged flag/env/prompt handling.
-- [ ] Confirm the flag/env paths (`--project-guide-completion` / `--no-project-guide-completion` / `PYVE_PROJECT_GUIDE_COMPLETION` / CI auto-skip) are untouched and still only matter when the block is absent.
+- [x] Reproduce (red): with a temp rc file already containing the sentinel block, drive the completion-wiring step in interactive mode → assert the prompt is **not consulted** and the rc file is unchanged. (Tested via a prompt spy in [test_project_guide.bats](../../tests/unit/test_project_guide.bats) rather than real stdin — the prompt's `read` is nondeterministic under bats.) Fails today (prompt consulted).
+- [x] Hoist the sentinel-presence check above the prompt in the completion-wiring path — the wiring lives in [`run_project_guide_orchestration`](../../lib/project_guide.sh#L129) (Step 3), not `utils.sh`: resolve the rc path up front, and if the block is present → one-line "already present" note + return *before* the prompt; absent → unchanged flag/env/prompt handling.
+- [x] Confirm the flag/env paths (`--project-guide-completion` / `--no-project-guide-completion` / `PYVE_PROJECT_GUIDE_COMPLETION` / CI auto-skip) are untouched and still only matter when the block is absent (absent-path test green; full suite green).
 
 ---
 
-### Story O.?: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Planned]
+### Story O.i: General housekeeping + Homebrew update formula validation + CLI install/upgrade improvements [Done]
 
 - [ ] *(housekeeping)* Consider a general "non-interactive guard" so any future prompt auto-declines without a TTY rather than relying on per-callsite `[[ -t 0 ]]` — fits **Phase P: Harden and heal Pyve** alongside the runnability-probe / `pyve heal` work, not needed for v3.0.0.
 - [ ] *(housekeeping)* Add an integration smoke that drives the brew `post_install` shape (`PYVE_FORCE_YES` unset, stdin a non-TTY, pinned version absent) and asserts `self provision` exits without hanging — deferred to Phase P (local integration runs mutate the real `~/.local`/`~/.asdf`, a documented hazard).
 - [ ] **Revisit before Homebrew 6.0 / 5.2** removes `HOMEBREW_NO_REQUIRE_TAP_TRUST`. By then the path is one of: the `dawidd6` action grows native trust handling; Homebrew ships a non-interactive `brew trust`; or we write `trust.json` directly. Forward-compat is deferred, not solved.
-- [ ] Audit `update-homebrew.yml` against the v3 surface: any renamed commands, new files, or `caveats` text the formula references that changed across Phase N.
-- [ ] Confirm the formula's test/install block exercises a v3 smoke path (`pyve init` / `pyve --version`) rather than a retired v2 command.
-- [ ] *(housekeeping)* Stale comments referencing "lib/utils.sh's gitignore template" ([test_testenvs_activate.bats:15](../../tests/unit/test_testenvs_activate.bats#L15), [test_state_layout.bats:165](../../tests/unit/test_state_layout.bats#L165)) point at the pre-composer emitter; refresh to name `lib/gitignore_composer.sh` when next touching those files.
+- [x] Audit `update-homebrew.yml` against the v3 surface — **clean**: it's only a `dawidd6/action-homebrew-bump-formula` version bump on `v*` tags; references no pyve commands, file names, or `caveats` text, so nothing v2-specific to fix.
+- [x] Confirm the formula's test/install block exercises a v3 smoke path. Audited the reference copy [docs/specs/pyve.rb](../../docs/specs/pyve.rb): `install` / `caveats` (`pyve self provision`, `self unprovision --all`, `pyve update`) / `depends_on python@3.12` already v3-correct. Strengthened `test do` from a `--version`-only check to a real **v3 `init` smoke** (shims the formula Python as bare `python`, runs `pyve init --backend venv` non-interactively + no network, asserts `pyve.toml` + `.venv/bin/python`); validated the sandbox steps locally. Developer deployed the `test do` block to `pointmatic/homebrew/tap`. (`url`/`sha256` left untouched — auto-bumped by the `dawidd6` release action.)
+- [x] *(housekeeping)* Refreshed the stale gitignore-template comments — but **not** as a simple rename: the sweep test ([test_state_layout.bats](../../tests/unit/test_state_layout.bats)) only scans `lib/commands/` + `pyve.sh` (not `utils.sh`), and `utils.sh` has no gitignore-template line (gitignore moved to `lib/gitignore_composer.sh`, which ignores the whole `.pyve/` tree). Both comments ([test_testenvs_activate.bats:13-15](../../tests/unit/test_testenvs_activate.bats#L13-L15), [test_state_layout.bats:165-168](../../tests/unit/test_state_layout.bats#L165-L168)) corrected to reflect that reality.
 
 ---
 
-### Story O.?: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Planned]
+### Story O.j: box commands print `✔ All done.` even when the command failed (`footer_box` is status-blind) [Done]
 
 **Discovered:** 2026-06-08 smoke test (`pyve env install` and `pyve env init testenv` on a `.git`-only `pyve-v3-smoke`).
 
@@ -263,15 +299,293 @@ The process exit code is correct (non-zero); only the visual footer lies.
 
 **Tasks**
 
-- [ ] Reproduce (red): a failed box command (e.g. `env init` on an uninitialized project, or any dispatcher with a non-zero leaf) emits `✔ All done.`. Assert the success footer is present on failure (red), then absent after the fix.
-- [ ] Make `footer_box` accept an optional exit code; non-zero → failure variant (`CROSS` + red box); zero/absent → unchanged success footer. Keep it pyve-agnostic (extend the `lib/ui/` boundary test if needed).
-- [ ] Thread the computed result code into `footer_box` at every dispatcher/composer callsite that has one; verify no-arg callsites still render success.
-- [ ] Test: success path still shows `✔ All done.`; failure path shows the failure footer and never `✔ All done.`; exit codes unchanged.
-- [ ] Full suite; zero regressions. Re-run the `pyve env init testenv` smoke on an uninitialized dir to confirm the footer matches the outcome.
+- [x] Reproduce (red): `footer_box 1` still printed `✔ All done.` ([test_ui.bats](../../tests/unit/test_ui.bats)); e2e, `pyve env init testenv` on an uninitialized dir emitted the green success box under its `✘` errors.
+- [x] Made `footer_box [exit_code]` status-aware ([core.sh:141](../../lib/ui/core.sh#L141)): `0`/absent → `✔ All done.`; non-zero → red `✘ Failed.`. Padding is computed (not hardcoded) so the box stays 41 wide for either message. Pyve-agnostic (no `PYVE_*`/paths introduced).
+- [x] Threaded the result code at the only two callsites that compute one at the footer point — `env_command`'s `leaf_rc` ([env.sh:1314](../../lib/commands/env.sh#L1314)) and the sync path's `sync_rc` ([env.sh:1223](../../lib/commands/env.sh#L1223)). The other 9 callsites are success-only (their failure paths `return`/`exit` before the footer, or `set -e` aborts) → kept the no-arg success default.
+- [x] Tests: 3 `footer_box` unit tests (success / explicit-0 / non-zero→Failed) + 1 e2e dispatcher test (failed `env init` → `Failed.`, never `All done.`, exit unchanged).
+- [x] Full suite green (1992 tests, 0 failures); re-ran the `pyve env init testenv` smoke — footer now renders red `✘ Failed.` and exits 1.
+- [x] **CI follow-up:** the e2e dispatcher test was environment-dependent — a bare `env init` *succeeds* whenever `python` resolves (it just creates the venv), so it passed locally but green-passed on CI and tripped `[ status -ne 0 ]`. Made deterministic by forcing the leaf failure via `PYVE_PYTHON=/nonexistent/python` (overrides the project interpreter regardless of the runner's Python); verified the fix holds with a valid `python` on PATH.
+
+---
+
+### Story Group O.k: env-config duality — lifecycle commands read `pyproject.toml [tool.pyve.testenvs]` while the v3 canonical is `pyve.toml [env.*]` (umbrella)
+
+*(Reframed 2026-06-11. The original O.k assumed the `[tool.pyve.testenvs]` / pyproject references in env/lock help + errors were merely **stale strings** to rewrite. The investigation for O.k's own red step disproved that: the env **lifecycle** path (`init`/`install`/`run`/`lock`) still **reads** `pyproject.toml [tool.pyve.testenvs]`, so those strings are **accurate**, not stale. Rewriting them to `pyve.toml` without migrating the reader would make them lie. The real work is resolving the duality — broken into the bundle below.)*
+
+**The duality (verified).** Two env-config readers coexist:
+- `lib/manifest.sh` → `PYVE_ENV_*` ← `pyve.toml [env.*]` (v3 canonical; used by `check`/`status`/`test --env` purpose-gating + init backend resolution).
+- `lib/envs.sh` `read_env_config` → `PYVE_TESTENV_*` ← `pyproject.toml [tool.pyve.testenvs]` via `pyve_testenvs_helper.py` (used by `pyve env init/install/run/lock` for backend/manifest/requirements/extra/declaration).
+
+So `pyve env sync` **writes** `pyve.toml [env.*]`, but `pyve env init <name>` **reads** `pyproject.toml` — a user who declares only in `pyve.toml` gets an empty lifecycle read. This is the field-reported "mirror vs driver" gap (the duality O.m/O.n deferred to "O.k / N-10").
+
+**Enabling facts (already in place — no schema work).** The `pyve.toml [env.*]` schema already recognizes `backend`/`manifest`/`extra`/`lazy`/`requirements` (`KNOWN_ENV_KEYS`, [pyve_toml_helper.py:230](../../lib/pyve_toml_helper.py#L230)); the manifest arrays already carry them (`PYVE_ENV_MANIFEST`/`_EXTRA`/`_REQUIREMENTS_Q`, [manifest.sh:23-28](../../lib/manifest.sh#L23-L28)); and the manifest's legacy synthesis already maps `PYVE_TESTENV_*` → `PYVE_ENV_*` for read-compat. So the migration is a **re-pointing**, not a schema build.
+
+**Bundle.** **O.k.1** (behavioral reader migration) → **O.k.2** (truthful strings, depends on O.k.1). Removal of the standalone v2 `pyve_testenvs_helper.py` reader stays in the N-10 read-compat sweep.
+
+**Version:** v3.0.6 Phase O bundle (O.k.1 + O.k.2). Developer owns the final number/version.
+
+---
+
+### Story O.k.1: migrate the env-lifecycle config reader onto the `pyve.toml` manifest [Done]
+
+**Goal.** Make `pyve env init/install/run/lock` source env config (`backend`/`manifest`/`requirements`/`extra`/`lazy`/declaration) from `pyve.toml [env.*]` (the manifest, `PYVE_ENV_*`) instead of `pyproject.toml [tool.pyve.testenvs]` (`PYVE_TESTENV_*`). When `pyve.toml` is absent, v2 `[tool.pyve.testenvs]` keeps working via the manifest's existing legacy synthesis (read-compat). After this, `pyve env sync` (writes `pyve.toml`) and the lifecycle (reads `pyve.toml`) are coherent.
+
+**Approach (decide during impl).** Route the lifecycle accessors (`_env_backend_of` / `_env_manifest_of` / `_env_extra_of` / `_env_requirements_of` / `is_env_declared` / `is_env_lazy`) — and/or `read_env_config` — through `manifest_load` + the `PYVE_ENV_*` arrays. **Avoid the recursion trap:** `_manifest_synthesize_from_legacy` calls `read_env_config`, so `read_env_config` must NOT call `manifest_load` unconditionally — when `pyve.toml` is present, map `PYVE_ENV_*` → `PYVE_TESTENV_*`; the synthesis path keeps using the lower-level pyproject helper directly. Filter the manifest envs to the lifecycle-relevant set (declared named/test envs; exclude `root`).
+
+**Out of scope.** Rewriting the user-facing strings (O.k.2 — must follow this). Removing `pyve_testenvs_helper.py` (N-10). Conda exec / pip layer (O.m/O.n).
+
+**Tasks**
+
+- [x] Reproduce (red): a `pyve.toml`-only project with `[env.testenv]` (backend/manifest) + `[env.lint]` (requirements) and NO `[tool.pyve.testenvs]` → the lifecycle accessors returned empty. Now resolve from `pyve.toml` ([test_env_name_manifest_decl.bats](../../tests/unit/test_env_name_manifest_decl.bats), 3 tests: resolves / precedence / read-compat).
+- [x] Routed `read_env_config` through the manifest: a **no-arg** call with `pyve.toml` present maps `PYVE_ENV_*` → `PYVE_TESTENV_*` via the new `_env_config_from_manifest` ([envs.sh](../../lib/envs.sh)); an explicit-path call stays on pyproject. Recursion-safe (manifest_load reads pyve.toml directly here; synthesis only fires when pyve.toml is absent). The migrator now reads the v2 source explicitly (`read_env_config pyproject.toml`, [self.sh](../../lib/commands/self.sh)).
+- [x] Parity: existing pyproject-`[tool.pyve.testenvs]` fixtures still drive the lifecycle (read-compat); new `pyve.toml [env.*]` fixtures now drive it too.
+- [x] Coherent end-to-end: a `lint` env declared **only** in `pyve.toml` materializes via `pyve env init lint` (`.pyve/envs/lint/venv` created, exit 0) — before O.k.1 the lifecycle read pyproject and couldn't see it.
+- [x] Full suite green: **1995 tests, 0 failures** (read-compat preserved every pyproject-testenv test). Shellcheck clean on changed lines.
+
+*(Note: the project-essentials wording "`pyve.toml` … the manifest accessors are the only sanctioned read path" is now substantially true for the lifecycle; a formal essentials edit is `plan_phase`'s job, deferred.)*
+
+---
+
+### Story O.k.2: rewrite the now-accurate env/lock help + error strings to `pyve.toml [env.<name>]` [Done]
+
+*(Depends on O.k.1 — the strings can only truthfully say `pyve.toml` once the lifecycle reads it.)*
+
+**Sites (stale only after O.k.1 lands).**
+- `pyve env` / `testenv` `--help` ([env.sh:1150](../../lib/commands/env.sh#L1150)): *"Declare them in `[tool.pyve.testenvs.<name>]` inside pyproject.toml."*
+- `pyve lock` errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)).
+- `pyve env` conda/requirements errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:808-809](../../lib/commands/env.sh#L808-L809), [env.sh:846](../../lib/commands/env.sh#L846)).
+- Comments ([env.sh:86](../../lib/commands/env.sh#L86), [env.sh:88](../../lib/commands/env.sh#L88), [env.sh:798](../../lib/commands/env.sh#L798)).
+
+**Fix.** Rewrite `[tool.pyve.testenvs.<name>]` / pyproject → `[env.<name>]` in `pyve.toml`; point at `pyve env sync` as the reconciliation path. **Keep** the `self.sh` migrator refs ([self.sh:606](../../lib/commands/self.sh#L606), [self.sh:831](../../lib/commands/self.sh#L831)) — the migrator legitimately reads the v2 source.
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_env_v3_strings.bats](../../tests/unit/test_env_v3_strings.bats) asserts the env/lock help + error paths emit the **v3** spelling (`pyve.toml` / `[env.<name>]`) and **not** `tool.pyve.testenvs` / `pyproject.toml`; all 6 string assertions failed before the rewrite.
+- [x] Rewrite the help ([env.sh:1150](../../lib/commands/env.sh#L1150)) → `[env.<name>]` in `pyve.toml` + a `pyve env sync` pointer; lock errors ([lock.sh:239-240](../../lib/commands/lock.sh#L239-L240), [lock.sh:256](../../lib/commands/lock.sh#L256)); env conda/requirements errors ([env.sh:131](../../lib/commands/env.sh#L131), [env.sh:809](../../lib/commands/env.sh#L809), [env.sh:846](../../lib/commands/env.sh#L846)); comments ([env.sh:86-88](../../lib/commands/env.sh#L86), [env.sh:798](../../lib/commands/env.sh#L798)). Also fixed the now-stale lock surface header comment ([lock.sh:34](../../lib/commands/lock.sh#L34)) — beyond the enumerated sites but the same O.k.1-induced lie.
+- [x] Green: the rewritten user-facing strings carry no `tool.pyve.testenvs` / `pyproject.toml`; a regression-guard test confirms the `self.sh` migrator refs ([self.sh:606](../../lib/commands/self.sh#L606), [self.sh:831](../../lib/commands/self.sh#L831)) survive (the migrator legitimately reads the v2 source). The two remaining `pyproject.toml` refs in `env.sh` ([env.sh:174](../../lib/commands/env.sh#L174), [env.sh:183](../../lib/commands/env.sh#L183)) are the `extra` resolver reading `[project.optional-dependencies]` — correct, left untouched.
+- [x] Full suite green: **2002 tests, 0 failures** (`bats tests/unit/*.bats`, exit 0). Shellcheck clean on changed lines (only pre-existing baseline findings remain).
+
+**Version:** v3.0.6 Phase O bundle. Depends on O.k.1. Developer owns the final number/version.
+
+---
+
+### Story O.l: `pyve init` crashes on a declared `none` / advisory root backend — can't materialize a no-Python-root topology (e.g. `none`-root + micromamba-testenv) [Done]
+
+*(Field feedback surfaced 2026-06-11 while investigating O.g/O.k. `backend = "none"` is declarable in `pyve.toml` but `pyve init` hard-errors on it, so a no-Python-root project can't be built. Also folds in the documentation gap: what `none` is actually for.)*
+
+**Discovered:** 2026-06-11, field report that v3.0.5 cannot materialize a `none`-root + micromamba-testenv topology.
+
+**Symptom.** A `pyve.toml` declaring `[env.root] backend = "none"` (or any advisory backend) makes `pyve init` abort with `Invalid backend: none / Valid backends: venv, micromamba, auto` (exit 1) **before materializing anything** — so neither the skipped root nor the concrete-backend test env (e.g. a micromamba `testenv`) gets built. Micromamba itself works fine both as a root backend and as a named test-env backend; the **only** blocker is the `none` root.
+
+**Root cause.** `pyve init`'s root-backend resolution seeds `backend_flag` from the manifest ([`_init_manifest_root_backend`](../../lib/plugins/python/plugin.sh#L779) → `"none"`), then runs it through [`validate_backend`](../../lib/backend_detect.sh#L122), which only accepts `venv|micromamba|auto` → `exit 1` ([plugin.sh:1849-1853](../../lib/plugins/python/plugin.sh#L1849-L1853)). The **per-env** install path already handles this gracefully — [`_env_install_with_lock`](../../lib/commands/env.sh#L754) calls [`_env_backend_is_advisory`](../../lib/envs.sh#L254) (the single classifier, backed by `pyve_toml_helper.py classify`) and records-but-does-not-materialize an advisory-backend env with a "provision it manually" note. Init's **root** path predates that and chokes.
+
+**What `none` is for (the documentation gap).** `backend = "none"` declares that the project **root has no Pyve-managed Python/virtualenv runtime** — for non-Python languages / backends / environments Pyve does **not yet materialize**: a Node root (npm/pnpm/yarn), Rust (cargo), Go, advisory cache-backed toolchains, or a polyglot coordination root. It lets a project use Pyve's declaration + `.envrc`/direnv wiring + named **purpose-driven** envs (e.g. a micromamba `test` env, advisory tool envs) **without a vestigial root `.venv` or a forced Python pin**. It is currently *expressible* in `pyve.toml` (advisory backend, validates) but **not materializable** (this story makes `init` skip it rather than crash; actually creating non-Python root envs is future per-plugin work). For a pure-Python project `none` gains nothing over `venv` — it exists specifically for the non-Python / runtime-less root.
+
+**Fix.**
+1. **`init` skips an advisory/`none` root instead of crashing.** When the resolved root backend classifies as advisory (reuse `_env_backend_is_advisory` — do **not** inline a `== none` check; per the single-classifier rule), skip root env creation and emit the same advisory note the per-env path uses ("declares backend '<x>', which pyve does not yet materialize; provision it manually"), then continue to materialize the declared concrete-backend envs. Prefer an **init-level skip** so `validate_backend` stays strict for an explicit `--backend` flag (a genuinely-unknown `--backend bogus` must still hard-error).
+2. **Document what `none` is for.** Add a project-essentials entry (and refresh any backends help/docs that imply root must be venv/micromamba) explaining the non-Python/unsupported-root use case, that `none` is declarable + (after this fix) init-safe, and that root materialization for those backends is future work. Cross-link the closed `VALID_BACKENDS` vocabulary.
+
+**Out of scope.** Actually **materializing** non-Python root backends (npm/pnpm/yarn/cargo/go root env creation) — per-plugin future work; this story only stops the crash, skips the root, and documents the concept. The `pyve env run` conda-activation limitation (micromamba test envs install/create fine; PATH-only `run` is venv-only — use `micromamba run -p`). The N-10 `.pyve/config` read sweep.
+
+**Tasks**
+
+- [x] Reproduce (red): new black-box [test_init_none_root.bats](../../tests/unit/test_init_none_root.bats) drives `pyve init` (non-interactive, offline) on a `[env.root] backend = "none"` + micromamba-`testenv` fixture. **Root-cause correction:** the live crash is not `Invalid backend: none` from `validate_backend` (the story's stale diagnosis) but the *earlier* `python plugin: env 'root' declares unregistered backend 'none'` — there are in fact **three** gates that each reject an advisory backend (see next task). The 4 "init succeeds" assertions failed red; the `--backend bogus` strictness assertion was already green.
+- [x] Skip root env creation when the resolved root backend classifies advisory — routed all **three** gates through the single classifier `_env_backend_is_advisory` (no inline `== none`): (1) the plugin's env-block validation [plugin.sh:152](../../lib/plugins/python/plugin.sh#L152) (`bp_lookup` miss → advisory carve-out), (2) `init`'s `validate_backend` gate [plugin.sh:1855](../../lib/plugins/python/plugin.sh#L1855) — an advisory **manifest** backend emits the per-env "does not yet materialize" note, scaffolds the manifest, sets the composition-tail globals (so `.envrc`/`.gitignore` + project-guide + next-steps still run), and returns before materializing; an explicit `--backend` stays strict via a captured `arg_backend_explicit`, so `--backend bogus` still hard-errors, and (3) the `.envrc` activate hook [plugin.sh:578](../../lib/plugins/python/plugin.sh#L578) (advisory root → contribute no section instead of erroring).
+- [x] Confirmed: on the `none`-root fixture the declared micromamba `testenv` reads cleanly from the manifest (`is_env_declared testenv` → yes, `_env_resolve_backend testenv` → micromamba) — the advisory root never gates it off; it materializes via `pyve env init <name>` like any project (env-init path untouched).
+- [x] Documented in [project-essentials.md](project-essentials.md): new "`backend = "none"` declares a runtime-less / non-Python root" entry (advisory category + the closed `classify backend` vocabulary, declarable + init-safe, root materialization is future per-plugin work, the single-classifier `how-to-apply`). The `--backend` CLI help stays `venv, micromamba, auto` — `none` is a manifest declaration, never a flag value, so the help is already correct.
+- [x] Bats green: 5 `init` tests on the `none`-root fixture (exit 0, no `.venv`/`.pyve/envs/root`, advisory note emitted, `pyve.toml` preserved) + `--backend bogus` still hard-errors with no advisory note.
+- [x] Full suite: **2007 tests**, only 2 failures — `test_asdf_compat.bats` `J.c` guard tests — confirmed **pre-existing** (fail identically with my lib changes stashed; environment-dependent on this machine's asdf state; tracked by Phase P "Fix pre-existing integration test failures"). Zero regressions attributable to O.l. Shellcheck clean on changed lines.
+
+**Version:** part of the **v3.0.6** Phase O bundle (ships with O.g–O.n). Developer owns the final number/version.
+
+---
+
+### Story O.m: `pyve test` / `pyve env run` cannot operate a conda-backed testenv — primary dev loop hard-gated off conda [Done]
+
+*(Critical bug, field-reported 2026-06-11. A conda-backed testenv **builds and runs fine** — but only via direct `micromamba run -p …`, bypassing pyve entirely. The `pyve test` ergonomics that are the whole reason to declare a pyve testenv don't work against conda in 3.0.5, so the primary dev loop is broken for every conda project.)*
+
+**Discovered:** 2026-06-11, field report. A `[tool.pyve.testenvs.testenv]` (`backend="micromamba"`, `manifest="environment.yml"`) materialized a real conda env at `.pyve/envs/testenv/conda` (python 3.12.13 + torch etc.), but `pyve test` and `pyve env run` both refuse to operate it.
+
+**Symptom.** `pyve env run testenv …` and `pyve test` (which is built on the same exec path) hard-error: *"'pyve env run' does not yet support conda-backed env 'testenv' (resolved backend: micromamba). Workaround: 'micromamba run -p .pyve/envs/testenv/conda <command>'."* So the user must run the conda env directly, outside pyve.
+
+**Root cause.** `pyve env run` activates via **PATH-prepend** (`<env>/bin` ahead of `PATH`) — correct for a venv, **wrong for conda**. A conda env needs `CONDA_PREFIX` / `CONDA_DEFAULT_ENV`, its `etc/conda/activate.d` scripts, and conda's library paths (which compiled wheels like torch depend on); PATH-prepend alone doesn't set those up. M.i.1 deliberately **gated conda out** ([`assert_env_venv_backend`](../../lib/envs.sh#L271)) rather than ship half-working activation. The gate fires at both callsites: `pyve env run` ([env.sh:1241](../../lib/commands/env.sh#L1241)) and `pyve test` ([plugin.sh:3937](../../lib/plugins/python/plugin.sh#L3937)).
+
+**Fix — exec conda envs the conda way (proper support, not a workaround).** When the resolved env backend is micromamba, exec via `micromamba run -p <env_path> <cmd>` — the canonical conda exec primitive that sets `CONDA_PREFIX`, runs the activate scripts, and fixes lib paths. This is the same command the error currently tells the user to run by hand, moved *inside* pyve. Replace the `assert_env_venv_backend` hard-gate at both callsites with a backend dispatch: venv → today's PATH activation; micromamba → `micromamba run -p`. Preserve exit codes, argument passing, stdin/TTY. Requires micromamba on PATH (`get_micromamba_path`); error actionably if absent.
+
+**Out of scope.** The conda **pip-requirements layer** (O.n — `pyve env install -r` for conda). Which declaration table *drives* a conda env (`[tool.pyve.testenvs.*]` in pyproject vs `pyve.toml [env.*]`) — that duality is O.k / N-10 territory; this story consumes whatever `_env_resolve_backend` / `_env_manifest_of` already resolve. The main (`root`) conda env's `pyve run` path if it needs the same treatment — note it, fix here only if it shares the exec helper cheaply.
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_conda_env_exec.bats](../../tests/unit/test_conda_env_exec.bats) drives both callsites against a conda env — the dispatch assertions failed red (the gate hard-errored before any exec). The two pre-existing reject-tests asserting the old policy ([test_testenv_run_name.bats](../../tests/unit/test_testenv_run_name.bats), [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats)) were flipped/retired since this story reverses the behavior they pinned.
+- [x] Added the shared exec primitive `env_exec_conda <env_path> <cmd…>` ([envs.sh](../../lib/envs.sh)) — execs `micromamba run -p <env_path> <cmd>` (sets CONDA_PREFIX / activate.d / lib paths). Routed both callsites through a backend dispatch on `_env_resolve_backend`: `pyve env run` ([env.sh:1242](../../lib/commands/env.sh#L1242)) and `pyve test`'s exec tail ([plugin.sh](../../lib/plugins/python/plugin.sh)); venv stays on PATH activation (`env_run` / direct `python -m pytest`). Removed the now-dead venv-only gate `assert_env_venv_backend` (+ its 4 unit tests; `inherit`-resolution coverage already lives in [test_testenv_conda.bats:147](../../tests/unit/test_testenv_conda.bats#L147)).
+- [x] `exec` preserves exit code / arg passing / stdin / TTY by construction (`micromamba run` runs in the same process tree); micromamba-absent and env-not-materialized (no `conda-meta`) paths hard-error actionably (covered in the new test).
+- [x] `pyve test --env <conda>` execs `micromamba run -p <path> python -m pytest <args>` (asserted via a stubbed micromamba in the new test). A *real* conda solve + run is an integration/manual check, not a hermetic bats unit (the suite avoids network) — the exec dispatch and arg threading are what the unit pins.
+- [x] Venv path unchanged: a venv-backed `env run` still routes to `env_run` (regression test in the new file) and the venv `pyve test` exec is untouched; existing resolver/run tests green.
+- [x] Full suite: **2009 tests**, only the 2 pre-existing `test_asdf_compat.bats` `J.c` failures (environment-dependent, confirmed pre-existing — same as O.l; Phase P backlog). Zero regressions from O.m. Shellcheck clean on changed lines.
+
+*(Out-of-scope note resolved: the `root` conda env's `pyve run` path **already** execs via `micromamba run -p` in `run_command` [plugin.sh:3718](../../lib/plugins/python/plugin.sh#L3718) — no change needed there.)*
+
+**Version:** **v3.0.6** Phase O critical-bugfix bundle. Developer owns the final number/version.
+
+---
+
+### Story O.n: `pyve env install -r` silently drops pip requirements for conda testenvs — no conda+pip layer [Done]
+
+*(Critical bug, field-reported 2026-06-11. The standard conda workflow — conda for heavy deps (torch), pip for dev tooling (pytest/ruff) — is unexpressible: `-r` is silently ignored against a conda env, so dev tools never land and the silent data loss masks it. Pairs with O.m to make conda testenvs fully operable.)*
+
+**Discovered:** 2026-06-11, field report. `pyve env install testenv -r requirements-dev.txt` against a conda-backed testenv synced only `environment.yml`; the pip requirements were silently dropped, forcing a manual `pip install` via the conda env's own python.
+
+**Symptom.** For a micromamba-backed env, `pyve env install <name> -r <file>` runs only `micromamba install -p <env> -f <manifest> -y` and **never pip-installs `<file>`** — with no warning.
+
+**Root cause.** [`_env_install_conda`](../../lib/commands/env.sh#L802) takes only `(name, env_path, manifest)` and syncs the conda manifest. The `-r` file (`cli_req_file`) is threaded into [`_env_install_with_lock`](../../lib/commands/env.sh#L747) but consumed **only by the venv branch** (`_env_install_venv`); the micromamba branch ignores it. The conda backend was designed as "manifest is the single source" with no pip fallback — so a conda+pip split has nowhere to live.
+
+**Fix — a real pip layer for conda envs (proper support).** After the conda manifest sync, pip-install the requested pip sources **into the conda env** via `micromamba run -p <env_path> python -m pip install -r <file>` (reusing O.m's conda exec). Honor the same source precedence the venv path already supports where it makes sense for conda — CLI `-r`, then a declared `requirements`/`extra` — layered on top of the manifest solve (conda solves heavy deps; pip adds the rest). **Never silently drop `-r`**: if a source is given and can't be applied, it must be an error or a loud warning, never silent.
+
+**Out of scope.** The conda exec primitive itself (O.m — this story depends on it). Lockfile/`conda-lock` interaction with the pip layer (note if it surfaces; don't expand). Reconciling which table declares conda sources (`[tool.pyve.testenvs.*]` vs `pyve.toml [env.*]`) — O.k / N-10.
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_conda_pip_layer.bats](../../tests/unit/test_conda_pip_layer.bats) drives `_env_install_with_lock` against a conda env with a stub micromamba logging argv — pre-fix only the `install -f <manifest>` line appeared, never a `run -p … pip install -r` line (the `-r` was silently dropped). The "no -r → sync-only" case was already green.
+- [x] Threaded `cli_req_file` into the micromamba branch of `_env_install_with_lock` → `_env_install_conda` (new optional 4th param). Added `_env_conda_pip_layer` ([env.sh](../../lib/commands/env.sh)): after the manifest sync, resolves the pip source by precedence (CLI `-r` > declared `requirements` > declared `extra`) and installs it INTO the conda env via `micromamba run -p <env> python -m pip install …`. The venv-only conveniences (auto `requirements-dev.txt`, bare-pytest fallback) are intentionally not carried over — for conda the manifest is the base and the pip layer is opt-in.
+- [x] No silent drop: a CLI `-r` (or declared `requirements`) file that doesn't exist is a hard error before any pip attempt (asserted — error names the missing file, `mm.log` shows no `pip install`).
+- [x] Manifest sync runs first, then the pip layer (asserted via log line ordering); the venv install path (`_env_install_venv`) is untouched — zero changes to its precedence chain.
+- [x] Full suite: **2013 tests**, only the 2 pre-existing `test_asdf_compat.bats` `J.c` failures (environment-dependent, confirmed pre-existing — same as O.l/O.m; Phase P backlog). Zero regressions from O.n. Shellcheck clean on changed lines.
+
+*(Scope note on declared sources: the schema mutex `requirements ⊕ extra ⊕ manifest` means a conda env — which requires `manifest` — cannot also declare `requirements`/`extra` today, so the **CLI `-r`** flag is the live pip-source path for conda. The declared-`requirements`/`extra` precedence branches are implemented for parity and are future-proof if the mutex is relaxed to allow conda+pip declarations, but are currently unreachable for a conda env. Relaxing the mutex was not in this story's scope.)*
+
+**Version:** **v3.0.6** Phase O critical-bugfix bundle. Depends on O.m. Developer owns the final number/version.
+
+---
+
+### Story O.o: Clarify and correct the promise of `pyve init` — declaration vs. materialization vs. mechanics for test environments (umbrella) [Done]
+
+*(Design correction surfaced 2026-06-11. What `pyve init` actually *promises* to materialize from a `pyve.toml` is muddy: init eagerly builds a bare-Python `testenv` regardless of declaration, a no-backend testenv hardcodes `venv` instead of mirroring the root, a code comment claims the opposite of what the code does, and no docs state the contract. Correct the ergonomics + comments + docs so "initialize" has one clear, declared-driven meaning.)*
+
+**Discovered:** 2026-06-11, tracing `pyve init` behavior for a `[env.root] venv` + `[env.testenv] purpose="test", default=true` (no backend) config. Empirically, init materialized **both** `.venv/` **and** `.pyve/envs/testenv/venv/` — the latter a bare venv (Python only, no pytest), which `pyve check` then flags as "present but pytest not installed."
+
+**Three defects of one muddy promise.**
+1. **Eager undeclared materialization.** `pyve init` calls `ensure_env_exists` ([plugin.sh:2075](../../lib/plugins/python/plugin.sh#L2075)) which builds a default `testenv` venv even when no test env is declared — creating an env the user never asked for, that immediately reads as "broken" in `check`.
+2. **No-backend testenv hardcodes `venv`, doesn't mirror root.** `_env_resolve_backend` ([envs.sh](../../lib/envs.sh)) returns `venv` for a testenv with no `backend`; only an *explicit* `inherit` mirrors the main backend. So a micromamba project's no-backend testenv wrongly resolves to venv.
+3. **Stale comment contradicts behavior.** [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) claims *"`pyve init` materializes the run env (`.venv/`) and `pyve testenv init` later materializes the test env … even before the testenv venv exists on disk"* — the opposite of what init does (it eagerly creates it).
+
+**Proposed model — a graduated "declared → materialized → operable" ladder (minimal magic).**
+
+- **No test env declared** → **no test env initialized.** Init materializes only what's declared (the root env). No injected bare-Python `testenv`.
+- **Test env declared, `purpose="test"`, `default=true`, no backend** → Pyve **mirrors the root backend** (`inherit` semantics) and uses the block name (`testenv`) as the env name. `pyve test` autowires to the `default` test env. Very little magic — a declared default with an inferred backend.
+- **Test env declared, `purpose="test"` only (no `default`, no backend)** → a **skeleton** declaration: Pyve initializes it with a backend that **mirrors the root**, and nothing more. No autowiring, no dep mechanics. Purely declarative for non-Python stacks (Rust, C++) or `none`/advisory roots — Pyve provides mechanics only for backends it implements. (Consistent with the `none`-root model in O.l and the "declared ≠ operable" framing in O.m/O.n.)
+  - **Python-root special promotion (decided 2026-06-11).** Drawing on Pyve's Python origins and Python-friendly slant: when the **root is a Python backend** (venv / micromamba), the declared env collection is **homogeneous** (all envs share one backend — see the homogeneity guard below), and **exactly one** test env is declared with **nothing else** (no other test envs, no explicit `default`), Pyve **promotes** that sole test env to the default and **autowires `pyve test`** to it (PyTest autowiring) — no explicit `default = true` required. The promotion is Python-only: a non-Python / `none`-root, or multiple test envs with no declared default, stays skeleton (no autowiring; `pyve test` reports no default test env).
+  - **Homogeneity guard (decided 2026-06-11) — no magic when backends are mixed.** All of the above gentle assumptions (sole-env promotion, autowiring) apply **only when the declared env collection is homogeneous in backend.** The moment the repo declares a **mix of backends** (e.g. a venv root with a micromamba test env, or several test envs spanning backends), the assumptions break: Pyve requires **specificity**. It will happily **configure every env the developer declares** (materialization is unchanged), but does **no autowiring** — `pyve test` needs an explicit `default = true`. No heuristics, no magic: a non-homogeneous repo has too many edge cases to guess a sane default safely.
+
+**Corrections in scope.**
+1. **Ergonomics (code).** Gate init's testenv materialization on an actual test-env declaration; default a no-backend testenv to `inherit` (mirror root) rather than hardcoded `venv`; ensure "mirror root" reads the **manifest** (`manifest_get_backend root`), not `.pyve/config` (the current `inherit` path reads the v2 config — coordinate with O.g / the N-10 read sweep). When the mirrored backend is `none`/advisory, the testenv is declarative-only (no materialization, no mechanics — reuse `_env_backend_is_advisory`).
+2. **Comments.** Fix [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) and any sibling comments to state the *actual* promise.
+3. **Docs.** State the init contract plainly (project-essentials + the site/usage docs): what "initialize" guarantees per declaration shape; that a declared env is not automatically an operable or dependency-populated env; that `purpose="test"` without `default` is a skeleton.
+
+**Decided (2026-06-11).**
+- **Sole Python test env → auto-promote** to default with PyTest autowiring (no explicit `default` needed); non-Python / skeleton roots get no promotion (see the Python-root special-promotion note above).
+- **Homogeneity guard.** The gentle assumptions apply only to a **single-backend** repo. A mixed-backend collection → Pyve still configures every declared env but does **no autowiring**; `pyve test` requires an explicit `default`. No heuristics under ambiguity.
+- **"Mirror root" reads the manifest** (`manifest_get_backend root`), not `.pyve/config` (coordinate with O.g / the N-10 read sweep); root `none`/advisory → mirror yields `none` → skeleton, no mechanics.
+
+**Open decisions — resolved 2026-06-12 (developer).**
+- **Dependency seeding → empty until demand.** An initialized Python testenv stays empty (no pytest/deps) until `pyve test` / `pyve env install` populates it on demand — today's behavior, now intentional + documented (the natural partner of the autowiring promotion + O.n's pip layer). Init does **not** eagerly seed `requirements-dev.txt` / declared `requirements`.
+- **Backward-compat → proceed + release note.** Gating eager testenv creation changes init output for existing v3 projects that relied on the auto-created empty testenv. Accepted in the early-v3 line; no compatibility shim — call it out in the release notes.
+
+**Bundle.** Broken into four child stories (this story becomes the tracking umbrella, mirroring O.k). Dependency order: **O.o.1** (backend mirroring — foundational) → { **O.o.2** (gate init materialization + comment fix), **O.o.3** (`pyve test` autowiring + homogeneity guard) } → **O.o.4** (docs). Each child carries its own TDD tests; "full suite green" is a per-child gate.
+
+**Version:** Phase O init-semantics correction, larger than the v3.0.6 bugfix line. Number/placement (own subphase vs. folded into a release) is the developer's at planning time.
+
+---
+
+### Story O.o.1: a no-backend testenv resolves `inherit` against the manifest root (not hardcoded `venv`) [Done]
+
+*(Defect 2 of the O.o umbrella. Foundational — O.o.2 and O.o.3 build on it.)*
+
+**Goal.** A declared test env with no `backend` mirrors the **root** backend instead of defaulting to `venv`. Today `_env_config_from_manifest` defaults an empty backend to `venv` ([envs.sh](../../lib/envs.sh)), so a micromamba-root project's no-backend testenv wrongly resolves to `venv`; only an *explicit* `inherit` mirrors. The fix: default a no-backend testenv to `inherit`, and make `_env_resolve_backend`'s inherit path read the **manifest** root backend (`_env_resolve_root_backend` / `manifest_get_backend root`), not only `.pyve/config`.
+
+**Approach.** Change the empty-backend default in `_env_config_from_manifest` from `venv` to `inherit`; route the inherit branch of `_env_resolve_backend` through the manifest-aware root resolver. When the mirrored backend is `none`/advisory, resolution yields the advisory value (declarative-only downstream — reuse `_env_backend_is_advisory`). Confirm the only resolution-time consumer is `_env_resolve_backend` (venv-root projects unaffected: inherit→venv).
+
+**Out of scope.** Init materialization gating (O.o.2), `pyve test` autowiring (O.o.3). The N-10 `.pyve/config` read-sweep (this coordinates with it but doesn't remove the config read).
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_oo1_inherit_mirror.bats](../../tests/unit/test_oo1_inherit_mirror.bats) — a no-backend `[env.testenv]` on a micromamba root resolved `venv`; now resolves `micromamba`. venv root → `venv` (unchanged); `none` root → `none`; explicit testenv backend still wins.
+- [x] Defaulted a no-backend testenv to `inherit` in `_env_config_from_manifest` ([envs.sh](../../lib/envs.sh)); `_env_resolve_backend`'s inherit branch now resolves the root via `manifest_get_backend root` first, falling back to `.pyve/config` (v3.0-only read-compat) then `venv`.
+- [x] `none`/advisory mirrored root passes through verbatim (resolves `none`), so a no-backend testenv on a `none` root is declarative-only downstream (`_env_backend_is_advisory`).
+- [x] No direct array-consumer breaks: the only resolution consumer of the backend array is `_env_resolve_backend` (handles `inherit`); full suite confirms. Also fixed a latent bug — `_env_config_from_manifest` returned the non-zero status of its trailing `&&` whenever a default was set, making `read_env_config` report failure to a `set -e` caller; added an explicit `return 0`.
+- [x] Full suite: **2017 tests**, only the 2 pre-existing `J.c` asdf flakes (Phase P backlog). Zero regressions. Shellcheck clean on changed lines.
+
+**Version:** part of the O.o bundle. Developer owns the number.
+
+---
+
+### Story O.o.2: gate `pyve init` testenv materialization on a declared test env (+ fix the stale promise comment) [Done]
+
+*(Defect 1 + Defect 3 of the O.o umbrella. Depends on O.o.1.)*
+
+**Goal.** `pyve init` materializes only what's **declared**. No test env declared → no testenv created (today it eagerly builds a bare `.pyve/envs/testenv/venv` that `pyve check` then flags as broken). Declared test env(s) → materialize each (using O.o.1's mirrored backend), **empty until demand** (no pytest/deps seeded); a `none`/advisory mirrored backend → declarative-only (not materialized).
+
+**Approach.** Gate the eager `ensure_env_exists` call in init ([plugin.sh:2112](../../lib/plugins/python/plugin.sh#L2112)) on an actual test-env declaration; iterate the declared test envs and materialize each (skip `none`/advisory). Fold in **Defect 3**: fix the stale comment at [plugin.sh:862-866](../../lib/plugins/python/plugin.sh#L862-L866) (and any siblings) to state the actual promise — it's about init's testenv promise, so it belongs in this diff.
+
+**Out of scope.** Backend resolution itself (O.o.1). `pyve test` default selection / autowiring (O.o.3). Dependency seeding (resolved: empty until demand — init seeds nothing).
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_oo2_init_gate.bats](../../tests/unit/test_oo2_init_gate.bats) — the materialization decision is factored into `_init_testenv_to_materialize` (full `init_project` is too expensive to exercise per-test, per the `test_init_pyve_toml` convention). Red on a root-only manifest (the helper would have returned `testenv` via the old bare no-arg call).
+- [x] Gated init testenv materialization on a declared test env: `_init_testenv_to_materialize` ([plugin.sh](../../lib/plugins/python/plugin.sh)) returns the **declared default** test env, and only when it resolves (via O.o.1) to **venv**; `init_project` replaces the bare no-arg `ensure_env_exists` with a gated call on that name. No test env declared (root-only manifest) → nothing materialized — init never injects an undeclared `testenv`. **Scope note:** materializes the *default* venv-backed test env (matching today's single-env cardinality, "materialization is unchanged"), not every declared env; a conda-backed/advisory default is **deferred to `pyve env init <name>`** (no surprise conda solve at init), not silently created. Empty until demand (no deps). A fresh `pyve init` still materializes a testenv because the scaffold declares `[env.testenv] default`.
+- [x] Rewrote the stale comment ([plugin.sh ~L873](../../lib/plugins/python/plugin.sh#L873)) — it claimed `pyve testenv init` materializes the test env "later … before the testenv venv exists on disk" (false: init eagerly created it). Now states the gated/empty-until-demand reality.
+- [x] Back-compat: hand-authored root-only manifests no longer get a spurious `.pyve/envs/testenv/venv` — a behavior change for the release notes (no shim; accepted in the early-v3 line). Fresh-init / scaffold-declared projects are unaffected.
+- [x] Full suite: **2023 tests**, only the 2 pre-existing `J.c` asdf flakes. Zero regressions. Shellcheck clean on changed lines.
+
+**Version:** part of the O.o bundle. Developer owns the number.
+
+---
+
+### Story O.o.3: `pyve test` autowiring + homogeneity guard [Done]
+
+*(Task 4 of the O.o umbrella. Depends on O.o.1; independent of O.o.2.)*
+
+**Goal.** Resolve the default test env `pyve test` targets, with the decided promotion + guard: an explicit `default = true` always wins; else, when the **root is a Python backend**, the declared env collection is **homogeneous in backend**, and **exactly one** test env is declared with nothing else → **promote** that sole test env to default and autowire `pyve test` to it (no explicit `default` needed). A **mixed-backend** collection, multiple test envs with no declared default, or a non-Python / `none` root → **no autowiring**; `pyve test` requires an explicit `default` (and reports no default test env when absent).
+
+**Approach.** Centralize default-test-env resolution (the `pyve test` no-`--env` path at [plugin.sh](../../lib/plugins/python/plugin.sh) currently uses `PYVE_TESTENVS_DEFAULT:-testenv`); add the homogeneity + sole-Python-env promotion logic. Reuse `_env_resolve_backend` (O.o.1) for the per-env backend reads that the homogeneity check needs.
+
+**Out of scope.** Init materialization (O.o.2). Backend resolution (O.o.1).
+
+**Tasks**
+
+- [x] Reproduce (red): new [test_oo3_autowire.bats](../../tests/unit/test_oo3_autowire.bats) — 7 cases over the new `_test_default_env` resolver (explicit default wins; sole venv / sole micromamba-mirror promote; two-test-envs / mixed-backend / `none`-root → no autowire; source-grep that `_test_run_one_env` routes through it and the permissive `:-testenv` fallback is gone).
+- [x] Default resolution implemented as `_test_default_env` ([plugin.sh](../../lib/plugins/python/plugin.sh)), wired into `_test_run_one_env`'s no-`--env` path: explicit `default = true` wins; else Python root + homogeneous backend (all declared envs share one backend, root resolved via `_env_resolve_root_backend`, test envs via O.o.1's `_env_resolve_backend`) + exactly one `purpose=test` env → promote it. No unambiguous default → `pyve test` hard-errors listing the declared test envs (no guessing).
+- [x] Homogeneity guard: a mixed-backend collection (e.g. venv root + explicit micromamba testenv) → no autowire → explicit `--env`/`default` required.
+- [x] Non-Python/`none` root, or multiple test envs without a default → no promotion. **Reserved-`testenv` fallback preserved:** a *bare* project (no manifest) where `read_env_config` synthesizes the conventional single `testenv` still resolves to it — the fallback fires only when the manifest declares no test env of its own (a manifest that omits testenv on purpose leaves `PYVE_TESTENVS_DEFAULT` empty and gets no magic default), so the bare-project `pyve test` UX is unchanged while the ambiguity guard is added.
+- [x] Full suite: **2028 tests**, only the 2 pre-existing `J.c` asdf flakes. The 4 `pyve test`-default tests that initially broke (advisory-routing + bare-fallback in [test_test_command.bats](../../tests/unit/test_test_command.bats) / [test_test_env_resolver.bats](../../tests/unit/test_test_env_resolver.bats)) pass unmodified once the reserved-`testenv` fallback was added — confirming the change adds the ambiguity guard without altering the unambiguous bare/sole cases. Shellcheck clean on changed lines.
+
+**Version:** part of the O.o bundle. Developer owns the number.
+
+---
+
+### Story O.o.4: document the `pyve init` contract — declaration vs. materialization vs. mechanics [Done]
+
+*(Task 6 of the O.o umbrella. Last — after O.o.2 / O.o.3 settle the behavior.)*
+
+**Goal.** State the init contract plainly so "initialize" has one clear meaning. Cover the graduated **declared → materialized → operable** ladder; that a declared env is not automatically operable or dependency-populated (empty until demand); that `purpose="test"` without `default` is a skeleton; and the Python-root sole-env promotion + homogeneity guard.
+
+**Approach.** A `project-essentials.md` entry (the canonical source go.md embeds) + the usage/site docs. Cross-link the `none`-root model (O.l) and the conda exec / pip layer (O.m/O.n) — all share the "declared ≠ operable" framing.
+
+**Out of scope.** Any behavior change (O.o.1–O.o.3). The N-10 `.pyve/config` read sweep.
+
+**Tasks**
+
+- [x] `project-essentials.md` entry "`pyve init` materializes only what's declared; declared ≠ operable (empty-until-demand)": the ladder, declared ≠ operable, empty-until-demand, mirror-root, skeleton (`purpose=test` w/o `default`), the `_test_default_env` promotion + homogeneity guard + reserved-`testenv` bare fallback. Cross-links the `none`-root and `purpose` entries, and points the deeper rework at the Phase P seed ([env-lifecycle-concept.md](env-lifecycle-concept.md)).
+- [x] Site docs: new "What `pyve init` materializes" + "Which env `pyve test` runs" sections in [docs/site/environments.md](../../docs/site/environments.md) stating the contract per declaration shape (focused addition; the full v2→v3 site sweep stays the deferred Phase P site story).
+- [x] Cross-linked the `none`-root model (O.l) and the conda exec/pip layer (O.m/O.n) framing ("declared ≠ operable").
+- [x] Docs-only — no code/tests touched; full suite re-run confirms **2028 tests**, only the 2 pre-existing `J.c` flakes.
+
+**Version:** part of the O.o bundle. Developer owns the number.
 
 ---
 
 ## Future
+
+---
 
 ## Phase P: Harden and heal Pyve
 
@@ -296,6 +610,86 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 4. **Close the upstream cause — the test-isolation leak.** The triggering incident was *manufactured by Pyve's own test suite*: [`_isolate_home`](../../tests/integration/test_project_guide_integration.py#L211-L217) (integration harness) symlinks the developer's **real** `~/.asdf` and `~/.local` into the test's fake `$HOME`, so any project-guide/toolchain-provisioning test writes hosting artifacts into real developer state — which dangles when the test's tmpdir is cleaned up. Re-scope `_isolate_home` so the suite can never again mutate a real home (provision into a fully self-contained fake `$HOME`, or stub provisioning entirely). N.bo's `PYVE_PROJECT_GUIDE_BIN` seam closes one path; the version-manager (`.asdf`) and self-install paths remain open.
 
 **Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Phase O (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
+
+**Conceptual work first (Phase P, not started).** The `purpose` lifecycle (`run`/`test`/`utility`/`temp`) and environment durability need a *conceptual* pass before any lifecycle code: **what precious resource each purpose protects**, and why preservation is a *cost-cache + artifact* concern, not a "survives-purge" ranking (the principle: *irreproducibility is the bug; we never preserve because an env is irreplaceable*). The framing seed is [env-lifecycle-concept.md](env-lifecycle-concept.md). The intended mode sequence is **`refactor_document`** (fold the framing into `concept.md` / `project-essentials.md`'s `purpose:` entry / `tech-spec.md`) → **`plan_phase`** (derive targeted stories). This corrects, among other things, the current essentials hint that "utility envs survive `pyve purge`" (the new framing makes `utility` the disposable one). Pairs with the declarative-env-setup megastory above.
+
+---
+
+### Story ?.?: Per-env runnability probe — plugins own a "canary" command `pyve check` executes (existence ≠ runnability) [Planned]
+
+*(Field-discovered 2026-06-12, ml-datarefinery migration. Concrete embodiment of Phase P Pillar 1 (runnability probes) and the detection half of Pillar 3 (`pyve heal` / `pyve check --fix`).)*
+
+**Discovered.** A v2→v3 migration relocated a testenv (`.pyve/testenv/venv/` → `.pyve/envs/testenv/venv/`) under a **pre-v3.0.5** binary whose mover did a bare `mv` without rewriting the baked console-script shebangs. Every wrapper (`pip`, `pytest`, `ruff`, `mypy`, the editable package's entry point) kept `#!.../.pyve/testenv/venv/bin/python` baked in — pointing at a deleted path → `bad interpreter: No such file or directory`. The env's `python` symlink stayed valid, so `python -m pytest` worked while every wrapper failed. (v3.0.5+ repairs shebangs at move time, but the repair is **move-time-only** and cannot heal an env already relocated by an older binary — see project-essentials "conda/venv environments are not relocatable — repair the baked prefix on move, and probe runnability (not existence) before trusting one".)
+
+**Symptom — `pyve check` reports a false green.** `check_environment`'s testenv probe ([plugin.sh:3031-3042](../../lib/plugins/python/plugin.sh#L3031-L3042)) runs `<env>/bin/python -c 'import pytest'`, which **bypasses the broken wrappers** (the `python` symlink is fine), so check prints `✓ testenv: pytest installed` for an env whose every console script is dead. The root-env probe is the same shape (`-d` + `-x bin/python`). No `pyve check` line tells the developer the env is unusable; the only signal today is `bad interpreter` at runtime.
+
+**Root cause — existence ≠ runnability, *and the probe targets the wrong artifact*.** Health code stats `bin/python` or runs `python -m …` — but a **console-script wrapper** (a file carrying a baked-in shebang) is exactly what breaks on relocation / dangling symlink / dead interpreter, and `python -m X` can never catch a dead-shebang wrapper. The probe must execute a wrapper, not the interpreter-module path.
+
+**Design — a plugin-owned canary hook.** Add an optional plugin-contract hook (working name `env_probe` / `canary`) so each plugin defines, per backend, a **minimal runnable command + expected response** that `pyve check` executes against every declared *and materialized* env:
+
+- Executes a **console-script wrapper** (baked shebang), never `python -m …` — e.g. the Python plugin runs `<env>/bin/pip --version` (pip is always present in a venv/conda env) and expects a `pip X.Y …` line. A dead shebang surfaces as `bad interpreter` → non-zero → probe fails.
+- Returns a **classified verdict**: `runnable` / `dead-shebang (env relocated or interpreter deleted)` / `dangling symlink` / `missing interpreter` / `not materialized` / **`orphaned` (materialized on disk but **not declared**, OR a declared **non-materializable** env — e.g. a `none`/advisory root — that is **nonetheless materialized**: a state↔declaration contradiction)**. `pyve check` renders `✓ <env>: runnable`, or `✗ <env>: console scripts broken (env relocated; shebangs stale) → <role-correct rebuild>`, or `✗ <env>: materialized but not declared (orphan) → remove it` (heal = delete the undeclared/contradictory tree — the modelfoundry case: a broken micromamba env at `.pyve/envs/root/conda/` while the manifest declares `[env.root] backend = "none"`).
+- Backend-aware *within* the plugin: venv → execute `bin/pip --version` directly; micromamba → `micromamba run -p <env> pip --version` (reuses O.m's conda exec). `none`/advisory + not-materialized envs → no probe (declarative-only; reuse `_env_backend_is_advisory`).
+- Default contract impl is a no-op (plugins opt in), matching the contract's "implement a subset of hooks" design ([lib/plugins/contract.sh](../../lib/plugins/contract.sh)).
+
+This is the **detection** half; the heal action it feeds (Pillar 3 / the `pyve check --fix` story) for a dead-shebang env is the per-env destructive rebuild (`pyve env purge <name> --force` → `pyve env init <name>` → reinstall), offered with confirmation.
+
+**Out of scope.** The heal/auto-remediation *action* (the `pyve check --fix` / `pyve heal` story consumes this story's verdict). The move-time shebang repair (already shipped v3.0.5). The test-isolation leak (Pillar 4). Pyve-hosting runnability (already done — `pyve_toolchain_runnable` / `pyve_project_guide_runnable`); this generalizes the same discipline to *project* envs.
+
+**Tasks (refine at `plan_production_phase`).**
+
+- [ ] Add the `env_probe` (canary) hook to the plugin contract with a no-op default; document the verdict vocabulary.
+- [ ] Python plugin: implement the canary — execute a console-script wrapper (`bin/pip --version`; venv direct / micromamba via `micromamba run -p`), validate the expected response, classify the failure (dead-shebang / dangling / missing / not-materialized / orphaned). The **orphaned/contradiction** class is a manifest↔disk reconciliation, not a per-env probe: detect a materialized env with no matching declaration, or a declared non-materializable backend (`none`/advisory via `_env_backend_is_advisory`) that has an on-disk env anyway.
+- [ ] Wire `pyve check` to invoke the canary per declared+materialized env; replace the existence-only / `python -m`-style testenv + root probes with the runnability verdict + actionable heal hint, so the `python -c 'import pytest'` false-green can no longer mask a dead-wrapper env.
+- [ ] The heal hint is **role-correct**: a broken **root** env points at `pyve init --force` (the `pyve env` namespace rejects `root` — it is selection-only); a broken **named testenv** at `pyve env purge <name> --force && pyve env init <name>`. `pyve check` must **never** suggest the rejected `pyve env purge root` (the dead-end a developer hit in the field). Both root and named-env breakage must be detected — the root micromamba env (relocated `.pyve/envs/<configured>/` → `.pyve/envs/root/conda/` by a pre-repair binary) is a real instance, not just the testenv case.
+- [ ] Tests: a relocated-unrepaired fixture (valid `bin/python` symlink + dead-shebang `bin/pip`) → check reports `✗ … console scripts broken`, not a false green; a healthy env → `✓ runnable`; venv + micromamba backends; **root and named** envs; `none`/advisory + not-materialized → no probe; **an orphan/contradiction fixture** (a materialized `.pyve/envs/root/conda/` under a `[env.root] backend = "none"` manifest) → `✗ … materialized but not declared (orphan)`, not silence.
+- [ ] Full suite; zero regressions.
+
+**Version:** Phase P. Pairs with the `pyve check --fix` / `pyve heal` story (heal consumes this detection). Developer owns the number/placement.
+
+---
+
+### Story ?.? (megastory): Declarative env setup — an `[env.<name>]` block describes *how the env is set up*, materialized in one shot [Planned]
+
+*(Design direction, 2026-06-12. **Megastory** — captured at altitude; decompose granularly at `plan_production_phase`. Pairs with the per-env runnability probe above: that story tells you an env is broken; this one makes rebuilding it a single declarative act.)*
+
+**The problem (field-surfaced, ml-datarefinery).** Rebuilding a test env took four commands — `pyve env purge testenv --force`, `pyve env init testenv`, `pyve env run testenv -- pip install -e ".[corruptions]"`, `pyve env install testenv -r requirements-dev.txt`. Two of those are **imperative**, because the declaration cannot express what the env needs:
+
+- an **editable self-install with extras** (`-e ".[corruptions]"`) has no declarative home in `[env.<name>]` (today only `requirements` / `extra` / `manifest` — and `extra` installs the group's *packages*, not the project editable);
+- the **source mutex** (`requirements ⊕ extra ⊕ manifest`) forbids layering, so even a declarable editable-install couldn't sit beside `requirements-dev.txt`.
+
+A four-command, partly-imperative rebuild is not a declarative system.
+
+**The reframe — declare the setup, not a taxonomy of sources.** An `[env.<name>]` block declares **how the environment should be set up**: a *composable* set of declarative **directives** (editable-self + extras, requirements files, an extra group, a conda manifest, plain packages, …), each a high-level intent the **owning plugin** knows how to realize. The directives compose — the mutex is removed. The vocabulary is **closed and declarative** (a plugin-interpreted set of intents), never a list of shell steps — that boundary is what keeps it declarative rather than imperative-in-disguise. *If it can be expressed, it can be declared.* This is the altitude correction: stop enumerating "what single source populates the env" and describe "how the env is set up."
+
+Concrete shape (Python plugin):
+
+```toml
+[env.testenv]
+purpose = "test"
+# no backend → mirrors the root (O.o.1)
+editable     = ".[corruptions]"            # editable self-install + extras (the missing directive)
+requirements = ["requirements-dev.txt"]     # composes — no mutex
+# a conda env also carries `manifest = "environment.yml"`, layered first
+```
+
+`pyve env init testenv` reads the whole recipe and materializes a fully operable env in one shot; rebuild collapses to `pyve env purge testenv --force && pyve env init testenv`, or a single `pyve env init testenv --force`. The manifest fully describes the env; one command reproduces it.
+
+**Decided principles (2026-06-12, developer).**
+
+- Env blocks declare **how to set up** (a composable recipe of intents), not one mutually-exclusive source. **Lift the `requirements ⊕ extra ⊕ manifest` mutex.**
+- Add an **`editable`** directive (editable self-install + extras) — the missing expressiveness that forced the imperative step.
+- Directives are a **closed, plugin-interpreted declarative vocabulary**, not shell steps. `editable` is the Python plugin's notion; other plugins interpret their own backend's directives.
+- **One-shot materialization:** `pyve env init <name>` (and `--force`) realizes the full declared recipe. Reproducibility — the manifest fully describes the env — is the north star.
+- Reframes O.o's "empty until demand" into **"init installs what you declared, nothing you didn't"** (no magic pytest; but a fully-declared env comes up operable).
+- Folds in the **`pyve init --force` retention question**: replace the silent "rebuild root, keep testenv" magic with **explicit per-env rebuild** (`pyve env init <name> --force`); `pyve init --force` states it touches only the root.
+- **A uniform per-env rebuild verb across roles.** Today rebuild is split and holed: a named testenv rebuilds via `pyve env purge/init`, but the `pyve env` namespace **rejects `root`** (selection-only), so root rebuild is a *different* command (`pyve init --force`) — and `pyve env purge root` is a confusing dead-end a developer hit in the field. The one-shot rebuild should present **one "rebuild this env from its declaration" verb that works for `root` and named envs alike** (or, at minimum, `pyve check`/heal routes each role to the correct command), so a human never has to know which namespace owns which env to repair it.
+
+**Decomposition sketch (granular breakdown deferred to `plan_production_phase`).** Likely sub-stories: (a) **schema** — add `editable`, define directive ordering (conda manifest → editable → requirements → extra → packages), lift the mutex, validate the closed vocabulary; (b) **readers** — `pyve_toml_helper.py` + `manifest.sh` accessors for the directive set; (c) **materializer** — `pyve env init`/`install` executes the recipe (venv directly + micromamba via O.n's pip layer + O.m's conda exec); (d) **`--force` one-shot rebuild** + the `pyve init --force` scope change; (e) **migration** — existing `requirements`/`extra`/`manifest`-only blocks stay valid (they're just single-directive recipes); (f) **docs + project-essentials**. An ordered `[[env.<name>.setup]]` array-of-tables is the escape hatch if the flat composable-keys form ever proves insufficient (ordering/repetition).
+
+**Out of scope (this megastory's framing).** The per-env runnability *probe* (the detection story above — this consumes "is it set up right?" but doesn't define detection). Non-Python plugin directive vocabularies beyond stubs (each plugin's own follow-up). The N-10 `.pyve/config` read sweep.
+
+**Version:** Phase P. Decompose at `plan_production_phase`. Developer owns numbering/placement.
 
 ---
 

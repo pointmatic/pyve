@@ -12,7 +12,8 @@
 #     update_project invokes (verified by sourcing + grep).
 #   - env_paths in lib/utils.sh emits the new paths (.pyve/envs/testenv/...).
 #   - purge_env_dir in lib/utils.sh removes the new layout.
-#   - lib/utils.sh's gitignore template ignores .pyve/envs (not .pyve/testenv).
+#   - the composed .gitignore (lib/gitignore_composer.sh) ignores the whole
+#     .pyve/ state tree (covers .pyve/envs; no per-.pyve/testenv line).
 #
 # Existing test_test_command.bats / test_status.bats fixtures are updated
 # separately to point at the new path; that update is part of M.h.3.

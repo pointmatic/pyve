@@ -148,9 +148,13 @@ python_pyve_plugin_validate_env_blocks() {
         fi
 
         # backend check — bp_lookup returns 1 (no output) for
-        # unregistered backends.
-        if [[ -n "$backend" ]]; then
-            if ! bp_lookup "$backend" >/dev/null 2>&1; then
+        # unregistered backends. An *advisory* backend (e.g. `none`) is
+        # intentionally unregistered: it is declarable but not materialized
+        # by pyve (a runtime-less / non-Python root), so the materializer
+        # skips it with a note rather than building an env. Let it through
+        # here; only a genuinely-unknown backend hard-errors.
+        if [[ -n "$backend" ]] && ! bp_lookup "$backend" >/dev/null 2>&1; then
+            if ! _env_backend_is_advisory "$backend"; then
                 printf "error: python plugin: env '%s' declares unregistered backend '%s'\n" \
                     "$name" "$backend" >&2
                 return 1
@@ -572,6 +576,13 @@ python_pyve_plugin_activate() {
             env_path="$(micromamba_root_prefix)"
             ;;
         *)
+            # An advisory root backend (e.g. `none`) is a runtime-less /
+            # non-Python root: there is no Python env to activate, so the
+            # Python plugin contributes no .envrc section (the composer
+            # assembles the rest). A genuinely-unknown backend still errors.
+            if _env_backend_is_advisory "$backend"; then
+                return 0
+            fi
             log_error "python plugin: activate: unknown backend '$backend'"
             return 1
             ;;
@@ -859,11 +870,14 @@ _init_detect_project_guide_present() {
 #   [env.root]    purpose = "utility"
 #   [env.testenv] purpose = "test", default = true
 #
-# The `[env.testenv]` declaration matches today's two-env init shape:
-# `pyve init` materializes the run env (`.venv/`) and `pyve testenv
-# init` later materializes the test env. Declaring testenv here means
-# `pyve test --env testenv` and other purpose-keyed selectors resolve
-# correctly even before the testenv venv exists on disk.
+# The `[env.testenv]` declaration is the project's default test env.
+# `pyve init` materializes the run env (`.venv/`) and, gated on an actual
+# declaration, the default test env when it is venv-backed (empty until
+# demand — dependencies install on first `pyve test` / `pyve env install`);
+# conda-backed or additional named envs materialize via `pyve env init
+# <name>`. A root-only manifest (no test env declared) materializes no test
+# env. Declaring testenv here also lets purpose-keyed selectors
+# (`pyve test --env testenv`) resolve.
 _init_write_pyve_toml() {
     local project_name="$1"
     if [[ -f pyve.toml ]]; then
@@ -882,6 +896,24 @@ purpose = "utility"
 purpose = "test"
 default = true
 EOF
+}
+
+# Which test env, if any, `pyve init` materializes: the declared default test
+# env — but only when it resolves to a venv backend. No test env declared (a
+# root-only manifest) → nothing, so init never injects an undeclared `testenv`.
+# A conda-backed default needs a manifest + solve and is deferred to
+# `pyve env init <name>`; an advisory/`none` mirror is declarative-only. Prints
+# the env name to materialize, or nothing.
+_init_testenv_to_materialize() {
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_env_config
+    fi
+    local name="${PYVE_TESTENVS_DEFAULT:-}"
+    [[ -z "$name" ]] && return 0
+    local be
+    be="$(_env_resolve_backend "$name")" || be="venv"
+    [[ "$be" == "venv" ]] && printf '%s' "$name"
+    return 0
 }
 
 # refresh-path guard. When `pyve.toml` exists, validate
@@ -1681,6 +1713,13 @@ init_project() {
         exit 1
     fi
 
+    # Capture whether the backend came from an explicit --backend before the
+    # wizard resolves backend_flag (it may seed it from pyve.toml's [env.root]
+    # backend via dynamic scope). The advisory-root skip below keys off this:
+    # a manifest-declared advisory backend is skipped, but an explicit
+    # --backend stays strict (an unknown value still hard-errors).
+    local arg_backend_explicit="$backend_flag"
+
     _init_wizard "$backend_flag" "$python_version" "$python_version_supplied" "$project_guide_mode"
 
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
@@ -1843,6 +1882,25 @@ init_project() {
     # straddling two backends. No-op when nothing foreign is present.
     if [[ "${PYVE_REINIT_MODE:-}" == "force" ]] && [[ -n "$backend_flag" ]]; then
         _init_backup_foreign_env "$backend_flag"
+    fi
+
+    # An advisory root backend (e.g. `none`) declared in pyve.toml is not
+    # something pyve materializes — it marks a runtime-less / non-Python root
+    # (Node, Rust, Go, advisory tool envs, a polyglot coordination root). Skip
+    # root env creation with the same note the per-env install path emits,
+    # rather than crashing in validate_backend, then let the composition tail
+    # still wire up .envrc/.gitignore + named concrete-backend envs. Gated on
+    # the manifest-derived value: an explicit --backend stays strict below, so
+    # a genuinely-unknown `--backend bogus` still hard-errors.
+    if [[ -z "$arg_backend_explicit" ]] && _env_backend_is_advisory "$backend_flag"; then
+        info "env 'root' declares backend '$backend_flag', which pyve does not yet materialize; skipping root env creation (provision it manually per the env spec)"
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        PYVE_INIT_TAIL_BACKEND="$backend_flag"
+        PYVE_INIT_TAIL_ENV_PATH=""
+        PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+        PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+        PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
+        return 0
     fi
 
     # Validate backend if specified
@@ -2071,8 +2129,12 @@ EOF
     # that read-compat layer is removed.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
 
-    # Ensure dev/test runner environment exists (upgrade-friendly)
-    ensure_env_exists
+    # Materialize the declared default test env (venv-backed only), gated on an
+    # actual declaration — never inject an undeclared `testenv`. Conda/advisory
+    # test envs and additional named envs materialize via `pyve env init <name>`.
+    local _init_te
+    _init_te="$(_init_testenv_to_materialize)"
+    [[ -n "$_init_te" ]] && ensure_env_exists "$_init_te"
 
     # Absolute venv path — used by dep install and the composition tail.
     local _venv_abs
@@ -2893,46 +2955,67 @@ check_environment() {
         printf "======================\n\n"
     fi
 
-    # --- Check 1: .pyve/config present ------------------------------------
-    if ! config_file_exists; then
-        _check_fail "Configuration: .pyve/config missing" "→ Run: pyve init"
+    # --- Check 1: pyve project present ------------------------------------
+    # Route presence + backend through the v3 manifest. `manifest_load`
+    # handles both a native `pyve.toml` and the v3.0 read-compat synthesis
+    # from `.pyve/config`, so a pyve.toml-only project is recognized. The
+    # old bare `config_file_exists` gate was v2-blind: a migrated project
+    # (pyve.toml present, no .pyve/config) hard-failed here.
+    manifest_load 2>/dev/null || true
+    local has_pyve_toml=false
+    [[ -f "pyve.toml" ]] && has_pyve_toml=true
+    if [[ "$has_pyve_toml" == false ]] && ! config_file_exists; then
+        _check_fail "Configuration: no pyve.toml (not a pyve project)" "→ Run: pyve init"
         _check_summary_and_exit
     fi
-    _check_pass "Configuration: .pyve/config"
+    if [[ "$has_pyve_toml" == true ]]; then
+        _check_pass "Configuration: pyve.toml"
+    else
+        _check_pass "Configuration: .pyve/config (v2)"
+    fi
 
     # --- Check 3: backend configured --------------------------------------
-    # (Check 2 slots below — runs after we know the backend so we can
-    # point the user at either `pyve update` or `pyve init --force` as
-    # appropriate.)
+    # Read the main (`root`) env's backend from the manifest accessor —
+    # works for v3-native (pyve.toml) and v2 (read-compat synthesis from
+    # .pyve/config) alike. (Check 2 slots below — runs after we know the
+    # backend so we can point the user at either `pyve update` or
+    # `pyve init --force` as appropriate.)
     local backend
-    backend="$(read_config_value "backend")"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
-        _check_fail "Backend: not configured in .pyve/config" \
+        _check_fail "Backend: not configured in pyve.toml" \
             "→ Run: pyve init --backend venv|micromamba"
         _check_summary_and_exit
     fi
     _check_pass "Backend: $backend"
 
     # --- Check 2: pyve_version drift --------------------------------------
-    local recorded_version
-    recorded_version="$(read_config_value "pyve_version")"
-    if [[ -z "$recorded_version" ]]; then
-        _check_warn "Pyve version: not recorded (legacy project)" \
-            "→ Run: pyve update"
-    else
-        case "$(compare_versions "$recorded_version" "$VERSION")" in
-            equal)
-                _check_pass "Pyve version: $recorded_version (current)"
-                ;;
-            less)
-                _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
-                    "→ Run: pyve update"
-                ;;
-            greater)
-                _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
-                    "→ Upgrade pyve or re-initialize the project"
-                ;;
-        esac
+    # The recorded-version drift check is a v2 `.pyve/config` concept —
+    # `pyve.toml` carries no pyve_version. Only run it when a `.pyve/config`
+    # is present; a pyve.toml-only project legitimately has no recorded
+    # version there, and the "legacy project → pyve update" nudge would be
+    # misleading on a native v3 project.
+    if config_file_exists; then
+        local recorded_version
+        recorded_version="$(read_config_value "pyve_version")"
+        if [[ -z "$recorded_version" ]]; then
+            _check_warn "Pyve version: not recorded (legacy project)" \
+                "→ Run: pyve update"
+        else
+            case "$(compare_versions "$recorded_version" "$VERSION")" in
+                equal)
+                    _check_pass "Pyve version: $recorded_version (current)"
+                    ;;
+                less)
+                    _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
+                        "→ Run: pyve update"
+                    ;;
+                greater)
+                    _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
+                        "→ Upgrade pyve or re-initialize the project"
+                    ;;
+            esac
+        fi
     fi
 
     # --- Backend-specific checks ------------------------------------------
@@ -3203,7 +3286,13 @@ show_status() {
         printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
     fi
 
-    if ! config_file_exists; then
+    # Recognize a v3-native project (pyve.toml) as well as a v2 one
+    # (.pyve/config). `manifest_load` covers both — a native pyve.toml or
+    # the v3.0 read-compat synthesis from .pyve/config. Gating on bare
+    # `config_file_exists` was v2-blind: a migrated project reported as
+    # "Not a pyve-managed project".
+    manifest_load 2>/dev/null || true
+    if [[ ! -f "pyve.toml" ]] && ! config_file_exists; then
         # Non-project fallback. Don't treat it as an error; status reports
         # reality, and "not a pyve project" is a valid reality.
         _status_row "Not a pyve-managed project" ""
@@ -3234,17 +3323,24 @@ _status_section_project() {
     _status_header "Project"
     _status_row "Path:" "$(pwd -P)"
 
+    # Read the main (`root`) env's backend from the manifest accessor —
+    # works for v3-native (pyve.toml) and v2 (read-compat synthesis) alike.
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -n "$backend" ]]; then
         _status_row "Backend:" "$backend"
     else
         _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
 
+    # The recorded pyve_version is a v2 `.pyve/config` concept (pyve.toml
+    # carries none). Only surface the row when a `.pyve/config` is present;
+    # a pyve.toml-only project legitimately has no recorded version there.
     local recorded_version
     recorded_version="$(read_config_value "pyve_version" 2>/dev/null || true)"
-    if [[ -z "$recorded_version" ]]; then
+    if [[ ! -f ".pyve/config" ]]; then
+        _status_row "Declaration:" "pyve.toml"
+    elif [[ -z "$recorded_version" ]]; then
         _status_row "Pyve config:" "${DIM}version not recorded${RESET}"
     else
         case "$(compare_versions "$recorded_version" "$VERSION")" in
@@ -3827,6 +3923,70 @@ test_tests() {
 # lazy auto-provision (M.n), pytest install prompt, silent-skip
 # advisory (M.o), `last_used_at` touch (M.m), then `exec pytest`.
 # Returns only on error paths (the success tail execs).
+
+# Resolve the test env `pyve test` targets when no `--env` is given. An
+# explicit `default = true` always wins. Otherwise autowire only when the
+# project is unambiguous: the root is a Python backend (venv/micromamba), the
+# declared env collection is homogeneous in backend, AND exactly one test env
+# is declared — then promote that sole test env. A mixed-backend collection,
+# multiple test envs without a default, or a non-Python/`none` root yields no
+# default (the caller then requires an explicit `--env`). Prints the env name,
+# or nothing. No heuristics under ambiguity — we never guess a default.
+_test_default_env() {
+    # read_env_config populates BOTH the manifest arrays (PYVE_ENV_*, for
+    # list/default/purpose) and the lifecycle arrays (PYVE_TESTENV_*, which
+    # _env_resolve_backend reads) — manifest_load alone leaves the latter empty,
+    # so a no-backend testenv would mis-resolve to the venv default.
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_env_config
+    fi
+    local -a envs=() test_envs=()
+    local env
+    while IFS= read -r env; do
+        [[ -n "$env" ]] && envs+=("$env")
+    done < <(manifest_list_envs 2>/dev/null)
+
+    if [[ "${#envs[@]}" -gt 0 ]]; then
+        # 1. Explicit default wins.
+        for env in "${envs[@]}"; do
+            if manifest_is_default "$env" 2>/dev/null; then
+                printf '%s' "$env"
+                return 0
+            fi
+        done
+
+        # 2. Autowire a sole test env on a homogeneous, Python-rooted project.
+        local root_be be homogeneous=1
+        root_be="$(_env_resolve_root_backend 2>/dev/null || printf 'venv')"
+        for env in "${envs[@]}"; do
+            if [[ "$env" == "root" ]]; then
+                be="$root_be"
+            else
+                be="$(_env_resolve_backend "$env" 2>/dev/null)" || be="venv"
+            fi
+            [[ "$be" != "$root_be" ]] && homogeneous=0
+            [[ "$(manifest_resolve_purpose "$env" 2>/dev/null)" == "test" ]] && test_envs+=("$env")
+        done
+
+        if [[ "$homogeneous" == "1" ]] \
+           && [[ "${#test_envs[@]}" -eq 1 ]] \
+           && { [[ "$root_be" == "venv" ]] || [[ "$root_be" == "micromamba" ]]; }; then
+            printf '%s' "${test_envs[0]}"
+            return 0
+        fi
+    fi
+
+    # 3. Reserved/implicit `testenv` fallback: a bare project (no manifest)
+    # where read_env_config synthesized the conventional single `testenv`.
+    # Fires only when the manifest declared NO test env of its own — a
+    # manifest that omits testenv on purpose leaves PYVE_TESTENVS_DEFAULT
+    # empty and gets no magic default (it must declare one or pass --env).
+    if [[ "${#test_envs[@]}" -eq 0 ]] && [[ "${PYVE_TESTENVS_DEFAULT:-}" == "testenv" ]]; then
+        printf '%s' "testenv"
+    fi
+    return 0
+}
+
 _test_run_one_env() {
     local env_target="$1"
     local env_target_explicit="$2"
@@ -3858,7 +4018,21 @@ _test_run_one_env() {
     fi
 
     if [[ "$env_target_explicit" == "0" ]]; then
-        env_target="${PYVE_TESTENVS_DEFAULT:-testenv}"
+        # No --env: resolve the default test env (explicit `default = true`,
+        # or a sole test env auto-promoted on a homogeneous Python-rooted
+        # project). No unambiguous default → require an explicit --env rather
+        # than guessing.
+        env_target="$(_test_default_env)"
+        if [[ -z "$env_target" ]]; then
+            log_error "pyve test: no default test env to run."
+            log_error "Declare 'default = true' on a test env in pyve.toml, or pass --env <name>."
+            local _te
+            while IFS= read -r _te; do
+                [[ -z "$_te" ]] && continue
+                [[ "$(manifest_resolve_purpose "$_te" 2>/dev/null)" == "test" ]] && log_error "  --env $_te"
+            done < <(manifest_list_envs 2>/dev/null)
+            exit 1
+        fi
     fi
 
     # Validate the target name. Accept the reserved `testenv` and any
@@ -3895,12 +4069,6 @@ _test_run_one_env() {
         log_error "Use 'pyve env run $env_target -- <command>' to invoke a command in this env."
         exit 1
     fi
-
-    # Conda-backed envs are not yet supported by `pyve test`'s exec
-    # path (PATH-only activation doesn't set CONDA_PREFIX/CONDA_PYTHON_EXE).
-    # Same M.k gate that `pyve testenv run` uses; use `--env root`
-    # against a conda main env, or `micromamba run -p <path> pytest`.
-    assert_env_venv_backend "$env_target" || exit 1
 
     local testenv_venv
     testenv_venv="$(resolve_env_path "$env_target")"
@@ -3999,5 +4167,14 @@ _test_run_one_env() {
     # is bookkeeping, not user-facing.
     state_touch_last_used "$env_target" >/dev/null 2>&1 || true
 
-    exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
+    # Backend dispatch (mirrors `pyve env run`): venv execs the env's python
+    # directly; micromamba routes through `micromamba run -p` so CONDA_PREFIX /
+    # activate.d / conda lib paths are set up (compiled deps depend on them).
+    local test_backend
+    test_backend="$(_env_resolve_backend "$env_target")" || test_backend="venv"
+    if [[ "$test_backend" == "micromamba" ]]; then
+        env_exec_conda "$testenv_venv" python -m pytest "${args[@]+"${args[@]}"}"
+    else
+        exec "$testenv_venv/bin/python" -m pytest "${args[@]+"${args[@]}"}"
+    fi
 }

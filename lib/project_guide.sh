@@ -132,6 +132,23 @@ run_project_guide_orchestration() {
         return 0
     fi
 
+    # Resolve the target rc file up front so the sentinel-presence check can
+    # run BEFORE any interactive prompt. The completion block is a
+    # one-time-ever configuration; re-asking on every `pyve init` when it is
+    # already wired is the bug this guards. The flag/env/prompt handling
+    # below only matters when the block is absent.
+    local user_shell rc_path=""
+    user_shell="$(detect_user_shell)"
+    if [[ "$user_shell" != "unknown" ]]; then
+        rc_path="$(get_shell_rc_path "$user_shell")"
+    fi
+
+    # Pre-prompt idempotency guard: already wired → note and done, no prompt.
+    if [[ -n "$rc_path" ]] && is_project_guide_completion_present "$rc_path"; then
+        log_info "project-guide completion already present in $rc_path"
+        return 0
+    fi
+
     local do_completion=false
     if [[ $should_add_completion -eq 1 ]]; then
         do_completion=true
@@ -143,8 +160,6 @@ run_project_guide_orchestration() {
         return 0
     fi
 
-    local user_shell
-    user_shell="$(detect_user_shell)"
     if [[ "$user_shell" == "unknown" ]]; then
         log_warning "Unknown shell — skipping project-guide completion wiring."
         log_warning "  For manual setup, add to your shell rc file:"
@@ -152,15 +167,8 @@ run_project_guide_orchestration() {
         return 0
     fi
 
-    local rc_path
-    rc_path="$(get_shell_rc_path "$user_shell")"
     if [[ -z "$rc_path" ]]; then
         log_warning "Could not determine rc file for shell '$user_shell' — skipping completion wiring"
-        return 0
-    fi
-
-    if is_project_guide_completion_present "$rc_path"; then
-        log_info "project-guide completion already present in $rc_path"
         return 0
     fi
 

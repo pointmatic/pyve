@@ -45,8 +45,68 @@ _PYVE_TESTENVS_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/pyve_testen
 # and populate the V3 array state. Missing file or missing block yields
 # the implicit default (single venv `testenv`). Validation errors from
 # the helper propagate via non-zero exit and stderr.
+# Map the v3 manifest (`pyve.toml [env.*]`, the `PYVE_ENV_*` arrays
+# populated by manifest_load) into the lifecycle `PYVE_TESTENV_*` arrays the
+# accessors/consumers read. Every non-`root` declared env becomes a lifecycle
+# env. A no-`backend` env defaults to `venv` (matching the v2 helper's
+# implicit default; the mirror-root semantics are a separate, later change).
+# The default env is the one flagged `default`, else `testenv` if present,
+# else the first declared — mirroring the legacy-synthesis default rule.
+_env_config_from_manifest() {
+    manifest_load >/dev/null 2>&1 || true
+    PYVE_TESTENVS_DEFAULT=""
+    PYVE_TESTENVS_NAMES=()
+    PYVE_TESTENV_BACKEND=()
+    PYVE_TESTENV_LAZY=()
+    PYVE_TESTENV_EXTRA=()
+    PYVE_TESTENV_MANIFEST=()
+    PYVE_TESTENV_REQUIREMENTS_Q=()
+    local n=0
+    [[ -n "${PYVE_ENV_NAMES+x}" ]] && n=${#PYVE_ENV_NAMES[@]}
+    local i name be
+    for ((i=0; i<n; i++)); do
+        name="${PYVE_ENV_NAMES[$i]}"
+        [[ "$name" == "root" ]] && continue
+        be="${PYVE_ENV_BACKEND[$i]}"
+        # A declared env with no backend mirrors the root (inherit
+        # semantics, resolved against the manifest by _env_resolve_backend),
+        # rather than hardcoding venv — so a no-backend testenv on a
+        # micromamba root is micromamba, not venv.
+        [[ -z "$be" ]] && be="inherit"
+        PYVE_TESTENVS_NAMES+=("$name")
+        PYVE_TESTENV_BACKEND+=("$be")
+        PYVE_TESTENV_LAZY+=("${PYVE_ENV_LAZY[$i]}")
+        PYVE_TESTENV_EXTRA+=("${PYVE_ENV_EXTRA[$i]}")
+        PYVE_TESTENV_MANIFEST+=("${PYVE_ENV_MANIFEST[$i]}")
+        PYVE_TESTENV_REQUIREMENTS_Q+=("${PYVE_ENV_REQUIREMENTS_Q[$i]}")
+        [[ "${PYVE_ENV_DEFAULT[$i]}" == "1" ]] && PYVE_TESTENVS_DEFAULT="$name"
+    done
+    if [[ -z "$PYVE_TESTENVS_DEFAULT" && "${#PYVE_TESTENVS_NAMES[@]}" -gt 0 ]]; then
+        local j
+        for j in "${!PYVE_TESTENVS_NAMES[@]}"; do
+            [[ "${PYVE_TESTENVS_NAMES[$j]}" == "testenv" ]] && { PYVE_TESTENVS_DEFAULT="testenv"; break; }
+        done
+        [[ -z "$PYVE_TESTENVS_DEFAULT" ]] && PYVE_TESTENVS_DEFAULT="${PYVE_TESTENVS_NAMES[0]}"
+    fi
+    # Explicit success: the trailing `&&` above returns non-zero whenever the
+    # default was already set (the common case), which would otherwise make
+    # read_env_config report failure to a `set -e` caller.
+    return 0
+}
+
 read_env_config() {
     local pyproject="${1:-pyproject.toml}"
+    # v3 lifecycle read: with NO explicit pyproject path AND a `pyve.toml`
+    # present, source env config from the canonical manifest (`pyve.toml
+    # [env.*]`) rather than the v2 `[tool.pyve.testenvs]` table. An explicit
+    # pyproject arg (the migrator) always reads the v2 source. Recursion-safe:
+    # manifest_load reads `pyve.toml` directly here (no legacy synthesis →
+    # no read_env_config re-entry); synthesis only fires when `pyve.toml` is
+    # absent, which this branch excludes.
+    if [[ $# -eq 0 && -f pyve.toml ]]; then
+        _env_config_from_manifest
+        return 0
+    fi
     # Short-circuit: no pyproject.toml → synthesize the implicit-default
     # config (single venv `testenv`) in pure bash. The Python helper
     # would have returned the same shape, but invoking python would
@@ -211,11 +271,15 @@ _env_declared_in_manifest() {
     manifest_get_env "$1"
 }
 
-# Story M.k: resolve <name>'s effective backend. Returns the concrete
-# literal `venv` or `micromamba` — never `inherit`. For `inherit`, reads
-# the main env's backend from `.pyve/config` via `read_config_value`;
-# falls back to `venv` if no config (matches the bash-only / greenfield
-# project case). For undeclared names, returns `venv`.
+# Resolve <name>'s effective backend. An explicit concrete backend
+# (`venv` / `micromamba`) is returned as-is. `inherit` — which a
+# no-backend env now defaults to — mirrors the ROOT backend, read from the
+# canonical manifest first (`pyve.toml [env.root]` via `manifest_get_backend
+# root`), falling back to `.pyve/config` (v3.0-only read-compat, removed in
+# N-10), then `venv`. The root value passes through verbatim, including an
+# advisory `none` — so a no-backend testenv on a `none` root resolves to
+# `none` and is treated as declarative-only downstream. Undeclared names
+# resolve to `venv`.
 _env_resolve_backend() {
     local name="$1"
     local raw
@@ -225,12 +289,10 @@ _env_resolve_backend() {
         return 0
     fi
     local main_backend
-    main_backend="$(read_config_value backend 2>/dev/null || printf '')"
-    if [[ "$main_backend" == "micromamba" ]]; then
-        printf '%s' "micromamba"
-    else
-        printf '%s' "venv"
-    fi
+    main_backend="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$main_backend" ]] && main_backend="$(read_config_value backend 2>/dev/null || true)"
+    [[ -z "$main_backend" ]] && main_backend="venv"
+    printf '%s' "$main_backend"
 }
 
 # Story N.bf.14: resolve the reserved `root` env's backend. `root` is
@@ -261,26 +323,39 @@ _env_backend_is_advisory() {
     [[ "$cls" == "advisory" ]]
 }
 
-# Story M.i.1 / M.k: venv-only gate for `pyve testenv run`. Returns 0
-# when the resolved backend is `venv`; 1 (with a stderr error) for
-# `micromamba` (and `inherit` that resolves to micromamba). M.k landed
-# conda-backed init/install, but `pyve testenv run` still uses PATH-only
-# activation and does not set CONDA_PREFIX / CONDA_PYTHON_EXE, so it is
-# kept venv-only for now. Use `micromamba run -p <path> <cmd>` for the
-# conda case (manual workaround).
-assert_env_venv_backend() {
-    local name="${1:-}"
-    if [[ -z "$name" ]]; then
-        printf "error: testenv name is required\n" >&2
-        return 1
+# Exec <cmd> [args...] inside a micromamba-backed env materialized at
+# <env_path>, via `micromamba run -p <env_path>` — the canonical conda exec
+# primitive. Unlike PATH-prepend activation (correct for a venv), it sets
+# CONDA_PREFIX / CONDA_DEFAULT_ENV, runs the env's etc/conda/activate.d
+# scripts, and fixes conda's library paths, which compiled wheels (torch &c.)
+# depend on at runtime. Used by both `pyve env run` and `pyve test` for
+# micromamba-backed envs; the venv path stays on PATH activation (env_run /
+# direct python exec).
+#
+# Replaces the shell via exec on success, so exit code, argument passing, and
+# stdin/TTY pass straight through. Hard-errors (exit 1) when no command is
+# given, the env is not materialized (no conda-meta), or micromamba is absent.
+env_exec_conda() {
+    local env_path="$1"
+    shift
+    if [[ $# -lt 1 ]]; then
+        log_error "No command provided"
+        log_error "Usage: pyve env run <name> -- <command> [args...]"
+        exit 1
     fi
-    local backend
-    backend="$(_env_resolve_backend "$name")" || backend="venv"
-    if [[ "$backend" == "venv" ]]; then
-        return 0
+    if [[ ! -d "$env_path/conda-meta" ]]; then
+        log_error "Conda-backed environment not initialized at '$env_path'"
+        log_error "Run: pyve env init <name>"
+        exit 1
     fi
-    printf "error: 'pyve env run' does not yet support conda-backed env '%s' (resolved backend: %s). Workaround: 'micromamba run -p .pyve/envs/%s/conda <command>'.\n" "$name" "$backend" "$name" >&2
-    return 1
+    local micromamba_path
+    micromamba_path="$(get_micromamba_path)" || micromamba_path=""
+    if [[ -z "$micromamba_path" ]]; then
+        log_error "micromamba not found — required to run a conda-backed env"
+        log_error "(\`pyve init --backend micromamba\` bootstraps it)"
+        exit 1
+    fi
+    exec "$micromamba_path" run -p "$env_path" "$@"
 }
 
 # =====================================================================

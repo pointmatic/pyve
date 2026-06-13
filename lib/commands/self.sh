@@ -657,8 +657,11 @@ _self_migrate_read_legacy() {
     if [[ -f pyproject.toml ]] \
        && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
         # read_env_config (lib/envs.sh) populates PYVE_TESTENVS_* arrays
-        # via the Python helper. Copy into our private state.
-        read_env_config
+        # via the Python helper. Pass an explicit pyproject path so the
+        # migrator always reads the v2 [tool.pyve.testenvs] source it is
+        # extracting — never the pyve.toml manifest (which a prior migrate
+        # run may already have written).
+        read_env_config pyproject.toml
         local i n
         n=${#PYVE_TESTENVS_NAMES[@]}
         for ((i=0; i<n; i++)); do

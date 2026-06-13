@@ -926,3 +926,64 @@ EOF
     run run_project_guide_update_in_env
     [ "$status" -eq 0 ]  # Non-fatal: exits 0 even on update failure (incl. future SchemaVersionError)
 }
+
+#============================================================
+# Story O.h — the completion-wiring sentinel-presence check must run
+# BEFORE the interactive prompt. When the block is already wired, every
+# `pyve init` re-asked the user because the check ran after the prompt.
+#
+# These drive run_project_guide_orchestration with a SPY stub for the
+# interactive completion prompt (rather than real stdin) so the assertion
+# "was the prompt consulted?" is deterministic under bats — the real
+# prompt does `read` on stdin, which is nondeterministic in a test runner.
+#============================================================
+
+# Seed an rc file already carrying the completion sentinel block.
+_seed_completion_block() {
+    local rc="$1"
+    cat > "$rc" <<EOF
+# existing user content
+$SENTINEL_OPEN
+eval "\$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+$SENTINEL_CLOSE
+EOF
+}
+
+@test "orchestration: completion already present → prompt NOT consulted, rc unchanged" {
+    export SHELL=/bin/zsh
+    # Isolate Step 3: stub the Step-1 scaffold/refresh so this exercises only
+    # the completion-wiring path. project-guide hosting is stubbed in setup.
+    run_project_guide_init_in_env() { return 0; }
+    run_project_guide_update_in_env() { return 0; }
+    # Spy: record if the interactive completion prompt is consulted.
+    prompt_install_project_guide_completion() { touch "$TEST_DIR/prompt_called"; return 0; }
+
+    _seed_completion_block "$HOME/.zshrc"
+    cp "$HOME/.zshrc" "$HOME/.zshrc.orig"
+
+    # pg_mode=yes (install, no install prompt), comp_mode='' (interactive
+    # completion → would consult the prompt today, before the sentinel check).
+    run run_project_guide_orchestration "" "" yes ""
+    [ "$status" -eq 0 ]
+    # The bug: the prompt is consulted before the sentinel-presence check.
+    [ ! -f "$TEST_DIR/prompt_called" ]
+    # The one-line "already present" note still appears.
+    [[ "$output" == *"already present"* ]]
+    # The rc file is untouched.
+    diff "$HOME/.zshrc" "$HOME/.zshrc.orig"
+}
+
+@test "orchestration: completion absent → prompt IS consulted (interactive path unchanged)" {
+    export SHELL=/bin/zsh
+    run_project_guide_init_in_env() { return 0; }
+    run_project_guide_update_in_env() { return 0; }
+    # Spy returns 1 (skip) so nothing is written; we only assert it was consulted.
+    prompt_install_project_guide_completion() { touch "$TEST_DIR/prompt_called"; return 1; }
+
+    # No rc file / no sentinel → the absent path must still consult the prompt.
+    rm -f "$HOME/.zshrc"
+
+    run run_project_guide_orchestration "" "" yes ""
+    [ "$status" -eq 0 ]
+    [ -f "$TEST_DIR/prompt_called" ]
+}

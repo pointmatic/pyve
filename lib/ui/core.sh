@@ -138,8 +138,24 @@ header_box() {
     echo -e "  ${BOLD}${C}╰─────────────────────────────────────────╯${RESET}"
 }
 
+# footer_box [exit_code]
+#   0 / absent → green success box ("✔ All done.")
+#   non-zero   → red failure box ("✘ Failed.")
+# Padding is computed (not hardcoded) so the box is always 41 visible chars
+# wide regardless of the message — mirrors header_box: after the leading
+# "  " + "│  " the content area is 39 chars, of which the glyph + space take
+# 2, leaving (37 - text_len) trailing pad.
 footer_box() {
-    echo -e "  ${BOLD}${G}╭─────────────────────────────────────────╮${RESET}"
-    echo -e "  ${BOLD}${G}│${RESET}  ${CHECK} ${BOLD}All done.${RESET}                            ${BOLD}${G}│${RESET}"
-    echo -e "  ${BOLD}${G}╰─────────────────────────────────────────╯${RESET}"
+    local rc="${1:-0}"
+    local color glyph text
+    if [[ "$rc" == "0" ]]; then
+        color="$G"; glyph="$CHECK"; text="All done."
+    else
+        color="$R"; glyph="$CROSS"; text="Failed."
+    fi
+    local pad
+    printf -v pad '%*s' "$(( 37 - ${#text} ))" ""
+    echo -e "  ${BOLD}${color}╭─────────────────────────────────────────╮${RESET}"
+    echo -e "  ${BOLD}${color}│${RESET}  ${glyph} ${BOLD}${text}${RESET}${pad}${BOLD}${color}│${RESET}"
+    echo -e "  ${BOLD}${color}╰─────────────────────────────────────────╯${RESET}"
 }
