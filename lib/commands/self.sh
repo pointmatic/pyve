@@ -78,27 +78,23 @@ self_install() {
     mv -f "$tmp_script" "$TARGET_SCRIPT_PATH"
     log_success "Installed pyve.sh"
 
-    # Copy lib directory
+    # Copy the entire lib/ tree recursively. pyve.sh sources from several
+    # subtrees (lib/ui/, lib/plugins/{python,node}/, lib/commands/,
+    # lib/completion/, …); a recursive copy ships whatever it sources
+    # rather than a hand-maintained per-subdir allowlist that silently
+    # drifts from the sourcing graph (the v3.0.6 break: lib/ui/ and
+    # lib/plugins/ were never added, so the installed binary died at
+    # `source .../lib/ui/core.sh`). Wipe-then-copy so a renamed/removed
+    # module doesn't linger from a previous install; lib/ is pure code
+    # (install output), never state, so removing it is safe. Exclude
+    # __pycache__ — compiled bytecode is regenerated on demand and copying
+    # it ships a stale .pyc.
     if [[ -d "$source_dir/lib" ]]; then
+        rm -rf "$TARGET_BIN_DIR/lib"
         mkdir -p "$TARGET_BIN_DIR/lib"
-        cp "$source_dir/lib/"*.sh "$TARGET_BIN_DIR/lib/"
-        log_success "Installed lib/ helpers"
-    fi
-
-    # Copy per-command modules (Phase K extraction phase). The lib/*.sh
-    # glob above is non-recursive, so this directory needs its own copy
-    # step. Guard so older installs without lib/commands/ remain a no-op.
-    if [[ -d "$source_dir/lib/commands" ]]; then
-        mkdir -p "$TARGET_BIN_DIR/lib/commands"
-        cp "$source_dir/lib/commands/"*.sh "$TARGET_BIN_DIR/lib/commands/"
-        log_success "Installed lib/commands/ (per-command modules)"
-    fi
-
-    # Copy shell-completion scripts (H.e.9c)
-    if [[ -d "$source_dir/lib/completion" ]]; then
-        mkdir -p "$TARGET_BIN_DIR/lib/completion"
-        cp "$source_dir/lib/completion/"* "$TARGET_BIN_DIR/lib/completion/" 2>/dev/null || true
-        log_success "Installed lib/completion/ (shell completion)"
+        cp -R "$source_dir/lib/." "$TARGET_BIN_DIR/lib/"
+        find "$TARGET_BIN_DIR/lib" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+        log_success "Installed lib/ (all modules)"
     fi
 
     # Save source directory for future reinstalls
