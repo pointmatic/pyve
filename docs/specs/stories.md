@@ -28,9 +28,25 @@ This is the authoritative cadence rule. **Do not extrapolate the bump magnitude 
 
 ## Phase P: Harden and heal Pyve
 
-Note: there are several stories in `## Future` that need to be reviewed and considered whether to include in this Subphase
+Note: there may be some stories in `## Future` that need to be reviewed and considered whether to include in this Subphase
 
-Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). Theme: make Pyve's environment resolution **bulletproof**, and — when the armor is pierced — give Pyve a **healing mechanism**. This is the "calm the chaos" mission applied to Pyve's own substrate: the developer should never have to hand-trace PATH order, version-manager pins, and venv symlinks to understand why a command misbehaves, and never have to hand-repair Pyve-managed state.
+Complexity, inconsistent patterns/defaults, and some magical behaviors are making Pyve v3 difficult to use, and confusing to determine what v3 is supposed to do. The LLM is confused when it comes time to implement projects with Pyve as the environment manager. 
+
+A primary change that needs to be embraced is that **Pyve v2.x** was a Python virtual environment tool with a built-in test environment and a lumpy integration of Conda (micromamba). The declarative parts of v2 were spread across pyproject.toml, .pyve/config, and environment.yml (micromamba). Now **Pyve v3.x** is an any-project virtual environment tool, with initial support via plugins for Python and Node.js via venv, micromamba, and pnpm/npm backends. And a key improvement, v3 can now be fully declarative (with fallback to very simple defaults, like Python, venv, and a single testenv using PyTest).
+
+**Tenets:**
+- Pyve surface starts simple - `pyve init` does everything necessary for simple Python projects, with progressive nuance that adapts to project complexity. `pyve test` auto-initializes the environment and installs dependencies if needed (in the Python default case, it uses `mypy`, `ruff`, and `pytest`).
+- Pyve is declarative - configuration is the single source of truth, no configuration falls back to defaults; Pyve supports complex imperative workflows via flags, commands, environment vars, but nothing beyond what is defined in the declarative schema.
+- Pyve is DRY — no duplication of configuration or logic (except if convenience aliases are needed).
+- Pyve is consistent — similar patterns, behaviors, and defaults across all commands, workflows, and plugins.
+- Pyve is robust - it handles errors gracefully, heals when possible, provides clear error messages, and feels light and easy with every project; `check` actually checks environment and integration points beyond the configuration and diagnoses typical issues with hints for fixing them; `status` actually shows a coherent, organized status of the Pyve envs and the configuration.
+- Pyve works seamlessly across platforms - While Homebrew is the typical install path for development, cloning the GitHub repo and using `pyve self install` works smoothly for CI/CD, automated environments, or on Linux systems where Homebrew is not ideal.
+- Pyve is extensible - every configuration facet has a mechanical purpose in Pyve machinery or is forward-looking toward future capabilities.
+- Pyve is clearly documented - all configuration options, commands, and workflows are documented in a way that is easy to understand and follow.
+
+**Concerns**
+
+This phase begins after the v3.0.x release. Theme: make Pyve's environment resolution make sense and to be **bulletproof**; when the armor is pierced — give Pyve a **healing mechanism**. This is the "calm the chaos" mission applied to Pyve's own substrate: the developer should never have to hand-trace PATH order, version-manager pins, and venv symlinks to understand why a command misbehaves, and never have to hand-repair Pyve-managed state.
 
 **Triggering incident (field-discovered 2026-06-09).** A developer's `project-guide` invocation in the pyve repo broke with a cryptic `No version is set for command project-guide` naming a Python `3.14.3` they could not place. Untangling it took a long manual trace across **four independent layers**, none of which any Pyve command could see or explain:
 
@@ -51,6 +67,18 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 **Scope notes.** `lib/ui/` primitives stay pyve-agnostic (the lib/ui boundary invariant). Healing never destroys without explicit confirmation. Builds on Story N.bi (check hosting/toolchain surfacing), Phase O (check/status expand-collapse long-form output), and Story N.bo (runnability override seam + the existence-vs-runnability framing). Ships in the Phase N v3.x line; the exact release tag and the full story breakdown are deferred to this subphase's `plan_production_phase` session.
 
 **Conceptual work first (Phase P, not started).** The `purpose` lifecycle (`run`/`test`/`utility`/`temp`) and environment durability need a *conceptual* pass before any lifecycle code: **what precious resource each purpose protects**, and why preservation is a *cost-cache + artifact* concern, not a "survives-purge" ranking (the principle: *irreproducibility is the bug; we never preserve because an env is irreplaceable*). The framing seed is [env-lifecycle-concept.md](env-lifecycle-concept.md). The intended mode sequence is **`refactor_document`** (fold the framing into `concept.md` / `project-essentials.md`'s `purpose:` entry / `tech-spec.md`) → **`plan_phase`** (derive targeted stories). This corrects, among other things, the current essentials hint that "utility envs survive `pyve purge`" (the new framing makes `utility` the disposable one). Pairs with the declarative-env-setup megastory above.
+
+**Subphases**
+
+Each subphase has a theme (with adhoc bug fixes as needed). 
+- Subphase P-1: Conceptual clarification and documentation
+- Subphase P-2: Runnability probes and environment healing
+- Subphase P-3: Declarative env setup
+- Subphase P-4: Workflow improvements
+
+---
+
+## Subphase P-1: Conceptual clarification and documentation
 
 ---
 
@@ -82,6 +110,137 @@ Begins after the v3.0.0 / v3.1.0 release line (exact tag TBD during planning). T
 - [ ] Optional follow-up: add a `project-essentials` entry — "the installer must ship every `lib/` subtree `pyve.sh` sources; verify by running the installed binary, never the source tree."
 
 **Version:** **v3.0.7** (patch). Standalone critical fix; ships ahead of the rest of Phase P.
+
+---
+
+### Story P.b: v3 Plan and Documentation Refactor
+
+Using the Phase P preamble, update Pyve concept, features, tech-spec, and README to be coherent, consistent, and faithful to the Pyve philosophy. 
+
+**Phase P Plan Realignment:**
+
+Using `refactor_plan` mode, review Phase P preamble and provide an analysis of how to realign Pyve docs to be consistent with the intended vision.
+- [ ] Update `docs/specs/concept.md`
+- [ ] Update `docs/specs/features.md`
+- [ ] Update `docs/specs/tech-spec.md`
+
+**Phase P Public Documentation:**
+
+Using `refactor_document` mode and the refactored plan above, update the following documents:
+- [ ] Update `README.md`
+- [ ] Update `docs/site/index.html`
+- [ ] Update `docs/site/` MkDocs files
+
+**Subphase Planning:**
+
+- [ ] Using `plan_phase` mode, review subphases P-2, P-3, etc. and add a description for each sufficient to be broken down into stories. 
+- [ ] One by one, plan each subphase (P-2, P-3, etc.)
+
+---
+
+### Story P.?: `project-guide` status is split + v2-leftover — unify into one readout that names *how* it's present (local pip vs toolchain) + show its version (status & self provision) [Planned]
+
+*(v2-wiring removal — same family as the config-source story above. project-guide stopped being a per-project Python dependency in v3, but a v2 status check survived.)*
+
+**Discovered:** 2026-06-13, pyve repo. `pyve status` shows a self-contradiction: `[python]` → Integrations → `project-guide: not installed`, while the `[project-guide]` section directly below → `pyve-hosted (toolchain)`. And `pyve self provision` (which provisioned + linked project-guide) didn't move the "not installed" line.
+
+**Root cause — two readouts checking different locations; the `[python]` one is v2 wiring.** The Integrations row ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)) checks `[[ -x "$env_path/bin/project-guide" ]]` — project-guide pip-installed in the **project venv** (the v2 location). In v3 project-guide is a Pyve-managed **global** tool (toolchain venv + `~/.local/bin` shim), never in `.venv`, so that row reports "not installed" regardless of hosting — and `self provision` can't change it because the row looks at the wrong place. The authoritative `[project-guide]` section (`_compose_status_project_guide`, [status_composer.sh:42](../../lib/status_composer.sh#L42)) reports the real state. The Integrations row is what N.aw's "Python plugin project-guide status stays suppressed" missed.
+
+**Design (developer-specified, 2026-06-13).**
+- **One section / one line.** Keeping a check for a pip-installed project-guide is fine — but it belongs in **one** readout, not split across two contradictory ones. Drop the `[python]` Integrations project-guide row; the `[project-guide]` section is the single home.
+- **Name *how* it's present.** Fold the local-pip check into that one readout: installed locally (pip in the project env) but not in the toolchain → report it as present, labeled **"local pip"** (or similar); in the toolchain → **"pyve-hosted (toolchain)"**; neither → "not installed". (`_compose_status_project_guide` already distinguishes "managed by your project (pip)" vs "pyve-hosted" — make it the sole source and relabel for clarity.)
+- **Show the version, in both places.** Display the resolved project-guide **version** in `pyve status` (e.g. `pyve-hosted (toolchain) v2.15.1` / `local pip v2.15.1`) **and** in `pyve self provision` output (e.g. `Installed project-guide v2.15.1 into the Pyve toolchain`), so it's clear what was installed.
+
+**Tasks (refine at `plan_production_phase`).**
+
+- [ ] Reproduce (red): a pyve-hosted, no-project-venv-copy project → `pyve status` emits BOTH `project-guide: not installed` ([python]) and `pyve-hosted (toolchain)` ([project-guide]). Assert a single, non-contradictory readout after the fix.
+- [ ] Remove the project-guide row from the `[python]` Integrations block ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)); the `[project-guide]` section is the sole readout.
+- [ ] Make `_compose_status_project_guide` name the presence mode — toolchain-hosted / project-local pip / neither — and **probe runnability** (`project-guide --version`), not just `-x` (existence ≠ runnability, Phase P pillar).
+- [ ] Surface the resolved version in the status readout and in `self_provision`'s "Installed project-guide …" line ([self.sh](../../lib/commands/self.sh)).
+- [ ] Tests: hosted-only / local-pip-only / both / neither → one correct labeled readout each, with version; `self provision` prints the installed version.
+
+**Version:** Phase P — v2-wiring removal + existence→runnability. Developer owns number/placement.
+
+---
+
+### Story ?.?: Finish the v3 site — drop v2 spellings in usage/testing + document the env planning/sync workflow [Planned]
+
+**Raised:** 2026-06-09 (developer, after the N.br site refresh).
+
+**Motivation.** N.br (Subphase N-8) refreshed the public site and README for v3 — new pages (`pyve-toml`, `environments`, `plugins`, `polyglot`, `packaging`), a v2→v3 `migration.md`, and full v3 passes on `index` / `getting-started` / `ci-cd` / `backends` / `README`. Two follow-ups were scoped out of N.br to avoid a rushed mechanical edit and surfaced a real content gap:
+
+1. **`usage.md` and `testing.md` got v3 *orientation* passes, not full rewrites.** Their intros, command overviews, and the two-env-model table are v3, and each carries a prominent note mapping `pyve testenv`→`pyve env`, `.pyve/testenvs/`→`.pyve/envs/`, and `[tool.pyve.testenvs]`→`[env.<name>]`. But their **lower-body examples still use the v2 spellings** (~37 in usage, ~60 in testing). The old forms resolve (the `testenv` alias works; legacy paths migrate opportunistically), so nothing is *broken* — but the running examples should be canonical v3.
+2. **The environment planning/sync workflow is undocumented, and `pyve env sync` was omitted from the command references.** The site documents declaring `[env.<name>]` by hand / via `init` / via `migrate`, but **not** the `project-guide mode plan_envs` → `pyve env sync` → `pyve.toml` loop that is the intended "configure your environments" path. `pyve env sync` (shipped: N.az.2 / N.ba) is missing from `environments.md` / `usage.md` / `README` command lists, and the `pyve check` env-spec **drift** surface is undocumented.
+
+**Tasks**
+
+*Group A — drop the v2 spellings (mechanical sweep).*
+
+- [ ] **`usage.md`** — convert the lower-body Command Reference examples: `pyve testenv …` → `pyve env …`, `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`, `[tool.pyve.testenvs]` → `pyve.toml`'s `[env.<name>]`. Fix the `#testenv-subcommand` anchor/link references. Keep one explicit "`pyve testenv` is a deprecated alias (removed v4.0)" note; make every running example canonical.
+- [ ] **`testing.md`** — same sweep across the lifecycle / named-test-env / activation-context / backend-deltas sections; rewrite the `[tool.pyve.testenvs]` worked examples as `pyve.toml` `[env.<name>]` blocks; fix the `.pyve/testenvs/testenv/venv` and `.pyve/envs/<name>/` path references in "Backend deltas".
+- [ ] Re-run the link/anchor check; confirm no dead `#…` fragments after the rename.
+
+*Group B — document the planning/sync workflow (new content; the gap).*
+
+- [ ] **Add `pyve env sync` to every command reference** where it's missing (`environments.md`, `usage.md`, `README.md`): discover the spec → diff vs the current `pyve.toml` → `[Y/n]` apply (default `Y`; **destructive** drops/backend-flips default `N`); writes `pyve.toml` only, never materializes; note exit `6` (spec invalid under the closed vocabulary).
+- [ ] **Add a "Planning environments with project-guide" section** to `environments.md` (with pointers from `getting-started.md` / `usage.md`): `project-guide mode plan_envs` authors `docs/specs/env-dependencies.md` §4 (the analyzed-*ideal* env config at the current `spec_version`) → `pyve env sync` reconciles it into `pyve.toml` → lifecycle commands materialize. Explain the *why*: one declarative source of intent; the spec may legitimately run ahead of what's materialized.
+- [ ] **Document the `pyve check` env-spec drift surface** — non-empty §4-vs-`pyve.toml` diff → **warn (exit 0)**, with the "run `pyve env sync` to reconcile" hint; note Pyve reads `env_spec_path` from `.project-guide.yml` (default `docs/specs/env-dependencies.md`).
+- [ ] **Document the projectable subset** that syncs/diffs (`name`, `purpose`, `backend`, `default`, `path`, `languages`, `frameworks`, `packaging`) vs. advisory/prose that never triggers drift (`app_type`, `require_min_version`, `manual_steps`, §5–§9 narrative).
+- [ ] **Link, don't duplicate** — reference the env-spec contract (`project-guide-requests/wizard-env-contract.md`) rather than re-deriving the vocabulary; keep roadmap surfaces honest.
+
+---
+
+### Story ?.?: CLI output still teaches deprecated `pyve testenv` spellings — sweep fresh user-facing suggestions to `pyve env` [Planned]
+
+*(Field-discovered 2026-06-15, `learningfoundry` `pyve init` under v3.0.7. The code-side companion to the docs-only "Finish the v3 site — drop v2 spellings" story above: that one fixes prose in `usage.md`/`testing.md`; this one fixes the strings the binary actually prints.)*
+
+**Discovered.** A fresh `pyve init` ended with a "Next steps" block instructing the user to run `pyve testenv install -r requirements-dev.txt` — the **deprecated v2 spelling**. The `pyve testenv` alias still re-dispatches (with a one-shot warning, removal slated v4.0), so nothing is broken — but Pyve's own freshly-generated output is teaching users a command form it's actively deprecating.
+
+**Root cause — user-facing command *suggestions* were never swept from `testenv` to `env`, and a test locks the old spelling in.** The canonical v3 form is `pyve env install -r requirements-dev.txt` (already used at [pyve.sh:443](../../pyve.sh#L443)), but six user-facing print sites still emit `pyve testenv`:
+
+| Site | Output |
+|---|---|
+| [plugin.sh:2256](../../lib/plugins/python/plugin.sh#L2256) | `pyve init` "Next steps" (the reported one) |
+| [plugin.sh:4087](../../lib/plugins/python/plugin.sh#L4087) | `pyve test` lazy + `PYVE_NO_AUTO_PROVISION=1` hard error: `Run: pyve testenv install <name>` |
+| [plugin.sh:4118](../../lib/plugins/python/plugin.sh#L4118) | `pyve test` pytest-missing interactive skip hint |
+| [plugin.sh:4123](../../lib/plugins/python/plugin.sh#L4123) | `pyve test` pytest-missing non-interactive error |
+| [env.sh:362](../../lib/commands/env.sh#L362), [:1160](../../lib/commands/env.sh#L1160) | `Usage: pyve testenv prune …` |
+
+This shipped green because the next-steps tests **assert the deprecated string** ([test_init_next_steps.bats:64,139](../../tests/unit/test_init_next_steps.bats#L64), [test_init_next_steps.py:50](../../tests/integration/test_init_next_steps.py#L50)) — they encode the bug. Two more tests assert it for the lazy hint ([test_test_env_lazy_autoprovision.bats:102](../../tests/unit/test_test_env_lazy_autoprovision.bats#L102), [test_test_env_resolver.bats:147](../../tests/unit/test_test_env_resolver.bats#L147)).
+
+**Out of scope.** The `pyve testenv` *alias itself* (keep until v4.0). The alias/grammar/completion tests that verify the alias still works ([test_testenv_grammar.bats](../../tests/unit/test_testenv_grammar.bats), [test_completion_bash.bats](../../tests/unit/test_completion_bash.bats), [test_testenv_install_name.bats](../../tests/unit/test_testenv_install_name.bats)) — they must keep using `pyve testenv` on purpose. The docs-site prose sweep (the sibling story above). Code *comments* that mention the alias (not user-facing).
+
+**Tasks.**
+
+- [ ] Reproduce (red): flip the next-steps test assertions to expect `pyve env install -r requirements-dev.txt` and to reject `pyve testenv` ([test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats), [test_init_next_steps.py](../../tests/integration/test_init_next_steps.py)); confirm they fail against current output.
+- [ ] Sweep the six suggestion sites `testenv` → `env`: next-steps ([plugin.sh:2256](../../lib/plugins/python/plugin.sh#L2256) + the doc-comment at [:2227](../../lib/plugins/python/plugin.sh#L2227)), the three `pyve test` hints ([:4087](../../lib/plugins/python/plugin.sh#L4087)/[:4118](../../lib/plugins/python/plugin.sh#L4118)/[:4123](../../lib/plugins/python/plugin.sh#L4123)), the two prune usages ([env.sh:362](../../lib/commands/env.sh#L362)/[:1160](../../lib/commands/env.sh#L1160)).
+- [ ] Update the two lazy-hint test assertions ([test_test_env_lazy_autoprovision.bats:102](../../tests/unit/test_test_env_lazy_autoprovision.bats#L102), [test_test_env_resolver.bats:147](../../tests/unit/test_test_env_resolver.bats#L147)) to `pyve env install …`; leave the alias/grammar/completion tests untouched.
+- [ ] Re-grep `lib/` + `pyve.sh` for any user-facing `pyve testenv` suggestion missed; confirm only the alias-compat tests still reference the old form.
+- [ ] Full suite; zero regressions.
+
+**Version:** Phase P — patch-grade; the unshipped v3.0.7 (with P.a) is a natural home if it lands before release, else its own patch. Developer owns number/placement.
+
+---
+
+### Story ?.?: Reconcile tech-spec.md command/module tables to the v3 plugin file-layout [Planned]
+
+**Raised:** 2026-06-09 (developer, during the N.bq tech-spec cascade).
+
+**Motivation.** The N.bq pass (Subphase N-8) consolidated the plugin region of [tech-spec.md](tech-spec.md) into one `## Plugin layer` section, stripped header archeology, refreshed the enumerated v2 remnants (`pyve.toml`, `.pyve/envs/`, `env` namespace, version globals), and repointed cross-refs — but **deliberately left the deeper file-layout drift** in the `## Key Component Design` command/module tables. Those tables' *behavior/signature* descriptions are still accurate; their *file locations* and inline story refs are stale relative to the v3 relocation: `init`/`purge`/`update`/`check`/`status`/`run`/`test` and the `python` namespace now live in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh); `lib/testenvs.sh` → `lib/envs.sh`; `lib/commands/testenv.sh` → `lib/commands/env.sh`; `lib/commands/` retains only `env.sh` / `lock.sh` / `package.sh` / `self.sh`. A stopgap v3.0 file-layout orientation note was added at the section head; this story removes the need for it.
+
+**Why deferred.** N.bq was scoped as a *targeted in-place refactor*, not a regenerate — a full rewrite of the ~240-line command-table block risked dropping correct technical detail for no release benefit, and release functionality (N-9) outranks doc-table reconciliation. The orientation note keeps the doc honest in the interim. This pairs with the **"Complete phase/story-ref comment sanitization"** Future story above (same story-ref archeology, different surface — code comments there, spec-doc tables here) and could be bundled into one doc/ref-cleanup pass.
+
+**Tasks (sketched; refine when picked up).**
+
+- [ ] Reconcile the `### lib/commands/<name>.sh — Command Implementations` block to the v3 layout: relocate/cross-link the Python command function tables under the Plugin layer's `### Python plugin`, and keep only `env` / `lock` / `package` / `self` as `lib/commands/` residents. Remove the stopgap orientation note once done.
+- [ ] Strip inline `Story X.y` / `Phase`/`Subphase` refs from the function-table bodies (`lib/envs.sh`, `lib/manifest.sh`, the command tables, the `lib/utils.sh` / `lib/version.sh` notes), preserving load-bearing markers (`v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>`).
+- [ ] Fix the `## Package Structure` tree (`tech-spec.md` ~L50): drop the deleted `lib/commands/{init,purge,update,check,status,run,test,testenv,python}.sh` and `lib/testenvs.sh` / `pyve_testenvs_helper.py`; add `lib/plugins/**`, `lib/*_composer.sh`, `lib/envs.sh`, `lib/manifest.sh`, `lib/toolchain_python.sh`, `lib/project_guide.sh`, `pyve.toml`.
+- [ ] Fix the `### pyve.sh — Thin Entry Point` sourcing-order paragraph: it still enumerates deleted command files and a "~500–650 lines post-K.l" framing; replace with the actual v3 source order (helpers → `manifest.sh` → registries → plugins → composers → `env`/`lock`/`package`/`self`).
+- [ ] Diff-review against the live codebase; confirm no surviving reference to a deleted file or non-existent function.
+
+---
+
+## Subphase P-2: Runnability probes and environment healing
 
 ---
 
@@ -118,6 +277,64 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / the `pyve c
 **Version:** Phase P. Pairs with the `pyve check --fix` / `pyve heal` story (heal consumes this detection). Developer owns the number/placement.
 
 ---
+
+### Story ?.?: silent-skip advisory's `root` pytest probe is broken for a venv root + named envs (the standard v3 topology) [Planned]
+
+*(Field-discovered 2026-06-17, `modelfoundry`, while explaining why `pyve test --env smoke-pytorch` listed `testenv typecheck` in the silent-skip advisory. The advisory itself fired correctly; tracing it surfaced a latent false-negative in the `root` probe.)*
+
+**The advisory.** `pyve test --env <X>` runs a guard ([plugin.sh:4129-4160](../../lib/plugins/python/plugin.sh#L4129-L4160)): if any env *other* than the target has pytest importable, it warns, because tests that `pytest.importorskip(...)` a stack absent from the target **silently SKIP and look green**. It probes each candidate via `_test_env_has_pytest <name>` ([plugin.sh:3793-3815](../../lib/plugins/python/plugin.sh#L3793-L3815)), which resolves the env's `bin/python` and runs `import pytest`.
+
+**Bug — the `root` branch resolves the wrong path.** For `root` ([plugin.sh:3797-3806](../../lib/plugins/python/plugin.sh#L3797-L3806)) it does **not** use the canonical resolver: it globs `.pyve/envs/*`, takes the first dir, and builds `<dir>/bin/python`. But venv-backed envs nest under `<dir>/venv/bin/python` (conda under `<dir>/conda/bin/python`), so that path **never exists**. It then assigns `py` to the bogus (non-empty) string, which makes the `[[ -z "$py" ]]` guard **skip the `.venv` fallback**, and the function returns `1` ("no pytest") unconditionally whenever `.pyve/envs/` holds any named env.
+
+**Effect — a false negative in exactly the guard's reason for being.** On the standard v3 topology — a **venv `root` plus named envs under `.pyve/envs/`** — `root` is never correctly probed. If `.venv` actually has pytest, the silent-skip guard **fails to warn** about it. (Harmless in `modelfoundry` only by accident: its `.venv` root genuinely lacks pytest, so the broken probe returns the right answer for the wrong reason.)
+
+**Root cause.** The `root` branch predates the N.bf.14 root-slot model and assumes the pre-N.bf.14 *flat* micromamba layout (`.pyve/envs/<first>` with `conda-meta` directly inside). The non-root branch already does the right thing — `resolve_env_path "$env_name"` — so the fix is to make `root` use the same canonical, backend-aware resolution.
+
+**Out of scope.** The advisory's *heuristic* (multiple deliberately-isolated test envs → a benign false **positive**, silenced by `PYVE_NO_TESTENV_ADVISORY=1`; whether declared `purpose="test"` envs should be exempted from the positive is a separate question). The non-root branch (correct). The mutation-on-read concern lives elsewhere — `pyve test` is a sanctioned write path, so firing the opportunistic migrator via `resolve_env_path root` here is acceptable.
+
+**Tasks.**
+
+- [ ] Reproduce (red): a fixture with a venv `root` carrying pytest in `.venv` **plus** a named `purpose="test"` env; `pyve test --env <named>` → assert `root` appears in the advisory list (it does not today).
+- [ ] Fix `_test_env_has_pytest`'s `root` branch to resolve the interpreter via the canonical backend-aware path (mirror the non-root branch's `resolve_env_path root`: `.venv` for venv, `.pyve/envs/root/conda` for micromamba — or `resolve_main_micromamba_path` for a non-mutating read), and **delete the `.pyve/envs/*` first-dir glob**.
+- [ ] Regression: a venv root **without** pytest + named envs → `root` still excluded (no false positive reintroduced); a micromamba root **with** pytest → `root` correctly detected.
+- [ ] Full suite; zero regressions.
+
+**Version:** Phase P — patch-grade. Developer owns number/placement.
+
+---
+
+### Story ?.?: A declarative `pyve.toml` opt-out for the silent-skip advisory — project-scoped and visible, not a per-shell env var [Planned]
+
+*(Design direction, 2026-06-17, from the `modelfoundry` advisory discussion. Pairs with the `root` pytest-probe story above — same advisory — and resolves its out-of-scope note "whether declared `purpose=test` envs should be exempted… is a separate question.")*
+
+**The gap.** The silent-skip advisory ([plugin.sh:4129-4160](../../lib/plugins/python/plugin.sh#L4129-L4160)) fires on every `pyve test --env <X>` when any other env also has pytest. A project that **deliberately** runs several isolated `purpose = "test"` envs (the `modelfoundry` shape: a default suite + per-framework smoke envs + a `typecheck` env, each with its own pytest) trips it on every run — a benign false positive. The only suppression today is `PYVE_NO_TESTENV_ADVISORY=1` ([plugin.sh:4139](../../lib/plugins/python/plugin.sh#L4139)): per-shell (must re-prefix every invocation), or exported and **leaky** (silences it for *every* project), and **invisible** — nothing in the repo records that the project opted out.
+
+**Why now.** The env var shipped (M.c/M.o) under the assumption that "multiple envs with pytest" was rare — the era of *one main env + one testenv*. v3's named-env model makes a multi-test-env project **mainstream**, so a project-scoped, version-controlled, reviewable suppression belongs in the manifest, consistent with [[`pyve.toml` is the canonical declaration; `.pyve/` holds state only]].
+
+**Design — recommended: an explicit declarative opt-out.** A `pyve.toml` field that says "I run multiple test envs on purpose; don't nag." It preserves the signal as **opt-out** (you consciously declare it), is reviewable in the diff, and doesn't leak across projects. **Open sub-question deferred to `plan_production_phase`: project-wide vs. per-env.**
+- *Project-wide* — one toggle (a new `[pyve]`/`[test]` settings key); one line, but all-or-nothing.
+- *Per-env* — an `[env.<name>]` flag (e.g. `isolated = true`) that suppresses the warning when **targeting** a marked env; surgical (keep the warning for the catch-all `testenv`, silence the deliberate smokes).
+
+**Recorded and rejected-for-now: declaration-as-signal (auto-silence, no field).** Suppress whenever every other pytest-carrying env is itself a declared `purpose = "test"` env. Zero-config and `modelfoundry` goes quiet for free — but it **silently removes a real check**: the silent-skip trap still exists *between* declared test envs (a `smoke-pytorch` test that `importorskip("tensorflow")` vanishes with no trace), and it conflates "declared" with "accepts the tradeoff." That is the kind of magic v3 has been walking back ("empty until demand," "no magic"). Keep an explicit knob.
+
+**Schema-placement question (flag for the planner).** This is a *behavior toggle*, not an env declaration — it doesn't fit `[env.<name>]` cleanly unless per-env, and would be `pyve.toml`'s **first "project preference" key**, possibly seeding a `[pyve]`/`[test]` settings section. Per project-essentials, per-*project* prefs do belong in `pyve.toml` (only per-*user* prefs go to `~/.config/pyve/`), so it is the right home; the section shape is the design call. Must route through the single TOML reader ([`pyve_toml_helper.py`](../../lib/pyve_toml_helper.py) + [`manifest.sh`](../../lib/manifest.sh)) and validate (line-attributed error on a bad value).
+
+**Out of scope.** The `root` pytest-probe bug (separate story above). Changing *when* the advisory fires beyond the opt-out (the heuristic itself). Removing the env var — it stays as a one-off/CI override (matrix mode sets it internally per-subshell); the manifest field is an *additional*, visible surface, and precedence (env var vs. manifest) is a `plan_production_phase` detail.
+
+**Tasks (refine at `plan_production_phase`).**
+
+- [ ] Decide the shape: project-wide toggle vs. per-env `isolated` flag (or both), and the schema home (new `[pyve]`/`[test]` section vs. per-env field).
+- [ ] Schema + reader: add the field to the closed vocabulary in [`pyve_toml_helper.py`](../../lib/pyve_toml_helper.py); expose a [`manifest.sh`](../../lib/manifest.sh) accessor; validate with a line-attributed error.
+- [ ] Gate: route the advisory's suppression check ([plugin.sh:4139](../../lib/plugins/python/plugin.sh#L4139)) through the manifest field as well — env var **or** manifest opt-out suppresses; document precedence.
+- [ ] Tests: a project declaring the opt-out → no advisory on `pyve test --env <X>`; without it → advisory still fires; the env var still works; (per-env shape) targeting an unmarked env still warns.
+- [ ] Docs: [environments.md](../site/environments.md) + [pyve-toml.md](../site/pyve-toml.md) document the field; note the env var remains for one-off/CI use.
+
+**Version:** Phase P. Shape/decompose at `plan_production_phase`. Developer owns number/placement.
+
+---
+
+## Subphase P-3: Declarative env setup
+--- 
 
 ### Story ?.? (megastory): Declarative env setup — an `[env.<name>]` block describes *how the env is set up*, materialized in one shot [Planned]
 
@@ -202,30 +419,7 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 ---
 
-### Story ?.?: `project-guide` status is split + v2-leftover — unify into one readout that names *how* it's present (local pip vs toolchain) + show its version (status & self provision) [Planned]
-
-*(v2-wiring removal — same family as the config-source story above. project-guide stopped being a per-project Python dependency in v3, but a v2 status check survived.)*
-
-**Discovered:** 2026-06-13, pyve repo. `pyve status` shows a self-contradiction: `[python]` → Integrations → `project-guide: not installed`, while the `[project-guide]` section directly below → `pyve-hosted (toolchain)`. And `pyve self provision` (which provisioned + linked project-guide) didn't move the "not installed" line.
-
-**Root cause — two readouts checking different locations; the `[python]` one is v2 wiring.** The Integrations row ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)) checks `[[ -x "$env_path/bin/project-guide" ]]` — project-guide pip-installed in the **project venv** (the v2 location). In v3 project-guide is a Pyve-managed **global** tool (toolchain venv + `~/.local/bin` shim), never in `.venv`, so that row reports "not installed" regardless of hosting — and `self provision` can't change it because the row looks at the wrong place. The authoritative `[project-guide]` section (`_compose_status_project_guide`, [status_composer.sh:42](../../lib/status_composer.sh#L42)) reports the real state. The Integrations row is what N.aw's "Python plugin project-guide status stays suppressed" missed.
-
-**Design (developer-specified, 2026-06-13).**
-- **One section / one line.** Keeping a check for a pip-installed project-guide is fine — but it belongs in **one** readout, not split across two contradictory ones. Drop the `[python]` Integrations project-guide row; the `[project-guide]` section is the single home.
-- **Name *how* it's present.** Fold the local-pip check into that one readout: installed locally (pip in the project env) but not in the toolchain → report it as present, labeled **"local pip"** (or similar); in the toolchain → **"pyve-hosted (toolchain)"**; neither → "not installed". (`_compose_status_project_guide` already distinguishes "managed by your project (pip)" vs "pyve-hosted" — make it the sole source and relabel for clarity.)
-- **Show the version, in both places.** Display the resolved project-guide **version** in `pyve status` (e.g. `pyve-hosted (toolchain) v2.15.1` / `local pip v2.15.1`) **and** in `pyve self provision` output (e.g. `Installed project-guide v2.15.1 into the Pyve toolchain`), so it's clear what was installed.
-
-**Tasks (refine at `plan_production_phase`).**
-
-- [ ] Reproduce (red): a pyve-hosted, no-project-venv-copy project → `pyve status` emits BOTH `project-guide: not installed` ([python]) and `pyve-hosted (toolchain)` ([project-guide]). Assert a single, non-contradictory readout after the fix.
-- [ ] Remove the project-guide row from the `[python]` Integrations block ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)); the `[project-guide]` section is the sole readout.
-- [ ] Make `_compose_status_project_guide` name the presence mode — toolchain-hosted / project-local pip / neither — and **probe runnability** (`project-guide --version`), not just `-x` (existence ≠ runnability, Phase P pillar).
-- [ ] Surface the resolved version in the status readout and in `self_provision`'s "Installed project-guide …" line ([self.sh](../../lib/commands/self.sh)).
-- [ ] Tests: hosted-only / local-pip-only / both / neither → one correct labeled readout each, with version; `self provision` prints the installed version.
-
-**Version:** Phase P — v2-wiring removal + existence→runnability. Developer owns number/placement.
-
----
+## Subphase P-4: Workflow improvements
 
 ### Story ?.?: Bash Coverage (kcov) job uploads only unit-test coverage — integration `kcov-merged` never produced [Planned]
 
@@ -261,65 +455,6 @@ The job stays green only because the Codecov step sets `fail_ci_if_error: false`
 
 - [ ] `test_cross_platform.py::TestPlatformDetection::test_python_platform_info` — `subprocess.TimeoutExpired` on a short `python -c` invocation. Likely environmental (cold asdf shim, Python install triggered by test harness). Add a pre-warm step or bump the timeout if the root cause is benign.
 - [ ] Re-run `make test-integration` after fixes; expect zero failures on a clean checkout.
-
-### Story ?.?: Complete phase/story-ref comment sanitization (deferred from N-7) [Planned]
-
-**Motivation.** N.bd / N.bd.1 swept the conspicuous `# Story N.x` refs (Phase N). The broader all-phase sweep — bare `X.y` refs, `Story M.x`/`J.x`/etc. forms, `Phase`/`Subphase` pointers — was scoped, tooled, and partially auto-cleaned, then **deferred: release functionality (N-8/N-9) outranks comment cosmetics, and the project-essentials guard "No story / phase IDs in code or comments" already stops *new* refs.** This story finishes it when convenient. Full findings, scale (688 candidate lines, all phases), the behavioral-attractor rationale, and the **safe-pattern taxonomy** live in [phase-n-7-audit.md](phase-n-7-audit.md) § 5.
-
-**State at deferral.** First-pass `clean.txt` had 198/688 auto-cleaned (whole-storynum parens deleted; `Story X.y:` prefixes stripped; ` landed` handled; storynum pairs in mixed text marked `XXXX`); 490 left `clean==dirty` (mostly bare single refs in running prose — judgement cases — plus the 20 load-bearing KEEPs). **Nothing applied to source.** Tooling: [`audit_phasestory_refs.py`](../../audit_phasestory_refs.py) (detector / CI-guard candidate) + [`clean_phasestory_refs.py`](../../clean_phasestory_refs.py) (cleaner); the `*_dirty.txt` / `*_clean.txt` are regenerable output.
-
-**Tasks (when resumed)**
-
-- [ ] Per-line judgement on the ~490 `clean==dirty` bare-single refs: strip / rephrase-to-name-the-thing / `[implementation story]` / `<<<DELETE>>>` / keep — preserving load-bearing exceptions (`v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>` labels).
-- [ ] Resolve the `XXXX` pair markers into final content.
-- [ ] Decide scope: Phase-N-only vs all-phase (the 416 older-phase refs are pre-Phase-N historical context).
-- [ ] Write the dumb line-by-line applier (parse `clean.txt`; replace source `path:lineno` with content; `<<<DELETE>>>` removes the line; bottom-up per file) and apply.
-- [ ] Diff-review the full source change (comments-don't-execute — the only prose-quality net) + run the full suite; zero regressions.
-
----
-
-### Story ?.?: Reconcile tech-spec.md command/module tables to the v3 plugin file-layout [Planned]
-
-**Raised:** 2026-06-09 (developer, during the N.bq tech-spec cascade).
-
-**Motivation.** The N.bq pass (Subphase N-8) consolidated the plugin region of [tech-spec.md](tech-spec.md) into one `## Plugin layer` section, stripped header archeology, refreshed the enumerated v2 remnants (`pyve.toml`, `.pyve/envs/`, `env` namespace, version globals), and repointed cross-refs — but **deliberately left the deeper file-layout drift** in the `## Key Component Design` command/module tables. Those tables' *behavior/signature* descriptions are still accurate; their *file locations* and inline story refs are stale relative to the v3 relocation: `init`/`purge`/`update`/`check`/`status`/`run`/`test` and the `python` namespace now live in [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh); `lib/testenvs.sh` → `lib/envs.sh`; `lib/commands/testenv.sh` → `lib/commands/env.sh`; `lib/commands/` retains only `env.sh` / `lock.sh` / `package.sh` / `self.sh`. A stopgap v3.0 file-layout orientation note was added at the section head; this story removes the need for it.
-
-**Why deferred.** N.bq was scoped as a *targeted in-place refactor*, not a regenerate — a full rewrite of the ~240-line command-table block risked dropping correct technical detail for no release benefit, and release functionality (N-9) outranks doc-table reconciliation. The orientation note keeps the doc honest in the interim. This pairs with the **"Complete phase/story-ref comment sanitization"** Future story above (same story-ref archeology, different surface — code comments there, spec-doc tables here) and could be bundled into one doc/ref-cleanup pass.
-
-**Tasks (sketched; refine when picked up).**
-
-- [ ] Reconcile the `### lib/commands/<name>.sh — Command Implementations` block to the v3 layout: relocate/cross-link the Python command function tables under the Plugin layer's `### Python plugin`, and keep only `env` / `lock` / `package` / `self` as `lib/commands/` residents. Remove the stopgap orientation note once done.
-- [ ] Strip inline `Story X.y` / `Phase`/`Subphase` refs from the function-table bodies (`lib/envs.sh`, `lib/manifest.sh`, the command tables, the `lib/utils.sh` / `lib/version.sh` notes), preserving load-bearing markers (`v3.0-only: remove in N-10`, `BOUNDARY`, `N.i-pending`, `F<n>`).
-- [ ] Fix the `## Package Structure` tree (`tech-spec.md` ~L50): drop the deleted `lib/commands/{init,purge,update,check,status,run,test,testenv,python}.sh` and `lib/testenvs.sh` / `pyve_testenvs_helper.py`; add `lib/plugins/**`, `lib/*_composer.sh`, `lib/envs.sh`, `lib/manifest.sh`, `lib/toolchain_python.sh`, `lib/project_guide.sh`, `pyve.toml`.
-- [ ] Fix the `### pyve.sh — Thin Entry Point` sourcing-order paragraph: it still enumerates deleted command files and a "~500–650 lines post-K.l" framing; replace with the actual v3 source order (helpers → `manifest.sh` → registries → plugins → composers → `env`/`lock`/`package`/`self`).
-- [ ] Diff-review against the live codebase; confirm no surviving reference to a deleted file or non-existent function.
-
----
-
-### Story ?.?: Finish the v3 site — drop v2 spellings in usage/testing + document the env planning/sync workflow [Planned]
-
-**Raised:** 2026-06-09 (developer, after the N.br site refresh).
-
-**Motivation.** N.br (Subphase N-8) refreshed the public site and README for v3 — new pages (`pyve-toml`, `environments`, `plugins`, `polyglot`, `packaging`), a v2→v3 `migration.md`, and full v3 passes on `index` / `getting-started` / `ci-cd` / `backends` / `README`. Two follow-ups were scoped out of N.br to avoid a rushed mechanical edit and surfaced a real content gap:
-
-1. **`usage.md` and `testing.md` got v3 *orientation* passes, not full rewrites.** Their intros, command overviews, and the two-env-model table are v3, and each carries a prominent note mapping `pyve testenv`→`pyve env`, `.pyve/testenvs/`→`.pyve/envs/`, and `[tool.pyve.testenvs]`→`[env.<name>]`. But their **lower-body examples still use the v2 spellings** (~37 in usage, ~60 in testing). The old forms resolve (the `testenv` alias works; legacy paths migrate opportunistically), so nothing is *broken* — but the running examples should be canonical v3.
-2. **The environment planning/sync workflow is undocumented, and `pyve env sync` was omitted from the command references.** The site documents declaring `[env.<name>]` by hand / via `init` / via `migrate`, but **not** the `project-guide mode plan_envs` → `pyve env sync` → `pyve.toml` loop that is the intended "configure your environments" path. `pyve env sync` (shipped: N.az.2 / N.ba) is missing from `environments.md` / `usage.md` / `README` command lists, and the `pyve check` env-spec **drift** surface is undocumented.
-
-**Tasks**
-
-*Group A — drop the v2 spellings (mechanical sweep).*
-
-- [ ] **`usage.md`** — convert the lower-body Command Reference examples: `pyve testenv …` → `pyve env …`, `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`, `[tool.pyve.testenvs]` → `pyve.toml`'s `[env.<name>]`. Fix the `#testenv-subcommand` anchor/link references. Keep one explicit "`pyve testenv` is a deprecated alias (removed v4.0)" note; make every running example canonical.
-- [ ] **`testing.md`** — same sweep across the lifecycle / named-test-env / activation-context / backend-deltas sections; rewrite the `[tool.pyve.testenvs]` worked examples as `pyve.toml` `[env.<name>]` blocks; fix the `.pyve/testenvs/testenv/venv` and `.pyve/envs/<name>/` path references in "Backend deltas".
-- [ ] Re-run the link/anchor check; confirm no dead `#…` fragments after the rename.
-
-*Group B — document the planning/sync workflow (new content; the gap).*
-
-- [ ] **Add `pyve env sync` to every command reference** where it's missing (`environments.md`, `usage.md`, `README.md`): discover the spec → diff vs the current `pyve.toml` → `[Y/n]` apply (default `Y`; **destructive** drops/backend-flips default `N`); writes `pyve.toml` only, never materializes; note exit `6` (spec invalid under the closed vocabulary).
-- [ ] **Add a "Planning environments with project-guide" section** to `environments.md` (with pointers from `getting-started.md` / `usage.md`): `project-guide mode plan_envs` authors `docs/specs/env-dependencies.md` §4 (the analyzed-*ideal* env config at the current `spec_version`) → `pyve env sync` reconciles it into `pyve.toml` → lifecycle commands materialize. Explain the *why*: one declarative source of intent; the spec may legitimately run ahead of what's materialized.
-- [ ] **Document the `pyve check` env-spec drift surface** — non-empty §4-vs-`pyve.toml` diff → **warn (exit 0)**, with the "run `pyve env sync` to reconcile" hint; note Pyve reads `env_spec_path` from `.project-guide.yml` (default `docs/specs/env-dependencies.md`).
-- [ ] **Document the projectable subset** that syncs/diffs (`name`, `purpose`, `backend`, `default`, `path`, `languages`, `frameworks`, `packaging`) vs. advisory/prose that never triggers drift (`app_type`, `require_min_version`, `manual_steps`, §5–§9 narrative).
-- [ ] **Link, don't duplicate** — reference the env-spec contract (`project-guide-requests/wizard-env-contract.md`) rather than re-deriving the vocabulary; keep roadmap surfaces honest.
 
 ---
 
@@ -409,7 +544,11 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 
 ---
 
-### Story-Group: Security & Bootstrap Hardening
+## Future
+
+---
+
+## Subphase ?-?: Security & Bootstrap Hardening
 
 **What these are.** Two I.h-audit-driven hardening items on the micromamba *bootstrap download* (the binary pyve fetches when a user has no micromamba): cryptographic integrity verification of the downloaded tarball, and pinning its version instead of always fetching `latest`. Neither is user-requested — they close known gaps a security reviewer would flag, not workflows anyone is blocked on.
 
@@ -427,10 +566,6 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 - Linking the binary-version pin to `pyve lock` was considered and rejected for now: micromamba is machine-level pyve *infrastructure* (shared `~/.pyve/bin`, like the toolchain Python), not per-project data — letting a per-project lock dictate a shared binary invites churn/conflict between projects, for a reproducibility benefit the lock already delivers.
 
 **Disposition.** Deferred to a future dedicated security pass. The dependency-reproducibility benefit `pyve lock` provides is sufficient for now; the marginal integrity/pin gains don't yet justify the per-release maintenance discipline. Pick these up if a security review specifically asks for download integrity, or if a regressing micromamba `latest` makes the pin worth its upkeep. If revived, version pinning is the higher-value of the two and is the natural prerequisite for the hardcoded-hash table.
-
----
-
-## Future
 
 ---
 
