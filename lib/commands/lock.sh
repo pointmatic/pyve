@@ -31,7 +31,7 @@ fi
 # Story M.q surface (extends to per-testenv locking):
 #   pyve lock                  → main env (existing behavior)
 #   pyve lock --env <name>     → lock the named conda-backed testenv
-#                                (uses [tool.pyve.testenvs.<name>].manifest;
+#                                (uses [env.<name>].manifest from pyve.toml;
 #                                output: <manifest-basename>-lock.yml
 #                                sibling to the manifest)
 #   pyve lock --all            → main env + every conda-backed testenv
@@ -236,8 +236,8 @@ _lock_one_env() {
         return 1
     fi
     if ! is_env_declared "$name"; then
-        log_error "pyve lock --env: testenv '$name' is not declared in [tool.pyve.testenvs]."
-        log_error "Declare it under [tool.pyve.testenvs.$name] in pyproject.toml."
+        log_error "pyve lock --env: testenv '$name' is not declared in pyve.toml."
+        log_error "Declare it under [env.$name] in pyve.toml."
         return 1
     fi
 
@@ -253,8 +253,8 @@ _lock_one_env() {
     manifest="$(_env_manifest_of "$name")" || manifest=""
     if [[ -z "$manifest" ]]; then
         log_error "pyve lock --env: testenv '$name' has no 'manifest' declared."
-        log_error "Add: [tool.pyve.testenvs.$name]"
-        log_error "     manifest = \"<environment.yml path>\""
+        log_error "Add: [env.$name]"
+        log_error "     manifest = \"<environment.yml path>\" (in pyve.toml)"
         return 1
     fi
     if [[ ! -f "$manifest" ]]; then

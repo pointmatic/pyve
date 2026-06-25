@@ -243,6 +243,25 @@ setup() {
     [[ "$output" == *"All done."* ]]
 }
 
+# Story O.j — footer_box is status-aware: a non-zero exit code renders a
+# failure box (✘ Failed.), never the green '✔ All done.'.
+@test "ui.sh: footer_box with non-zero exit renders a failure box, not 'All done.'" {
+    run bash -c "source '$UI_PATH'; NO_COLOR=1 footer_box 1"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"╭"* ]]
+    [[ "$output" == *"╯"* ]]
+    [[ "$output" != *"All done."* ]]
+    [[ "$output" == *"Failed."* ]]
+    [[ "$output" == *"✘"* ]]
+}
+
+@test "ui.sh: footer_box with explicit 0 still renders 'All done.'" {
+    run bash -c "source '$UI_PATH'; NO_COLOR=1 footer_box 0"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"All done."* ]]
+    [[ "$output" != *"Failed."* ]]
+}
+
 #============================================================
 # bash 3.2 compatibility (H.e.7a regression guard)
 #   macOS /bin/bash is 3.2.57; pyve.sh uses `set -euo pipefail`

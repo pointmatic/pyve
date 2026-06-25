@@ -17,9 +17,9 @@
 #   4. Hard-error on lazy envs that have not been provisioned yet,
 #      pointing at `pyve testenv install <name>` (auto-provision is
 #      M.n's job — M.m stays self-contained).
-#   5. Hard-error on conda-backed envs (via `assert_env_venv_backend`
-#      from M.i.1/M.k — `pyve testenv run` is venv-only and the same
-#      gate applies to `pyve test`'s exec).
+#   5. Operate conda-backed envs by routing the exec through
+#      `micromamba run -p <env_path>` (sets CONDA_PREFIX / activate.d /
+#      lib paths), the same backend dispatch `pyve env run` uses.
 #   6. Touch `.state`'s `last_used_at` on the success path (consumed
 #      by M.p's `pyve testenv list / prune`).
 #   7. Have `ensure_env_exists` and `_env_init_conda` write
@@ -161,18 +161,9 @@ TOML
     [ "$status" -eq 0 ]
 }
 
-# ============================================================
-# Conda-backed envs: hard-error (run is venv-only per M.k)
-# ============================================================
-
-@test "pyve test --env <conda-name>: hard-errors (run is venv-only)" {
-    skip "N.i-pending: v2 [tool.pyve.testenvs.<conda>] selector requires read-compat shim"
-    _fixture_default_smoke
-    run test_tests --env hardware
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"hardware"* ]]
-    [[ "$output" == *"conda"* || "$output" == *"micromamba"* ]]
-}
+# Conda-backed envs are now operated via `micromamba run -p` rather than
+# hard-errored off; that dispatch is covered with a v3 `pyve.toml` fixture in
+# tests/unit/test_conda_env_exec.bats (no N.i-pending v2-selector dependency).
 
 # ============================================================
 # No --env: defaults to [tool.pyve.testenvs].default
