@@ -29,11 +29,14 @@ Most language ecosystems are not opinionated about environment setup, and their 
 - **cross_stack_coordination**: Polyglot projects must compose two ecosystems' activation, ignore rules, and teardown by hand, where it's easy to get subtly wrong (PATH ordering, double-activation, half-purges).
 - **per_ecosystem_relearning**: Every new language means relearning a different set of version managers and backends from scratch.
 - **machine_inconsistency**: Setups drift across machines and CI; the "perfect" recipe from one project is hard to find, copy, and apply consistently to the next.
+- **opaque_authoring**: The declaration doesn't teach — a developer (or LLM) can't tell from the manifest which fields are required, what a missing field means, or what default filled it; worse, the generated file can be *incomplete*, so the one fact that matters isn't even written down.
+- **hidden_version_fragile_defaults**: Defaults applied silently at read time make a tool upgrade able to change an existing project's behavior with no record and no warning — the project is not actually pinned to the choices that were made when it was set up.
 - **env_opacity**: When an environment misbehaves, the cause is buried across PATH ordering, version-manager pins, and venv/interpreter symlinks — diagnosing it means hand-tracing (or LLM-scouring) layers no single tool surfaces, and repairing broken managed state means manual (or LLM-repeated) surgery.
 - **fear_of_rebuild**: Environments accrete undeclared state (an ad-hoc `pip install`, an editable source link), so rebuilding feels risky — the "working" environment becomes something to guard rather than something reproducible from its declaration.
 - **secret_safety**: Accidental secret commits and lost `.env` files on teardown are real risks.
 - **cloud_sync_corruption**: Cloud-sync daemons (iCloud, Dropbox, OneDrive, Google Drive) silently corrupt conda environments — projects "break for no reason."
 - **reinit_footguns**: Re-initializing a project can wipe test environments or leave lock files drifted from environment files.
+- **multi_env_lifecycle_chore**: Upgrading or rebuilding several environments is a long, partly-imperative dance — re-typing every setting, then repeating purge / create / install per environment — and a rebuild resets each environment to factory, losing the operational reality the developer had built up.
 - **upgrade_friction**: Moving a project from an old layout to a new one by hand is error-prone and discourages adopting improvements at all.
 
 ### Target Users
@@ -48,7 +51,7 @@ Most language ecosystems are not opinionated about environment setup, and their 
 
 - **Time-to-hello-world**: How quickly a developer goes from a fresh directory to running their first line of project code, across any stack (primary metric).
 - **Adoption breadth**: Pyve usage per project, proxied by GitHub clones/downloads and Homebrew installs.
-- **Command diversity**: Whether users exercise the full surface area (`pyve run`, `pyve test`, `pyve check`, `pyve status`, `pyve lock`, `pyve env`, `pyve package`) or just `pyve init` — broader use signals deeper integration into workflow.
+- **Command diversity**: Whether users exercise the full surface area (`pyve run`, `pyve test`, `pyve check`, `pyve status`, `pyve upgrade`, `pyve lock`, `pyve env`, `pyve package`) or just `pyve init` — broader use signals deeper integration into workflow.
 - **Migration uptake**: How readily existing v2 projects move to the v3 manifest via `pyve self migrate` rather than stalling on an old layout.
 - **Community signal**: Organic mentions and recommendations on developer communication channels.
 
@@ -62,7 +65,7 @@ Most language ecosystems are not opinionated about environment setup, and their 
 
 Pyve is a focused command-line tool that gives every project a single, deterministic, declarative entry point for setting up and managing its environments across multiple language ecosystems on macOS and Linux. A root-level `pyve.toml` manifest names each environment and its purpose (`run`, `test`, `utility`, `temp`); language plugins (Python and Node / SvelteKit today, more through a stable contract) materialize those environments through their own backends — per-project virtualized (venv, micromamba, pnpm), with cache-backed and check-only categories designed in — and compose into one direnv-driven activation, one `.gitignore`, and one health report.
 
-With one command (`pyve init`), Pyve auto-detects each stack, pins language versions through the ecosystem's own version managers, configures direnv for auto-activation, secures a `.env` file with `chmod 600`, and self-heals `.gitignore`. `pyve check` and `pyve status` diagnose and snapshot; `pyve run` and `pyve test` execute inside the right environment; `pyve purge` removes Pyve's footprint while preserving user data; and `pyve self migrate` moves a v2 project onto the v3 manifest in one step. Pyve orchestrates existing tools rather than replacing them — staying small, scriptable, and easy to reason about.
+With one command (`pyve init`), Pyve auto-detects each stack, pins language versions through the ecosystem's own version managers, configures direnv for auto-activation, secures a `.env` file with `chmod 600`, and self-heals `.gitignore`. An interactive wizard does the authoring, so the `pyve.toml` it writes is *fully explicit* — every resolved value (backend, version, env names) recorded, with each default frozen at authoring time rather than re-applied silently on the next run. `pyve check` and `pyve status` diagnose and snapshot; `pyve run` and `pyve test` execute inside the right environment; `pyve upgrade` re-resolves an environment's dependencies in place; `pyve purge` removes Pyve's footprint while preserving user data; and `pyve self migrate` moves a v2 project onto the v3 manifest in one step. Rebuilding an environment restores whatever it was; only purge resets it. Pyve orchestrates existing tools rather than replacing them — staying small, scriptable, and easy to reason about.
 
 ### Goals
 
@@ -75,6 +78,9 @@ With one command (`pyve init`), Pyve auto-detects each stack, pins language vers
 - **Provide health visibility** through `pyve check` and `pyve status` so developers can diagnose drift, corruption, or misconfiguration without tribal knowledge.
 - **Make environment resolution explainable and self-healing** — when a command resolves to an unexpected interpreter or a managed artifact breaks, Pyve names *where* it resolved and *why* (PATH-slot order, version-manager pin, venv↔pin interpreter drift) instead of leaving the developer to hand-trace, and repairs its own managed state safely, reversibly, and confirm-before-destroy.
 - **Make environments faithfully reproducible** so the developer never fears a rebuild — an environment is a pure function of its declaration; Pyve preserves one only to save reconstruction cost or hold a validated snapshot, never because it is irreplaceable.
+- **Make the declaration explicit and teachable** — `pyve.toml` records every resolved value, so a developer or LLM can read it and know exactly what the project is and what every field means; the wizard does the authoring, so explicitness is never a hand-editing burden.
+- **Make defaults stable across Pyve versions** — a default is resolved once and pinned into the manifest; a later default change is *surfaced* ("default backend changed `venv`→`X`"), never silently re-applied, so upgrading Pyve never changes an existing project's behavior by surprise.
+- **Make the multi-environment lifecycle one move, not a chore** — rebuild restores each environment to whatever state it was in (a realized-and-installed env comes back realized-and-installed); `pyve upgrade` re-resolves dependencies in place; `--all` fans a lifecycle action across every declared environment; and the `update` (files Pyve manages *around* the project) versus `upgrade`/`init --force` (the *environments themselves*) boundary stays legible.
 - **Offer a clean upgrade path** — `pyve self migrate` moves existing projects onto the v3 manifest deterministically, so adopting improvements never means a hand-edit.
 
 ### Scope
@@ -82,15 +88,20 @@ With one command (`pyve init`), Pyve auto-detects each stack, pins language vers
 **In scope:**
 
 - Orchestrating, per ecosystem, a version manager + an environment backend + direnv as a single workflow (Python: asdf/pyenv + venv/micromamba; Node: nvm/fnm/volta + pnpm/npm/yarn).
-- A declarative root-level `pyve.toml` manifest: `[project]`, `[env.<name>]` (purpose / backend / plugin-private attributes), `[plugins.<lang>]`.
+- A declarative root-level `pyve.toml` manifest: `[project]`, `[env.<name>]` (purpose / backend / plugin-private attributes), `[plugins.<lang>]` — written *fully explicit* by `pyve init` (every resolved value recorded) and the *sole* config source (no scattered side-files).
+- An `[env.<name>]` block that declares *how the environment is set up* — a composable set of plugin-interpreted directives (editable self-install with extras, requirements files, a dependency group, a conda manifest, packages) materialized in one shot, so an environment is reproducible from its declaration alone.
 - Named environments with purposes (`run`, `test`, `utility`, `temp`) and name-based defaults.
+- An authoring wizard that walks a conditional decision-graph — pruning questions that don't apply and narrowing choices from prior answers — as the single source from which the wizard prompts, CLI flags, `--help`, the manifest defaults, and default-drift detection are all derived.
+- Defaults pinned at authoring time and version-stable: a Pyve-version default change is surfaced, never retroactively re-applied to an existing project.
 - A plugin + backend-provider contract so new languages and backends plug into the same composition layer.
 - Composed `init` / `check` / `status` / `purge` / `.envrc` / `.gitignore` across every active plugin, for polyglot as well as single-stack projects.
-- Commands: `init`, `purge`, `update`, `check`, `status`, `run`, `test`, `env`, `lock`, `package` (reserved), `python set` / `python show`, `self install` / `self uninstall` / `self migrate`.
+- Commands: `init`, `purge`, `update`, `upgrade`, `check`, `status`, `run`, `test`, `env`, `lock`, `package` (reserved), `python set` / `python show`, `self install` / `self uninstall` / `self migrate`.
+- A consistent lifecycle verb model: `update` refreshes the files Pyve manages *around* the project; `upgrade` re-resolves an environment's dependencies in place and re-locks; `init --force` / `env init <name> --force` purge and rebuild; `purge` destroys. `--all` fans a root-scoped action across every declared environment, and bare `pyve env <sub>` uniformly operates on the default environment.
+- Reproducible rebuild: `init --force` snapshots each environment's operational state and replays it after rebuild (restore, not factory-reset); only `purge` resets it.
 - Backend auto-detection from project files.
 - Self-healing `.gitignore` template management.
 - Secure `.env` lifecycle (creation, preservation, smart purge).
-- Smart re-init (`pyve update`, `pyve init --force`) and conflict detection.
+- Smart re-init (`pyve update`, `pyve upgrade`, `pyve init --force`) and conflict detection.
 - Per-purpose environments in separate state (`.pyve/envs/<name>/<backend>/`) so rebuilding one (`pyve init --force`) never disturbs another — not because any env is precious, but because each is independently materialized from the manifest.
 - Explainable environment resolution (`pyve check` reports where and why each managed command resolves) and a healing path (`pyve heal` / `pyve check --fix`) that repairs broken managed state with confirm-before-destroy.
 - CI/CD-friendly non-interactive flags (`--no-direnv`, `--auto-bootstrap`, `--strict`, …).
@@ -188,3 +199,17 @@ With one command (`pyve init`), Pyve auto-detects each stack, pins language vers
 **fear_of_rebuild**:
   - Because every environment is a pure function of its `pyve.toml` declaration, the durable, precious thing is the declaration (and, for a `run` env, a lockfile + promoted artifact) — not the mutable env directory, which is freely rebuildable
   - Undeclared, out-of-band state (an ad-hoc `pip install`, an editable link) is treated as a reproducibility defect to fold back into the declaration, not a reason to preserve a directory
+  - An `[env.<name>]` block declares the full setup recipe (editable self-install + extras, requirements, conda manifest, packages), so `pyve env init <name>` reproduces a fully operable environment in one shot rather than leaving undeclared steps to be remembered by hand
+
+**opaque_authoring**:
+  - `pyve init` writes a fully-explicit `pyve.toml` — every resolved value recorded — so the file is self-documenting: a reader can see what every field is and what default filled it
+  - The authoring wizard does the explicit-writing, so completeness never becomes a hand-editing burden; "easy mode" fast-accepts the defaults and still emits the explicit file
+
+**hidden_version_fragile_defaults**:
+  - Each default is resolved once and frozen into `pyve.toml`, so the project behaves identically on the next machine and the next Pyve version
+  - A later default change is *surfaced* as information ("default backend changed `venv`→`X`"), never silently re-applied to the pinned value
+
+**multi_env_lifecycle_chore**:
+  - `pyve upgrade [--env <name> | --all]` re-resolves and re-locks dependencies in place, keeping the environment, instead of a manual purge/create/install cycle
+  - `pyve init --force` (and `pyve env init <name> --force`) snapshot each environment's operational state and replay it after rebuild, so a rebuild restores rather than factory-resets
+  - `--all` fans a lifecycle action across every declared environment in one command, and bare `pyve env <sub>` uniformly targets the default environment
