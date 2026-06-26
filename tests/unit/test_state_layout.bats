@@ -162,9 +162,10 @@ EOF
     #   - lib/commands/self.sh: `pyve self migrate` reads
     #     the legacy paths during detection/backup; its surface refers
     #     to .pyve/testenvs/ by name.
-    #   - lib/utils.sh: the gitignore template line keeping `.pyve/testenvs`
-    #     ignored during the v3.0 transition window (removed in N-10 with
-    #     the rest of the read-compat layer).
+    #   - lib/utils.sh: a doc comment in purge_env_dir noting the legacy v2
+    #     path (`.pyve/testenvs/<name>/`). The gitignore is now built by
+    #     lib/gitignore_composer.sh, which ignores the whole `.pyve/` tree —
+    #     there is no per-`.pyve/testenvs` template line to remove in N-10.
     #
     # Everything else (lib/commands/*.sh other than self.sh, pyve.sh)
     # must route through state_path() / resolve_env_path() / other

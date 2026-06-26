@@ -14,6 +14,11 @@ load ../helpers/test_helper
 
 setup() {
     setup_pyve_env
+    # Capture an absolute working python BEFORE create_test_dir cd's into a
+    # temp dir with no version-manager pin (an asdf shim there errors "No
+    # version is set"). manifest_load needs it to parse pyve.toml. Harmless
+    # for v2 .pyve/config tests (synthesis is pure bash). Mirrors test_manifest.
+    export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
     export PYVE_SCRIPT="$PYVE_ROOT/pyve.sh"
     export CURRENT_VERSION
@@ -90,6 +95,28 @@ teardown() {
     run "$PYVE_SCRIPT" status
     [ "$status" -eq 0 ]
     [[ "$output" == *"Not a pyve"* ]] || [[ "$output" == *"not initialized"* ]] || [[ "$output" == *"pyve init"* ]]
+}
+
+# Story O.g — a v3-native project (pyve.toml, no .pyve/config) must be
+# recognized as a pyve project, not reported "Not a pyve-managed project".
+@test "status: v3-native project (pyve.toml, no .pyve/config) is recognized" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+TOML
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    # Recognized as a project: the Project section renders with the backend.
+    [[ "$output" == *"Project"* ]]
+    [[ "$output" == *"Backend"* ]]
+    [[ "$output" == *"venv"* ]]
+    ! printf '%s' "$output" | grep -q "Not a pyve"
 }
 
 #============================================================

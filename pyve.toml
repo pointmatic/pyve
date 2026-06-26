@@ -9,4 +9,5 @@ backend = "venv"
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
