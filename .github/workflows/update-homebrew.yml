@@ -16,7 +16,7 @@ jobs:
       # shell. The documented CI mechanism during the transition is this env
       # var. Revisit before Homebrew 6.0 / 5.2 removes it.
       - name: Update Homebrew formula
-        uses: dawidd6/action-homebrew-bump-formula@v4
+        uses: dawidd6/action-homebrew-bump-formula@v7
         env:
           HOMEBREW_NO_REQUIRE_TAP_TRUST: "1"
         with:
