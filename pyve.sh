@@ -129,6 +129,14 @@ else
     exit 1
 fi
 
+if [[ -f "$SCRIPT_DIR/lib/param_graph.sh" ]]; then
+    # shellcheck source=lib/param_graph.sh
+    source "$SCRIPT_DIR/lib/param_graph.sh"
+else
+    printf "ERROR: Cannot find lib/param_graph.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/ui/core.sh" ]]; then
     # shellcheck source=lib/ui/core.sh
     source "$SCRIPT_DIR/lib/ui/core.sh"

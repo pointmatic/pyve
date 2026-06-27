@@ -214,15 +214,24 @@ Time-boxed spike to de-risk the decision-graph: pick the Bash representation (as
 
 ---
 
-### Story P.f: Parameter decision-graph — core model & walk engine [Planned]
+### Story P.f: Parameter decision-graph — core model & walk engine [Done]
 
 Build the conditional decision-graph engine (per the P.e spike): nodes with applicability predicates, computed choice sets, *versioned* defaults, and flag/env/owner/required metadata; a top-down walk that prunes irrelevant nodes and narrows choices from prior answers. This is the single source the wizard, flag parser, `--help`, defaults, explicit-manifest writer, and drift detector all consume.
 
-- [ ] Implement the node registry + walk engine (interactive prune + non-interactive flag resolve from the *same* graph).
-- [ ] Framework-owned top nodes (Language, project-guide, `.env`/direnv) + the contribution seam for plugin subtrees (P.h).
-- [ ] Unit tests for pruning, computed choices, and flag-vs-prompt equivalence.
+- [x] Implement the node registry + walk engine (interactive prune + non-interactive flag resolve from the *same* graph).
+- [x] Framework-owned top nodes (Language, project-guide, `.env`/direnv) + the contribution seam for plugin subtrees (P.h).
+- [x] Unit tests for pruning, computed choices, and flag-vs-prompt equivalence.
 
-**Version:** v3.1.0 bundle (Subphase P-1).
+**Implementation.** New framework module [`lib/param_graph.sh`](../../lib/param_graph.sh) (sourced explicitly in [pyve.sh](../../pyve.sh) after `version.sh`), driven by [tests/unit/test_param_graph.bats](../../tests/unit/test_param_graph.bats) (28 cases). Per the P.e spike, the graph is an **indexed array of pipe-delimited 9-field rows** (`name|owner|applicability|choices|default|flag|env|required|label`) walked at runtime — no `declare -A` (bash 3.2 / [test_bash32_compat.bats](../../tests/unit/test_bash32_compat.bats)).
+
+- **Engine:** `pg_add_node` (9-field validation incl. the `|`-in-label guard), a membership-string answers accumulator (`pg_answer_set/get/reset`), applicability resolution (`*` / `key=val` / `@fn`), computed choices/defaults (`@fn`), and `pg_walk <source_fn>` — one traversal that prunes, then resolves each node via a pluggable value-source. **Default-application, choice-set validation, and `required`-enforcement live in the engine (one place)**, so the wizard and flag parser cannot diverge.
+- **Two value-sources prove "one graph, two surfaces":** `pg_source_flags` (precedence flag → env → default) and `pg_source_prompt` (queued/TTY); a test asserts both produce identical answers when accepting defaults. Boolean/`--no-x` negation flags are deferred to P.g (spike risk #2).
+- **Framework nodes + seam:** `pg_register_framework_nodes` (Language, project-guide, direnv) + `pg_register_contributor` / `pg_build_graph` — framework top nodes precede contributed plugin subtrees so Language prunes everything below. P.h wires this onto the plugin contract; P.g migrates the four scattered `pyve init` sites onto the engine.
+- **Versioned-defaults anchor:** `pg_defaults_version` (`PYVE_PARAM_DEFAULTS_VERSION`) — the stamp P.k's drift detection keys off.
+
+**Verification.** Red→green→refactor (the `eval`-based field unpack was refactored to inline `IFS='|' read` for shellcheck-cleanliness). `shellcheck -s bash lib/param_graph.sh`: clean. Full unit suite: **2065 tests, 0 failures** (exit 0). Loads under `/bin/bash 3.2.57` with `set -euo pipefail`; `pyve --version` unaffected.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; the subphase's final code story owns the bundled minor bump. No CHANGELOG entry yet (rides the bundle).
 
 ---
 
