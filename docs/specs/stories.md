@@ -330,13 +330,14 @@ Replace `_init_wizard`'s three sequential `_init_prompt_*` calls with a graph-or
 
 ---
 
-### Story P.g.4: Wizard rewrite (3/3) — finalize the graph-driven wizard [Planned]
+### Story P.g.4: Wizard rewrite (3/3) — finalize the graph-driven wizard [Done]
 
 Tidy the rewrite: confirm `_init_wizard` is fully graph-driven (no residual source-ordered prompt logic), the python-version picker and project-guide deps-skip read cleanly through the walk, and the per-node renderers are the single home for each parameter's prompt. Closing parity sweep + any project-essentials note on the wizard/graph contract.
 
-- [ ] Audit `_init_wizard` for leftover bespoke ordering / dead scaffolding from P.g.2–3; remove it.
-- [ ] Confirm the python-version + project-guide renderers compose cleanly under the walk (no duplicated resolution).
-- [ ] Full behavior-parity sweep + full suite green.
+- [x] Audited `_init_wizard`: it is fully graph-driven (arg-parse → TTY guard → `header_box` → build-graph → node-order render-dispatch walk → return). No residual source-ordered prompt logic or dead scaffolding. Tidied the three `_init_prompt_*` doc-comments to describe the graph-walk dispatch contract instead of the now-historical "extracted from _init_wizard" lineage.
+- [x] Confirmed clean composition: the renderers are the **single** resolution home for each parameter (writing `backend_flag` / `python_version` / `VERSION_MANAGER` / `project_guide_mode` via dynamic scope). `init_project` feeds the wizard-resolved `backend_flag` into `get_backend_priority` as **Priority 1** — layered honoring, not duplicate resolution.
+- [x] Project-essentials entry added — "`pyve init`'s parameters are single-sourced from the decision-graph — never re-create the 4-site pattern" ([docs/specs/project-essentials.md](../../docs/specs/project-essentials.md)): the keystone, parameters-vs-toggles, wizard-only interactivity, the bash-3.2 constraint, and how to add a parameter.
+- [x] Full behavior-parity sweep: `test_init_wizard.bats` 80/80 + `test_init_param_graph.bats` 8/8; **full suite 2079 passing, 0 failures**; shellcheck guard green.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

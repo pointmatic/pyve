@@ -1276,11 +1276,11 @@ _init_wizard() {
     return 0
 }
 
-# Wizard prompt — backend selection. Extracted verbatim from _init_wizard
-# (behavior unchanged): reads the wizard's arg_backend_flag and writes the
+# Wizard prompt — backend selection. Dispatched by _init_wizard's graph walk
+# (the `backend` node). Reads the wizard's arg_backend_flag and writes the
 # resolved backend into the caller's backend_flag via dynamic scope.
 #
-# Prompt 1 — backend (Story L.k.3 + L.k.7 auto handling).
+# backend (Story L.k.3 + L.k.7 auto handling).
 # `--backend auto` is the explicit "let pyve detect" form; treat it
 # like the no-flag auto-detect path so the wizard resolves to a real
 # backend before downstream prompts (Python/project-guide) branch on
@@ -1335,12 +1335,12 @@ _init_prompt_backend() {
     fi
 }
 
-# Wizard prompt — Python version pin. Extracted verbatim from _init_wizard
-# (behavior unchanged): reads backend_flag (set by _init_prompt_backend),
-# arg_python_supplied / arg_python_value; writes python_version and
-# VERSION_MANAGER via dynamic scope.
+# Wizard prompt — Python version pin. Dispatched by _init_wizard's graph walk
+# (the `python-version` node, after `backend`). Reads backend_flag (resolved by
+# the earlier backend node), arg_python_supplied / arg_python_value; writes
+# python_version and VERSION_MANAGER via dynamic scope.
 #
-# Prompt 2 — Python version pin (Story L.k.4). Backend-aware: venv pins
+# Backend-aware (Story L.k.4): venv pins
 # via asdf/pyenv writing .tool-versions / .python-version; micromamba
 # pins via the `python=X` line in environment.yml (the existing
 # scaffolder writes it later in the init flow).
@@ -1469,11 +1469,11 @@ _init_prompt_python_version() {
     fi
 }
 
-# Wizard prompt — project-guide install. Extracted verbatim from _init_wizard
-# (behavior unchanged): reads arg_pg_mode; writes project_guide_mode via
+# Wizard prompt — project-guide install. Dispatched by _init_wizard's graph walk
+# (the `project-guide` node). Reads arg_pg_mode; writes project_guide_mode via
 # dynamic scope.
 #
-# Prompt 3 — project-guide install (Story L.k.5). Detection is keyed on
+# Detection (Story L.k.5) is keyed on
 # `.project-guide.yml` (the canonical install marker, matching what
 # `pyve update` already uses). Deps-managed signal (project-guide
 # declared in pyproject.toml / requirements.txt / environment.yml)
