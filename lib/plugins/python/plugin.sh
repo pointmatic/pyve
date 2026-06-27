@@ -1168,6 +1168,20 @@ _init_build_param_graph() {
     pg_add_node "env-name|python|*|-|-|--env-name|-|no|Environment name|Environment name (micromamba backend)"
 }
 
+# Which graph nodes the interactive wizard prompts for. Interactivity is a
+# wizard-only concern (direnv / env-name ARE applicable to flag resolution —
+# they are simply flag-only, never prompted), so it lives here in the wizard
+# layer rather than in the shared node-row schema. The wizard walks the graph
+# in node order and dispatches each interactive node to its
+# `_init_prompt_<name>` renderer. To add a prompt later (e.g. direnv): add the
+# node name here and define `_init_prompt_direnv`.
+_init_node_is_interactive() {
+    case "$1" in
+        backend|python-version|project-guide) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # Print the full set of flags `pyve init` accepts, one per line: the graph
 # parameters' CLI flags (single-sourced from _init_build_param_graph) followed
 # by the retained operational toggles and --help. This is the single source for
@@ -1241,9 +1255,23 @@ _init_wizard() {
 
     header_box "pyve init"
 
-    _init_prompt_backend
-    _init_prompt_python_version
-    _init_prompt_project_guide
+    # Drive the prompts from the parameter decision-graph: build the graph, then
+    # walk it in node order and dispatch each interactive, applicable node to its
+    # `_init_prompt_<name>` render callback (the bespoke renderers do the
+    # ui_select interaction + side effects via dynamic scope). Prompt order is
+    # now graph data (the order nodes are registered), not source position.
+    # The here-string keeps the loop body in this shell so the renderers'
+    # dynamic-scope writes (backend_flag / python_version / …) propagate.
+    _init_build_param_graph
+    local _wiz_row _wiz_name _wiz_fn
+    while IFS= read -r _wiz_row; do
+        [[ -n "$_wiz_row" ]] || continue
+        _wiz_name="${_wiz_row%%|*}"
+        _init_node_is_interactive "$_wiz_name" || continue
+        pg_applicable "$_wiz_row" || continue
+        _wiz_fn="_init_prompt_${_wiz_name//-/_}"
+        "$_wiz_fn"
+    done <<<"$(pg_list_nodes)"
 
     return 0
 }

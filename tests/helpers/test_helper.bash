@@ -45,6 +45,11 @@ setup_pyve_env() {
     # (lib/project_guide.sh). Source it before the Python plugin so tests
     # that drive init_project have the orchestration defined.
     source "$PYVE_ROOT/lib/project_guide.sh"
+    # The Python plugin's init wizard / valid-flag list build the parameter
+    # decision-graph (pg_* helpers). Source param_graph.sh before the plugin,
+    # mirroring pyve.sh's sourcing order, so every helper-using suite has the
+    # engine defined without per-file source bloat.
+    source "$PYVE_ROOT/lib/param_graph.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"

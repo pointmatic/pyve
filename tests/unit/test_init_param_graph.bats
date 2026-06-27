@@ -74,3 +74,34 @@ EXPECTED_VALID_FLAGS=(
         [[ "$help" == *"$f"* ]] || { echo "show_init_help missing graph flag: $f"; false; }
     done
 }
+
+# ── wizard interactivity seam (P.g.3) ───────────────────────────────
+# The wizard prompts only the 3 interactive nodes (in graph order); direnv /
+# env-name are flag-only. Adding a prompt later = add the node name here +
+# define _init_prompt_<name>.
+
+@test "_init_node_is_interactive: true for the three prompted parameters" {
+    local n
+    for n in backend python-version project-guide; do
+        _init_node_is_interactive "$n" || { echo "expected interactive: $n"; false; }
+    done
+}
+
+@test "_init_node_is_interactive: false for flag-only parameters" {
+    local n
+    for n in direnv env-name nope; do
+        ! _init_node_is_interactive "$n" || { echo "expected non-interactive: $n"; false; }
+    done
+}
+
+@test "every interactive node has a matching _init_prompt_<name> renderer" {
+    _init_build_param_graph
+    local row name fn
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        name="${row%%|*}"
+        _init_node_is_interactive "$name" || continue
+        fn="_init_prompt_${name//-/_}"
+        declare -F "$fn" >/dev/null || { echo "missing renderer: $fn"; false; }
+    done <<<"$(pg_list_nodes)"
+}
