@@ -192,18 +192,25 @@ The framework for completing the UX overhaul and, in the end, delivering a more 
 
 ---
 
-### Story P.e: [Spike] Parameter decision-graph → wizard/flags/help generation in Bash [Planned]
+### Story P.e: [Spike] Parameter decision-graph → wizard/flags/help generation in Bash [Done]
 
 *Architectural spike. The keystone is net-new (verified 2026-06-25): no registry exists; adding one `init` parameter touches ≥4 hand-synced sites, and the plugin contract has no wizard/flag hook. Prove the engine before the extraction.*
 
 Time-boxed spike to de-risk the decision-graph: pick the Bash representation (associative-array tables vs. a generated dispatch) and prove one parameter can drive the wizard prompt, flag parsing, `--help`, and default — from a single node definition — plus the plugin-contributed-subtree seam. Deliverable is the documented decision + a throwaway proof, not production code.
 
-- [ ] Prototype a node schema `{name, applicability, choices, default, flag, env, owner, required}` and a walk that prunes on prior answers.
-- [ ] Prove the same node generates an interactive prompt **and** a non-interactive flag resolution.
-- [ ] Prove a plugin can contribute a subtree (Python's `backend → version-mgr → version`).
-- [ ] Write up the chosen representation + risks; feed P.f/P.g/P.h.
+- [x] Prototype a node schema `{name, applicability, choices, default, flag, env, owner, required}` and a walk that prunes on prior answers.
+- [x] Prove the same node generates an interactive prompt **and** a non-interactive flag resolution.
+- [x] Prove a plugin can contribute a subtree (Python's `backend → version-mgr → version`).
+- [x] Write up the chosen representation + risks; feed P.f/P.g/P.h.
 
-**Version:** v3.1.0 bundle (Subphase P-1). Spike — throwaway.
+**Outcome.** Full write-up: [spike-p-e-decision-graph.md](spike-p-e-decision-graph.md). Throwaway proof: [`scripts/spike_decision_graph.sh`](../../scripts/spike_decision_graph.sh) (runs clean under `/bin/bash 3.2.57`, `set -euo pipefail`; never sourced by `pyve.sh`; delete when P.g retires the four scattered sites). Headlines:
+
+1. **Representation decided — indexed array of pipe-delimited rows, not associative-array tables.** The latter is *ruled out by construction*: `declare -A` needs bash 4.0+, macOS is bash 3.2, and pyve's own suite ([test_bash32_compat.bats](../../tests/unit/test_bash32_compat.bats)) fails the build on `declare -A`/`local -A`. The table is walked at runtime so every sink reads one live artifact (beats codegen'd dispatch, which duplicates data and can't be introspected for `--help`/drift).
+2. **Schema needs a 9th field — `label`.** You can't generate a wizard prompt or a `--help` line without human text. Computed fields use an `@fn` indirection (the row names a function that reads prior answers) — that's how "Backend choices/default are a function of Language + an `environment.yml` heuristic" becomes *data*, not a branch.
+3. **`--help` is a distinct traversal from wizard/flags** (mid-spike finding): help is static with no prior answers, so it must enumerate *all* nodes annotated with their condition — not run the answer-pruning walk. P.g must build help as its own enumeration pass.
+4. **Risks 1–6 carried forward** to P.f/P.g/P.h (multi-condition applicability, boolean/negation flags as a node kind, delimiter-collision guard, per-field `cut` cost, the plugin contribution hook on `contract.sh`, shared validation/required-resolution). Verdict: viable, low-risk — the bash 3.2 constraint forces the cleaner design.
+
+**Version:** v3.1.0 bundle (Subphase P-1). Spike — throwaway (no version bump, no CHANGELOG entry: no shipped behavior; the proof is quarantined in `scripts/` and excluded from the package).
 
 ---
 
