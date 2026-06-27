@@ -1151,6 +1151,43 @@ _init_list_available_python_versions() {
     esac
 }
 
+# Build the `pyve init` parameter decision-graph: the 5 framework-level
+# parameters whose wizard prompt / flag / valid-flag-list / --help / default
+# all derive from one node definition (the keystone, lib/param_graph.sh). The
+# operational toggles (--force, --strict, --bootstrap-to, …) are NOT graph
+# parameters — they stay hand-parsed. Each row carries its full CLI flag-set (a
+# boolean parameter lists both spellings; a negation-only one lists just its
+# `--no-` form) and a `--help` blurb. Defaults are recorded for the wizard /
+# manifest writer; the valid-flag-list generator below consumes only the flags.
+_init_build_param_graph() {
+    pg_reset
+    pg_add_node "backend|python|*|venv,micromamba,auto|@_init_detect_backend_default|--backend|-|no|Backend|Backend to use: venv, micromamba, auto"
+    pg_add_node "python-version|python|*|-|${DEFAULT_PYTHON_VERSION}|--python-version|-|no|Python version|Set Python version (e.g., 3.13.7)"
+    pg_add_node "project-guide|python|*|yes,no|-|--project-guide,--no-project-guide|-|no|Install project-guide|Install/refresh project-guide (post-init hook)"
+    pg_add_node "direnv|python|*|yes,no|yes|--no-direnv|-|no|direnv activation|Skip .envrc creation (for CI/CD)"
+    pg_add_node "env-name|python|*|-|-|--env-name|-|no|Environment name|Environment name (micromamba backend)"
+}
+
+# Print the full set of flags `pyve init` accepts, one per line: the graph
+# parameters' CLI flags (single-sourced from _init_build_param_graph) followed
+# by the retained operational toggles and --help. This is the single source for
+# the unknown_flag_error allow-list — adding a graph parameter no longer means
+# editing a separate hand-maintained list.
+_init_valid_flags() {
+    _init_build_param_graph
+    local row
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        pg_node_flags "$row"
+    done <<<"$(pg_list_nodes)"
+    # Operational toggles (imperative; not decision-graph parameters) + --help.
+    printf '%s\n' \
+        --auto-bootstrap --bootstrap-to --strict --no-lock --node-path \
+        --auto-install-deps --no-install-deps --local-env --force --allow-synced-dir \
+        --project-guide-completion --no-project-guide-completion \
+        --help
+}
+
 # Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
 #
 # Always invoked from init_project(); flags only control whether each
@@ -1687,14 +1724,13 @@ init_project() {
                 shift
                 ;;
             -*)
-                unknown_flag_error "init" "$1" \
-                    --python-version --backend --auto-bootstrap --bootstrap-to \
-                    --strict --no-lock --env-name --no-direnv --node-path \
-                    --auto-install-deps \
-                    --no-install-deps --local-env --force --allow-synced-dir \
-                    --project-guide --no-project-guide \
-                    --project-guide-completion --no-project-guide-completion \
-                    --help
+                # Valid-flag allow-list single-sourced from the parameter
+                # decision-graph (graph flags) ⊕ the operational toggles.
+                local _vf=() _vf_flag
+                while IFS= read -r _vf_flag; do
+                    [[ -n "$_vf_flag" ]] && _vf+=("$_vf_flag")
+                done <<<"$(_init_valid_flags)"
+                unknown_flag_error "init" "$1" "${_vf[@]}"
                 ;;
             *)
                 venv_dir="$1"

@@ -63,14 +63,15 @@ pg_reset() {
     PYVE_PARAM_ANSWERS=" "
 }
 
-# Register one node from a pipe-delimited row. Validates the row carries exactly
-# 9 fields (8 delimiters): a label that smuggled a '|' would silently shift
-# every field, so reject it loudly rather than mis-parse.
+# Register one node from a pipe-delimited row. The row carries 9 fields, or 10
+# with the optional trailing `help` blurb (8 or 9 delimiters). A label/help that
+# smuggled a '|' would silently shift every field, so reject any other count
+# loudly rather than mis-parse.
 pg_add_node() {
     local row="$1"
     local pipes="${row//[^|]/}"
-    if [[ ${#pipes} -ne 8 ]]; then
-        printf 'pg_add_node: malformed row (need 9 |-delimited fields): %s\n' "$row" >&2
+    if [[ ${#pipes} -ne 8 && ${#pipes} -ne 9 ]]; then
+        printf 'pg_add_node: malformed row (need 9 or 10 |-delimited fields): %s\n' "$row" >&2
         return 1
     fi
     PYVE_PARAM_NODES+=("$row")
@@ -86,6 +87,32 @@ pg_list_nodes() {
     local row
     for row in "${PYVE_PARAM_NODES[@]+"${PYVE_PARAM_NODES[@]}"}"; do
         printf '%s\n' "$row"
+    done
+}
+
+# Echo a node's `help` blurb (10th field), falling back to its `label` (9th)
+# when the row omits the optional help field. The blurb is the generation input
+# for `--help`-style descriptions; the label is the wizard prompt.
+pg_node_help() {
+    local name owner appl choices default flag env req label help
+    IFS='|' read -r name owner appl choices default flag env req label help <<<"$1"
+    if [[ -n "$help" ]]; then printf '%s\n' "$help"; else printf '%s\n' "$label"; fi
+}
+
+# Echo a node's CLI flag(s), one per line. The `flag` field may be a comma-list
+# (a boolean parameter exposes `--x,--no-x`; a negation-only one exposes just
+# `--no-x`), so the valid-flag-list generator enumerates them without knowing
+# the node's kind.
+pg_node_flags() {
+    local name owner appl choices default flag env req label
+    IFS='|' read -r name owner appl choices default flag env req label <<<"$1"
+    local f
+    local rest="$flag"
+    while [[ -n "$rest" ]]; do
+        f="${rest%%,*}"
+        printf '%s\n' "$f"
+        [[ "$rest" == *,* ]] || break
+        rest="${rest#*,}"
     done
 }
 

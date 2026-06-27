@@ -235,14 +235,75 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 
 ---
 
-### Story P.g: Migrate `pyve init` wizard / flags / help onto the graph [Planned]
+### Story P.f.1: Establish a clean `shellcheck` baseline across `pyve.sh` + `lib/` [Planned]
 
-Retire the ≥4 scattered sites. Replace `_init_wizard` ([plugin.sh:1181](../../lib/plugins/python/plugin.sh#L1181)), the flag `case` loop ([plugin.sh:1558](../../lib/plugins/python/plugin.sh#L1558)), the `unknown_flag_error` allow-list ([plugin.sh:1690](../../lib/plugins/python/plugin.sh#L1690)), and `show_init_help` ([plugin.sh:2271](../../lib/plugins/python/plugin.sh#L2271)) with generation from the graph — a pure DRY consolidation (params are already 1:1 across the sites).
+*(Developer-requested housekeeping, 2026-06-27. Parked at the P.f.1 slot as a standalone, order-independent hygiene story — not a semantic child of P.f. Pre-existing shellcheck findings surface on **every** feature story's lint step (the mode's "run linting" beat), creating recurring noise that isn't owned by any story. Clear them once so future stories' lint steps only show findings the story itself introduced.)*
 
-- [ ] Generate the wizard prompts + order from the graph (prompt order is data, not source position).
-- [ ] Generate flag parsing + the valid-flag list + `--help` from the graph.
-- [ ] Resolve defaults from the graph's (versioned) defaults; remove the scattered initializers.
-- [ ] Behavior-parity tests vs. the current wizard/flags/help; full suite green.
+**Current baseline** (`shellcheck -s bash` over `pyve.sh` + every `lib/**/*.sh`, 2026-06-27): warnings/errors by code — **16× SC2034** (unused var), **6× SC2155** (declare+assign masks the command's exit status), **4× SC2206** (unquoted `$(...)`/array word-split), **2× SC2115** (`rm -rf "$x/"` with no empty-var guard — the highest-risk), **1× SC2064** (trap expands now, not on signal); plus info-level **6× SC1091** (source-not-followed), **4× SC2016**, **2× SC2086**, **1× SC2153**, **1× SC1003**. Per-file warning/error hotspots: `pyve.sh` (7), `lib/plugins/python/plugin.sh` (5), `lib/commands/self.sh` (3), `lib/version.sh` / `lib/micromamba_bootstrap.sh` / `lib/manifest.sh` / `lib/commands/env.sh` (2 each), `lib/utils.sh` / `lib/micromamba_env.sh` / `lib/envs.sh` (1 each). *(Counts are a snapshot — re-run at implementation time; P.f/P.g code is already shellcheck-clean and excluded.)*
+
+**Approach — triage each finding into one of three buckets, never blanket-suppress:**
+1. **Fix** — real defects or easy correctness wins. SC2115 first (guard `rm -rf "${x:?}/"` so an empty var can't target `/`), then SC2155 (split `local x; x="$(cmd)"` so the substitution's exit status isn't masked — the same pattern project-essentials already mandates for `pyve_toolchain_python`), SC2206 (read into arrays safely), SC2064 (single-quote the trap action).
+2. **Suppress with a one-line justification** — intentional patterns. SC2034 for deliberately-exposed globals (matching the existing `# shellcheck disable=SC2034 # <reason>` idiom in `lib/manifest.sh` / `lib/ui/core.sh`), SC2016 single-quotes-on-purpose, SC2086 where word-splitting is wanted. Every disable carries a reason comment.
+3. **Leave as documented info-noise** — SC1091 (source-not-followed) is unfixable without `-x`/`source=` directives the CI invocation doesn't pass; note it rather than chase it.
+
+**Tasks.**
+
+- [ ] Re-run the tree-wide `shellcheck -s bash` and snapshot the current findings (the list above may have shifted).
+- [ ] Resolve all **warning/error**-level findings by the triage rule — **fix** the correctness ones (SC2115/SC2155/SC2206/SC2064), **suppress-with-reason** the intentional ones (SC2034/SC2016/SC2086). Each suppression names *why*.
+- [ ] Decide info-level handling (SC1091/SC2016/SC2086/SC2153/SC1003): fix cheaply or document as accepted noise; no silent blanket ignores.
+- [ ] Add a lint **regression guard**: a bats test (e.g. `tests/unit/test_shellcheck_clean.bats`) that runs `shellcheck -s bash` over `pyve.sh` + `lib/**/*.sh` and asserts zero **warning/error** findings — skipped when `shellcheck` isn't installed (mirroring the bats-missing skip in the Makefile). This makes "clean baseline" self-enforcing so it can't silently rot.
+- [ ] Full unit suite green (incl. the new guard); no behavioral change to any command.
+
+**Out of scope.** The CI workflow's `... -exec shellcheck {} + || true` line ([.github/workflows/test.yml](../../.github/workflows/test.yml)) — flipping it to blocking is a separate call (the new bats guard already enforces cleanliness in the test suite). `tests/**` shellcheck findings (bats files trip SC1091/SC2329 by design — out of the `pyve.sh`+`lib/` scope). Any finding whose fix would change runtime behavior (raise it as its own story, don't smuggle a behavior change into a lint pass).
+
+**Version:** v3.1.0 bundle (Subphase P-1) — hygiene, no version bump.
+
+---
+
+### Story P.g (split): Migrate `pyve init` wizard / flags / help onto the graph
+
+*Split at implementation time (developer-directed) into the **P.g.1 → P.g.2 → P.g.3** bundle below. Two scoping decisions taken at the split: **(1) flag coverage = parameter subset.** Only the ~5 true decision-graph parameters — `--backend`, `--python-version`, `--project-guide`/`--no-project-guide`, `--no-direnv` (direnv), `--env-name` — are generated from the graph. The ~14 operational toggles (`--force`, `--strict`, `--no-lock`, `--bootstrap-to`, `--node-path`, `--auto-install-deps`, `--no-install-deps`, `--local-env`, `--allow-synced-dir`, `--auto-bootstrap`, `--project-guide-completion`/`--no-`, the legacy `--update` hard-error) stay hand-parsed; `--help` and the valid-flag allow-list **merge** graph-generated + hand-maintained entries. **(2) Three-way split** by surface: non-interactive → interactive → cleanup. The original four sites being retired: `_init_wizard` ([plugin.sh:1181](../../lib/plugins/python/plugin.sh#L1181)), the flag `case` loop ([plugin.sh:1558](../../lib/plugins/python/plugin.sh#L1558)), the `unknown_flag_error` allow-list ([plugin.sh:1690](../../lib/plugins/python/plugin.sh#L1690)), `show_init_help` ([plugin.sh:2271](../../lib/plugins/python/plugin.sh#L2271)). The init parameter nodes are defined by a Python-plugin graph builder in this bundle; **P.h** later refactors that registration onto the plugin contract hook (this bundle does not pre-empt it).*
+
+---
+
+### Story P.g.1: `pyve init` non-interactive surface — flag parsing, valid-flag list, `--help` from the graph [Done]
+
+Define the `pyve init` parameter-subset decision-graph (Python-plugin builder calling `pg_add_node`) and generate the **non-interactive** surfaces from it: flag resolution for the 5 parameters (via the engine's flag source), the merged `unknown_flag_error` valid-flag allow-list, and the merged `show_init_help` text. Operational toggles remain hand-parsed; the wizard is untouched in this story. Lands the boolean/`--no-x` negation handling deferred from P.f (for `--no-project-guide`, `--no-direnv`).
+
+*Refined at implementation time: the parity surface is **substring-based** (the unknown-flag list and `--help` assertions check for flag tokens, not byte-exact text), so P.g.1 single-sources init's **static flag metadata** from the graph — the valid-flag allow-list and the simple `--help` Options lines. Flag *resolution routing* through the engine (replacing the hand `case` arms) and the boolean flag-**resolution** source move to **P.g.3**, where the hand parser is actually removed — keeping P.g.1 additive and low-risk (it changes generated metadata, not parsing behavior).*
+
+- [x] Python-plugin graph builder (`_init_build_param_graph`) defines the 5 parameter nodes (backend, python-version, project-guide, direnv, env-name) with versioned defaults, the `environment.yml`→micromamba computed backend default (`@_init_detect_backend_default`), each node's full CLI flag-set, and a `--help` blurb.
+- [x] Engine carries the generation inputs: an optional `help` field (`pg_node_help`) and a comma-list `flag` field (`pg_node_flags`). (Boolean `--x`/`--no-x` *resolution* — P.f risk #2 — lands in P.g.3 with the parsing routing.)
+- [x] Generate the valid-flag allow-list (graph flag-sets ⊕ retained operational toggles ⊕ `--help`) via `_init_valid_flags` and route `unknown_flag_error` through it — the real DRY win (flag names single-sourced). `show_init_help` stays hand-authored (its text is the canonical doc, not duplicated metadata); byte-faithful help *generation* with per-flag metavars is deferred (revisited in P.g.3 if still wanted).
+- [x] Parity + drift-guard tests: generated valid-flag set equals the current hardcoded set; a guard test asserts `show_init_help` mentions every graph param flag (help can't silently drift from the graph); unknown-flag tests green; full suite green.
+
+**Implementation.** Engine ([lib/param_graph.sh](../../lib/param_graph.sh)): optional 10th `help` field + `pg_node_help` (falls back to `label`); comma-list `flag` field + `pg_node_flags`; `pg_add_node` now accepts 9- or 10-field rows. Python plugin ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)): `_init_build_param_graph` (5 nodes) + `_init_valid_flags`; the `init` flag loop's `-*)` arm now builds its allow-list from `_init_valid_flags` instead of a hand-listed set. Tests: [tests/unit/test_param_graph.bats](../../tests/unit/test_param_graph.bats) (+8 engine cases, 33 total) and new [tests/unit/test_init_param_graph.bats](../../tests/unit/test_init_param_graph.bats) (5 cases incl. the set-equality parity test + drift guard).
+
+**Verification.** Red→green per task. `shellcheck -s bash lib/param_graph.sh`: clean; no new findings in `plugin.sh` (the 6 pre-existing are at lines 1833/2185-2189, untouched — owned by [[P.f.1]]). Loads under `/bin/bash 3.2.57`. Full unit suite: **2072 passing**; the only 3 failures (`test_composed_init_matrix.bats` 157/159/160) are **pre-existing & environmental** — they run a real end-to-end `pyve init` that needs asdf Python 3.14.6 installed on the host (absent here), confirmed identical on the pre-change baseline via `git stash`. Not introduced by this story.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.g.2: `pyve init` wizard prompts + order from the graph [Planned]
+
+Generate the **interactive** wizard for the parameter subset from the same graph: prompt order is graph data (not source position), and each node's prompt is rendered via the existing `ui_select`/`ui_*` primitives — including the intricate `--python-version` version-manager picker (installed list + `more…` re-prompt + `skip`) and the backend / project-guide / direnv / env-name prompts. Replace `_init_wizard`'s parameter prompts with the generated walk; preserve the manifest-backend precedence (a declared `[env.root]` backend suppresses the backend prompt) and the project-guide deps-detection auto-skip.
+
+- [ ] Wizard walk drives prompts from the graph in node order, via a prompt value-source bound to `ui_select`.
+- [ ] Faithfully reproduce the python-version picker flow and the backend/project-guide/direnv/env-name prompts, including non-TTY / `PYVE_INIT_NONINTERACTIVE` hard-fail behavior.
+- [ ] Behavior-parity tests vs. the current wizard (`test_init_wizard.bats`, `test_init_ui.bats`); full suite green.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.g.3: Resolve defaults from the graph + remove the scattered initializers [Planned]
+
+Final consolidation: resolve every parameter default from the graph's versioned defaults, delete the now-dead duplicated default logic / scattered initializers left behind by P.g.1–2, and confirm the four original sites are fully retired (no residual hand-synced parameter logic). Closing behavior-parity sweep.
+
+- [ ] Route the 5 parameters' flag *resolution* through the engine (replacing the hand `case` arms), incl. the boolean `--x`/`--no-x` resolution source (P.f risk #2, with mutual-exclusion error); single-source their defaults through the graph and remove the scattered default initializers.
+- [ ] Confirm `_init_wizard` / flag loop / `unknown_flag_error` / `show_init_help` retain only operational-toggle logic; no duplicated parameter handling remains.
+- [ ] Full behavior-parity sweep + full suite green; update project-essentials if a durable convention emerged.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

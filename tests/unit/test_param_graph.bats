@@ -54,9 +54,37 @@ setup() {
     [ "$status" -ne 0 ]
 }
 
-@test "pg_add_node: rejects a label containing the | delimiter" {
-    run pg_add_node "a|framework|*|x,y|x|--a|-|no|bad|label"
+@test "pg_add_node: accepts an optional 10th 'help' field (9 delimiters)" {
+    run pg_add_node "a|framework|*|x,y|x|--a|-|no|A|help text"
+    [ "$status" -eq 0 ]
+}
+
+@test "pg_add_node: rejects a row with more than 10 fields (label/help | smuggling)" {
+    run pg_add_node "a|framework|*|x,y|x|--a|-|no|A|help|extra"
     [ "$status" -ne 0 ]
+}
+
+@test "pg_node_help: returns the 10th field when present" {
+    run pg_node_help "a|framework|*|x,y|x|--a|-|no|A label|Longer help blurb"
+    [ "$output" = "Longer help blurb" ]
+}
+
+@test "pg_node_help: defaults to the label when no help field is given" {
+    run pg_node_help "a|framework|*|x,y|x|--a|-|no|A label"
+    [ "$output" = "A label" ]
+}
+
+@test "pg_node_flags: single flag yields one entry" {
+    run pg_node_flags "a|framework|*|x,y|x|--a|-|no|A"
+    [ "${#lines[@]}" -eq 1 ]
+    [ "${lines[0]}" = "--a" ]
+}
+
+@test "pg_node_flags: comma-list flag yields each flag" {
+    run pg_node_flags "pg|framework|*|yes,no|yes|--project-guide,--no-project-guide|-|no|PG"
+    [ "${#lines[@]}" -eq 2 ]
+    [ "${lines[0]}" = "--project-guide" ]
+    [ "${lines[1]}" = "--no-project-guide" ]
 }
 
 # ────────────────────────────────────────────────────────────────────
