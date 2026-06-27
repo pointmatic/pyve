@@ -262,7 +262,7 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 
 ### Story P.g (split): Migrate `pyve init` wizard / flags / help onto the graph
 
-*Split at implementation time (developer-directed) into the **P.g.1 → P.g.2 → P.g.3** bundle below. Two scoping decisions taken at the split: **(1) flag coverage = parameter subset.** Only the ~5 true decision-graph parameters — `--backend`, `--python-version`, `--project-guide`/`--no-project-guide`, `--no-direnv` (direnv), `--env-name` — are generated from the graph. The ~14 operational toggles (`--force`, `--strict`, `--no-lock`, `--bootstrap-to`, `--node-path`, `--auto-install-deps`, `--no-install-deps`, `--local-env`, `--allow-synced-dir`, `--auto-bootstrap`, `--project-guide-completion`/`--no-`, the legacy `--update` hard-error) stay hand-parsed; `--help` and the valid-flag allow-list **merge** graph-generated + hand-maintained entries. **(2) Three-way split** by surface: non-interactive → interactive → cleanup. The original four sites being retired: `_init_wizard` ([plugin.sh:1181](../../lib/plugins/python/plugin.sh#L1181)), the flag `case` loop ([plugin.sh:1558](../../lib/plugins/python/plugin.sh#L1558)), the `unknown_flag_error` allow-list ([plugin.sh:1690](../../lib/plugins/python/plugin.sh#L1690)), `show_init_help` ([plugin.sh:2271](../../lib/plugins/python/plugin.sh#L2271)). The init parameter nodes are defined by a Python-plugin graph builder in this bundle; **P.h** later refactors that registration onto the plugin contract hook (this bundle does not pre-empt it).*
+*Split at implementation time (developer-directed) into the **P.g.1 → P.g.2 → P.g.100** bundle below. Two scoping decisions taken at the split: **(1) flag coverage = parameter subset.** Only the ~5 true decision-graph parameters — `--backend`, `--python-version`, `--project-guide`/`--no-project-guide`, `--no-direnv` (direnv), `--env-name` — are generated from the graph. The ~14 operational toggles (`--force`, `--strict`, `--no-lock`, `--bootstrap-to`, `--node-path`, `--auto-install-deps`, `--no-install-deps`, `--local-env`, `--allow-synced-dir`, `--auto-bootstrap`, `--project-guide-completion`/`--no-`, the legacy `--update` hard-error) stay hand-parsed; `--help` and the valid-flag allow-list **merge** graph-generated + hand-maintained entries. **(2) Three-way split** by surface: non-interactive → interactive → cleanup. The original four sites being retired: `_init_wizard` ([plugin.sh:1181](../../lib/plugins/python/plugin.sh#L1181)), the flag `case` loop ([plugin.sh:1558](../../lib/plugins/python/plugin.sh#L1558)), the `unknown_flag_error` allow-list ([plugin.sh:1690](../../lib/plugins/python/plugin.sh#L1690)), `show_init_help` ([plugin.sh:2271](../../lib/plugins/python/plugin.sh#L2271)). The init parameter nodes are defined by a Python-plugin graph builder in this bundle; **P.h** later refactors that registration onto the plugin contract hook (this bundle does not pre-empt it).*
 
 ---
 
@@ -270,11 +270,11 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 
 Define the `pyve init` parameter-subset decision-graph (Python-plugin builder calling `pg_add_node`) and generate the **non-interactive** surfaces from it: flag resolution for the 5 parameters (via the engine's flag source), the merged `unknown_flag_error` valid-flag allow-list, and the merged `show_init_help` text. Operational toggles remain hand-parsed; the wizard is untouched in this story. Lands the boolean/`--no-x` negation handling deferred from P.f (for `--no-project-guide`, `--no-direnv`).
 
-*Refined at implementation time: the parity surface is **substring-based** (the unknown-flag list and `--help` assertions check for flag tokens, not byte-exact text), so P.g.1 single-sources init's **static flag metadata** from the graph — the valid-flag allow-list and the simple `--help` Options lines. Flag *resolution routing* through the engine (replacing the hand `case` arms) and the boolean flag-**resolution** source move to **P.g.3**, where the hand parser is actually removed — keeping P.g.1 additive and low-risk (it changes generated metadata, not parsing behavior).*
+*Refined at implementation time: the parity surface is **substring-based** (the unknown-flag list and `--help` assertions check for flag tokens, not byte-exact text), so P.g.1 single-sources init's **static flag metadata** from the graph — the valid-flag allow-list and the simple `--help` Options lines. Flag *resolution routing* through the engine (replacing the hand `case` arms) and the boolean flag-**resolution** source move to **P.g.100**, where the hand parser is actually removed — keeping P.g.1 additive and low-risk (it changes generated metadata, not parsing behavior).*
 
 - [x] Python-plugin graph builder (`_init_build_param_graph`) defines the 5 parameter nodes (backend, python-version, project-guide, direnv, env-name) with versioned defaults, the `environment.yml`→micromamba computed backend default (`@_init_detect_backend_default`), each node's full CLI flag-set, and a `--help` blurb.
-- [x] Engine carries the generation inputs: an optional `help` field (`pg_node_help`) and a comma-list `flag` field (`pg_node_flags`). (Boolean `--x`/`--no-x` *resolution* — P.f risk #2 — lands in P.g.3 with the parsing routing.)
-- [x] Generate the valid-flag allow-list (graph flag-sets ⊕ retained operational toggles ⊕ `--help`) via `_init_valid_flags` and route `unknown_flag_error` through it — the real DRY win (flag names single-sourced). `show_init_help` stays hand-authored (its text is the canonical doc, not duplicated metadata); byte-faithful help *generation* with per-flag metavars is deferred (revisited in P.g.3 if still wanted).
+- [x] Engine carries the generation inputs: an optional `help` field (`pg_node_help`) and a comma-list `flag` field (`pg_node_flags`). (Boolean `--x`/`--no-x` *resolution* — P.f risk #2 — lands in P.g.100 with the parsing routing.)
+- [x] Generate the valid-flag allow-list (graph flag-sets ⊕ retained operational toggles ⊕ `--help`) via `_init_valid_flags` and route `unknown_flag_error` through it — the real DRY win (flag names single-sourced). `show_init_help` stays hand-authored (its text is the canonical doc, not duplicated metadata); byte-faithful help *generation* with per-flag metavars is deferred (revisited in P.g.100 if still wanted).
 - [x] Parity + drift-guard tests: generated valid-flag set equals the current hardcoded set; a guard test asserts `show_init_help` mentions every graph param flag (help can't silently drift from the graph); unknown-flag tests green; full suite green.
 
 **Implementation.** Engine ([lib/param_graph.sh](../../lib/param_graph.sh)): optional 10th `help` field + `pg_node_help` (falls back to `label`); comma-list `flag` field + `pg_node_flags`; `pg_add_node` now accepts 9- or 10-field rows. Python plugin ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)): `_init_build_param_graph` (5 nodes) + `_init_valid_flags`; the `init` flag loop's `-*)` arm now builds its allow-list from `_init_valid_flags` instead of a hand-listed set. Tests: [tests/unit/test_param_graph.bats](../../tests/unit/test_param_graph.bats) (+8 engine cases, 33 total) and new [tests/unit/test_init_param_graph.bats](../../tests/unit/test_init_param_graph.bats) (5 cases incl. the set-equality parity test + drift guard).
@@ -285,19 +285,60 @@ Define the `pyve init` parameter-subset decision-graph (Python-plugin builder ca
 
 ---
 
-### Story P.g.2: `pyve init` wizard prompts + order from the graph [Planned]
+### Story P.g (.2–.4 plan): full wizard rewrite onto a `ui_select` value-source
 
-Generate the **interactive** wizard for the parameter subset from the same graph: prompt order is graph data (not source position), and each node's prompt is rendered via the existing `ui_select`/`ui_*` primitives — including the intricate `--python-version` version-manager picker (installed list + `more…` re-prompt + `skip`) and the backend / project-guide / direnv / env-name prompts. Replace `_init_wizard`'s parameter prompts with the generated walk; preserve the manifest-backend precedence (a declared `[env.root]` backend suppresses the backend prompt) and the project-guide deps-detection auto-skip.
+*Approach chosen by the developer: the **full faithful rewrite** (the graph value-source drives the prompts; each parameter's bespoke rendering + side effects become per-node render/apply callbacks). The old P.g.3 was renumbered to **P.g.100** to free the P.g.3–P.g.99 range for an incremental migration. The parity surface is large (**80 tests** in [test_init_wizard.bats](../../tests/unit/test_init_wizard.bats), many asserting verbatim output strings + caller-variable side effects via dynamic scope), so the rewrite is split into small, each-step-green stories:*
 
-- [ ] Wizard walk drives prompts from the graph in node order, via a prompt value-source bound to `ui_select`.
-- [ ] Faithfully reproduce the python-version picker flow and the backend/project-guide/direnv/env-name prompts, including non-TTY / `PYVE_INIT_NONINTERACTIVE` hard-fail behavior.
-- [ ] Behavior-parity tests vs. the current wizard (`test_init_wizard.bats`, `test_init_ui.bats`); full suite green.
+- ***P.g.2*** — structural extraction: lift the 3 prompt bodies into `_init_prompt_*` functions, still called sequentially (zero behavior change).
+- ***P.g.3*** — convert `_init_wizard` to a `pg_walk` over the param graph + a `ui_select`-bound prompt value-source that dispatches to the extracted renderers (order + applicability become graph data).
+- ***P.g.4*** — refine/finalize: ensure the python-version picker and project-guide deps-skip read cleanly through the walk; confirm `_init_wizard` is fully graph-driven; parity sweep.
+
+*Only the 3 parameters prompted today (backend, python-version, project-guide) are interactive; `direnv`/`env-name` stay flag-only (adding prompts would be a behavior change, not a faithful rewrite). Defaults single-sourcing + scattered-initializer removal remain **P.g.100**.*
+
+---
+
+### Story P.g.2: Wizard rewrite (1/3) — extract the three prompt bodies into `_init_prompt_*` functions [Done]
+
+Pure structural refactor enabling the walk: lift the backend, python-version, and project-guide prompt blocks out of `_init_wizard` into `_init_prompt_backend`, `_init_prompt_python_version`, and `_init_prompt_project_guide`, called sequentially in the same order. Each function reads the wizard's `arg_*` locals and writes `backend_flag` / `python_version` / `VERSION_MANAGER` / `project_guide_mode` via the existing dynamic-scope contract — verbatim moves, **zero behavior change**. The TTY guard + `header_box` stay in `_init_wizard`.
+
+- [x] Extract `_init_prompt_backend` (incl. `--backend`/manifest/auto/interactive precedence + caller `backend_flag` side effect).
+- [x] Extract `_init_prompt_python_version` (backend-aware micromamba vs venv branches + version-manager picker + `set_local_python_version` side effect).
+- [x] Extract `_init_prompt_project_guide` (flags + `.project-guide.yml` refresh + deps auto-skip + `project_guide_mode` side effect).
+- [x] `_init_wizard` calls the three in order; all 80 `test_init_wizard.bats` cases + full suite green (no string or side-effect changes).
+
+**Implementation.** [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh): `_init_wizard` is now `<TTY guard>` + `header_box` + three calls (`_init_prompt_backend` → `_init_prompt_python_version` → `_init_prompt_project_guide`) + `return 0`. The three prompt blocks moved verbatim into the new functions (each reading the wizard's `arg_*` locals and writing `backend_flag`/`python_version`/`VERSION_MANAGER`/`project_guide_mode` via dynamic scope, exactly as inline). No new tests (this is a behavior-preserving refactor; the existing 80 `test_init_wizard.bats` cases are the safety net).
+
+**Verification.** `bash -n` clean; `shellcheck -s bash lib/plugins/python/plugin.sh` still 0 warning/error (guard green). `test_init_wizard.bats` **80/80**, `test_init_ui.bats` 3/3, `test_init_param_graph.bats` 5/5. Full unit suite: **2073 passing**; the only 3 failures are the unchanged pre-existing environmental matrix tests (asdf lacks default Python 3.14.6).
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
 ---
 
-### Story P.g.3: Resolve defaults from the graph + remove the scattered initializers [Planned]
+### Story P.g.3: Wizard rewrite (2/3) — drive the prompts via a `pg_walk` + `ui_select` value-source [Planned]
+
+Replace `_init_wizard`'s three sequential `_init_prompt_*` calls with a `pg_walk` over `_init_build_param_graph`, dispatching each prompted node to its renderer through a prompt value-source (`_init_wizard_prompt_source`). Prompt order and applicability now come from the graph, not source position. `direnv`/`env-name` nodes are marked non-interactive (resolved from flags, not prompted).
+
+- [ ] Add the `ui_select`-bound prompt value-source that dispatches a node to its `_init_prompt_<name>` renderer.
+- [ ] `_init_wizard` builds the graph and walks it; the 3 prompted nodes render in graph order; non-interactive nodes are skipped in the wizard.
+- [ ] Behavior-parity: all 80 `test_init_wizard.bats` + `test_init_ui.bats` cases green; full suite green.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.g.4: Wizard rewrite (3/3) — finalize the graph-driven wizard [Planned]
+
+Tidy the rewrite: confirm `_init_wizard` is fully graph-driven (no residual source-ordered prompt logic), the python-version picker and project-guide deps-skip read cleanly through the walk, and the per-node renderers are the single home for each parameter's prompt. Closing parity sweep + any project-essentials note on the wizard/graph contract.
+
+- [ ] Audit `_init_wizard` for leftover bespoke ordering / dead scaffolding from P.g.2–3; remove it.
+- [ ] Confirm the python-version + project-guide renderers compose cleanly under the walk (no duplicated resolution).
+- [ ] Full behavior-parity sweep + full suite green.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.g.100: Resolve defaults from the graph + remove the scattered initializers [Planned]
 
 Final consolidation: resolve every parameter default from the graph's versioned defaults, delete the now-dead duplicated default logic / scattered initializers left behind by P.g.1–2, and confirm the four original sites are fully retired (no residual hand-synced parameter logic). Closing behavior-parity sweep.
 
