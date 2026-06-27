@@ -271,6 +271,15 @@ _node_provider_run_install() {
         return 1
     fi
 
+    # Run the provider live while capturing its output, so a benign pnpm
+    # "ignored build scripts" notice can be classified as non-fatal. errexit
+    # is suspended around the pipeline so a non-zero provider exit doesn't
+    # abort init before it is inspected; PIPESTATUS[0] is the provider's own
+    # status, independent of pipefail / tee.
+    local rc=0 log _had_errexit=0
+    log="$(mktemp)"
+    case "$-" in *e*) _had_errexit=1 ;; esac
+    set +e
     (
         cd "$path" || exit 1
         if [[ "$mode" == "refresh" && -n "${CI:-}" ]]; then
@@ -292,7 +301,22 @@ _node_provider_run_install() {
                     ;;
             esac
         fi
-    )
+    ) 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    [[ "$_had_errexit" -eq 1 ]] && set -e
+
+    # pnpm's ignored-build-scripts notice is a warning, not a failure: the
+    # install completed; pnpm only declined to run dependency build scripts
+    # not in the onlyBuiltDependencies allowlist. Treat it as success so it
+    # never aborts init — a genuine install error still propagates.
+    if (( rc != 0 )) && [[ "$provider" == "pnpm" ]] \
+        && grep -q "ERR_PNPM_IGNORED_BUILDS" "$log"; then
+        warn "node: pnpm skipped some dependency build scripts (run 'pnpm approve-builds' in '$path' to allow). Continuing."
+        rc=0
+    fi
+
+    rm -f "$log"
+    return "$rc"
 }
 
 # Smart-purge: remove only the artifacts a Node env generates. Never

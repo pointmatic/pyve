@@ -49,7 +49,7 @@ A primary change that needs to be embraced is that **Pyve v2.x** was a Python vi
 - **Act 1 — UX Foundation (v3.1.0, Subphase P-1).** Make v3's declarative model *real*: a complete, explicit, single-sourced `pyve.toml`; a parameter decision-graph that ends the scattered wizard/flag/default drift; desired-vs-actual env state with restore-on-rebuild and a batch lifecycle; one consistent verb model. This is what makes the named-environments promise deliver. North-star design: [phase-p-subphase-1-ux-overhaul.md](phase-p-subphase-1-ux-overhaul.md).
 - **Act 2 — Harden & heal (v3.2.0+, Subphase P-2 and beyond).** Make environment *resolution* explainable and Pyve's managed state self-healing. **Act 1 is the substrate Act 2 stands on:** `pyve heal` can only restore toward an intent the manifest fully captures (Act 1's explicit declaration) and an operational reality it recorded (Act 1's state record) — so the UX foundation comes first.
 
-**Multi-release exception.** Phase P ships **more than one release tag** — v3.1.0 at the end of Subphase P-1, v3.2.0 at the end of the hardening subphase — an explicit, documented exception to the Version Cadence "one phase = one bundled release" rule. Single-bundle phases remain preferred; here the UX foundation is genuinely within the phase but must not block on the hardening that depends on it.
+**Multi-release exception.** Phase P ships **a release per subphase** — v3.1.0 (P-1) → v3.2.0 (P-2) → v3.3.0 (P-3) → v3.4.0 (P-4) → v3.5.0 (P-5) — an explicit, documented exception to the Version Cadence "one phase = one bundled release" rule. The sequence is deliberate: each release builds on the last (the UX foundation is the substrate the hardening heals toward; the polish, plugin, and security passes follow). A subphase's stories run unversioned during its work; its final code story owns that subphase's minor bump.
 
 ---
 
@@ -82,8 +82,12 @@ Make Pyve's environment resolution make sense and be **bulletproof**; when the a
 Each subphase has a theme (with adhoc bug fixes as needed).
 
 - **Subphase P-1 (v3.1.0): Conceptual clarification & UX Foundation** — the keystone parameter decision-graph, an explicit single-sourced manifest, desired-vs-actual env state, batch lifecycle, and one consistent verb model. *(Declarative env setup — formerly its own subphase — is folded into P-1's Pillar II.)*
-- **Subphase P-2 (v3.2.0): Runnability probes & environment healing** — Act 2; story breakdown deferred to its own `plan_production_phase` session (Story P.d). Candidate stories parked in `## Future`.
-- **Further subphases (workflow polish, deeper plugin work, etc.):** defined by Story P.d when activated; candidate stories parked in `## Future`.
+- **Subphase P-2 (v3.2.0): Runnability probes & environment healing** — Act 2 (the four pillars above).
+- **Subphase P-3 (v3.3.0): Workflow & DX polish** — CI hygiene + developer-experience.
+- **Subphase P-4 (v3.4.0): Deeper plugin work** — plugin enrichment (TypeScript, …).
+- **Subphase P-5 (v3.5.0): Security & bootstrap hardening** — download integrity + version pinning.
+
+Story breakdown for each subphase beyond P-1 is deferred to its own `plan_production_phase` session, kicked off when that subphase activates (Story P.d); candidates are parked in `## Future`.
 
 ---
 
@@ -118,6 +122,37 @@ Each subphase has a theme (with adhoc bug fixes as needed).
 
 ---
 
+### Story P.a.1: v3.0.8 — `pyve init` completes its composition tail (`.gitignore` / `.envrc` / next-steps) even when a secondary-plugin install exits non-zero [Done]
+
+*(Field-discovered 2026-06-26 on a Replit-generated polyglot (Python + SvelteKit) repo. **Important** — a benign `pnpm` warning silently aborts `pyve init` after the env materializes, leaving the project half-configured: no `.gitignore` (so `.venv` / `.env` secrets risk being committed), no `.envrc` (direnv won't activate), no next-steps. Standalone patch ahead of the Subphase P-1 work, paralleling P.a.)*
+
+**Discovered.** On a polyglot init the run "mostly succeeded" — `.venv`, `pyve.toml`, and `node_modules` were all created — but `.gitignore` was never updated and the log ended abruptly at pnpm's output. pnpm had printed `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild@0.25.12` (its default-deny of dependency build scripts) and exited non-zero.
+
+**Symptom.** `pyve init` on a Python + Node project where the Node install emits *any* non-zero exit (here pnpm's ignored-build-scripts notice) terminates immediately after the package-manager output. The composition tail never runs: no `.envrc`, no `# >>> pyve:managed:gitignore >>>` section (so `.pyve/`, the venv dir, and `.env` are left un-ignored), and no next-steps box. There is **no error message** — the failure is invisible and the project looks "mostly done."
+
+**Root cause — a secondary-plugin install runs as a bare command under `set -e`, and the `.gitignore` / `.envrc` tail runs *after* it.** `pyve.sh` sets `set -euo pipefail` ([pyve.sh:26](../../pyve.sh#L26)). In `_compose_init_materialize_secondary_plugins` the Node materializer is dispatched as an unchecked command in the loop body — `plugin_dispatch "$name" init "$path"` ([lib/init_composer.sh:88](../../lib/init_composer.sh#L88)) — so a non-zero return aborts the whole process under `set -e`. `compose_init` calls that materializer ([init_composer.sh:61](../../lib/init_composer.sh#L61)) *before* the composition tail `_compose_init_run_tail` ([init_composer.sh:63](../../lib/init_composer.sh#L63)), which is where `.envrc`, `.gitignore` ([init_composer.sh:185](../../lib/init_composer.sh#L185)), and next-steps are written. The node hook (`_node_provider_run_install`, [lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh)) surfaces pnpm's exit code verbatim, and pnpm v10+ treats ignored build scripts as a non-zero condition — a *warning* pyve mistakes for a fatal failure. Nothing caught it: the unit suite runs `pyve.sh` from the source tree with package managers that don't trip the ignored-builds gate, and no test drives a polyglot init whose Node install returns non-zero (the same test-the-real-path gap as P.a).
+
+**Fix (planned).** Two coordinated changes: (1) isolate secondary-plugin materialization so a failure cannot abort the composition tail — capture the result, emit a clear warning, and always proceed to `_compose_init_run_tail` so `.gitignore` / `.envrc` / next-steps land regardless of Node outcome; (2) treat pnpm's ignored-build-scripts condition as non-fatal in `_node_provider_run_install` (a real install failure still errors). Bump `VERSION` → `3.0.8`.
+
+**Tasks.**
+
+- [x] Reproduce (red): [tests/unit/test_composed_init_secondary_failure.bats](../../tests/unit/test_composed_init_secondary_failure.bats) — under an explicit `set -euo pipefail` subshell (bats does not enable `set -e`, so the abort only reproduces there), a secondary (Node) dispatch returning non-zero aborts `_compose_init_materialize_secondary_plugins` / `compose_init` before the tail, and `_node_provider_run_install` returns non-zero on `ERR_PNPM_IGNORED_BUILDS`. All three reproduced the field abort against v3.0.7; a genuine-failure guard passed throughout.
+- [x] Fix 1: both init loops ([lib/init_composer.sh:88](../../lib/init_composer.sh#L88) secondary materializer + the node-only loop) wrap the dispatch in `if ! …; then warn; fi`, and the secondary materializer `return 0`s — so a Node failure can't `set -e`-abort the `.envrc` / `.gitignore` / next-steps tail.
+- [x] Fix 2: `_node_provider_run_install` ([lib/plugins/node/plugin.sh](../../lib/plugins/node/plugin.sh)) captures output via `tee`, reads `PIPESTATUS[0]` (robust to `pipefail` on/off), and downgrades `ERR_PNPM_IGNORED_BUILDS` to a warning (returns 0); a genuine install error still propagates.
+- [x] Bump `VERSION` `3.0.7` → `3.0.8` ([pyve.sh:32](../../pyve.sh#L32)).
+- [x] New test green (4/4) — the regression guard for both the `set -e` abort and the ignored-builds classification.
+- [x] Full unit suite: **zero regressions from this change**. 2034 pass; the only 3 failures (`test_composed_init_matrix.bats` real-`.venv`-build cases) fail **identically on the clean v3.0.7 tree** — pre-existing/environmental (this sandbox can't synthesize a real `.venv`), not introduced here. To be confirmed green in CI.
+
+**Prevention scan.**
+
+- [x] Audited the init flow for the same shape: the two bare-dispatch loops (secondary materializer + node-only) are both fixed; the primary Python dispatch ([init_composer.sh:58](../../lib/init_composer.sh#L58)) is already guarded (`|| return $?`), and the composition tail is not under a bare-dispatch loop.
+- [x] `shellcheck` clean on the changed bash (the two findings — `SC2148` no-shebang on sourced libs, `SC2034` unused `TESTENV_DIR_NAME` at `pyve.sh:36` — are pre-existing and unrelated). `ruff`/`mypy` N/A (no Python changed); CI runs neither.
+- [ ] Candidate `project-essentials` entry — "the `.gitignore` / `.envrc` composition tail must run regardless of secondary-plugin (Node) materialization outcome; a package-manager *warning* (e.g. pnpm ignored-build-scripts) is not an init failure. Verify by driving a polyglot init whose Node install returns non-zero."
+
+**Version:** **v3.0.8** (patch). Standalone field-discovered fix; ships ahead of the Subphase P-1 work, paralleling P.a.
+
+---
+
 ## Subphase P-1: v3.1.0 Conceptual clarification and UX Foundation
 
 **Theme (v3.1.0).** Make v3's declarative model *real* and deliver on the named-environments promise. Three moves: (1) a **keystone parameter decision-graph** — one source that generates the wizard, flags, `--help`, defaults, the explicit `pyve.toml`, and default-drift detection (today these are ≥4 hand-synced sites); (2) **Pillar I — an explicit, single-sourced, version-stable declaration** (`pyve.toml` records every resolved value; `.pyve/config` is retired); (3) **Pillar II — desired-vs-actual env state** with restore-on-rebuild, a batch lifecycle, and one consistent verb model (`update` / `upgrade` / `force`). Full design: [phase-p-subphase-1-ux-overhaul.md](phase-p-subphase-1-ux-overhaul.md).
@@ -148,12 +183,12 @@ Using `refactor_plan` mode, fold the UX design overhaul plan ([phase-p-subphase-
 
 ---
 
-### Story P.d: All Phase P Planning [Planned]
+### Story P.d: All Phase P Planning [In Progress]
 
-The framework for completing the UX overhaul and, in the end, delivering a more hardened and self-healing Pyve. The Act-2 roadmap in [phase-p-subphase-1-ux-overhaul.md](phase-p-subphase-1-ux-overhaul.md) §8 is the scaffolding this story builds on. **Deferred:** the story breakdown for each later subphase happens in its own `plan_production_phase` session, kicked off when that subphase is activated.
+The framework for completing the UX overhaul and, in the end, delivering a more hardened and self-healing Pyve. Defines Phase P's later-subphase roadmap (P-2…P-5, below) and triages the `## Future` parking lot into it. The Act-2 roadmap in [phase-p-subphase-1-ux-overhaul.md](phase-p-subphase-1-ux-overhaul.md) §8 is the scaffolding. **Per-subphase story breakdown stays deferred** to each subphase's own `plan_production_phase` session, kicked off when it activates.
 
-- [ ] Plan the later subphases (P-2 hardening/healing → v3.2.0, then workflow polish, deeper plugin work, etc.) — a description for each, sufficient to be broken down into stories.
-- [ ] Triage the `## Future` candidates into the activated subphase vs. keep-deferred.
+- [x] Plan the later subphases — **P-2** (Runnability & healing, v3.2.0), **P-3** (Workflow & DX, v3.3.0), **P-4** (Deeper plugins, v3.4.0), **P-5** (Security & bootstrap hardening, v3.5.0): a scope description for each (see the subphase roadmap below).
+- [x] Triage the `## Future` candidates into their destination subphase (P-2…P-5) or an existing P-1 story (tech-spec reconcile → P.c; v3-site sweep → P.s).
 
 ---
 
@@ -425,13 +460,47 @@ At the end of each release in Phase P, refresh the public docs via `refactor_doc
 
 ## Subphase P-2: Runnability probes & environment healing (v3.2.0)
 
-**Act 2 — deferred.** Theme and design pillars are in the Phase P preamble (runnability probes, resolution reasoning, `pyve heal` / `pyve check --fix`, the test-isolation leak). **Story breakdown is deferred** to its own `plan_production_phase` session, kicked off when this subphase is activated (Story P.d). Candidate stories — several already drafted in detail — are parked in `## Future` below; P.d triages them into this subphase when it opens.
+**Scope (Act 2).** Make environment *resolution* explainable and Pyve's managed state self-healing — the four design pillars in the preamble: (1) **runnability probes** that execute artifacts and classify the failure; (2) **resolution reasoning** in `pyve check` (where/why each managed command resolves — PATH-slot order, venv-shadows-pin, interpreter drift); (3) a **healing mechanism** (`pyve heal` / `pyve check --fix`) — safe, idempotent, confirm-before-destroy; (4) **close the test-isolation leak** so the suite never mutates a real `$HOME`. Builds directly on P-1: `heal` restores toward the intent the explicit manifest captures and the operational state it recorded.
+
+**Candidate stories** (parked in `## Future`; pulled on activation): per-env runnability probe (canary); silent-skip `root` pytest probe fix; declarative `pyve.toml` opt-out for the silent-skip advisory; `project-guide` status unify + version; auto-remediation (`pyve check --fix`); `pyve check` surfaces available updates.
+
+**Story breakdown deferred** to its own `plan_production_phase` session (Story P.d), kicked off when this subphase activates.
+
+---
+
+## Subphase P-3: Workflow & DX polish (v3.3.0)
+
+**Scope.** CI hygiene and developer-experience refinements that don't fit the UX-foundation or hardening themes but raise the day-to-day quality bar: coverage reporting, flaky-test triage, per-command help ergonomics, and extending Phase L's calm-UX framing beyond the scaffold commands.
+
+**Candidate stories** (in `## Future`): kcov bash-coverage upload fix (integration `kcov-merged`); fix pre-existing integration-test failures; per-leaf help functions for namespace commands; apply Phase L UX framing to non-scaffold commands (`lock`, `env install`, `purge --force`).
+
+**Story breakdown deferred** to its own `plan_production_phase` session.
+
+---
+
+## Subphase P-4: Deeper plugin work (v3.4.0)
+
+**Scope.** Enrich the plugin layer beyond the contract-proving baseline — deeper, language-aware behavior in the reference plugins, and any generalizable "language-flavor advisory" pattern future plugins inherit. Thin today; grows as plugin needs surface.
+
+**Candidate stories** (in `## Future`): deeper TypeScript integration for the Node plugin (`tsconfig.json` detection, `tsc --noEmit` advisories, opt-in pre-test type-check).
+
+**Story breakdown deferred** to its own `plan_production_phase` session.
+
+---
+
+## Subphase P-5: Security & bootstrap hardening (v3.5.0)
+
+**Scope.** The dedicated security pass deferred from the I.h audit: cryptographic integrity of the micromamba bootstrap download and deterministic version pinning. Picks up the disposition recorded with these stories (revive when a security review asks for download integrity, or a regressing `latest` makes pinning worth its upkeep). Version pinning is the higher-value of the two and the prerequisite for a hardcoded-hash table.
+
+**Candidate stories** (in `## Future`): SHA256 verification of the bootstrap download; micromamba version pinning via `--micromamba-version`.
+
+**Story breakdown deferred** to its own `plan_production_phase` session.
 
 ---
 
 ## Future
 
-A parking lot of candidate stories, reconsidered as each later subphase is activated (Story P.d). Some are detailed **Act-2 (P-2) hardening** stories (the runnability probe, the silent-skip advisory fixes); others are **workflow polish**, **doc cleanups**, or **security** items for later subphases.
+A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-2…P-5) — see the subphase roadmap above for the mapping — or folds into an existing P-1 story (the tech-spec-table reconcile → P.c; the v3-site sweep → P.s). When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.
 
 ---
 
@@ -718,7 +787,7 @@ After Phase H shipped `pyve check` in v2.0, evaluate adding `--fix` for common a
 
 ---
 
-## Subphase ?-?: Security & Bootstrap Hardening
+### Subphase P-5 candidates — Security & Bootstrap Hardening
 
 **What these are.** Two I.h-audit-driven hardening items on the micromamba *bootstrap download* (the binary pyve fetches when a user has no micromamba): cryptographic integrity verification of the downloaded tarball, and pinning its version instead of always fetching `latest`. Neither is user-requested — they close known gaps a security reviewer would flag, not workflows anyone is blocked on.
 

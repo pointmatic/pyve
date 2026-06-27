@@ -85,8 +85,16 @@ _compose_init_materialize_secondary_plugins() {
         [[ "$name" == "python" ]] && continue   # already materialized above
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
         [[ -z "$path" ]] && path="."
-        plugin_dispatch "$name" init "$path"
+        # A secondary-plugin (e.g. Node) install must not abort the
+        # composition tail (.envrc / .gitignore / next-steps). Under
+        # `set -e` a bare failing dispatch would kill the whole init; guard
+        # it so a non-zero return warns and the tail still runs.
+        if ! plugin_dispatch "$name" init "$path"; then
+            warn "init: '$name' setup did not finish — continuing; complete it later with 'pyve env install'"
+        fi
     done < <(plugin_list_active)
+    # Never propagate a secondary-plugin failure: the tail must always run.
+    return 0
 }
 
 # True for a FRESH Node-only project: no pyve.toml yet, Node detected at
@@ -135,7 +143,12 @@ _compose_init_node_only() {
         [[ -z "$name" ]] && continue
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
         [[ -z "$path" ]] && path="."
-        plugin_dispatch "$name" init "$path"
+        # A failed Node install must not abort the composition tail (it would
+        # under `set -e` from a bare dispatch); warn and continue so .envrc /
+        # .gitignore / next-steps still land.
+        if ! plugin_dispatch "$name" init "$path"; then
+            warn "init: '$name' setup did not finish — continuing; complete it later with 'pyve env install'"
+        fi
     done < <(plugin_list_active)
 
     # Node-variant tail: no Python backend, no project-guide (a non-Python
