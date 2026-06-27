@@ -90,7 +90,7 @@ self_install() {
     # __pycache__ — compiled bytecode is regenerated on demand and copying
     # it ships a stale .pyc.
     if [[ -d "$source_dir/lib" ]]; then
-        rm -rf "$TARGET_BIN_DIR/lib"
+        rm -rf "${TARGET_BIN_DIR:?}/lib"
         mkdir -p "$TARGET_BIN_DIR/lib"
         cp -R "$source_dir/lib/." "$TARGET_BIN_DIR/lib/"
         find "$TARGET_BIN_DIR/lib" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -426,7 +426,7 @@ self_uninstall() {
 
     # Remove lib directory
     if [[ -d "$TARGET_BIN_DIR/lib" ]]; then
-        rm -rf "$TARGET_BIN_DIR/lib"
+        rm -rf "${TARGET_BIN_DIR:?}/lib"
         log_success "Removed $TARGET_BIN_DIR/lib"
     fi
 
@@ -848,7 +848,6 @@ _self_migrate_backup() {
 # Orchestrator. See banner at top of section for flag semantics.
 self_migrate() {
     local dry_run=false
-    local no_rebuild=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -857,7 +856,8 @@ self_migrate() {
                 shift
                 ;;
             --no-rebuild)
-                no_rebuild=true
+                # Accepted no-op: self migrate no longer rebuilds (it only seeds
+                # pyve.toml + backs up legacy sources). Parsed for back-compat.
                 shift
                 ;;
             --help|-h)

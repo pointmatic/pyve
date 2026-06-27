@@ -445,6 +445,7 @@ state_read() {
     PYVE_TESTENV_STATE_MANIFEST="$manifest"
     PYVE_TESTENV_STATE_MANIFEST_SHA256="$sha"
     PYVE_TESTENV_STATE_PROVISIONED_AT="$prov"
+    # shellcheck disable=SC2034 # exposed state global, read in lib/commands/env.sh (cross-file)
     PYVE_TESTENV_STATE_LAST_USED_AT="$last"
 }
 

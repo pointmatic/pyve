@@ -492,8 +492,10 @@ manifest_get_plugin_path() {
 # unset on a known plugin. Returns 1 (no output) for unknown plugins.
 manifest_get_plugin_attr() {
     local i; i="$(_manifest_plugin_name_to_index "$1")" || return 1
+    # shellcheck disable=SC2034 # key + item are referenced inside the eval block below (shellcheck can't see into eval)
     local key="$2"
     local arr_name="PYVE_PLUGIN_${i}_ATTRS"
+    # shellcheck disable=SC2034 # referenced inside the eval block below (shellcheck can't see into eval)
     local item
     eval "
         if [[ -n \"\${${arr_name}+x}\" ]]; then

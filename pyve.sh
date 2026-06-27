@@ -33,18 +33,27 @@ VERSION="3.0.8"
 DEFAULT_PYTHON_VERSION="3.14.6"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
+# shellcheck disable=SC2034 # global config consumed by sourced lib/utils.sh + lib/envs.sh
 TESTENV_DIR_NAME="testenv"
 
 # When set to 1, pyve may auto-install pytest into the dev/test runner environment
 # without prompting (intended for CI and automated test harnesses).
+# shellcheck disable=SC2034 # global config consumed by sourced lib/plugins/python/plugin.sh
 PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT="${PYVE_TEST_AUTO_INSTALL_PYTEST:-}"
 
-# Installation paths
+# Installation paths. The TARGET_*/LOCAL_ENV/SOURCE_DIR/PROMPT_HOOK globals are
+# consumed by sourced lib/commands/self.sh + lib/plugins/python/plugin.sh
+# (cross-file; shellcheck's single-file analysis cannot see those reads).
 TARGET_BIN_DIR="$HOME/.local/bin"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh + lib/plugins/python/plugin.sh
 LOCAL_ENV_FILE="$HOME/.local/.env"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 SOURCE_DIR_FILE="$HOME/.local/.pyve_source"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 PROMPT_HOOK_FILE="$HOME/.local/.pyve_prompt.sh"
 
 #============================================================

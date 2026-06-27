@@ -2182,10 +2182,15 @@ EOF
     # hand the stack-agnostic composition tail (compose
     # .envrc/.gitignore → project-guide → next-steps) up to compose_init
     # via the result globals (see the micromamba branch + lib/init_composer.sh).
+    # shellcheck disable=SC2034 # result globals consumed by lib/init_composer.sh's compose tail (cross-file)
     PYVE_INIT_TAIL_BACKEND="venv"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_ENV_PATH="$_venv_abs"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
 }
 

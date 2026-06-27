@@ -488,7 +488,8 @@ sanitize_environment_name() {
     fi
     
     # Convert to lowercase (Bash 3.x compatible)
-    local sanitized="$(echo "$raw_name" | tr '[:upper:]' '[:lower:]')"
+    local sanitized
+    sanitized="$(echo "$raw_name" | tr '[:upper:]' '[:lower:]')"
     
     # Replace spaces and special characters with hyphens
     # Keep only alphanumeric, hyphens, and underscores

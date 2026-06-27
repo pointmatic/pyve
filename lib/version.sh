@@ -20,6 +20,7 @@ compare_versions() {
     fi
     
     local IFS=.
+    # shellcheck disable=SC2206 # intentional IFS=. split of dotted version strings; read -ra would change empty-field handling in the comparison below
     local i ver1=($version1) ver2=($version2)
     
     for ((i=0; i<${#ver1[@]} || i<${#ver2[@]}; i++)); do

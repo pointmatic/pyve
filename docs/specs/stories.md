@@ -235,7 +235,7 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 
 ---
 
-### Story P.f.1: Establish a clean `shellcheck` baseline across `pyve.sh` + `lib/` [Planned]
+### Story P.f.1: Establish a clean `shellcheck` baseline across `pyve.sh` + `lib/` [Done]
 
 *(Developer-requested housekeeping, 2026-06-27. Parked at the P.f.1 slot as a standalone, order-independent hygiene story — not a semantic child of P.f. Pre-existing shellcheck findings surface on **every** feature story's lint step (the mode's "run linting" beat), creating recurring noise that isn't owned by any story. Clear them once so future stories' lint steps only show findings the story itself introduced.)*
 
@@ -248,11 +248,11 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 
 **Tasks.**
 
-- [ ] Re-run the tree-wide `shellcheck -s bash` and snapshot the current findings (the list above may have shifted).
-- [ ] Resolve all **warning/error**-level findings by the triage rule — **fix** the correctness ones (SC2115/SC2155/SC2206/SC2064), **suppress-with-reason** the intentional ones (SC2034/SC2016/SC2086). Each suppression names *why*.
-- [ ] Decide info-level handling (SC1091/SC2016/SC2086/SC2153/SC1003): fix cheaply or document as accepted noise; no silent blanket ignores.
-- [ ] Add a lint **regression guard**: a bats test (e.g. `tests/unit/test_shellcheck_clean.bats`) that runs `shellcheck -s bash` over `pyve.sh` + `lib/**/*.sh` and asserts zero **warning/error** findings — skipped when `shellcheck` isn't installed (mirroring the bats-missing skip in the Makefile). This makes "clean baseline" self-enforcing so it can't silently rot.
-- [ ] Full unit suite green (incl. the new guard); no behavioral change to any command.
+- [x] Re-run the tree-wide `shellcheck -s bash` and snapshot the current findings — 26 warning/error (18× SC2034, 3× SC2155, 2× SC2115, 2× SC2206, 1× SC2064).
+- [x] Resolve all **warning/error**-level findings by the triage rule. **Fixed (correctness):** SC2115 → `rm -rf "${TARGET_BIN_DIR:?}/lib"` in [lib/commands/self.sh](../../lib/commands/self.sh) (×2); SC2155 → split declare/assign in [lib/micromamba_bootstrap.sh](../../lib/micromamba_bootstrap.sh) + [lib/micromamba_env.sh](../../lib/micromamba_env.sh); dead local `testenv_root` removed from [lib/commands/env.sh](../../lib/commands/env.sh); dead var `no_rebuild` removed from `self_migrate` (the `--no-rebuild` arm is now an explicit accepted-no-op). **Suppressed-with-reason (re-triaged from "fix" — shellcheck's suggestion would be a *bug* here):** SC2206 in [lib/version.sh](../../lib/version.sh) (intentional `IFS=.` split; `read -ra` would change empty-field handling in the comparison); SC2064 in [lib/commands/env.sh](../../lib/commands/env.sh) (the trap *must* expand `$name` now — it's a local not in scope when the trap fires). **Suppressed-with-reason (cross-file / eval / compat):** the 7 `pyve.sh` config globals (consumed by sourced `lib/commands/self.sh` etc.), `PYVE_INIT_TAIL_*` (read by `lib/init_composer.sh`), `PYVE_TESTENV_STATE_LAST_USED_AT` (read by `lib/commands/env.sh`), `key`/`item` in `manifest_get_plugin_attr` (referenced inside an `eval`), `env_name` in `write_vscode_settings` (`$1` for caller compat). Every disable carries a one-line reason.
+- [x] Info-level handling: not gated by the guard (warning/error only) and documented as accepted noise in the guard's scope comment — SC1091 (source-not-followed) is unfixable without the `-x`/`source=` directives the CI invocation doesn't pass; the rest (SC2016/SC2086/SC2153/SC1003) are intentional or trivial. No blanket ignores.
+- [x] Added the regression guard [tests/unit/test_shellcheck_clean.bats](../../tests/unit/test_shellcheck_clean.bats): runs `shellcheck -s bash` over `pyve.sh` + every `lib/**/*.sh`, asserts zero warning/error findings, prints the offenders on failure, and `skip`s when shellcheck isn't installed.
+- [x] Full unit suite: **2073 passing** (incl. the new guard); the only 3 failures are the pre-existing environmental matrix tests (asdf lacks the default Python 3.14.6) — unchanged by this story. `pyve --version` unaffected; no behavioral change to any command.
 
 **Out of scope.** The CI workflow's `... -exec shellcheck {} + || true` line ([.github/workflows/test.yml](../../.github/workflows/test.yml)) — flipping it to blocking is a separate call (the new bats guard already enforces cleanliness in the test suite). `tests/**` shellcheck findings (bats files trip SC1091/SC2329 by design — out of the `pyve.sh`+`lib/` scope). Any finding whose fix would change runtime behavior (raise it as its own story, don't smuggle a behavior change into a lint pass).
 

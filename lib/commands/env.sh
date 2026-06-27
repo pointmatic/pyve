@@ -769,6 +769,7 @@ _env_install_with_lock() {
         return 1
     fi
     _env_acquire_install_lock "$name" "$lock_mode" || return $?
+    # shellcheck disable=SC2064 # expand $name now — it is a local not in scope when the trap fires at exit
     trap "_env_release_install_lock '$name'" EXIT INT TERM
     local rc=0
     if [[ "$backend" == "micromamba" ]]; then
@@ -1334,9 +1335,8 @@ EOF
         assert_env_name_actionable "$target_name" || exit 1
         # Backend stub is enforced inside env_init -> ensure_env_exists.
     fi
-    local testenv_venv testenv_root
+    local testenv_venv
     testenv_venv="$(resolve_env_path "$target_name")"
-    testenv_root="${testenv_venv%/venv}"
 
     header_box "pyve env"
 

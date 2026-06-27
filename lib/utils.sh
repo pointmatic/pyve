@@ -1131,6 +1131,7 @@ doctor_check_venv_path() {
 # Skips if the file already exists, unless PYVE_REINIT_MODE=force.
 # Usage: write_vscode_settings <env_name>
 write_vscode_settings() {
+    # shellcheck disable=SC2034 # $1 accepted for caller compat; main env lives at the v3 root slot, not the configured name
     local env_name="$1"
     local vscode_dir=".vscode"
     local settings_file="$vscode_dir/settings.json"
