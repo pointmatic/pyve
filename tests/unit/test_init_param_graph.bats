@@ -105,3 +105,30 @@ EXPECTED_VALID_FLAGS=(
         declare -F "$fn" >/dev/null || { echo "missing renderer: $fn"; false; }
     done <<<"$(pg_list_nodes)"
 }
+
+# ── defaults consumed from the graph + parser drift guard (P.g.5) ────
+
+@test "_init_param_default: resolves a node's default from the graph" {
+    DEFAULT_PYTHON_VERSION="9.9.9"
+    run _init_param_default python-version
+    [ "$status" -eq 0 ]
+    [ "$output" = "9.9.9" ]
+}
+
+@test "_init_param_default: non-zero for an unknown node" {
+    run _init_param_default no-such-node
+    [ "$status" -ne 0 ]
+}
+
+@test "drift guard: every graph param flag has an init arg-parser case arm" {
+    _init_build_param_graph
+    local row f
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        while IFS= read -r f; do
+            [[ -n "$f" ]] || continue
+            grep -qE "^[[:space:]]*${f}[)=]" "$PYVE_ROOT/lib/plugins/python/plugin.sh" \
+                || { echo "graph param flag has no init parser case arm: $f"; false; }
+        done <<<"$(pg_node_flags "$row")"
+    done <<<"$(pg_list_nodes)"
+}

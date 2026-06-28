@@ -254,6 +254,8 @@ Build the conditional decision-graph engine (per the P.e spike): nodes with appl
 - [x] Added the regression guard [tests/unit/test_shellcheck_clean.bats](../../tests/unit/test_shellcheck_clean.bats): runs `shellcheck -s bash` over `pyve.sh` + every `lib/**/*.sh`, asserts zero warning/error findings, prints the offenders on failure, and `skip`s when shellcheck isn't installed.
 - [x] Full unit suite: **2073 passing** (incl. the new guard); the only 3 failures are the pre-existing environmental matrix tests (asdf lacks the default Python 3.14.6) — unchanged by this story. `pyve --version` unaffected; no behavioral change to any command.
 
+**Follow-up (2026-06-27, shellcheck version skew).** The baseline was first validated against shellcheck **0.11.0** (local macOS), which is more lenient than the **0.10.0** preinstalled on the `ubuntu-latest` CI runner — so the guard passed locally but CI's 0.10.0 surfaced one extra finding: `SC2120` on `is_conda_lock_declared` ([lib/micromamba_env.sh](../../lib/micromamba_env.sh)) (an intentional optional `env_file` arg no caller passes). Suppressed with reason. Re-verified **0 warning/error under both 0.10.0 and 0.11.0**. Lesson: validate the guard against the CI shellcheck version (or pin it) — pinning the CI shellcheck version for determinism is a candidate hardening (still out of this story's CI-config scope).
+
 **Out of scope.** The CI workflow's `... -exec shellcheck {} + || true` line ([.github/workflows/test.yml](../../.github/workflows/test.yml)) — flipping it to blocking is a separate call (the new bats guard already enforces cleanliness in the test suite). `tests/**` shellcheck findings (bats files trip SC1091/SC2329 by design — out of the `pyve.sh`+`lib/` scope). Any finding whose fix would change runtime behavior (raise it as its own story, don't smuggle a behavior change into a lint pass).
 
 **Version:** v3.1.0 bundle (Subphase P-1) — hygiene, no version bump.
@@ -343,13 +345,31 @@ Tidy the rewrite: confirm `_init_wizard` is fully graph-driven (no residual sour
 
 ---
 
-### Story P.g.5: Resolve defaults from the graph + remove the scattered initializers [Planned]
+### Story P.g.5: Make the graph the live single-source of parameter defaults + drift-guard the parser [Done]
 
-Final consolidation: resolve every parameter default from the graph's versioned defaults, delete the now-dead duplicated default logic / scattered initializers left behind by P.g.1–2, and confirm the four original sites are fully retired (no residual hand-synced parameter logic). Closing behavior-parity sweep.
+*Scope chosen at implementation time (developer-directed, **pragmatic** of three options). Reading the parser surfaced that (a) defaults already trace to single constants (`DEFAULT_PYTHON_VERSION`) / computed functions (`_init_detect_backend_default`) the graph references — there is no *harmful* default duplication, only graph defaults not yet **consumed**; and (b) genuinely **routing flag resolution through the engine** (removing the `case` arms) would require rewriting the load-bearing arg parser into a graph-driven tokenizer — high blast radius, modest DRY gain (flag names are already cross-checked graph↔parser by behavior). So P.g.5 makes the graph defaults **live** (consumed), keeps the hand case-loop as the parser, and adds a drift guard. Full flag-resolution routing is **dropped** (not deferred) — the cross-checking + drift guard make the residual name-presence-in-both benign.*
 
-- [ ] Route the 5 parameters' flag *resolution* through the engine (replacing the hand `case` arms), incl. the boolean `--x`/`--no-x` resolution source (P.f risk #2, with mutual-exclusion error); single-source their defaults through the graph and remove the scattered default initializers.
-- [ ] Confirm `_init_wizard` / flag loop / `unknown_flag_error` / `show_init_help` retain only operational-toggle logic; no duplicated parameter handling remains.
-- [ ] Full behavior-parity sweep + full suite green; update project-essentials if a durable convention emerged.
+- [x] `init_project` derives the python-version default from the graph (`_init_param_default python-version` → `pg_resolve_default`) instead of re-referencing `DEFAULT_PYTHON_VERSION` directly — the graph is now the **consumed** default channel (the live consumer P.j/P.k build on). Functionally identical (the node default interpolates the same constant). Backend's default is already single-sourced via the graph's `@_init_detect_backend_default` reference; env-name/project-guide defaults are empty; nothing contrived to wire.
+- [x] Drift guard: a bats test asserts **every graph param flag has an `init` arg-parser case arm** ([tests/unit/test_init_param_graph.bats](../../tests/unit/test_init_param_graph.bats)) — so graph↔parser stay in sync without merging them. Plus `_init_param_default` unit tests (resolves a node default; non-zero for an unknown node).
+- [x] `unknown_flag_error` (valid-list) + the wizard (prompts/order) are graph-driven (P.g.1/P.g.3); `show_init_help` stays hand-authored (drift-guarded, P.g.1); the case-loop parser is retained by design. Project-essentials entry updated with the defaults-consumed/parsing-not-routed contract.
+- [x] Full behavior-parity sweep: full suite **2082 passing, 0 failures**; shellcheck clean under **both 0.10.0 (CI) and 0.11.0 (local)**.
+
+**Implementation.** New `_init_param_default <name>` helper ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)) resolves a node's default from the graph; `init_project`'s python-version default now flows through it. Drift-guard + `_init_param_default` tests added. No version bump.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.g.6: Bugfixes surfaced during the P.g wizard/keystone work [Planned]
+
+*Catch-all bugfix story for issues found while landing P.g.1–5 (and the P.f.1 lint guard). Each item below is independently verifiable; the developer may add, drop, or re-prioritize at the announce gate.*
+
+**Candidate fixes (confirm/triage at the gate):**
+
+- [ ] **kcov coverage job: `test_composed_init_secondary_failure` 189/190 fail under instrumentation.** Both pass locally and in the regular unit job (full suite green), but fail only in the "Bash Coverage (kcov), Bats" CI job — kcov instrumentation perturbs `set -e` / subshell exit-status, which is exactly what those tests assert ("secondary-plugin install failure does not abort under `set -e`"; "compose_init composes `.gitignore`/`.envrc` even when a secondary install fails"). Diagnose whether the fault is the test's assumption under kcov vs. a real exit-status leak in `compose_init`'s secondary-plugin path; fix the root cause or make the tests kcov-robust. *(Relates to the parked "Fix pre-existing integration test failures" + kcov-coverage stories in `## Future`.)*
+- [ ] **shellcheck CI version pinning (hardening for the P.f.1 guard).** The `test_shellcheck_clean.bats` guard runs whatever shellcheck is on PATH; `ubuntu-latest` ships **0.10.0** while local macOS brew ships **0.11.0**, and the versions disagree (0.10.0 flagged `SC2120` on `is_conda_lock_declared`; suppressed in P.f.1's follow-up). Pin the shellcheck version the CI unit job uses (and document the pinned version) so the guard is deterministic and reproducible locally — removing the Ubuntu-only-surprise class. *(P.f.1 scoped CI-config edits out; this is the deliberate follow-up.)*
+
+**Tasks.** Per item: reproduce → root-cause → fix (or justified suppression / test-robustness change) → green in the relevant CI job + full local suite. No behavioral change to shipped commands beyond the fixes themselves.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

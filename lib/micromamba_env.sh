@@ -111,6 +111,7 @@ parse_environment_name() {
 # Arguments:
 #   $1 - env_file (default: environment.yml)
 # Returns: 0 if conda-lock is declared, 1 otherwise (including no env file)
+# shellcheck disable=SC2120 # optional env_file arg defaults to environment.yml; current callers use the default, direct callers may pass a specific file
 is_conda_lock_declared() {
     local env_file="${1:-environment.yml}"
 

@@ -1168,6 +1168,26 @@ _init_build_param_graph() {
     pg_add_node "env-name|python|*|-|-|--env-name|-|no|Environment name|Environment name (micromamba backend)"
 }
 
+# Resolve a parameter's default from the decision-graph — the single source of
+# parameter defaults. Builds the graph, finds the node by name, and echoes its
+# resolved default (`pg_resolve_default` honors computed `@fn` defaults).
+# Returns non-zero (no output) for an unknown node. init_project consumes this
+# so default values are read from the graph, not re-referenced from constants in
+# a second place (the live consumer the P.j manifest writer / P.k drift detector
+# build on).
+_init_param_default() {
+    local want="$1" row
+    _init_build_param_graph
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        if [[ "${row%%|*}" == "$want" ]]; then
+            pg_resolve_default "$row"
+            return 0
+        fi
+    done <<<"$(pg_list_nodes)"
+    return 1
+}
+
 # Which graph nodes the interactive wizard prompts for. Interactivity is a
 # wizard-only concern (direnv / env-name ARE applicable to flag resolution —
 # they are simply flag-only, never prompted), so it lives here in the wizard
@@ -1623,7 +1643,12 @@ _init_resolve_scaffold_conda_lock() {
 
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
-    local python_version="$DEFAULT_PYTHON_VERSION"
+    # Python-version default is read from the decision-graph (the single source
+    # of parameter defaults), not the DEFAULT_PYTHON_VERSION constant directly —
+    # the graph's `python-version` node interpolates the same constant, so this
+    # is functionally identical while making the graph the consumed default path.
+    local python_version
+    python_version="$(_init_param_default python-version)"
     local python_version_supplied=false
     local use_local_env=false
     local backend_flag=""
