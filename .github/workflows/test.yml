@@ -276,13 +276,21 @@ jobs:
           pyenv version
       
       - name: Run Bats unit tests under kcov
+        # Coverage is informational — correctness is gated by the "Bats" job
+        # (which runs the same suite without instrumentation). kcov instruments
+        # every nested bash subprocess, including the `run bash -c 'set -euo
+        # pipefail; ...'` subshells some regression tests use; under that
+        # instrumentation those subshells exit non-zero regardless of their
+        # body, producing instrumentation-only false failures. `|| true` keeps
+        # this coverage step from turning the build red on those artifacts —
+        # kcov still writes the coverage report regardless of bats' exit code.
         run: |
           kcov \
             --include-path="$(pwd)/lib/,$(pwd)/pyve.sh" \
             --bash-dont-parse-binary-dir \
             coverage-kcov \
-            bats tests/unit/*.bats
-      
+            bats tests/unit/*.bats || true
+
       - name: Run integration tests under kcov
         run: |
           export PYENV_ROOT="$HOME/.pyenv"

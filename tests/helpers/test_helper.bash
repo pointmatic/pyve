@@ -83,6 +83,28 @@ cleanup_test_dir() {
     fi
 }
 
+# Skip a test when running under kcov coverage instrumentation.
+#
+# kcov instruments every bash subprocess it spawns by enabling xtrace
+# (it sets BASH_XTRACEFD + PS4="kcov@...") — including the nested
+# `run bash -c 'set -euo pipefail; ...'` subshells that some regression
+# tests use to reproduce errexit/pipefail behavior faithfully. Under that
+# instrumentation the nested `set -e` shell exits non-zero regardless of its
+# body, so a test that asserts the subshell's status == 0 fails for a tooling
+# reason, not a code reason. Detection keys off kcov's own env markers, which
+# are present in the instrumented shell.
+#
+# STANDBY UTILITY (not currently called): the CI "Bash Coverage (kcov)" job's
+# bats step is non-gating (`|| true`) precisely because this false-failure
+# class is broad and not worth chasing per-test — coverage is informational;
+# correctness is gated by the regular "Bats" job. Kept as an opt-in for any
+# future test that wants to skip cleanly under kcov rather than false-fail.
+skip_if_kcov() {
+    if [[ -n "${KCOV_BASH_XTRACEFD:-}${KCOV_BASH_COMMAND:-}" ]]; then
+        skip "kcov instruments the nested 'set -euo pipefail' subshell, perturbing its exit status"
+    fi
+}
+
 # Create a requirements.txt file
 create_requirements_txt() {
     local packages=("$@")

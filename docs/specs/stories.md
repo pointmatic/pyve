@@ -360,16 +360,16 @@ Tidy the rewrite: confirm `_init_wizard` is fully graph-driven (no residual sour
 
 ---
 
-### Story P.g.6: Bugfixes surfaced during the P.g wizard/keystone work [Planned]
+### Story P.g.6: Bugfixes surfaced during the P.g wizard/keystone work [Done]
 
 *Catch-all bugfix story for issues found while landing P.g.1–5 (and the P.f.1 lint guard). Each item below is independently verifiable; the developer may add, drop, or re-prioritize at the announce gate.*
 
 **Candidate fixes (confirm/triage at the gate):**
 
-- [ ] **kcov coverage job: `test_composed_init_secondary_failure` 189/190 fail under instrumentation.** Both pass locally and in the regular unit job (full suite green), but fail only in the "Bash Coverage (kcov), Bats" CI job — kcov instrumentation perturbs `set -e` / subshell exit-status, which is exactly what those tests assert ("secondary-plugin install failure does not abort under `set -e`"; "compose_init composes `.gitignore`/`.envrc` even when a secondary install fails"). Diagnose whether the fault is the test's assumption under kcov vs. a real exit-status leak in `compose_init`'s secondary-plugin path; fix the root cause or make the tests kcov-robust. *(Relates to the parked "Fix pre-existing integration test failures" + kcov-coverage stories in `## Future`.)*
-- [ ] **shellcheck CI version pinning (hardening for the P.f.1 guard).** The `test_shellcheck_clean.bats` guard runs whatever shellcheck is on PATH; `ubuntu-latest` ships **0.10.0** while local macOS brew ships **0.11.0**, and the versions disagree (0.10.0 flagged `SC2120` on `is_conda_lock_declared`; suppressed in P.f.1's follow-up). Pin the shellcheck version the CI unit job uses (and document the pinned version) so the guard is deterministic and reproducible locally — removing the Ubuntu-only-surprise class. *(P.f.1 scoped CI-config edits out; this is the deliberate follow-up.)*
+- [x] **kcov coverage job: bats failures under instrumentation (189/190 + others).** *Root cause (reproduced locally with kcov 43):* not a code bug — kcov instruments **every** nested bash subprocess by enabling xtrace (`BASH_XTRACEFD`/`PS4=kcov@…`), so the `run bash -c 'set -euo pipefail; …'` subshells several regression tests use exit non-zero **regardless of body**. Tests asserting that subshell's `status == 0` then false-fail (the 2 secondary-failure tests + the two `set -u` "unbound variable" tests). A local run also surfaced a *non*-set-e test failing under kcov (`_init_detect_backend_default`), confirming the false-failure class is broad and per-test guarding would be whack-a-mole. *Fix (developer-chosen):* the CI "Run Bats unit tests under kcov" step is now **non-gating** (`|| true`) — coverage is informational; correctness is gated by the regular "Bats" job (green, 2082). kcov still writes its coverage report. ([.github/workflows/test.yml](../../.github/workflows/test.yml)). A reusable `skip_if_kcov` helper was added to [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash) as a standby opt-in (not wired — the non-gating step makes per-test guarding unnecessary). *(Relates to the parked "Fix pre-existing integration test failures" + kcov-coverage stories in `## Future`.)*
+- [ ] ~~**shellcheck CI version pinning (hardening for the P.f.1 guard).**~~ **Deferred/dropped (developer-decided).** Purely preventive — the tree is verified clean under both shellcheck **0.10.0** (CI) and **0.11.0** (local), so no active failure remains (the one skew finding, `SC2120` on `is_conda_lock_declared`, was suppressed in P.f.1's follow-up). Pinning is CI surgery (install a fixed shellcheck on two runner OSes) for a non-active risk; re-open if version skew bites again.
 
-**Tasks.** Per item: reproduce → root-cause → fix (or justified suppression / test-robustness change) → green in the relevant CI job + full local suite. No behavioral change to shipped commands beyond the fixes themselves.
+**Outcome.** Item #1 (kcov coverage job) fixed; item #2 (shellcheck pinning) deferred. Regular full suite **2082 passing, 0 failures**. No behavioral change to shipped commands.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
