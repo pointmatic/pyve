@@ -71,6 +71,31 @@ node_pyve_plugin_register_backends() {
 }
 
 #------------------------------------------------------------
+# node_pyve_plugin_register_params — decision-graph contribution (P.h).
+#
+# The Node plugin's subtree of the keystone decision-graph, registered onto the
+# framework graph by plugin_build_param_graph (lib/plugins/registry.sh) when the
+# node plugin is active. Order is prompt order: provider → runtime-manager. Both
+# nodes gate on `@_node_param_active`, so the subtree is pruned for a non-Node
+# language and kept for a polyglot `multiple` selection. The framework rows carry
+# no Node vocabulary (pnpm / nvm) — that knowledge lives only here.
+#------------------------------------------------------------
+node_pyve_plugin_register_params() {
+    pg_add_node "provider|node|@_node_param_active|pnpm,npm,yarn|pnpm|--provider|PYVE_NODE_PROVIDER|no|Node package manager|Package manager: pnpm, npm, or yarn"
+    pg_add_node "runtime-manager|node|@_node_param_active|nvm,fnm,volta,asdf,none|none|--runtime-manager|PYVE_NODE_RUNTIME_MGR|no|Node runtime manager|Node version manager: nvm, fnm, volta, asdf, or none"
+}
+
+# Applicability predicate: the Node subtree applies when the selected language is
+# Node or a polyglot `multiple`. Consulted by the graph walk via the `@fn`
+# applicability form (lib/param_graph.sh § Resolvers).
+_node_param_active() {
+    case "$(pg_answer_get language)" in
+        node|multiple) return 0 ;;
+        *)             return 1 ;;
+    esac
+}
+
+#------------------------------------------------------------
 # Per-provider string-mapping helpers.
 #
 # Pure mappings from a provider name to that package manager's

@@ -375,16 +375,18 @@ Tidy the rewrite: confirm `_init_wizard` is fully graph-driven (no residual sour
 
 ---
 
-### Story P.h: Plugin contract — parameter/wizard contribution hook [Planned]
+### Story P.h: Plugin contract — parameter/wizard contribution hook [Done]
 
 Extend the plugin contract ([contract.sh](../../lib/plugins/contract.sh) — today 14 hooks, none for wizard/flags) with a hook that lets a plugin register its own subtree of the decision-graph, so Language→subtree pruning works and the wizard is no longer Python-hardcoded. Python contributes `backend → version-manager → version → test-env`; Node contributes `provider → runtime-manager`.
 
-- [ ] Add the contribution hook (default no-op, matching the subset-of-hooks design).
-- [ ] Move the Python-specific nodes out of the framework wizard into the Python plugin's contribution.
-- [ ] Node plugin contributes its subtree; a polyglot `Multiple` selection fans into both.
-- [ ] Tests: a single-stack project prunes to the right subtree; polyglot composes both.
+- [x] Add the contribution hook (default no-op, matching the subset-of-hooks design). — `register_params` (hook group 9) in [contract.sh](../../lib/plugins/contract.sh); silent no-op default, dispatched via the existing `plugin_dispatch` fallback.
+- [x] Move the Python-specific nodes out of the framework wizard into the Python plugin's contribution. — `python_pyve_plugin_register_params` ([python/plugin.sh](../../lib/plugins/python/plugin.sh)) owns `backend → version-manager → python-version → test-env`; the framework rows (`language`/`project-guide`/`direnv` in `pg_register_framework_nodes`) carry no Python vocabulary. The composed graph is assembled by `plugin_build_param_graph` ([registry.sh](../../lib/plugins/registry.sh)) from framework nodes + every *active* plugin's subtree.
+- [x] Node plugin contributes its subtree; a polyglot `Multiple` selection fans into both. — `node_pyve_plugin_register_params` ([node/plugin.sh](../../lib/plugins/node/plugin.sh)) owns `provider → runtime-manager`; subtree applicability gates on `@_python_param_active` / `@_node_param_active` (language ∈ {self, multiple}), so `--language multiple` keeps both subtrees.
+- [x] Tests: a single-stack project prunes to the right subtree; polyglot composes both. — [tests/unit/test_plugin_param_contribution.bats](../../tests/unit/test_plugin_param_contribution.bats) (12 cases).
 
-**Version:** v3.1.0 bundle (Subphase P-1).
+**Scope note (live-wizard wiring rides P.i/P.j).** This story delivers the *seam*: the contract hook, the per-plugin contributions, and the plugin-agnostic `plugin_build_param_graph` assembly with language pruning + polyglot fan-out (proven by tests). The live `pyve init` surface (`_init_build_param_graph` → flag parsing / `--help` / interactive `_init_wizard`) is **not** yet swapped onto this assembly — it stays on the existing Python-only builder so the CLI flag surface and prompt flow are unchanged here. Wiring the live wizard onto `plugin_build_param_graph` (introducing a `language` prompt, the Node flags, and polyglot init flow) lands with the manifest-authority + easy-mode-wizard work in P.i / P.j, which is where that behavior change belongs.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle. No CHANGELOG entry yet.
 
 ---
 

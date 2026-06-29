@@ -1168,6 +1168,38 @@ _init_build_param_graph() {
     pg_add_node "env-name|python|*|-|-|--env-name|-|no|Environment name|Environment name (micromamba backend)"
 }
 
+# ── decision-graph contribution (P.h plugin-contract `register_params` hook) ──
+# The Python plugin's subtree of the keystone decision-graph, registered onto the
+# framework graph by plugin_build_param_graph (lib/plugins/registry.sh) when the
+# python plugin is active. Order is prompt order: backend → version-manager →
+# python-version → test-env. Every node gates on `@_python_param_active` so the
+# whole subtree is pruned for a non-Python language and kept for a polyglot
+# `multiple` selection. Framework rows (language / project-guide / direnv) carry
+# no Python vocabulary — that knowledge lives only here.
+python_pyve_plugin_register_params() {
+    pg_add_node "backend|python|@_python_param_active|venv,micromamba|@_init_detect_backend_default|--backend|PYVE_BACKEND|no|Backend|Backend to use: venv or micromamba"
+    pg_add_node "version-manager|python|@_python_param_needs_vmgr|asdf,pyenv|asdf|--version-manager|PYVE_VMGR|no|Python version manager|Version manager for the Python pin"
+    pg_add_node "python-version|python|@_python_param_active|-|${DEFAULT_PYTHON_VERSION:-}|--python-version|PYVE_PYTHON_VERSION|no|Python version|Set Python version (e.g., 3.13.7)"
+    pg_add_node "test-env|python|@_python_param_active|yes,no|yes|--test-env,--no-test-env|PYVE_TEST_ENV|no|Default test environment|Create a default test environment"
+}
+
+# Applicability predicate: the Python subtree applies when the selected language
+# is Python or a polyglot `multiple`. Consulted by the graph walk via the `@fn`
+# applicability form (lib/param_graph.sh § Resolvers).
+_python_param_active() {
+    case "$(pg_answer_get language)" in
+        python|multiple) return 0 ;;
+        *)               return 1 ;;
+    esac
+}
+
+# Applicability predicate: the version-manager node applies only for a venv
+# backend (micromamba pins Python itself, so no separate manager is needed) and
+# only while the Python subtree itself applies.
+_python_param_needs_vmgr() {
+    _python_param_active && [[ "$(pg_answer_get backend)" == "venv" ]]
+}
+
 # Resolve a parameter's default from the decision-graph — the single source of
 # parameter defaults. Builds the graph, finds the node by name, and echoes its
 # resolved default (`pg_resolve_default` honors computed `@fn` defaults).

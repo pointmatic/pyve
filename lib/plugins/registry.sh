@@ -111,6 +111,33 @@ plugin_load_all_from_manifest() {
     return 0
 }
 
+# Build the parameter decision-graph from the framework-owned top nodes plus
+# every active plugin's contributed subtree. The framework owns the cross-cutting
+# differentiators (language / project-guide / direnv — pg_register_framework_nodes
+# in lib/param_graph.sh); each active plugin contributes its own language subtree
+# through the `register_params` hook (Python: backend → version-manager →
+# python-version → test-env; Node: provider → runtime-manager). The graph is thus
+# no longer Python-hardcoded — language-based applicability prunes a subtree when
+# its language is not selected, and a polyglot `multiple` selection keeps every
+# active subtree.
+#
+# Mirrors pg_build_graph but sources contributors from the active-plugin list
+# (the contract) rather than the manual pg_register_contributor list. Resets the
+# node table + answers; assumes plugin_load_all_from_manifest already populated
+# the active set.
+plugin_build_param_graph() {
+    # shellcheck disable=SC2034  # both are read by the param_graph.sh walk (cross-file; defined there)
+    PYVE_PARAM_NODES=()
+    # shellcheck disable=SC2034  # see above — the answers accumulator lives in param_graph.sh
+    PYVE_PARAM_ANSWERS=" "
+    pg_register_framework_nodes
+    local p
+    while IFS= read -r p; do
+        [[ -n "$p" ]] || continue
+        plugin_dispatch "$p" register_params
+    done <<<"$(plugin_list_active)"
+}
+
 # Dispatch a hook to the plugin. Prefers <name>_pyve_plugin_<hook>;
 # falls back to pyve_plugin_default_<hook>. Args after the hook name
 # are forwarded.
