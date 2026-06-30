@@ -793,6 +793,41 @@ _init_manifest_root_backend() {
     manifest_get_backend root 2>/dev/null || true
 }
 
+# Absolute path to the in-place manifest writer (resolved once at source time;
+# lib/plugins/python/plugin.sh → ../../ is lib/).
+_PYVE_MANIFEST_WRITE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/pyve_manifest_write.py"
+
+# Ensure pyve.toml's [env.root] records the resolved backend. Used on the refresh
+# / --force path where pyve.toml already exists, so _init_scaffold_manifest would
+# otherwise no-op and leave the canonical manifest backend-less (the split-brain
+# `pyve status` reports "not configured"). A structure-preserving tomlkit edit
+# (lib/pyve_manifest_write.py); idempotent. Degrades to a silent no-op when
+# pyve.toml is absent or tomlkit is unavailable — the backend still rides
+# `.pyve/config` during the v3.0 read-compat window (removed in P.i.3).
+_init_manifest_ensure_root_backend() {
+    local backend="$1"
+    [[ -n "$backend" ]] || return 0
+    [[ -f pyve.toml ]] || return 0
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    local rc=0
+    "$py" "$_PYVE_MANIFEST_WRITE_HELPER" set-env-attr pyve.toml root backend "$backend" || rc=$?
+    # rc 3 = tomlkit unavailable → not fatal (the value rides .pyve/config for now).
+    [[ $rc -eq 3 ]] && return 0
+    return $rc
+}
+
+# True (0) when the cwd already holds a Pyve project — either a v2 `.pyve/config`
+# OR a v3-native `pyve.toml`. The re-init / `--force` handling keys off this so a
+# forced rebuild fires on a `.pyve/config`-less v3 project; the old bare
+# `config_file_exists` gate was v3-blind, so `--force` silently no-op'd (the env
+# was never rebuilt) precisely when the project was v3-clean.
+_init_is_reinit() {
+    config_file_exists && return 0
+    [[ -f pyve.toml ]] && return 0
+    return 1
+}
+
 # On a forced rebuild, never silently orphan a materialized env whose
 # backend differs from the target backend. The re-init purge only removes
 # the env that `.pyve/config` records; a stray foreign-backend env (e.g. a
@@ -880,9 +915,16 @@ _init_detect_project_guide_present() {
 # (`pyve test --env testenv`) resolve.
 _init_write_pyve_toml() {
     local project_name="$1"
+    # The resolved root backend (venv / micromamba / none / …). `pyve init`
+    # always passes it so the canonical manifest records the one fact `pyve
+    # status` keys off; the optional form (no arg) preserves the legacy
+    # backend-less template for unit callers that only exercise the scaffold.
+    local backend="${2:-}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
+    local backend_line=""
+    [[ -n "$backend" ]] && backend_line=$'\n'"backend = \"${backend}\""
     cat > pyve.toml <<EOF
 pyve_schema = "3.0"
 
@@ -890,7 +932,7 @@ pyve_schema = "3.0"
 name = "${project_name}"
 
 [env.root]
-purpose = "utility"
+purpose = "utility"${backend_line}
 
 [env.testenv]
 purpose = "test"
@@ -979,9 +1021,12 @@ _init_validate_existing_manifest() {
 _init_write_pyve_toml_polyglot() {
     local project_name="$1"
     local node_path="$2"
+    local backend="${3:-}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
+    local backend_line=""
+    [[ -n "$backend" ]] && backend_line=$'\n'"backend = \"${backend}\""
     cat > pyve.toml <<EOF
 pyve_schema = "3.0"
 
@@ -989,7 +1034,7 @@ pyve_schema = "3.0"
 name = "${project_name}"
 
 [env.root]
-purpose = "utility"
+purpose = "utility"${backend_line}
 
 [env.testenv]
 purpose = "test"
@@ -1096,8 +1141,14 @@ _init_resolve_node_path() {
 _init_scaffold_manifest() {
     local project_name="$1"
     local node_path_flag="$2"
+    # The resolved root backend, recorded into [env.root] so pyve.toml is the
+    # canonical source of the backend (not just `.pyve/config`). On an existing
+    # manifest (refresh / --force), backfill the backend in place rather than
+    # no-op'ing, so a re-init never leaves the manifest backend-less.
+    local backend="${3:-}"
 
     if [[ -f pyve.toml ]]; then
+        _init_manifest_ensure_root_backend "$backend"
         return 0
     fi
 
@@ -1105,7 +1156,7 @@ _init_scaffold_manifest() {
     node_signal="$(plugin_dispatch node detect 2>/dev/null || true)"
 
     if [[ "$node_signal" != "node" ]]; then
-        _init_write_pyve_toml "$project_name"
+        _init_write_pyve_toml "$project_name" "$backend"
         success "Created pyve.toml"
         return 0
     fi
@@ -1123,7 +1174,7 @@ _init_scaffold_manifest() {
     info "Node sub-path: ${node_path}"
     info "Manifest: Python at \".\", Node at \"${node_path}\"."
 
-    _init_write_pyve_toml_polyglot "$project_name" "$node_path"
+    _init_write_pyve_toml_polyglot "$project_name" "$node_path" "$backend"
     success "Created pyve.toml (polyglot: python + node)"
 
     # surface a SvelteKit framework hint when detected.
@@ -1871,10 +1922,16 @@ init_project() {
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
 
-    # Check for existing installation (re-initialization detection)
-    if config_file_exists; then
+    # Check for existing installation (re-initialization detection). Fire on
+    # EITHER a v2 `.pyve/config` OR a v3-native `pyve.toml` — keying off
+    # `config_file_exists` alone was v3-blind, so `pyve init --force` silently
+    # no-op'd on a `.pyve/config`-less v3 project (the env was never rebuilt).
+    if _init_is_reinit; then
         local existing_backend
         existing_backend="$(read_config_value "backend")"
+        # On a v3-native project there is no `.pyve/config`; read the backend
+        # from the manifest so the force/notice messaging is accurate.
+        [[ -z "$existing_backend" ]] && existing_backend="$(_init_manifest_root_backend)"
         local existing_version
         existing_version="$(read_config_value "pyve_version")"
 
@@ -1934,7 +1991,11 @@ init_project() {
             success "Environment purged"
             banner "Rebuilding fresh environment"
 
-        else
+        elif config_file_exists; then
+            # Interactive re-init menu — v2 `.pyve/config` only (it drives
+            # update_config_version, which needs that file). A v3-native
+            # (`pyve.toml`-only) non-force re-init falls through to the normal
+            # idempotent create-if-missing path below, unchanged.
             # Interactive mode (no flag specified)
             warn "Project already initialized with Pyve"
             if [[ -n "$existing_version" ]]; then
@@ -2040,7 +2101,7 @@ init_project() {
     # a genuinely-unknown `--backend bogus` still hard-errors.
     if [[ -z "$arg_backend_explicit" ]] && _env_backend_is_advisory "$backend_flag"; then
         info "env 'root' declares backend '$backend_flag', which pyve does not yet materialize; skipping root env creation (provision it manually per the env spec)"
-        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "$backend_flag"
         PYVE_INIT_TAIL_BACKEND="$backend_flag"
         PYVE_INIT_TAIL_ENV_PATH=""
         PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
@@ -2172,7 +2233,7 @@ EOF
         # get the plain manifest. `.pyve/config` continues to be written
         # above for the v3.0 read-compat window; it is dropped when that
         # read-compat layer is removed.
-        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "micromamba"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
@@ -2273,7 +2334,7 @@ EOF
     # projects get the plain manifest. `.pyve/config` continues to be
     # written above for the v3.0 read-compat window; it is dropped when
     # that read-compat layer is removed.
-    _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+    _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "venv"
 
     # Materialize the declared default test env (venv-backed only), gated on an
     # actual declaration — never inject an undeclared `testenv`. Conda/advisory

@@ -390,9 +390,19 @@ Extend the plugin contract ([contract.sh](../../lib/plugins/contract.sh) — tod
 
 ---
 
-### Story P.i: `pyve.toml` is the sole config source — write the backend, migrate ~64 read-sites, stop writing `.pyve/config` (v2-wiring removal) [Planned]
+### Story P.i (split): `pyve.toml` is the sole config source — write the backend, migrate the read-sites, stop writing `.pyve/config` (v2-wiring removal)
 
-*(Pillar I foundation. The "N-10 read-compat sweep" that ~8 O-series stories deferred — N-10 became Phase O, so the v2-wiring removal lands here in Phase P / v3.1.0. This is the **write**-side prerequisite + the **read**-migration + the **stop**-writing, as one coherent change. Without it, "explicit `pyve.toml`" (P.j) is impossible — the manifest isn't even written authoritatively.)*
+*(Pillar I foundation. The "N-10 read-compat sweep" that ~8 O-series stories deferred — N-10 became Phase O, so the v2-wiring removal lands here in Phase P / v3.1.0. This is the **write**-side prerequisite + the **read**-migration + the **stop**-writing.)*
+
+**Split rationale (recorded at implementation time, 2026-06-29).** The bare `P.i` was too large for one coherent commit: the real blast radius is **~172 `.pyve/config` touch-points across 13 files** (95 in [`python/plugin.sh`](../../lib/plugins/python/plugin.sh) alone), not the ~64 first estimated. Split into **P.i.1 → P.i.2 → P.i.3** in a deliberately safe order — **write** the manifest first (so it is authoritatively populated, while `.pyve/config` is *still* written, so every existing reader keeps working), then **migrate readers** onto the now-populated manifest, then **stop** writing `.pyve/config` once nothing reads it. Every intermediate state is fully functional; the story's "do together — each alone breaks the others" caveat is satisfied across the bundle rather than in one commit. The three-sided fix is one logical change delivered as three reviewable units.
+
+---
+
+### Story P.i.1: Write the resolved backend into `pyve.toml [env.root]` + fix the `--force` reinit gate on v3 projects [Done]
+
+*The **write** side of the P.i bundle, plus the coupled high-severity `--force`-no-op fix (both are about `init`'s manifest authority on a `.pyve/config`-less v3 project). Keeps writing `.pyve/config` for now — the read migration (P.i.2) and the stop (P.i.3) follow.*
+
+**Scope refinement (at implementation).** Per the authoritative project-essentials design ("A forced/refresh rebuild honors the manifest backend"), `[env.root]` carries **only `backend`** — python comes from `.tool-versions`/`environment.yml`, env_name from `environment.yml`'s conda metadata. So the Write side persists `backend` (not python/env_name) into `[env.root]`; that is the one fact `pyve status` keys off and the symptom's missing key.
 
 **Discovered:** 2026-06-12, `nbfoundry-torch-smoke`. `pyve init --backend micromamba` (with `environment.yml` present) materialized the conda root env correctly (`.pyve/envs/root/conda`, 303 pkgs), yet `pyve status` reported **"Backend: not configured."**
 
@@ -413,19 +423,49 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 **Coordinates with:** O.g (partial read fix — `check`/`status` only — `[Done]`); O.d (made the `.pyve/config` write *consistent* with the resolved backend, but did **not** populate the manifest); O.o.* (the `inherit`/mirror-root path reads `.pyve/config` — moves to the manifest in this sweep); O.k (the parallel `pyproject [tool.pyve.testenvs]` lifecycle duality — separate reader, same "make the manifest authoritative" spirit).
 
-**Out of scope.** The runnability-probe / `pyve heal` pillars (Act 2). The `pyproject [tool.pyve.testenvs]` → `pyve.toml` lifecycle migration (O.k bundle). Changing the `purpose`/backend vocabularies.
+**Out of scope (whole bundle).** The runnability-probe / `pyve heal` pillars (Act 2). The `pyproject [tool.pyve.testenvs]` → `pyve.toml` lifecycle migration (O.k bundle). Changing the `purpose`/backend vocabularies.
 
-**Tasks (refine at `plan_production_phase`).**
+**P.i.1 tasks (write + `--force`).**
 
-- [ ] Reproduce (red): `pyve init --backend micromamba` (fresh **and** pre-existing `pyve.toml`) → assert `pyve.toml [env.root].backend == "micromamba"` (empty today) and `pyve status` reports the backend (says "not configured" today).
-- [ ] **Write:** make `init` persist the resolved backend (+ python / env_name) into `pyve.toml [env.root]`, fresh and existing; drop the backend-less hardcoded template.
-- [ ] **Read:** migrate the ~64 `.pyve/config` read-sites (`read_config_value` / `config_file_exists` / `[[ -f ".pyve/config" ]]`) onto `manifest_load` + accessors; remove the read-compat synthesis.
-- [ ] **`--force` must force on a v3 project:** route the reinit/destructive-rebuild gate off `config_file_exists` ([plugin.sh:1729](../../lib/plugins/python/plugin.sh#L1729)) onto manifest presence (`pyve.toml` / `manifest_load`), so `pyve init --force` purges + recreates the env on a `.pyve/config`-less project. Regression: a v3 project (valid `pyve.toml`, no `.pyve/config`) with an existing `.venv` → `pyve init --force` **recreates** the venv (assert rebuilt, not `already exists, skipping`); pair with an interpreter-drift fixture (venv built on a different python than the current pin) → `--force` yields a venv on the pinned interpreter.
-- [ ] **Stop:** `init` no longer writes `.pyve/config`; remove the writers; confirm a `pyve.toml`-only project (no `.pyve/config`) is fully functional across `status` / `check` / `run` / `lock` / `env`.
-- [ ] Tests: fresh + existing-manifest init both populate the manifest backend; every command reads the manifest; no command returns "not configured" on a configured project; a `.pyve/config`-less v3 project is green end-to-end.
+- [x] Reproduce (red): tests assert `pyve.toml [env.root].backend` is recorded on a fresh init and backfilled on an existing manifest, and that the `--force` gate fires on manifest presence. ([tests/unit/test_init_manifest_backend.bats](../../tests/unit/test_init_manifest_backend.bats), 11 cases; [tests/integration/test_reinit.py](../../tests/integration/test_reinit.py) `test_force_rebuilds_on_v3_only_project`.)
+- [x] **Write:** `init` persists the resolved root `backend` into `pyve.toml [env.root]` — fresh via the heredoc template (`_init_write_pyve_toml` / `_init_write_pyve_toml_polyglot` gained an optional `backend` arg; the three scaffold call sites pass `venv` / `micromamba` / the advisory value), existing via a structure-preserving tomlkit in-place edit (`_init_manifest_ensure_root_backend` → new helper [lib/pyve_manifest_write.py](../../lib/pyve_manifest_write.py) `set-env-attr`, degrading to a silent no-op when tomlkit is absent). The backend-less hardcoded template is dropped for init (kept only for the no-arg unit form). (`.pyve/config` is *still* written in this story — the stop is P.i.3.) python/env_name deliberately not written (see scope refinement above).
+- [x] **`--force` must force on a v3 project:** the reinit/destructive-rebuild gate now fires on `_init_is_reinit` (`config_file_exists` **OR** `pyve.toml` present), with `existing_backend` falling back to `_init_manifest_root_backend` when `.pyve/config` is absent. The interactive re-init menu stays gated on `config_file_exists` (it drives `update_config_version`); a v3-native non-force re-init falls through to the idempotent create path. Regression green: a `.pyve/config`-less v3 project with an existing `.venv` → `pyve init --force` **recreates** the venv (asserts rebuilt + "Force re-initialization", not `already exists, skipping`).
+- [x] Tests: fresh + existing-manifest writes populate the manifest backend and validate clean under `manifest_load`; the `--force`-on-v3 integration regression is green. Full unit suite 2105/0; the two reinit integration tests pass.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
+
+**Carried to P.i.2/P.i.3.** The interpreter-drift fixture (venv built on a different python than the pin → `--force` yields a venv on the pinned interpreter) is a deeper assertion folded into the read-migration/end-to-end work; the project-essentials note (`init` writes the manifest backend; gate fires on manifest presence) lands with P.i.3's docs sweep to avoid documenting an area P.i.2/P.i.3 then reshape.
+
+---
+
+### Story P.i.2: Migrate the `.pyve/config` read-sites onto `manifest_load` [Planned]
+
+*The **read** side of the P.i bundle. Builds on P.i.1 (the manifest is now authoritatively written), so consumers can switch to it safely. ~172 `.pyve/config` touch-points across 13 files; may split further into per-file-group sub-stories if it proves too large in one pass.*
+
+**Context:** see Story P.i.1 (Discovered / Symptom / Root cause) and the split rationale above.
+
+**P.i.2 tasks (read).**
+
+- [ ] Migrate the `.pyve/config` read-sites (`read_config_value` / `config_file_exists` / `[[ -f ".pyve/config" ]]`) onto `manifest_load` + accessors, file-group by file-group; remove the `v3.0-only: remove in N-10`-tagged read-compat synthesis in [lib/manifest.sh](../../lib/manifest.sh) once nothing depends on it.
+- [ ] Tests: every migrated command reads the manifest; no command returns "not configured" on a configured project.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
+
+---
+
+### Story P.i.3: Stop writing `.pyve/config` + project-essentials [Planned]
+
+*The **stop** side of the P.i bundle. Lands only after P.i.2 (nothing reads `.pyve/config` anymore), making `pyve.toml` the **sole** declaration.*
+
+**Context:** see Story P.i.1 and the split rationale above.
+
+**P.i.3 tasks (stop + docs).**
+
+- [ ] **Stop:** `init` no longer writes `.pyve/config`; remove the writers ([version.sh](../../lib/version.sh) `write_config_with_version` / `update_config_version` and the `init` writer at [plugin.sh:2014](../../lib/plugins/python/plugin.sh#L2014)).
+- [ ] Confirm a `pyve.toml`-only project (no `.pyve/config`) is fully functional across `status` / `check` / `run` / `lock` / `env` — end-to-end green.
 - [ ] project-essentials: state that `init` writes the manifest backend and `.pyve/config` is gone; remove the read-compat entry and the `v3.0-only: remove in N-10` markers.
 
-**Version:** v3.1.0 bundle (Subphase P-1) — the v2-wiring removal (former "N-10" sweep). Developer owns number/placement.
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
 ---
 

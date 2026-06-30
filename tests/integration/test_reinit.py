@@ -62,7 +62,35 @@ class TestReinitForce:
         # lib/ui/core.sh primitives route to stdout (not stderr).
         assert "Force re-initialization" in result.stdout
         assert not venv_marker.exists()
-    
+
+    def test_force_rebuilds_on_v3_only_project(self, pyve, project_builder):
+        """--force rebuilds the env even with no `.pyve/config` (v3-native).
+
+        Regression (Story P.i.1): the re-init/--force gate keyed off
+        `config_file_exists`, so on a `.pyve/config`-less v3 project the entire
+        reinit/purge block was skipped — `--force` fell through to "already
+        exists, skipping" and never rebuilt the env. The gate now fires on
+        manifest presence (`pyve.toml`) too.
+        """
+        pyve.init(backend="venv")
+
+        # Simulate a v3-native project: drop the v2 read-compat file, keeping
+        # `pyve.toml` (which now records the backend) and the materialized .venv.
+        config = project_builder.project_dir / ".pyve" / "config"
+        if config.exists():
+            config.unlink()
+        assert (project_builder.project_dir / "pyve.toml").exists()
+
+        marker = project_builder.project_dir / ".venv" / "marker.txt"
+        marker.write_text("test marker")
+
+        result = pyve.run("init", "--force", input="y\n")
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Force re-initialization" in result.stdout
+        assert "already exists, skipping" not in result.stdout
+        assert not marker.exists()
+
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
     def test_force_prompts_for_confirmation(self, pyve, project_builder, clean_env):
         """Test that --force prompts for confirmation."""
