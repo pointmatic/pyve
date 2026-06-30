@@ -3575,6 +3575,16 @@ _status_section_project() {
 # Detect the configured Python version source. Returns a human-readable
 # string like "3.14.4 (.tool-versions via asdf)" or "(not pinned)".
 #
+# The project's backend, for status display. Reads the v3 manifest — `pyve.toml`
+# is authoritative for the root backend, and `show_status` calls `manifest_load`
+# before these sections run. The v3.0 read-compat synthesis populates the root
+# backend from `.pyve/config` when there is no `pyve.toml`, so this one accessor
+# is correct for both v3-native and legacy v2 projects (it replaced three inline
+# `read_config_value "backend"` reads that saw only `.pyve/config`).
+_status_backend() {
+    manifest_get_backend root 2>/dev/null || true
+}
+
 # Backend-aware: micromamba projects pin Python in environment.yml
 # (`python=<spec>`); venv-style backends use .tool-versions /
 # .python-version / .pyve/config. Without the dispatch the Project
@@ -3583,7 +3593,7 @@ _status_section_project() {
 # (Phase L audit T1-01).
 _status_configured_python() {
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
     if [[ "$backend" == "micromamba" ]]; then
         _status_configured_python_micromamba
     else
@@ -3647,7 +3657,7 @@ _status_section_environment() {
     _status_header "Environment"
 
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
 
     if [[ "$backend" == "micromamba" ]]; then
         _status_env_micromamba
@@ -3767,7 +3777,7 @@ _status_section_integrations() {
 
     # project-guide: look for the binary in the project environment.
     local backend env_path pg_info
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
     env_path=""
     if [[ "$backend" == "venv" ]]; then
         local venv_dir
