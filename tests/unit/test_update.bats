@@ -52,11 +52,38 @@ teardown() {
     [[ "$output" == *"pyve init"* ]]
 }
 
-@test "update: fails with exit 1 when backend is missing from config" {
+@test "update: fails with exit 1 when the backend is undeterminable (manifest and config both empty)" {
     create_pyve_config 'pyve_version: "0.1.0"'
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 1 ]
-    [[ "$output" == *"Corrupt .pyve/config"* ]]
+    [[ "$output" == *"Could not determine the project backend"* ]]
+}
+
+@test "update: resolves the backend from pyve.toml when .pyve/config omits it" {
+    # v3-native shape: the presence gate is satisfied by a .pyve/config that
+    # only carries pyve_version, while the backend lives in the manifest.
+    # The init-guard backend read must resolve from the manifest, so update
+    # gets *past* the guard into the update body rather than aborting with
+    # "Could not determine the project backend".
+    #
+    # Scope note: the run does not complete — a later `.pyve/config`-rewrite
+    # step still expects a `backend:` line in the config (config-write
+    # machinery migrated in P.i.8). This test asserts only the guard read,
+    # which is P.i.3's change; it deliberately does not assert exit 0.
+    create_pyve_config 'pyve_version: "0.9.9"'
+    cat > pyve.toml <<'EOF'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+EOF
+    run "$PYVE_SCRIPT" update
+    [[ "$output" != *"Could not determine the project backend"* ]]
+    [[ "$output" == *"[1/5] pyve_version"* ]]
 }
 
 #============================================================

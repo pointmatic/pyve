@@ -556,9 +556,12 @@ python_pyve_plugin_activate() {
     # resolved from project state below).
     local _path="${1:-.}"
 
+    # Backend from the manifest first (authoritative; `compose_project_envrc`
+    # calls `manifest_load` before dispatching activate). `.pyve/config` is a
+    # transitional fallback for the v3.0 read-compat window (removed in P.i.8).
     local backend
-    backend="$(read_config_value "backend")"
-    [[ -z "$backend" ]] && backend="$(manifest_get_backend root 2>/dev/null || true)"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
     [[ -z "$backend" ]] && backend="venv"
 
     local env_path env_name
@@ -2914,10 +2917,15 @@ update_project() {
         exit 1
     fi
 
+    # Backend from the manifest first (authoritative); `.pyve/config` remains a
+    # transitional fallback for the v3.0 read-compat window (removed in P.i.8).
+    # The presence gate above still keys off `config_file_exists` — flipping it
+    # to manifest-aware presence is P.i.4.
     local backend
-    backend="$(read_config_value "backend")"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
+    [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
     if [[ -z "$backend" ]]; then
-        log_error "Corrupt .pyve/config: missing 'backend' key."
+        log_error "Could not determine the project backend (manifest and .pyve/config both empty)."
         log_error "Run: pyve init --force"
         exit 1
     fi

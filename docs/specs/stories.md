@@ -450,9 +450,15 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 - [x] Migrate the three `pyve status` backend reads onto `manifest_get_backend root`. Extracted a single `_status_backend` helper (DRY — the three reads were identical) called by `_status_configured_python`, `_status_section_environment`, and the integrations project-guide row in [plugin.sh](../../lib/plugins/python/plugin.sh). The non-status `backend` reads (activate hook, `update` guard, reinit gate) are untouched — they belong to later sibling stories.
 - [x] Tests: [tests/unit/test_status_backend_manifest.bats](../../tests/unit/test_status_backend_manifest.bats) (4 cases) — `_status_backend` resolves micromamba/venv from a v3 manifest (no `.pyve/config`) and resolves a v2 (`.pyve/config`-only) project via the read-compat synthesis; plus a wiring guard that the three sites route through the helper, not `read_config_value`.
 
-### Story P.i.3: Remaining pure `backend` runtime reads (`activate` hook, `pyve update`'s init-guard backend read) [Planned]
+### Story P.i.3: Remaining pure `backend` runtime reads (`activate` hook, `pyve update`'s init-guard backend read) [Done]
 
-- [ ] Do it
+*The pure-`backend` read slice of the P.i bundle (after P.i.2's `status` reads). Reorders the two remaining `.pyve/config`-first backend reads to manifest-first, with `.pyve/config` retained as a transitional fallback (removed wholesale in P.i.8). Safe because `manifest_get_backend root` is authoritative on v3 (P.i.1) and correct on v2 via the read-compat synthesis.*
+
+- [x] **`.envrc` activate hook** — `python_pyve_plugin_activate` ([plugin.sh](../../lib/plugins/python/plugin.sh)) reads `manifest_get_backend root` first, falling back to `read_config_value "backend"`. Safe by ordering because `compose_project_envrc` calls `manifest_load` ([envrc_composer.sh](../../lib/envrc_composer.sh)) before dispatching activate.
+- [x] **`pyve update` init-guard** — `update_project`'s backend read reorders to manifest-first; the "corrupt config" error becomes "Could not determine the project backend (manifest and .pyve/config both empty)." The *presence* gate above stays on `config_file_exists` — flipping it to manifest-aware presence is P.i.4. The `.pyve/config`-rewrite step downstream (`update_config_version` in [version.sh](../../lib/version.sh)) still reads `backend` from the config; that config-write machinery is P.i.8's, not this story's.
+- [x] Tests: [tests/unit/test_activate_backend_manifest.bats](../../tests/unit/test_activate_backend_manifest.bats) (3 cases — venv/micromamba manifest with no `.pyve/config` drive the right section; the manifest outranks a contradictory config); [tests/unit/test_update.bats](../../tests/unit/test_update.bats) (updated the both-empty error assertion to the new message + a positive case proving the guard resolves from `pyve.toml` when `.pyve/config` omits the backend). Full unit suite 2113/0; shellcheck baseline unchanged (no new findings on the two edited reads).
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
 ### Story P.i.4: `config_file_exists` and `[[ -f ".pyve/config" ]]` presence gates → manifest-aware presence (control-flow-sensitive) [Planned]
 
