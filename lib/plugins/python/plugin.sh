@@ -558,7 +558,7 @@ python_pyve_plugin_activate() {
 
     # Backend from the manifest first (authoritative; `compose_project_envrc`
     # calls `manifest_load` before dispatching activate). `.pyve/config` is a
-    # transitional fallback for the v3.0 read-compat window (removed in P.i.8).
+    # transitional fallback for the v3.0 read-compat window (removed in P.i.23).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
@@ -2909,18 +2909,17 @@ update_project() {
         esac
     done
 
-    # Sanity check: .pyve/config must exist. Without it we don't know the
-    # backend or how to refresh anything.
-    if ! config_file_exists; then
+    # Sanity check: the project must be initialized. A v3-native project
+    # declares itself via `pyve.toml`; a v2 project via `.pyve/config`.
+    # Either is sufficient — the backend is resolved manifest-first below.
+    if ! config_file_exists && [[ ! -f "pyve.toml" ]]; then
         log_error "pyve update requires an initialized project."
-        log_error "No .pyve/config found. Run 'pyve init' first."
+        log_error "No pyve.toml or .pyve/config found. Run 'pyve init' first."
         exit 1
     fi
 
     # Backend from the manifest first (authoritative); `.pyve/config` remains a
-    # transitional fallback for the v3.0 read-compat window (removed in P.i.8).
-    # The presence gate above still keys off `config_file_exists` — flipping it
-    # to manifest-aware presence is P.i.4.
+    # transitional fallback for the v3.0 read-compat window (removed in P.i.23).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="$(read_config_value "backend")"

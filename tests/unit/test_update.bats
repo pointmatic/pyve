@@ -45,11 +45,32 @@ teardown() {
 # Preconditions
 #============================================================
 
-@test "update: fails with exit 1 when .pyve/config is missing" {
+@test "update: fails with exit 1 when neither pyve.toml nor .pyve/config exists" {
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 1 ]
-    [[ "$output" == *"No .pyve/config found"* ]]
+    [[ "$output" == *"No pyve.toml or .pyve/config found"* ]]
     [[ "$output" == *"pyve init"* ]]
+}
+
+@test "update: a pyve.toml-only project (no .pyve/config) passes the presence gate" {
+    # v3-native shape: the presence gate must recognize the manifest, so a
+    # project with pyve.toml and no .pyve/config is not turned away as
+    # "uninitialized". (The run still trips later on the config-write step —
+    # P.i.23 territory — so this asserts only that the presence gate passes.)
+    cat > pyve.toml <<'EOF'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+EOF
+    [ ! -e .pyve/config ]
+    run "$PYVE_SCRIPT" update
+    [[ "$output" != *"requires an initialized project"* ]]
+    [[ "$output" != *"No pyve.toml or .pyve/config found"* ]]
 }
 
 @test "update: fails with exit 1 when the backend is undeterminable (manifest and config both empty)" {
@@ -68,8 +89,8 @@ teardown() {
     #
     # Scope note: the run does not complete — a later `.pyve/config`-rewrite
     # step still expects a `backend:` line in the config (config-write
-    # machinery migrated in P.i.8). This test asserts only the guard read,
-    # which is P.i.3's change; it deliberately does not assert exit 0.
+    # machinery migrated in P.i.23). This test asserts only the guard read
+    # (P.i.3's change); it deliberately does not assert exit 0.
     create_pyve_config 'pyve_version: "0.9.9"'
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"

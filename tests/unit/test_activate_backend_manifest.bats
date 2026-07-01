@@ -8,7 +8,7 @@
 # dispatching activate, so on a v3-native project (pyve.toml with the backend
 # recorded, no `.pyve/config`) the emitted activation section reflects the
 # manifest's backend. The `.pyve/config` read is retained only as a transitional
-# fallback (removed wholesale in P.i.8); the existing config-driven activate
+# fallback (removed wholesale in P.i.23); the existing config-driven activate
 # tests still pass through it.
 
 bats_require_minimum_version 1.5.0
