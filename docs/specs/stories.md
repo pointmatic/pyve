@@ -460,15 +460,13 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 **Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
-### Storybundle P.i.4-5: `config_file_exists` and `[[ -f ".pyve/config" ]]` presence gates → manifest-aware presence (control-flow-sensitive)
+### Story P.i.4: `config_file_exists` / `[[ -f ".pyve/config" ]]` presence gates → manifest-aware presence (control-flow-sensitive) [Done]
 
-#### Story P.i.4: `lock/update/env` presence gates → manifest-aware presence (control-flow-sensitive) [Done]
+*Make the "is this an initialized Pyve project?" gates recognize a v3-native `pyve.toml`, so commands stop turning away (or mis-routing) a project that has no `.pyve/config`.*
 
-*Half of the P.i.4-5 bundle: make the `lock` / `update` / `env` "is this an initialized Pyve project?" gates recognize a v3-native `pyve.toml`, so they stop turning away (or mis-routing) a project that has no `.pyve/config`. `init`/`backend-detect` gates are P.i.5.*
+**Scope finding (at implementation).** This was briefly split into a second `init`/`backend-detect` story; a survey found no standalone work there, so it stayed a single story. The `config_file_exists` / `[[ -f ".pyve/config" ]]` sites that are *not* touched here are already spoken for: config priority-tiers and the re-init menu are retained until the stop story (P.i.8); `micromamba.env_name` reads are P.i.5; `venv.directory` reads are P.i.6; and the plugin-active and status gates already read the manifest first (`.pyve/config` is only their v2 fallback). `pyve env` likewise already reads exclusively from the manifest. So the genuine v3-presence bugs reduced to **two** callsites: `lock` and `update`.
 
-**Scope finding (at implementation).** The bundle title lists three commands, but `pyve env` already reads exclusively from the manifest — it has no `.pyve/config` presence gate — so no change was needed there. The `.pyve/config` read inside `migrate_legacy_env_layout` ([envs.sh](../../lib/envs.sh)) is a legacy-name lookup that already degrades to a directory scan on v3, and the `micromamba.env_name` read it wraps is P.i.20's concern, not a presence gate. So P.i.4 reduced to **two** callsites: `lock` and `update`.
-
-- [x] **`update` presence gate** — `update_project` ([plugin.sh](../../lib/plugins/python/plugin.sh)) gated "initialized?" on `config_file_exists` alone, so a v3-native project (only `pyve.toml`) was rejected with "No .pyve/config found." Flipped to `! config_file_exists && [[ ! -f "pyve.toml" ]]` (mirroring the shipped `_init_is_reinit` pattern); the error now reads "No pyve.toml or .pyve/config found." A v3-native project passes the gate (it still trips the later config-write step until the P.i.23 stop, but that is out of this story's scope).
+- [x] **`update` presence gate** — `update_project` ([plugin.sh](../../lib/plugins/python/plugin.sh)) gated "initialized?" on `config_file_exists` alone, so a v3-native project (only `pyve.toml`) was rejected with "No .pyve/config found." Flipped to `! config_file_exists && [[ ! -f "pyve.toml" ]]` (mirroring the shipped `_init_is_reinit` pattern); the error now reads "No pyve.toml or .pyve/config found." A v3-native project passes the gate (it still trips the later config-write step until the P.i.8 stop, but that is out of this story's scope).
 - [x] **`lock` Guard 1 (venv rejection)** — `_lock_main_env` ([lock.sh](../../lib/commands/lock.sh)) wrapped its "venv projects don't use conda-lock" rejection in `if config_file_exists`, so on a v3-native venv project (no `.pyve/config`) the guard was skipped and the user fell through to a less-precise "environment.yml not found." Resolves the backend manifest-first (`manifest_get_backend root` → `.pyve/config` fallback; `manifest_load` runs pre-dispatch in [pyve.sh](../../pyve.sh)), so the venv rejection fires on v3 too. Micromamba and bare (no-manifest, no-config) projects are unaffected.
 - [x] Tests: [tests/unit/test_lock_backend_manifest.bats](../../tests/unit/test_lock_backend_manifest.bats) (3 cases — v3 venv rejected, v2 venv still rejected via fallback, micromamba not mis-rejected); [tests/unit/test_update.bats](../../tests/unit/test_update.bats) (reworded the both-missing precondition to the new message + a positive case: a `pyve.toml`-only project passes the presence gate). Full unit suite **2117** tests; the 4 P.i.4 assertions green. shellcheck baseline unchanged (only the pre-existing SC2148 no-shebang note on the sourced files).
 
@@ -476,25 +474,35 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 **Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
-#### Story P.i.5: `init/backend-detect` presence gates → manifest-aware presence (control-flow-sensitive) [Planned]
+### Story P.i.5: `micromamba.env_name` reads → v3 source (`environment.yml` metadata / resolve helpers) [Done]
+
+*Route the consumers that read the micromamba env name straight from `.pyve/config` onto the v3 source — `environment.yml`'s `name:` metadata (per N.bf.14, the name survives only as conda env metadata, no longer keying the directory).*
+
+**Design (at implementation).** The existing `resolve_environment_name` can't be reused: its Priority-4 basename fallback never returns empty, but several consumers treat **empty = "not configured"** (status prints it; purge/removal skip on empty). Added a purpose-built helper `resolve_micromamba_env_name` ([micromamba_env.sh](../../lib/micromamba_env.sh)): `.pyve/config` micromamba.env_name (config-first for read-compat) → else `environment.yml` `name:` → else empty (no basename fallback).
+
+**Callsites — 9 consumers migrated, 4 read-sites intentionally left:**
+
+- [x] Add `resolve_micromamba_env_name` + unit tests ([tests/unit/test_resolve_micromamba_env_name.bats](../../tests/unit/test_resolve_micromamba_env_name.bats), 4 cases: config, environment.yml fallback, config-wins priority, empty).
+- [x] Migrate the 9 plugin.sh consumers (`activate`, `init` re-init, `purge`, `_purge_pyve_dir`, `update` vscode-refresh, `check`, `_status_env_micromamba`, `_status_section_integrations`, `run`) to call the helper. `_purge_pyve_dir` shed its now-redundant `config_file_exists` guard (the helper internalizes it).
+- [x] **Coupled backend reads (necessary side-migration).** `purge`'s legacy-flat cleanup and `run`'s backend routing read the env name *nested under a config-based `backend` check*, so the env_name migration was inert on a v3-native project. Made those two local `backend` reads manifest-first (`manifest_get_backend root` → `.pyve/config` fallback) — the reads P.i.3 left behind when it migrated only `activate`/`update`.
+- [x] **Left for the P.i.8 stop:** the Priority-2 config tier *inside* `resolve_environment_name` ([micromamba_env.sh](../../lib/micromamba_env.sh)); the tolerant read/migration helpers in [envs.sh](../../lib/envs.sh); and `self migrate`'s deliberate legacy read ([self.sh](../../lib/commands/self.sh)). ([utils.sh:774](../../lib/utils.sh#L774) was a false positive — the `read_config_value` doc comment.)
+- [x] Behavioral + wiring tests: [tests/unit/test_status_micromamba_env_name.bats](../../tests/unit/test_status_micromamba_env_name.bats) — `pyve status` shows the `environment.yml` name on a v3-native micromamba project (was "not configured"); "not configured" preserved when neither source names it; grep-guard that no plugin.sh consumer reads `micromamba.env_name` from `.pyve/config`. Full unit suite **2124**; all P.i.5 assertions green; `test_run_backend_detection` intact (the `run` backend-coupling change did not regress detection). shellcheck baseline unchanged.
+
+**Note (pre-existing, not P.i.5):** the same two `test_asdf_compat.bats` J.c cases still fail on a clean tree (environmental asdf-state leak) — unrelated; confirmed `run`-detection is unaffected.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
+
+### Story P.i.6: `venv.directory` reads → v3 source (`resolve_env_path` / default) [Planned]
 
 - [ ] Do it
 
-### Story P.i.20: `micromamba.env_name` reads → v3 source (`environment.yml` metadata / resolve helpers) [Planned]
-
-- [ ] Do it
-
-### Story P.i.21: `venv.directory` reads → v3 source (`resolve_env_path` / default) [Planned]
-
-- [ ] Do it
-
-## Story P.i.22: `python.version` reads → `.tool-versions` / `.python-version` [Planned]
+## Story P.i.7: `python.version` reads → `.tool-versions` / `.python-version` [Planned]
 
 - [ ] Do it
 
 ---
 
-### Story P.i.23: Stop writing `.pyve/config` + project-essentials [Planned]
+### Story P.i.8: Stop writing `.pyve/config` + project-essentials [Planned]
 
 *The **stop** side of the P.i bundle. Lands only after P.i.2 (nothing reads `.pyve/config` anymore), making `pyve.toml` the **sole** declaration.*
 

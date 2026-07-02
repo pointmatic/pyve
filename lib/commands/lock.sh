@@ -125,7 +125,7 @@ _lock_main_env() {
 
     # Guard 1: venv backend projects do not use conda-lock. Resolve the
     # backend manifest-first (authoritative on v3; `.pyve/config` is a
-    # transitional fallback for the v3.0 read-compat window, removed in P.i.23)
+    # transitional fallback for the v3.0 read-compat window, dropped when Subphase P-1 stops writing `.pyve/config`)
     # so a v3-native venv project is rejected here too, not just a v2 one.
     local resolved_backend
     resolved_backend="$(manifest_get_backend root 2>/dev/null || true)"

@@ -558,7 +558,7 @@ python_pyve_plugin_activate() {
 
     # Backend from the manifest first (authoritative; `compose_project_envrc`
     # calls `manifest_load` before dispatching activate). `.pyve/config` is a
-    # transitional fallback for the v3.0 read-compat window (removed in P.i.23).
+    # transitional fallback for the v3.0 read-compat window (dropped when Subphase P-1 stops writing `.pyve/config`).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
@@ -574,7 +574,7 @@ python_pyve_plugin_activate() {
         micromamba)
             # PYVE_ENV_NAME stays the configured (human-facing) name; the
             # CONDA_PREFIX/PATH come from the v3 root slot (Story N.bf.14).
-            env_name="$(read_config_value "micromamba.env_name")"
+            env_name="$(resolve_micromamba_env_name)"
             [[ -z "$env_name" ]] && env_name="$(basename "$PWD")"
             env_path="$(micromamba_root_prefix)"
             ;;
@@ -2044,7 +2044,7 @@ init_project() {
                         fi
                     elif [[ "$existing_backend" == "micromamba" ]]; then
                         local _interactive_env_name _interactive_env_path
-                        _interactive_env_name="$(read_config_value "micromamba.env_name")"
+                        _interactive_env_name="$(resolve_micromamba_env_name)"
                         # v3 root slot (Story N.bf.14), tolerant of a
                         # not-yet-moved flat env.
                         _interactive_env_path="$(resolve_main_micromamba_path "$_interactive_env_name")"
@@ -2672,13 +2672,16 @@ purge_project() {
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
             if [[ -d ".pyve/envs" ]] || [[ -d ".pyve/testenvs" ]]; then
+                # Resolve the backend manifest-first (the env_name migration
+                # below is inert on a v3-native project otherwise); `.pyve/config`
+                # is the transitional fallback, dropped when Subphase P-1 stops
+                # writing it.
                 local main_env_subdir=""
-                if [[ -f ".pyve/config" ]]; then
-                    local cfg_backend
-                    cfg_backend="$(read_config_value backend 2>/dev/null || true)"
-                    if [[ "$cfg_backend" == "micromamba" ]]; then
-                        main_env_subdir="$(read_config_value micromamba.env_name 2>/dev/null || true)"
-                    fi
+                local cfg_backend
+                cfg_backend="$(manifest_get_backend root 2>/dev/null || true)"
+                [[ -z "$cfg_backend" ]] && cfg_backend="$(read_config_value backend 2>/dev/null || true)"
+                if [[ "$cfg_backend" == "micromamba" ]]; then
+                    main_env_subdir="$(resolve_micromamba_env_name 2>/dev/null || true)"
                 fi
                 rm -rf ".pyve/config" 2>/dev/null || true
                 # Main micromamba env: the v3 root slot (Story N.bf.14),
@@ -2756,11 +2759,9 @@ _purge_pyve_dir() {
                 # Get environment name from config if it exists.
                 # Initialize on declaration: a declared-but-unset `local` is
                 # an unbound-variable error under `set -u` on bash 4.4+ when
-                # config_file_exists is false (no v2 .pyve/config). (N.bf.5)
+                # neither source declares a name. (N.bf.5)
                 local env_name=""
-                if config_file_exists; then
-                    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
-                fi
+                env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
 
                 # If we have an env name, try to remove it
                 if [[ -n "$env_name" ]]; then
@@ -2919,7 +2920,7 @@ update_project() {
     fi
 
     # Backend from the manifest first (authoritative); `.pyve/config` remains a
-    # transitional fallback for the v3.0 read-compat window (removed in P.i.23).
+    # transitional fallback for the v3.0 read-compat window (dropped when Subphase P-1 stops writing `.pyve/config`).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
@@ -2993,7 +2994,7 @@ update_project() {
     # Never create — that's user opt-in at init time.
     if [[ -f ".vscode/settings.json" ]] && [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name")"
+        env_name="$(resolve_micromamba_env_name)"
         if [[ -n "$env_name" ]]; then
             step_begin "[4/5] Refresh .vscode/settings.json"
             PYVE_REINIT_MODE=force write_vscode_settings "$env_name" >/dev/null 2>&1
@@ -3247,7 +3248,7 @@ check_environment() {
         _check_venv_backend "$env_path"
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name")"
+        env_name="$(resolve_micromamba_env_name)"
         # Main micromamba env at the v3 root slot (Story N.bf.14), tolerant
         # of a not-yet-moved flat env (non-mutating — `check` is a diagnostic).
         env_path="$(resolve_main_micromamba_path "$env_name")"
@@ -3718,7 +3719,7 @@ _status_venv_package_count() {
 
 _status_env_micromamba() {
     local env_name env_path
-    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+    env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
     if [[ -z "$env_name" ]]; then
         _status_row "Name:" "${DIM}not configured${RESET}"
         return 0
@@ -3792,7 +3793,7 @@ _status_section_integrations() {
         env_path="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+        env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
         [[ -n "$env_name" ]] && env_path="$(resolve_main_micromamba_path "$env_name")"
     fi
     if [[ -n "$env_path" ]] && [[ -x "$env_path/bin/project-guide" ]]; then
@@ -3881,14 +3882,16 @@ run_command() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local mm_env_name=""
 
-    if [[ -f ".pyve/config" ]]; then
-        backend="$(read_config_value backend 2>/dev/null || printf '')"
-        if [[ "$backend" == "micromamba" ]]; then
-            mm_env_name="$(read_config_value micromamba.env_name 2>/dev/null || printf '')"
-        fi
+    # Backend manifest-first (the env_name resolve is inert on a v3-native
+    # project otherwise); `.pyve/config` is the transitional fallback, dropped
+    # when Subphase P-1 stops writing it.
+    backend="$(manifest_get_backend root 2>/dev/null || printf '')"
+    [[ -z "$backend" ]] && backend="$(read_config_value backend 2>/dev/null || printf '')"
+    if [[ "$backend" == "micromamba" ]]; then
+        mm_env_name="$(resolve_micromamba_env_name 2>/dev/null || printf '')"
     fi
 
-    # Fallback for legacy projects with no .pyve/config: prefer the
+    # Fallback for bare projects (no manifest, no .pyve/config): prefer the
     # explicit `.venv/` signal; otherwise look for a single-tenant
     # `.pyve/envs/<name>/` (pre-N.f micromamba layout).
     if [[ -z "$backend" ]]; then

@@ -55,8 +55,9 @@ teardown() {
 @test "update: a pyve.toml-only project (no .pyve/config) passes the presence gate" {
     # v3-native shape: the presence gate must recognize the manifest, so a
     # project with pyve.toml and no .pyve/config is not turned away as
-    # "uninitialized". (The run still trips later on the config-write step —
-    # P.i.23 territory — so this asserts only that the presence gate passes.)
+    # "uninitialized". (The run still trips later on the config-write step,
+    # dropped when Subphase P-1 stops writing `.pyve/config` — so this asserts
+    # only that the presence gate passes.)
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"
 
@@ -89,8 +90,8 @@ EOF
     #
     # Scope note: the run does not complete — a later `.pyve/config`-rewrite
     # step still expects a `backend:` line in the config (config-write
-    # machinery migrated in P.i.23). This test asserts only the guard read
-    # (P.i.3's change); it deliberately does not assert exit 0.
+    # machinery dropped when Subphase P-1 stops writing `.pyve/config`). This
+    # asserts only the manifest-first backend read; it does not assert exit 0.
     create_pyve_config 'pyve_version: "0.9.9"'
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"

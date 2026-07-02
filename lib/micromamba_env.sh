@@ -619,6 +619,24 @@ resolve_environment_name() {
     return 0
 }
 
+# The configured micromamba env name from the v3 sources, or empty string when
+# neither declares one. Order: the transitional `.pyve/config` micromamba.env_name
+# (config-first for read-compat; the `.pyve/config` read is dropped when Subphase
+# P-1 stops writing it), else `environment.yml`'s `name:` metadata (the v3 source:
+# the name survives only as conda env metadata, no longer keying the directory).
+# Unlike resolve_environment_name there is NO basename fallback:
+# empty is meaningful, and callers treat it as "not configured".
+resolve_micromamba_env_name() {
+    local name=""
+    if config_file_exists; then
+        name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+    fi
+    if [[ -z "$name" && -f "environment.yml" ]]; then
+        name="$(parse_environment_name "environment.yml" 2>/dev/null || true)"
+    fi
+    printf '%s' "$name"
+}
+
 #============================================================
 # Environment Creation Functions
 #============================================================
