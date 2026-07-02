@@ -170,22 +170,6 @@ validate_micromamba_structure() {
 # Config Writing with Version
 #------------------------------------------------------------
 
-write_config_with_version() {
-    local config_file=".pyve/config"
-    
-    mkdir -p ".pyve"
-    
-    {
-        echo "pyve_version: \"$VERSION\""
-        
-        if [[ -f "$config_file" ]]; then
-            grep -v "^pyve_version:" "$config_file" || true
-        fi
-    } > "${config_file}.tmp"
-    
-    mv "${config_file}.tmp" "$config_file"
-}
-
 update_config_version() {
     local config_file=".pyve/config"
     

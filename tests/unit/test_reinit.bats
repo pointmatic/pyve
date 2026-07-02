@@ -189,46 +189,6 @@ EOF
 }
 
 #------------------------------------------------------------
-# Config Creation with Version Tests
-#------------------------------------------------------------
-
-@test "write_config_with_version: creates config with version" {
-    write_config_with_version
-    
-    [ -f ".pyve/config" ]
-    
-    version="$(read_config_value "pyve_version")"
-    [ "$version" = "0.8.9" ]
-}
-
-@test "write_config_with_version: creates .pyve directory" {
-    write_config_with_version
-    
-    [ -d ".pyve" ]
-}
-
-@test "write_config_with_version: preserves existing config" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-backend: venv
-venv:
-  directory: custom_venv
-EOF
-    
-    write_config_with_version
-    
-    # Check version was added
-    version="$(read_config_value "pyve_version")"
-    [ "$version" = "0.8.9" ]
-    
-    # Check existing config preserved
-    backend="$(read_config_value "backend")"
-    venv_dir="$(read_config_value "venv.directory")"
-    [ "$backend" = "venv" ]
-    [ "$venv_dir" = "custom_venv" ]
-}
-
-#------------------------------------------------------------
 # Re-initialization Mode Tests
 #------------------------------------------------------------
 

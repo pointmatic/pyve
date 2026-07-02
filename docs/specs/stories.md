@@ -520,7 +520,7 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 ---
 
-### Story P.i.8: Stop writing `.pyve/config` + project-essentials [Planned]
+### Storybundle P.i.8-11: Stop writing `.pyve/config` + project-essentials [Planned]
 
 *The **stop** side of the P.i bundle. Lands only after P.i.2 (nothing reads `.pyve/config` anymore), making `pyve.toml` the **sole** declaration.*
 
@@ -528,11 +528,41 @@ stop writing `.pyve/config`; remove the priority-tier + config-write-machinery `
 
 **Context:** see Story P.i.1 and the split rationale above.
 
-**P.i.8 tasks (stop + docs).**
+### Story P.i.8: Stop writing `.pyve/config` [Done]
 
-- [ ] **Stop:** `init` no longer writes `.pyve/config`; remove the writers ([version.sh](../../lib/version.sh) `write_config_with_version` / `update_config_version` and the `init` writer at [plugin.sh:2014](../../lib/plugins/python/plugin.sh#L2014)).
-- [ ] Confirm a `pyve.toml`-only project (no `.pyve/config`) is fully functional across `status` / `check` / `run` / `lock` / `env` — end-to-end green.
-- [ ] project-essentials: state that `init` writes the manifest backend and `.pyve/config` is gone; remove the read-compat entry and the `v3.0-only: remove in N-10` markers.
+- [x] **Stop:** `init` no longer writes `.pyve/config` — removed both `cat > .pyve/config` heredocs (micromamba + venv branches) in [plugin.sh](../../lib/plugins/python/plugin.sh); `_init_scaffold_manifest` (pyve.toml) is now the sole declaration `init` creates.
+- [x] Removed the **dead** `write_config_with_version` (zero callers) from [version.sh](../../lib/version.sh) + its 6 unit tests. `update_config_version` is *kept* (still used by the v2 re-init menu + `update`; its full removal rides P.i.9 with the pyve_version-read rework — the P.i.8↔P.i.9 boundary).
+- [x] Guarded the `update` flow: the version-bump step only runs when `config_file_exists`, so `pyve update` on a v3-native project no longer aborts at step [1/5] (`update_config_version` returns 1 on missing config).
+- [x] Tests: [tests/unit/test_stop_writing_config.bats](../../tests/unit/test_stop_writing_config.bats) (heredoc-absence guard + update-on-v3). Integration reconciled (**CI-verified only** — the harness mutates real `$HOME`): converted `init`-creates-`.pyve/config` assertions → `pyve.toml` in [test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py), [test_force_backend_detection.py](../../tests/integration/test_force_backend_detection.py), [test_reinit.py](../../tests/integration/test_reinit.py); seeded a legacy `.pyve/config` fixture in the re-init-menu tests (menu is config-gated read-compat); **deleted** the obsolete v2 `--force`-shows-detection-prompt tests (2 in `test_force_backend_detection.py` + all of `test_force_ambiguous_prompt.py`) — v3 `--force` honors the manifest (P.i.1), so those semantics are gone and already covered by `test_reinit.py`.
+- [x] Full unit suite **2129/0** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree failures). shellcheck baseline unchanged.
+
+**Note:** low risk to v2 projects — they still work via the read-compat fallbacks + synthesis (removed later in P.i.9/P.i.10).
+
+### Story P.i.9: Remove deprecated cruft
+
+Remove the writers ([version.sh](../../lib/version.sh) `write_config_with_version` / `update_config_version` and the `init` writer at [plugin.sh:2014](../../lib/plugins/python/plugin.sh#L2014)).
+
+- [ ] Remove transitional fallbacks
+- [ ] Remove resolver config-branches
+- [ ] Remove presence gates 
+- [ ] Remove get_backend_priority tier
+- [ ] Remove validate_config_file
+- [ ] Remove pyve_version reads
+
+**Note: Consumers become manifest/v3-only; v2 still works via synthesis.**
+
+### Story P.i.10: Remove the read-compat synthesis
+
+- [ ] Remove the read-compat synthesis (_manifest_synthesize_from_legacy + v3.0-only markers). 
+
+**Note: ⚠️ This is the breaking step.**
+
+### Story P.i.11: project-essentials docs & wrap-up
+
+The project-essentials file states that `init` writes the manifest backend and `.pyve/config` is gone; remove the read-compat entry and the `v3.0-only: remove in N-10` markers.
+
+- [ ] Update project-essentials to reflect that `.pyve/config` is no longer written.
+- [ ] We need to confirm a `pyve.toml`-only project (no `.pyve/config`) is fully functional across `status` / `check` / `run` / `lock` / `env` — end-to-end green.
 
 **Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 

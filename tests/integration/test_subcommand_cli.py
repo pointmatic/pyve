@@ -34,15 +34,15 @@ class TestNewSubcommandRouting:
         result = pyve.run("init", "--no-direnv", "--force")
         assert result.returncode == 0
         assert (pyve.cwd / ".venv").is_dir()
-        assert (pyve.cwd / ".pyve" / "config").exists()
+        assert (pyve.cwd / "pyve.toml").exists()
 
     @pytest.mark.venv
     def test_init_with_backend_flag(self, pyve, project_builder):
         """Modifier flags still attach to the renamed init subcommand."""
         result = pyve.run("init", "--backend", "venv", "--no-direnv", "--force")
         assert result.returncode == 0
-        config = (pyve.cwd / ".pyve" / "config").read_text()
-        assert "backend: venv" in config
+        manifest = (pyve.cwd / "pyve.toml").read_text()
+        assert 'backend = "venv"' in manifest
 
     @pytest.mark.venv
     def test_purge_subcommand_removes_venv(self, pyve, project_builder):

@@ -2203,35 +2203,23 @@ init_project() {
             warn "Environment created but verification failed"
         fi
 
-        # .envrc is composed below, AFTER .pyve/config and
-        # pyve.toml exist (see the venv branch for the rationale).
+        # .envrc is composed below, AFTER pyve.toml exists (see the venv
+        # branch for the rationale).
         local env_path
         env_path="$(micromamba_root_prefix)"
 
         # Create .env file
         _init_dotenv "$use_local_env"
 
-        # .gitignore is composed below, after .pyve/config +
-        # pyve.toml exist, via compose_project_gitignore (gathers every
-        # active plugin's ignore entries through the managed section).
+        # .gitignore is composed below, after pyve.toml exists, via
+        # compose_project_gitignore (gathers every active plugin's ignore
+        # entries through the managed section).
 
-        # Create .pyve/config with version tracking
-        mkdir -p .pyve
-        cat > .pyve/config << EOF
-pyve_version: "$VERSION"
-backend: micromamba
-micromamba:
-  env_name: $env_name
-EOF
-        success "Created .pyve/config"
-
-        # write the v3.0 canonical manifest. No-op if
-        # it already exists (refresh path). When Node is detected at root
-        # alongside Python, this writes a polyglot manifest with explicit
-        # [plugins.python] + [plugins.node] blocks; pure-Python projects
-        # get the plain manifest. `.pyve/config` continues to be written
-        # above for the v3.0 read-compat window; it is dropped when that
-        # read-compat layer is removed.
+        # write the v3.0 canonical manifest — the sole declaration `init`
+        # creates. No-op if it already exists (refresh path). When Node is
+        # detected at root alongside Python, this writes a polyglot manifest
+        # with explicit [plugins.python] + [plugins.node] blocks; pure-Python
+        # projects get the plain manifest.
         _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "micromamba"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
@@ -2311,28 +2299,14 @@ EOF
     # Create .env file
     _init_dotenv "$use_local_env"
 
-    # .gitignore is composed below, after .pyve/config +
-    # pyve.toml exist (the composer reads venv.directory from .pyve/config
-    # to ignore a custom venv dir, and enumerates plugins from pyve.toml).
+    # .gitignore is composed below, after pyve.toml exists, and enumerates
+    # plugins from it (the composer resolves the venv dir via
+    # resolve_venv_directory to ignore a custom dir).
 
-    # Create .pyve/config with version tracking
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "$VERSION"
-backend: venv
-venv:
-  directory: $venv_dir
-python:
-  version: $python_version
-EOF
-    success "Created .pyve/config"
-
-    # write the v3.0 canonical manifest. No-op if it
-    # already exists (refresh path). Polyglot Python+Node projects get
-    # explicit [plugins.python] + [plugins.node] blocks; pure-Python
-    # projects get the plain manifest. `.pyve/config` continues to be
-    # written above for the v3.0 read-compat window; it is dropped when
-    # that read-compat layer is removed.
+    # write the v3.0 canonical manifest — the sole declaration `init` creates.
+    # No-op if it already exists (refresh path). Polyglot Python+Node projects
+    # get explicit [plugins.python] + [plugins.node] blocks; pure-Python
+    # projects get the plain manifest.
     _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "venv"
 
     # Materialize the declared default test env (venv-backed only), gated on an
@@ -2946,7 +2920,10 @@ update_project() {
         step1_label="[1/5] pyve_version: $previous_version → $VERSION"
     fi
     step_begin "$step1_label"
-    if ! update_config_version >/dev/null 2>&1; then
+    # A v3-native project has no `.pyve/config` to bump — `init` no longer
+    # writes one. Only run the version bump when a legacy config is present
+    # (read-compat window); otherwise the step is a no-op success.
+    if config_file_exists && ! update_config_version >/dev/null 2>&1; then
         step_end_fail
         log_error "Failed to update .pyve/config."
         exit 1

@@ -299,34 +299,6 @@ EOF
 # Config Writing Tests
 #------------------------------------------------------------
 
-@test "write_config_with_version: creates config with version" {
-    write_config_with_version
-    
-    [ -f ".pyve/config" ]
-    
-    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
-    [ "$version" = "0.8.8" ]
-}
-
-@test "write_config_with_version: preserves existing config" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-backend: venv
-venv:
-  directory: .venv
-EOF
-    
-    write_config_with_version
-    
-    # Check version was added
-    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
-    [ "$version" = "0.8.8" ]
-    
-    # Check existing config preserved
-    backend=$(grep "^backend:" .pyve/config | awk '{print $2}')
-    [ "$backend" = "venv" ]
-}
-
 @test "update_config_version: updates existing version" {
     mkdir -p .pyve
     cat > .pyve/config << EOF
@@ -368,24 +340,3 @@ EOF
     [ "$status" -eq 1 ]
 }
 
-@test "write_config_with_version: replaces existing version" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.6.6"
-backend: venv
-EOF
-    
-    write_config_with_version
-    
-    # Version should be updated
-    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
-    [ "$version" = "0.8.8" ]
-    
-    # Old version should not appear
-    run grep "0.6.6" .pyve/config
-    [ "$status" -eq 1 ]
-    
-    # Backend should be preserved
-    backend=$(grep "^backend:" .pyve/config | awk '{print $2}')
-    [ "$backend" = "venv" ]
-}
