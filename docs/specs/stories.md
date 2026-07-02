@@ -505,9 +505,18 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 **Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
-## Story P.i.7: `python.version` reads → `.tool-versions` / `.python-version` [Planned]
+### Story P.i.7: `python.version` reads → `.tool-versions` / `.python-version` [Done]
 
-- [ ] Do it
+*Route the two consumers that read the pinned Python version onto a shared resolver so the `.pyve/config` read lives in one place for the P.i.8 stop.*
+
+**Finding (at implementation).** Only 2 consumers read `python.version`, and both **already** tried `.tool-versions` → `.python-version` first, with `.pyve/config` only as the last fallback — so they already preferred the v3 source; they just duplicated the fragile pin-file parsing and each kept its own transitional config read. Like `venv.directory`, nothing *writes* `python.version` to config, but the config fallback is a tested read-compat feature ([test_python_command.bats](../../tests/unit/test_python_command.bats) "falls back to .pyve/config"), so I preserved it (dropped at P.i.8, not now).
+
+- [x] Add `resolve_python_version` ([env_detect.sh](../../lib/env_detect.sh)) — returns `"<version>|<source>"` (source: `tool-versions` / `python-version` / `config` / empty), centralizing the `.tool-versions` → `.python-version` → transitional `.pyve/config` chain. Unit tests: [tests/unit/test_resolve_python_version.bats](../../tests/unit/test_resolve_python_version.bats) (5 cases: each source, precedence, config fallback, none).
+- [x] Migrate both consumers ([plugin.sh](../../lib/plugins/python/plugin.sh) `python_show`, `_status_configured_python_venv`) to call the helper and map the `<source>` key to their own display label (`python show` uses `.tool-versions`; `status` uses `.tool-versions via asdf`). Existing `python show` / `status` behavior — including the config-fallback and precedence tests — preserved.
+- [x] **Left for the P.i.8 stop:** the `python.version` read in `validate_config_file` ([backend_detect.sh](../../lib/backend_detect.sh)) and `self migrate`'s deliberate legacy read ([self.sh](../../lib/commands/self.sh)).
+- [x] Full unit suite **2133**; all P.i.7 assertions green; no regressions. shellcheck baseline unchanged. Same two pre-existing `test_asdf_compat.bats` J.c failures (clean-tree, unrelated).
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
 ---
 

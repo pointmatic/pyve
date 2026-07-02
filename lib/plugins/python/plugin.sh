@@ -657,17 +657,15 @@ python_set() {
 }
 
 python_show() {
-    local version="" source=""
-    if [[ -f ".tool-versions" ]]; then
-        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
-        source=".tool-versions"
-    elif [[ -f ".python-version" ]]; then
-        version="$(cat .python-version 2>/dev/null | head -1)"
-        source=".python-version"
-    else
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source=".pyve/config"
-    fi
+    local out version source
+    out="$(resolve_python_version)"
+    version="${out%%|*}"
+    source="${out##*|}"
+    case "$source" in
+        tool-versions)  source=".tool-versions" ;;
+        python-version) source=".python-version" ;;
+        config)         source=".pyve/config" ;;
+    esac
 
     if [[ -z "$version" ]]; then
         printf "No Python version pinned in this project.\n"
@@ -3602,17 +3600,15 @@ _status_configured_python() {
 }
 
 _status_configured_python_venv() {
-    local version="" source=""
-    if [[ -f ".tool-versions" ]]; then
-        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
-        source=".tool-versions via asdf"
-    elif [[ -f ".python-version" ]]; then
-        version="$(cat .python-version 2>/dev/null)"
-        source=".python-version via pyenv"
-    else
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source=".pyve/config"
-    fi
+    local out version source
+    out="$(resolve_python_version)"
+    version="${out%%|*}"
+    source="${out##*|}"
+    case "$source" in
+        tool-versions)  source=".tool-versions via asdf" ;;
+        python-version) source=".python-version via pyenv" ;;
+        config)         source=".pyve/config" ;;
+    esac
     if [[ -z "$version" ]]; then
         printf "%snot pinned%s" "${DIM}" "${RESET}"
     else
