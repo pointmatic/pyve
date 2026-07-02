@@ -48,13 +48,9 @@ _gitignore_infra_block() {
 .env
 .vscode/settings.json
 EOF
-    # The venv directory is user-overridable (`pyve init <dir>`); honor the
-    # recorded value from .pyve/config so a custom dir is ignored correctly
-    # (mirrors the python activate emitter, N.ae.2). Falls back to the
-    # default when no config is present.
-    local venv_dir
-    venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-    printf '%s\n' "${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+    # The venv directory is user-overridable (`pyve init <dir>`); resolve it so
+    # a custom dir is ignored correctly, falling back to the default `.venv`.
+    printf '%s\n' "$(resolve_venv_directory)"
 }
 
 # Assemble the managed `.gitignore` body and emit it to stdout.

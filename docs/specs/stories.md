@@ -492,9 +492,18 @@ So `pyve.toml` is *declared* canonical but is neither fully written by `init` no
 
 **Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
-### Story P.i.6: `venv.directory` reads → v3 source (`resolve_env_path` / default) [Planned]
+### Story P.i.6: `venv.directory` reads → v3 source (`resolve_env_path` / default) [Done]
 
-- [ ] Do it
+*Route the consumers that read the root venv directory straight from `.pyve/config` through a single resolver, so they stop depending on `.pyve/config` (the read then lives in one place for the P.i.8 stop).*
+
+**Design (at implementation).** Nothing in the v3 tree *writes* `venv.directory` (grep: only a `show_config` display line), and `resolve_env_path root` hardcodes `.venv` for venv — but a **custom** venv dir (`pyve init <dir>`) remains a tested v2 read-compat feature ([test_version.bats](../../tests/unit/test_version.bats) "custom venv directory"). So I preserved behavior (rather than hardcode `.venv` and break read-compat) with a config-first helper, mirroring P.i.5: `resolve_venv_directory` ([utils.sh](../../lib/utils.sh)) = `.pyve/config` venv.directory (transitional) → else `${DEFAULT_VENV_DIR:-.venv}`. Never empty.
+
+- [x] Add `resolve_venv_directory` (in [utils.sh](../../lib/utils.sh), sourced first so every consumer can reach it) + unit tests ([tests/unit/test_resolve_venv_directory.bats](../../tests/unit/test_resolve_venv_directory.bats), 4 cases: custom config dir, v3 default, config-without-key default, plugin.sh wiring guard).
+- [x] Migrate the 9 consumers: 7 in [plugin.sh](../../lib/plugins/python/plugin.sh) (`activate`, `init` re-init, `purge`, `update`, `check`, `_status_env_venv`, `_status_section_integrations`), plus [gitignore_composer.sh](../../lib/gitignore_composer.sh) `_gitignore_infra_block` and [version.sh](../../lib/version.sh) `validate_venv_structure`. Each drops its inline `read_config_value "venv.directory"` + `.venv` default for one `resolve_venv_directory` call. `purge` also shed its `config_file_exists`/`[[ -n ]]` custom-dir dance (the helper subsumes it — the `.pyve/config`-presence gate P.i.4 deferred here).
+- [x] **Left for the P.i.8 stop:** the `venv.directory` read inside `validate_config_file` ([backend_detect.sh](../../lib/backend_detect.sh), config validation) and `self migrate`'s deliberate legacy read ([self.sh](../../lib/commands/self.sh)).
+- [x] Full unit suite **2127**; all P.i.6 assertions green; the custom-venv-dir read-compat tests still pass (behavior preserved). shellcheck baseline unchanged. Same two pre-existing `test_asdf_compat.bats` J.c failures (clean-tree, unrelated).
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
 
 ## Story P.i.7: `python.version` reads → `.tool-versions` / `.python-version` [Planned]
 

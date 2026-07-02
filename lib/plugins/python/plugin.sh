@@ -567,8 +567,7 @@ python_pyve_plugin_activate() {
     local env_path env_name
     case "$backend" in
         venv)
-            env_path="$(read_config_value "venv.directory")"
-            [[ -z "$env_path" ]] && env_path=".venv"
+            env_path="$(resolve_venv_directory)"
             env_name="$(basename "$PWD")"
             ;;
         micromamba)
@@ -2036,8 +2035,7 @@ init_project() {
                     local _interactive_env_missing=false
                     if [[ "$existing_backend" == "venv" ]]; then
                         local _interactive_venv_dir
-                        _interactive_venv_dir="$(read_config_value "venv.directory")"
-                        _interactive_venv_dir="${_interactive_venv_dir:-$DEFAULT_VENV_DIR}"
+                        _interactive_venv_dir="$(resolve_venv_directory)"
                         if [[ ! -d "$_interactive_venv_dir" ]]; then
                             info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
                             _interactive_env_missing=true
@@ -2646,14 +2644,10 @@ purge_project() {
     # Remove version file
     _purge_version_file
 
-    # If a project config exists, prefer its venv directory when the user did not
-    # explicitly pass a venv dir to purge.
-    if [[ "$venv_dir_explicit" == false ]] && config_file_exists; then
-        local configured_venv_dir
-        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        if [[ -n "$configured_venv_dir" ]]; then
-            venv_dir="$configured_venv_dir"
-        fi
+    # Prefer the resolved venv directory when the user did not explicitly pass a
+    # venv dir to purge (honors a v2 custom dir during read-compat; else `.venv`).
+    if [[ "$venv_dir_explicit" == false ]]; then
+        venv_dir="$(resolve_venv_directory)"
     fi
 
     # Remove virtual environment
@@ -3022,8 +3016,7 @@ update_project() {
         local env_path=""
         if [[ "$backend" == "venv" ]]; then
             local venv_dir
-            venv_dir="$(read_config_value "venv.directory")"
-            venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+            venv_dir="$(resolve_venv_directory)"
             env_path="$venv_dir"
         elif [[ "$backend" == "micromamba" ]]; then
             # Main micromamba env at the v3 root slot (Story N.bf.14); the
@@ -3242,8 +3235,7 @@ check_environment() {
     local env_path=""
     if [[ "$backend" == "venv" ]]; then
         local venv_dir
-        venv_dir="$(read_config_value "venv.directory")"
-        venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+        venv_dir="$(resolve_venv_directory)"
         env_path="$venv_dir"
         _check_venv_backend "$env_path"
     elif [[ "$backend" == "micromamba" ]]; then
@@ -3680,8 +3672,7 @@ _status_section_environment() {
 
 _status_env_venv() {
     local venv_dir
-    venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-    venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+    venv_dir="$(resolve_venv_directory)"
 
     if [[ ! -d "$venv_dir" ]]; then
         _status_row "Path:" "${venv_dir} (${DIM}missing${RESET})"
@@ -3789,8 +3780,7 @@ _status_section_integrations() {
     env_path=""
     if [[ "$backend" == "venv" ]]; then
         local venv_dir
-        venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        env_path="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+        env_path="$(resolve_venv_directory)"
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
         env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"

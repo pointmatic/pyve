@@ -136,9 +136,8 @@ validate_installation_structure() {
 
 validate_venv_structure() {
     local venv_dir
-    venv_dir="$(read_config_value "venv.directory")"
-    venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
-    
+    venv_dir="$(resolve_venv_directory)"
+
     if [[ ! -d "$venv_dir" ]]; then
         log_error "Virtual environment not found: $venv_dir"
         return 1
