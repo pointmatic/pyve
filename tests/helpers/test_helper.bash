@@ -136,6 +136,48 @@ create_pyve_config() {
     else
         printf '%s\n' "$@" > .pyve/config
     fi
+    # Opt-in v3 scaffold: a suite that sets PYVE_TEST_AUTOSCAFFOLD_TOML=1 also
+    # gets a minimal pyve.toml, so a project scaffolded the v2 way is recognized
+    # under v3 (pyve.toml is the sole declaration). The root backend mirrors the
+    # config's `backend:` line; a config with no backend yields a backend-less
+    # root (which exercises the "backend not configured" paths). The guard skips
+    # when the test already wrote its own pyve.toml.
+    if [[ "${PYVE_TEST_AUTOSCAFFOLD_TOML:-0}" == "1" ]] && [[ ! -f pyve.toml ]]; then
+        local _b
+        _b="$(sed -n 's/^backend:[[:space:]]*//p' .pyve/config | head -1)"
+        if [[ -n "$_b" ]]; then
+            create_pyve_toml "$_b"
+        else
+            cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+EOF
+        fi
+    fi
+}
+
+# Create a minimal v3 pyve.toml declaring a single `root` env.
+# Usage: create_pyve_toml [backend] [project-name]   (backend default: venv)
+# This is the v3-native replacement for scaffolding a project with
+# `create_pyve_config "backend: <x>"` — pyve.toml is the sole declaration.
+create_pyve_toml() {
+    local backend="${1:-venv}"
+    local name="${2:-demo}"
+    cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "${name}"
+
+[env.root]
+purpose = "utility"
+backend = "${backend}"
+EOF
 }
 
 # Create a pyproject.toml file

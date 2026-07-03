@@ -40,15 +40,6 @@ EOF
     [[ "$output" == *"micromamba projects only"* ]]
 }
 
-@test "lock: still rejects a v2 venv project (.pyve/config, no pyve.toml)" {
-    # Regression: the read-compat synthesis keeps the v2 path working.
-    create_pyve_config "backend: venv"
-    [ ! -e pyve.toml ]
-    run "$PYVE_SCRIPT" lock
-    [ "$status" -eq 1 ]
-    [[ "$output" == *"micromamba projects only"* ]]
-}
-
 @test "lock: a micromamba manifest is not rejected by Guard 1" {
     # A v3 micromamba project with no environment.yml passes Guard 1 and trips
     # Guard 2 (environment.yml required) — proving micromamba is not mistaken

@@ -125,11 +125,13 @@ EOF
 # Re-init gate fires on manifest presence (the --force-on-v3 fix)
 # ────────────────────────────────────────────────────────────────────
 
-@test "_init_is_reinit: true when only .pyve/config is present (v2 project)" {
+@test "_init_is_reinit: false when only .pyve/config is present (v2, unmigrated)" {
+    # pyve.toml is the sole declaration; a legacy .pyve/config-only project is
+    # not recognized as an initialized (re-init) project.
     mkdir -p .pyve
     printf 'pyve_version: "1.0.0"\nbackend: venv\n' > .pyve/config
     run _init_is_reinit
-    [ "$status" -eq 0 ]
+    [ "$status" -ne 0 ]
 }
 
 @test "_init_is_reinit: true when only pyve.toml is present (v3-native project)" {

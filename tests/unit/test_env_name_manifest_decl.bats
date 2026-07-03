@@ -78,19 +78,6 @@ TOML
 # v2 read-compat: [tool.pyve.testenvs.<name>] still resolves
 # ============================================================
 
-@test "assert_env_name_actionable: v2 [tool.pyve.testenvs.foo] still resolves (read-compat)" {
-    # No pyve.toml; v2 declaration + init marker.
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.foo]
-requirements = ["requirements-dev.txt"]
-TOML
-    mkdir -p .pyve
-    printf 'backend: venv\n' > .pyve/config
-    read_env_config
-    run assert_env_name_actionable foo
-    [ "$status" -eq 0 ]
-}
-
 # ============================================================
 # Story O.k.1 — the env-lifecycle ATTRIBUTE accessors (backend / manifest /
 # requirements / extra / lazy) must source from the pyve.toml manifest

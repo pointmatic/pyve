@@ -237,22 +237,18 @@ assert_env_name_actionable() {
         printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
         return 1
     fi
-    # Story N.bf.19: recognize the canonical v3 declaration surface —
-    # `[env.<name>]` in `pyve.toml` (via `manifest_load`, which also
-    # read-compat-synthesizes from `.pyve/config` + `[tool.pyve.testenvs.*]`).
-    # The trailing `is_env_declared` arm is the legacy pyproject reader kept
-    # as a defensive bridge during the read-compat window.
+    # Recognize the canonical v3 declaration surface — `[env.<name>]` in
+    # `pyve.toml` (via `manifest_load`). The reserved `testenv` name is always
+    # recognized.
     if [[ "$name" == "testenv" ]] \
-       || _env_declared_in_manifest "$name" \
-       || is_env_declared "$name"; then   # is_env_declared: v3.0-only read-compat, remove in N-10
+       || _env_declared_in_manifest "$name"; then
         return 0
     fi
     # A non-reserved, non-declared name on a project that was never initialized
     # should point at `pyve init`, not tell the user to "declare" an env in a
-    # project that doesn't exist yet. Init signal: `pyve.toml` (canonical v3) or
-    # legacy v2 sources (via `_manifest_has_legacy_sources`, the surviving
-    # `.pyve/config` presence check).
-    if [[ ! -f "pyve.toml" ]] && ! _manifest_has_legacy_sources; then
+    # project that doesn't exist yet. Init signal: `pyve.toml` (the sole v3
+    # declaration).
+    if [[ ! -f "pyve.toml" ]]; then
         printf "error: this isn't an initialized Pyve project — run 'pyve init' to set one up.\n" >&2
         return 1
     fi

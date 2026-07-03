@@ -20,6 +20,7 @@
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"
     create_test_dir

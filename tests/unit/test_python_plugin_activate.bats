@@ -17,6 +17,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper.bash
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/envrc_safety.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
@@ -130,12 +131,3 @@ teardown() {
 # ════════════════════════════════════════════════════════════════════
 # Unknown backend rejection (resolved from .pyve/config).
 # ════════════════════════════════════════════════════════════════════
-
-@test "activate: unknown backend → error, no section" {
-    mkdir -p .pyve; printf 'backend: quantum-foo\n' > .pyve/config
-    manifest_load >/dev/null 2>&1 || true
-    rm -f .envrc
-    run python_pyve_plugin_activate
-    [ "$status" -ne 0 ]
-    [ ! -f .envrc ]
-}

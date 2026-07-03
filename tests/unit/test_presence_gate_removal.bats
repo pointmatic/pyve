@@ -90,11 +90,3 @@ assert_no_config_presence_gate() {
 @test "python_plugin_is_active_in_project has no direct .pyve/config presence gate" {
     assert_no_config_presence_gate python_plugin_is_active_in_project
 }
-
-# The exempt synthesis-detection helper must still key off .pyve/config, so v2
-# projects remain detectable through the manifest layer.
-@test "_manifest_has_legacy_sources still detects .pyve/config (exempt)" {
-    local body
-    body="$(declare -f _manifest_has_legacy_sources)"
-    [[ "$body" == *".pyve/config"* ]]
-}

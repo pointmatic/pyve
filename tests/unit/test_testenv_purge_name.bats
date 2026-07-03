@@ -43,6 +43,41 @@ SH
 }
 
 _fixture_multi_envs() {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
+requirements = ["tests/smoke-requirements.txt"]
+
+[env.hardware]
+purpose = "test"
+backend = "micromamba"
+manifest = "tests/env.yml"
+TOML
+}
+
+# The no-arg bulk sweep runs in an isolated subshell that sources only
+# envs.sh/env.sh (no manifest layer), so it enumerates declared envs via
+# read_env_config's pyproject `[tool.pyve.testenvs]` reader (a surface separate
+# from the manifest; migrating the sweep onto the manifest is its own work, not
+# the synthesis removal). `read_env_config` prefers pyve.toml when present, so
+# the bulk-sweep tests use this pyproject-only fixture.
+_fixture_multi_envs_pyproject() {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.testenv]
 requirements = ["requirements-dev.txt"]
@@ -169,7 +204,7 @@ TOML
 # ============================================================
 
 @test "testenv purge: simulated TTY with 'n' declines and aborts (no removal)" {
-    _fixture_multi_envs
+    _fixture_multi_envs_pyproject
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
 
@@ -194,7 +229,7 @@ TOML
 }
 
 @test "testenv purge: simulated TTY with 'y' confirms and removes all" {
-    _fixture_multi_envs
+    _fixture_multi_envs_pyproject
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
 

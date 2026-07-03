@@ -18,6 +18,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper.bash
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/ui/core.sh"
     create_test_dir
@@ -96,14 +97,8 @@ EOF
     mkdir -p .pyve/envs/zzz-env/bin .pyve/envs/testenv/venv/bin
     printf 'backend=micromamba\n' > .pyve/envs/testenv/.state
     printf 'name: zzz-env\ndependencies:\n  - python\n' > environment.yml
-    cat > .pyve/config << 'EOF'
-pyve_version: "3.0.0"
-backend: micromamba
-micromamba:
-  env_name: zzz-env
-EOF
-    # run_command resolves the backend from the manifest only; a v2 project
-    # resolves via the read-compat synthesis. Load the manifest so this direct
+    create_pyve_toml micromamba
+    # run_command resolves the backend from the manifest. Load it so this direct
     # unit test mirrors production (main() calls manifest_load before dispatch).
     manifest_load >/dev/null 2>&1 || true
 

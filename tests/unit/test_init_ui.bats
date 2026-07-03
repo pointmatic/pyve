@@ -72,7 +72,7 @@ teardown() {
     # piped (not a TTY), so we assert on what *is* visible: (1) the old
     # raw-printf format is gone; (2) the cancel branch fires through
     # the new info() helper (▸ prefix), proving ask_yn returned 1.
-    create_pyve_config 'backend: venv' 'pyve_version: "0.1.0"'
+    create_pyve_toml venv
 
     run bash -c "echo n | NO_COLOR=1 '$PYVE_SCRIPT' init --force"
     [ "$status" -eq 0 ]

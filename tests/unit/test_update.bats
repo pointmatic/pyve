@@ -13,6 +13,7 @@
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     create_test_dir
     export PYVE_SCRIPT="$PYVE_ROOT/pyve.sh"
@@ -45,10 +46,10 @@ teardown() {
 # Preconditions
 #============================================================
 
-@test "update: fails with exit 1 when neither pyve.toml nor .pyve/config exists" {
+@test "update: fails with exit 1 when no pyve.toml exists" {
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 1 ]
-    [[ "$output" == *"No pyve.toml or .pyve/config found"* ]]
+    [[ "$output" == *"No pyve.toml found"* ]]
     [[ "$output" == *"pyve init"* ]]
 }
 

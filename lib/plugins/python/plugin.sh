@@ -337,16 +337,12 @@ python_plugin_is_active_in_project() {
         done
     done < <(manifest_list_envs 2>/dev/null)
 
-    # 3. v2 Python project marker — legacy sources (`.pyve/config` or a
-    #    `[tool.pyve.testenvs]` block), detected via the surviving
-    #    synthesis-detection helper. (`.project-guide.yml` is NO longer a
-    #    Python-active signal — project-guide is globally hosted, so its
-    #    per-project marker no longer implies a project Python env. On a
-    #    Node-only project that accepts project-guide there is no `.venv` for
-    #    the Python plugin to report, so it must stay suppressed.)
-    _manifest_has_legacy_sources && return 0
-
-    # 4. Root-scoped Python application files (no recursion — `compgen -G`).
+    # 3. Root-scoped Python application files (no recursion — `compgen -G`).
+    #    (`.project-guide.yml` is NO longer a Python-active signal —
+    #    project-guide is globally hosted, so its per-project marker no longer
+    #    implies a project Python env. On a Node-only project that accepts
+    #    project-guide there is no `.venv` for the Python plugin to report, so
+    #    it must stay suppressed.)
     if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] \
         || compgen -G "requirements*.txt" >/dev/null 2>&1 \
         || compgen -G "environment*.yml" >/dev/null 2>&1 \
@@ -817,12 +813,10 @@ _init_manifest_ensure_root_backend() {
     return $rc
 }
 
-# True (0) when the cwd already holds a Pyve project — a v3-native `pyve.toml`
-# OR legacy v2 sources (detected via `_manifest_has_legacy_sources`, the single
-# surviving `.pyve/config` presence check). The re-init / `--force` handling keys
-# off this so a forced rebuild fires on a `.pyve/config`-less v3 project.
+# True (0) when the cwd already holds a Pyve project — declared by `pyve.toml`.
+# The re-init / `--force` handling keys off this so a forced rebuild fires on an
+# already-initialized project.
 _init_is_reinit() {
-    _manifest_has_legacy_sources && return 0
     [[ -f pyve.toml ]] && return 0
     return 1
 }
@@ -1634,18 +1628,6 @@ _init_resolve_version_manager() {
     detect_version_manager
 }
 
-# Print the interactive re-initialization menu (Story N.bf.13). Option 1's label
-# is explicit that an in-place update refreshes Pyve config/files only — it does
-# NOT apply environment.yml/dependency edits (those require option 2's purge +
-# rebuild). The old "(preserves environment, updates config)" wording implied
-# dependency edits would be picked up, which silently misled users.
-_init_print_reinit_menu() {
-    printf "\n  What would you like to do?\n"
-    printf "    1. Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)\n"
-    printf "    2. Purge and re-initialize (clean slate)\n"
-    printf "    3. Cancel\n\n"
-}
-
 # Emit the gentle lock nudge at the end of a successful non-strict micromamba
 # init (Story N.bf.9). Fires only when `conda-lock` is a declared dependency
 # but no lock file exists yet — the signal that the user opted into locking but
@@ -1659,24 +1641,6 @@ _init_lock_nudge() {
     is_conda_lock_declared || return 0
     info "conda-lock is in your environment.yml, so Pyve expects a conda-lock.yml."
     info "When your dependencies are finalized, run \`pyve lock\` to resolve them into the lock file."
-}
-
-# Story N.bf.15: has `environment.yml` changed since the main micromamba
-# env was built? Compares the live SHA-256 against the one stored in
-# root's `.state` (`manifest_sha256`, written by `create_micromamba_env`).
-# Returns 0 (drift) only when ALL of: environment.yml exists, root's
-# .state has a non-empty stored hash, and the two differ. Otherwise 1 —
-# including the graceful cases (no environment.yml, no .state, empty
-# stored hash on a pre-N.bf.15 or migrated env, or no hash tool available)
-# so a missing baseline never produces a false drift signal.
-_init_environment_yml_drifted() {
-    [[ -f "environment.yml" ]] || return 1
-    state_read root || return 1
-    local stored="${PYVE_TESTENV_STATE_MANIFEST_SHA256:-}"
-    [[ -n "$stored" ]] || return 1
-    local current
-    current="$(pyve_file_sha256 environment.yml 2>/dev/null)" || return 1
-    [[ "$current" != "$stored" ]]
 }
 
 # Select the environment file micromamba builds from. The default prefers a
@@ -1987,79 +1951,6 @@ init_project() {
             success "Environment purged"
             banner "Rebuilding fresh environment"
 
-        elif _manifest_has_legacy_sources; then
-            # Interactive re-init menu — legacy v2 sources only. A v3-native
-            # (`pyve.toml`-only) non-force re-init falls through to the normal
-            # idempotent create-if-missing path below, unchanged.
-            # Interactive mode (no flag specified)
-            warn "Project already initialized with Pyve"
-            info "Current version:  $VERSION"
-            info "Backend:          $existing_backend"
-            _init_print_reinit_menu
-            printf "  %sChoose [1/2/3]:%s " "${Y}" "${RESET}"
-            read -r choice
-
-            case "$choice" in
-                1)
-                    # In-place update: keep the existing environment. Check for a
-                    # backend conflict first (an in-place update can't switch backends).
-                    if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
-                        warn "Cannot update in-place: backend change detected ($existing_backend → $backend_flag)"
-                        fail "Use option 2 to purge and re-initialize with new backend"
-                    fi
-
-                    info "Backend: $existing_backend (unchanged)"
-                    info "Project updated to Pyve v$VERSION"
-
-                    # If the environment directory is missing (e.g. freshly cloned repo
-                    # where .venv is gitignored), fall through to create it.
-                    local _interactive_env_missing=false
-                    if [[ "$existing_backend" == "venv" ]]; then
-                        local _interactive_venv_dir
-                        _interactive_venv_dir="$(resolve_venv_directory)"
-                        if [[ ! -d "$_interactive_venv_dir" ]]; then
-                            info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
-                            _interactive_env_missing=true
-                        fi
-                    elif [[ "$existing_backend" == "micromamba" ]]; then
-                        local _interactive_env_name _interactive_env_path
-                        _interactive_env_name="$(resolve_micromamba_env_name)"
-                        # v3 root slot (Story N.bf.14), tolerant of a
-                        # not-yet-moved flat env.
-                        _interactive_env_path="$(resolve_main_micromamba_path "$_interactive_env_name")"
-                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d "$_interactive_env_path" ]]; then
-                            info "Environment '$_interactive_env_path' not found — creating it now..."
-                            _interactive_env_missing=true
-                        elif _init_environment_yml_drifted; then
-                            # Story N.bf.15: environment.yml changed since the
-                            # env was built. Nudge-only — in-place update does
-                            # NOT rebuild (that would muddy "update preserves
-                            # the environment"); steer the user to option 2.
-                            warn "Your 'environment.yml' changed since this environment was built."
-                            info "In-place update does not apply dependency edits — re-run and choose option 2 (purge + rebuild) to apply them."
-                        fi
-                    fi
-                    if [[ "$_interactive_env_missing" == false ]]; then
-                        footer_box
-                        return 0
-                    fi
-                    # Fall through to environment creation below.
-                    ;;
-                2)
-                    # Purge and continue
-                    banner "Purging existing environment"
-                    purge_project --keep-testenv --yes
-                    success "Environment purged"
-                    banner "Rebuilding fresh environment"
-                    ;;
-                3)
-                    info "Initialization cancelled"
-                    exit 0
-                    ;;
-                *)
-                    fail "Invalid choice: $choice"
-                    ;;
-            esac
         fi
     fi
 
@@ -2857,18 +2748,15 @@ update_project() {
         esac
     done
 
-    # Sanity check: the project must be initialized. A v3-native project
-    # declares itself via `pyve.toml`; a v2 project via legacy sources
-    # (`_manifest_has_legacy_sources`). Either is sufficient — the backend is
-    # resolved manifest-first below.
-    if ! _manifest_has_legacy_sources && [[ ! -f "pyve.toml" ]]; then
+    # Sanity check: the project must be initialized. A project declares itself
+    # via `pyve.toml`; the backend is resolved from the manifest below.
+    if [[ ! -f "pyve.toml" ]]; then
         log_error "pyve update requires an initialized project."
-        log_error "No pyve.toml or .pyve/config found. Run 'pyve init' first."
+        log_error "No pyve.toml found. Run 'pyve init' first."
         exit 1
     fi
 
-    # Backend from the manifest (authoritative). A v2 project resolves here too:
-    # `manifest_load` synthesizes its root backend from `.pyve/config`.
+    # Backend from the manifest (authoritative).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
@@ -3101,29 +2989,17 @@ check_environment() {
     fi
 
     # --- Check 1: pyve project present ------------------------------------
-    # Route presence + backend through the v3 manifest. `manifest_load`
-    # handles both a native `pyve.toml` and the v3.0 read-compat synthesis
-    # from legacy sources, so a pyve.toml-only project is recognized. Legacy
-    # v2 detection routes through `_manifest_has_legacy_sources`.
+    # `pyve.toml` is the sole declaration; a project without it is not a pyve
+    # project.
     manifest_load 2>/dev/null || true
-    local has_pyve_toml=false
-    [[ -f "pyve.toml" ]] && has_pyve_toml=true
-    if [[ "$has_pyve_toml" == false ]] && ! _manifest_has_legacy_sources; then
+    if [[ ! -f "pyve.toml" ]]; then
         _check_fail "Configuration: no pyve.toml (not a pyve project)" "→ Run: pyve init"
         _check_summary_and_exit
     fi
-    if [[ "$has_pyve_toml" == true ]]; then
-        _check_pass "Configuration: pyve.toml"
-    else
-        _check_pass "Configuration: .pyve/config (v2)"
-    fi
+    _check_pass "Configuration: pyve.toml"
 
     # --- Check 3: backend configured --------------------------------------
-    # Read the main (`root`) env's backend from the manifest accessor —
-    # works for v3-native (pyve.toml) and v2 (read-compat synthesis from
-    # .pyve/config) alike. (Check 2 slots below — runs after we know the
-    # backend so we can point the user at either `pyve update` or
-    # `pyve init --force` as appropriate.)
+    # Read the main (`root`) env's backend from the manifest accessor.
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
@@ -3400,12 +3276,10 @@ show_status() {
         printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
     fi
 
-    # Recognize a v3-native project (pyve.toml) as well as a v2 one (legacy
-    # sources). `manifest_load` covers both — a native pyve.toml or the v3.0
-    # read-compat synthesis. Legacy v2 detection routes through
-    # `_manifest_has_legacy_sources`.
+    # `pyve.toml` is the sole declaration; a project without it is not a
+    # pyve-managed project.
     manifest_load 2>/dev/null || true
-    if [[ ! -f "pyve.toml" ]] && ! _manifest_has_legacy_sources; then
+    if [[ ! -f "pyve.toml" ]]; then
         # Non-project fallback. Don't treat it as an error; status reports
         # reality, and "not a pyve project" is a valid reality.
         _status_row "Not a pyve-managed project" ""
@@ -3446,14 +3320,9 @@ _status_section_project() {
         _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
 
-    # A v3 project is declared by pyve.toml; a legacy v2 project (no pyve.toml,
-    # still readable via the read-compat synthesis) should migrate. pyve.toml
-    # carries no version, so no version row is shown.
-    if [[ -f "pyve.toml" ]]; then
-        _status_row "Declaration:" "pyve.toml"
-    else
-        _status_row "Declaration:" "${DIM}.pyve/config (legacy — run 'pyve self migrate')${RESET}"
-    fi
+    # The project is declared by pyve.toml (the caller only reaches this section
+    # when pyve.toml exists; a project without it is reported as non-managed).
+    _status_row "Declaration:" "pyve.toml"
 
     _status_row "Python:" "$(_status_configured_python)"
     printf "\n"

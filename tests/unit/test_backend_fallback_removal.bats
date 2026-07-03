@@ -109,12 +109,4 @@ assert_no_config_backend_read() {
     [ "$output" = "venv" ]
 }
 
-@test "_env_resolve_root_backend: a v2 project resolves its backend via synthesis" {
-    create_pyve_config "backend: micromamba"
-    [ ! -e pyve.toml ]
-    manifest_load >/dev/null 2>&1 || true
-    run _env_resolve_root_backend
-    [ "$status" -eq 0 ]
-    [ "$output" = "micromamba" ]
-}
 

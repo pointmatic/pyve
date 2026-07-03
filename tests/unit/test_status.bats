@@ -13,6 +13,7 @@
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     # Capture an absolute working python BEFORE create_test_dir cd's into a
     # temp dir with no version-manager pin (an asdf shim there errors "No
@@ -149,16 +150,6 @@ TOML
     [ "$status" -eq 0 ]
     [[ "$output" == *"Backend"* ]]
     [[ "$output" == *"venv"* ]]
-}
-
-@test "status: Project section shows the legacy .pyve/config declaration (no version)" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
-    run "$PYVE_SCRIPT" status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"Declaration"* ]]
-    [[ "$output" == *".pyve/config (legacy"* ]]
-    # pyve_version is no longer read or displayed.
-    [[ "$output" != *"0.9.9"* ]]
 }
 
 @test "status: Project section shows Declaration: pyve.toml for a v3 project" {

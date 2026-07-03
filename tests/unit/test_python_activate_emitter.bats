@@ -20,6 +20,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper.bash
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/envrc_safety.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
@@ -32,29 +33,15 @@ teardown() {
 }
 
 _write_config_venv() {
-    mkdir -p .pyve
-    cat > .pyve/config <<EOF
-pyve_version: "9.9.9"
-backend: venv
-venv:
-  directory: ${1:-.venv}
-python:
-  version: 3.13.7
-EOF
-    # Activate resolves the backend from the manifest only; a v2 project resolves
-    # via the read-compat synthesis. Load the manifest so these unit tests mirror
-    # production, where compose_project_envrc calls manifest_load before activate.
+    create_pyve_toml venv
+    # Activate resolves the backend from the manifest. Load it so these unit
+    # tests mirror production, where compose_project_envrc calls manifest_load
+    # before activate.
     manifest_load >/dev/null 2>&1 || true
 }
 
 _write_config_micromamba() {
-    mkdir -p .pyve
-    cat > .pyve/config <<EOF
-pyve_version: "9.9.9"
-backend: micromamba
-micromamba:
-  env_name: ${1:-test-env}
-EOF
+    create_pyve_toml micromamba
     manifest_load >/dev/null 2>&1 || true
 }
 
@@ -162,16 +149,4 @@ EOF
     run python_pyve_plugin_activate
     [ "$status" -ne 0 ]
     [[ "$output" == *'`pwd`'* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"PC-1"* ]]
-}
-
-@test "emitter: unknown backend in config → error, no section, no file" {
-    mkdir -p .pyve
-    cat > .pyve/config <<'EOF'
-backend: quantum-foo
-EOF
-    manifest_load >/dev/null 2>&1 || true
-    rm -f .envrc
-    run python_pyve_plugin_activate
-    [ "$status" -ne 0 ]
-    [ ! -f .envrc ]
 }

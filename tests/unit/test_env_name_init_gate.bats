@@ -42,15 +42,6 @@ teardown() {
     [[ "$output" != *"pyve init"* ]]
 }
 
-@test "assert_env_name_actionable: v2 project (.pyve/config) is NOT told to re-init" {
-    mkdir -p .pyve
-    printf 'backend: venv\n' > .pyve/config
-    run assert_env_name_actionable foo
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"not declared"* ]]
-    [[ "$output" != *"pyve init"* ]]
-}
-
 @test "assert_env_name_actionable: reserved 'testenv' stays actionable even uninitialized" {
     # Out-of-scope path (N.bf.18) — must remain unchanged.
     run assert_env_name_actionable testenv

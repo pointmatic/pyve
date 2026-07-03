@@ -68,8 +68,18 @@ dependencies:
   - python=3.11
   - numpy
 YAML
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.hardware]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
@@ -81,17 +91,29 @@ _fixture_mixed_envs() {
 name: hardware
 dependencies: [python]
 YAML
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.testenv]
-requirements = ["requirements-dev.txt"]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
 
-[tool.pyve.testenvs.hardware]
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
-    # Story M.l: testenv's declared `requirements = [...]` is now consumed
-    # at install time, so the file must exist on disk for iteration tests
-    # that exercise the testenv install path.
+    # testenv's declared `requirements = [...]` is consumed at install time, so
+    # the file must exist on disk for iteration tests.
     printf 'pytest\n' > requirements-dev.txt
 }
 
@@ -148,16 +170,21 @@ TOML
 }
 
 @test "_env_resolve_backend: 'inherit' + main backend=micromamba resolves to micromamba" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.mirror]
-backend = "inherit"
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "micromamba"
+
+[env.mirror]
+purpose = "test"
 manifest = "environment.yml"
 TOML
-    mkdir -p .pyve
-    printf 'backend: micromamba\n' > .pyve/config
     read_env_config
-    # Mirror production: manifest_load synthesizes the root backend from
-    # .pyve/config so the `inherit` resolver can read it from the manifest.
     manifest_load
     run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
@@ -196,16 +223,21 @@ TOML
 }
 
 @test "resolve_env_path: 'inherit' + main=micromamba yields conda-shaped path" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.mirror]
-backend = "inherit"
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "micromamba"
+
+[env.mirror]
+purpose = "test"
 manifest = "environment.yml"
 TOML
-    mkdir -p .pyve
-    printf 'backend: micromamba\n' > .pyve/config
     read_env_config
-    # Mirror production: manifest_load synthesizes the root backend from
-    # .pyve/config so the `inherit` resolver can read it from the manifest.
     manifest_load
     run resolve_env_path mirror
     [ "$status" -eq 0 ]
@@ -284,10 +316,20 @@ TOML
     [ ! -d ".pyve/envs/hardware/venv" ]
 }
 
-@test "testenv init <conda-name>: missing manifest declaration in pyproject hard-errors" {
-    # Declare the env with no manifest.
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.hardware]
+@test "testenv init <conda-name>: missing manifest declaration hard-errors" {
+    # Declare the conda env with no manifest.
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 TOML
     _stub_micromamba_recorder

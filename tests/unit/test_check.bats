@@ -15,6 +15,7 @@
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     # Capture an absolute working python BEFORE create_test_dir cd's into a
     # temp dir with no version-manager pin (an asdf shim there errors "No

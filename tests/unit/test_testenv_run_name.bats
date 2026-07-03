@@ -53,14 +53,29 @@ SH
 }
 
 _fixture_named_envs() {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.testenv]
-requirements = ["requirements-dev.txt"]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
 
-[tool.pyve.testenvs.smoke]
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/smoke-requirements.txt"]
 
-[tool.pyve.testenvs.hardware]
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML

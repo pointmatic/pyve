@@ -51,15 +51,6 @@ EOF
     [ "$output" = "venv" ]
 }
 
-@test "_status_backend: v2 project (.pyve/config only) resolves via read-compat synthesis" {
-    mkdir -p .pyve
-    printf 'pyve_version: "3.0.0"\nbackend: micromamba\nmicromamba:\n  env_name: demo\n' > .pyve/config
-    [ ! -e pyve.toml ]
-    manifest_load
-    run _status_backend
-    [ "$output" = "micromamba" ]
-}
-
 @test "the migrated status sections route the backend through the manifest helper" {
     # Each of the three migrated sites calls _status_backend and no longer reads
     # the backend straight from .pyve/config. Extract each function body (awk

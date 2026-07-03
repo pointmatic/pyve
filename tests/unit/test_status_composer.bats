@@ -20,6 +20,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/status_composer.sh"
     # The e2e tests drive `bash pyve.sh status` as a subprocess; its
