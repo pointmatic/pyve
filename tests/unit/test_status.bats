@@ -151,26 +151,31 @@ TOML
     [[ "$output" == *"venv"* ]]
 }
 
-@test "status: Project section shows recorded pyve version" {
+@test "status: Project section shows the legacy .pyve/config declaration (no version)" {
     create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
     run "$PYVE_SCRIPT" status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"0.9.9"* ]]
+    [[ "$output" == *"Declaration"* ]]
+    [[ "$output" == *".pyve/config (legacy"* ]]
+    # pyve_version is no longer read or displayed.
+    [[ "$output" != *"0.9.9"* ]]
 }
 
-@test "status: Project section notes version drift vs current" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
-    run "$PYVE_SCRIPT" status
-    [ "$status" -eq 0 ]
-    # Some signal that the recorded version is not the current pyve version.
-    [[ "$output" == *"current:"* ]] || [[ "$output" == *"$CURRENT_VERSION"* ]] || [[ "$output" == *"drift"* ]] || [[ "$output" == *"stale"* ]]
-}
+@test "status: Project section shows Declaration: pyve.toml for a v3 project" {
+    cat > pyve.toml <<'EOF'
+pyve_schema = "3.0"
 
-@test "status: Project section marks current version when matching" {
-    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+EOF
     run "$PYVE_SCRIPT" status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"(current)"* ]]
+    [[ "$output" == *"Declaration"* ]]
+    [[ "$output" == *"pyve.toml"* ]]
 }
 
 #============================================================

@@ -96,74 +96,6 @@ teardown() {
 }
 
 #------------------------------------------------------------
-# Version Validation Tests
-#------------------------------------------------------------
-
-@test "validate_pyve_version: no config file" {
-    run validate_pyve_version
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_pyve_version: no version field in config" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-backend: venv
-EOF
-    
-    run validate_pyve_version
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_pyve_version: matching version" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.8.8"
-backend: venv
-EOF
-    
-    run validate_pyve_version
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_pyve_version: older version warns" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.6.6"
-backend: venv
-EOF
-    
-    run validate_pyve_version
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "0.6.6" ]]
-    [[ "$output" =~ "0.8.8" ]]
-}
-
-@test "validate_pyve_version: newer version warns" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.9.0"
-backend: venv
-EOF
-    
-    run validate_pyve_version
-    [ "$status" -eq 0 ]
-    [[ "$output" =~ "0.9.0" ]]
-    [[ "$output" =~ "0.8.8" ]]
-}
-
-@test "validate_pyve_version: skip check with env var" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.6.6"
-backend: venv
-EOF
-    
-    PYVE_SKIP_VERSION_CHECK=1 run validate_pyve_version
-    [ "$status" -eq 0 ]
-    [ -z "$output" ]
-}
-
-#------------------------------------------------------------
 # Structure Validation Tests
 #------------------------------------------------------------
 
@@ -298,50 +230,5 @@ EOF
     
     run validate_micromamba_structure
     [ "$status" -eq 0 ]
-}
-
-#------------------------------------------------------------
-# Config Writing Tests
-#------------------------------------------------------------
-
-@test "update_config_version: updates existing version" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.6.6"
-backend: venv
-EOF
-    
-    update_config_version
-    
-    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
-    [ "$version" = "0.8.8" ]
-}
-
-@test "update_config_version: no-op if version matches" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.8.8"
-backend: venv
-EOF
-    
-    update_config_version
-    
-    version=$(grep "^pyve_version:" .pyve/config | awk '{print $2}' | tr -d '"')
-    [ "$version" = "0.8.8" ]
-}
-
-@test "update_config_version: fails if no config file" {
-    run update_config_version
-    [ "$status" -eq 1 ]
-}
-
-@test "update_config_version: fails if config has no backend" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.6.6"
-EOF
-    
-    run update_config_version
-    [ "$status" -eq 1 ]
 }
 

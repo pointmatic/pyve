@@ -27,9 +27,9 @@ teardown() {
 }
 
 @test "update on a pyve.toml-only project does not fail on the missing .pyve/config" {
-    # After the version.sh writers stop being reachable on a v3-native project,
-    # the update flow's version-bump step must be skipped (there is no config to
-    # bump) rather than aborting with "Failed to update .pyve/config".
+    # A v3-native project has no `.pyve/config`. The update flow no longer has a
+    # version-bump step (that machinery is removed), so it must run cleanly
+    # rather than aborting with "Failed to update .pyve/config".
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"
 
@@ -43,5 +43,5 @@ EOF
     [ ! -e .pyve/config ]
     run "$PYVE_SCRIPT" update
     [[ "$output" != *"Failed to update .pyve/config"* ]]
-    [[ "$output" == *"[2/5]"* ]]
+    [[ "$output" == *"[1/4]"* ]]
 }

@@ -546,8 +546,8 @@ Remove the writers ([version.sh](../../lib/version.sh) `write_config_with_versio
 - [x] Remove resolver config-branches (P.i.10)
 - [ ] Remove presence gates 
 - [x] Remove get_backend_priority tier (P.i.9)
-- [ ] Remove validate_config_file
-- [ ] Remove pyve_version reads
+- [x] Remove validate_config_file (P.i.11)
+- [x] Remove pyve_version reads (P.i.11)
 
 **Note: Consumers become manifest/v3-only; v2 still works via synthesis.**
 
@@ -573,11 +573,15 @@ The P.i.5–P.i.7 resolvers became v3-source-only. Unlike the P.i.9 backend remo
 - [x] Tests: new [test_resolver_config_branch_removal.bats](../../tests/unit/test_resolver_config_branch_removal.bats) (per-resolver `declare -f` source-guards + v2-shaped projects resolving from their v3 source files). Rewrote the "reads `.pyve/config`" / "config wins" cases in [test_resolve_micromamba_env_name.bats](../../tests/unit/test_resolve_micromamba_env_name.bats), [test_resolve_venv_directory.bats](../../tests/unit/test_resolve_venv_directory.bats), [test_resolve_python_version.bats](../../tests/unit/test_resolve_python_version.bats), [test_env_naming.bats](../../tests/unit/test_env_naming.bats) to assert the v3 source is authoritative and a v2 config value is ignored. Fixed the five collateral direct-call tests that seeded a config-only value (`test_python_activate_emitter` custom-venv-dir + micromamba env-name-from-`environment.yml`, `test_python_command` `python show`, `test_run_backend_detection` N.j.1 main-env-from-`environment.yml`, `test_version` `validate_venv_structure`).
 - [x] Full unit suite **2152/2154** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
 
-### Story P.i.11: Remove `pyve_version` reads, `validate_config_file`, and `update_config_version` [Planned]
+### Story P.i.11: Remove `pyve_version` reads, `validate_config_file`, and `update_config_version` [Done]
 
-- [ ] Remove the 6 `pyve_version` `.pyve/config` reads (`check_environment`, `_status_section_project`, `init_project`, `update_project`, `validate_pyve_version`, `update_config_version`).
-- [ ] Remove `validate_config_file` ([backend_detect.sh](../../lib/backend_detect.sh)) + its callers — validating a config that is no longer written is obsolete.
-- [ ] Remove `update_config_version` ([version.sh](../../lib/version.sh)) + the update-flow version step + rework the v2 interactive re-init menu "option 1" (it drove `update_config_version`); remove the now-obsolete tests. *(The re-init menu itself is config-gated v2 read-compat — if the rework is cleaner alongside the synthesis removal, it may ride P.i.13; flag at implementation.)*
+`pyve_version` was a v2 `.pyve/config` concept (`pyve.toml` carries no version), so all six reads and the machinery around them are gone.
+
+- [x] Removed the 6 `pyve_version` `.pyve/config` reads: two rode their whole functions out (`validate_pyve_version` + `update_config_version`, [version.sh](../../lib/version.sh)); `check_environment`'s "Pyve version drift" check block and `_status_section_project`'s recorded-version rows were removed (status now shows a `Declaration:` row — `pyve.toml`, or `.pyve/config (legacy — run 'pyve self migrate')` for a v2 project — with no version); `init_project`'s `existing_version` and `update_project`'s `previous_version` reads were dropped ([plugin.sh](../../lib/plugins/python/plugin.sh)).
+- [x] Removed `validate_pyve_version` ([version.sh](../../lib/version.sh), dead — test-only) and `validate_config_file` ([backend_detect.sh](../../lib/backend_detect.sh), dead — test-only) + their unit tests.
+- [x] Removed `update_config_version` ([version.sh](../../lib/version.sh)) and the update-flow version step: `pyve update` dropped its `[1/5] pyve_version` step, renumbering the remaining steps `[1/4]`–`[4/4]`. **Re-init menu decision (flagged in the story):** reworked "option 1" *here* rather than deferring to P.i.13 — it drops the `update_config_version` call + the version display and becomes a clean in-place "keep the environment; create it if missing" path. The menu's *full* removal (the whole `config_file_exists` branch) stays for P.i.12/P.i.13; the rework was self-contained (no synthesis entanglement), so deferring bought nothing.
+- [x] Tests: new [test_pyve_version_read_removal.bats](../../tests/unit/test_pyve_version_read_removal.bats) (tree-wide no-`pyve_version`-read guard, removed-function guards, per-function `declare -f` guards). Removed the obsolete direct-call tests (`validate_pyve_version`/`update_config_version` in [test_version.bats](../../tests/unit/test_version.bats) + [test_reinit.bats](../../tests/unit/test_reinit.bats), `validate_config_file` in [test_backend_detect.bats](../../tests/unit/test_backend_detect.bats)); converted the behavioral fallout — `pyve update`'s step-count/labels → `[N/4]` ([test_update.bats](../../tests/unit/test_update.bats), [test_stop_writing_config.bats](../../tests/unit/test_stop_writing_config.bats)), `pyve check`'s drift test → "ignores a v2 pyve_version" ([test_check.bats](../../tests/unit/test_check.bats)), `pyve status`'s version rows → `Declaration:` rows ([test_status.bats](../../tests/unit/test_status.bats)).
+- [x] Full unit suite **2137/2139** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
 
 ### Story P.i.12: Remove the dead presence gates + `pyve config`'s config read [Planned]
 

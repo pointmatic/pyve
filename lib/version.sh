@@ -41,42 +41,6 @@ compare_versions() {
 }
 
 #------------------------------------------------------------
-# Version Validation
-#------------------------------------------------------------
-
-validate_pyve_version() {
-    local recorded_version
-    recorded_version="$(read_config_value "pyve_version")"
-    
-    if [[ -z "$recorded_version" ]]; then
-        return 0
-    fi
-    
-    local comparison
-    comparison="$(compare_versions "$recorded_version" "$VERSION")"
-    
-    case "$comparison" in
-        equal)
-            return 0
-            ;;
-        less)
-            if [[ "${PYVE_SKIP_VERSION_CHECK:-}" != "1" ]]; then
-                log_warning "Project initialized with Pyve v$recorded_version (current: v$VERSION)"
-                log_warning "Run 'pyve validate' to check compatibility"
-            fi
-            return 0
-            ;;
-        greater)
-            if [[ "${PYVE_SKIP_VERSION_CHECK:-}" != "1" ]]; then
-                log_warning "Project initialized with newer Pyve v$recorded_version (current: v$VERSION)"
-                log_warning "Consider upgrading Pyve or re-initializing the project"
-            fi
-            return 0
-            ;;
-    esac
-}
-
-#------------------------------------------------------------
 # Installation Structure Validation
 #------------------------------------------------------------
 
@@ -170,36 +134,3 @@ validate_micromamba_structure() {
     return 0
 }
 
-#------------------------------------------------------------
-# Config Writing with Version
-#------------------------------------------------------------
-
-update_config_version() {
-    local config_file=".pyve/config"
-    
-    if [[ ! -f "$config_file" ]]; then
-        return 1
-    fi
-
-    # Basic sanity check: a readable config must have a backend.
-    # If it's missing, treat the config as corrupted/unparseable and fail.
-    local backend
-    backend="$(read_config_value "backend")"
-    if [[ -z "$backend" ]]; then
-        return 1
-    fi
-    
-    local current_version
-    current_version="$(read_config_value "pyve_version")"
-    
-    if [[ "$current_version" == "$VERSION" ]]; then
-        return 0
-    fi
-    
-    {
-        echo "pyve_version: \"$VERSION\""
-        grep -v "^pyve_version:" "$config_file" || true
-    } > "${config_file}.tmp"
-    
-    mv "${config_file}.tmp" "$config_file"
-}

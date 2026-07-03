@@ -116,79 +116,6 @@ EOF
 }
 
 #------------------------------------------------------------
-# Version Update Tests
-#------------------------------------------------------------
-
-@test "update_config_version: updates version field" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.8.7"
-backend: venv
-venv:
-  directory: .venv
-EOF
-    
-    update_config_version
-    
-    new_version="$(read_config_value "pyve_version")"
-    [ "$new_version" = "0.8.9" ]
-}
-
-@test "update_config_version: preserves other fields" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.8.7"
-backend: venv
-venv:
-  directory: .venv
-python:
-  version: "3.11"
-EOF
-    
-    update_config_version
-    
-    backend="$(read_config_value "backend")"
-    venv_dir="$(read_config_value "venv.directory")"
-    py_version="$(read_config_value "python.version")"
-    
-    [ "$backend" = "venv" ]
-    [ "$venv_dir" = ".venv" ]
-    [ "$py_version" = "3.11" ]
-}
-
-@test "update_config_version: adds version if missing" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-backend: venv
-venv:
-  directory: .venv
-EOF
-    
-    update_config_version
-    
-    new_version="$(read_config_value "pyve_version")"
-    [ "$new_version" = "0.8.9" ]
-}
-
-@test "update_config_version: no-op if version matches" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "0.8.9"
-backend: venv
-EOF
-    
-    # Get initial timestamp
-    initial_mtime=$(stat -f %m .pyve/config 2>/dev/null || stat -c %Y .pyve/config 2>/dev/null)
-    
-    sleep 1
-    update_config_version
-    
-    # Version should still be 0.8.9
-    version="$(read_config_value "pyve_version")"
-    [ "$version" = "0.8.9" ]
-}
-
-#------------------------------------------------------------
 # Re-initialization Mode Tests
 #------------------------------------------------------------
 
@@ -224,20 +151,6 @@ EOF
     
     version="$(read_config_value "pyve_version")"
     [ -z "$version" ]
-}
-
-@test "legacy project: can be updated" {
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-backend: venv
-venv:
-  directory: .venv
-EOF
-    
-    update_config_version
-    
-    version="$(read_config_value "pyve_version")"
-    [ "$version" = "0.8.9" ]
 }
 
 #------------------------------------------------------------

@@ -82,17 +82,12 @@ EOF
 }
 
 @test "update: resolves the backend from pyve.toml when .pyve/config omits it" {
-    # v3-native shape: the presence gate is satisfied by a .pyve/config that
-    # only carries pyve_version, while the backend lives in the manifest.
-    # The init-guard backend read must resolve from the manifest, so update
-    # gets *past* the guard into the update body rather than aborting with
-    # "Could not determine the project backend".
-    #
-    # Scope note: the run does not complete — a later `.pyve/config`-rewrite
-    # step still expects a `backend:` line in the config (config-write
-    # machinery dropped when Subphase P-1 stops writing `.pyve/config`). This
-    # asserts only the manifest-first backend read; it does not assert exit 0.
-    create_pyve_config 'pyve_version: "0.9.9"'
+    # v3-native shape: a legacy .pyve/config is present but backend-less, while
+    # the backend lives in the manifest. The init-guard backend read must
+    # resolve from the manifest, so update gets *past* the guard into the update
+    # body (reaching the first step) rather than aborting with "Could not
+    # determine the project backend".
+    create_pyve_config 'other: value'
     cat > pyve.toml <<'EOF'
 pyve_schema = "3.0"
 
@@ -105,39 +100,12 @@ backend = "venv"
 EOF
     run "$PYVE_SCRIPT" update
     [[ "$output" != *"Could not determine the project backend"* ]]
-    [[ "$output" == *"[1/5] pyve_version"* ]]
+    [[ "$output" == *"[1/4]"* ]]
 }
 
 #============================================================
 # Happy path — venv backend
 #============================================================
-
-@test "update: venv backend — bumps pyve_version in .pyve/config" {
-    create_pyve_config 'backend: venv' 'pyve_version: "0.9.9"'
-
-    run "$PYVE_SCRIPT" update
-    [ "$status" -eq 0 ]
-
-    local recorded
-    recorded="$(grep '^pyve_version:' .pyve/config | cut -d'"' -f2)"
-    [ "$recorded" = "$CURRENT_VERSION" ]
-}
-
-@test "update: venv backend — no-op bump when already at current version" {
-    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
-
-    run "$PYVE_SCRIPT" update
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"already current"* ]] || [[ "$output" == *"$CURRENT_VERSION"* ]]
-}
-
-@test "update: venv backend — adds pyve_version when not recorded" {
-    create_pyve_config "backend: venv"
-
-    run "$PYVE_SCRIPT" update
-    [ "$status" -eq 0 ]
-    grep -q "^pyve_version:" .pyve/config
-}
 
 @test "update: venv backend — refreshes .gitignore Pyve section" {
     create_pyve_config "backend: venv"
@@ -305,30 +273,21 @@ EOF
 # Step counter framing (Story L.j)
 #============================================================
 
-@test "update: prints [1/5] step header for pyve_version step" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+@test "update: prints all four [N/4] step headers in sequence" {
+    create_pyve_config "backend: venv"
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
-    [[ "$output" == *"[1/5]"* ]]
-    [[ "$output" == *"pyve_version"* ]]
+    [[ "$output" == *"[1/4]"* ]]
+    [[ "$output" == *"[2/4]"* ]]
+    [[ "$output" == *"[3/4]"* ]]
+    [[ "$output" == *"[4/4]"* ]]
 }
 
-@test "update: prints all five [N/5] step headers in sequence" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
+@test "update: [2/4] .envrc step skips cleanly when no .envrc exists" {
+    create_pyve_config "backend: venv"
     run "$PYVE_SCRIPT" update
     [ "$status" -eq 0 ]
-    [[ "$output" == *"[1/5]"* ]]
-    [[ "$output" == *"[2/5]"* ]]
-    [[ "$output" == *"[3/5]"* ]]
-    [[ "$output" == *"[4/5]"* ]]
-    [[ "$output" == *"[5/5]"* ]]
-}
-
-@test "update: [3/5] .envrc step skips cleanly when no .envrc exists" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
-    run "$PYVE_SCRIPT" update
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"[3/5]"* ]]
+    [[ "$output" == *"[2/4]"* ]]
     [[ "$output" == *".envrc"* ]]
 }
 

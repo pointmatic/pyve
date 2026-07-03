@@ -127,8 +127,9 @@ teardown() {
 # the composed check no longer fails CI on warnings.
 #============================================================
 
-@test "check: exit 0 when pyve_version differs from current (drift)" {
-    # Set up a functional-looking venv + config, with stale version
+@test "check: ignores a v2 pyve_version and reports no version row" {
+    # A stale v2 `.pyve/config` pyve_version is no longer read — check does not
+    # report version drift, and still exits 0 on a functional env.
     create_pyve_config "backend: venv" "pyve_version: \"0.1.0\""
     mkdir -p .venv/bin
     cat > .venv/bin/python << 'PY'
@@ -145,7 +146,8 @@ EOF
 
     run "$PYVE_SCRIPT" check
     [ "$status" -eq 0 ]
-    [[ "$output" == *"0.1.0"* ]] || [[ "$output" == *"pyve update"* ]]
+    [[ "$output" != *"0.1.0"* ]]
+    [[ "$output" != *"Pyve version:"* ]]
 }
 
 @test "check: exit 0 when .env is missing but otherwise OK" {

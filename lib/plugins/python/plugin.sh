@@ -1931,8 +1931,6 @@ init_project() {
         # for both v3-native and v2 projects.
         local existing_backend
         existing_backend="$(manifest_get_backend root 2>/dev/null || true)"
-        local existing_version
-        existing_version="$(read_config_value "pyve_version")"
 
         # Handle re-initialization based on mode.
         # (PYVE_REINIT_MODE="update" path removed in v2.0 / H.e.9 —
@@ -1989,15 +1987,11 @@ init_project() {
             banner "Rebuilding fresh environment"
 
         elif config_file_exists; then
-            # Interactive re-init menu — v2 `.pyve/config` only (it drives
-            # update_config_version, which needs that file). A v3-native
+            # Interactive re-init menu — legacy v2 `.pyve/config` only. A v3-native
             # (`pyve.toml`-only) non-force re-init falls through to the normal
             # idempotent create-if-missing path below, unchanged.
             # Interactive mode (no flag specified)
             warn "Project already initialized with Pyve"
-            if [[ -n "$existing_version" ]]; then
-                info "Recorded version: $existing_version"
-            fi
             info "Current version:  $VERSION"
             info "Backend:          $existing_backend"
             _init_print_reinit_menu
@@ -2006,22 +2000,13 @@ init_project() {
 
             case "$choice" in
                 1)
-                    # Check for conflicts before updating
+                    # In-place update: keep the existing environment. Check for a
+                    # backend conflict first (an in-place update can't switch backends).
                     if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
                         warn "Cannot update in-place: backend change detected ($existing_backend → $backend_flag)"
                         fail "Use option 2 to purge and re-initialize with new backend"
                     fi
 
-                    # Perform safe update
-                    if ! update_config_version; then
-                        fail "Failed to update configuration (config may be corrupted)"
-                    fi
-                    success "Configuration updated"
-                    if [[ -n "$existing_version" ]]; then
-                        info "Version: $existing_version → $VERSION"
-                    else
-                        info "Version: (not recorded) → $VERSION"
-                    fi
                     info "Backend: $existing_backend (unchanged)"
                     info "Project updated to Pyve v$VERSION"
 
@@ -2890,9 +2875,6 @@ update_project() {
         exit 1
     fi
 
-    local previous_version
-    previous_version="$(read_config_value "pyve_version")"
-
     # Pre-step: opportunistically migrate any v2.7 `.pyve/testenv/venv/`
     # or v2.8 `.pyve/testenvs/<name>/{venv,conda}/` layout to the v3
     # `.pyve/envs/<name>/{venv,conda}/` shape. Silent on
@@ -2903,31 +2885,10 @@ update_project() {
 
     header_box "pyve update v$VERSION"
 
-    # Step 1/4 — bump pyve_version in .pyve/config (idempotent; writes
-    # even when already at current version, simplifying the happy path).
-    local step1_label
-    if [[ -z "$previous_version" ]]; then
-        step1_label="[1/5] pyve_version: (not recorded) → $VERSION"
-    elif [[ "$previous_version" == "$VERSION" ]]; then
-        step1_label="[1/5] pyve_version: $VERSION (already current)"
-    else
-        step1_label="[1/5] pyve_version: $previous_version → $VERSION"
-    fi
-    step_begin "$step1_label"
-    # A v3-native project has no `.pyve/config` to bump — `init` no longer
-    # writes one. Only run the version bump when a legacy config is present
-    # (read-compat window); otherwise the step is a no-op success.
-    if config_file_exists && ! update_config_version >/dev/null 2>&1; then
-        step_end_fail
-        log_error "Failed to update .pyve/config."
-        exit 1
-    fi
-    step_end_ok
-
-    # Step 2/5 — refresh the composed .gitignore managed section across all
+    # Step 1/4 — refresh the composed .gitignore managed section across all
     # active plugins. User content above/below the managed
     # markers is preserved; prior file backed up to .gitignore.prev.
-    step_begin "[2/5] Refresh .gitignore (Pyve-managed section)"
+    step_begin "[1/4] Refresh .gitignore (Pyve-managed section)"
     if run_quiet compose_project_gitignore ".gitignore"; then
         step_end_ok
     else
@@ -2941,7 +2902,7 @@ update_project() {
     # manifest/registry, preserves user content below the managed end
     # marker, and backs the prior file up to .envrc.prev.
     if [[ -f ".envrc" ]]; then
-        step_begin "[3/5] Refresh .envrc (Pyve-managed section)"
+        step_begin "[2/4] Refresh .envrc (Pyve-managed section)"
         if run_quiet compose_project_envrc ".envrc"; then
             step_end_ok
         else
@@ -2949,7 +2910,7 @@ update_project() {
             log_warning "  .envrc refresh failed; existing file left intact."
         fi
     else
-        step_begin "[3/5] .envrc: absent — skipped (use 'pyve init' to opt into direnv)"
+        step_begin "[2/4] .envrc: absent — skipped (use 'pyve init' to opt into direnv)"
         step_end_ok
     fi
 
@@ -2959,18 +2920,18 @@ update_project() {
         local env_name
         env_name="$(resolve_micromamba_env_name)"
         if [[ -n "$env_name" ]]; then
-            step_begin "[4/5] Refresh .vscode/settings.json"
+            step_begin "[3/4] Refresh .vscode/settings.json"
             PYVE_REINIT_MODE=force write_vscode_settings "$env_name" >/dev/null 2>&1
             step_end_ok
         else
-            step_begin "[4/5] .vscode/settings.json: micromamba env_name missing — skipped"
+            step_begin "[3/4] .vscode/settings.json: micromamba env_name missing — skipped"
             step_end_ok
         fi
     elif [[ -f ".vscode/settings.json" ]]; then
-        step_begin "[4/5] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
+        step_begin "[3/4] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
         step_end_ok
     else
-        step_begin "[4/5] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
+        step_begin "[3/4] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
         step_end_ok
     fi
 
@@ -2979,7 +2940,7 @@ update_project() {
 
     # Step 5/5 — refresh project-guide scaffolding if present and allowed.
     if [[ "$pg_mode" == "no" ]]; then
-        step_begin "[5/5] project-guide refresh skipped (--no-project-guide)"
+        step_begin "[4/4] project-guide refresh skipped (--no-project-guide)"
         step_end_ok
     elif [[ -f ".project-guide.yml" ]]; then
         local env_path=""
@@ -2994,7 +2955,7 @@ update_project() {
             env_path="$(micromamba_root_prefix)"
         fi
         if [[ -n "$env_path" ]] && [[ -d "$env_path" ]]; then
-            step_begin "[5/5] Refresh project-guide artifacts"
+            step_begin "[4/4] Refresh project-guide artifacts"
             if run_quiet run_project_guide_update_in_env "$backend" "$env_path"; then
                 step_end_ok
             else
@@ -3002,12 +2963,12 @@ update_project() {
                 log_warning "  Run 'project-guide update' manually to retry."
             fi
         else
-            step_begin "[5/5] project-guide: environment not found — skipped"
+            step_begin "[4/4] project-guide: environment not found — skipped"
             step_end_ok
             log_warning "  (Run 'pyve init --force' to rebuild the environment.)"
         fi
     else
-        step_begin "[5/5] project-guide: .project-guide.yml absent — skipped"
+        step_begin "[4/4] project-guide: .project-guide.yml absent — skipped"
         step_end_ok
     fi
 
@@ -3170,35 +3131,6 @@ check_environment() {
         _check_summary_and_exit
     fi
     _check_pass "Backend: $backend"
-
-    # --- Check 2: pyve_version drift --------------------------------------
-    # The recorded-version drift check is a v2 `.pyve/config` concept —
-    # `pyve.toml` carries no pyve_version. Only run it when a `.pyve/config`
-    # is present; a pyve.toml-only project legitimately has no recorded
-    # version there, and the "legacy project → pyve update" nudge would be
-    # misleading on a native v3 project.
-    if config_file_exists; then
-        local recorded_version
-        recorded_version="$(read_config_value "pyve_version")"
-        if [[ -z "$recorded_version" ]]; then
-            _check_warn "Pyve version: not recorded (legacy project)" \
-                "→ Run: pyve update"
-        else
-            case "$(compare_versions "$recorded_version" "$VERSION")" in
-                equal)
-                    _check_pass "Pyve version: $recorded_version (current)"
-                    ;;
-                less)
-                    _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
-                        "→ Run: pyve update"
-                    ;;
-                greater)
-                    _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
-                        "→ Upgrade pyve or re-initialize the project"
-                    ;;
-            esac
-        fi
-    fi
 
     # --- Backend-specific checks ------------------------------------------
     local env_path=""
@@ -3514,27 +3446,13 @@ _status_section_project() {
         _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
 
-    # The recorded pyve_version is a v2 `.pyve/config` concept (pyve.toml
-    # carries none). Only surface the row when a `.pyve/config` is present;
-    # a pyve.toml-only project legitimately has no recorded version there.
-    local recorded_version
-    recorded_version="$(read_config_value "pyve_version" 2>/dev/null || true)"
-    if [[ ! -f ".pyve/config" ]]; then
+    # A v3 project is declared by pyve.toml; a legacy v2 project (no pyve.toml,
+    # still readable via the read-compat synthesis) should migrate. pyve.toml
+    # carries no version, so no version row is shown.
+    if [[ -f "pyve.toml" ]]; then
         _status_row "Declaration:" "pyve.toml"
-    elif [[ -z "$recorded_version" ]]; then
-        _status_row "Pyve config:" "${DIM}version not recorded${RESET}"
     else
-        case "$(compare_versions "$recorded_version" "$VERSION")" in
-            equal)
-                _status_row "Pyve config:" "v${recorded_version} (current)"
-                ;;
-            less)
-                _status_row "Pyve config:" "v${recorded_version} (current: v${VERSION})"
-                ;;
-            greater)
-                _status_row "Pyve config:" "v${recorded_version} (newer than pyve v${VERSION})"
-                ;;
-        esac
+        _status_row "Declaration:" "${DIM}.pyve/config (legacy — run 'pyve self migrate')${RESET}"
     fi
 
     _status_row "Python:" "$(_status_configured_python)"

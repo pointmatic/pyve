@@ -178,33 +178,3 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-#============================================================
-# validate_config_file() tests
-#============================================================
-
-@test "validate_config_file: returns 0 when no config file exists" {
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_config_file: returns 0 for valid backend in config" {
-    create_pyve_config "backend: venv"
-    
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_config_file: returns 1 for invalid backend in config" {
-    create_pyve_config "backend: invalid"
-    
-    run validate_config_file
-    [ "$status" -eq 1 ]
-}
-
-@test "validate_config_file: returns 0 for empty config file" {
-    mkdir -p .pyve
-    touch .pyve/config
-    
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}
