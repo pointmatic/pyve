@@ -3,13 +3,12 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Subphase P-1 (pyve.toml as the sole config source) — `resolve_python_version`
-# centralizes the pinned-Python resolution the `python show` and `status`
-# consumers previously duplicated: `.tool-versions` (asdf) → `.python-version`
-# (pyenv) → the transitional `.pyve/config` python.version, in that order. It
-# prints "<version>|<source>" where source is one of tool-versions /
-# python-version / config (empty when nothing pins a version). The config read
-# is the read-compat tail, dropped when Subphase P-1 stops writing `.pyve/config`.
+# pyve.toml as the sole config source — `resolve_python_version` centralizes the
+# pinned-Python resolution the `python show` and `status` consumers previously
+# duplicated: `.tool-versions` (asdf) → `.python-version` (pyenv), in that order.
+# It prints "<version>|<source>" where source is one of tool-versions /
+# python-version (empty when nothing pins a version). `.pyve/config` is no longer
+# consulted.
 
 load ../helpers/test_helper
 
@@ -44,13 +43,13 @@ teardown() {
     [ "$output" = "3.12.13|tool-versions" ]
 }
 
-@test "resolve_python_version: falls back to .pyve/config when no pin files (read-compat)" {
+@test "resolve_python_version: a v2 .pyve/config python.version is ignored (no pin files → empty)" {
     create_pyve_config "backend: venv" "python:" "  version: 3.10.4"
     [ ! -e .tool-versions ]
     [ ! -e .python-version ]
     run resolve_python_version
     [ "$status" -eq 0 ]
-    [ "$output" = "3.10.4|config" ]
+    [ "${output%|*}" = "" ]
 }
 
 @test "resolve_python_version: empty version when nothing pins one" {

@@ -91,10 +91,11 @@ EOF
 
     # zzz-env sorts AFTER testenv so the v2-era `env_dirs[0]` glob
     # picks testenv first — the assertion below verifies the fix
-    # consults config.micromamba.env_name instead of relying on the
-    # alphabetical accident.
+    # consults the configured env name (environment.yml's name:) instead
+    # of relying on the alphabetical accident.
     mkdir -p .pyve/envs/zzz-env/bin .pyve/envs/testenv/venv/bin
     printf 'backend=micromamba\n' > .pyve/envs/testenv/.state
+    printf 'name: zzz-env\ndependencies:\n  - python\n' > environment.yml
     cat > .pyve/config << 'EOF'
 pyve_version: "3.0.0"
 backend: micromamba
@@ -129,7 +130,7 @@ EOF
 
     run run_command python --version
     [ "$status" -eq 0 ]
-    # Must be .pyve/envs/zzz-env (from config.micromamba.env_name), NOT
+    # Must be .pyve/envs/zzz-env (from environment.yml's name:), NOT
     # .pyve/envs/testenv (the alphabetically-first glob entry).
     [[ "$output" == *"run -p .pyve/envs/zzz-env python --version"* ]]
 }

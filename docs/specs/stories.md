@@ -543,7 +543,7 @@ stop writing `.pyve/config`; remove the priority-tier + config-write-machinery `
 Remove the writers ([version.sh](../../lib/version.sh) `write_config_with_version` / `update_config_version` and the `init` writer at [plugin.sh:2014](../../lib/plugins/python/plugin.sh#L2014)).
 
 - [x] Remove transitional fallbacks (P.i.9)
-- [ ] Remove resolver config-branches
+- [x] Remove resolver config-branches (P.i.10)
 - [ ] Remove presence gates 
 - [x] Remove get_backend_priority tier (P.i.9)
 - [ ] Remove validate_config_file
@@ -563,12 +563,15 @@ Backend now resolves from the synthesized manifest (`manifest_get_backend root`)
 - [x] Tests: new [test_backend_fallback_removal.bats](../../tests/unit/test_backend_fallback_removal.bats) (per-function `declare -f` source-guards + a tree-wide fallback-idiom guard + `get_backend_priority` Priority-2-gone behavior + v2-via-synthesis behavior). Updated the P.i.1–P.i.4 wiring-guard comments (fallback → synthesis); rewrote the two `get_backend_priority` "config wins" cases in [test_backend_detect.bats](../../tests/unit/test_backend_detect.bats) to "config ignored"; and had the direct-call unit tests that seed only `.pyve/config` (`test_python_activate_emitter`, `test_python_plugin_activate`, `test_run_backend_detection`, `test_main_micromamba_env_layout`, `test_testenv_conda`, `test_version`) load the manifest, mirroring production (`main`/`compose_project_envrc` call `manifest_load` before these paths run).
 - [x] Full unit suite **2142/2** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
 
-### Story P.i.10: Remove the resolver `.pyve/config` config-branches [Planned]
+### Story P.i.10: Remove the resolver `.pyve/config` config-branches [Done]
 
-The P.i.5–P.i.7 resolvers become v3-source-only.
+The P.i.5–P.i.7 resolvers became v3-source-only. Unlike the P.i.9 backend removal (covered by the read-compat *synthesis*), these values are read straight from the v3 source files a real v2 project already has on disk — the synthesis only populates `backend`.
 
-- [ ] Drop the `.pyve/config` branch from `resolve_micromamba_env_name` + `resolve_environment_name` (Priority-2) ([micromamba_env.sh](../../lib/micromamba_env.sh)), `resolve_venv_directory` ([utils.sh](../../lib/utils.sh)), `resolve_python_version` ([env_detect.sh](../../lib/env_detect.sh)), `resolve_main_micromamba_path` + `remove_pattern_from_gitignore` config reads.
-- [ ] Update the P.i.5–P.i.7 resolver tests: drop the "reads `.pyve/config`" cases; assert v3 sources (`environment.yml` `name:`, `.venv` default, pin files) are the sole inputs.
+- [x] Dropped the `.pyve/config` branch from `resolve_micromamba_env_name` + `resolve_environment_name` (Priority-2, [micromamba_env.sh](../../lib/micromamba_env.sh)) → `environment.yml` `name:` only; `resolve_venv_directory` ([utils.sh](../../lib/utils.sh)) → the `.venv` default only (v3 has no per-project venv-dir override); `resolve_python_version` ([env_detect.sh](../../lib/env_detect.sh)) → `.tool-versions` / `.python-version` only. Routed `resolve_main_micromamba_path`'s env-name read ([envs.sh](../../lib/envs.sh)) through `resolve_micromamba_env_name` (the v3-source resolver) rather than a direct config read. (`remove_pattern_from_gitignore` had no direct config read — its pattern flows from `resolve_venv_directory`, so it became v3-only transitively.)
+- [x] Removed the now-dead `config)` source arm from `python_show` and `_status_configured_python_venv` ([plugin.sh](../../lib/plugins/python/plugin.sh)) — `resolve_python_version` never returns the `config` source anymore.
+- [x] Left the three exempt `.pyve/config` readers untouched (the read-compat synthesis, `self migrate`, the legacy-layout mover); `validate_config_file`'s venv.directory/python.version reads stay (removed with the whole function in P.i.11/P.i.12).
+- [x] Tests: new [test_resolver_config_branch_removal.bats](../../tests/unit/test_resolver_config_branch_removal.bats) (per-resolver `declare -f` source-guards + v2-shaped projects resolving from their v3 source files). Rewrote the "reads `.pyve/config`" / "config wins" cases in [test_resolve_micromamba_env_name.bats](../../tests/unit/test_resolve_micromamba_env_name.bats), [test_resolve_venv_directory.bats](../../tests/unit/test_resolve_venv_directory.bats), [test_resolve_python_version.bats](../../tests/unit/test_resolve_python_version.bats), [test_env_naming.bats](../../tests/unit/test_env_naming.bats) to assert the v3 source is authoritative and a v2 config value is ignored. Fixed the five collateral direct-call tests that seeded a config-only value (`test_python_activate_emitter` custom-venv-dir + micromamba env-name-from-`environment.yml`, `test_python_command` `python show`, `test_run_backend_detection` N.j.1 main-env-from-`environment.yml`, `test_version` `validate_venv_structure`).
+- [x] Full unit suite **2152/2154** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
 
 ### Story P.i.11: Remove `pyve_version` reads, `validate_config_file`, and `update_config_version` [Planned]
 

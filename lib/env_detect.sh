@@ -277,11 +277,9 @@ get_version_file_name() {
 }
 
 # The pinned project Python version and where it came from, as "<version>|<source>".
-# Order: `.tool-versions` (asdf) → `.python-version` (pyenv) → the transitional
-# `.pyve/config` python.version (read-compat tail, dropped when Subphase P-1 stops
-# writing `.pyve/config`). <source> is one of tool-versions / python-version /
-# config, or empty when nothing pins a version (then <version> is empty too).
-# Callers map <source> to their own display label.
+# Order: `.tool-versions` (asdf) → `.python-version` (pyenv). <source> is one of
+# tool-versions / python-version, or empty when nothing pins a version (then
+# <version> is empty too). Callers map <source> to their own display label.
 resolve_python_version() {
     local version="" source=""
     if [[ -f ".tool-versions" ]]; then
@@ -290,9 +288,6 @@ resolve_python_version() {
     elif [[ -f ".python-version" ]]; then
         version="$(head -1 .python-version 2>/dev/null)"
         source="python-version"
-    elif config_file_exists; then
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source="config"
     fi
     [[ -z "$version" ]] && source=""
     printf '%s|%s' "$version" "$source"

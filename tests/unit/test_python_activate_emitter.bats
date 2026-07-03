@@ -85,18 +85,19 @@ EOF
     [ ! -f .envrc ]
 }
 
-@test "emitter (venv): honors a custom venv directory from .pyve/config" {
+@test "emitter (venv): a v2 custom venv directory is ignored (defaults to .venv)" {
     _write_config_venv "myenv"
     run python_pyve_plugin_activate
     [ "$status" -eq 0 ]
-    [[ "$output" == *'PATH_add "myenv/bin"'* ]]
-    [[ "$output" == *'export VIRTUAL_ENV="$PWD/myenv"'* ]]
+    [[ "$output" == *'PATH_add ".venv/bin"'* ]]
+    [[ "$output" == *'export VIRTUAL_ENV="$PWD/.venv"'* ]]
 }
 
 @test "emitter (micromamba): CONDA_PREFIX + PATH from the v3 root slot" {
-    # Story N.bf.14: the main micromamba env lives at the uniform root
-    # slot .pyve/envs/root/conda/; PYVE_ENV_NAME stays the configured name.
+    # The main micromamba env lives at the uniform root slot
+    # .pyve/envs/root/conda/; PYVE_ENV_NAME comes from environment.yml's name:.
     _write_config_micromamba "sci"
+    printf 'name: sci\ndependencies:\n  - python\n' > environment.yml
     run python_pyve_plugin_activate
     [ "$status" -eq 0 ]
     [[ "$output" == *'PATH_add ".pyve/envs/root/conda/bin"'* ]]

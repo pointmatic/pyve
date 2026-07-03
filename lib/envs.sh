@@ -598,16 +598,15 @@ micromamba_root_prefix() {
     printf '%s' ".pyve/envs/root/conda"
 }
 
-# Story N.bf.14: non-mutating resolver for the main micromamba env path.
-# Returns the v3 root slot (`.pyve/envs/root/conda`) if it exists, else
-# the legacy flat path (`.pyve/envs/<configured>/`) derived from the
-# passed name or `.pyve/config:micromamba.env_name`, else the canonical
-# root slot (so a caller's existence check reports "missing" against the
-# right path). Unlike `resolve_env_path root`, this does NOT trigger the
-# opportunistic move — read paths (`check` / `status` / `run`) use it to
-# tolerate both layouts during the transition window without mutating the
-# tree on a diagnostic; the move fires on the write paths (`init` /
-# `update` / `test` / `env *`).
+# Non-mutating resolver for the main micromamba env path. Returns the v3 root
+# slot (`.pyve/envs/root/conda`) if it exists, else the legacy flat path
+# (`.pyve/envs/<configured>/`) derived from the passed name or the v3 env-name
+# source (`environment.yml` `name:`, via `resolve_micromamba_env_name`), else
+# the canonical root slot (so a caller's existence check reports "missing"
+# against the right path). Unlike `resolve_env_path root`, this does NOT trigger
+# the opportunistic move — read paths (`check` / `status` / `run`) use it to
+# tolerate both layouts without mutating the tree on a diagnostic; the move
+# fires on the write paths (`init` / `update` / `test` / `env *`).
 resolve_main_micromamba_path() {
     local root
     root="$(micromamba_root_prefix)"
@@ -616,7 +615,7 @@ resolve_main_micromamba_path() {
         return 0
     fi
     local name="${1:-}"
-    [[ -z "$name" ]] && name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+    [[ -z "$name" ]] && name="$(resolve_micromamba_env_name 2>/dev/null || true)"
     if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name" ]]; then
         printf '%s' ".pyve/envs/$name"
         return 0

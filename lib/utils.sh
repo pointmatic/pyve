@@ -820,18 +820,12 @@ config_file_exists() {
     [[ -f ".pyve/config" ]]
 }
 
-# The root env's venv directory. The v2 `.pyve/config` venv.directory override
-# (a user's `pyve init <dir>`) is honored during the read-compat window — the
-# config read is dropped when Subphase P-1 stops writing `.pyve/config` — after
-# which the v3 default `.venv` is authoritative (resolve_env_path root returns
-# the same). Centralized here so consumers no longer read `.pyve/config`
-# directly. Never returns empty.
+# The root env's venv directory. In v3 the root venv is always the `.venv`
+# default (`resolve_env_path root` returns the same); the v2 `.pyve/config`
+# venv.directory override is no longer consulted. Centralized here so consumers
+# resolve the directory through one helper. Never returns empty.
 resolve_venv_directory() {
-    local dir=""
-    if config_file_exists; then
-        dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-    fi
-    printf '%s' "${dir:-${DEFAULT_VENV_DIR:-.venv}}"
+    printf '%s' "${DEFAULT_VENV_DIR:-.venv}"
 }
 
 #============================================================

@@ -3,12 +3,12 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Subphase P-1 (pyve.toml as the sole config source) — `resolve_micromamba_env_name`
-# resolves the configured micromamba env name from v3 sources: the transitional
-# `.pyve/config` micromamba.env_name (config-first for read-compat), else
-# `environment.yml`'s `name:` metadata, else empty. Empty is meaningful —
-# callers treat it as "not configured" — so unlike `resolve_environment_name`
-# there is no basename fallback.
+# pyve.toml as the sole config source — `resolve_micromamba_env_name` resolves
+# the configured micromamba env name from `environment.yml`'s `name:` metadata
+# (the v3 source: the name survives only as conda env metadata), else empty.
+# Empty is meaningful — callers treat it as "not configured" — so unlike
+# `resolve_environment_name` there is no basename fallback. `.pyve/config` is no
+# longer consulted.
 
 load ../helpers/test_helper
 
@@ -21,14 +21,15 @@ teardown() {
     cleanup_test_dir
 }
 
-@test "resolve_micromamba_env_name: reads .pyve/config micromamba.env_name" {
+@test "resolve_micromamba_env_name: a v2 .pyve/config env_name is ignored (no environment.yml → empty)" {
     create_pyve_config "backend: micromamba" "micromamba:" "  env_name: fromconfig"
+    [ ! -e environment.yml ]
     run resolve_micromamba_env_name
     [ "$status" -eq 0 ]
-    [ "$output" = "fromconfig" ]
+    [ "$output" = "" ]
 }
 
-@test "resolve_micromamba_env_name: v3-native falls back to environment.yml name:" {
+@test "resolve_micromamba_env_name: resolves from environment.yml name:" {
     printf 'name: fromyaml\ndependencies:\n  - python\n' > environment.yml
     [ ! -e .pyve/config ]
     run resolve_micromamba_env_name
@@ -36,12 +37,12 @@ teardown() {
     [ "$output" = "fromyaml" ]
 }
 
-@test "resolve_micromamba_env_name: config wins over environment.yml (read-compat priority)" {
+@test "resolve_micromamba_env_name: environment.yml is authoritative; a v2 config env_name is ignored" {
     create_pyve_config "backend: micromamba" "micromamba:" "  env_name: fromconfig"
     printf 'name: fromyaml\ndependencies:\n  - python\n' > environment.yml
     run resolve_micromamba_env_name
     [ "$status" -eq 0 ]
-    [ "$output" = "fromconfig" ]
+    [ "$output" = "fromyaml" ]
 }
 
 @test "resolve_micromamba_env_name: empty when neither source declares a name" {

@@ -663,7 +663,6 @@ python_show() {
     case "$source" in
         tool-versions)  source=".tool-versions" ;;
         python-version) source=".python-version" ;;
-        config)         source=".pyve/config" ;;
     esac
 
     if [[ -z "$version" ]]; then
@@ -3579,7 +3578,6 @@ _status_configured_python_venv() {
     case "$source" in
         tool-versions)  source=".tool-versions via asdf" ;;
         python-version) source=".python-version via pyenv" ;;
-        config)         source=".pyve/config" ;;
     esac
     if [[ -z "$version" ]]; then
         printf "%snot pinned%s" "${DIM}" "${RESET}"

@@ -260,18 +260,19 @@ EOF
     [[ "$output" =~ "missing Python executable" ]]
 }
 
-@test "validate_venv_structure: custom venv directory" {
+@test "validate_venv_structure: validates .venv; a v2 custom venv.directory is ignored" {
     mkdir -p .pyve
     cat > .pyve/config << EOF
 backend: venv
 venv:
   directory: custom_venv
 EOF
-    
-    mkdir -p custom_venv/bin
-    touch custom_venv/bin/python
-    chmod +x custom_venv/bin/python
-    
+
+    # v3 root venv is always .venv — the config override is not consulted.
+    mkdir -p .venv/bin
+    touch .venv/bin/python
+    chmod +x .venv/bin/python
+
     run validate_venv_structure
     [ "$status" -eq 0 ]
 }
