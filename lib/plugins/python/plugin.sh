@@ -337,12 +337,14 @@ python_plugin_is_active_in_project() {
         done
     done < <(manifest_list_envs 2>/dev/null)
 
-    # 3. v2 Python project marker. (`.project-guide.yml` is NO
-    #    longer a Python-active signal — project-guide is globally hosted, so
-    #    its per-project marker no longer implies a project Python env. On a
+    # 3. v2 Python project marker — legacy sources (`.pyve/config` or a
+    #    `[tool.pyve.testenvs]` block), detected via the surviving
+    #    synthesis-detection helper. (`.project-guide.yml` is NO longer a
+    #    Python-active signal — project-guide is globally hosted, so its
+    #    per-project marker no longer implies a project Python env. On a
     #    Node-only project that accepts project-guide there is no `.venv` for
     #    the Python plugin to report, so it must stay suppressed.)
-    [[ -f ".pyve/config" ]] && return 0
+    _manifest_has_legacy_sources && return 0
 
     # 4. Root-scoped Python application files (no recursion — `compgen -G`).
     if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] \
@@ -815,13 +817,12 @@ _init_manifest_ensure_root_backend() {
     return $rc
 }
 
-# True (0) when the cwd already holds a Pyve project — either a v2 `.pyve/config`
-# OR a v3-native `pyve.toml`. The re-init / `--force` handling keys off this so a
-# forced rebuild fires on a `.pyve/config`-less v3 project; the old bare
-# `config_file_exists` gate was v3-blind, so `--force` silently no-op'd (the env
-# was never rebuilt) precisely when the project was v3-clean.
+# True (0) when the cwd already holds a Pyve project — a v3-native `pyve.toml`
+# OR legacy v2 sources (detected via `_manifest_has_legacy_sources`, the single
+# surviving `.pyve/config` presence check). The re-init / `--force` handling keys
+# off this so a forced rebuild fires on a `.pyve/config`-less v3 project.
 _init_is_reinit() {
-    config_file_exists && return 0
+    _manifest_has_legacy_sources && return 0
     [[ -f pyve.toml ]] && return 0
     return 1
 }
@@ -1986,8 +1987,8 @@ init_project() {
             success "Environment purged"
             banner "Rebuilding fresh environment"
 
-        elif config_file_exists; then
-            # Interactive re-init menu — legacy v2 `.pyve/config` only. A v3-native
+        elif _manifest_has_legacy_sources; then
+            # Interactive re-init menu — legacy v2 sources only. A v3-native
             # (`pyve.toml`-only) non-force re-init falls through to the normal
             # idempotent create-if-missing path below, unchanged.
             # Interactive mode (no flag specified)
@@ -2857,9 +2858,10 @@ update_project() {
     done
 
     # Sanity check: the project must be initialized. A v3-native project
-    # declares itself via `pyve.toml`; a v2 project via `.pyve/config`.
-    # Either is sufficient — the backend is resolved manifest-first below.
-    if ! config_file_exists && [[ ! -f "pyve.toml" ]]; then
+    # declares itself via `pyve.toml`; a v2 project via legacy sources
+    # (`_manifest_has_legacy_sources`). Either is sufficient — the backend is
+    # resolved manifest-first below.
+    if ! _manifest_has_legacy_sources && [[ ! -f "pyve.toml" ]]; then
         log_error "pyve update requires an initialized project."
         log_error "No pyve.toml or .pyve/config found. Run 'pyve init' first."
         exit 1
@@ -3101,13 +3103,12 @@ check_environment() {
     # --- Check 1: pyve project present ------------------------------------
     # Route presence + backend through the v3 manifest. `manifest_load`
     # handles both a native `pyve.toml` and the v3.0 read-compat synthesis
-    # from `.pyve/config`, so a pyve.toml-only project is recognized. The
-    # old bare `config_file_exists` gate was v2-blind: a migrated project
-    # (pyve.toml present, no .pyve/config) hard-failed here.
+    # from legacy sources, so a pyve.toml-only project is recognized. Legacy
+    # v2 detection routes through `_manifest_has_legacy_sources`.
     manifest_load 2>/dev/null || true
     local has_pyve_toml=false
     [[ -f "pyve.toml" ]] && has_pyve_toml=true
-    if [[ "$has_pyve_toml" == false ]] && ! config_file_exists; then
+    if [[ "$has_pyve_toml" == false ]] && ! _manifest_has_legacy_sources; then
         _check_fail "Configuration: no pyve.toml (not a pyve project)" "→ Run: pyve init"
         _check_summary_and_exit
     fi
@@ -3399,13 +3400,12 @@ show_status() {
         printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
     fi
 
-    # Recognize a v3-native project (pyve.toml) as well as a v2 one
-    # (.pyve/config). `manifest_load` covers both — a native pyve.toml or
-    # the v3.0 read-compat synthesis from .pyve/config. Gating on bare
-    # `config_file_exists` was v2-blind: a migrated project reported as
-    # "Not a pyve-managed project".
+    # Recognize a v3-native project (pyve.toml) as well as a v2 one (legacy
+    # sources). `manifest_load` covers both — a native pyve.toml or the v3.0
+    # read-compat synthesis. Legacy v2 detection routes through
+    # `_manifest_has_legacy_sources`.
     manifest_load 2>/dev/null || true
-    if [[ ! -f "pyve.toml" ]] && ! config_file_exists; then
+    if [[ ! -f "pyve.toml" ]] && ! _manifest_has_legacy_sources; then
         # Non-project fallback. Don't treat it as an error; status reports
         # reality, and "not a pyve project" is a valid reality.
         _status_row "Not a pyve-managed project" ""

@@ -484,14 +484,14 @@ show_version() {
 show_config() {
     local detected_backend
     detected_backend="$(detect_backend_from_files)"
-    
-    local config_backend=""
-    local config_exists="no"
-    if config_file_exists; then
-        config_exists="yes"
-        config_backend="$(read_config_value "backend")"
-    fi
-    
+
+    # The declared backend comes from the manifest — a native `pyve.toml` or the
+    # v3.0 read-compat synthesis for a v2 project. `manifest_load` may not have
+    # run for this informational command, so load it here.
+    manifest_load 2>/dev/null || true
+    local manifest_backend
+    manifest_backend="$(manifest_get_backend root 2>/dev/null || true)"
+
     # Check micromamba status
     local micromamba_status="not found"
     local micromamba_location=""
@@ -526,10 +526,7 @@ show_config() {
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
     printf "  Default venv directory: %s\n" "$DEFAULT_VENV_DIR"
     printf "  Default backend:        venv\n"
-    printf "  Config file (.pyve/config): %s\n" "$config_exists"
-    if [[ "$config_exists" == "yes" ]] && [[ -n "$config_backend" ]]; then
-        printf "  Config backend:         %s\n" "$config_backend"
-    fi
+    printf "  Configured backend:     %s\n" "${manifest_backend:-none}"
     printf "  Detected backend:       %s\n" "$detected_backend"
     printf "  Micromamba:             %s\n" "$micromamba_status"
     printf "  Conda env file:         %s\n" "$env_file_status"

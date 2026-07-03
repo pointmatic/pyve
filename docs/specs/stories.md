@@ -548,6 +548,7 @@ Remove the writers ([version.sh](../../lib/version.sh) `write_config_with_versio
 - [x] Remove get_backend_priority tier (P.i.9)
 - [x] Remove validate_config_file (P.i.11)
 - [x] Remove pyve_version reads (P.i.11)
+- [x] Remove presence gates (P.i.12)
 
 **Note: Consumers become manifest/v3-only; v2 still works via synthesis.**
 
@@ -583,10 +584,17 @@ The P.i.5–P.i.7 resolvers became v3-source-only. Unlike the P.i.9 backend remo
 - [x] Tests: new [test_pyve_version_read_removal.bats](../../tests/unit/test_pyve_version_read_removal.bats) (tree-wide no-`pyve_version`-read guard, removed-function guards, per-function `declare -f` guards). Removed the obsolete direct-call tests (`validate_pyve_version`/`update_config_version` in [test_version.bats](../../tests/unit/test_version.bats) + [test_reinit.bats](../../tests/unit/test_reinit.bats), `validate_config_file` in [test_backend_detect.bats](../../tests/unit/test_backend_detect.bats)); converted the behavioral fallout — `pyve update`'s step-count/labels → `[N/4]` ([test_update.bats](../../tests/unit/test_update.bats), [test_stop_writing_config.bats](../../tests/unit/test_stop_writing_config.bats)), `pyve check`'s drift test → "ignores a v2 pyve_version" ([test_check.bats](../../tests/unit/test_check.bats)), `pyve status`'s version rows → `Declaration:` rows ([test_status.bats](../../tests/unit/test_status.bats)).
 - [x] Full unit suite **2137/2139** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
 
-### Story P.i.12: Remove the dead presence gates + `pyve config`'s config read [Planned]
+### Story P.i.12: Remove the dead presence gates + `pyve config`'s config read [Done]
 
-- [ ] Remove the `config_file_exists` / `[[ -f ".pyve/config" ]]` presence gates left dead once nothing reads the config's *values* — keeping only the synthesis-detection (`_manifest_has_legacy_sources`), `self migrate`, and legacy-layout-mover uses (those go in P.i.13).
-- [ ] Rework `show_config` (`pyve config`, [pyve.sh](../../pyve.sh)) — it reads the `.pyve/config` backend for display; source it from the manifest (or drop the row).
+Command code no longer probes `.pyve/config` presence directly. The v2-project detection those gates performed now routes through `_manifest_has_legacy_sources` (the surviving synthesis-detection helper), so a v2 project is still recognized during the read-compat window without a scattered `config_file_exists` gate — and removing the gates does **not** break v2 (the helper still keys off `.pyve/config`).
+
+- [x] Rerouted the direct `.pyve/config` presence gates in command code through `_manifest_has_legacy_sources`: `_init_is_reinit`, the `init` re-init-menu branch, `update_project`'s init sanity check, `check_environment`'s "pyve project present" gate, `show_status`'s non-project fallback, and `python_plugin_is_active_in_project`'s v2 marker ([plugin.sh](../../lib/plugins/python/plugin.sh)); plus the env-command "not an initialized project" gate in [envs.sh](../../lib/envs.sh).
+- [x] Reworked `show_config` (`pyve config`, [pyve.sh](../../pyve.sh)) — dropped the `config_file_exists` + `read_config_value "backend"` pair; it now `manifest_load`s and shows a single `Configured backend:` row from `manifest_get_backend root` (replacing the v2 `Config file (.pyve/config): yes/no` + `Config backend:` rows).
+- [x] **Extension (dead-code cleanup, parallel to P.i.11's dead-validator removals):** removed the now-dead `validate_installation_structure` + `validate_venv_structure` + `validate_micromamba_structure` cluster ([version.sh](../../lib/version.sh)) — all three were test-only (no production callers) and existed to validate the obsolete `.pyve/config` structure, so their root `.pyve/config` presence gate had no live purpose. Removed their unit tests ([test_version.bats](../../tests/unit/test_version.bats) structure sections + the two `validate_installation_structure` cases in [test_backend_fallback_removal.bats](../../tests/unit/test_backend_fallback_removal.bats)). After this, the **only** surviving direct `.pyve/config` presence checks are the exempt trio: `_manifest_has_legacy_sources` + `_manifest_synthesize_from_legacy` ([manifest.sh](../../lib/manifest.sh)), `self migrate` ([self.sh](../../lib/commands/self.sh)), the legacy-layout mover ([envs.sh](../../lib/envs.sh)), and the `config_file_exists` definition itself.
+- [x] Tests: new [test_presence_gate_removal.bats](../../tests/unit/test_presence_gate_removal.bats) (per-function `declare -f` guards that the 7 command-code functions carry no direct `.pyve/config` presence gate + `show_config` reads no config value + the exempt `_manifest_has_legacy_sources` still keys off `.pyve/config`). Behavior preserved for v2 (`.pyve/config`) and bare-dir cases — the existing `update`/`check`/`status`/plugin-active project-gate tests stayed green with no changes.
+- [x] Full unit suite **2132/2134** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
+
+*Doc note: [tech-spec.md](../../docs/specs/tech-spec.md)'s module table still lists the removed `validate_*_structure` functions; that table's v3 reconciliation is a separately-planned story (see "Reconcile tech-spec.md command/module tables to the v3 plugin file-layout") and is intentionally out of scope here.*
 
 ### Story P.i.13: Remove the read-compat synthesis [Planned]
 

@@ -247,12 +247,12 @@ assert_env_name_actionable() {
        || is_env_declared "$name"; then   # is_env_declared: v3.0-only read-compat, remove in N-10
         return 0
     fi
-    # Story N.bf.18: a non-reserved, non-declared name on a project that
-    # was never initialized should point at `pyve init`, not tell the user
-    # to "declare" an env in a project that doesn't exist yet. Init signal:
-    # `pyve.toml` (canonical v3) or `.pyve/config` (v2, read-compat window;
-    # the .pyve/config arm goes away with read-compat in N-10).
-    if [[ ! -f "pyve.toml" && ! -f ".pyve/config" ]]; then
+    # A non-reserved, non-declared name on a project that was never initialized
+    # should point at `pyve init`, not tell the user to "declare" an env in a
+    # project that doesn't exist yet. Init signal: `pyve.toml` (canonical v3) or
+    # legacy v2 sources (via `_manifest_has_legacy_sources`, the surviving
+    # `.pyve/config` presence check).
+    if [[ ! -f "pyve.toml" ]] && ! _manifest_has_legacy_sources; then
         printf "error: this isn't an initialized Pyve project — run 'pyve init' to set one up.\n" >&2
         return 1
     fi

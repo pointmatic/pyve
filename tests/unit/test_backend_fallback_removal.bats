@@ -17,9 +17,8 @@ load ../helpers/test_helper.bash
 
 setup() {
     setup_pyve_env
-    # version.sh (validate_installation_structure) and commands/lock.sh
-    # (_lock_main_env) are not part of the default helper source chain.
-    source "$PYVE_ROOT/lib/version.sh"
+    # commands/lock.sh (_lock_main_env) is not part of the default helper
+    # source chain.
     source "$PYVE_ROOT/lib/commands/lock.sh"
     export PYVE_PYTHON="$(python -c 'import sys; print(sys.executable)')"
     create_test_dir
@@ -86,10 +85,6 @@ assert_no_config_backend_read() {
     assert_no_config_backend_read get_backend_priority
 }
 
-@test "validate_installation_structure reads the manifest backend" {
-    assert_no_config_backend_read validate_installation_structure
-}
-
 @test "no manifest-first-then-config backend fallback idiom remains in lib/ or pyve.sh" {
     run grep -rnE '\[\[ -z "\$[A-Za-z_]+" \]\] &&[[:space:]]*[A-Za-z_]+="\$\(read_config_value[^)]*backend' \
         "$PYVE_ROOT/pyve.sh" "$PYVE_ROOT/lib"
@@ -123,12 +118,3 @@ assert_no_config_backend_read() {
     [ "$output" = "micromamba" ]
 }
 
-@test "validate_installation_structure: a v2 venv project validates via the synthesized backend" {
-    create_pyve_config "pyve_version: \"0.8.8\"" "backend: venv"
-    mkdir -p .venv/bin
-    touch .venv/bin/python
-    chmod +x .venv/bin/python
-    touch .env
-    run validate_installation_structure
-    [ "$status" -eq 0 ]
-}
