@@ -256,9 +256,8 @@ assert_env_name_actionable() {
     return 1
 }
 
-# Story N.bf.19: is <name> declared as `[env.<name>]` in the v3 manifest?
-# Loads `pyve.toml` (or read-compat synthesis from `.pyve/config` +
-# `[tool.pyve.testenvs.*]`) into PYVE_ENV_NAMES and checks membership.
+# Is <name> declared as `[env.<name>]` in the v3 manifest?
+# Loads `pyve.toml` into PYVE_ENV_NAMES and checks membership.
 # Graceful: returns 1 when the manifest can't be loaded (no toolchain
 # Python, malformed/empty manifest, etc.) so callers fall through to their
 # next arm rather than crashing.
@@ -271,8 +270,7 @@ _env_declared_in_manifest() {
 # (`venv` / `micromamba`) is returned as-is. `inherit` — which a
 # no-backend env now defaults to — mirrors the ROOT backend, read from the
 # canonical manifest (`pyve.toml [env.root]` via `manifest_get_backend root`),
-# defaulting to `venv`. A v2 project resolves here too: `manifest_load`
-# synthesizes the root backend from `.pyve/config`. The root value passes
+# defaulting to `venv`. The root value passes
 # through verbatim, including an advisory `none` — so a no-backend testenv on a
 # `none` root resolves to `none` and is treated as declarative-only downstream.
 # Undeclared names resolve to `venv`.

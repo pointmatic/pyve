@@ -277,10 +277,9 @@ _python_pyve_plugin_render_advisories() {
 #     - `[plugins.python]` declared in pyve.toml
 #     - any declared env with a Python backend (venv / micromamba) or
 #       `languages` containing `python` (an explicit Python env declaration)
-#     - `.pyve/config` present (v2 Python project marker)
-#       (`.project-guide.yml` is NO LONGER a signal — project-
-#        guide is globally hosted, so its per-project marker no longer
-#        implies a project Python env.)
+#       (`.project-guide.yml` is NOT a signal — project-guide is globally
+#        hosted, so its per-project marker no longer implies a project
+#        Python env.)
 #     - root-scoped Python application files
 #       (pyproject.toml / setup.py / requirements*.txt /
 #        environment*.yml / *.py). Root-scoped via `compgen -G` so
@@ -536,13 +535,12 @@ python_pyve_plugin_purge_inventory() {
 # NO file write — the composed `.envrc` is assembled and atomically written
 # by compose_envrc.
 #
-# Self-resolution: backend / env_path / env_name come from `.pyve/config`
-# (the authoritative backend record init writes), with manifest + convention
-# fallbacks:
-#   - backend:  .pyve/config `backend` → manifest default-env backend → "venv"
-#   - venv:     env_path = .pyve/config `venv.directory` (honors a custom
-#               `pyve init <dir>`) → ".venv"; env_name = basename "$PWD"
-#   - micromamba: env_name = .pyve/config `micromamba.env_name` → basename;
+# Self-resolution: backend / env_path / env_name come from the v3 manifest
+# and resolvers:
+#   - backend:  `manifest_get_backend root` → "venv"
+#   - venv:     env_path = ".venv" (`resolve_venv_directory`); env_name = basename "$PWD"
+#   - micromamba: env_name from `environment.yml` `name:`
+#               (`resolve_micromamba_env_name`) → basename;
 #               env_path = ".pyve/envs/<env_name>"
 #
 # Compose → PC-1 validate → emit. On validation failure (a buggy/malicious
@@ -555,8 +553,7 @@ python_pyve_plugin_activate() {
     local _path="${1:-.}"
 
     # Backend from the manifest (authoritative; `compose_project_envrc` calls
-    # `manifest_load` before dispatching activate). A v2 project resolves here
-    # too: `manifest_load` synthesizes its root backend from `.pyve/config`.
+    # `manifest_load` before dispatching activate).
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="venv"
@@ -731,13 +728,13 @@ EOF
 #
 # Auto-detects backend (venv vs micromamba), resolves the version
 # manager (asdf or pyenv), creates the environment, configures
-# direnv (unless --no-direnv), writes .pyve/config, and runs the
+# direnv (unless --no-direnv), scaffolds pyve.toml, and runs the
 # project-guide post-init hooks.
 #
 # Function-name note: this function is named `init_project` per the
 # project-essentials "Function naming convention: verb_<operand>"
-# rule — `pyve init` operates on the project (creates venv, writes
-# .pyve/config, configures direnv, etc.).
+# rule — `pyve init` operates on the project (creates venv, scaffolds
+# pyve.toml, configures direnv, etc.).
 #
 # Cross-command callsite: `init_project --force` calls
 # `purge_project --keep-testenv --yes` — both functions now live in
@@ -798,8 +795,8 @@ _PYVE_MANIFEST_WRITE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 # otherwise no-op and leave the canonical manifest backend-less (the split-brain
 # `pyve status` reports "not configured"). A structure-preserving tomlkit edit
 # (lib/pyve_manifest_write.py); idempotent. Degrades to a silent no-op when
-# pyve.toml is absent or tomlkit is unavailable — the backend still rides
-# `.pyve/config` during the v3.0 read-compat window (removed in P.i.3).
+# pyve.toml is absent or tomlkit is unavailable — in which case the backend
+# is simply not recorded in the manifest.
 _init_manifest_ensure_root_backend() {
     local backend="$1"
     [[ -n "$backend" ]] || return 0
@@ -808,7 +805,7 @@ _init_manifest_ensure_root_backend() {
     py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
     local rc=0
     "$py" "$_PYVE_MANIFEST_WRITE_HELPER" set-env-attr pyve.toml root backend "$backend" || rc=$?
-    # rc 3 = tomlkit unavailable → not fatal (the value rides .pyve/config for now).
+    # rc 3 = tomlkit unavailable → not fatal (the backend is simply not recorded).
     [[ $rc -eq 3 ]] && return 0
     return $rc
 }
@@ -823,12 +820,12 @@ _init_is_reinit() {
 
 # On a forced rebuild, never silently orphan a materialized env whose
 # backend differs from the target backend. The re-init purge only removes
-# the env that `.pyve/config` records; a stray foreign-backend env (e.g. a
-# `.venv` materialized alongside a micromamba manifest, when the config is
-# absent or contradictory) would otherwise survive the rebuild and leave
-# the project straddling two backends. Move any
-# such foreign env into the `.pyve/.v2-legacy/` backup tree (recoverable,
-# never deleted) and warn. The target backend's OWN env is left untouched.
+# the env for the manifest's declared backend; a stray foreign-backend env
+# (e.g. a `.venv` materialized alongside a micromamba manifest) would
+# otherwise survive the rebuild and leave the project straddling two
+# backends. Move any such foreign env into the `.pyve/.v2-legacy/` backup
+# tree (recoverable, never deleted) and warn. The target backend's OWN env
+# is left untouched.
 # Arg: $1 = target backend (venv|micromamba). Always returns 0.
 _init_backup_foreign_env() {
     local target="$1"
@@ -1135,7 +1132,7 @@ _init_scaffold_manifest() {
     local project_name="$1"
     local node_path_flag="$2"
     # The resolved root backend, recorded into [env.root] so pyve.toml is the
-    # canonical source of the backend (not just `.pyve/config`). On an existing
+    # canonical source of the backend. On an existing
     # manifest (refresh / --force), backfill the backend in place rather than
     # no-op'ing, so a re-init never leaves the manifest backend-less.
     local backend="${3:-}"
@@ -1889,9 +1886,7 @@ init_project() {
     # Keys off the presence of `pyve.toml` via `_init_is_reinit`.
     if _init_is_reinit; then
         # Read the existing backend from the manifest for the force/notice
-        # messaging. `manifest_load` (run in `main` before dispatch) synthesizes
-        # a v2 project's root backend from `.pyve/config`, so this is accurate
-        # for both v3-native and v2 projects.
+        # messaging (`manifest_load` runs in `main` before dispatch).
         local existing_backend
         existing_backend="$(manifest_get_backend root 2>/dev/null || true)"
 
@@ -1954,10 +1949,10 @@ init_project() {
 
     # On a forced rebuild, back up any materialized env whose backend
     # differs from the target (manifest-declared) backend before creating
-    # the new one. The re-init purge above only removes the env that
-    # `.pyve/config` records; this catches a stray foreign-backend env the
-    # config doesn't account for, so the rebuild never leaves the project
-    # straddling two backends. No-op when nothing foreign is present.
+    # the new one. The re-init purge above only removes the env for the
+    # manifest's declared backend; this catches a stray foreign-backend env
+    # the manifest doesn't account for, so the rebuild never leaves the
+    # project straddling two backends. No-op when nothing foreign is present.
     if [[ "${PYVE_REINIT_MODE:-}" == "force" ]] && [[ -n "$backend_flag" ]]; then
         _init_backup_foreign_env "$backend_flag"
     fi
@@ -2163,10 +2158,9 @@ init_project() {
     # Create virtual environment
     _init_venv "$venv_dir"
 
-    # .envrc is composed below, AFTER .pyve/config and
-    # pyve.toml exist — the composer's Python activate hook resolves the
-    # backend / env path from .pyve/config, and plugin enumeration reads
-    # the freshly-written manifest.
+    # .envrc is composed below, AFTER pyve.toml exists — the composer's
+    # Python activate hook resolves the backend / env path from the manifest,
+    # and plugin enumeration reads the freshly-written manifest.
 
     # Create .env file
     _init_dotenv "$use_local_env"
@@ -2502,7 +2496,8 @@ purge_project() {
     # and shares its parent with the micromamba main env (pre-N.g layout
     # at `.pyve/envs/<configured_name>/` — no /conda subdir). `--keep-testenv`
     # therefore preserves `.pyve/envs/` as a whole and surgically deletes
-    # only the micromamba main-env subdir (identified from `.pyve/config`).
+    # only the micromamba main-env subdir (identified via the resolved
+    # micromamba env name).
     # The legacy `.pyve/testenvs/` directory is also preserved defensively
     # in case the opportunistic migrator (`migrate_legacy_env_layout`)
     # hasn't run yet on a v2.8 project. Granular per-`purpose` preservation
@@ -2714,8 +2709,8 @@ EOF
 #
 # Function-name note: this function is named `update_project` per
 # the project-essentials "Function naming convention: verb_<operand>"
-# rule — `pyve update` operates on the project (`.pyve/config`,
-# `.gitignore`, `.vscode/settings.json`, project-guide scaffolding).
+# rule — `pyve update` operates on the project (`.gitignore`,
+# `.vscode/settings.json`, project-guide scaffolding).
 #============================================================
 
 # Update-private wrapper around the M.h.2 migration helper. Exists as
@@ -2876,7 +2871,6 @@ Description:
   project; idempotent.
 
   Refreshes:
-    - pyve_version in .pyve/config
     - Pyve-managed sections of .gitignore
     - .envrc managed section (only if it already exists; user content
       below the managed end marker is preserved, prior file → .envrc.prev)
@@ -2895,7 +2889,7 @@ Options:
 
 Exit codes:
   0    Success (including no-op when already at current version).
-  1    Failure (missing .pyve/config, corrupt config, unwritable files).
+  1    Failure (not a pyve project, or unwritable files).
 
 See also:
   pyve init --force          Destroy + rebuild the environment
@@ -3338,10 +3332,9 @@ _status_backend() {
 
 # Backend-aware: micromamba projects pin Python in environment.yml
 # (`python=<spec>`); venv-style backends use .tool-versions /
-# .python-version / .pyve/config. Without the dispatch the Project
-# section falsely reports "not pinned" for a pinned micromamba project,
-# contradicting the Environment section's actual interpreter version
-# (Phase L audit T1-01).
+# .python-version. Without the dispatch the Project section falsely
+# reports "not pinned" for a pinned micromamba project, contradicting
+# the Environment section's actual interpreter version.
 _status_configured_python() {
     local backend
     backend="$(_status_backend)"
@@ -3590,9 +3583,9 @@ EOF
 # pyve run — execute a command inside the active project environment
 # (Option 1 relocation from lib/commands/run.sh)
 #
-# Auto-detects the active backend (venv vs micromamba) by probing
-# .pyve/config first (authoritative), then falling back to the
-# directory heuristic for legacy projects. exec()s the target command
+# Auto-detects the active backend (venv vs micromamba) by reading the
+# manifest first (authoritative), then falling back to the
+# directory heuristic for bare projects. exec()s the target command
 # with environment activation done in-process (no shell layer).
 #
 # No private `_run_*` helpers and no `show_run_help` block exist —
@@ -3608,9 +3601,9 @@ run_command() {
         exit 1
     fi
 
-    # Detect active backend. Authoritative source is .pyve/config's
-    # `backend:` field; the directory heuristic is only a fallback for
-    # legacy projects with no config. With the v3 state layout, the
+    # Detect active backend. Authoritative source is the manifest's root
+    # `backend`; the directory heuristic is only a fallback for bare
+    # projects with no manifest. With the v3 state layout, the
     # `.pyve/envs/*` glob also matches testenvs (e.g. .pyve/envs/testenv/),
     # so the older "any child under .pyve/envs/ means micromamba" rule
     # would mis-route every venv-backed project that has a testenv to the
@@ -3621,14 +3614,13 @@ run_command() {
     local mm_env_name=""
 
     # Backend from the manifest (the env_name resolve is inert on a v3-native
-    # project otherwise). A v2 project resolves here too via the synthesized
-    # root backend.
+    # project otherwise).
     backend="$(manifest_get_backend root 2>/dev/null || printf '')"
     if [[ "$backend" == "micromamba" ]]; then
         mm_env_name="$(resolve_micromamba_env_name 2>/dev/null || printf '')"
     fi
 
-    # Fallback for bare projects (no manifest, no .pyve/config): prefer the
+    # Fallback for bare projects (no manifest): prefer the
     # explicit `.venv/` signal; otherwise look for a single-tenant
     # `.pyve/envs/<name>/` (pre-N.f micromamba layout).
     if [[ -z "$backend" ]]; then
@@ -3691,11 +3683,11 @@ run_command() {
             exit 1
         fi
 
-        # Identify the micromamba main env. mm_env_name was set above
-        # from `.pyve/config:micromamba.env_name` (or, for legacy
-        # projects with no config, from the sole .pyve/envs/* entry).
+        # Identify the micromamba main env. mm_env_name was set above from
+        # `resolve_micromamba_env_name` (environment.yml `name:`), or for bare
+        # projects with no manifest, from the sole .pyve/envs/* entry.
         if [[ -z "$mm_env_name" ]]; then
-            log_error "Micromamba env_name not recorded in .pyve/config"
+            log_error "Micromamba env_name not found (set 'name:' in environment.yml)"
             exit 1
         fi
         # v3 root slot (Story N.bf.14), tolerant of a not-yet-moved flat

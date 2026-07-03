@@ -768,9 +768,8 @@ remove_pattern_from_gitignore() {
 
 
 # The root env's venv directory. In v3 the root venv is always the `.venv`
-# default (`resolve_env_path root` returns the same); the v2 `.pyve/config`
-# venv.directory override is no longer consulted. Centralized here so consumers
-# resolve the directory through one helper. Never returns empty.
+# default (`resolve_env_path root` returns the same). Centralized here so
+# consumers resolve the directory through one helper. Never returns empty.
 resolve_venv_directory() {
     printf '%s' "${DEFAULT_VENV_DIR:-.venv}"
 }

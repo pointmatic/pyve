@@ -31,9 +31,9 @@ fi
 
 # Composed `pyve init` entry point.
 #
-# N.av.2: the Python hook (init_project) now MATERIALIZES the env +
-# writes .pyve/config + scaffolds pyve.toml + runs the Python-specific
-# setup (vscode / testenv / pip-deps), then hands the stack-agnostic
+# The Python hook (init_project) now MATERIALIZES the env + scaffolds
+# pyve.toml + runs the Python-specific setup (vscode / testenv /
+# pip-deps), then hands the stack-agnostic
 # COMPOSITION TAIL up to compose_init via the PYVE_INIT_TAIL_* result
 # globals. compose_init runs that tail (compose .envrc / .gitignore →
 # project-guide → next-steps), so it is owned at orchestration level

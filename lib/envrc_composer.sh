@@ -207,7 +207,7 @@ compose_envrc() {
 #
 # The reload is required because pyve.sh's main() loads the manifest +
 # registers plugins BEFORE the subcommand runs — but `pyve init` writes /
-# `pyve update` may change pyve.toml + .pyve/config afterward. Without
+# `pyve update` may change pyve.toml afterward. Without
 # re-loading, plugin_list_active is stale (e.g. implicit-Python only,
 # missing a freshly-scaffolded [plugins.node]). See spike decision 3 in
 # docs/specs/spike-n-ae-envrc-composer-contract.md.

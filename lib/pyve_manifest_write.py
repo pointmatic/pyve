@@ -21,8 +21,8 @@
 # Exit codes:
 #   0  — written (or already correct: no change needed)
 #   2  — usage / argument error
-#   3  — tomlkit unavailable (the caller degrades gracefully: the value still
-#        rides `.pyve/config` during the v3.0 read-compat window)
+#   3  — tomlkit unavailable (the caller degrades gracefully: the backend
+#        simply isn't recorded in the manifest)
 #   4  — manifest does not exist (callers that require it treat this as fatal;
 #        the init wrapper pre-checks existence, so it should not hit this)
 
