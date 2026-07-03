@@ -1885,10 +1885,8 @@ init_project() {
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
 
-    # Check for existing installation (re-initialization detection). Fire on
-    # EITHER a v2 `.pyve/config` OR a v3-native `pyve.toml` — keying off
-    # `config_file_exists` alone was v3-blind, so `pyve init --force` silently
-    # no-op'd on a `.pyve/config`-less v3 project (the env was never rebuilt).
+    # Check for existing installation (re-initialization detection).
+    # Keys off the presence of `pyve.toml` via `_init_is_reinit`.
     if _init_is_reinit; then
         # Read the existing backend from the manifest for the force/notice
         # messaging. `manifest_load` (run in `main` before dispatch) synthesizes
@@ -3333,10 +3331,7 @@ _status_section_project() {
 #
 # The project's backend, for status display. Reads the v3 manifest — `pyve.toml`
 # is authoritative for the root backend, and `show_status` calls `manifest_load`
-# before these sections run. The v3.0 read-compat synthesis populates the root
-# backend from `.pyve/config` when there is no `pyve.toml`, so this one accessor
-# is correct for both v3-native and legacy v2 projects (it replaced three inline
-# `read_config_value "backend"` reads that saw only `.pyve/config`).
+# before these sections run.
 _status_backend() {
     manifest_get_backend root 2>/dev/null || true
 }

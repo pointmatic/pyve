@@ -686,25 +686,16 @@ _migrate_main_micromamba_to_v3() {
         return 0
     fi
 
-    # Locate the flat main env. Prefer the configured name from
-    # `.pyve/config` (micromamba backend); fall back to a scan for a
-    # `.pyve/envs/*/conda-meta` directory that is not `root`.
-    local name="" flat=""
-    if config_file_exists 2>/dev/null \
-       && [[ "$(read_config_value backend 2>/dev/null || true)" == "micromamba" ]]; then
-        name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
-    fi
-    if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name/conda-meta" ]]; then
-        flat=".pyve/envs/$name"
-    else
-        local d
-        for d in .pyve/envs/*/; do
-            [[ -d "${d}conda-meta" ]] || continue
-            [[ "$(basename "$d")" == "root" ]] && continue
-            flat="${d%/}"
-            break
-        done
-    fi
+    # Locate the flat main env: scan for a `.pyve/envs/*/conda-meta`
+    # directory that is not `root`. A v2 flat layout has exactly one
+    # such main env.
+    local flat="" d
+    for d in .pyve/envs/*/; do
+        [[ -d "${d}conda-meta" ]] || continue
+        [[ "$(basename "$d")" == "root" ]] && continue
+        flat="${d%/}"
+        break
+    done
 
     # Case 4: greenfield for this boundary (no flat main env).
     [[ -n "$flat" && -d "$flat/conda-meta" ]] || return 0
