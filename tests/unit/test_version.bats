@@ -14,8 +14,12 @@ setup() {
     # Load test helpers
     load '../helpers/test_helper'
     
-    # Source the version library
+    # Source the version library. manifest.sh is needed because
+    # validate_installation_structure now resolves the backend through the
+    # manifest (a v2 project resolves via the read-compat synthesis of
+    # `.pyve/config`).
     source "$PYVE_ROOT/lib/utils.sh"
+    source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/version.sh"
     
     # Create temporary test directory

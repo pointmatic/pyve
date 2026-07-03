@@ -41,6 +41,10 @@ venv:
 python:
   version: 3.13.7
 EOF
+    # Activate resolves the backend from the manifest only; a v2 project resolves
+    # via the read-compat synthesis. Load the manifest so these unit tests mirror
+    # production, where compose_project_envrc calls manifest_load before activate.
+    manifest_load >/dev/null 2>&1 || true
 }
 
 _write_config_micromamba() {
@@ -51,6 +55,7 @@ backend: micromamba
 micromamba:
   env_name: ${1:-test-env}
 EOF
+    manifest_load >/dev/null 2>&1 || true
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -163,6 +168,7 @@ EOF
     cat > .pyve/config <<'EOF'
 backend: quantum-foo
 EOF
+    manifest_load >/dev/null 2>&1 || true
     rm -f .envrc
     run python_pyve_plugin_activate
     [ "$status" -ne 0 ]

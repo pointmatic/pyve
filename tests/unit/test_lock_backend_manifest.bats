@@ -3,12 +3,12 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Subphase P-1 (pyve.toml as the sole config source) — `pyve lock`'s
-# venv-rejection guard (Guard 1) resolves the
-# backend from the manifest first, so a v3-native venv project (pyve.toml with
-# `backend = "venv"`, no `.pyve/config`) is rejected as "micromamba only" just
-# like a v2-configured venv project. The `.pyve/config` read is retained only
-# as a transitional fallback (dropped when Subphase P-1 stops writing `.pyve/config`).
+# pyve.toml as the sole config source — `pyve lock`'s venv-rejection guard
+# (Guard 1) resolves the backend from the manifest, so a v3-native venv project
+# (pyve.toml with `backend = "venv"`, no `.pyve/config`) is rejected as
+# "micromamba only" just like a v2-configured venv project. A v2 project
+# resolves the same way: `manifest_load` synthesizes its root backend from
+# `.pyve/config`.
 
 load ../helpers/test_helper
 
@@ -41,7 +41,7 @@ EOF
 }
 
 @test "lock: still rejects a v2 venv project (.pyve/config, no pyve.toml)" {
-    # Regression: the config fallback keeps the v2 path working.
+    # Regression: the read-compat synthesis keeps the v2 path working.
     create_pyve_config "backend: venv"
     [ ! -e pyve.toml ]
     run "$PYVE_SCRIPT" lock

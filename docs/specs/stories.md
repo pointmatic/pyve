@@ -536,28 +536,58 @@ stop writing `.pyve/config`; remove the priority-tier + config-write-machinery `
 - [x] Tests: [tests/unit/test_stop_writing_config.bats](../../tests/unit/test_stop_writing_config.bats) (heredoc-absence guard + update-on-v3). Integration reconciled (**CI-verified only** — the harness mutates real `$HOME`): converted `init`-creates-`.pyve/config` assertions → `pyve.toml` in [test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py), [test_force_backend_detection.py](../../tests/integration/test_force_backend_detection.py), [test_reinit.py](../../tests/integration/test_reinit.py); seeded a legacy `.pyve/config` fixture in the re-init-menu tests (menu is config-gated read-compat); **deleted** the obsolete v2 `--force`-shows-detection-prompt tests (2 in `test_force_backend_detection.py` + all of `test_force_ambiguous_prompt.py`) — v3 `--force` honors the manifest (P.i.1), so those semantics are gone and already covered by `test_reinit.py`.
 - [x] Full unit suite **2129/0** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree failures). shellcheck baseline unchanged.
 
-**Note:** low risk to v2 projects — they still work via the read-compat fallbacks + synthesis (removed later in P.i.9/P.i.10).
+**Note:** low risk to v2 projects — they still work via the read-compat fallbacks + synthesis (removed later in P.i.9-P.i.13).
 
-### Story P.i.9: Remove deprecated cruft
+### Storybundle P.i.9-12: Remove deprecated cruft
 
 Remove the writers ([version.sh](../../lib/version.sh) `write_config_with_version` / `update_config_version` and the `init` writer at [plugin.sh:2014](../../lib/plugins/python/plugin.sh#L2014)).
 
-- [ ] Remove transitional fallbacks
+- [x] Remove transitional fallbacks (P.i.9)
 - [ ] Remove resolver config-branches
 - [ ] Remove presence gates 
-- [ ] Remove get_backend_priority tier
+- [x] Remove get_backend_priority tier (P.i.9)
 - [ ] Remove validate_config_file
 - [ ] Remove pyve_version reads
 
 **Note: Consumers become manifest/v3-only; v2 still works via synthesis.**
 
-### Story P.i.10: Remove the read-compat synthesis
+*Order note: every slice below leaves `.pyve/config` readable **only** by the read-compat synthesis (`_manifest_synthesize_from_legacy`) + `self migrate` + the legacy-layout mover — so v2 projects keep working via synthesis until P.i.13 removes it. The synthesis populates only `backend` into the manifest; the non-backend resolvers fall back to v3 source files (`environment.yml` `name:`, `.tool-versions`/`.python-version`, `.venv`), which real v2 projects also have.*
+
+### Story P.i.9: Remove the transitional `backend` fallbacks + the Priority-2 config tier [Done]
+
+Backend now resolves from the synthesized manifest (`manifest_get_backend root`), so the `.pyve/config` backend reads added as transitional fallbacks (P.i.3–P.i.5) are dead.
+
+- [x] Dropped the `[[ -z ]] && read_config_value "backend"` fallbacks in `python_pyve_plugin_activate`, `update_project`, `_lock_main_env` (Guard 1), `purge_project`, `run_command` ([plugin.sh](../../lib/plugins/python/plugin.sh), [lock.sh](../../lib/commands/lock.sh)) — manifest-first is now manifest-only. `update_project`'s "manifest and .pyve/config both empty" error message dropped the `.pyve/config` mention.
+- [x] Removed `get_backend_priority`'s Priority-2 `.pyve/config` tier ([backend_detect.sh](../../lib/backend_detect.sh)) — with it gone the now-vestigial `skip_config` param was removed and its one `--force` preflight caller updated (the manifest reaches the resolver as the CLI-flag Priority-1, so `--force` still honors it). Dropped the `_env_resolve_backend` config fallback and flipped `_env_resolve_root_backend` to manifest-only ([envs.sh](../../lib/envs.sh)); routed `init`'s `existing_backend` and `validate_installation_structure` ([version.sh](../../lib/version.sh)) through `manifest_get_backend root`. `_status_section_project`'s backend read was already manifest-only (P.i.2) — no change needed.
+- [x] Left the three exempt `.pyve/config` backend readers untouched (the read-compat synthesis `_manifest_synthesize_from_legacy`, `self migrate`, the legacy-layout mover), so v2 projects keep resolving via synthesis until P.i.13.
+- [x] Tests: new [test_backend_fallback_removal.bats](../../tests/unit/test_backend_fallback_removal.bats) (per-function `declare -f` source-guards + a tree-wide fallback-idiom guard + `get_backend_priority` Priority-2-gone behavior + v2-via-synthesis behavior). Updated the P.i.1–P.i.4 wiring-guard comments (fallback → synthesis); rewrote the two `get_backend_priority` "config wins" cases in [test_backend_detect.bats](../../tests/unit/test_backend_detect.bats) to "config ignored"; and had the direct-call unit tests that seed only `.pyve/config` (`test_python_activate_emitter`, `test_python_plugin_activate`, `test_run_backend_detection`, `test_main_micromamba_env_layout`, `test_testenv_conda`, `test_version`) load the manifest, mirroring production (`main`/`compose_project_envrc` call `manifest_load` before these paths run).
+- [x] Full unit suite **2142/2** (only the 2 pre-existing `test_asdf_compat.bats` J.c clean-tree baseline failures). shellcheck baseline unchanged (no new findings).
+
+### Story P.i.10: Remove the resolver `.pyve/config` config-branches [Planned]
+
+The P.i.5–P.i.7 resolvers become v3-source-only.
+
+- [ ] Drop the `.pyve/config` branch from `resolve_micromamba_env_name` + `resolve_environment_name` (Priority-2) ([micromamba_env.sh](../../lib/micromamba_env.sh)), `resolve_venv_directory` ([utils.sh](../../lib/utils.sh)), `resolve_python_version` ([env_detect.sh](../../lib/env_detect.sh)), `resolve_main_micromamba_path` + `remove_pattern_from_gitignore` config reads.
+- [ ] Update the P.i.5–P.i.7 resolver tests: drop the "reads `.pyve/config`" cases; assert v3 sources (`environment.yml` `name:`, `.venv` default, pin files) are the sole inputs.
+
+### Story P.i.11: Remove `pyve_version` reads, `validate_config_file`, and `update_config_version` [Planned]
+
+- [ ] Remove the 6 `pyve_version` `.pyve/config` reads (`check_environment`, `_status_section_project`, `init_project`, `update_project`, `validate_pyve_version`, `update_config_version`).
+- [ ] Remove `validate_config_file` ([backend_detect.sh](../../lib/backend_detect.sh)) + its callers — validating a config that is no longer written is obsolete.
+- [ ] Remove `update_config_version` ([version.sh](../../lib/version.sh)) + the update-flow version step + rework the v2 interactive re-init menu "option 1" (it drove `update_config_version`); remove the now-obsolete tests. *(The re-init menu itself is config-gated v2 read-compat — if the rework is cleaner alongside the synthesis removal, it may ride P.i.13; flag at implementation.)*
+
+### Story P.i.12: Remove the dead presence gates + `pyve config`'s config read [Planned]
+
+- [ ] Remove the `config_file_exists` / `[[ -f ".pyve/config" ]]` presence gates left dead once nothing reads the config's *values* — keeping only the synthesis-detection (`_manifest_has_legacy_sources`), `self migrate`, and legacy-layout-mover uses (those go in P.i.13).
+- [ ] Rework `show_config` (`pyve config`, [pyve.sh](../../pyve.sh)) — it reads the `.pyve/config` backend for display; source it from the manifest (or drop the row).
+
+### Story P.i.13: Remove the read-compat synthesis [Planned]
 
 - [ ] Remove the read-compat synthesis (_manifest_synthesize_from_legacy + v3.0-only markers). 
 
 **Note: ⚠️ This is the breaking step.**
 
-### Story P.i.11: project-essentials docs & wrap-up
+### Story P.i.14: project-essentials docs & wrap-up [Planned]
 
 The project-essentials file states that `init` writes the manifest backend and `.pyve/config` is gone; remove the read-compat entry and the `v3.0-only: remove in N-10` markers.
 

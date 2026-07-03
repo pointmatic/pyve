@@ -556,12 +556,11 @@ python_pyve_plugin_activate() {
     # resolved from project state below).
     local _path="${1:-.}"
 
-    # Backend from the manifest first (authoritative; `compose_project_envrc`
-    # calls `manifest_load` before dispatching activate). `.pyve/config` is a
-    # transitional fallback for the v3.0 read-compat window (dropped when Subphase P-1 stops writing `.pyve/config`).
+    # Backend from the manifest (authoritative; `compose_project_envrc` calls
+    # `manifest_load` before dispatching activate). A v2 project resolves here
+    # too: `manifest_load` synthesizes its root backend from `.pyve/config`.
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
-    [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
     [[ -z "$backend" ]] && backend="venv"
 
     local env_path env_name
@@ -1927,11 +1926,12 @@ init_project() {
     # `config_file_exists` alone was v3-blind, so `pyve init --force` silently
     # no-op'd on a `.pyve/config`-less v3 project (the env was never rebuilt).
     if _init_is_reinit; then
+        # Read the existing backend from the manifest for the force/notice
+        # messaging. `manifest_load` (run in `main` before dispatch) synthesizes
+        # a v2 project's root backend from `.pyve/config`, so this is accurate
+        # for both v3-native and v2 projects.
         local existing_backend
-        existing_backend="$(read_config_value "backend")"
-        # On a v3-native project there is no `.pyve/config`; read the backend
-        # from the manifest so the force/notice messaging is accurate.
-        [[ -z "$existing_backend" ]] && existing_backend="$(_init_manifest_root_backend)"
+        existing_backend="$(manifest_get_backend root 2>/dev/null || true)"
         local existing_version
         existing_version="$(read_config_value "pyve_version")"
 
@@ -1946,9 +1946,7 @@ init_project() {
             # if the user decides to abort or a check fails.
             # We capture the backend here and reuse it in the main flow to avoid
             # prompting the user twice in the ambiguous case (env.yml + pyproject.toml).
-            # skip_config=true: --force is a clean slate — the config records the OLD
-            # backend and must not prevent re-detection from project files.
-            preflight_backend="$(get_backend_priority "$backend_flag" "true")"
+            preflight_backend="$(get_backend_priority "$backend_flag")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
                 # Mirror the non-force flow (see the main micromamba branch below):
                 # scaffold a starter environment.yml on a fresh dir BEFORE lock
@@ -2638,14 +2636,12 @@ purge_project() {
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
             if [[ -d ".pyve/envs" ]] || [[ -d ".pyve/testenvs" ]]; then
-                # Resolve the backend manifest-first (the env_name migration
-                # below is inert on a v3-native project otherwise); `.pyve/config`
-                # is the transitional fallback, dropped when Subphase P-1 stops
-                # writing it.
+                # Resolve the backend from the manifest (the env_name migration
+                # below is inert on a v3-native project otherwise). A v2 project
+                # resolves here too via the synthesized root backend.
                 local main_env_subdir=""
                 local cfg_backend
                 cfg_backend="$(manifest_get_backend root 2>/dev/null || true)"
-                [[ -z "$cfg_backend" ]] && cfg_backend="$(read_config_value backend 2>/dev/null || true)"
                 if [[ "$cfg_backend" == "micromamba" ]]; then
                     main_env_subdir="$(resolve_micromamba_env_name 2>/dev/null || true)"
                 fi
@@ -2885,13 +2881,12 @@ update_project() {
         exit 1
     fi
 
-    # Backend from the manifest first (authoritative); `.pyve/config` remains a
-    # transitional fallback for the v3.0 read-compat window (dropped when Subphase P-1 stops writing `.pyve/config`).
+    # Backend from the manifest (authoritative). A v2 project resolves here too:
+    # `manifest_load` synthesizes its root backend from `.pyve/config`.
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
-    [[ -z "$backend" ]] && backend="$(read_config_value "backend")"
     if [[ -z "$backend" ]]; then
-        log_error "Could not determine the project backend (manifest and .pyve/config both empty)."
+        log_error "Could not determine the project backend."
         log_error "Run: pyve init --force"
         exit 1
     fi
@@ -3845,11 +3840,10 @@ run_command() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local mm_env_name=""
 
-    # Backend manifest-first (the env_name resolve is inert on a v3-native
-    # project otherwise); `.pyve/config` is the transitional fallback, dropped
-    # when Subphase P-1 stops writing it.
+    # Backend from the manifest (the env_name resolve is inert on a v3-native
+    # project otherwise). A v2 project resolves here too via the synthesized
+    # root backend.
     backend="$(manifest_get_backend root 2>/dev/null || printf '')"
-    [[ -z "$backend" ]] && backend="$(read_config_value backend 2>/dev/null || printf '')"
     if [[ "$backend" == "micromamba" ]]; then
         mm_env_name="$(resolve_micromamba_env_name 2>/dev/null || printf '')"
     fi

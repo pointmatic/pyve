@@ -133,6 +133,7 @@ teardown() {
 
 @test "activate: unknown backend → error, no section" {
     mkdir -p .pyve; printf 'backend: quantum-foo\n' > .pyve/config
+    manifest_load >/dev/null 2>&1 || true
     rm -f .envrc
     run python_pyve_plugin_activate
     [ "$status" -ne 0 ]

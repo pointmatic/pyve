@@ -42,15 +42,14 @@ detect_backend_from_files() {
     plugin_dispatch python detect
 }
 
-# Get backend priority based on CLI flag, config file, and file detection
+# Get backend priority based on CLI flag and file detection. The manifest's
+# declared root backend reaches here as the CLI flag (the wizard seeds it),
+# so this resolver only arbitrates flag vs. filesystem detection.
 # Arguments:
 #   $1 - CLI backend flag value (venv, micromamba, auto, or empty)
-#   $2 - skip_config: pass "true" to skip Priority 2 (config file).
-#        Used by --force pre-flight so a stale config cannot override file detection.
 # Returns: "venv" or "micromamba"
 get_backend_priority() {
     local cli_backend="${1:-}"
-    local skip_config="${2:-false}"
 
     # Priority 1: CLI flag (if not "auto")
     if [[ -n "$cli_backend" ]] && [[ "$cli_backend" != "auto" ]]; then
@@ -58,17 +57,7 @@ get_backend_priority() {
         return 0
     fi
 
-    # Priority 2: .pyve/config file (skipped when --force discards it)
-    if [[ "$skip_config" != "true" ]] && config_file_exists; then
-        local config_backend
-        config_backend="$(read_config_value "backend")"
-        if [[ -n "$config_backend" ]]; then
-            echo "$config_backend"
-            return 0
-        fi
-    fi
-    
-    # Priority 3: File-based detection
+    # Priority 2: File-based detection
     local detected_backend
     detected_backend="$(detect_backend_from_files)"
     
@@ -110,7 +99,7 @@ get_backend_priority() {
         return 0
     fi
     
-    # Priority 4: Default to venv
+    # Priority 3: Default to venv
     echo "venv"
     return 0
 }

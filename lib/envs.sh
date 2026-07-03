@@ -274,12 +274,12 @@ _env_declared_in_manifest() {
 # Resolve <name>'s effective backend. An explicit concrete backend
 # (`venv` / `micromamba`) is returned as-is. `inherit` — which a
 # no-backend env now defaults to — mirrors the ROOT backend, read from the
-# canonical manifest first (`pyve.toml [env.root]` via `manifest_get_backend
-# root`), falling back to `.pyve/config` (v3.0-only read-compat, removed in
-# N-10), then `venv`. The root value passes through verbatim, including an
-# advisory `none` — so a no-backend testenv on a `none` root resolves to
-# `none` and is treated as declarative-only downstream. Undeclared names
-# resolve to `venv`.
+# canonical manifest (`pyve.toml [env.root]` via `manifest_get_backend root`),
+# defaulting to `venv`. A v2 project resolves here too: `manifest_load`
+# synthesizes the root backend from `.pyve/config`. The root value passes
+# through verbatim, including an advisory `none` — so a no-backend testenv on a
+# `none` root resolves to `none` and is treated as declarative-only downstream.
+# Undeclared names resolve to `venv`.
 _env_resolve_backend() {
     local name="$1"
     local raw
@@ -290,20 +290,18 @@ _env_resolve_backend() {
     fi
     local main_backend
     main_backend="$(manifest_get_backend root 2>/dev/null || true)"
-    [[ -z "$main_backend" ]] && main_backend="$(read_config_value backend 2>/dev/null || true)"
     [[ -z "$main_backend" ]] && main_backend="venv"
     printf '%s' "$main_backend"
 }
 
-# Story N.bf.14: resolve the reserved `root` env's backend. `root` is
-# never in PYVE_TESTENVS_NAMES, so the regular `_env_resolve_backend`
-# can't see it; read it from `.pyve/config` (v3 read-compat) then the
-# manifest, defaulting to `venv`. Defensive under `set -u` and when the
-# config/manifest helpers aren't sourced (returns `venv`).
+# Resolve the reserved `root` env's backend. `root` is never in
+# PYVE_TESTENVS_NAMES, so the regular `_env_resolve_backend` can't see it; read
+# it from the manifest (a v2 project resolves via the synthesized root
+# backend), defaulting to `venv`. Defensive under `set -u` and when the
+# manifest helpers aren't sourced (returns `venv`).
 _env_resolve_root_backend() {
     local b=""
-    b="$(read_config_value backend 2>/dev/null || true)"
-    [[ -z "$b" ]] && b="$(manifest_get_backend root 2>/dev/null || true)"
+    b="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$b" ]] && b="venv"
     printf '%s' "$b"
 }

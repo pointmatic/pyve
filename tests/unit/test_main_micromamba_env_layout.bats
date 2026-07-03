@@ -46,6 +46,9 @@ teardown() {
 
 @test "resolve_env_path root: micromamba backend -> .pyve/envs/root/conda" {
     create_pyve_config "backend: micromamba" "micromamba:" "  env_name: myproj"
+    # resolve_env_path reads the root backend from the manifest; a v2 project
+    # resolves via the read-compat synthesis, loaded here as production does.
+    manifest_load >/dev/null 2>&1 || true
     run resolve_env_path root
     [ "$status" -eq 0 ]
     [ "$output" = ".pyve/envs/root/conda" ]
@@ -53,6 +56,7 @@ teardown() {
 
 @test "resolve_env_path root: venv backend -> .venv" {
     create_pyve_config "backend: venv"
+    manifest_load >/dev/null 2>&1 || true
     run resolve_env_path root
     [ "$status" -eq 0 ]
     [ "$output" = ".venv" ]
@@ -78,6 +82,9 @@ _make_flat_main_env() {
     mkdir -p ".pyve/envs/$name/bin"
     : > ".pyve/envs/$name/bin/python"
     create_pyve_config "backend: micromamba" "micromamba:" "  env_name: $name"
+    # resolve_env_path reads the root backend from the manifest; a v2 project
+    # resolves via the read-compat synthesis, loaded here as production does.
+    manifest_load >/dev/null 2>&1 || true
 }
 
 @test "migrate_legacy_env_layout: moves a flat main micromamba env to root/conda" {

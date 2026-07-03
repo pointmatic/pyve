@@ -96,9 +96,13 @@ validate_installation_structure() {
         return 1
     fi
     
+    # Route the backend through the manifest. A v2 project resolves via the
+    # read-compat synthesis (`manifest_load` reads its root backend from
+    # `.pyve/config`); a v3-native project reads `pyve.toml`.
+    manifest_load 2>/dev/null || true
     local backend
-    backend="$(read_config_value "backend")"
-    
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
+
     if [[ -z "$backend" ]]; then
         log_error "No backend specified in config"
         ((errors++))

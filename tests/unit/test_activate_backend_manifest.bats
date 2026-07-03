@@ -3,13 +3,12 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Subphase P-1 (pyve.toml as the sole config source) — the Python plugin's
-# `.envrc` activate hook resolves the backend from the manifest first. `compose_project_envrc` calls `manifest_load` before
-# dispatching activate, so on a v3-native project (pyve.toml with the backend
-# recorded, no `.pyve/config`) the emitted activation section reflects the
-# manifest's backend. The `.pyve/config` read is retained only as a transitional
-# fallback (dropped when Subphase P-1 stops writing `.pyve/config`); the existing config-driven activate
-# tests still pass through it.
+# pyve.toml as the sole config source — the Python plugin's `.envrc` activate
+# hook resolves the backend from the manifest. `compose_project_envrc` calls
+# `manifest_load` before dispatching activate, so on a v3-native project
+# (pyve.toml with the backend recorded, no `.pyve/config`) the emitted
+# activation section reflects the manifest's backend. A v2 project resolves the
+# same way: `manifest_load` synthesizes its root backend from `.pyve/config`.
 
 bats_require_minimum_version 1.5.0
 

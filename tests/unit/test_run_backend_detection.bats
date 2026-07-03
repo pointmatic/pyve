@@ -101,6 +101,10 @@ backend: micromamba
 micromamba:
   env_name: zzz-env
 EOF
+    # run_command resolves the backend from the manifest only; a v2 project
+    # resolves via the read-compat synthesis. Load the manifest so this direct
+    # unit test mirrors production (main() calls manifest_load before dispatch).
+    manifest_load >/dev/null 2>&1 || true
 
     source_shell_profiles() { :; }
     detect_version_manager() { :; }

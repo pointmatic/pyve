@@ -139,6 +139,9 @@ TOML
     mkdir -p .pyve
     printf 'backend: venv\n' > .pyve/config
     read_env_config
+    # Mirror production: manifest_load synthesizes the root backend from
+    # .pyve/config so the `inherit` resolver can read it from the manifest.
+    manifest_load
     run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
     [ "$output" = "venv" ]
@@ -153,6 +156,9 @@ TOML
     mkdir -p .pyve
     printf 'backend: micromamba\n' > .pyve/config
     read_env_config
+    # Mirror production: manifest_load synthesizes the root backend from
+    # .pyve/config so the `inherit` resolver can read it from the manifest.
+    manifest_load
     run _env_resolve_backend mirror
     [ "$status" -eq 0 ]
     [ "$output" = "micromamba" ]
@@ -181,6 +187,9 @@ TOML
     mkdir -p .pyve
     printf 'backend: venv\n' > .pyve/config
     read_env_config
+    # Mirror production: manifest_load synthesizes the root backend from
+    # .pyve/config so the `inherit` resolver can read it from the manifest.
+    manifest_load
     run resolve_env_path mirror
     [ "$status" -eq 0 ]
     [ "$output" = ".pyve/envs/mirror/venv" ]
@@ -195,6 +204,9 @@ TOML
     mkdir -p .pyve
     printf 'backend: micromamba\n' > .pyve/config
     read_env_config
+    # Mirror production: manifest_load synthesizes the root backend from
+    # .pyve/config so the `inherit` resolver can read it from the manifest.
+    manifest_load
     run resolve_env_path mirror
     [ "$status" -eq 0 ]
     [ "$output" = ".pyve/envs/mirror/conda" ]
