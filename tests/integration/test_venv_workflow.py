@@ -18,6 +18,8 @@ Integration tests for venv backend workflow.
 Tests the complete workflow: init -> doctor -> run -> purge
 """
 
+import tomllib
+
 import pytest
 from pathlib import Path
 
@@ -37,7 +39,50 @@ class TestVenvWorkflow:
         assert result.returncode == 0
         assert (pyve.cwd / '.venv').exists()
         assert (pyve.cwd / '.venv' / 'bin' / 'python').exists()
-    
+
+    def test_init_writes_explicit_manifest(self, pyve, project_builder):
+        """Story P.j: init writes a fully-explicit pyve.toml — every env block
+        carries purpose + backend + default, nothing left implicit."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        result = pyve.init(backend='venv')
+        assert result.returncode == 0
+
+        with (pyve.cwd / 'pyve.toml').open('rb') as f:
+            manifest = tomllib.load(f)
+        root = manifest['env']['root']
+        assert root['purpose'] == 'utility'
+        assert root['backend'] == 'venv'
+        assert root['default'] is False
+        testenv = manifest['env']['testenv']
+        assert testenv['purpose'] == 'test'
+        assert testenv['backend'] == 'venv'
+        assert testenv['default'] is True
+
+    def test_init_easy_mode_writes_explicit_manifest(self, pyve, project_builder):
+        """Story P.j easy mode: `pyve init --yes` accepts every default with no
+        prompts and still writes the fully-explicit manifest."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        result = pyve.init(backend='venv', yes=True)
+        assert result.returncode == 0
+        assert (pyve.cwd / '.venv').exists()
+
+        with (pyve.cwd / 'pyve.toml').open('rb') as f:
+            manifest = tomllib.load(f)
+        assert manifest['env']['root']['backend'] == 'venv'
+        assert manifest['env']['root']['default'] is False
+        assert manifest['env']['testenv']['default'] is True
+
+    def test_reinit_is_deterministic_replay(self, pyve, project_builder):
+        """Story P.j: re-init reproduces a byte-identical manifest (no drift).
+        The helper always passes --force; --yes makes the replay prompt-free."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        assert pyve.init(backend='venv').returncode == 0
+        first = (pyve.cwd / 'pyve.toml').read_text()
+
+        assert pyve.init(backend='venv', yes=True).returncode == 0
+        second = (pyve.cwd / 'pyve.toml').read_text()
+        assert first == second
+
     def test_init_with_python_version(self, pyve, project_builder):
         """Test --init with specific Python version."""
         project_builder.create_requirements(['requests==2.31.0'])

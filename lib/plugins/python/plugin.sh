@@ -905,16 +905,17 @@ _init_detect_project_guide_present() {
 # (`pyve test --env testenv`) resolve.
 _init_write_pyve_toml() {
     local project_name="$1"
-    # The resolved root backend (venv / micromamba / none / …). `pyve init`
-    # always passes it so the canonical manifest records the one fact `pyve
-    # status` keys off; the optional form (no arg) preserves the legacy
-    # backend-less template for unit callers that only exercise the scaffold.
-    local backend="${2:-}"
+    # The resolved root backend (venv / micromamba). `pyve init` always
+    # passes it; the no-arg form defaults to venv so the emitted manifest
+    # is ALWAYS fully explicit (Story P.j — explicit-by-construction):
+    # every [env.<name>] block records purpose + backend + default, never
+    # leaning on TOML "absent = default" inference. The test env is venv by
+    # default (the fresh scaffold's materialized default test env), recorded
+    # explicitly even when the root env is micromamba.
+    local backend="${2:-venv}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
-    local backend_line=""
-    [[ -n "$backend" ]] && backend_line=$'\n'"backend = \"${backend}\""
     cat > pyve.toml <<EOF
 pyve_schema = "3.0"
 
@@ -922,10 +923,13 @@ pyve_schema = "3.0"
 name = "${project_name}"
 
 [env.root]
-purpose = "utility"${backend_line}
+purpose = "utility"
+backend = "${backend}"
+default = false
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
 EOF
 }
@@ -1011,12 +1015,13 @@ _init_validate_existing_manifest() {
 _init_write_pyve_toml_polyglot() {
     local project_name="$1"
     local node_path="$2"
-    local backend="${3:-}"
+    # Explicit-by-construction (Story P.j), mirroring `_init_write_pyve_toml`:
+    # every [env.<name>] block records purpose + backend + default. No-arg
+    # backend defaults to venv so the block is never backend-less.
+    local backend="${3:-venv}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
-    local backend_line=""
-    [[ -n "$backend" ]] && backend_line=$'\n'"backend = \"${backend}\""
     cat > pyve.toml <<EOF
 pyve_schema = "3.0"
 
@@ -1024,10 +1029,13 @@ pyve_schema = "3.0"
 name = "${project_name}"
 
 [env.root]
-purpose = "utility"${backend_line}
+purpose = "utility"
+backend = "${backend}"
+default = false
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
 
 [plugins.python]
@@ -1292,6 +1300,7 @@ _init_valid_flags() {
         --auto-bootstrap --bootstrap-to --strict --no-lock --node-path \
         --auto-install-deps --no-install-deps --local-env --force --allow-synced-dir \
         --project-guide-completion --no-project-guide-completion \
+        --yes -y \
         --help
 }
 
@@ -1810,6 +1819,17 @@ init_project() {
                 ;;
             --force)
                 PYVE_REINIT_MODE="force"
+                shift
+                ;;
+            --yes|-y)
+                # Easy mode (Story P.j): fast-accept every wizard default.
+                # Reuses the non-interactive resolution path so every
+                # prompt-bearing parameter (backend / python / project-guide /
+                # node path) resolves to its graph default with no prompts —
+                # then init writes the same fully-explicit pyve.toml the
+                # interactive path would. Explicit `--backend`, `--python-version`,
+                # etc. still win when supplied alongside `--yes`.
+                export PYVE_INIT_NONINTERACTIVE=1
                 shift
                 ;;
             --project-guide)
@@ -2349,6 +2369,8 @@ Options:
   --update                           Safely update an existing installation
   --force                            Purge and re-initialize (destructive)
   --allow-synced-dir                 Bypass cloud-sync directory check
+  --yes, -y                          Easy mode: accept every wizard default with
+                                     no prompts, then write the explicit pyve.toml
 
   project-guide integration (three-step post-init hook):
     1. pip install --upgrade project-guide   (latest version)
@@ -2380,7 +2402,7 @@ Options:
 
 Examples:
   pyve init                                # Auto-detect backend, default venv
-  pyve init myenv                          # Custom venv directory name
+  pyve init --yes                          # Easy mode: accept all defaults, no prompts
   pyve init --backend venv                 # Force venv backend
   pyve init --backend micromamba           # Force micromamba backend
   pyve init --python-version 3.13.7        # Pin Python version

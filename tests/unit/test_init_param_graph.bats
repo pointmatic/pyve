@@ -25,14 +25,16 @@ setup() {
 # The five decision-graph parameters and their CLI flag-sets.
 PARAM_FLAGS=(--backend --python-version --project-guide --no-project-guide --no-direnv --env-name)
 
-# The full valid-flag set `pyve init` accepted before P.g.1 (the list that was
-# hand-maintained in the unknown_flag_error call). Generation must reproduce it.
+# The full valid-flag set `pyve init` accepts: the pre-P.g.1 hand-maintained
+# list (which graph generation must reproduce) plus later operational-toggle
+# additions. `--yes` / `-y` are the P.j easy-mode fast-accept flags.
 EXPECTED_VALID_FLAGS=(
     --python-version --backend --auto-bootstrap --bootstrap-to
     --strict --no-lock --env-name --no-direnv --node-path
     --auto-install-deps --no-install-deps --local-env --force --allow-synced-dir
     --project-guide --no-project-guide
     --project-guide-completion --no-project-guide-completion
+    --yes -y
     --help
 )
 

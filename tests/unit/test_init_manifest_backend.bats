@@ -60,10 +60,14 @@ _root_block() {
     [[ "$output" == *'backend = "venv"'* ]]
 }
 
-@test "_init_write_pyve_toml: no backend arg → legacy backend-less template (back-compat)" {
+@test "_init_write_pyve_toml: no backend arg → explicit venv default (P.j explicit-by-construction)" {
+    # Story P.j: the manifest is always fully explicit. The no-arg form
+    # (unit-scaffold callers) defaults the root backend to venv and records
+    # it — never a backend-less [env.root] block.
     _init_write_pyve_toml "demo"
     run _root_block
-    [[ "$output" != *'backend ='* ]]
+    [[ "$output" == *'backend = "venv"'* ]]
+    [[ "$output" == *'default = false'* ]]
 }
 
 @test "_init_write_pyve_toml: backend-bearing manifest validates clean under manifest_load" {

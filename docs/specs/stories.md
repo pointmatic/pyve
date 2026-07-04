@@ -695,13 +695,19 @@ The project-essentials file states that `init` writes the manifest backend and `
 
 ---
 
-### Story P.j: Explicit-by-construction manifest + easy-mode wizard [Planned]
+### Story P.j: Explicit-by-construction manifest + easy-mode wizard [Done]
 
-`pyve init` writes a **fully-explicit** `pyve.toml` — every resolved value recorded (sourced from the graph's defaults), so the file is self-documenting and reproducible. Builds on P.i (the manifest is the sole source) + the graph (P.f knows all params + defaults). "Easy mode" is a wizard fast-accept path — permissiveness lives in the wizard, not the manifest.
+`pyve init` writes a **fully-explicit** `pyve.toml` — every manifest-native value recorded rather than left implicit, so the file is self-documenting and reproducible. Builds on P.i (the manifest is the sole source) + the graph (P.f knows all params + defaults). "Easy mode" is a wizard fast-accept path — permissiveness lives in the wizard, not the manifest.
 
-- [ ] `init` writes every resolved param into `pyve.toml` (not just backend/python/env-name), with the graph as the default source.
-- [ ] Easy-mode: a single fast-accept-the-defaults path through the wizard that still writes the explicit file.
-- [ ] Tests: a trivial Python init produces a complete, explicit manifest; re-`init` from that manifest is a deterministic no-prompt replay.
+**Scope decision (developer, 2026-07-03): manifest-native fields only.** `init` records every env's `purpose` / `backend` / `default` **explicitly** (no implicit/omitted values), with the graph supplying the default for `backend`. `python` stays in `.tool-versions` / `environment.yml`, `env-name` in `environment.yml` `name:`, and `direnv` / `project-guide` remain init-time actions — none are added to the manifest schema here. This keeps P.j a coherent slice with **no schema change and no reader migration**, and does not contradict the "`[env.root]` carries no python field" principle. Recording `python` / `env-name` as first-class manifest fields (north-star §4) is deferred to a follow-on once its reader-migration story lands.
+
+- [x] `init` writes each `[env.<name>]` block fully explicit — `purpose` + `backend` + `default` on **every** env, in both `_init_write_pyve_toml` and `_init_write_pyve_toml_polyglot` ([plugin.sh](../../lib/plugins/python/plugin.sh)). The no-arg (unit-scaffold) form defaults `backend` to `venv` so the block is never backend-less. `[env.testenv]` records `backend = "venv"` explicitly even under a micromamba root (preserving — not changing — the resolved default). The Node-only writer ([init_composer.sh](../../lib/init_composer.sh)) has no `[env.*]` blocks, so it was already explicit and is unchanged.
+- [x] Easy-mode: `pyve init --yes` / `-y` ([plugin.sh](../../lib/plugins/python/plugin.sh)) fast-accepts every wizard default — wired by setting `PYVE_INIT_NONINTERACTIVE=1`, which the wizard's existing per-prompt checks already treat as "resolve the default, no prompt" (even on a TTY). Registered in `_init_valid_flags`, documented in `show_init_help` (+ example). Explicit `--backend` / `--python-version` still win alongside `--yes`.
+- [x] Tests: new [test_init_explicit_manifest.bats](../../tests/unit/test_init_explicit_manifest.bats) (every env carries purpose+backend+default, plain + polyglot, validates under `manifest_load`, writer idempotent, `--yes`/`-y` accepted). Integration (CI-verified): explicit-manifest, easy-mode, and byte-identical deterministic-replay cases in [test_venv_workflow.py](../../tests/integration/test_venv_workflow.py). Reconciled the one intentional shape-change (`test_init_manifest_backend.bats` no-arg case) and the `_init_valid_flags` frozen-set guard (`test_init_param_graph.bats`). Full unit suite **2046/2046** green; shellcheck baseline unchanged.
+
+**Also (P.i.17 straggler fixed here):** `show_init_help` still carried a `pyve init myenv  # Custom venv directory name` example — a second copy of the custom-venv-dir help P.i.17 only removed from [pyve.sh](../../pyve.sh). Since `pyve init <dir>` now hard-errors, that example was removed (replaced with the `--yes` example) while editing this help block.
+
+**Out of scope (this story):** any new schema key (`python`, `env_name`, `direnv`, `project_guide`); migrating readers off `.tool-versions` / `environment.yml`; the operational-state / `upgrade` verb / declarative env-recipe work (§5–6, separate stories).
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
