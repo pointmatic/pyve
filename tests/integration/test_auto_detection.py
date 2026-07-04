@@ -129,27 +129,6 @@ class TestConfigFileOverride:
         assert result.returncode == 0
         assert (pyve.cwd / '.venv').exists()
     
-    def test_config_with_venv_directory(self, pyve, project_builder):
-        """Test .pyve/config can specify custom venv directory."""
-        project_builder.create_requirements(['requests==2.31.0'])
-        
-        # Create config with custom venv directory
-        config_content = """backend: venv
-venv:
-  directory: custom_venv
-"""
-        config_path = pyve.cwd / '.pyve' / 'config'
-        config_path.parent.mkdir(exist_ok=True)
-        config_path.write_text(config_content)
-        
-        # Use run() instead of init() to avoid --force flag that would purge the config
-        result = pyve.run('init', '--no-direnv', check=False)
-        
-        # Config should be respected even if init succeeds or fails
-        if result.returncode == 0:
-            assert (pyve.cwd / 'custom_venv').exists()
-        # If it fails, at least verify the config was read (not testing custom venv in CI)
-    
     def test_config_with_python_version(self, pyve, project_builder):
         """Test .pyve/config can specify Python version."""
         project_builder.create_requirements(['requests==2.31.0'])

@@ -449,7 +449,6 @@ UNIVERSAL FLAGS:
 
 EXAMPLES:
     pyve init                            # Initialize with defaults (auto-detect backend)
-    pyve init myenv                      # Use custom venv directory
     pyve init --python-version 3.12.0    # Specify Python version
     pyve init --backend venv             # Explicitly use venv backend
     pyve init --backend micromamba       # Explicitly use micromamba backend

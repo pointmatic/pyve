@@ -130,10 +130,10 @@ compose_purge() {
                 unknown_flag_error "purge" "$1" --yes --force --keep-testenv --help
                 ;;
             *)
-                # A positional is a venv directory — a Python-plugin concept;
-                # forward it to the Python purge hook.
-                py_args+=("$1")
-                shift
+                log_error "Unexpected argument: $1"
+                log_error "pyve purge takes no positional arguments."
+                log_error "See: pyve purge --help"
+                exit 1
                 ;;
         esac
     done

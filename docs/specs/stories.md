@@ -673,6 +673,28 @@ The project-essentials file states that `init` writes the manifest backend and `
 
 ---
 
+### Story P.i.17: Retire the vestigial custom-venv-dir positional (bugfix) [Done]
+
+*Bugfix surfaced by the CI integration suite (`test_venv_workflow.py::test_purge_with_custom_venv_dir`) after the P.i bundle. **Root cause:** the `pyve init <dir>` / `pyve purge <dir>` positional was a v2 knob — the custom dir was recorded in `.pyve/config` `venv.directory` and read back everywhere. P.i.6/P.i.10 retired that override (`resolve_venv_directory` returns `.venv` only) and P.i.13 removed read-compat, but **nobody removed init's positional handling**. So today `pyve init my_venv` produces a **broken** project: the venv is created at `my_venv/` ([plugin.sh](../../lib/plugins/python/plugin.sh) init `*)` arm) but the `.envrc`/`.gitignore` composers ignore the custom dir (they resolve `.venv`), and `pyve purge` (no arg) removes `.venv` and leaves `my_venv` behind — the CI failure. The feature is half-retired and yields an unactivated, un-gitignored, un-purgeable venv.*
+
+**Decision (developer, 2026-07-03):** retire it — v3 has no per-project venv-dir override (it isn't even a node in the param decision-graph), so `pyve init` always uses `.venv`. A positional is a **hard error** (fail fast, matching v3's no-magic tenet), not a silent `.venv` fallback.
+
+**Tasks.**
+
+- [x] **Regression test first (red).** New [test_init_no_custom_venv_dir.bats](../../tests/unit/test_init_no_custom_venv_dir.bats): `pyve init <dir>` and `pyve purge <dir>` reject the positional (non-zero exit + "takes no positional arguments"; init also creates no `<dir>`/`.venv`). Confirmed red (purge accepted the positional pre-fix; the init pre-fix path was *not* run in bats because a full `pyve init` reaches project-guide provisioning and mutates real `$HOME` — same fix, verified green post-fix).
+- [x] **init ([plugin.sh](../../lib/plugins/python/plugin.sh)):** the `*)` arm (`venv_dir="$1"`) now hard-errors; `venv_dir` stays `$DEFAULT_VENV_DIR` (`.venv`).
+- [x] **purge:** the CLI positional is parsed in **`compose_purge`** ([purge_composer.sh](../../lib/purge_composer.sh)), not `purge_project` — `pyve purge` dispatches through the composer, which was forwarding the positional as a "venv directory (a Python-plugin concept)". Rejected it there; also hard-errored `purge_project`'s `*)` arm and dropped its now-dead `venv_dir_explicit` machinery (purge always resolves `.venv`). Internal `init --force` → `purge_project --keep-testenv --yes` is flag-only, unaffected.
+- [x] **Help ([pyve.sh](../../pyve.sh)):** removed the `pyve init myenv  # Use custom venv directory` example.
+- [x] **Tests:** removed `test_init_with_custom_venv_dir` + `test_purge_with_custom_venv_dir` ([test_venv_workflow.py](../../tests/integration/test_venv_workflow.py)) and `test_config_with_venv_directory` ([test_auto_detection.py](../../tests/integration/test_auto_detection.py)). `validate_venv_dir_name` + its unit tests kept (init still validates `.venv`). Full unit suite **2038/2038** green (+2 = the regression cases); shellcheck baseline unchanged. (Integration CI-verified — the harness mutates real `$HOME`.)
+
+**Out of scope:** any positive `pyve init <dir>` meaning (e.g. "init the project in `<dir>`") — a separate design question; removing `validate_venv_dir_name` (still guards `.venv`).
+
+**Noted (not fixed here):** the sibling `test_config_with_python_version` in [test_auto_detection.py](../../tests/integration/test_auto_detection.py) still seeds `.pyve/config` (a different retired v2 read, python.version). It passes vacuously via its own soft guard and is out of this bugfix's scope — a candidate for a broader integration-test `.pyve/config` cleanup.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — unversioned during work; rides the bundle.
+
+---
+
 ### Story P.j: Explicit-by-construction manifest + easy-mode wizard [Planned]
 
 `pyve init` writes a **fully-explicit** `pyve.toml` — every resolved value recorded (sourced from the graph's defaults), so the file is self-documenting and reproducible. Builds on P.i (the manifest is the sole source) + the graph (P.f knows all params + defaults). "Easy mode" is a wizard fast-accept path — permissiveness lives in the wizard, not the manifest.

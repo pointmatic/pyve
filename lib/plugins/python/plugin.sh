@@ -1854,8 +1854,10 @@ init_project() {
                 unknown_flag_error "init" "$1" "${_vf[@]}"
                 ;;
             *)
-                venv_dir="$1"
-                shift
+                log_error "Unexpected argument: $1"
+                log_error "pyve init takes no positional arguments (the venv is always '${DEFAULT_VENV_DIR}')."
+                log_error "See: pyve init --help"
+                exit 1
                 ;;
         esac
     done
@@ -2416,7 +2418,6 @@ EOF
 purge_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local keep_testenv=false
-    local venv_dir_explicit=false
     local skip_confirm=false
 
     # Parse arguments
@@ -2434,9 +2435,10 @@ purge_project() {
                 unknown_flag_error "purge" "$1" --keep-testenv --yes --help
                 ;;
             *)
-                venv_dir="$1"
-                venv_dir_explicit=true
-                shift
+                log_error "Unexpected argument: $1"
+                log_error "pyve purge takes no positional arguments."
+                log_error "See: pyve purge --help"
+                exit 1
                 ;;
         esac
     done
@@ -2482,11 +2484,8 @@ purge_project() {
     # Remove version file
     _purge_version_file
 
-    # Prefer the resolved venv directory when the user did not explicitly pass a
-    # venv dir to purge (honors a v2 custom dir during read-compat; else `.venv`).
-    if [[ "$venv_dir_explicit" == false ]]; then
-        venv_dir="$(resolve_venv_directory)"
-    fi
+    # Resolve the venv directory (always `.venv` in v3).
+    venv_dir="$(resolve_venv_directory)"
 
     # Remove virtual environment
     _purge_venv "$venv_dir"
