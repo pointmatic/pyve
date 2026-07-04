@@ -74,6 +74,11 @@ purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
+    # P.l.3: `env init` now materializes the declared recipe, so the
+    # declared requirements files must exist for init to succeed.
+    mkdir -p tests
+    printf 'pytest\n' > requirements-dev.txt
+    printf 'ruff\n' > tests/smoke-requirements.txt
 }
 
 # ============================================================

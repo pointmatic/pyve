@@ -817,9 +817,14 @@ Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_
 
 ---
 
-### Story P.l.3: venv materializer — compose the full directive recipe in one shot [Planned]
+### Story P.l.3: venv materializer — compose the full directive recipe in one shot [Done]
 
 `_env_install_venv` ([env.sh](../../lib/commands/env.sh#L99)) composes **all** declared directives in order instead of the current mutex-precedence pick-one; adds the missing `editable` step (`pip install -e ".[extras]"`). `pyve env init <name>` materializes the whole recipe. Existing single-directive blocks unchanged.
+
+- [x] `_env_install_venv` rewritten as the composing materializer: the whole recipe is **validated up front** (requirements files exist, extra resolves) so a bad directive fails before any layer installs, then every declared directive materializes in P.l.2's fixed order (`editable` → `requirements` → `extra`). CLI `-r <file>` stays a full override; the no-declaration fallback chain (auto `requirements-dev.txt` → bare `pytest`) unchanged.
+- [x] **One-shot init:** `env_init` now runs `_env_init_materialize_recipe` after `ensure_env_exists` — installs ONLY when the block declares at least one directive ("init installs what you declared, nothing you didn't"; the install fallback chain never fires from init). Venv-backed only; conda init already materializes its `manifest`, and the conda pip layer is P.l.4's mirror.
+- [x] Plumbing: `editable` mapped from the manifest arrays into the lifecycle arrays (`PYVE_TESTENV_EDITABLE[]` in [envs.sh](../../lib/envs.sh)) + guarded `_env_editable_of` accessor (the v2 pyproject helper predates the directive and never emits the array).
+- [x] Tests: new [test_venv_materializer.bats](../../tests/unit/test_venv_materializer.bats) (editable materializes; full-recipe ordering; the ml-datarefinery field scenario; validate-before-install on missing file / unresolvable extra; single-directive back-compat; CLI `-r` override; one-shot init materializes the recipe / installs nothing when nothing declared). Reconciled `test_testenv_init_name.bats`'s fixture to create the requirements files it declares (init now materializes them). Full unit suite green; shellcheck baseline unchanged.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

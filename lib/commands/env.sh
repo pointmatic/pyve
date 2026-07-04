@@ -66,34 +66,73 @@ _env_read_spec_json() {
 #
 # Story M.i.2: accepts an optional <name>. No arg defaults to the
 # reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
-# so all leaves share one check; `env_init` just creates.
+# so all leaves share one check.
+#
+# Story P.l.3: one-shot materialization — after creating the env,
+# realize its declared setup recipe so `pyve env init <name>` yields
+# an operable env in one command. Installs ONLY when the block
+# declares at least one directive ("init installs what you declared,
+# nothing you didn't") — an undeclared env comes up empty, and the
+# `pyve env install` fallback chain (requirements-dev.txt / bare
+# pytest) never fires from init.
 #------------------------------------------------------------
 
 env_init() {
     local name="${1:-testenv}"
-    ensure_env_exists "$name"
+    ensure_env_exists "$name" || return $?
+    _env_init_materialize_recipe "$name"
+}
+
+# Install the declared pip directives (editable/requirements/extra)
+# into a freshly-inited env. Venv-backed envs only in P.l.3: conda
+# init already materializes its `manifest` inside `_env_init_conda`,
+# and layering the pip directives onto conda at init is P.l.4's
+# mirror. Advisory backends are never materialized (§B no-op).
+_env_init_materialize_recipe() {
+    local name="$1"
+    local backend
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
+    [[ "$backend" == "micromamba" ]] && return 0
+    if _env_backend_is_advisory "$backend"; then
+        return 0
+    fi
+    local editable extra
+    editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+    extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+    local -a reqs=()
+    _env_requirements_of "$name" reqs 2>/dev/null || true
+    if [[ -z "$editable" && -z "$extra" && "${#reqs[@]}" -eq 0 ]]; then
+        return 0
+    fi
+    local env_path
+    env_path="$(resolve_env_path "$name")"
+    _env_install_with_lock "$name" "$env_path" "" "wait"
 }
 
 #------------------------------------------------------------
-# Story M.l: venv-backed install with source dispatch.
+# Story P.l.3: venv-backed install — compose the declared recipe.
 #
-# Renamed from `env_install` for symmetry with M.k's
-# `_env_install_conda`. Pre-condition: the venv must already
-# exist at `<env_path>`. Dispatches on the highest-precedence
-# install source available (1 = top precedence):
+# An `[env.<name>]` block is a composable recipe of setup directives
+# (P.l.2 lifted the `requirements ⊕ extra ⊕ manifest` mutex; was M.l's
+# pick-one precedence dispatch). Pre-condition: the venv must already
+# exist at `<env_path>`. The whole recipe is validated up front (files
+# exist, extra resolves) so a bad directive fails before any layer
+# installs, then every declared directive materializes in the fixed
+# order:
 #
-#   1. CLI `-r <file>` (today's explicit-override behavior).
-#   2. Declared `[env.<name>].requirements = ["a","b",...]` in pyve.toml
-#      → `pip install -r a -r b ...`.
-#   3. Declared `[env.<name>].extra = "<extra>"` in pyve.toml
-#      → resolve `[project.optional-dependencies].<extra>` via the
-#      Python helper, `pip install <pkg1> <pkg2> ...`.
-#   4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
-#   5. Bare `pytest` fallback (pre-M.l default).
+#   1. `editable = ".[extras]"`    → `pip install -e ".[extras]"`
+#   2. `requirements = ["a", ...]` → `pip install -r a -r b ...`
+#   3. `extra = "<name>"`          → resolve `[project.optional-dependencies].<extra>`
+#                                    via the Python helper, `pip install <pkg1> ...`
 #
-# Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the
-# M.g Python helper at config-read time, so by the time we get here
-# at most one of (2) and (3) is non-empty.
+# (The conda `manifest` layer orders before `editable`; that belongs to
+# the micromamba materializer — see `_env_install_conda`, P.l.4.)
+#
+# CLI `-r <file>` stays an explicit full override — it installs only
+# that file. When NO directive is declared, the pre-P.l fallback chain
+# is unchanged: auto-detected `requirements-dev.txt`, else bare
+# `pytest`. A single-directive block is the degenerate one-item recipe,
+# so pre-P.l manifests materialize exactly as before.
 #------------------------------------------------------------
 
 _env_install_venv() {
@@ -108,7 +147,7 @@ _env_install_venv() {
     fi
     info "Installing dev/test dependencies into '$env_path'..."
 
-    # Precedence 1: CLI `-r <file>` always wins.
+    # CLI `-r <file>` is an explicit full override — installs only that file.
     if [[ -n "$cli_req_file" ]]; then
         if [[ ! -f "$cli_req_file" ]]; then
             log_error "Requirements file not found: $cli_req_file"
@@ -119,13 +158,18 @@ _env_install_venv() {
         return 0
     fi
 
-    # Precedence 2: declared `requirements = [...]`.
+    # Gather the declared recipe.
+    local declared_editable declared_extra
+    declared_editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
     local -a declared_reqs=()
     _env_requirements_of "$name" declared_reqs 2>/dev/null || true
-    if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
+
+    if [[ -n "$declared_editable" || -n "$declared_extra" || "${#declared_reqs[@]}" -gt 0 ]]; then
+        # Validate the whole recipe before materializing any layer.
         local r
         local -a r_args=()
-        for r in "${declared_reqs[@]}"; do
+        for r in "${declared_reqs[@]+"${declared_reqs[@]}"}"; do
             if [[ ! -f "$r" ]]; then
                 log_error "Declared requirements file not found: $r"
                 log_error "(declared as [env.$name].requirements in pyve.toml)"
@@ -133,36 +177,38 @@ _env_install_venv() {
             fi
             r_args+=("-r" "$r")
         done
-        run_cmd "$env_path/bin/python" -m pip install "${r_args[@]}"
+        local -a extra_pkgs=()
+        if [[ -n "$declared_extra" ]]; then
+            if ! _env_resolve_extra_packages "$declared_extra" extra_pkgs; then
+                exit 1
+            fi
+        fi
+
+        # Materialize in order: editable → requirements → extra.
+        if [[ -n "$declared_editable" ]]; then
+            run_cmd "$env_path/bin/python" -m pip install -e "$declared_editable"
+        fi
+        if [[ "${#r_args[@]}" -gt 0 ]]; then
+            run_cmd "$env_path/bin/python" -m pip install "${r_args[@]}"
+        fi
+        if [[ -n "$declared_extra" ]]; then
+            if [[ "${#extra_pkgs[@]}" -eq 0 ]]; then
+                info "Extra '$declared_extra' has no packages — skipping install"
+            else
+                run_cmd "$env_path/bin/python" -m pip install "${extra_pkgs[@]}"
+            fi
+        fi
         success "Dev/test dependencies installed"
         return 0
     fi
 
-    # Precedence 3: declared `extra = "<name>"`.
-    local declared_extra
-    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
-    if [[ -n "$declared_extra" ]]; then
-        local -a pkgs=()
-        if ! _env_resolve_extra_packages "$declared_extra" pkgs; then
-            exit 1
-        fi
-        if [[ "${#pkgs[@]}" -eq 0 ]]; then
-            info "Extra '$declared_extra' has no packages — skipping install"
-            return 0
-        fi
-        run_cmd "$env_path/bin/python" -m pip install "${pkgs[@]}"
-        success "Dev/test dependencies installed"
-        return 0
-    fi
-
-    # Precedence 4: auto-detect requirements-dev.txt.
+    # No declared directives — the pre-P.l fallback chain, unchanged:
+    # auto-detect requirements-dev.txt, else bare pytest.
     if [[ -f "requirements-dev.txt" ]]; then
         run_cmd "$env_path/bin/python" -m pip install -r "requirements-dev.txt"
         success "Dev/test dependencies installed"
         return 0
     fi
-
-    # Precedence 5: bare pytest fallback.
     run_cmd "$env_path/bin/python" -m pip install pytest
     success "Dev/test dependencies installed"
 }
