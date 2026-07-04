@@ -247,12 +247,34 @@ validate_env_decl() {
 # config location.
 assert_env_name_actionable() {
     local name="${1:-}"
+    local verb="${2:-}"
     if [[ -z "$name" ]]; then
         printf "error: testenv name is required\n" >&2
         return 1
     fi
+    # `root` is the main project environment: `pyve env` manages named
+    # envs only, and root's lifecycle belongs to the top-level verbs. A
+    # rejection alone is a dead-end, so signpost the verb that does the
+    # job (the caller passes which env verb was attempted).
     if [[ "$name" == "root" ]]; then
-        printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
+        printf "error: 'root' is the main project environment — 'pyve env' manages named envs only ('root' stays selection-only, e.g. 'pyve test --env root').\n" >&2
+        case "$verb" in
+            init)
+                printf "Manage the root env with: pyve init  (rebuild: pyve init --force)\n" >&2
+                ;;
+            install)
+                printf "Materialize the root env and its declared setup with: pyve init\n" >&2
+                ;;
+            purge)
+                printf "Purge the root env with: pyve purge\n" >&2
+                ;;
+            run)
+                printf "Run a command in the root env with: pyve run <command>\n" >&2
+                ;;
+            *)
+                printf "Root env verbs: pyve init (rebuild: pyve init --force), pyve purge, pyve run <command>\n" >&2
+                ;;
+        esac
         return 1
     fi
     # Recognize the canonical v3 declaration surface — `[env.<name>]` in

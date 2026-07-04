@@ -1380,8 +1380,10 @@ Notes:
     and re-materialize its declared setup recipe. Destructive, so it
     prompts y/N on interactive shells; `--yes` (-y) skips the prompt;
     non-TTY (CI) skips automatically.
-  - `testenv` and `root` are reserved names. `root` is selection-only
-    (use `pyve test --env root`), not creatable as an env.
+  - `testenv` and `root` are reserved names. `root` is the main project
+    environment and stays selection-only here (`pyve test --env root`);
+    its lifecycle belongs to the top-level verbs:
+      pyve init (rebuild: pyve init --force) · pyve purge · pyve run <command>
   - `pyve init --force` rebuilds ONLY the root env — named envs under
     .pyve/envs/ are untouched. Rebuild a named env with
     `pyve env init <name> --force`. (`pyve purge --keep-testenv` likewise
@@ -1438,7 +1440,7 @@ EOF
             run_name="$1"
             shift 2
         fi
-        assert_env_name_actionable "$run_name" || exit 1
+        assert_env_name_actionable "$run_name" "run" || exit 1
         local run_venv run_backend
         run_venv="$(resolve_env_path "$run_name")"
         run_backend="$(_env_resolve_backend "$run_name")" || run_backend="venv"
@@ -1458,7 +1460,7 @@ EOF
     # hard-codes the default; M.i.3/M.i.4 will accept `<name>` here.
     local target_name="${action_name:-testenv}"
     if [[ "$action" == "init" ]]; then
-        assert_env_name_actionable "$target_name" || exit 1
+        assert_env_name_actionable "$target_name" "init" || exit 1
         # Backend stub is enforced inside env_init -> ensure_env_exists.
     fi
     local testenv_venv
@@ -1484,7 +1486,7 @@ EOF
             local lock_mode="wait"
             [[ "$install_no_wait" == "1" ]] && lock_mode="no-wait"
             if [[ -n "$action_name" ]]; then
-                if assert_env_name_actionable "$action_name"; then
+                if assert_env_name_actionable "$action_name" "install"; then
                     local install_env_path
                     install_env_path="$(resolve_env_path "$action_name")"
                     _env_install_with_lock "$action_name" "$install_env_path" "$requirements_file" "$lock_mode" || leaf_rc=$?
@@ -1499,7 +1501,7 @@ EOF
             # Story M.i.4: with-arg removes one env; no-arg iterates
             # over every declared env with a TTY-aware confirm gate.
             if [[ -n "$action_name" ]]; then
-                if assert_env_name_actionable "$action_name"; then
+                if assert_env_name_actionable "$action_name" "purge"; then
                     env_purge "$action_name" || leaf_rc=$?
                 else
                     leaf_rc=1

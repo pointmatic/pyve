@@ -858,9 +858,16 @@ Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_
 
 ---
 
-### Story P.l.6: Uniform per-env repair — route each role to the right verb (no dead-ends) [Planned]
+### Story P.l.6: Uniform per-env repair — route each role to the right verb (no dead-ends) [Done]
 
 Resolve the field dead-end without namespace unification (routing, per the developer's decision): `pyve env purge root` → signpost to **`pyve purge`** (a purge, not a rebuild); `pyve env init root [--force]` → signpost to `pyve init [--force]`; `pyve check` / heal route each role to its correct verb. A human never hits an unexplained rejection or has to know which namespace owns which env.
+
+*Grounding (verified): the `root` rejection lived in `assert_env_name_actionable` ([envs.sh](../../lib/envs.sh)) — one generic, stale message ("It is not a testenv and cannot be created/installed/purged") for every verb, no routing. `pyve check`'s root-fault hints already routed correctly to `pyve init --force`; its default-testenv check conflated "present but structurally broken" with "pytest not installed" and sent both to `pyve test`, which cannot heal a gutted env.*
+
+- [x] Verb-aware routing in `assert_env_name_actionable`: optional `<verb>` second arg; the `root` rejection keeps its selection-only base line (pinned by existing tests) and adds the per-verb signpost — `init` → `pyve init` (rebuild: `pyve init --force`), `purge` → `pyve purge`, `install` → `pyve init`, `run` → `pyve run <command>`, no-verb → the full routing map. The dispatcher's four gate sites ([env.sh](../../lib/commands/env.sh)) pass their verb.
+- [x] `pyve check` routes the default-testenv fault by kind: Check 16 factored into `_check_default_testenv` ([plugin.sh](../../lib/plugins/python/plugin.sh)) — present-but-broken (no runnable python — runnability probe, not existence) → `pyve env init testenv --force`; present-but-pytest-missing keeps `pyve test`; healthy passes; absent stays silent.
+- [x] `pyve env --help`'s reserved-names note carries the root routing map so the namespace boundary is discoverable before the rejection.
+- [x] Tests: new [test_env_root_routing.bats](../../tests/unit/test_env_root_routing.bats) (per-verb signposts for init/install/purge/run root; no-verb routing map; "selection-only" pin preserved; check-helper fault classification: broken vs pytest-missing vs healthy vs absent; help routing map). Full unit suite green (2111 tests, 0 failures, run under `bats --jobs 8`); shellcheck baselines unchanged on all three edited files.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
@@ -868,9 +875,43 @@ Resolve the field dead-end without namespace unification (routing, per the devel
 
 ### Story P.l.7: Migration verification + docs + project-essentials wrap-up [Planned]
 
-Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (as single-directive recipes) end-to-end. Document the directive vocabulary + ordering, the one-shot rebuild model, and the routing map; add the project-essentials entries (declarative-recipe model; the `--yes`/`--force` rule table from P.l.1). Close the P.l bundle.
+Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (as single-directive recipes) end-to-end. Document the directive vocabulary + ordering, the one-shot rebuild model, and the routing map; add the project-essentials entries (declarative-recipe model; the `--yes`/`--force` rule table from P.l.1). Closes the declarative-recipe arc of the P.l bundle (P.l.1–P.l.6); the test-infrastructure riders P.l.8–P.l.11 follow as their own arc.
 
 **Also: sweep the story/phase-ID comments the P.l bundle itself introduced** — the "No story / phase IDs in code or comments" essentials rule was violated during P.l.1–P.l.3 (caught at the P.l.4 gate). ~22 sites: `# Story P.l.x:` leaders and bare `P.l.x` refs across [env.sh](../../lib/commands/env.sh), [envs.sh](../../lib/envs.sh), [manifest.sh](../../lib/manifest.sh), [pyve_toml_helper.py](../../lib/pyve_toml_helper.py), [ui/core.sh](../../lib/ui/core.sh), [purge_composer.sh](../../lib/purge_composer.sh), and six bats files (test_force_yes_semantics, test_env_directives, test_venv_materializer, test_manifest, test_testenv_init_name, test_env_dispatcher). Rewrite each as self-contained prose (state the *why*, no ID); keep any ref that is genuinely load-bearing per the rule's exception list. Enforcement grep: `grep -rn 'P\.l\.[0-9]\|Story P\.l' lib/ pyve.sh tests/`.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.8: Parallel unit suite — `bats --jobs` in the Makefile (measured: ~4–6 min → ~1:47) [Planned]
+
+*(P.l.8–P.l.11 are the test-infrastructure arc: iterate on targeted suites, run the full suite at story gates, let CI be the ultimate arbiter. Motivated at the P.l.5 gate: 2100 unit tests today, a polyglot future of plugins (Rust, Go, C++, C#, React) heading toward 5–10×, and a mode cadence that runs the whole suite on every task iteration.)*
+
+The suite is serial today (`bats tests/unit/*.bats`, one core, ~4–6 min). GNU parallel is installed; a grounding run of `bats --jobs 8 tests/unit/*.bats` completed all 2100 tests in **1:46.85** (335% CPU — bats parallelizes across files, so the largest files bound the win). Story: wire `make test-unit` to use `--jobs` when GNU parallel is present (serial fallback otherwise; job count from `PYVE_TEST_JOBS`, defaulting to a core-based value; tune the default — file-level granularity may reward more than 8 jobs), verify the suite is parallel-clean (fix or explicitly serialize any file that proves order- or state-dependent), record before/after wall times in the Makefile help, and adopt the same invocation in the CI workflow where the runner benefits.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.9: Subsystem tags — `bats file_tags` vocabulary + targeted Make targets [Planned]
+
+Tag all ~166 unit-test files with a small closed subsystem vocabulary (`# bats file_tags=` — e.g. `env`, `init-wizard`, `purge`, `manifest`, `ui`, `micromamba`, `self-toolchain`, `plugin-python`, `plugin-node`, `completion`, `check-status`, `lock`), and add targeted Make entry points (`make test-tag TAG=<t>` via `bats --filter-tags`, plus shorthand targets for the highest-traffic groups). Add a drift guard that fails when any `.bats` file carries no `file_tags` line, so new files can't land untagged. Document the vocabulary in [testing-spec.md](testing-spec.md). Tags, not directory moves — zero `load`-path churn, and the same vocabulary can drive CI path-filtered jobs later (per-plugin suites when the Rust/Go/etc. plugins arrive; contract/registry/core changes still run everything).
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.10: Impact-map script — changed files → the test files that exercise them [Planned]
+
+`scripts/test-impact.sh`: from `git diff --name-only` (or explicit file args), extract the function names defined in the changed `lib/` files (`^name() {` is reliably greppable), and emit the union of (a) test files that reference any of those names, (b) name-convention matches (`lib/commands/env.sh` → `test_env_*.bats`, …), (c) a small always-run smoke set; `make test-impact` runs the selection. **Explicitly a heuristic for the inner loop** — bash has no import graph and pyve's function table is global, and the field record proves cross-module tails are real (the `python` function-shadow passed 725 unit tests and broke only in CI; the SIGPIPE `grep -q` bug surfaced only on the macOS runner in the full suite; the Bash-3.2 empty-array bug was invisible to bats entirely). The contract — impact selection per iteration, full suite at the story gate, CI as the final arbiter — is documented in [testing-spec.md](testing-spec.md) alongside the tag vocabulary.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.11: Test-cadence change request to project-guide — targeted per task, full at the gate [Planned]
+
+The code_test_first mode template's cycle runs the **full** test suite after every task (Step 3f) — the per-iteration cost that motivates P.l.8–P.l.10, and it compounds with suite growth. Per the "Cross-repo coordination — request, don't work around" protocol, write the change-request spec at `docs/specs/project-guide-requests/test-cadence-targeted-then-full.md`: propose the template cadence become *targeted/impacted suites per task; full unit suite once at the story gate; CI runs the whole matrix as the ultimate arbiter*, with rationale (measured costs, suite-growth projection) and compatibility notes (projects without an impact tool simply keep running the full suite). `go.md` is install output and is never hand-edited here; the new cadence lands when the corresponding project-guide release ships.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

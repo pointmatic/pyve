@@ -3056,20 +3056,34 @@ check_environment() {
         _check_warn ".env: missing" "→ Run: touch .env"
     fi
 
-    # Check 16: testenv (conditional — only warn if exists but broken)
-    local testenv_venv
-    testenv_venv="$(resolve_env_path testenv)"
-    if [[ -d "$testenv_venv" ]]; then
-        if [[ -x "$testenv_venv/bin/python" ]] && \
-           "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
-            _check_pass "testenv: pytest installed"
-        else
-            _check_warn "testenv: present but pytest not installed" \
-                "→ Run: pyve test"
-        fi
-    fi
+    # Check 16: testenv (conditional — only speaks when the env exists).
+    _check_default_testenv
 
     _check_summary_and_exit
+}
+
+# Default-testenv line for `pyve check`. Routes the fault to the verb
+# that actually repairs it: a structurally broken env (present but no
+# runnable python — a runnability probe, not an existence stat) needs
+# the rebuild verb `pyve env init testenv --force`; a healthy python
+# that merely lacks pytest is repopulated by `pyve test`. Absent env →
+# silent (the check is conditional). Emits via the caller's _check_*
+# closures (dynamic scope from check_environment).
+_check_default_testenv() {
+    local testenv_venv
+    testenv_venv="$(resolve_env_path testenv)"
+    [[ -d "$testenv_venv" ]] || return 0
+    if ! "$testenv_venv/bin/python" --version >/dev/null 2>&1; then
+        _check_warn "testenv: present but broken (no runnable python)" \
+            "→ Run: pyve env init testenv --force"
+        return 0
+    fi
+    if "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
+        _check_pass "testenv: pytest installed"
+    else
+        _check_warn "testenv: present but pytest not installed" \
+            "→ Run: pyve test"
+    fi
 }
 
 # Per-backend helpers. These escalate via the outer _check_* closures and
