@@ -921,6 +921,7 @@ pyve_schema = "3.0"
 
 [project]
 name = "${project_name}"
+pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"
 
 [env.root]
 purpose = "utility"
@@ -1027,6 +1028,7 @@ pyve_schema = "3.0"
 
 [project]
 name = "${project_name}"
+pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"
 
 [env.root]
 purpose = "utility"

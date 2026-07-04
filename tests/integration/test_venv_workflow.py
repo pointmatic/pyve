@@ -83,6 +83,22 @@ class TestVenvWorkflow:
         second = (pyve.cwd / 'pyve.toml').read_text()
         assert first == second
 
+    def test_init_stamps_defaults_version_and_check_shows_no_drift(self, pyve, project_builder):
+        """Story P.k: init records the defaults-set stamp in [project]; a fresh
+        project (built at the current set) shows no drift in `pyve check`."""
+        project_builder.create_requirements(['requests==2.31.0'])
+        assert pyve.init(backend='venv').returncode == 0
+
+        with (pyve.cwd / 'pyve.toml').open('rb') as f:
+            manifest = tomllib.load(f)
+        # Present, non-empty, and a positive integer.
+        stamp = manifest['project']['pyve_defaults_version']
+        assert stamp and stamp.isdigit() and int(stamp) >= 1
+
+        # No baked-in default has changed → check surfaces no [defaults] section.
+        result = pyve.run('check', check=False)
+        assert '[defaults]' not in result.stdout
+
     def test_init_with_python_version(self, pyve, project_builder):
         """Test --init with specific Python version."""
         project_builder.create_requirements(['requests==2.31.0'])

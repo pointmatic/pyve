@@ -14,6 +14,8 @@
 #
 #   PYVE_SCHEMA_VERSION         — "3.0"
 #   PYVE_PROJECT_NAME           — [project].name (string)
+#   PYVE_PROJECT_DEFAULTS_VERSION — [project].pyve_defaults_version (P.k drift
+#                                 baseline; "" on pre-P.k manifests)
 #   PYVE_ENV_NAMES[]            — declared env names
 #   PYVE_ENV_PURPOSE[]          — run | test | utility | temp | ""
 #   PYVE_ENV_BACKEND[]          — plugin-registered backend name | ""
@@ -97,6 +99,7 @@ manifest_advisory_notes() {
 _manifest_reset_state() {
     PYVE_SCHEMA_VERSION="3.0"
     PYVE_PROJECT_NAME=""
+    PYVE_PROJECT_DEFAULTS_VERSION=""
     PYVE_ENV_NAMES=()
     PYVE_ENV_PURPOSE=()
     PYVE_ENV_BACKEND=()

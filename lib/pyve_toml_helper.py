@@ -283,6 +283,7 @@ def _empty_cfg():
     return {
         "schema_version": SCHEMA_VERSION,
         "project_name": "",
+        "defaults_version": "",
         "envs": {},
         "plugins": {},
     }
@@ -304,7 +305,11 @@ def load(manifest_path):
     with manifest_path.open("rb") as f:
         data = tomllib.load(f)
     schema = data.get("pyve_schema", SCHEMA_VERSION)
-    project_name = data.get("project", {}).get("name", "")
+    project = data.get("project", {})
+    project_name = project.get("name", "")
+    # Story P.k: the framework defaults-set stamp the repo was materialized
+    # under. Absent on pre-P.k manifests → "" (no drift baseline).
+    defaults_version = str(project.get("pyve_defaults_version", ""))
     envs = {}
     for name, decl in data.get("env", {}).items():
         if isinstance(decl, dict):
@@ -316,6 +321,7 @@ def load(manifest_path):
     return {
         "schema_version": schema,
         "project_name": project_name,
+        "defaults_version": defaults_version,
         "envs": envs,
         "plugins": plugins,
     }
@@ -366,6 +372,7 @@ def emit(cfg, out):
     names = list(cfg["envs"].keys())
     print(f"PYVE_SCHEMA_VERSION={shlex.quote(cfg['schema_version'])}", file=out)
     print(f"PYVE_PROJECT_NAME={shlex.quote(cfg['project_name'])}", file=out)
+    print(f"PYVE_PROJECT_DEFAULTS_VERSION={shlex.quote(cfg.get('defaults_version', ''))}", file=out)
     print(f"PYVE_ENV_NAMES=({_quote_array(names)})", file=out)
     scalar_fields = [
         ("PYVE_ENV_PURPOSE", "purpose"),

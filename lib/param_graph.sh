@@ -182,6 +182,43 @@ pg_resolve_default() {
 }
 
 # ────────────────────────────────────────────────────────────────────
+# Versioned-defaults changelog (Story P.k)
+#
+# `PYVE_PARAM_DEFAULTS_VERSION` (above) stamps the current baked-in default
+# set. Each time a baked-in default changes, bump that stamp AND append one
+# row here recording the change, so `pyve check` can tell a repo pinned at an
+# older set exactly what moved — without ever rewriting the repo's pins.
+#
+# Row schema (4 fields, pipe-delimited):
+#   <version> | <param> | <old-default> | <new-default>
+# where <version> is the PYVE_PARAM_DEFAULTS_VERSION value that INTRODUCED the
+# change (i.e. the first set in which <new-default> is current).
+#
+# EMPTY at v1 — no default has changed yet. This is the single place the
+# history lives; keep it append-only and in ascending version order.
+# ────────────────────────────────────────────────────────────────────
+pg_defaults_changelog() {
+    : # no default changes yet (defaults version 1)
+}
+
+# Print the changelog rows introduced strictly AFTER <since_version> — i.e.
+# the defaults that changed between a repo's recorded set version and the
+# current one. Empty when nothing changed since (or <since> is already
+# current). Pure data: the drift surface formats these into human info.
+pg_defaults_changed_since() {
+    local since="$1" row ver
+    [[ "$since" =~ ^[0-9]+$ ]] || return 0
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        ver="${row%%|*}"
+        [[ "$ver" =~ ^[0-9]+$ ]] || continue
+        if (( ver > since )); then
+            printf '%s\n' "$row"
+        fi
+    done <<<"$(pg_defaults_changelog)"
+}
+
+# ────────────────────────────────────────────────────────────────────
 # The walk — one traversal, a pluggable value-source. The source is called as
 #   <source_fn> <name> <flag> <env> <choices> <default>
 # and must echo the *explicit* selection or empty. The engine then applies the

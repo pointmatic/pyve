@@ -713,13 +713,22 @@ The project-essentials file states that `init` writes the manifest backend and `
 
 ---
 
-### Story P.k: Versioned defaults + drift surfacing (never retroactive) [Planned]
+### Story P.k: Versioned defaults + drift surfacing (never retroactive) [Done]
 
-A default is resolved once and frozen into `pyve.toml`; a Pyve-version default change never mutates an existing repo. The graph carries **versioned** defaults so a check/update surface can *report* a divergence ("default backend changed `venv`→`X`") with the new value, leaving the pinned value untouched.
+A default is resolved once and frozen into `pyve.toml`; a Pyve-version default change never mutates an existing repo. The graph carries **versioned** defaults so a check surface can *report* a divergence with the new value, leaving the pinned value untouched.
 
-- [ ] Version the graph's defaults (which default applied at which schema / Pyve version).
-- [ ] A read/check path that detects "your pinned value differs from the current default" and reports it as **info** (never applies it).
-- [ ] Tests: an upgrade that changes a default leaves an existing manifest byte-identical; the divergence is surfaced, not applied.
+**Design decision (developer, 2026-07-03): stamp-based drift.** Grounding surfaced that the *value*-comparison framing is undercut by P.j's scope: the only graph param the manifest pins is `backend`, whose default is **computed** (`@_init_detect_backend_default`) not a static versioned literal, while the params with static version-bumpable defaults (`python-version`, `direnv`) were *not* pinned into the manifest (P.j deferred them). So P.k uses the **set-level** stamp that already exists — [`PYVE_PARAM_DEFAULTS_VERSION`](../../lib/param_graph.sh) — recorded per-repo in the manifest and compared against the current stamp. This works regardless of which individual params are pinned.
+
+**This is a mechanism story.** We are at defaults version **1** — no default has changed yet — so in production there is nothing to report. P.k builds and *tests* (via a simulated bump) the versioned-defaults + stamp + drift-surfacing machinery, ready for the first real default change.
+
+- [x] **Version the defaults.** `pg_defaults_changelog` (data) + `pg_defaults_changed_since <ver>` (rows strictly newer than a given set) in [param_graph.sh](../../lib/param_graph.sh); changelog **empty at v1**. `PYVE_PARAM_DEFAULTS_VERSION` is the current set stamp (pre-existing anchor).
+- [x] **Stamp the manifest.** All three writers (plain + polyglot [plugin.sh](../../lib/plugins/python/plugin.sh), node-only [init_composer.sh](../../lib/init_composer.sh)) record `pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"` in `[project]`. The Python helper ([pyve_toml_helper.py](../../lib/pyve_toml_helper.py)) reads it (empty on pre-P.k manifests) and emits `PYVE_PROJECT_DEFAULTS_VERSION`, reset + documented in [manifest.sh](../../lib/manifest.sh).
+- [x] **Drift check (info, never applied).** `_compose_check_defaults_drift` ([check_composer.sh](../../lib/check_composer.sh)) — an **info-only** `[defaults]` section (never touches the severity verdict, mirroring `[pyve]` hosting): when the repo's stamp trails the current set it lists the changed defaults and points at `pyve init --force`; silent at the current set and on pre-P.k (unstamped) manifests.
+- [x] **Tests.** New [test_defaults_drift.bats](../../tests/unit/test_defaults_drift.bats) (changelog + changed-since, incl. simulated bump) and [test_check_defaults_drift.bats](../../tests/unit/test_check_defaults_drift.bats) (info-only reporting, silent cases, returns 0); stamp writer/reader + **never-retroactive** (a `PYVE_PARAM_DEFAULTS_VERSION=999` bump leaves an existing manifest byte-identical) in [test_init_explicit_manifest.bats](../../tests/unit/test_init_explicit_manifest.bats). Integration (CI-verified): init stamps the version + a fresh project shows no `[defaults]` drift ([test_venv_workflow.py](../../tests/integration/test_venv_workflow.py)). Full unit suite **2062/2062** green; shellcheck baseline unchanged. No manifest-shape test needed reconciling — the new `[project]` line rides through cleanly.
+
+**Out of scope:** pinning `python` / `env-name` into the manifest (still deferred); any *automatic* adoption of a new default (report-only).
+
+**First real use:** when a baked-in default next changes, bump `PYVE_PARAM_DEFAULTS_VERSION` and append one row to `pg_defaults_changelog` — the drift surface then activates for every repo pinned at the older set.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
