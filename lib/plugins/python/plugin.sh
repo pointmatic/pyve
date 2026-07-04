@@ -1919,7 +1919,7 @@ init_project() {
         # `pyve update` is the new entry point.)
         if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
-            warn "Force re-initialization: this will purge the existing environment ($existing_backend)"
+            warn "Force re-initialization: this will purge and rebuild the root environment ($existing_backend)"
 
             # Run pre-flight checks BEFORE purging so the environment is still intact
             # if the user decides to abort or a check fails.
@@ -1950,8 +1950,9 @@ init_project() {
                 if [[ "$preflight_backend" != "$existing_backend" ]]; then
                     warn "Backend change: $existing_backend → $preflight_backend"
                 fi
-                info "Purge:   existing $existing_backend environment"
-                info "Rebuild: fresh $preflight_backend environment"
+                info "Purge:   existing $existing_backend root environment"
+                info "Rebuild: fresh $preflight_backend root environment"
+                info "Named envs under .pyve/envs/ are untouched — rebuild one with: pyve env init <name> --force"
                 if ! ask_yn "Proceed"; then
                     info "Cancelled — no changes made, existing environment preserved"
                     exit 0
@@ -2348,10 +2349,7 @@ show_init_help() {
 pyve init - Initialize a Python virtual environment in the current directory
 
 Usage:
-  pyve init [<dir>] [options]
-
-Arguments:
-  <dir>                              Custom venv directory name (default: .venv)
+  pyve init [options]
 
 Options:
   --python-version <ver>             Set Python version (e.g., 3.13.7)
@@ -2368,8 +2366,10 @@ Options:
   --auto-install-deps                Auto-install from pyproject.toml / requirements.txt
   --no-install-deps                  Skip dependency installation prompt (for CI/CD)
   --local-env                        Copy ~/.local/.env template
-  --update                           Safely update an existing installation
-  --force                            Purge and re-initialize (destructive)
+  --force                            Purge and rebuild the root environment only
+                                     (destructive). Named envs under .pyve/envs/
+                                     are untouched — rebuild one with
+                                     'pyve env init <name> --force'
   --allow-synced-dir                 Bypass cloud-sync directory check
   --yes, -y                          Easy mode: accept every wizard default with
                                      no prompts, then write the explicit pyve.toml
@@ -2400,7 +2400,7 @@ Options:
     project-guide install             → INSTALL (matches interactive default)
     project-guide shell completion    → SKIP (editing rc files in CI is surprising)
 
-  Note: pyve init --update does NOT run the project-guide hook (minimal-touch).
+  Note: pyve update does NOT run the project-guide hook (minimal-touch).
 
 Examples:
   pyve init                                # Auto-detect backend, default venv
@@ -2410,7 +2410,7 @@ Examples:
   pyve init --python-version 3.13.7        # Pin Python version
   pyve init --no-direnv                    # Skip direnv (CI/CD)
   pyve init --node-path src/frontend       # Polyglot: place Node at src/frontend
-  pyve init --force                        # Purge and rebuild
+  pyve init --force                        # Rebuild the root env (named envs untouched)
   pyve init --project-guide                # Install project-guide without prompting
   pyve init --no-project-guide             # Skip project-guide entirely
 

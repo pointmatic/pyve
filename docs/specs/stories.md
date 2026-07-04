@@ -843,9 +843,16 @@ Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_
 
 ---
 
-### Story P.l.5: One-shot `--force` rebuild + `pyve init --force` root-only scope [Planned]
+### Story P.l.5: One-shot `--force` rebuild + `pyve init --force` root-only scope [Done]
 
 `pyve env init <name> --force` = purge-and-rebuild in one shot (per P.l.1's `--force` = escalate/override meaning). `pyve init --force` **explicitly touches only the root env** — retire the silent "rebuild root, keep testenv" magic (the `purge_project --keep-testenv` coupling). Rebuild of a named env is its own `pyve env init <name> --force`.
+
+- [x] `pyve env init [<name>] --force` = one-shot purge-and-rebuild ([env.sh](../../lib/commands/env.sh)): the dispatcher's `init` arm gains a sub-parser (`--force`, `--yes`/`-y`, optional `<name>`, any order); `env_init` escalates on `--force` — destructive-confirm gate (prompt on interactive stdin unless `--yes`; CI/non-TTY skips; `PYVE_FORCE_PROMPT=1` forces — the P.l.1 rule: `--force` escalates, `--yes` assents), then `purge_env_dir` + create + recipe materialization. `--force` on an absent env degrades to plain init (nothing to purge → no prompt).
+- [x] `pyve init --force` states its root-only scope explicitly ([plugin.sh](../../lib/plugins/python/plugin.sh)): the force pre-flight warn/summary lines name the **root** environment and point named-env rebuilds at `pyve env init <name> --force`. Behavior unchanged — named envs under `.pyve/envs/` were already preserved; `purge_project --keep-testenv` stays as the internal mechanism, but the user-facing contract is now "init --force is root-only by definition", not an unstated favor.
+- [x] Help surfaces: `pyve env --help` documents `init [<name>] [--force] [--yes]` + the rebuild semantics and re-frames the "preserved across init --force" note as the explicit root-only contract; `show_init_help`'s `--force` line states root-only scope + the per-env rebuild pointer.
+- [x] Tests: new [test_env_init_force.bats](../../tests/unit/test_env_init_force.bats) (purge-and-rebuild happens; recipe re-materializes one-shot; prompt aborts on 'n' preserving the env; `--yes` skips the prompt; non-TTY proceeds promptless; absent env degrades to plain init without prompting; plain `init` never purges; help-surface assertions). Full unit suite green (2100 tests, 0 failures); shellcheck baselines unchanged on both edited files.
+
+**Also (show_init_help stragglers fixed here, per the P.l.1 precedent):** the help still advertised the retired `pyve init [<dir>]` positional (the parser hard-errors on positionals) and the removed `--update` flag (hard-errors via `legacy_flag_error` pointing at `pyve update`); both removed, and the `--update` project-guide note now names `pyve update`.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
@@ -862,6 +869,8 @@ Resolve the field dead-end without namespace unification (routing, per the devel
 ### Story P.l.7: Migration verification + docs + project-essentials wrap-up [Planned]
 
 Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (as single-directive recipes) end-to-end. Document the directive vocabulary + ordering, the one-shot rebuild model, and the routing map; add the project-essentials entries (declarative-recipe model; the `--yes`/`--force` rule table from P.l.1). Close the P.l bundle.
+
+**Also: sweep the story/phase-ID comments the P.l bundle itself introduced** — the "No story / phase IDs in code or comments" essentials rule was violated during P.l.1–P.l.3 (caught at the P.l.4 gate). ~22 sites: `# Story P.l.x:` leaders and bare `P.l.x` refs across [env.sh](../../lib/commands/env.sh), [envs.sh](../../lib/envs.sh), [manifest.sh](../../lib/manifest.sh), [pyve_toml_helper.py](../../lib/pyve_toml_helper.py), [ui/core.sh](../../lib/ui/core.sh), [purge_composer.sh](../../lib/purge_composer.sh), and six bats files (test_force_yes_semantics, test_env_directives, test_venv_materializer, test_manifest, test_testenv_init_name, test_env_dispatcher). Rewrite each as self-contained prose (state the *why*, no ID); keep any ref that is genuinely load-bearing per the rule's exception list. Enforcement grep: `grep -rn 'P\.l\.[0-9]\|Story P\.l' lib/ pyve.sh tests/`.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

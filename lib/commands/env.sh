@@ -62,11 +62,17 @@ _env_read_spec_json() {
 }
 
 #------------------------------------------------------------
-# Leaf: pyve testenv init [<name>]
+# Leaf: pyve env init [<name>] [--force] [--yes]
 #
 # Story M.i.2: accepts an optional <name>. No arg defaults to the
 # reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
 # so all leaves share one check.
+#
+# `--force` = one-shot rebuild: purge the env, then re-create and
+# re-materialize it from its declaration — the single "rebuild this
+# env" verb (rebuilding the root env is `pyve init --force`, which
+# touches only the root). `--yes` assents to the rebuild's
+# confirmation prompt.
 #
 # Story P.l.3: one-shot materialization — after creating the env,
 # realize its declared setup recipe so `pyve env init <name>` yields
@@ -79,6 +85,39 @@ _env_read_spec_json() {
 
 env_init() {
     local name="${1:-testenv}"
+    local force="${2:-0}"
+    local yes="${3:-0}"
+
+    # `--force` escalates init to a one-shot purge-and-rebuild from the
+    # declaration. The destructive step is gated like the other
+    # destructive verbs: prompt on interactive stdin unless --yes;
+    # CI/non-TTY skips; PYVE_FORCE_PROMPT=1 forces the prompt. An
+    # absent env degrades to plain init — nothing to purge, nothing to
+    # confirm.
+    if [[ "$force" == "1" ]]; then
+        local env_root
+        env_root="$(dirname "$(resolve_env_path "$name")")"
+        if [[ -d "$env_root" ]]; then
+            local should_prompt=0
+            if [[ "$yes" != "1" ]]; then
+                if [[ "${PYVE_FORCE_PROMPT:-0}" == "1" ]] || [[ -t 0 ]]; then
+                    should_prompt=1
+                fi
+            fi
+            if [[ "$should_prompt" == "1" ]]; then
+                printf "Rebuild '%s' from its declaration? This removes %s first. [y/N]: " \
+                    "$name" "$env_root"
+                local response
+                read -r response
+                if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                    info "Aborted; '$name' was not rebuilt."
+                    return 0
+                fi
+            fi
+            purge_env_dir "$name" || return $?
+        fi
+    fi
+
     ensure_env_exists "$name" || return $?
     _env_init_materialize_recipe "$name"
 }
@@ -1095,6 +1134,8 @@ env_command() {
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
+    local init_force=0             # escalate init to purge-and-rebuild
+    local init_yes=0               # assent to the rebuild's confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
     local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
     local -a sync_args=()          # sync flags forwarded to env_sync
@@ -1105,11 +1146,34 @@ env_command() {
             init)
                 action="init"
                 shift
-                # Story M.i.2: optional positional <name> after `init`.
-                if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
-                    action_name="$1"
-                    shift
-                fi
+                # Optional positional <name> plus the one-shot rebuild
+                # flags, in any order. `--force` escalates init to
+                # purge-and-rebuild; `--yes`/`-y` assents to the rebuild's
+                # confirmation prompt. Unrecognized flags break back to
+                # the outer loop for the canonical unknown_flag_error.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --force)
+                            init_force=1
+                            shift
+                            ;;
+                        --yes|-y)
+                            init_yes=1
+                            shift
+                            ;;
+                        -*)
+                            break
+                            ;;
+                        *)
+                            if [[ -n "$action_name" ]]; then
+                                log_error "env init: unexpected positional '$1' (already named '$action_name')"
+                                exit 1
+                            fi
+                            action_name="$1"
+                            shift
+                            ;;
+                    esac
+                done
                 ;;
             install)
                 action="install"
@@ -1262,7 +1326,7 @@ env_command() {
 pyve env - Manage one or more declared project environments
 
 Usage:
-  pyve env init [<name>]
+  pyve env init [<name>] [--force] [--yes]
   pyve env install [<name>] [-r requirements-dev.txt] [--no-wait]
   pyve env purge [<name>] [--yes]
   pyve env run [<name> --] <command> [args...]
@@ -1312,10 +1376,16 @@ Notes:
     Non-destructive changes default to apply ([Y/n]); destructive changes
     (dropping a declared env, flipping a backend) default to skip ([y/N])
     and need `--force`. `--dry-run` shows the diff without writing.
+  - `init <name> --force` rebuilds the env in one shot: purge, re-create,
+    and re-materialize its declared setup recipe. Destructive, so it
+    prompts y/N on interactive shells; `--yes` (-y) skips the prompt;
+    non-TTY (CI) skips automatically.
   - `testenv` and `root` are reserved names. `root` is selection-only
     (use `pyve test --env root`), not creatable as an env.
-  - The default-env tree is preserved across `pyve init --force` and
-    `pyve purge --keep-testenv` (the `--keep-testenv` flag name is unchanged).
+  - `pyve init --force` rebuilds ONLY the root env — named envs under
+    .pyve/envs/ are untouched. Rebuild a named env with
+    `pyve env init <name> --force`. (`pyve purge --keep-testenv` likewise
+    preserves the named-env tree; the flag name is unchanged.)
 EOF
                 exit 0
                 ;;
@@ -1402,7 +1472,7 @@ EOF
     local leaf_rc=0
     case "$action" in
         init)
-            env_init "$target_name" || leaf_rc=$?
+            env_init "$target_name" "$init_force" "$init_yes" || leaf_rc=$?
             ;;
         install)
             # Story M.i.3: with-arg installs into a single named env;
