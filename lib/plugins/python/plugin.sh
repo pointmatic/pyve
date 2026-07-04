@@ -2697,21 +2697,19 @@ show_purge_help() {
 pyve purge - Remove all Python environment artifacts
 
 Usage:
-  pyve purge [<dir>] [options]
-
-Arguments:
-  <dir>                       Custom venv directory name (default: .venv)
+  pyve purge [options]
 
 Options:
   --keep-testenv              Preserve .pyve/envs/ (all dev/test runner envs)
   --yes, -y                   Skip the destructive-confirmation prompt.
                               Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
+  --force                     Deprecated alias for --yes (warns). '--force' now
+                              means "override a refusal" elsewhere (pyve init --force).
 
 Examples:
   pyve purge                               # Remove .pyve and the venv (prompts)
   pyve purge --yes                         # Remove without the prompt
   pyve purge --keep-testenv                # Preserve the testenv across purge
-  pyve purge custom_venv                   # Remove a custom-named venv
 
 See `pyve --help` for the full command list.
 EOF

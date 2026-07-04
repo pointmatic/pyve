@@ -401,3 +401,24 @@ Two distinctions matter. **Parameters vs. operational toggles:** only the ~5 dec
 **Why:** before the keystone (Phase P / Subphase P-1), adding one `init` parameter touched ≥4 hand-synced sites — the wizard prompt, the flag `case` arm, the `unknown_flag_error` allow-list, and `show_init_help` — which silently drifted out of sync. Single-sourcing from the graph removes that whole drift class. The bespoke per-prompt rendering (ui_select interaction + side effects via dynamic scope) stays in the `_init_prompt_<name>` callbacks because it does not fit the engine's value-resolution contract (that contract serves the *non-interactive flag* surface); the graph drives node identity, order, and which nodes are prompted.
 
 **How to apply:** to add or change an `init` parameter, edit its node in `_init_build_param_graph` — do **not** re-introduce a hand-maintained flag list, a hardcoded wizard prompt order, or a separate `--help`-only flag entry. If the parameter should be **prompted**, also (a) add a `_init_prompt_<name>` renderer (reading the wizard's `arg_*` locals, writing the caller's resolved variable via dynamic scope) and (b) add its name to `_init_node_is_interactive`; if it is **flag-only**, do neither. Keep imperative toggles out of the graph (they are not parameters). When the wizard builds the graph at runtime, any test harness that exercises `_init_wizard` / `_init_valid_flags` must source `lib/param_graph.sh` before the plugin — `setup_pyve_env` already does, mirroring `pyve.sh`'s sourcing order.
+
+### `--yes` skips the prompt; `--force` overrides a refusal — one meaning each
+
+Across every destructive/prompt-bearing command, the two flags mean exactly one thing each (Story P.l.1):
+
+- **`--yes` / `-y`** = *"assent to the confirmation prompt"* — do what would happen anyway, no questions. This is the **uniform** prompt-skip flag.
+- **`--force`** = *"override a safety refusal / escalate to a more destructive action."* It is **never** a prompt-skip synonym.
+
+| Command | prompt-skip | `--force` |
+|---|---|---|
+| `pyve purge` | `--yes` / `-y` | deprecated prompt-skip alias (warns) |
+| `pyve env purge` (no-arg sweep) | `--yes` / `-y` | deprecated prompt-skip alias (warns) |
+| `pyve env prune` | `--yes` / `-y` | deprecated prompt-skip alias (warns) |
+| `pyve env sync` | `--yes` / `-y` (non-destructive changes) | escalate — *also* apply destructive drops/backend flips |
+| `pyve init` | — (never prompts on defaults; use `--yes` for the wizard, P.j) | override "already initialized" → purge-and-rebuild the **root** env |
+
+The deprecated `--force`-as-prompt-skip on the purge family still works for one release, emitting `warn_force_prompt_skip_deprecated` ([lib/ui/core.sh](../../lib/ui/core.sh)); non-TTY / CI invocations skip the prompt automatically regardless. `--force` is **never required** to purge — it only skips a prompt you would otherwise answer.
+
+**Why:** `--force` had drifted into two unrelated jobs — "skip the prompt" (purge/prune) and "override/escalate" (sync/init) — and `pyve purge` accepted `--yes` and `--force` as redundant synonyms. One flag with two meanings is unlearnable; a reader could not tell whether `--force` was consent or escalation without reading the code.
+
+**How to apply:** when adding a command that can prompt before a destructive step, wire the prompt-skip to `--yes` / `-y` and route it through the shared confirm gate. Reserve `--force` for a genuinely *stronger* action than the default (one the tool would otherwise refuse), and document that difference in the same breath — never add `--force` as a second name for `--yes`.

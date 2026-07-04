@@ -353,13 +353,19 @@ env_prune() {
                 mode="all"
                 shift
                 ;;
+            --yes|-y)
+                force=1
+                shift
+                ;;
             --force)
+                # Deprecated prompt-skip alias (Story P.l.1).
+                warn_force_prompt_skip_deprecated
                 force=1
                 shift
                 ;;
             *)
                 log_error "Unknown prune flag: $1"
-                log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                log_error "Usage: pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]"
                 exit 1
                 ;;
         esac
@@ -1107,7 +1113,13 @@ env_command() {
                 # Unrecognized flags break back to the outer loop.
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
+                        --yes|-y)
+                            purge_force=1
+                            shift
+                            ;;
                         --force)
+                            # Deprecated prompt-skip alias (Story P.l.1).
+                            warn_force_prompt_skip_deprecated
                             purge_force=1
                             shift
                             ;;
@@ -1140,7 +1152,7 @@ env_command() {
                 # using a captured array.
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
-                        --unused-since|--all|--force)
+                        --unused-since|--all|--force|--yes|-y)
                             prune_args+=("$1")
                             shift
                             ;;
@@ -1158,7 +1170,7 @@ env_command() {
                                 continue
                             fi
                             log_error "Unknown prune arg: $1"
-                            log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                            log_error "Usage: pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]"
                             exit 1
                             ;;
                     esac
@@ -1209,10 +1221,10 @@ pyve env - Manage one or more declared project environments
 Usage:
   pyve env init [<name>]
   pyve env install [<name>] [-r requirements-dev.txt] [--no-wait]
-  pyve env purge [<name>] [--force]
+  pyve env purge [<name>] [--yes]
   pyve env run [<name> --] <command> [args...]
   pyve env list
-  pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
+  pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]
   pyve env sync [--dry-run] [--yes] [--force]
 
 Notes:
@@ -1230,7 +1242,7 @@ Notes:
       NAME / BACKEND / SIZE / LAST-USED / STATE.
     Last-used is from `.state.last_used_at` (M.m); `never` when 0.
     State is one of: ready / lazy / not provisioned / orphaned.
-  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--force`:
+  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--yes`:
       no args            — remove orphans (on disk but not declared,
                             excluding the reserved `testenv`).
       --unused-since DATE — remove envs whose last-used is strictly older.
@@ -1244,9 +1256,10 @@ Notes:
     `--no-wait` fast-fails with "another pyve process is installing
     '<name>' (pid N)" instead of waiting.
   - `purge` no-arg iterates over every declared env (including lazy and
-    conda-backed) and prompts `y/N` on interactive shells; `--force` skips
+    conda-backed) and prompts `y/N` on interactive shells; `--yes` (-y) skips
     the prompt. Non-TTY (CI) invocations skip the prompt automatically.
-    `purge <name>` removes only that env's root, no prompt.
+    `--force` is a deprecated alias for the prompt-skip and still works, with
+    a warning. `purge <name>` removes only that env's root, no prompt.
   - `run` requires the `--` separator when routing to a named env:
       pyve env run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).

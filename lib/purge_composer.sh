@@ -117,7 +117,13 @@ compose_purge() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --yes|-y|--force)
+            --yes|-y)
+                skip_confirm=true
+                shift
+                ;;
+            --force)
+                # Deprecated prompt-skip alias (Story P.l.1) — still honored.
+                warn_force_prompt_skip_deprecated
                 skip_confirm=true
                 shift
                 ;;

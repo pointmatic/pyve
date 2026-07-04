@@ -770,13 +770,84 @@ requirements = ["requirements-dev.txt"]     # composes — no mutex
 - Folds in the **`pyve init --force` retention question**: replace the silent "rebuild root, keep testenv" magic with **explicit per-env rebuild** (`pyve env init <name> --force`); `pyve init --force` states it touches only the root.
 - **A uniform per-env rebuild verb across roles.** Today rebuild is split and holed: a named testenv rebuilds via `pyve env purge/init`, but the `pyve env` namespace **rejects `root`** (selection-only), so root rebuild is a *different* command (`pyve init --force`) — and `pyve env purge root` is a confusing dead-end a developer hit in the field. The one-shot rebuild should present **one "rebuild this env from its declaration" verb that works for `root` and named envs alike** (or, at minimum, `pyve check`/heal routes each role to the correct command), so a human never has to know which namespace owns which env to repair it.
 
-**Decomposition sketch (granular breakdown deferred to `plan_production_phase`).** Likely sub-stories: (a) **schema** — add `editable`, define directive ordering (conda manifest → editable → requirements → extra → packages), lift the mutex, validate the closed vocabulary; (b) **readers** — `pyve_toml_helper.py` + `manifest.sh` accessors for the directive set; (c) **materializer** — `pyve env init`/`install` executes the recipe (venv directly + micromamba via O.n's pip layer + O.m's conda exec); (d) **`--force` one-shot rebuild** + the `pyve init --force` scope change; (e) **migration** — existing `requirements`/`extra`/`manifest`-only blocks stay valid (they're just single-directive recipes); (f) **docs + project-essentials**. An ordered `[[env.<name>.setup]]` array-of-tables is the escape hatch if the flat composable-keys form ever proves insufficient (ordering/repetition).
+**Decomposition (developer, 2026-07-04): seven ordered sub-stories, P.l.1–P.l.7 below.** Two decisions taken during the breakdown: (1) the cross-cutting **`--yes`/`--force` semantics sweep** goes **first** (P.l.1) so the later rebuild/purge verbs inherit the clean rule (`--yes` = skip the confirm prompt, uniform; `--force` = override a refusal / escalate to destructive, *not* a prompt-skip synonym); (2) the uniform-rebuild principle is **routing/signposting**, not namespace unification — and `pyve env purge root` routes to **`pyve purge`** (a purge, not a rebuild), while rebuild dead-ends route to `pyve init --force`. Flat composable directive keys (per the sketch); the ordered `[[env.<name>.setup]]` array-of-tables stays a documented escape hatch, not built. Migration is verified inside each relevant sub-story (single-key blocks are single-directive recipes) and swept in P.l.7.
 
 **Out of scope (this megastory's framing).** The per-env runnability *probe* (the detection story, Act 2 — this consumes "is it set up right?" but doesn't define detection). Non-Python plugin directive vocabularies beyond stubs (each plugin's own follow-up). The `.pyve/config` read sweep (now Story P.i).
 
 **Coordination.** Pairs with P.n (rebuild = restore): P.l makes the *declaration* fully describe an env; P.n makes `--force` restore the *operational state* on top of it. The "uniform per-env rebuild verb" principle here and P.q's `env purge` no-arg fix are the same consistency goal.
 
-**Version:** v3.1.0 bundle (Subphase P-1). Decompose at `plan_production_phase`. Developer owns numbering/placement.
+**Version:** v3.1.0 bundle (Subphase P-1). Decomposed into P.l.1–P.l.7 below.
+
+---
+
+### Story P.l.1: `--yes`/`--force` semantics sweep — one meaning each, across the destructive commands [Done]
+
+*Cross-cutting UX foundation for the rest of P.l. Grounding (verified): `--force` carries **two unrelated meanings** today — (A) "skip the confirm prompt" in [`compose_purge`](../../lib/purge_composer.sh) (`--yes|-y|--force` are synonyms), `pyve env purge`, and `testenv prune`; and (B) "override a refusal / escalate to destructive" in `pyve env sync` (`--force` = also apply drops/flips, distinct from `--yes`) and `pyve init --force` (purge-and-rebuild). `pyve purge` accepts **both** `--yes` and `--force` redundantly; `pyve env purge` accepts `--force` but not `--yes`. `--force` is never **required** on a purge — interactively you get a y/N prompt, CI/non-TTY auto-skips.*
+
+**The rule (teachable, pinned in project-essentials):**
+- **`--yes` / `-y`** = "assent to the confirmation prompt" — do what you'd do anyway, no questions. Uniform across every prompt-bearing command.
+- **`--force`** = "override a safety refusal / escalate to a more destructive action" (`init --force`'s rebuild, `sync`'s destructive changes). **Never** a prompt-skip synonym.
+
+**Decision (implementation):** `--force`-as-prompt-skip is kept as a **deprecated alias that warns** for one release (not dropped) — the gentler break.
+
+**Tasks.**
+- [x] `pyve purge` ([purge_composer.sh](../../lib/purge_composer.sh)): `--yes`/`-y` = prompt-skip; `--force` split off as the deprecated alias (warns via `warn_force_prompt_skip_deprecated`, still honored).
+- [x] `pyve env purge` (no-arg sweep, [env.sh](../../lib/commands/env.sh)): **gained `--yes`/`-y`**; `--force` now warns. (`pyve env purge <name>` deletes without a prompt, so flags are moot there — a separate consistency point for P.l.6.)
+- [x] `pyve env prune`: gained `--yes`/`-y` (dispatcher forward + leaf parser); `--force` warns.
+- [x] `pyve env sync` and `pyve init --force` left as-is — they already use `--force` in the override/escalate sense (verified conformant).
+- [x] Shared `warn_force_prompt_skip_deprecated` ([ui/core.sh](../../lib/ui/core.sh)); help/usage strings updated; project-essentials records the one-meaning-each rule + command table. Tests: new [test_force_yes_semantics.bats](../../tests/unit/test_force_yes_semantics.bats) (prompt-skip via `--yes`, `--force` deprecation-warning path, across purge / env purge / env prune). Reconciled one over-broad proxy in `test_env_dispatcher.bats` (anchored the rename-nag check on its signature, not the bare word "deprecated"). Full unit suite green; shellcheck baseline unchanged.
+
+**Also (P.i.17 straggler fixed here):** `show_purge_help` still advertised `pyve purge [<dir>]` / `custom_venv` (a second copy of the retired custom-venv-dir positional, like the `show_init_help` one caught in P.j) — `pyve purge <dir>` now hard-errors, so that was removed while adding the `--force` deprecation line.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.2: Schema + readers — add the `editable` directive, lift the source mutex, define directive order [Planned]
+
+Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_toml_helper.py](../../lib/pyve_toml_helper.py), [manifest.sh](../../lib/manifest.sh)). **Remove the `requirements ⊕ extra ⊕ manifest` mutex** (validator [pyve_toml_helper.py:353](../../lib/pyve_toml_helper.py#L353)). Define + validate the fixed directive order (conda `manifest` → `editable` → `requirements` → `extra` → packages) and keep closed-vocabulary validation. Flat composable keys. Single-key blocks stay valid (single-directive recipes).
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.3: venv materializer — compose the full directive recipe in one shot [Planned]
+
+`_env_install_venv` ([env.sh](../../lib/commands/env.sh#L99)) composes **all** declared directives in order instead of the current mutex-precedence pick-one; adds the missing `editable` step (`pip install -e ".[extras]"`). `pyve env init <name>` materializes the whole recipe. Existing single-directive blocks unchanged.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.4: conda/micromamba materializer — compose directives (manifest first, then pip layer) [Planned]
+
+`_env_install_conda` composes the recipe: the conda `manifest` (`environment.yml`) layered first, then the pip layer (O.n) realizes `editable` / `requirements` / `extra`. Mirrors P.l.3's ordering for the micromamba backend.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.5: One-shot `--force` rebuild + `pyve init --force` root-only scope [Planned]
+
+`pyve env init <name> --force` = purge-and-rebuild in one shot (per P.l.1's `--force` = escalate/override meaning). `pyve init --force` **explicitly touches only the root env** — retire the silent "rebuild root, keep testenv" magic (the `purge_project --keep-testenv` coupling). Rebuild of a named env is its own `pyve env init <name> --force`.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.6: Uniform per-env repair — route each role to the right verb (no dead-ends) [Planned]
+
+Resolve the field dead-end without namespace unification (routing, per the developer's decision): `pyve env purge root` → signpost to **`pyve purge`** (a purge, not a rebuild); `pyve env init root [--force]` → signpost to `pyve init [--force]`; `pyve check` / heal route each role to its correct verb. A human never hits an unexplained rejection or has to know which namespace owns which env.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.l.7: Migration verification + docs + project-essentials wrap-up [Planned]
+
+Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (as single-directive recipes) end-to-end. Document the directive vocabulary + ordering, the one-shot rebuild model, and the routing map; add the project-essentials entries (declarative-recipe model; the `--yes`/`--force` rule table from P.l.1). Close the P.l bundle.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
 
 ---
 

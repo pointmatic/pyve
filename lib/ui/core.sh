@@ -51,6 +51,15 @@ success() { echo -e "  ${CHECK} $1"; }
 warn()    { echo -e "  ${WARN} $1"; }
 fail()    { echo -e "\n  ${CROSS} ${R}$1${RESET}\n"; exit 1; }
 
+# Story P.l.1: `--yes`/`--force` carry one meaning each. `--yes`/`-y` skips the
+# confirmation prompt; `--force` means "override a refusal / escalate to a
+# destructive action" (as in `pyve init --force`). The purge family historically
+# accepted `--force` as a prompt-skip synonym — this warns on that deprecated
+# use and points at `--yes`, while still honoring it for one release.
+warn_force_prompt_skip_deprecated() {
+    warn "'--force' as a confirmation skip is deprecated — use '--yes' (-y). '--force' now means 'override a refusal / escalate to a destructive action' (as in 'pyve init --force')."
+}
+
 # Prompt with default Y. Returns 0 for yes; exits 0 (not an
 # error) for anything else so the caller's `set -e` does not
 # treat an intentional abort as a failure.
