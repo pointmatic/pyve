@@ -830,9 +830,14 @@ Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_
 
 ---
 
-### Story P.l.4: conda/micromamba materializer — compose directives (manifest first, then pip layer) [Planned]
+### Story P.l.4: conda/micromamba materializer — compose directives (manifest first, then pip layer) [Done]
 
 `_env_install_conda` composes the recipe: the conda `manifest` (`environment.yml`) layered first, then the pip layer (O.n) realizes `editable` / `requirements` / `extra`. Mirrors P.l.3's ordering for the micromamba backend.
+
+- [x] `_env_install_conda` ([env.sh](../../lib/commands/env.sh)) composes the full pip recipe after the manifest sync — `editable` → `requirements` → `extra` in P.l.2's fixed order (conda `manifest` first), each layer installed into the env via `micromamba run -p` — replacing the pip layer's pick-one precedence (`_env_conda_pip_layer` retired; its logic folded into the materializer). CLI `-r <file>` stays a full override of the *pip layer* only; the manifest remains the conda base and always syncs.
+- [x] Up-front recipe validation mirror: the pip directives (requirements files exist, extra resolves, CLI `-r` file exists) validate BEFORE the manifest sync, so a bad directive fails before any layer installs — including the conda solve (previously the sync ran first and pip-layer validation happened only after it).
+- [x] One-shot init mirror: `_env_init_materialize_recipe` no longer early-returns on micromamba — a conda env with declared pip directives materializes them at `pyve env init <name>` (the `manifest` already lands via create; the install path re-syncs it first, idempotently, so the layers land in order; no declared pip directives → no pip layer and no redundant conda solve).
+- [x] Tests: new [test_conda_materializer.bats](../../tests/unit/test_conda_materializer.bats) (full-recipe compose + ordering after the sync; editable-alone; validate-before-sync on missing requirements file / unresolvable extra; CLI `-r` pip-layer override with manifest still syncing; requirements-only back-compat; one-shot conda init materializes pip directives / stays quiet with none declared). Full unit suite green (2091 tests, 0 failures); shellcheck baseline unchanged.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
