@@ -20,6 +20,7 @@
 #   PYVE_ENV_PURPOSE[]          — run | test | utility | temp | ""
 #   PYVE_ENV_BACKEND[]          — plugin-registered backend name | ""
 #   PYVE_ENV_PATH[]             — working/detection root (default ".")
+#   PYVE_ENV_EDITABLE[]         — `editable` setup directive (P.l.2) | ""
 #   PYVE_ENV_DEFAULT[]          — "0" / "1"
 #   PYVE_ENV_LAZY[]             — "0" / "1"
 #   PYVE_ENV_EXTRA[]            — pyproject extra name | ""
@@ -104,6 +105,7 @@ _manifest_reset_state() {
     PYVE_ENV_PURPOSE=()
     PYVE_ENV_BACKEND=()
     PYVE_ENV_PATH=()
+    PYVE_ENV_EDITABLE=()
     PYVE_ENV_DEFAULT=()
     PYVE_ENV_LAZY=()
     PYVE_ENV_EXTRA=()
@@ -197,6 +199,13 @@ manifest_get_backend() {
 manifest_get_path() {
     local i; i="$(_manifest_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_ENV_PATH[$i]}"
+}
+
+# The `editable` setup directive (P.l.2): an editable self-install target with
+# optional extras (e.g. ".[corruptions]"), or empty when not declared.
+manifest_get_editable() {
+    local i; i="$(_manifest_name_to_index "$1")" || return 1
+    printf '%s' "${PYVE_ENV_EDITABLE[$i]}"
 }
 
 manifest_get_app_type() {

@@ -803,9 +803,15 @@ requirements = ["requirements-dev.txt"]     # composes — no mutex
 
 ---
 
-### Story P.l.2: Schema + readers — add the `editable` directive, lift the source mutex, define directive order [Planned]
+### Story P.l.2: Schema + readers — add the `editable` directive, lift the source mutex, define directive order [Done]
 
 Add `editable` to `KNOWN_ENV_KEYS` + the `manifest.sh` accessor + `emit` ([pyve_toml_helper.py](../../lib/pyve_toml_helper.py), [manifest.sh](../../lib/manifest.sh)). **Remove the `requirements ⊕ extra ⊕ manifest` mutex** (validator [pyve_toml_helper.py:353](../../lib/pyve_toml_helper.py#L353)). Define + validate the fixed directive order (conda `manifest` → `editable` → `requirements` → `extra` → packages) and keep closed-vocabulary validation. Flat composable keys. Single-key blocks stay valid (single-directive recipes).
+
+- [x] `editable` added to `KNOWN_ENV_KEYS` + `_normalize_env` + `emit` (`PYVE_ENV_EDITABLE`); reader `manifest_get_editable` + reset + header doc in [manifest.sh](../../lib/manifest.sh).
+- [x] **Mutex lifted** in `validate()` — the block is a composable recipe; the fixed materialization order (conda `manifest` → `editable` → `requirements` → `extra`) is documented at the removal site for P.l.3/P.l.4 to apply. Closed-vocabulary validation on the other axes unchanged.
+- [x] Tests: new [test_env_directives.bats](../../tests/unit/test_env_directives.bats) (editable read; all-directives compose clean; single-directive back-compat). Converted the now-obsolete mutex-conflict case in [test_manifest.bats](../../tests/unit/test_manifest.bats) into a composition case. Full unit suite green; shellcheck baseline unchanged.
+
+**Note:** `editable` is now recorded + read, but not yet *materialized* — P.l.3 (venv materializer) is its first consumer. Until then a declared `editable` validates and round-trips but installs nothing.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
