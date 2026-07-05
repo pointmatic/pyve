@@ -1139,6 +1139,20 @@ pyve_file_sha256() {
     fi
 }
 
+# SHA-256 of a string argument. Same tool order and no-weaker-hash
+# contract as pyve_file_sha256 (sha256sum → shasum -a 256; non-zero
+# with no output when neither exists — callers must handle it, never
+# substitute a CRC).
+pyve_string_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$1" | sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
 #============================================================
 # Cloud Sync Detection
 #============================================================

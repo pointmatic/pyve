@@ -18,6 +18,17 @@
 # scripts/test-impact.sh); default is the whole tests/unit tree.
 set -euo pipefail
 
+# Refuse re-entrant invocation. A caller that reaches this script from
+# INSIDE a run it started would nest the whole suite recursively —
+# that exact leak (a test scenario picking up the real bats from a
+# system PATH dir on Linux) hung CI for hours with silently orphaned
+# parallel workers. Fail loud and instantly instead.
+if [[ -n "${PYVE_RUNNER_REENTRY:-}" ]]; then
+    echo "run-unit-tests.sh: refusing re-entrant invocation (a test suite must not run itself)" >&2
+    exit 1
+fi
+export PYVE_RUNNER_REENTRY=1
+
 cd "$(dirname "$0")/.."
 
 declare -a files=("$@")

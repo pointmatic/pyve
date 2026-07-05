@@ -942,14 +942,29 @@ The code_test_first mode template's cycle runs the **full** test suite after eve
 
 ---
 
-### Story P.m: Operational-state record — extend `.state` with an installed dimension [Planned]
+### Story P.l.12: CI hang fix — the runner suite recursed into the real suite on Linux; refuse re-entrancy, isolate the test PATH [Done]
+
+*(Debug story — root cause unknown until explored. Field report: the last 4 CI runs never completed; the developer cancelled them and captured the logs. Diagnosis from the logs: the ubuntu unit job printed test output up to the file alphabetically before test_run_unit_tests.bats, then went silent for ~3.5 hours until cancellation terminated an orphaned `make → bash → parallel → bash×N` process tree. The macOS unit job was actually green in ~8 minutes — the hang was Linux-only.)*
+
+**Root cause.** test_run_unit_tests.bats (P.l.8) isolated the runner script's PATH as "system dirs only" (`/usr/bin:/bin:/usr/sbin:/sbin`) — an assumption that holds on macOS (homebrew installs bats/parallel outside those dirs) but not on Linux, where **apt installs the real `bats` and `parallel` into `/usr/bin`**. The "bats missing" scenario therefore found the real bats, took the real parallel branch, and `exec`'d the **entire real unit suite inside itself** — which re-runs test_run_unit_tests.bats, which re-launches the suite again: unbounded suite-inside-suite recursion. Under `bats --jobs` + `--keep-order`, the stuck job slot also silently buffered all downstream output. Reproduced locally by pointing the scenario's PATH at dirs containing the real tools.
+
+- [x] **Re-entrancy guard (the class fix)**: `scripts/run-unit-tests.sh` exports `PYVE_RUNNER_REENTRY` and hard-errors ("refusing re-entrant invocation — a test suite must not run itself") if it is already set, so ANY future leak of this shape fails loudly in seconds instead of hanging CI for hours with orphaned parallel workers.
+- [x] **Airtight test isolation (the instance fix)**: the suite's baseline PATH is now a per-test toolbox containing only the utilities the runner needs (`bash`, `dirname`) — real bats/parallel cannot leak in on any OS. The stubbed invocations explicitly clear `PYVE_RUNNER_REENTRY=` (the outer CI run sets it, by design).
+- [x] Tests (red→green): the guard refuses when the sentinel is set (nothing invoked); an isolation pin asserts bats reads as missing on the toolbox PATH even on machines that have it installed. CI-shape scenario verified locally: real tools on PATH + sentinel set → instant refusal, rc 1.
+- [x] Full unit suite green under the guard (the gate run itself executes with the sentinel exported, proving no false-fire); runner script shellchecks clean.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
+### Story P.m: Operational-state record — extend `.state` with an installed dimension [Done]
 
 Record actual (vs. declared) env state so rebuild can restore it. The per-env `.state` store exists ([lib/envs.sh:387](../../lib/envs.sh#L387)) but is written only at **realize** (env dir built), never at **install** — so there's no "deps installed" bit (only a conda `manifest_sha256`; venv has nothing). Add an installed-spec hash for **both** backends and write `.state` from the install path, so realized-vs-installed is recorded, not re-derived from the filesystem. Stays `.pyve/`-resident — no `pyve.yaml`.
 
-- [ ] Extend the closed `.state` key set ([lib/envs.sh:399](../../lib/envs.sh#L399)) with an installed-spec hash (venv: resolved requirement set; conda: existing manifest hash) + an installed/realized marker.
-- [ ] Write/update `.state` from `_env_install_venv` / `_env_install_conda` ([lib/commands/env.sh](../../lib/commands/env.sh)), which today never touch it.
-- [ ] `pyve env list` STATE column reads the recorded state rather than re-probing where possible.
-- [ ] Tests: a realize-only env records "realized, not installed"; after install records "installed" with the spec hash.
+- [x] Extend the closed `.state` key set with `installed_at` (0 = realized only; >0 = install completed then) + `installed_sha256` (digest of the effective install spec via new `env_recipe_sha256` in [envs.sh](../../lib/envs.sh): editable target, requirements file contents, extra + pyproject, conda manifest; CLI `-r` replaces the declared pip recipe, mirroring the materializers). New `pyve_string_sha256` in [utils.sh](../../lib/utils.sh) (same no-weaker-hash contract as `pyve_file_sha256`). Pre-existing five-field `.state` files read as installed_at=0; `state_touch_last_used` preserves the new fields.
+- [x] `state_mark_installed` ([envs.sh](../../lib/envs.sh)) written from every `_env_install_venv` success path (CLI `-r`, declared recipe, both fallbacks) and from `_env_install_conda` after all layers ([env.sh](../../lib/commands/env.sh)); preserves provisioning fields, creates a fresh record for pre-dimension envs, degrades to an empty hash when no SHA tool exists (the stamp still lands).
+- [x] `pyve env list` STATE renders the recorded dimension: declared + on-disk shows **ready** only when installed_at>0, else **realized** (on-disk but recipe never installed). Pre-P.m installed envs show "realized" until their next install/test run re-stamps them — recorded truth, never a filesystem guess.
+- [x] Tests: new [test_state_installed.bats](../../tests/unit/test_state_installed.bats) (8: schema round-trip; five-field back-compat; touch preserves; venv install stamps 64-hex digest; digest tracks requirements content; realize-only stays 0; conda install stamps with manifest in digest; list renders ready vs realized). One fixture reconciled in test_testenv_list_prune.bats (records installed_at, matching the new STATE contract). Full suite green (2134 tests, 0 failures); shellcheck baselines unchanged on all three edited lib files.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

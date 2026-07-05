@@ -403,6 +403,14 @@ env_exec_conda() {
 #   manifest_sha256=<64-hex or empty>
 #   provisioned_at=<unix epoch seconds>
 #   last_used_at=<unix epoch seconds or 0>
+#   installed_at=<unix epoch seconds or 0>   (0 = realized only, deps never installed)
+#   installed_sha256=<64-hex or empty>       (digest of the effective install spec)
+#
+# `installed_at`/`installed_sha256` record the ACTUAL operational
+# state (deps installed, and from what spec) as distinct from the env
+# merely being realized on disk — recorded at install time, never
+# re-derived from the filesystem. Pre-existing five-field .state files
+# read with installed_at=0 (realized, not installed).
 
 # Print the .state file path for <name>.
 state_path() {
@@ -415,6 +423,8 @@ state_path() {
 #   manifest_sha256=<hex>
 #   provisioned_at=<epoch>   (default: current epoch)
 #   last_used_at=<epoch>     (default: 0)
+#   installed_at=<epoch>     (default: 0 — realized only)
+#   installed_sha256=<hex>
 # Unknown keys are a hard error.
 state_write() {
     local name="${1:-}" backend="${2:-}"
@@ -423,16 +433,18 @@ state_write() {
         return 1
     fi
     shift 2
-    local manifest="" sha="" prov="" last="0"
+    local manifest="" sha="" prov="" last="0" inst_at="0" inst_sha=""
     local arg key val
     for arg in "$@"; do
         key="${arg%%=*}"
         val="${arg#*=}"
         case "$key" in
-            manifest)        manifest="$val" ;;
-            manifest_sha256) sha="$val" ;;
-            provisioned_at)  prov="$val" ;;
-            last_used_at)    last="$val" ;;
+            manifest)         manifest="$val" ;;
+            manifest_sha256)  sha="$val" ;;
+            provisioned_at)   prov="$val" ;;
+            last_used_at)     last="$val" ;;
+            installed_at)     inst_at="$val" ;;
+            installed_sha256) inst_sha="$val" ;;
             *)
                 printf "error: state_write: unknown keyword arg '%s'\n" "$key" >&2
                 return 1
@@ -448,6 +460,8 @@ state_write() {
         printf 'manifest_sha256=%s\n' "$sha"
         printf 'provisioned_at=%s\n'  "$prov"
         printf 'last_used_at=%s\n'    "$last"
+        printf 'installed_at=%s\n'    "$inst_at"
+        printf 'installed_sha256=%s\n' "$inst_sha"
     } > "$file"
 }
 
@@ -460,17 +474,19 @@ state_read() {
     # Source into local vars first (subshell isolation), then promote.
     # Use a clean associative read rather than a raw `source` so a
     # malformed .state cannot inject arbitrary shell.
-    local backend="" manifest="" sha="" prov="" last="0"
+    local backend="" manifest="" sha="" prov="" last="0" inst_at="0" inst_sha=""
     local line key val
     while IFS= read -r line || [[ -n "$line" ]]; do
         key="${line%%=*}"
         val="${line#*=}"
         case "$key" in
-            backend)         backend="$val" ;;
-            manifest)        manifest="$val" ;;
-            manifest_sha256) sha="$val" ;;
-            provisioned_at)  prov="$val" ;;
-            last_used_at)    last="$val" ;;
+            backend)          backend="$val" ;;
+            manifest)         manifest="$val" ;;
+            manifest_sha256)  sha="$val" ;;
+            provisioned_at)   prov="$val" ;;
+            last_used_at)     last="$val" ;;
+            installed_at)     inst_at="$val" ;;
+            installed_sha256) inst_sha="$val" ;;
         esac
     done < "$file"
     PYVE_TESTENV_STATE_BACKEND="$backend"
@@ -479,6 +495,9 @@ state_read() {
     PYVE_TESTENV_STATE_PROVISIONED_AT="$prov"
     # shellcheck disable=SC2034 # exposed state global, read in lib/commands/env.sh (cross-file)
     PYVE_TESTENV_STATE_LAST_USED_AT="$last"
+    PYVE_TESTENV_STATE_INSTALLED_AT="$inst_at"
+    # shellcheck disable=SC2034 # exposed state global (cross-file readers)
+    PYVE_TESTENV_STATE_INSTALLED_SHA256="$inst_sha"
 }
 
 # Update only `last_used_at` to the current epoch; preserve all other
@@ -490,7 +509,79 @@ state_touch_last_used() {
         manifest="$PYVE_TESTENV_STATE_MANIFEST" \
         manifest_sha256="$PYVE_TESTENV_STATE_MANIFEST_SHA256" \
         provisioned_at="$PYVE_TESTENV_STATE_PROVISIONED_AT" \
-        last_used_at="$(date +%s)"
+        last_used_at="$(date +%s)" \
+        installed_at="$PYVE_TESTENV_STATE_INSTALLED_AT" \
+        installed_sha256="$PYVE_TESTENV_STATE_INSTALLED_SHA256"
+}
+
+# Digest of <name>'s effective install spec — what a re-install would
+# consume: the editable target, each requirements file's content, the
+# extra group (plus pyproject.toml, which defines it), and for conda
+# the environment.yml content. A CLI -r file replaces the declared pip
+# recipe, mirroring the materializers' override semantics. Empty
+# output + non-zero when no SHA-256 tool exists (pyve_string_sha256's
+# contract — never a weaker hash).
+env_recipe_sha256() {
+    local name="$1" backend="$2" cli_req_file="${3:-}"
+    local buf="" f fsha
+    if [[ "$backend" == "micromamba" ]]; then
+        local manifest
+        manifest="$(_env_manifest_of "$name" 2>/dev/null)" || manifest=""
+        if [[ -n "$manifest" && -f "$manifest" ]]; then
+            fsha="$(pyve_file_sha256 "$manifest")" || return 1
+            buf+="manifest:$manifest:$fsha"$'\n'
+        fi
+    fi
+    if [[ -n "$cli_req_file" && -f "$cli_req_file" ]]; then
+        fsha="$(pyve_file_sha256 "$cli_req_file")" || return 1
+        buf+="cli-r:$cli_req_file:$fsha"$'\n'
+    else
+        local editable extra
+        editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+        extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+        local -a reqs=()
+        _env_requirements_of "$name" reqs 2>/dev/null || true
+        [[ -n "$editable" ]] && buf+="editable:$editable"$'\n'
+        for f in "${reqs[@]+"${reqs[@]}"}"; do
+            [[ -f "$f" ]] || continue
+            fsha="$(pyve_file_sha256 "$f")" || return 1
+            buf+="requirements:$f:$fsha"$'\n'
+        done
+        if [[ -n "$extra" ]]; then
+            buf+="extra:$extra"$'\n'
+            local pyproject="${PYVE_PYPROJECT:-pyproject.toml}"
+            if [[ -f "$pyproject" ]]; then
+                fsha="$(pyve_file_sha256 "$pyproject")" || return 1
+                buf+="pyproject:$fsha"$'\n'
+            fi
+        fi
+    fi
+    pyve_string_sha256 "$buf"
+}
+
+# Record a completed install in <name>'s .state: stamp installed_at
+# and the installed-spec digest so realized-vs-installed is recorded,
+# not re-derived from the filesystem. Preserves the existing record's
+# provisioning fields; creates a fresh record when none exists yet
+# (envs realized before the installed dimension shipped). A digest
+# failure (no SHA-256 tool) degrades to an empty hash — the
+# installed_at stamp still lands.
+state_mark_installed() {
+    local name="$1" backend="$2" cli_req_file="${3:-}"
+    local inst_sha
+    inst_sha="$(env_recipe_sha256 "$name" "$backend" "$cli_req_file" 2>/dev/null)" || inst_sha=""
+    local manifest="" msha="" prov="" last="0"
+    if state_read "$name" 2>/dev/null; then
+        manifest="$PYVE_TESTENV_STATE_MANIFEST"
+        msha="$PYVE_TESTENV_STATE_MANIFEST_SHA256"
+        prov="$PYVE_TESTENV_STATE_PROVISIONED_AT"
+        last="$PYVE_TESTENV_STATE_LAST_USED_AT"
+        [[ -z "$backend" ]] && backend="$PYVE_TESTENV_STATE_BACKEND"
+    fi
+    local -a args=("$name" "$backend" manifest="$manifest" manifest_sha256="$msha" \
+        last_used_at="$last" installed_at="$(date +%s)" installed_sha256="$inst_sha")
+    [[ -n "$prov" ]] && args+=(provisioned_at="$prov")
+    state_write "${args[@]}"
 }
 
 # =====================================================================

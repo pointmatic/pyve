@@ -194,6 +194,7 @@ _env_install_venv() {
             exit 1
         fi
         run_cmd "$env_path/bin/python" -m pip install -r "$cli_req_file"
+        state_mark_installed "$name" venv "$cli_req_file"
         success "Dev/test dependencies installed"
         return 0
     fi
@@ -238,6 +239,7 @@ _env_install_venv() {
                 run_cmd "$env_path/bin/python" -m pip install "${extra_pkgs[@]}"
             fi
         fi
+        state_mark_installed "$name" venv ""
         success "Dev/test dependencies installed"
         return 0
     fi
@@ -246,10 +248,12 @@ _env_install_venv() {
     # auto-detect requirements-dev.txt, else bare pytest.
     if [[ -f "requirements-dev.txt" ]]; then
         run_cmd "$env_path/bin/python" -m pip install -r "requirements-dev.txt"
+        state_mark_installed "$name" venv "requirements-dev.txt"
         success "Dev/test dependencies installed"
         return 0
     fi
     run_cmd "$env_path/bin/python" -m pip install pytest
+    state_mark_installed "$name" venv ""
     success "Dev/test dependencies installed"
 }
 
@@ -382,7 +386,9 @@ _env_list_one_row() {
         size="--"
     fi
 
+    local had_state=0
     if state_read "$name" 2>/dev/null; then
+        had_state=1
         if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" == "0" ]]; then
             last_used="never"
         else
@@ -394,7 +400,14 @@ _env_list_one_row() {
 
     if is_env_declared "$name"; then
         if [[ "$on_disk" == "1" ]]; then
-            state="ready"
+            # The recorded installed dimension, not a filesystem probe:
+            # installed_at>0 → operable ("ready"); otherwise the env is
+            # realized on disk but its recipe was never installed.
+            if [[ "$had_state" == "1" && "${PYVE_TESTENV_STATE_INSTALLED_AT:-0}" != "0" ]]; then
+                state="ready"
+            else
+                state="realized"
+            fi
         elif is_env_lazy "$name"; then
             state="lazy"
         else
@@ -1031,6 +1044,7 @@ _env_install_conda() {
     if [[ -n "$pip_editable" || "${#pip_r_args[@]}" -gt 0 || -n "$pip_extra" ]]; then
         success "Pip layer installed into '$name'"
     fi
+    state_mark_installed "$name" micromamba "$cli_req_file"
     return 0
 }
 

@@ -56,7 +56,11 @@ _make_env_on_disk() {
 exit 0
 SH
     chmod +x ".pyve/envs/$name/$kind/bin/python"
-    state_write "$name" "$backend" provisioned_at=1735689600 last_used_at="$last_used"
+    # Record the env as installed — the STATE column renders the
+    # recorded installed dimension ("ready" needs installed_at>0; a
+    # realized-only record renders "realized").
+    state_write "$name" "$backend" provisioned_at=1735689600 last_used_at="$last_used" \
+        installed_at=1735689600
 }
 
 # Stub `du` to a deterministic output so size assertions are stable.
