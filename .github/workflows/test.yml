@@ -23,12 +23,12 @@ jobs:
       - name: Install Bats
         run: |
           if [ "$RUNNER_OS" == "macOS" ]; then
-            brew install bats-core
+            brew install bats-core parallel
           else
             sudo apt-get update
-            sudo apt-get install -y bats
+            sudo apt-get install -y bats parallel
           fi
-      
+
       - name: Run unit tests
         run: make test-unit
       

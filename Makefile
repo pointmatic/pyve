@@ -9,7 +9,7 @@ PYTHON ?= python3
 help:
 	@echo "Pyve Test Targets:"
 	@echo "  make test                          - Run all tests (unit + integration)"
-	@echo "  make test-unit                     - Run only Bats unit tests"
+	@echo "  make test-unit                     - Run only Bats unit tests (parallel with GNU parallel; PYVE_TEST_JOBS=<n> overrides)"
 	@echo "  make test-perf                     - Run only the Bats latency budget regression (PC-4b)"
 	@echo "  make test-integration              - Run only pytest integration tests"
 	@echo "  make test-integration-ci           - Run venv tests with CI=true (simulates CI)"
@@ -21,6 +21,7 @@ help:
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Bats: brew install bats-core (macOS) or sudo apt-get install bats (Linux)"
+	@echo "  - GNU parallel (optional, ~3x faster unit suite): brew install parallel / apt-get install parallel"
 	@echo "  - pytest: $(PYTHON) -m pip install -r requirements-dev.txt"
 	@echo "  make test-deps                     - Install Python dev/test dependencies"
 
@@ -32,21 +33,11 @@ test-deps:
 	@echo "Installing Python dev/test dependencies..."
 	@$(PYTHON) -m pip install -r requirements-dev.txt
 
-# Run only Bats unit tests
+# Run only Bats unit tests. Parallel across files when GNU parallel is
+# installed (~4-6 min serial -> under 2 min on a 14-core machine);
+# PYVE_TEST_JOBS=<n> overrides the job count (default: CPU count).
 test-unit:
-	@echo "Running Bats unit tests..."
-	@if command -v bats >/dev/null 2>&1; then \
-		if [ -n "$$(find tests/unit -name '*.bats' 2>/dev/null)" ]; then \
-			bats tests/unit/*.bats; \
-		else \
-			echo "No Bats tests found in tests/unit/"; \
-		fi \
-	else \
-		echo "Error: Bats not installed. Install with:"; \
-		echo "  macOS: brew install bats-core"; \
-		echo "  Linux: sudo apt-get install bats"; \
-		exit 1; \
-	fi
+	@./scripts/run-unit-tests.sh
 
 # Run only the perf/latency regression (Bats). Story N.ak (PC-4b): enforces
 # the per-plugin activation latency budget (p95 <= 50ms). Skips gracefully

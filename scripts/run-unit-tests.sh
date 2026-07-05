@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+#
+# Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
+# SPDX-License-Identifier: Apache-2.0
+#
+# Run the Bats unit suite — the entry point behind `make test-unit`.
+#
+# Parallelizes across test files via `bats --jobs` when GNU parallel is
+# available (measured on a 14-core dev machine: ~4-6 min serial →
+# under 2 min parallel; bats parallelizes across files, so the largest
+# files bound the win). Falls back to a serial run otherwise —
+# parallelism is a wall-clock optimization, never a semantic switch.
+# PYVE_TEST_JOBS overrides the job count (default: CPU count).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+if ! command -v bats >/dev/null 2>&1; then
+    echo "Error: Bats not installed. Install with:" >&2
+    echo "  macOS: brew install bats-core" >&2
+    echo "  Linux: sudo apt-get install bats" >&2
+    exit 1
+fi
+
+jobs="${PYVE_TEST_JOBS:-}"
+if [[ -z "$jobs" ]]; then
+    jobs="$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)"
+fi
+
+if command -v parallel >/dev/null 2>&1; then
+    echo "Running Bats unit tests (--jobs $jobs; override with PYVE_TEST_JOBS=<n>)..."
+    exec bats --jobs "$jobs" tests/unit/*.bats
+fi
+
+echo "Running Bats unit tests serially (install GNU parallel for a ~3x faster suite: brew install parallel / apt-get install parallel)..."
+exec bats tests/unit/*.bats

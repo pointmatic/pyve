@@ -889,11 +889,16 @@ Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (
 
 ---
 
-### Story P.l.8: Parallel unit suite — `bats --jobs` in the Makefile (measured: ~4–6 min → ~1:47) [Planned]
+### Story P.l.8: Parallel unit suite — `bats --jobs` in the Makefile (measured: ~4–6 min → 1:37) [Done]
 
 *(P.l.8–P.l.11 are the test-infrastructure arc: iterate on targeted suites, run the full suite at story gates, let CI be the ultimate arbiter. Motivated at the P.l.5 gate: 2100 unit tests today, a polyglot future of plugins (Rust, Go, C++, C#, React) heading toward 5–10×, and a mode cadence that runs the whole suite on every task iteration.)*
 
 The suite is serial today (`bats tests/unit/*.bats`, one core, ~4–6 min). GNU parallel is installed; a grounding run of `bats --jobs 8 tests/unit/*.bats` completed all 2100 tests in **1:46.85** (335% CPU — bats parallelizes across files, so the largest files bound the win). Story: wire `make test-unit` to use `--jobs` when GNU parallel is present (serial fallback otherwise; job count from `PYVE_TEST_JOBS`, defaulting to a core-based value; tune the default — file-level granularity may reward more than 8 jobs), verify the suite is parallel-clean (fix or explicitly serialize any file that proves order- or state-dependent), record before/after wall times in the Makefile help, and adopt the same invocation in the CI workflow where the runner benefits.
+
+- [x] `scripts/run-unit-tests.sh` — the one unit-suite entry point: `bats --jobs $PYVE_TEST_JOBS` (default: CPU count via `sysctl`/`nproc`) when GNU parallel is on PATH; serial fallback with a one-line install hint otherwise; actionable bats-missing error. `make test-unit` delegates to it; the kcov coverage job's direct serial bats call is intentionally untouched (coverage collection under parallel kcov is not supported).
+- [x] CI: the unit-tests matrix job installs GNU parallel on both runners (`brew install … parallel` / `apt-get install -y … parallel`); it already runs `make test-unit`, so it inherits the parallel path — and degrades to serial by construction wherever parallel is absent.
+- [x] Job-count default tuned on the 14-core dev machine: `-j 8` = 1:46.85 (335% CPU), `-j 14` = 1:37.31 (386% CPU) — CPU-count default confirmed (file-level granularity bounds further gains); recorded in the Makefile comments/help.
+- [x] Tests: new [test_run_unit_tests.bats](../../tests/unit/test_run_unit_tests.bats) (parallel present → bats invoked with `--jobs <n>`; `PYVE_TEST_JOBS` override honored; parallel absent → serial invocation, no `--jobs`; bats absent → actionable install error). Full suite green (2116 tests, 0 failures, 1:37 wall); the new script shellchecks clean (zero findings).
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
