@@ -90,3 +90,14 @@ _stub_parallel() {
     grep -q -- "--filter-tags init" "$STUB_LOG"
     ! grep -q -- "--jobs" "$STUB_LOG"
 }
+
+@test "runner: explicit test-file args narrow the run to those files" {
+    _stub_bats
+    run env PATH="$STUB_DIR:$SYS_PATH" "$RUNNER" \
+        tests/unit/test_manifest.bats tests/unit/test_utils.bats
+    [ "$status" -eq 0 ]
+    # Serial path (no parallel stub): the two files are argv 1-2, both
+    # inside the stub's recorded window.
+    grep -q "test_manifest.bats" "$STUB_LOG"
+    ! grep -q "test_version.bats" "$STUB_LOG"
+}

@@ -118,6 +118,10 @@ Every `tests/unit/*.bats` file carries a `# bats file_tags=<tag>` line (line 2, 
 
 Targeted runs: `make test-tag TAG=<t>`, or the shorthands `make test-env` / `test-init` / `test-plugin` / `test-check` (all honor `PYVE_TEST_TAGS` through the runner script). A new test file **must** pick the closest tag — the drift guard (`tests/unit/test_tags_guard.bats`, the vocabulary's single source of truth in code) fails the build on an untagged file or an out-of-vocabulary tag. A genuinely new subsystem extends the vocabulary in the guard, this table, and (if high-traffic) the Makefile shorthands, in the same change.
 
+### Impact-mapped runs
+
+`make test-impact` (backed by `scripts/test-impact.sh`) selects test files from your current working-tree changes: a changed test file selects itself; a changed `lib/`/`scripts/` source file selects every test file that references its path suffix or any function name it defines; a 2-file smoke set (`test_cli_dispatch`, `test_tags_guard`) always rides along. `scripts/test-impact.sh --list [<files>…]` prints the selection without running it.
+
 ### The cadence contract
 
 Bash has no import graph and pyve's function table is global, so targeted selection is an **iteration heuristic**, never proof of safety — the field record (a function shadow that passed 725 unit tests and broke only in CI; a SIGPIPE bug that surfaced only on the macOS runner in the full suite) is why the tail matters. The contract:

@@ -918,9 +918,14 @@ Tag all ~166 unit-test files with a small closed subsystem vocabulary (`# bats f
 
 ---
 
-### Story P.l.10: Impact-map script — changed files → the test files that exercise them [Planned]
+### Story P.l.10: Impact-map script — changed files → the test files that exercise them [Done]
 
 `scripts/test-impact.sh`: from `git diff --name-only` (or explicit file args), extract the function names defined in the changed `lib/` files (`^name() {` is reliably greppable), and emit the union of (a) test files that reference any of those names, (b) name-convention matches (`lib/commands/env.sh` → `test_env_*.bats`, …), (c) a small always-run smoke set; `make test-impact` runs the selection. **Explicitly a heuristic for the inner loop** — bash has no import graph and pyve's function table is global, and the field record proves cross-module tails are real (the `python` function-shadow passed 725 unit tests and broke only in CI; the SIGPIPE `grep -q` bug surfaced only on the macOS runner in the full suite; the Bash-3.2 empty-array bug was invisible to bats entirely). The contract — impact selection per iteration, full suite at the story gate, CI as the final arbiter — is documented in [testing-spec.md](testing-spec.md) alongside the tag vocabulary.
+
+- [x] `scripts/test-impact.sh`: changed files from explicit args (hermetic/testable) or `git diff --name-only HEAD` + untracked (default). Three selection channels, unioned: changed test files select themselves; changed `lib/`/`scripts/` shell+python files select test files that reference their path suffix (tests `source` what they exercise) OR any function name defined in them (one alternation grep per changed file); plus a fixed 2-file smoke set (test_cli_dispatch, test_tags_guard). `--list` prints the selection; default mode runs it.
+- [x] `scripts/run-unit-tests.sh` accepts explicit test-file args (default: whole suite) so test-impact composes with the parallel/serial/tags logic instead of duplicating it; `make test-impact` wires it up.
+- [x] The heuristic contract documented in testing-spec.md next to the tag vocabulary (impact per iteration, full suite at gates, CI as arbiter).
+- [x] Tests: new [test_test_impact.bats](../../tests/unit/test_test_impact.bats) (lib change selects its suites + smoke; ui module selects its suite; changed test file selects itself; docs-only change → smoke set exactly; function-name channel reaches suites that never source the file; sorted-unique output) + runner file-args coverage in test_run_unit_tests.bats. Live-tree smoke verified (current diff → 4-file selection, correct). Full suite green (2126 tests, 0 failures via `make test-unit`); both scripts shellcheck clean.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

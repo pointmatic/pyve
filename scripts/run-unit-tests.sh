@@ -14,9 +14,16 @@
 # PYVE_TEST_TAGS=<tag> narrows the run to one subsystem tag
 # (`bats --filter-tags`; the closed vocabulary lives in
 # tests/unit/test_tags_guard.bats and docs/specs/testing-spec.md).
+# Explicit test-file args narrow the run to those files (used by
+# scripts/test-impact.sh); default is the whole tests/unit tree.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
+
+declare -a files=("$@")
+if [[ "${#files[@]}" -eq 0 ]]; then
+    files=(tests/unit/*.bats)
+fi
 
 if ! command -v bats >/dev/null 2>&1; then
     echo "Error: Bats not installed. Install with:" >&2
@@ -37,8 +44,8 @@ fi
 
 if command -v parallel >/dev/null 2>&1; then
     echo "Running Bats unit tests (--jobs $jobs; override with PYVE_TEST_JOBS=<n>)..."
-    exec bats "${bats_args[@]+"${bats_args[@]}"}" --jobs "$jobs" tests/unit/*.bats
+    exec bats "${bats_args[@]+"${bats_args[@]}"}" --jobs "$jobs" "${files[@]}"
 fi
 
 echo "Running Bats unit tests serially (install GNU parallel for a ~3x faster suite: brew install parallel / apt-get install parallel)..."
-exec bats "${bats_args[@]+"${bats_args[@]}"}" tests/unit/*.bats
+exec bats "${bats_args[@]+"${bats_args[@]}"}" "${files[@]}"
