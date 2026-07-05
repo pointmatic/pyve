@@ -931,9 +931,12 @@ Tag all ~166 unit-test files with a small closed subsystem vocabulary (`# bats f
 
 ---
 
-### Story P.l.11: Test-cadence change request to project-guide — targeted per task, full at the gate [Planned]
+### Story P.l.11: Test-cadence change request to project-guide — targeted per task, full at the gate [Done]
 
 The code_test_first mode template's cycle runs the **full** test suite after every task (Step 3f) — the per-iteration cost that motivates P.l.8–P.l.10, and it compounds with suite growth. Per the "Cross-repo coordination — request, don't work around" protocol, write the change-request spec at `docs/specs/project-guide-requests/test-cadence-targeted-then-full.md`: propose the template cadence become *targeted/impacted suites per task; full unit suite once at the story gate; CI runs the whole matrix as the ultimate arbiter*, with rationale (measured costs, suite-growth projection) and compatibility notes (projects without an impact tool simply keep running the full suite). `go.md` is install output and is never hand-edited here; the new cadence lands when the corresponding project-guide release ships.
+
+- [x] Spec written at [project-guide-requests/test-cadence-targeted-then-full.md](project-guide-requests/test-cadence-targeted-then-full.md), matching the established change-request format (problem statement / proposed change / motivation / suggested shape / compatibility): per-task beat becomes "run the tests impacted by the change" with the full suite required once at the story-gate beat; measured pyve numbers as the worked rationale; degrade-safe for projects without targeted tooling (full suite remains the valid default everywhere).
+- [x] Spec-only story: no pyve code, no runtime surface, no go.md edits (install output; the cadence lands via a future project-guide release + `project-guide update`). Suite state unchanged from the P.l.10 gate (2126 tests green).
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 
