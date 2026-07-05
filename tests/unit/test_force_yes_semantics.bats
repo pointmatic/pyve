@@ -3,7 +3,7 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story P.l.1 — one meaning each for --yes / --force across the destructive
+# One meaning each for --yes / --force across the destructive
 # commands. `--yes`/`-y` = "skip the confirmation prompt" (uniform). `--force`
 # = "override a refusal / escalate to destructive" — NOT a prompt-skip
 # synonym. The purge family standardizes on `--yes`; `--force`-as-prompt-skip

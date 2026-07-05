@@ -105,7 +105,7 @@ default = true
 TOML
 }
 
-# P.l.2: what was once a "source conflict" is now a legal composed recipe —
+# What was once a "source conflict" is now a legal composed recipe —
 # directives layer (the requirements ⊕ extra ⊕ manifest mutex was lifted).
 _fixture_composed_directives() {
     cat > pyve.toml <<'TOML'
@@ -331,7 +331,7 @@ TOML
     [[ "$output" == *"default"* ]]
 }
 
-@test "manifest_load: requirements + extra + manifest + editable COMPOSE (mutex lifted, P.l.2)" {
+@test "manifest_load: requirements + extra + manifest + editable COMPOSE (mutex lifted)" {
     _fixture_composed_directives
     run manifest_load
     [ "$status" -eq 0 ]

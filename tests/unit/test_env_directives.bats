@@ -3,12 +3,13 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story P.l.2 — declarative env setup, schema + readers.
+# Declarative env setup — schema + readers.
 #
 # An `[env.<name>]` block declares a COMPOSABLE recipe of directives. This
 # story adds the `editable` directive (editable self-install + extras) and
 # LIFTS the `requirements ⊕ extra ⊕ manifest` mutex so directives layer.
-# Materialization (applying them in the fixed order) is P.l.3/P.l.4.
+# Materialization (applying them in the fixed order) is the
+# per-backend materializers' job, covered in their own suites.
 
 bats_require_minimum_version 1.5.0
 

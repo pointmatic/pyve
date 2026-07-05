@@ -122,7 +122,7 @@ compose_purge() {
                 shift
                 ;;
             --force)
-                # Deprecated prompt-skip alias (Story P.l.1) — still honored.
+                # Deprecated prompt-skip alias — still honored, warns once.
                 warn_force_prompt_skip_deprecated
                 skip_confirm=true
                 shift

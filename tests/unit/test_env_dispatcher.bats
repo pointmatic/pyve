@@ -59,7 +59,7 @@ run_pyve() {
     # The canonical `env` spelling must not emit the `pyve testenv` rename nag.
     # Anchor on the nag's signature phrases — not the bare word "deprecated",
     # which `env --help` now legitimately uses to document the deprecated
-    # `--force` prompt-skip alias (Story P.l.1).
+    # `--force` prompt-skip alias (deprecated, warns).
     [[ "$output" != *"has been renamed to"* ]]
     [[ "$output" != *"legacy form will be removed"* ]]
 }

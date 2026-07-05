@@ -873,11 +873,17 @@ Resolve the field dead-end without namespace unification (routing, per the devel
 
 ---
 
-### Story P.l.7: Migration verification + docs + project-essentials wrap-up [Planned]
+### Story P.l.7: Migration verification + docs + project-essentials wrap-up [Done]
 
 Prove existing `requirements`/`extra`/`manifest`-only blocks still materialize (as single-directive recipes) end-to-end. Document the directive vocabulary + ordering, the one-shot rebuild model, and the routing map; add the project-essentials entries (declarative-recipe model; the `--yes`/`--force` rule table from P.l.1). Closes the declarative-recipe arc of the P.l bundle (P.l.1–P.l.6); the test-infrastructure riders P.l.8–P.l.11 follow as their own arc.
 
 **Also: sweep the story/phase-ID comments the P.l bundle itself introduced** — the "No story / phase IDs in code or comments" essentials rule was violated during P.l.1–P.l.3 (caught at the P.l.4 gate). ~22 sites: `# Story P.l.x:` leaders and bare `P.l.x` refs across [env.sh](../../lib/commands/env.sh), [envs.sh](../../lib/envs.sh), [manifest.sh](../../lib/manifest.sh), [pyve_toml_helper.py](../../lib/pyve_toml_helper.py), [ui/core.sh](../../lib/ui/core.sh), [purge_composer.sh](../../lib/purge_composer.sh), and six bats files (test_force_yes_semantics, test_env_directives, test_venv_materializer, test_manifest, test_testenv_init_name, test_env_dispatcher). Rewrite each as self-contained prose (state the *why*, no ID); keep any ref that is genuinely load-bearing per the rule's exception list. Enforcement grep: `grep -rn 'P\.l\.[0-9]\|Story P\.l' lib/ pyve.sh tests/`.
+
+- [x] Verification: every single-directive block shape still materializes — venv `requirements`-only / `extra`-only and conda `manifest`-only / `requirements`-only were already pinned by existing suites; close the one gap (conda `extra`-only, the old precedence-3 path) with a test in test_conda_materializer.bats. Confirm the surviving mutex test (test_testenv_venv_manifest.bats "only one of") targets the v2 `[tool.pyve.testenvs]` reader — v2 keeps its mutex; only `pyve.toml` composes.
+- [x] Docs (docs/site): [pyve-toml.md](../site/pyve-toml.md) gains the setup-directive vocabulary (composable recipe, the fixed order conda `manifest` → `editable` → `requirements` → `extra`, the `editable` directive, a worked example); [environments.md](../site/environments.md) gains the one-shot rebuild model (`pyve env init <name> --force`) + the root/named verb routing map, and fixes the now-stale "created empty (no dependencies)" line (init materializes declared directives since P.l.3).
+- [x] project-essentials: new "declarative-recipe" entry (an `[env.<name>]` block is a composable setup recipe; one command reproduces the env); extend the P.l.1 `--yes`/`--force` table with the `pyve env init [<name>]` row (`--force` = escalate to purge-and-rebuild).
+- [x] Story-ID sweep executed: all 23 grep hits rewritten as self-contained prose (none proved load-bearing); enforcement grep returns zero hits.
+- [x] Full unit suite green (2112 tests, 0 failures, `bats --jobs 8`); shellcheck baselines unchanged on all five touched shell files; python helper compiles clean.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

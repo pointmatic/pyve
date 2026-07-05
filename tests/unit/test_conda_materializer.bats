@@ -184,6 +184,26 @@ requirements = ["should-not-be-used.txt"]'
     ! grep -q "should-not-be-used.txt" mm.log
 }
 
+@test "conda materializer: extra-only block materializes exactly as before (sync, then the extra's packages)" {
+    _fixture_conda_env 'extra = "lint"'
+    cat > pyproject.toml <<'TOML'
+[project]
+name = "demo"
+version = "0.1.0"
+
+[project.optional-dependencies]
+lint = ["ruff==0.6.0"]
+TOML
+    _stub_micromamba_log
+
+    run env_command install hardware
+    [ "$status" -eq 0 ]
+    grep -q "^MM:install -p .pyve/envs/hardware/conda -f environment.yml -y" mm.log
+    grep -q "pip install ruff==0.6.0" mm.log
+    ! grep -q "pip install -e" mm.log
+    ! grep -q "pip install -r" mm.log
+}
+
 @test "conda materializer: requirements-only block materializes exactly as before (no -e)" {
     _fixture_conda_env 'requirements = ["tests/smoke-requirements.txt"]'
     mkdir -p tests

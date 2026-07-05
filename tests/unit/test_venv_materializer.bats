@@ -3,12 +3,11 @@
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
 #
-# Story P.l.3 — venv materializer: compose the full directive recipe
-# in one shot.
+# Venv materializer: compose the full directive recipe in one shot.
 #
 # `_env_install_venv` materializes EVERY declared directive in the
 # fixed order `editable` → `requirements` → `extra` (was M.l's
-# pick-one precedence dispatch; P.l.2 lifted the source mutex). The
+# pick-one precedence dispatch; the source mutex is lifted). The
 # recipe is validated up front so a bad directive fails before any
 # layer installs. `pyve env init <name>` now materializes the whole
 # recipe after creating the env — but ONLY what is declared: an
@@ -61,8 +60,8 @@ _line_of() {
 }
 
 # ============================================================
-# The `editable` directive materializes (P.l.2 declared it; this is
-# its first consumer)
+# The `editable` directive materializes (declared in the schema; this
+# is its first consumer)
 # ============================================================
 
 @test "materializer: 'editable' alone → 'pip install -e .[extras]'" {

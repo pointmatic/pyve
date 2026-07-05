@@ -52,7 +52,8 @@ app_type   = "library"
 languages  = ["python"]
 frameworks = ["sveltekit"]
 
-# Dependency source (mutually exclusive: pick at most one)
+# Setup directives (composable — they layer in a fixed order)
+editable     = ".[dev]"
 requirements = ["requirements-dev.txt"]
 extra        = "dev"
 manifest     = "tests/env.yml"
@@ -77,10 +78,24 @@ default = true
 | `app_type` | string | `""` | Advisory metadata. |
 | `languages` | list | `[]` | Advisory metadata, surfaced in `check`/`status`. |
 | `frameworks` | list | `[]` | Advisory metadata (e.g. `["sveltekit"]`). |
-| `requirements` | list | `[]` | Dependency source — requirements files. Mutually exclusive with `extra` / `manifest`. |
-| `extra` | string | `""` | Dependency source — a `[project.optional-dependencies]` extra. Mutually exclusive. |
-| `manifest` | string | `""` | Dependency source — a conda `environment.yml` (micromamba backends). Mutually exclusive. |
+| `editable` | string | `""` | Setup directive — editable self-install target with optional extras (`pip install -e <value>`, e.g. `".[dev]"`). |
+| `requirements` | list | `[]` | Setup directive — requirements files (`pip install -r <file> …`). |
+| `extra` | string | `""` | Setup directive — a `[project.optional-dependencies]` extra, resolved to its package list. |
+| `manifest` | string | `""` | Setup directive — a conda `environment.yml` (micromamba backends; the conda base layer). |
 | `manual_steps` | list | `[]` | Advisory steps Pyve prints but never executes. |
+
+### Setup directives — a composable recipe
+
+An `[env.<name>]` block declares **how the environment is set up**: a composable recipe of setup directives, each a high-level intent the owning plugin knows how to realize. The directives layer — declare any combination — and materialize in one fixed order:
+
+1. `manifest` — the conda base (micromamba backends only; solved first so pip layers sit on top)
+2. `editable` — editable self-install with extras
+3. `requirements` — requirements files
+4. `extra` — the resolved optional-dependency group
+
+`pyve env init <name>` materializes the **whole recipe in one shot**, and validates it up front — a bad directive (missing requirements file, unresolvable extra) fails before any layer installs. Rebuilding is a single command: `pyve env init <name> --force` purges and re-materializes the env from its declaration. A block that declares a single directive is simply a one-item recipe, so pre-existing manifests behave exactly as before.
+
+The vocabulary is **closed and declarative** — directives are plugin-interpreted intents, never shell steps. (The v2 `[tool.pyve.testenvs.*]` surface keeps its historical pick-at-most-one rule; composition is a `pyve.toml` capability.)
 
 ### Name-based purpose defaults
 
@@ -118,8 +133,9 @@ Pyve validates the manifest at read time and reports precise, line-attributed er
 1. `pyve_schema` must equal `"3.0"` (absent ⇒ defaulted; any other value ⇒ error).
 2. Each env's `purpose`, when present, must be one of `run` / `test` / `utility` / `temp`.
 3. At most one env may declare `default = true`.
-4. Per env, at most one of `requirements` / `extra` / `manifest` may be declared.
-5. At most one plugin may resolve to `path = "."`.
+4. At most one plugin may resolve to `path = "."`.
+
+Setup directives (`editable` / `requirements` / `extra` / `manifest`) **compose** — declaring several in one block is valid and materializes in the fixed order above.
 
 ## Worked examples
 
@@ -137,6 +153,27 @@ Pyve validates the manifest at read time and reports precise, line-attributed er
 
     [env.testenv]
     purpose = "test"
+    requirements = ["requirements-dev.txt"]
+    ```
+
+=== "CLI project (composed recipe)"
+
+    ```toml
+    pyve_schema = "3.0"
+
+    [project]
+    name = "my-cli"
+
+    [env.root]
+    purpose = "utility"
+    backend = "venv"
+
+    # Tests exercise console entry points, so the test env carries an
+    # editable self-install (with an extras group) AND the dev tooling —
+    # one `pyve env init testenv` materializes both.
+    [env.testenv]
+    purpose = "test"
+    editable = ".[corruptions]"
     requirements = ["requirements-dev.txt"]
     ```
 

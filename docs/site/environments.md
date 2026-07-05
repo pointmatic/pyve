@@ -59,7 +59,7 @@ Named environments are managed through the `pyve env` namespace:
 
 | Command | What it does |
 |---|---|
-| `pyve env init [<name>]` | Create a named environment. |
+| `pyve env init [<name>] [--force] [--yes]` | Create a named environment and materialize its declared setup recipe. `--force` = one-shot rebuild (purge, re-create, re-materialize); `--yes` skips the rebuild confirmation. |
 | `pyve env install [<name>] [-r <file>]` | Install dependencies into a named environment. |
 | `pyve env run [<name> --] <cmd>` | Run a command inside a named environment. |
 | `pyve env purge [<name>]` | Remove a named environment. |
@@ -88,10 +88,10 @@ pyve test --env unit,integration   # run both, serially, aggregating exit codes
 `pyve init` materializes only what your `pyve.toml` **declares**, on a graduated *declared → materialized → operable* ladder:
 
 - **The run (root) env** is materialized to its declared backend (`venv` / `micromamba`); an advisory `none` root is declarative-only — nothing is built (see [Backends](backends.md)).
-- **The default test env** is materialized when it is declared *and* resolves to a `venv` backend — created **empty** (no dependencies). A conda-backed or additional named test env is **not** built at init (a conda solve is never run implicitly); run `pyve env init <name>` to materialize it.
+- **The default test env** is materialized when it is declared *and* resolves to a `venv` backend. A conda-backed or additional named test env is **not** built at init (a conda solve is never run implicitly); run `pyve env init <name>` to materialize it.
 - **No test env declared → none created.** `pyve init` never injects an undeclared `testenv`.
 
-A materialized env is **not automatically operable**: it comes up empty and its dependencies install on first `pyve test` / `pyve env install` (*empty until demand*). Declaring an env, materializing it, and populating its dependencies are three distinct steps — a `[env.<name>]` block does not by itself install anything.
+**Init installs what you declared — nothing you didn't.** A materialized env comes up with exactly what its block's [setup directives](pyve-toml.md#setup-directives--a-composable-recipe) declare: `pyve env init <name>` realizes the whole recipe in one shot, so a fully-declared env is operable immediately. A block with *no* setup directives comes up empty and populates on first `pyve test` / `pyve env install` (*empty until demand*).
 
 A test env declared `purpose = "test"` with **no `default`** that Pyve can't unambiguously resolve is a **skeleton**: declared (so `pyve test --env <name>` and other purpose-keyed selectors resolve) and materialized on demand, but never autowired.
 
@@ -103,14 +103,15 @@ With no `--env`, `pyve test` resolves the default test env:
 - otherwise, on a **single-backend** project (all declared envs share one backend) rooted on a Python backend with **exactly one** test env, that sole test env is auto-promoted to the default — no `default` needed;
 - a **mixed-backend** project, **multiple** test envs without a default, or a non-Python / `none` root has **no** default: `pyve test` asks for an explicit `--env` rather than guessing.
 
-## Dependency sources
+## Setup directives
 
-A test or utility env declares **where its dependencies come from** via one of three mutually-exclusive fields on its `[env.<name>]` block:
+An env's `[env.<name>]` block declares **how the environment is set up** — a composable recipe of setup directives that layer in a fixed order (conda `manifest` → `editable` → `requirements` → `extra`):
 
 ```toml
 [env.testenv]
 purpose = "test"
-requirements = ["requirements-dev.txt"]   # one or more requirements files
+editable = ".[corruptions]"               # editable self-install + extras
+requirements = ["requirements-dev.txt"]   # composes — no mutual exclusion
 
 [env.lint]
 purpose = "utility"
@@ -119,10 +120,10 @@ extra = "lint"                            # a [project.optional-dependencies] ex
 [env.native]
 purpose = "test"
 backend = "micromamba"
-manifest = "tests/env.yml"                # a conda environment.yml
+manifest = "tests/env.yml"                # the conda base; pip directives layer on top
 ```
 
-See [`pyve.toml` Reference](pyve-toml.md) for the full field list.
+A single-directive block is simply a one-item recipe. See the [`pyve.toml` Reference](pyve-toml.md#setup-directives--a-composable-recipe) for the vocabulary and ordering.
 
 ## Lazy provisioning
 
@@ -137,9 +138,24 @@ requirements = ["requirements-integration.txt"]
 
 `pyve init` skips a lazy env; the first `pyve test --env integration` provisions it on demand. Set `PYVE_NO_AUTO_PROVISION=1` (e.g. in strict CI) to turn that auto-provision into a hard error with an explicit `pyve env install` hint instead.
 
-## Survives `pyve init --force`
+## Rebuilding — one verb per role
 
-Test and utility environments are declared separately from the run environment and live in their own `.pyve/envs/<name>/` slots, so a destructive `pyve init --force` rebuild of the main env **does not** wipe them. This is by design — rebuilding your app env shouldn't cost you your test toolchain.
+Because the declaration fully describes an env's setup, **rebuilding is a single command** — no purge/init/install choreography:
+
+```bash
+pyve env init testenv --force    # purge + re-create + re-materialize the recipe
+```
+
+`--force` escalates init to a destructive rebuild, so it asks `y/N` on interactive shells (`--yes` assents; CI skips the prompt automatically).
+
+Each role has exactly one rebuild verb, and every wrong turn signposts the right one:
+
+| Env | Rebuild | Purge | Run a command |
+|---|---|---|---|
+| `root` (the main project env) | `pyve init --force` | `pyve purge` | `pyve run <cmd>` |
+| named (`testenv`, `lint`, …) | `pyve env init <name> --force` | `pyve env purge <name>` | `pyve env run <name> -- <cmd>` |
+
+`pyve init --force` rebuilds **only the root env** — named envs in their `.pyve/envs/<name>/` slots are untouched, by explicit contract. Rebuilding your app env never costs you your test toolchain, and `pyve env <verb> root` rejections point you back at the top-level verb that does the job. `pyve check` follows the same map: a structurally broken default test env is routed to `pyve env init testenv --force`; a healthy one that merely lacks pytest is routed to `pyve test`.
 
 ## See also
 

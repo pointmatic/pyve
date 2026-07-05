@@ -258,7 +258,7 @@ def _normalize_env(name, decl):
         "lazy": "1" if bool(decl.get("lazy", False)) else "0",
         "extra": decl.get("extra") or "",
         "manifest": decl.get("manifest") or "",
-        # P.l.2: `editable` directive — an editable self-install with optional
+        # `editable` directive — an editable self-install with optional
         # extras (e.g. ".[corruptions]"). Composes with the other directives
         # (the requirements/extra/manifest mutex was lifted).
         "editable": decl.get("editable") or "",
@@ -345,7 +345,7 @@ def validate(cfg):
         # (purpose/backend/languages/frameworks/packaging/app_type). Unknown
         # value → error; advisory and implemented values pass.
         errors.extend(env_value_errors(name, env))
-        # P.l.2: the `requirements ⊕ extra ⊕ manifest` mutex is LIFTED — an
+        # The `requirements ⊕ extra ⊕ manifest` mutex is LIFTED — an
         # env block is a COMPOSABLE recipe of directives. They (and `editable`)
         # layer, materialized in a fixed order by the plugin (conda `manifest`
         # → `editable` → `requirements` → `extra`; see the materializer). A

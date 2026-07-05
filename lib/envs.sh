@@ -27,7 +27,7 @@
 #   PYVE_TESTENV_EXTRA[]        — parallel: pyproject extra name or ""
 #   PYVE_TESTENV_MANIFEST[]     — parallel: conda manifest path or ""
 #   PYVE_TESTENV_REQUIREMENTS_Q[] — parallel: shell-quoted requirements list
-#   PYVE_TESTENV_EDITABLE[]     — parallel: `editable` directive (P.l.3) or ""
+#   PYVE_TESTENV_EDITABLE[]     — parallel: `editable` directive or ""
 #                                 (v3 manifest path only; the v2 helper
 #                                 predates the directive and never emits it)
 #
@@ -171,7 +171,7 @@ _env_manifest_of() {
     local i; i="$(_envs_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_TESTENV_MANIFEST[$i]}"
 }
-# The `editable` setup directive (P.l.3): an editable self-install target
+# The `editable` setup directive: an editable self-install target
 # with optional extras (e.g. ".[dev]"), or "" when undeclared. Guarded read:
 # the v2 pyproject helper path predates the directive and never emits
 # PYVE_TESTENV_EDITABLE, so stay bash-3.2 `set -u`-safe (cf.

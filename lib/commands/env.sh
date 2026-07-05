@@ -74,7 +74,7 @@ _env_read_spec_json() {
 # touches only the root). `--yes` assents to the rebuild's
 # confirmation prompt.
 #
-# Story P.l.3: one-shot materialization — after creating the env,
+# One-shot materialization — after creating the env,
 # realize its declared setup recipe so `pyve env init <name>` yields
 # an operable env in one command. Installs ONLY when the block
 # declares at least one directive ("init installs what you declared,
@@ -150,11 +150,11 @@ _env_init_materialize_recipe() {
 }
 
 #------------------------------------------------------------
-# Story P.l.3: venv-backed install — compose the declared recipe.
+# Venv-backed install — compose the declared recipe.
 #
 # An `[env.<name>]` block is a composable recipe of setup directives
-# (P.l.2 lifted the `requirements ⊕ extra ⊕ manifest` mutex; was M.l's
-# pick-one precedence dispatch). Pre-condition: the venv must already
+# (the `requirements ⊕ extra ⊕ manifest` mutex is lifted; this replaces
+# the earlier pick-one precedence dispatch). Pre-condition: the venv must already
 # exist at `<env_path>`. The whole recipe is validated up front (files
 # exist, extra resolves) so a bad directive fails before any layer
 # installs, then every declared directive materializes in the fixed
@@ -444,7 +444,7 @@ env_prune() {
                 shift
                 ;;
             --force)
-                # Deprecated prompt-skip alias (Story P.l.1).
+                # Deprecated prompt-skip alias — warns, still honored.
                 warn_force_prompt_skip_deprecated
                 force=1
                 shift
@@ -1225,7 +1225,7 @@ env_command() {
                             shift
                             ;;
                         --force)
-                            # Deprecated prompt-skip alias (Story P.l.1).
+                            # Deprecated prompt-skip alias — warns, still honored.
                             warn_force_prompt_skip_deprecated
                             purge_force=1
                             shift
