@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=cli
 #
 # Unit tests for the top-level CLI dispatcher in pyve.sh.
 #

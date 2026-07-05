@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=core
 #
 # Unit tests for lib/backend_detect.sh
 # Tests backend detection logic and priority resolution

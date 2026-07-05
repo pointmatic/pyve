@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=core
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -72,4 +73,20 @@ _stub_parallel() {
     run env PATH="$STUB_DIR:$SYS_PATH" "$RUNNER"
     [ "$status" -ne 0 ]
     [[ "$output" == *"bats-core"* ]]
+}
+
+@test "runner: PYVE_TEST_TAGS adds --filter-tags for targeted subsystem runs" {
+    _stub_bats
+    _stub_parallel
+    run env PATH="$STUB_DIR:$SYS_PATH" PYVE_TEST_TAGS=env PYVE_TEST_JOBS=4 "$RUNNER"
+    [ "$status" -eq 0 ]
+    grep -q -- "--filter-tags env" "$STUB_LOG"
+}
+
+@test "runner: PYVE_TEST_TAGS works on the serial fallback too" {
+    _stub_bats
+    run env PATH="$STUB_DIR:$SYS_PATH" PYVE_TEST_TAGS=init "$RUNNER"
+    [ "$status" -eq 0 ]
+    grep -q -- "--filter-tags init" "$STUB_LOG"
+    ! grep -q -- "--jobs" "$STUB_LOG"
 }

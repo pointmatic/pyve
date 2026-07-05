@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=core
 #
 # Unit tests for lib/utils.sh
 # Tests logging, file operations, validation, and gitignore management

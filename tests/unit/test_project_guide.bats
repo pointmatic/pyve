@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=self
 #
 # Unit tests for project-guide integration helpers in lib/utils.sh.
 #

@@ -904,9 +904,15 @@ The suite is serial today (`bats tests/unit/*.bats`, one core, ~4–6 min). GNU 
 
 ---
 
-### Story P.l.9: Subsystem tags — `bats file_tags` vocabulary + targeted Make targets [Planned]
+### Story P.l.9: Subsystem tags — `bats file_tags` vocabulary + targeted Make targets [Done]
 
 Tag all ~166 unit-test files with a small closed subsystem vocabulary (`# bats file_tags=` — e.g. `env`, `init-wizard`, `purge`, `manifest`, `ui`, `micromamba`, `self-toolchain`, `plugin-python`, `plugin-node`, `completion`, `check-status`, `lock`), and add targeted Make entry points (`make test-tag TAG=<t>` via `bats --filter-tags`, plus shorthand targets for the highest-traffic groups). Add a drift guard that fails when any `.bats` file carries no `file_tags` line, so new files can't land untagged. Document the vocabulary in [testing-spec.md](testing-spec.md). Tags, not directory moves — zero `load`-path churn, and the same vocabulary can drive CI path-filtered jobs later (per-plugin suites when the Rust/Go/etc. plugins arrive; contract/registry/core changes still run everything).
+
+- [x] Closed 11-tag vocabulary (settled at implementation): `env`, `init`, `purge`, `manifest`, `micromamba`, `plugin`, `check`, `self`, `ui`, `cli`, `core` — one tag per file (comma lists stay legal for future splits). All 169 unit files tagged via `# bats file_tags=<tag>` on line 2 (group sizes: env 389, init 322, plugin 318, core 278, check 145, cli 134, micromamba 109, manifest 88 tests, + self/ui/purge).
+- [x] Drift guard: new [test_tags_guard.bats](../../tests/unit/test_tags_guard.bats) — every `tests/unit/*.bats` must carry a `file_tags` line AND every used tag must be in the closed vocabulary (typo'd tags fail the build). The guard file is the vocabulary's single source of truth in code.
+- [x] Targeted entry points: `scripts/run-unit-tests.sh` honors `PYVE_TEST_TAGS` (adds `--filter-tags`); `make test-tag TAG=<t>` + shorthand targets for the highest-traffic groups (`test-env`, `test-init`, `test-plugin`, `test-check`).
+- [x] Vocabulary + usage documented in [testing-spec.md](testing-spec.md) (which tag for a new file; targeted runs for iteration, full suite at gates, CI as arbiter).
+- [x] Tests: guard red-first against the untagged tree (166 files reported), green after tagging; runner `--filter-tags` pass-through red→green in test_run_unit_tests.bats (parallel + serial paths); per-tag `--count` smoke recorded; `make test-tag TAG=purge` end-to-end (25 tests in seconds). Full suite green (2120 tests, 0 failures via `make test-unit`); the runner script shellchecks clean.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

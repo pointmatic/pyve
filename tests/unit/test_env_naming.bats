@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Unit tests for lib/micromamba_env.sh - Environment naming functions
 # Tests sanitize_environment_name(), validate_environment_name(), and resolve_environment_name()
