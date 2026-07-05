@@ -149,12 +149,16 @@ TOML
 @test "ensure_env_exists: no arg is idempotent" {
     _stub_run_cmd_creates_venv
     ensure_env_exists
-    local marker_mtime_a
-    marker_mtime_a=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
+    # Plant a sentinel INSIDE the venv: a rebuild (rm -rf + re-create)
+    # would destroy it, so its survival proves the second call did not
+    # recreate. Do NOT compare mtimes here — `stat -f` on GNU/Linux is
+    # filesystem mode (not file mtime), so the old macOS/Linux stat
+    # idiom never measured mtime on Linux and turned flaky once the
+    # suite ran under parallel filesystem churn in CI.
+    touch ".pyve/envs/testenv/venv/sentinel"
     ensure_env_exists
-    local marker_mtime_b
-    marker_mtime_b=$(stat -f %m ".pyve/envs/testenv/venv/bin/python" 2>/dev/null || stat -c %Y ".pyve/envs/testenv/venv/bin/python")
-    [ "$marker_mtime_a" = "$marker_mtime_b" ]
+    [ -f ".pyve/envs/testenv/venv/sentinel" ]
+    [ -x ".pyve/envs/testenv/venv/bin/python" ]
 }
 
 # ============================================================

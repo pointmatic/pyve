@@ -957,6 +957,19 @@ The code_test_first mode template's cycle runs the **full** test suite after eve
 
 ---
 
+### Story P.l.13: CI flake fix — the idempotency test's stat idiom never measured mtime on Linux; assert with a sentinel instead [Done]
+
+*(Debug story. After the P.l.12 hang fix, the ubuntu unit job ran to completion but failed one test: `ensure_env_exists: no arg is idempotent` (test_testenv_name_aware.bats) — a marker-mtime comparison. macOS passed.)*
+
+**Root cause.** The test measured "was the env recreated?" via `stat -f %m <file> 2>/dev/null || stat -c %Y <file>`. That idiom is macOS-shaped: on BSD stat, `-f %m` is the file's mtime. On GNU/Linux, `stat -f` selects **filesystem-status mode** — the expression succeeds (so the `stat -c %Y` fallback never runs) but reports a filesystem attribute, not the file's mtime. It passed serially for years because the two reads, microseconds apart on a quiet machine, returned identical filesystem values; under `bats --jobs` the other workers churn the filesystem between the reads and the values diverge → flaky failure. Code behavior was correct throughout — `ensure_env_exists` provably takes no write path on the second call; only the measuring instrument was broken.
+
+- [x] The test now asserts idempotency directly: plant a sentinel file inside the venv after the first call — a rebuild (`rm -rf` + re-create) would destroy it — then assert it survives the second call (plus the interpreter marker). Portable, deterministic, load-independent, and it tests the actual contract instead of a stat portability accident. Sole occurrence of the idiom in the tree (grep-verified).
+- [x] Full unit suite green locally under `bats --jobs`; the definitive verification is the next CI run on ubuntu.
+
+**Version:** v3.1.0 bundle (Subphase P-1).
+
+---
+
 ### Story P.m: Operational-state record — extend `.state` with an installed dimension [Done]
 
 Record actual (vs. declared) env state so rebuild can restore it. The per-env `.state` store exists ([lib/envs.sh:387](../../lib/envs.sh#L387)) but is written only at **realize** (env dir built), never at **install** — so there's no "deps installed" bit (only a conda `manifest_sha256`; venv has nothing). Add an installed-spec hash for **both** backends and write `.state` from the install path, so realized-vs-installed is recorded, not re-derived from the filesystem. Stays `.pyve/`-resident — no `pyve.yaml`.
