@@ -339,11 +339,6 @@
           <p>Declare run / test / utility envs by name. <code>pyve test</code> runs in an isolated test env that survives force re-init.</p>
         </div>
         <div class="feature-card">
-          <div class="feature-icon">&#9851;</div>
-          <h3>Upgrade &amp; Rebuild</h3>
-          <p><code>pyve upgrade</code> re-resolves dependencies without touching the env; <code>pyve init --force</code> rebuilds from the declaration and restores recorded state.</p>
-        </div>
-        <div class="feature-card">
           <div class="feature-icon">&#128230;</div>
           <h3>Zero Dependencies</h3>
           <p>Pure Bash script &mdash; no runtime dependencies, no daemons, no background processes.</p>
@@ -368,7 +363,7 @@
         <div class="benefit-item"><span class="check">&#10003;</span> Named environments by purpose (run / test / utility / temp)</div>
         <div class="benefit-item"><span class="check">&#10003;</span> CI/CD-ready with non-interactive flags</div>
         <div class="benefit-item"><span class="check">&#10003;</span> Clean teardown with <code>pyve purge</code> &mdash; preserves your secrets</div>
-        <div class="benefit-item"><span class="check">&#10003;</span> In-place upgrades &amp; state-restoring rebuilds (<code>pyve upgrade</code> / <code>init --force</code>)</div>
+        <div class="benefit-item"><span class="check">&#10003;</span> Deterministic v2 &rarr; v3 migration (<code>pyve self migrate</code>)</div>
         <div class="benefit-item"><span class="check">&#10003;</span> Zero runtime dependencies &mdash; pure Bash, no daemons</div>
       </div>
     </div>

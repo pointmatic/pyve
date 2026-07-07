@@ -100,7 +100,7 @@ pytest==7.4.3
 
 ### Testing on the venv Backend
 
-The implicit-default dev/test runner environment (`.pyve/testenvs/testenv/venv/`) is a plain venv that inherits its base Python from `.venv/` at `pyve testenv init` time. Named test environments declared in `[tool.pyve.testenvs]` materialize alongside it under `.pyve/testenvs/<name>/`; **each declares its own backend independently** — a venv-backed main project can mix in a `backend = "micromamba"` testenv for native-dep stacks (GDAL, CUDA, HDF5) without touching the main env. See [Testing → Named test environments](testing.md#named-test-environments) for the config schema, and [Testing](testing.md) for the full guide.
+The implicit-default dev/test runner environment (`.pyve/envs/testenv/venv/`) is a plain venv that inherits its base Python from `.venv/` at `pyve env init` time. Named environments declared as `[env.<name>]` blocks in `pyve.toml` materialize alongside it under `.pyve/envs/<name>/`; **each declares its own backend independently** — a venv-backed main project can mix in a `backend = "micromamba"` test env for native-dep stacks (GDAL, CUDA, HDF5) without touching the main env. See [Testing → Named test environments](testing.md#named-test-environments) for the config schema, and [Testing](testing.md) for the full guide.
 
 ---
 
@@ -121,17 +121,16 @@ The implicit-default dev/test runner environment (`.pyve/testenvs/testenv/venv/`
 
 ### How micromamba Works
 
-1. Creates environment in `.pyve/envs/<hash>/`
-2. Uses content-addressable storage (hash-based)
-3. Installs packages from conda-forge
-4. Solves dependencies across all packages
-5. Activates via `direnv` using Pyve's uniform `.envrc` template (see tech-spec.md), or via `pyve run` when direnv is unavailable
+1. Creates the root environment at `.pyve/envs/root/conda/` (named envs at `.pyve/envs/<name>/conda/`)
+2. Installs packages from conda-forge
+3. Solves dependencies across all packages
+4. Activates via `direnv` using Pyve's uniform `.envrc` template, or via `pyve run` when direnv is unavailable
 
 ### micromamba Example
 
 ```bash
 # Initialize with micromamba
-pyve init 3.11 --backend micromamba
+pyve init --backend micromamba --python-version 3.11
 
 # Install conda packages
 micromamba install numpy pandas matplotlib -c conda-forge
@@ -164,9 +163,9 @@ pyve lock
 
 ### Testing on the micromamba Backend
 
-The implicit-default dev/test runner environment (`.pyve/testenvs/testenv/venv/`) is a plain venv (not a micromamba env) that inherits its base Python from the active micromamba env at `pyve testenv init` time — typically the version pinned by `environment.yml`. The project env must be active when `init` runs, or wrap with `pyve run pyve testenv init`.
+The implicit-default dev/test runner environment (`.pyve/envs/testenv/venv/`) is a plain venv (not a micromamba env) that inherits its base Python from the active micromamba env at `pyve env init` time — typically the version pinned by `environment.yml`. The project env must be active when `init` runs, or wrap with `pyve run pyve env init`.
 
-Named test environments declared in `[tool.pyve.testenvs]` may opt into the conda backend on a per-env basis (`backend = "micromamba"` + `manifest = "<env.yml>"`); they're independent of the main env's backend. Per-env conda envs land at `.pyve/testenvs/<name>/conda/` and lock via `pyve lock --env <name>` (writes `<manifest>-lock.yml` sibling to the manifest); `pyve lock --all` locks the main env + every conda-backed testenv in one shot. See [Testing → Named test environments](testing.md#named-test-environments) for the schema, and [Testing](testing.md) for the full guide.
+Named environments declared in `pyve.toml` may opt into the conda backend on a per-env basis (`backend = "micromamba"` + `manifest = "<env.yml>"`); they're independent of the main env's backend. Per-env conda envs land at `.pyve/envs/<name>/conda/` and lock via `pyve lock --env <name>` (writes `<manifest>-lock.yml` sibling to the manifest); `pyve lock --all` locks the main env + every conda-backed named env in one shot. See [Testing → Named test environments](testing.md#named-test-environments) for the schema, and [Testing](testing.md) for the full guide.
 
 ---
 

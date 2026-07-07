@@ -247,6 +247,18 @@ pyve init --backend micromamba             # uses the lock file for reproducibil
 
 > **Note:** Whether `pyve init --backend micromamba` requires a lock is declarative — it depends on whether `conda-lock` is a dependency in `environment.yml`. If it is and no `conda-lock.yml` exists yet, non-strict `init` proceeds and nudges you to run `pyve lock`; `--strict` errors instead. If `conda-lock` isn't declared, no lock is expected. Pass `--no-lock` to skip the lock for a run (resolve from `environment.yml`; a present lock is ignored, never deleted), or remove `conda-lock` from `environment.yml` to opt out permanently.
 
+### Keeping the Environment Current
+
+Three verbs, one meaning each:
+
+```bash
+pyve update            # refresh the files Pyve manages around the project (never touches an env)
+pyve upgrade           # re-resolve the env's dependencies to newest-within-constraints, in place
+pyve init --force      # destructive rebuild of the root env from the manifest
+```
+
+`pyve upgrade --check` previews the plan without executing anything. See the [Usage Guide](usage.md#upgrade-env-name-all-check) for details.
+
 ### Cleaning Up
 
 Remove the virtual environment:
@@ -265,7 +277,7 @@ This removes:
 
 - [Usage Guide](usage.md) — Full command reference
 - [`pyve.toml` Reference](pyve-toml.md) — The declarative manifest
-- [Named Environments](environments.md) — run / test / utility / temp envs by name
+- [Named Environments](environments.md) — run / test / utility / temp envs by name, and [planning them with project-guide](environments.md#planning-environments-with-project-guide) (`pyve env sync`)
 - [Backends](backends.md) — venv, micromamba, and the Node providers
 - [Plugins](plugins.md) & [Polyglot Projects](polyglot.md) — multi-stack repos
 - [Testing](testing.md) — Two-environment model, test-env lifecycle

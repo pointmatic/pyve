@@ -25,7 +25,7 @@ A single, easy entry point for managing all your virtual environments.
 
 ### Friendly Brief Description (follows one-liner)
 
-Pyve orchestrates virtual environments across any stack combo (init, auto-activate, purge) — auto-detects and configures asdf/pyenv/nvm, venv/micromamba/pnpm, and direnv.
+Pyve orchestrates virtual environments across any stack combo (init, auto-activate, upgrade, purge) — auto-detects and configures asdf/pyenv/nvm, venv/micromamba/pnpm, and direnv.
 
 ## Two-clause Technical Description
 
@@ -35,19 +35,20 @@ A command-line tool that simplifies setting up and managing just about any stack
 - Polyglot orchestration: two reference plugins — Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn).
 - Seamless activation: `pyve init` / `check` / `status` / `purge` compose across every declared plugin into one `.envrc` / `.gitignore` / report (failure-safe, atomic writes).
 
-**Future (roadmap — not shipped in v3.0):** additional language plugins (e.g. Ruby) and backends (Docker / Podman, Homebrew, apt) are under consideration through the same plugin contract.
+**Future (roadmap — not yet shipped):** additional language plugins (e.g. Ruby) and backends (Docker / Podman, Homebrew, apt) are under consideration through the same plugin contract.
 
 ## Benefits
 
 - One command for any stack — `pyve init` detects your project and materializes every environment it declares.
-- Declarative `pyve.toml` — each environment is named and given a purpose (`run`, `test`, `utility`, `temp`) in a single manifest.
+- Declarative `pyve.toml` — each environment is named, given a purpose (`run`, `test`, `utility`, `temp`), and carries a composable setup recipe, all in a single manifest.
 - Pluggable backends — venv, micromamba, and pnpm today, with a stable contract for adding more.
 - Polyglot by composition — Python and Node/SvelteKit activate together through one `.envrc`, one `.gitignore`, and one health report.
 - Seamless shell activation via direnv — no manual `activate`, no stale shell state.
 - Plugin-owned language versions — asdf / pyenv on the Python side, nvm / fnm / volta on the Node side.
 - CI/CD-ready — `--no-direnv`, `--auto-bootstrap`, and `--strict` for reproducible, non-interactive pipelines.
 - Clean teardown — `pyve purge` removes generated artifacts while preserving your secrets and user data.
-- One-step upgrade — `pyve self migrate` moves a v2 project onto the v3 manifest.
+- Reproducible by declaration — one `pyve env init <name>` materializes an env's full setup recipe; a forced rebuild restores its recorded state.
+- In-place dependency upgrades — `pyve upgrade` re-resolves to newest-within-constraints, keeps the env, and re-locks.
 - Zero runtime dependencies — pure Bash, no daemons, no background processes.
 
 ## Technical Description
@@ -67,14 +68,14 @@ Short blurbs for landing pages and feature grids. Each card has a title and a on
 | # | Title | Description |
 |---|-------|-------------|
 | 1 | One-Command Setup | Initialize the project's environments, language versions, direnv, and `.gitignore` in a single `pyve init`. |
-| 2 | Declarative Manifest | One `pyve.toml` declares every environment — its `purpose`, `backend`, and plugin-private attributes. |
+| 2 | Declarative Manifest | One `pyve.toml` declares every environment — its `purpose`, `backend`, and a composable setup recipe that one command reproduces. |
 | 3 | Pluggable Backends | Choose venv, micromamba, pnpm, or a plugin-contributed backend — auto-detected from project files. |
 | 4 | Polyglot Composition | Python and Node/SvelteKit live side by side — Pyve composes every plugin into one `.envrc`, `.gitignore`, and health report. |
 | 5 | Deterministic Execution | Run commands inside the project environment with `pyve run` — no manual activation, no shell state. |
 | 6 | Named Test Environments | `pyve test` runs in a dedicated `[env.<name>]` with `purpose = "test"` that survives force re-initialization. |
 | 7 | Environment Diagnostics | `pyve check` and `pyve status` report health, version compatibility, and lock file status. |
 | 8 | Clean Teardown | `pyve purge` removes generated artifacts while preserving your secrets and user data. |
-| 9 | One-Step Migration | `pyve self migrate` moves a v2 project onto the v3 `pyve.toml` manifest. |
+| 9 | Upgrade & Rebuild | `pyve upgrade` re-resolves dependencies without touching the env; `pyve init --force` rebuilds from the declaration and restores recorded state. |
 | 10 | Zero Dependencies | Pure Bash script — no runtime dependencies, no daemons, no background processes. |
 
 ---
@@ -83,9 +84,9 @@ Short blurbs for landing pages and feature grids. Each card has a title and a on
 
 | File | Which descriptions to use |
 |------|--------------------------|
-| `README.md` line 7 | Two-clause Technical Description |
-| `README.md` line 13 | Benefits (inline) |
-| `README.md` line 11 | Technical Description |
+| `README.md` H1 title | One-liner |
+| `README.md` intro paragraph | Technical Description |
+| `README.md` "Why Pyve?" bullets | Benefits |
 | `docs/site/index.html` hero `<h1>` | One-liner (MkDocs) |
 | `docs/site/index.html` hero `<p>` | Friendly Brief Description (MkDocs) |
 | `docs/site/index.html` feature grid | Feature Cards (MkDocs) |

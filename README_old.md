@@ -10,7 +10,7 @@ A command-line tool that gives every project a single, declarative entry point f
 
 See https://pointmatic.github.io/pyve/ for full documentation.
 
-> **Coming from v2?** Pyve 3 is manifest-first: a root-level `pyve.toml` describes every environment. As of v3.1 the v2 compatibility window is closed — `.pyve/config` is no longer read, so a v2-only project reads as uninitialized. Re-run `pyve init` to bring it onto the manifest. See the [Migration guide](https://pointmatic.github.io/pyve/migration/).
+> **Coming from v2?** Pyve 3.0 introduces the `pyve.toml` manifest and the plugin model. Your v2 project keeps working during the v3.0 window; `pyve self migrate` moves it onto the new manifest in one step. See the [Migration guide](https://pointmatic.github.io/pyve/migration/).
 
 ## Why Pyve?
 
@@ -21,11 +21,10 @@ Getting from an empty directory to a clean, ready-to-code environment requires t
 - The right backend per stack — venv / micromamba / pnpm / npm / yarn, auto-detected
 - Automatic version management via asdf / pyenv (Python) and nvm / fnm / volta (Node)
 - Named environments by purpose — `run` / `test` / `utility` / `temp`
-- Declarative env recipes — an `[env.<name>]` block composes `editable` / `requirements` / `extra` / `manifest` setup directives, and one command reproduces the env
-- Lifecycle verbs with one meaning each — `update` refreshes managed files, `upgrade` re-resolves dependencies, `init --force` rebuilds and restores an env's recorded state
 - direnv integration for seamless shell activation
 - CI/CD-ready with `--no-direnv`, `--auto-bootstrap`, and `--strict` flags
 - Clean teardown with `pyve purge` — preserves your secrets
+- Deterministic v2 → v3 migration (`pyve self migrate`)
 - Zero runtime dependencies — pure Bash, no daemons
 
 ### Philosophy
@@ -37,10 +36,10 @@ Make things easy and natural, but avoid being invasive.
 
 ## Key Features
 - **Install**: via Homebrew (`brew install pointmatic/tap/pyve`) or from source (`./pyve.sh self install`, which copies the script to `~/.local/bin/` and creates a symlink).
-- **Init**: `pyve init` auto-detects each stack, pins language versions, creates environments, configures `direnv` for auto-activation, secures `.env` (`chmod 600`), and self-heals `.gitignore`. `pyve init --yes` accepts every wizard default and writes a fully-explicit `pyve.toml`.
-  - **Rebuild**: `pyve init --force` purges and rebuilds the root environment — named envs survive; add `--all` to also rebuild every declared env with its recorded state restored. A named env rebuilds with `pyve env init <name> --force`.
-- **Declare**: `pyve.toml` names each `[env.<name>]` (purpose / backend / setup recipe) and each `[plugins.<lang>]`; `pyve env init <name>` materializes the full declared recipe in one shot.
-- **Upgrade**: `pyve upgrade` re-resolves an env's dependencies to newest-within-constraints, keeps the env, and re-locks — `--env <name>` targets one env, `--all` fans out, `--check` previews the plan.
+- **Init**: `pyve init` auto-detects each stack, pins language versions, creates environments, configures `direnv` for auto-activation, secures `.env` (`chmod 600`), and self-heals `.gitignore`.
+  - **Re-Init**: `pyve init --force` purges and rebuilds the run environment in one command — test/utility envs survive.
+- **Declare**: `pyve.toml` names each `[env.<name>]` (purpose / backend) and each `[plugins.<lang>]`.
+- **Migrate**: `pyve self migrate` writes `pyve.toml` from a v2 project's legacy sources and rebuilds at the v3 layout.
 - **Purge**: Remove all the Pyve setup and artifacts — except a non-empty `.env`, which Pyve preserves and tells you about.
 
 ## Conceptual Model
@@ -105,12 +104,11 @@ git clone git@github.com:pointmatic/pyve.git; cd pyve; ./pyve.sh self install; p
 
 ### Initialize a Python Virtual Environment
 
-Go to the root of your project directory and run `pyve init` to initialize your Python virtual environment (add `--yes` to accept every wizard default without prompting).
+Go to the root of your project directory and run `pyve init` to initialize your Python virtual environment. 
 
 In a single command, Pyve will:
 
-- **Write the manifest**: Records every environment in a fully-explicit root-level `pyve.toml`
-- **Set Python version**: Uses asdf or pyenv to set the Python version (default: 3.14.6)
+- **Set Python version**: Uses asdf or pyenv to set the Python version (default: 3.14.5)
 - **Create virtual environment**: Creates `.venv` directory with Python venv
 - **Upgrade pip**: Automatically upgrades pip to the latest version for security and features
 - **Configure direnv**: Sets up `.envrc` for automatic activation when entering the directory
@@ -181,7 +179,7 @@ pyve init --backend auto           # Auto-detect from files
 #### Standard Options
 
 ```bash
-pyve init --yes                      # Easy mode: accept every wizard default
+pyve init my_venv                    # Custom venv directory name
 pyve init --python-version 3.12.0    # Specific Python version
 pyve init --local-env                # Copy ~/.local/.env template to .env
 ```
@@ -190,11 +188,10 @@ pyve init --local-env                # Copy ~/.local/.env template to .env
 
 When `--backend` is not specified, Pyve automatically detects the appropriate backend using this precedence:
 
-1. **`pyve.toml`** - The manifest's declared root backend (highest priority)
-   ```toml
-   # pyve.toml
-   [env.root]
-   backend = "micromamba"
+1. **`.pyve/config`** - Explicit project configuration (highest priority)
+   ```yaml
+   # .pyve/config
+   backend: micromamba
    ```
 
 2. **`environment.yml` / `conda-lock.yml`** - Conda environment files → micromamba backend
@@ -320,8 +317,7 @@ After setup, run `direnv allow` to activate the environment.
 ### Set Python Version Only
 
 ```bash
-pyve python set 3.13.7    # Pin the version (via asdf or pyenv)
-pyve python show          # Show the pinned version and its source
+pyve python-version 3.13.7
 ```
 
 Sets the Python version in the current directory (via asdf or pyenv) without creating a virtual environment.
@@ -329,10 +325,9 @@ Sets the Python version in the current directory (via asdf or pyenv) without cre
 ### Remove Environment
 
 ```bash
-pyve purge                           # Remove all artifacts (confirms first; --yes skips)
+pyve purge                           # Remove all artifacts
+pyve purge my_venv                   # Remove custom-named venv
 pyve purge --keep-testenv            # Preserve the dev/test runner environment
-pyve env purge [<name>]              # Remove one named env (default env when unnamed)
-pyve env purge --all                 # Remove every declared env
 ```
 
 ## Testing
@@ -344,11 +339,11 @@ Pyve supports the developer with an isolated test environment, separate from the
 Pyve supports integration testing via a dedicated dev/test runner environment separate from the project runtime virtual environment. When you run `pyve test`, Pyve will initialize the dev/test runner environment. If `pytest` is missing, Pyve prompts to install `pytest` (interactive shell).
 
 - Project environment: `.venv/` (created by `pyve init`)
-- Dev/test runner environment: `.pyve/envs/testenv/venv/` (used by `pyve test`)
+- Dev/test runner environment: `.pyve/testenvs/testenv/venv/` (used by `pyve test`)
 
 This separation prevents destructive actions like `pyve init --force` from wiping your test tooling.
 
-**Two envs is the minimum, not the maximum.** Declare additional named environments in `pyve.toml` — each `[env.<name>]` block picks its purpose (`run` / `test` / `utility` / `temp`), its backend (`venv`, `micromamba`, or the root's by default), a composable setup recipe (`editable` / `requirements` / `extra` / `manifest`), and a lifecycle policy (`lazy = true` for on-demand provisioning). State for each env lives under `.pyve/envs/<name>/`. Then `pyve test --env <name>` (single) or `pyve test --env a,b,c` (matrix) routes the suite to the right env. See [Testing → Named test environments](https://pointmatic.github.io/pyve/testing/#named-test-environments) for the full schema and the canonical detail.
+**Two envs is the minimum, not the maximum.** Since v2.8, declare additional named test environments in `pyproject.toml` under `[tool.pyve.testenvs]` — each with its own backend (`venv`, `micromamba`, or `inherit`), dependency source (`requirements` / `extra` / `manifest`), and lifecycle policy (`lazy = true` for on-demand provisioning). State for each env lives under `.pyve/testenvs/<name>/`. Then `pyve test --env <name>` (single) or `pyve test --env a,b,c` (matrix) routes the suite to the right env. See [Testing → Named test environments](https://pointmatic.github.io/pyve/testing/#named-test-environments) for the full schema and the canonical detail.
 
 ### Running tests
 
@@ -369,35 +364,17 @@ If `pytest` is not installed in the dev/test runner environment:
 You can also install dev/test dependencies explicitly:
 
 ```bash
-pyve env init
-pyve env install -r requirements-dev.txt
-```
-
-Or declare the setup recipe once in `pyve.toml` and materialize it in one shot:
-
-```toml
-[env.testenv]
-purpose = "test"
-backend = "venv"
-default = true
-editable     = ".[dev]"                  # editable self-install + extras
-requirements = ["requirements-dev.txt"]  # composes with the line above
-```
-
-```bash
-pyve env init testenv            # materializes the full declared recipe
-pyve env init testenv --force    # one-shot rebuild from the declaration
+pyve testenv init
+pyve testenv install -r requirements-dev.txt
 ```
 
 ### All Commands
 
 ```bash
 # Environment
-pyve init                 # Initialize the project's environment(s) (--yes: accept defaults)
-pyve init --force [--all] # Rebuild the root env (--all: every declared env, state restored)
+pyve init                 # Initialize the project's environment(s)
 pyve purge                # Remove environment artifacts (composed across plugins)
 pyve update               # Non-destructive refresh of config + managed files
-pyve upgrade              # Re-resolve deps within constraints (--env <name> | --all | --check)
 pyve python set <ver>     # Pin the project Python version
 pyve python show          # Show the pinned Python version + its source
 pyve lock                 # Generate/update conda-lock.yml (micromamba envs)
@@ -411,13 +388,13 @@ pyve test [--env <name>]  # Run tests in a test-purpose environment
 pyve check                # Diagnose problems (CI-safe 0/1/2 exit codes)
 pyve status               # Read-only project-state dashboard (always exit 0)
 
-# Packaging (reserved)
+# Packaging (reserved in v3.0)
 pyve package              # Reserved artifact-materialization verb
 
 # Self management
 pyve self install         # Install pyve (provisions the toolchain venv)
 pyve self uninstall       # Remove pyve
-pyve self provision       # (Re)provision the hosted toolchain (--status: readiness query)
+pyve self migrate         # Migrate a v2 project to the v3 pyve.toml manifest
 
 # Universal flags
 pyve --help, -h           # Show help
@@ -442,18 +419,13 @@ pyve_schema = "3.0"
 
 [project]
 name = "myproject"
-pyve_defaults_version = "1"   # which Pyve defaults-set the project was created with
 
 [env.root]
-purpose = "utility"
+purpose = "run"
 backend = "venv"        # or "micromamba"
-default = false
 
 [env.testenv]
 purpose = "test"
-backend = "venv"
-default = true
-editable     = ".[dev]"                  # setup recipe: directives compose
 requirements = ["requirements-dev.txt"]
 
 # Optional: declare language plugins and the sub-tree each owns
@@ -461,11 +433,11 @@ requirements = ["requirements-dev.txt"]
 path = "."
 ```
 
-`pyve init` writes the manifest fully explicit — every env records its `purpose`, `backend`, and `default`, so the file is self-documenting and reproducible. You rarely write it by hand: `pyve init` generates it, and `pyve env sync` reconciles a planned environment spec into it. See the [`pyve.toml` reference](https://pointmatic.github.io/pyve/pyve-toml/) for the full schema.
+You rarely write `pyve.toml` by hand — `pyve init` and `pyve self migrate` generate it. See the [`pyve.toml` reference](https://pointmatic.github.io/pyve/pyve-toml/) for the full schema.
 
 ### Environment Variables
 - **Project-specific**: `.env` file in your project root for secrets and environment variables
-- **User template**: `~/.local/.env` serves as a template copied to new projects with `pyve init --local-env`
+- **User template**: `~/.local/.env` serves as a template copied to new projects with `--init --local-env`
 
 ### CLI Flags
 Run `pyve --help` for all available commands and options.
@@ -570,21 +542,25 @@ Pyve automatically resolves environment names for micromamba using this priority
    pyve init --backend micromamba --env-name myproject-dev
    ```
 
-2. **`environment.yml` name field** - From environment file
+2. **`.pyve/config` file** - Project configuration
+   ```yaml
+   micromamba:
+     env_name: myproject
+   ```
+
+3. **`environment.yml` name field** - From environment file
    ```yaml
    name: myproject
    dependencies:
      - python=3.11
    ```
 
-3. **Project directory basename** - Sanitized directory name (default)
+4. **Project directory basename** - Sanitized directory name (default)
    ```bash
    # In /path/to/my-ml-project
    pyve init --backend micromamba
    # Environment name: my-ml-project
    ```
-
-The resolved name is recorded as metadata (`environment.yml`'s `name:` field); the environment itself always materializes at `.pyve/envs/root/conda/`, regardless of name.
 
 **Name Sanitization:**
 - Converts to lowercase
@@ -714,7 +690,7 @@ pyve run python script.py
 ```bash
 # Uses micromamba run with prefix
 pyve run python script.py
-# Equivalent to: micromamba run -p .pyve/envs/root/conda python script.py
+# Equivalent to: micromamba run -p .pyve/envs/<name> python script.py
 ```
 
 **Error Handling:**
@@ -746,7 +722,7 @@ Diagnose problems and suggest one remediation per failure, composed across every
 pyve check
 ```
 
-**What it checks** (per active plugin): backend health, environment existence and location, language version, environment files (e.g. `environment.yml` / `conda-lock.yml`, `package.json` / `node_modules`), lock-file freshness, `.envrc` / `.env` status, and project-guide hosting. An info-only `[defaults]` section reports when Pyve's built-in defaults have changed since the project was created — reported, never applied retroactively.
+**What it checks** (per active plugin): backend health, environment existence and location, language version, environment files (e.g. `environment.yml` / `conda-lock.yml`, `package.json` / `node_modules`), lock-file freshness, `.envrc` / `.env` status, and project-guide hosting.
 
 **Exit codes (CI-safe):**
 - `0` — pass (clean)
@@ -767,35 +743,94 @@ It reports the project's backend(s), declared environments, language versions, a
 
 ### Smart Re-initialization
 
-Pyve handles re-initialization of existing projects without manual cleanup, honoring `pyve.toml` as the source of truth. Running `pyve init` on an already-initialized project re-runs setup non-destructively: the wizard seeds its answers from the manifest, healthy environments are kept, and managed files are refreshed. Nothing is purged without `--force`.
+Pyve intelligently handles re-initialization of existing projects without requiring manual cleanup.
 
-**Three lifecycle verbs, one meaning each:**
+**Running `pyve init` on existing project:**
 
-| Command | Touches | Destructive? |
-|---|---|---|
-| `pyve update` | The files Pyve manages *around* your project (`.gitignore`, editor settings, project-guide scaffolding) | No |
-| `pyve upgrade` | An env's *dependencies* — re-resolves to newest-within-constraints, keeps the env, re-locks | No (env preserved) |
-| `pyve init --force` | The root *environment itself* — purge and rebuild from the manifest | Yes (confirms first) |
+When you run `pyve init` on an already-initialized project, Pyve detects the existing installation and offers options:
 
 ```bash
-pyve update                      # refresh managed files (never touches envs)
-pyve upgrade                     # upgrade the root env's dependencies
-pyve upgrade --env testenv       # upgrade one named env
-pyve upgrade --all --check       # preview the upgrade plan for every env
-pyve init --force                # rebuild the root env (named envs untouched)
-pyve init --force --all          # rebuild every declared env, restoring recorded state
-pyve env init <name> --force     # rebuild one named env from its declaration
+$ pyve init
+⚠ Project already initialized with Pyve
+  Recorded version: 1.5.1
+  Current version: 1.5.2
+  Backend: venv
+
+What would you like to do?
+  1. Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)
+  2. Purge and re-initialize (clean slate)
+  3. Cancel
+
+Choose [1/2/3]:
 ```
 
-**Rebuilds restore state.** A forced rebuild snapshots the env's operational state first (installed dependencies, usage provenance) and replays it after the rebuild — a rebuilt env comes back installed, not empty. Only `pyve purge` / `pyve env purge` truly destroys.
+**Non-interactive Flags:**
 
-**Backend changes are safe.** `pyve init --force` honors the backend declared in `pyve.toml` (an explicit `--backend` flag wins). If a stray environment of a different backend is found, it is backed up to `.pyve/.v2-legacy/` — recoverable, never deleted.
+```bash
+# Safe update (preserves environment)
+pyve init --update
+
+# Force re-initialization (auto-purge, prompts for confirmation)
+pyve init --force
+```
+
+**Safe Update (`--update`):**
+- Preserves existing virtual environment
+- Updates configuration and version tracking
+- Adds missing config fields
+- **Rejects** backend changes (requires `--force`)
+- **Rejects** major Python version changes
+
+**Example:**
+```bash
+$ pyve init --update
+Updating existing Pyve installation...
+✓ Configuration updated
+  Version: 1.5.1 → 1.5.2
+  Backend: venv (unchanged)
+
+Project updated to Pyve v1.5.2
+```
+
+**Force Re-initialization (`--force`):**
+- Purges existing environment
+- Prompts for confirmation
+- Allows backend changes
+- Creates fresh installation
+
+**Example:**
+```bash
+$ pyve init --force
+⚠ Force re-initialization: This will purge the existing environment
+  Current backend: venv
+
+Continue? [y/N]: y
+
+✓ Purging existing environment...
+✓ Environment purged
+
+Proceeding with fresh initialization...
+```
+
+**Conflict Detection:**
+
+Backend changes are detected and require `--force`:
+
+```bash
+$ pyve init --backend micromamba --update
+✗ Cannot update in-place: Backend change detected
+  Current: venv
+  Requested: micromamba
+
+Backend changes require a clean re-initialization.
+Run: pyve init --force
+```
 
 **Use Cases:**
-- **Dependency refresh** - `pyve upgrade` after loosening constraints or to pick up new releases
-- **Managed-file refresh** - `pyve update` after upgrading Pyve itself
-- **Backend switching** - Change from venv to micromamba (or vice versa) via `pyve init --force`
-- **Project recovery** - Rebuild a corrupted environment from its declaration
+- **Version migration** - Update projects to newer Pyve versions
+- **Configuration updates** - Add new config fields safely
+- **Backend switching** - Change from venv to micromamba (or vice versa)
+- **Project recovery** - Fix corrupted installations
 
 ### `--no-direnv` Flag - Skip Direnv Configuration
 
@@ -1079,8 +1114,8 @@ Apache License 2.0 - see LICENSE file.
 
 ## Copyright
 
-Copyright (c) 2025-2026 Pointmatic (https://www.pointmatic.com)
+Copyright (c) 2025-2026-2026 Pointmatic (https://www.pointmatic.com)
 
 ## Acknowledgments
 
-Thanks to the asdf, pyenv, micromamba, and direnv communities for their excellent tools.
+Thanks to the asdf, pyenv, micromamba,and direnv communities for their excellent tools.

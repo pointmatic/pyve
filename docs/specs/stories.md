@@ -1072,13 +1072,66 @@ This shipped green because the next-steps tests **assert the deprecated string**
 
 ---
 
-### Story P.s: End-of-Phase P Public Documentation [Planned]
+### Story P.s: End-of-Phase P Public Documentation [Done]
 
 At the end of each release in Phase P, refresh the public docs via `refactor_document` mode against the realigned plan (P.c). For **v3.1.0 (end of Subphase P-1)** this reflects the UX overhaul — the explicit manifest, the keystone-driven wizard/flags, the `update` / `upgrade` / `force` verb model, restore-on-rebuild. (A second pass follows at v3.2.0 for the hardening surface.)
 
-- [ ] Update `README.md`
-- [ ] Update `docs/site/index.html`
-- [ ] Update `docs/site/` MkDocs files (folding in the deferred `usage.md`/`testing.md` v2-spelling sweep + `pyve env sync` workflow from `## Future`, if pulled forward).
+**Session scope (2026-07-06, developer).** The deferred `## Future` story "Finish the v3 site — drop v2 spellings in usage/testing + document the env planning/sync workflow" is **pulled forward and folded in whole** (Groups A + B; its task detail now lives under the MkDocs task below, and the `## Future` placeholder is removed). `docs/specs/brand-descriptions.md` is **included** (the mode's standard target list; v3.1 capabilities may shift feature cards / descriptions).
+
+- [x] Refactor `README.md` (v3.1.0 delta: `pyve upgrade`, declarative env recipes + one-shot `env init --force` rebuild, `--yes`/`--force` semantics, `--all` batch lifecycle; add `pyve env sync` to the command list)
+- [x] Refactor `docs/specs/brand-descriptions.md` (v3.1 capabilities in feature cards / descriptions)
+- [x] Refactor `docs/site/index.html` (v3.1.0 delta pass)
+- [x] Refresh MkDocs config and pages — v3.1.0 delta across affected pages, plus the folded-in site-finish work:
+  - [x] Restructure the `mkdocs.yml` nav from 12 flat top-level entries (overflowing tab bar) into a 5-tab hierarchy (developer-selected 2026-07-06): **Home | Start Here** (getting-started, migration) **| Concepts** (pyve-toml, environments, backends, plugins) **| Workflows** (testing, polyglot, packaging, ci-cd) **| Reference** (usage). Pages keep their filenames/URLs — nav-tree regrouping only; `usage.md` stays a single page this session (inbound deep links to `usage/#…` anchors from CLI output and project docs). Re-tune sidebar features (`navigation.sections` / `navigation.expand`) to fit the nested tree.
+  - [x] `usage.md` — convert the lower-body Command Reference examples: `pyve testenv …` → `pyve env …`, `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`, `[tool.pyve.testenvs]` → `pyve.toml` `[env.<name>]`; fix the `#testenv-subcommand` anchor/link references; keep one explicit "`pyve testenv` is a deprecated alias (removed v4.0)" note.
+  - [x] `testing.md` — same sweep across the lifecycle / named-test-env / activation-context / backend-deltas sections; rewrite the `[tool.pyve.testenvs]` worked examples as `pyve.toml` `[env.<name>]` blocks; fix the `.pyve/testenvs/testenv/venv` and `.pyve/envs/<name>/` path references in "Backend deltas".
+  - [x] Re-run the link/anchor check; confirm no dead `#…` fragments after the rename.
+  - [x] Add `pyve env sync` to every command reference where it's missing (`environments.md`, `usage.md`, `README.md`): discover the spec → diff vs the current `pyve.toml` → `[Y/n]` apply (default `Y`; **destructive** drops/backend-flips default `N`); writes `pyve.toml` only, never materializes; note exit `6` (spec invalid under the closed vocabulary).
+  - [x] Add a "Planning environments with project-guide" section to `environments.md` (with pointers from `getting-started.md` / `usage.md`): `project-guide mode plan_envs` authors the env spec §4 → `pyve env sync` reconciles it into `pyve.toml` → lifecycle commands materialize. Explain the *why*: one declarative source of intent; the spec may legitimately run ahead of what's materialized.
+  - [x] Document the `pyve check` env-spec drift surface — non-empty §4-vs-`pyve.toml` diff → **warn (exit 0)**, with the "run `pyve env sync` to reconcile" hint; note Pyve reads `env_spec_path` from `.project-guide.yml` (default `docs/specs/env-dependencies.md`).
+  - [x] Document the projectable subset that syncs/diffs (`name`, `purpose`, `backend`, `default`, `path`, `languages`, `frameworks`, `packaging`) vs. advisory/prose that never triggers drift (`app_type`, `require_min_version`, `manual_steps`, §5–§9 narrative).
+  - [x] Link, don't duplicate — reference the env-spec contract ([project-guide-requests/wizard-env-contract.md](project-guide-requests/wizard-env-contract.md)) rather than re-deriving the vocabulary; keep roadmap surfaces honest.
+
+**As-built notes (2026-07-07).** Backups per the mode: `README_old.md`, `docs/specs/brand-descriptions_old.md` (refreshed over the June 10 copy), `docs/site/index_old.html` — deletion at developer discretion. No Legacy Content sections were needed and no files were renamed. Beyond the plan: (1) **`migration.md` was fully rewritten** — it still taught the v3.0 transition machinery (soft banner, read-compat, `self migrate`) as current, and its "v3.1 hard interactive gate" section described a design that never shipped; it now teaches the real v3.1 path (re-run `pyve init`) with the transition history kept for v3.0.x readers. (2) The **link/anchor check caught five dead anchors, two pre-existing** — GitHub-style double-dash slugs that MkDocs collapses (`#setup-directives-a-composable-recipe`, plus the new `#upgrade-env-name-all-check`); mkdocs is not installed locally, so validation ran via a slugify-accurate script (scratchpad) — the site deploy remains the final arbiter. (3) README staleness beyond the v3.1 delta was corrected after verifying each claim against the code/CLI: retired `init <dir>` / `purge <dir>` positionals, `pyve python-version` → `python set`/`show`, `.pyve/config` detection/naming tiers → manifest tiers, the v1.5-era "Smart Re-initialization" section → the three-verb model, `--version` example `1.13.0` → `3.1.0`. (4) `backends.md` fixes outside the sweep: `.pyve/envs/<hash>/` → `.pyve/envs/root/conda/`, and an invalid `pyve init 3.11` positional example. (5) `pyve-toml.md` now documents the `pyve_defaults_version` stamp (P.k). (6) `mkdocs.yml` theme features left unchanged after evaluation — the tab grouping alone resolves the overflow; `navigation.sections`/`expand` are harmless at one nesting level. (7) Three internal story IDs removed from public pages; each page keeps exactly one deprecation-alias note (the P.r pattern). `pyve status` / `pyve check` output examples were re-captured from the live `./pyve.sh`.
+
+**Version:** rides the v3.1.0 bundle (Subphase P-1) — pure documentation refresh, no independent bump (P.u ships the release).
+
+---
+
+### Story P.t: Finalize the Reference documentation — split `usage.md` into per-command reference pages [Planned]
+
+*(Follows P.s, which restructures the site nav into the 5-tab hierarchy but deliberately keeps `usage.md` whole — the Reference tab therefore launches with a single 1,182-line page. This story fills the tab out properly. Deferred out of P.s because the split breaks inbound deep links unless redirects land with it.)*
+
+**Motivation.** `usage.md` is the site's heavyweight (1,182 lines) — one page carrying the entire command reference. With the Reference tab established, the finalized shape is per-command-group pages the left sidebar can navigate. The constraint that deferred this: external deep links target `usage/#…` anchors — pyve's own CLI output and the project-guide artifacts link to `https://pointmatic.github.io/pyve/usage/#env-subcommand` — so the split must ship with redirects, not before them.
+
+**Tasks.**
+
+- [ ] Settle the page grouping (refine at implementation): Project Lifecycle (`init`, `update`, `upgrade`, `purge`), Environments (`env` namespace incl. `sync`), Diagnostics (`check`, `status`), Tooling (`run`, `test`, `lock`, `package`, `python`, `self`) — plus a slim `usage.md` overview that indexes the group pages.
+- [ ] Split the content into the per-group pages under the Reference tab; every moved section keeps a stable heading/anchor.
+- [ ] Add the `mkdocs-redirects` plugin with an old→new mapping for the retired `usage/#…` anchors (at minimum every anchor referenced from outside the site).
+- [ ] Audit inbound deep links and repoint or confirm redirect coverage: CLI output strings in `pyve.sh` + `lib/`, `README.md`, and the project-guide artifact templates / `project-essentials.md` (e.g. the `usage/#env-subcommand` reference).
+- [ ] Site-wide link/anchor check; zero dead fragments; confirm the Reference tab sidebar renders the group pages cleanly.
+
+**Version:** v3.1.0 bundle (Subphase P-1) — ships with the release so the redirects go live alongside the new nav. Developer owns number/placement.
+
+---
+
+### Story P.u: Tag release v3.1.0 and validate in production [Planned]
+
+*(The Subphase P-1 release story — the bundle ships as one versioned release per the Version Cadence rule. Git operations are developer-owned throughout.)*
+
+**Tasks.**
+
+- [ ] Pre-flight: full unit suite green locally; CI (unit + integration, both runners) green on the release commit; shellcheck clean.
+- [ ] Consolidate `CHANGELOG.md` for 3.1.0 — the P-1 bundle: keystone parameter decision-graph (P.e–P.g), explicit-by-construction manifest + `--yes` wizard (P.j), versioned defaults + drift surfacing (P.k), full `.pyve/config` retirement (P.i.*), declarative env recipes + one-shot `env init --force` rebuild + `--yes`/`--force` semantics (P.l.*), operational-state record + restore-on-rebuild (P.m/P.n), `--all` batch lifecycle (P.o), `pyve upgrade` (P.p), `env purge` no-arg fix (P.q), `testenv`→`env` output sweep (P.r), docs refresh + site restructure (P.s/P.t). The subphase branch squash-merges to a single commit on `main`, so this is **one consolidated 3.1.0 entry summarizing everything since 3.0.5** — the unreleased 3.0.6–3.0.8 changes fold into the same summary; no per-patch backfill.
+- [ ] Bump `VERSION` in [pyve.sh](../../pyve.sh) to `3.1.0`.
+- [ ] Developer: squash-merge `subphase/p-1` → `main` (the subphase lands as a single commit), tag `v3.1.0`, push (via `project-guide git-push`).
+- [ ] Update the Homebrew formula (upstream tap) to v3.1.0; confirm `brew upgrade` picks it up.
+- [ ] Confirm the docs site deploy renders the new 5-tab nav and the `usage/#…` redirects resolve.
+- [ ] Production validation on a real machine with the released binary (not `./pyve.sh`): fresh `pyve init` on a new project; on an existing real project (e.g. ml-datarefinery), exercise `pyve check`, `pyve upgrade`, a state-restoring `pyve env init <name> --force` rebuild, and the `plan_envs` → `pyve env sync` loop.
+- [ ] Record any escapees as new field-discovered stories rather than patching silently.
+
+**Version:** v3.1.0 — this story *is* the release. Developer owns the final number and tag.
 
 ---
 
@@ -1150,33 +1203,6 @@ A parking lot of detailed candidate bodies. Each is assigned to a later subphase
 - [ ] Tests: hosted-only / local-pip-only / both / neither → one correct labeled readout each, with version; `self provision` prints the installed version.
 
 **Version:** Phase P — v2-wiring removal + existence→runnability. Developer owns number/placement.
-
----
-
-### Story ?.?: Finish the v3 site — drop v2 spellings in usage/testing + document the env planning/sync workflow [Planned]
-
-**Raised:** 2026-06-09 (developer, after the N.br site refresh). *(Candidate to fold into P.s End-of-Phase docs.)*
-
-**Motivation.** N.br (Subphase N-8) refreshed the public site and README for v3 — new pages (`pyve-toml`, `environments`, `plugins`, `polyglot`, `packaging`), a v2→v3 `migration.md`, and full v3 passes on `index` / `getting-started` / `ci-cd` / `backends` / `README`. Two follow-ups were scoped out of N.br to avoid a rushed mechanical edit and surfaced a real content gap:
-
-1. **`usage.md` and `testing.md` got v3 *orientation* passes, not full rewrites.** Their intros, command overviews, and the two-env-model table are v3, and each carries a prominent note mapping `pyve testenv`→`pyve env`, `.pyve/testenvs/`→`.pyve/envs/`, and `[tool.pyve.testenvs]`→`[env.<name>]`. But their **lower-body examples still use the v2 spellings** (~37 in usage, ~60 in testing). The old forms resolve (the `testenv` alias works; legacy paths migrate opportunistically), so nothing is *broken* — but the running examples should be canonical v3.
-2. **The environment planning/sync workflow is undocumented, and `pyve env sync` was omitted from the command references.** The site documents declaring `[env.<name>]` by hand / via `init` / via `migrate`, but **not** the `project-guide mode plan_envs` → `pyve env sync` → `pyve.toml` loop that is the intended "configure your environments" path. `pyve env sync` (shipped: N.az.2 / N.ba) is missing from `environments.md` / `usage.md` / `README` command lists, and the `pyve check` env-spec **drift** surface is undocumented.
-
-**Tasks**
-
-*Group A — drop the v2 spellings (mechanical sweep).*
-
-- [ ] **`usage.md`** — convert the lower-body Command Reference examples: `pyve testenv …` → `pyve env …`, `.pyve/testenvs/<name>/` → `.pyve/envs/<name>/`, `[tool.pyve.testenvs]` → `pyve.toml`'s `[env.<name>]`. Fix the `#testenv-subcommand` anchor/link references. Keep one explicit "`pyve testenv` is a deprecated alias (removed v4.0)" note; make every running example canonical.
-- [ ] **`testing.md`** — same sweep across the lifecycle / named-test-env / activation-context / backend-deltas sections; rewrite the `[tool.pyve.testenvs]` worked examples as `pyve.toml` `[env.<name>]` blocks; fix the `.pyve/testenvs/testenv/venv` and `.pyve/envs/<name>/` path references in "Backend deltas".
-- [ ] Re-run the link/anchor check; confirm no dead `#…` fragments after the rename.
-
-*Group B — document the planning/sync workflow (new content; the gap).*
-
-- [ ] **Add `pyve env sync` to every command reference** where it's missing (`environments.md`, `usage.md`, `README.md`): discover the spec → diff vs the current `pyve.toml` → `[Y/n]` apply (default `Y`; **destructive** drops/backend-flips default `N`); writes `pyve.toml` only, never materializes; note exit `6` (spec invalid under the closed vocabulary).
-- [ ] **Add a "Planning environments with project-guide" section** to `environments.md` (with pointers from `getting-started.md` / `usage.md`): `project-guide mode plan_envs` authors `docs/specs/env-dependencies.md` §4 (the analyzed-*ideal* env config at the current `spec_version`) → `pyve env sync` reconciles it into `pyve.toml` → lifecycle commands materialize. Explain the *why*: one declarative source of intent; the spec may legitimately run ahead of what's materialized.
-- [ ] **Document the `pyve check` env-spec drift surface** — non-empty §4-vs-`pyve.toml` diff → **warn (exit 0)**, with the "run `pyve env sync` to reconcile" hint; note Pyve reads `env_spec_path` from `.project-guide.yml` (default `docs/specs/env-dependencies.md`).
-- [ ] **Document the projectable subset** that syncs/diffs (`name`, `purpose`, `backend`, `default`, `path`, `languages`, `frameworks`, `packaging`) vs. advisory/prose that never triggers drift (`app_type`, `require_min_version`, `manual_steps`, §5–§9 narrative).
-- [ ] **Link, don't duplicate** — reference the env-spec contract (`project-guide-requests/wizard-env-contract.md`) rather than re-deriving the vocabulary; keep roadmap surfaces honest.
 
 ---
 

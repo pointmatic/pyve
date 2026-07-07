@@ -2,8 +2,8 @@
 
 Complete reference for all Pyve commands, options, and workflows.
 
-!!! note "v3.0 — the declarative manifest"
-    Pyve 3.0 describes each project with a root-level [`pyve.toml`](pyve-toml.md) manifest and a [plugin model](plugins.md). The command surface below is stable from v2; the main additions are the `pyve env` namespace (named environments — `pyve testenv` is now a deprecated alias), `pyve package` (reserved), and `pyve self migrate`. See the [Migration guide](migration.md) for moving a v2 project to v3.
+!!! note "v3 — the declarative manifest"
+    Pyve 3 describes each project with a root-level [`pyve.toml`](pyve-toml.md) manifest and a [plugin model](plugins.md). The main additions over v2 are the `pyve env` namespace (named environments — `pyve testenv` is a deprecated alias, removed in v4.0), `pyve upgrade` (in-place dependency re-resolve), `pyve env sync` (reconcile a planned env spec into the manifest), and `pyve package` (reserved). As of v3.1 the v2 compatibility window is closed: `.pyve/config` is no longer read and the `pyve self migrate` bridge was removed — re-run `pyve init` to bring a v2 project onto the manifest. See the [Migration guide](migration.md).
 
     Carried over from earlier: `pyve doctor` / `pyve validate` were replaced by `pyve check` (CI-safe `0`/`1`/`2`) and `pyve status` (read-only snapshot); both removed forms now hard-error with a migration hint.
 
@@ -28,8 +28,8 @@ Organized into four categories (same as `pyve --help`):
 
 | Command | Description |
 |---------|-------------|
-| `init [<dir>]` | Initialize the project's environment(s) — auto-detects each stack, composed across plugins |
-| `purge [<dir>]` | Remove Pyve-managed environment artifacts (composed across plugins) |
+| `init [--yes] [--force [--all]]` | Initialize the project's environment(s) — auto-detects each stack, composed across plugins. `--force` rebuilds the root env; `--all` extends the rebuild to every declared env with state restored |
+| `purge [--yes] [--keep-testenv]` | Remove Pyve-managed environment artifacts (composed across plugins) |
 | `update` | Non-destructive refresh of the files Pyve manages around your project (never touches an env) |
 | `upgrade [--env <name>] [--all] [--check]` | Re-resolve env dependencies to newest-within-constraints in place (keeps the env; re-locks) |
 | `python set <ver>` | Pin the project Python version |
@@ -60,11 +60,11 @@ Organized into four categories (same as `pyve --help`):
 | `self install` | Install pyve (provisions the toolchain venv) |
 | `self uninstall` | Remove pyve |
 | `self provision` / `unprovision` | Provision / remove Pyve-managed global tooling (e.g. hosted project-guide) |
-| `self migrate` | Migrate a v2 project to the v3 `pyve.toml` manifest |
+| `self migrate` | Reserved stub for future schema migrations (the v2 → v3 bridge was removed in v3.1) |
 | `self` | Show the self-namespace help |
 
 !!! note "`pyve testenv` → `pyve env`"
-    The `pyve testenv <sub>` namespace is a **deprecated alias** for `pyve env <sub>`; it re-dispatches with a one-shot warning and is removed in v4.0. Command examples below that say `testenv` apply equally to `env`.
+    The `pyve testenv <sub>` namespace is a **deprecated alias** for `pyve env <sub>`; it re-dispatches with a one-shot warning and is removed in v4.0. Every example below uses the canonical `pyve env` form.
 
 ### Universal Flags
 
@@ -76,21 +76,19 @@ Organized into four categories (same as `pyve --help`):
 
 ## Command Reference
 
-### `init [<dir>]`
+### `init`
 
 Initialize a Python virtual environment in the current directory.
 
 **Usage:**
 
 ```bash
-pyve init [<dir>] [options]
+pyve init [options]
 ```
 
-**Arguments:**
-
-- `<dir>` (optional): Custom venv directory name (default: `.venv`)
-
 **Options:**
+
+- `--yes`, `-y`: Easy mode — accept every wizard default with no prompts, then write the fully-explicit `pyve.toml`
 
 - `--python-version <ver>`: Set Python version (e.g., `3.13.7`)
   - If omitted, reads from `.python-version` file
@@ -107,8 +105,9 @@ pyve init [<dir>] [options]
 - `--auto-install-deps`: Automatically install pip dependencies from `pyproject.toml` or `requirements.txt` after environment creation
 - `--no-install-deps`: Skip dependency installation prompt (for CI/CD)
 - `--local-env`: Copy `~/.local/.env` template into the project
-- `--force`: Purge and re-initialize environment (destructive)
-    - For **non-destructive** refresh (config bump + managed files + project-guide without touching the venv), use `pyve update` instead of `pyve init --force`.
+- `--force`: Purge and rebuild the **root** environment from the manifest (destructive; confirms first). Named envs under `.pyve/envs/` are untouched — rebuild one with `pyve env init <name> --force`.
+    - For **non-destructive** refresh of managed files, use `pyve update`; to re-resolve dependencies in place, use `pyve upgrade`.
+- `--all`: With `--force`: after the root rebuild, rebuild every declared env and restore its recorded operational state
 - `--allow-synced-dir`: Bypass the cloud-synced directory safety check (see below)
 
 **`project-guide` integration options** (three-step post-init hook):
@@ -124,8 +123,8 @@ pyve init [<dir>] [options]
 # Initialize with defaults (auto-detect backend, default venv)
 pyve init
 
-# Use a custom venv directory name
-pyve init myenv
+# Easy mode: accept every wizard default, no prompts
+pyve init --yes
 
 # Pin a specific Python version
 pyve init --python-version 3.13.7
@@ -145,8 +144,11 @@ pyve init --no-install-deps
 # Skip direnv (for CI/CD setups)
 pyve init --no-direnv
 
-# Force re-initialization (purges and rebuilds)
+# Force re-initialization (purges and rebuilds the root env)
 pyve init --force
+
+# Rebuild every declared env, restoring recorded state
+pyve init --force --all
 
 # Skip the lock for this run (resolve from environment.yml; a present lock is ignored, not deleted)
 pyve init --no-lock
@@ -254,35 +256,32 @@ These prompts are skipped in CI mode (when `CI` environment variable is set).
 
 ---
 
-### `purge [<dir>]`
+### `purge`
 
 Remove the virtual environment and clean up Pyve-managed files.
 
 **Usage:**
 
 ```bash
-pyve purge [<dir>] [options]
+pyve purge [options]
 ```
-
-**Arguments:**
-
-- `<dir>` (optional): Custom venv directory name (default: `.venv`)
 
 **Options:**
 
-- `--keep-testenv`: Preserve `.pyve/testenvs/` (every dev/test runner environment) across purge
+- `--yes`, `-y`: Skip the confirmation prompt (non-TTY / CI runs skip it automatically; `--force` is a deprecated alias that warns)
+- `--keep-testenv`: Preserve every named env under `.pyve/envs/` across purge
 
 **Examples:**
 
 ```bash
-# Remove .pyve and the venv
+# Remove .pyve and the venv (lists what will be removed, confirms first)
 pyve purge
 
-# Preserve the testenv across purge
+# Preserve the named envs across purge
 pyve purge --keep-testenv
 
-# Remove a custom-named venv
-pyve purge custom_venv
+# Skip the confirmation prompt
+pyve purge --yes
 ```
 
 **What it does:**
@@ -297,7 +296,7 @@ pyve purge custom_venv
 
 - Homebrew-managed installations cannot use `purge` (use `brew uninstall pyve`)
 - Does not remove `.python-version`, `requirements.txt`, or `environment.yml`
-- Every testenv under `.pyve/testenvs/` is removed by default; pass `--keep-testenv` to preserve them all
+- Every named env under `.pyve/envs/` is removed by default; pass `--keep-testenv` to preserve them all — or remove a single env with `pyve env purge <name>`
 - Safe to run multiple times
 
 ---
@@ -324,8 +323,8 @@ pyve python show             # Print the current pin + its source
 Does not create or modify any virtual environment.
 
 `pyve python show` reads the currently pinned version from `.tool-versions` →
-`.python-version` → `.pyve/config` (first match wins) and prints it along
-with its source. Read-only; never installs or modifies anything.
+`.python-version` (first match wins) and prints it along with its source.
+Read-only; never installs or modifies anything.
 
 **Examples:**
 
@@ -338,25 +337,24 @@ pyve python show
 # → Python 3.13.7 (from .tool-versions)
 ```
 
-**Legacy form (deprecated; removed in v3.0).**
+**Legacy form (removed in v3.0).**
 
-`pyve python-version <ver>` still works in v2.x — it emits a one-shot stderr
-deprecation warning and delegates to `pyve python set <ver>`. Update your
-scripts at your leisure; they will fail after v3.0.
+`pyve python-version <ver>` hard-errors with a hint pointing at
+`pyve python set <ver>`. Update any scripts still using the old form.
 
 ---
 
 ### `lock [--check] [--env <name>|--all]`
 
-Generate or update lock files. Without arguments, locks the main env (`environment.yml` → `conda-lock.yml`). With `--env <name>` or `--all`, also locks conda-backed testenvs declared in `[tool.pyve.testenvs]`.
+Generate or update lock files. Without arguments, locks the main env (`environment.yml` → `conda-lock.yml`). With `--env <name>` or `--all`, also locks conda-backed named envs declared in `pyve.toml`'s `[env.<name>]` blocks.
 
 **Usage:**
 
 ```bash
 pyve lock                   # generate / update conda-lock.yml (main env)
 pyve lock --check           # verify conda-lock.yml is current (exit 0) or stale/missing (exit 1)
-pyve lock --env <name>      # lock one conda-backed testenv → <manifest>-lock.yml
-pyve lock --all             # main env + every conda-backed testenv
+pyve lock --env <name>      # lock one conda-backed named env → <manifest>-lock.yml
+pyve lock --all             # main env + every conda-backed named env
 ```
 
 `--env <name>` writes the lock file sibling to the env's `manifest` (`tests/env.yml` → `tests/env-lock.yml`). Hard-errors for venv-backed names, undeclared names, the reserved `root`, and missing `manifest` declarations / files. `--all` iterates: locks the main env first (in a subshell so its exit-paths don't halt the loop), then every micromamba-backed env; venv-backed envs are silently skipped; per-env failures `warn` and accumulate into a non-zero exit.
@@ -486,10 +484,10 @@ pyve test [--env <name>[,<name>...]] [pytest args...]
 **Arguments:**
 
 - `--env <name>[,<name>...]` (optional): which environment(s) to run pytest in.
-    - **No `--env`:** routes to `[tool.pyve.testenvs].default` if declared, else the implicit `testenv` at `.pyve/testenvs/testenv/venv/`.
+    - **No `--env`:** routes to the declared default test env (`default = true` in its `[env.<name>]` block). A homogeneous Python project with exactly one `purpose = "test"` env auto-promotes it; a bare (no-manifest) project uses the conventional `testenv` at `.pyve/envs/testenv/venv/`. Otherwise — mixed backends, or several test envs with no default — `pyve test` requires an explicit `--env`.
     - **Reserved `root`:** routes pytest to the project's root env (equivalent to `pyve run python -m pytest`) — the first-class form of the `pyve run python -m pytest` workaround for bundled-env setups.
     - **Reserved `testenv`:** explicit selection of the implicit-default testenv.
-    - **`<declared-name>`:** any name declared in `[tool.pyve.testenvs.<name>]` — venv-backed only (conda-backed envs hard-error; use `--env root` or `micromamba run` as a fallback). Lazy envs (`lazy = true`) auto-provision on first targeted use; suppress with `PYVE_NO_AUTO_PROVISION=1`.
+    - **`<declared-name>`:** any name declared as `[env.<name>]` in `pyve.toml` — venv-backed only (conda-backed envs hard-error; use `--env root` or `micromamba run` as a fallback). Lazy envs (`lazy = true`) auto-provision on first targeted use; suppress with `PYVE_NO_AUTO_PROVISION=1`.
     - **Comma-separated list (matrix mode):** `--env a,b,c` runs pytest against each named env sequentially with `=== Env: <name> ===` headers; exit code is the worst-case aggregate; iteration never halts on a failing env. `--parallel` is out of scope.
     - **Legacy `--env main`** now hard-errors with the rename hint (renamed to `--env root` in v2.7.1; Category-B deprecation-removal policy).
 - `pytest args` (optional): Arguments passed directly to pytest.
@@ -519,7 +517,7 @@ pyve test tests/test_module.py::test_function
 # under test in the root env — see the trap note below)
 pyve test --env root tests/integration/test_e2e.py -m hardware
 
-# Run against a declared named env (requires [tool.pyve.testenvs.smoke])
+# Run against a declared named env (requires [env.smoke] in pyve.toml)
 pyve test --env smoke
 
 # Matrix: run against two envs sequentially
@@ -530,14 +528,14 @@ pyve test --env smoke,integration
 
 1. Resolves `--env` per the rules above. Comma in the value triggers matrix mode.
 2. For each target env: auto-installs pytest if `PYVE_TEST_AUTO_INSTALL_PYTEST=1` (CI mode) or prompts (interactive); lazy envs auto-provision on first use (unless `PYVE_NO_AUTO_PROVISION=1`).
-3. Runs pytest with the provided arguments. `.state.last_used_at` is touched per env on the success path so `pyve testenv list` / `prune --unused-since` can see it.
+3. Runs pytest with the provided arguments. `.state.last_used_at` is touched per env on the success path so `pyve env list` / `prune --unused-since` can see it.
 
 **Notes:**
 
 - Default routing uses the dev/test runner environment, not the project environment — keeps test tools isolated from the project's dependency graph.
 - Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` for CI environments.
 - Exit code matches pytest's (single env) or the worst-case aggregate (matrix mode).
-- Default routing is equivalent to `pyve testenv run python -m pytest [args...]` with auto-install support; `--env root` is equivalent to `pyve run python -m pytest [args...]`.
+- Default routing is equivalent to `pyve env run python -m pytest [args...]` with auto-install support; `--env root` is equivalent to `pyve run python -m pytest [args...]`.
 - The silent-skip advisory scans every other env (`root` + declared names) for pytest-importability and prints a one-line hint listing alternatives. Suppress with `PYVE_NO_TESTENV_ADVISORY=1` (matrix mode sets it automatically).
 
 !!! warning "The bundled-env trap — when to use `--env root`"
@@ -550,73 +548,81 @@ pyve test --env smoke,integration
 
 ---
 
-### `testenv <subcommand>`
+### `env <subcommand>`
 
-Manage dedicated dev/test runner environments for tools like ruff, mypy, black, and pytest. The implicit-default testenv lives at `.pyve/testenvs/testenv/venv/`. Projects may also declare additional named envs in `[tool.pyve.testenvs]` (see [Testing → Named test environments](testing.md#named-test-environments)). All envs are preserved across `pyve init --force` and `pyve purge --keep-testenv`.
+Manage named environments — dev/test runner envs for tools like ruff, mypy, black, and pytest, plus any other declared `[env.<name>]`. The default test env lives at `.pyve/envs/testenv/venv/`. Declare additional named envs in `pyve.toml` (see [Named Environments](environments.md) and [Testing → Named test environments](testing.md#named-test-environments)). All named envs are preserved across `pyve init --force` and `pyve purge --keep-testenv`.
 
 **Usage:**
 
 ```bash
-pyve testenv init [<name>]                                  # Create an env (default: testenv)
-pyve testenv install [<name>] [-r <file>] [--no-wait]       # Install dependencies
-pyve testenv purge [<name>] [--force]                       # Remove env(s)
-pyve testenv run [<name> --] <command> [args...]            # Run a command in an env
-pyve testenv list                                           # Tabulate every known env
-pyve testenv prune [--unused-since <YYYY-MM-DD>|--all] [--force]   # Remove unused envs
+pyve env init [<name>] [--force]                         # Create an env from its declared recipe (default: testenv)
+pyve env install [<name>] [-r <file>] [--no-wait]        # Install dependencies
+pyve env purge [<name>|--all] [--yes]                    # Remove the default env, one env, or every env
+pyve env run [<name> --] <command> [args...]             # Run a command in an env
+pyve env list                                            # Tabulate every known env
+pyve env prune [--unused-since <YYYY-MM-DD>|--all] [--yes]   # Remove unused envs
+pyve env sync [--yes] [--force]                          # Reconcile the env spec into pyve.toml
 ```
 
 **Subcommands:**
 
-- `init [<name>]`: Creates `.pyve/testenvs/<name>/{venv,conda}/` using the active project Python (venv backend) or `micromamba create -f <manifest>` (conda backend, when the env declares `backend = "micromamba"`).
-- `install [<name>] [-r <file>] [--no-wait]`: No `<name>` iterates every declared non-lazy env. With `<name>` installs into one env. `-r <file>` overrides the declared source (`requirements` / `extra` / `manifest`); without a declared source, falls back to auto-detected `requirements-dev.txt` or bare `pytest`. `--no-wait` fast-fails if another pyve process holds the install lock.
-- `purge [<name>] [--force]`: With `<name>` removes one env. Without, removes every declared env (TTY-prompted; `--force` skips the prompt; non-TTY stdin also skips).
+- `init [<name>] [--force]`: Creates `.pyve/envs/<name>/{venv,conda}/` and materializes the env's full declared setup recipe in one shot — conda `manifest` first, then `editable`, `requirements`, `extra`, in that fixed order. No directives declared → an empty env ("init installs what you declared, nothing you didn't"). `--force` is the one-shot rebuild verb: purge + re-create + re-materialize, with the recorded operational state restored. (`root` is rejected here — rebuild the root env with `pyve init --force`.)
+- `install [<name>] [-r <file>] [--no-wait]`: No `<name>` iterates every declared non-lazy env. With `<name>` installs into one env. `-r <file>` overrides the declared pip-layer recipe; without any declared recipe, falls back to auto-detected `requirements-dev.txt` or bare `pytest`. `--no-wait` fast-fails if another pyve process holds the install lock.
+- `purge [<name>|--all] [--yes]`: Bare `pyve env purge` removes the **default** env — matching its siblings, which assume the default when unnamed. `<name>` removes one env; `--all` sweeps every declared env (TTY-prompted; `--yes` skips the prompt; non-TTY stdin also skips).
 - `run [<name> --] <command> [args...]`: Executes a command inside an env. With `<name>`, the `--` separator disambiguates env name from command. Venv-only — conda-backed envs hard-error with a `micromamba run -p <env> <cmd>` workaround hint.
-- `list`: Tabulates the union of declared envs and on-disk envs with `NAME / BACKEND / SIZE / LAST-USED / STATE` columns. STATE is one of `ready`, `lazy`, `not provisioned`, `orphaned`.
-- `prune`: Disk-walking removal. Default mode removes orphans (on-disk but not declared); `--unused-since <ISO-date>` removes envs whose `.state.last_used_at` is strictly older (envs never used are preserved); `--all` removes every on-disk env. Distinct from `purge` (which is config-driven, walking `[tool.pyve.testenvs]`).
+- `list`: Tabulates the union of declared envs and on-disk envs with `NAME / BACKEND / SIZE / LAST-USED / STATE` columns. STATE is one of `ready` (recipe installed), `realized` (on-disk but never installed), `lazy`, `not provisioned`, `orphaned`.
+- `prune`: Disk-walking removal. Default mode removes orphans (on-disk but not declared); `--unused-since <ISO-date>` removes envs whose `.state.last_used_at` is strictly older (envs never used are preserved); `--all` removes every on-disk env. Distinct from `purge` (which is declaration-driven, walking `pyve.toml`).
+- `sync [--yes] [--force]`: Reconciles the planned environment spec (`docs/specs/env-dependencies.md` §4, authored by `project-guide mode plan_envs`) into `pyve.toml`: discover → diff → `[Y/n]`-apply. Writes `pyve.toml` only, never materializes. Non-destructive changes default to apply (`--yes` assents); destructive drops and backend flips default to No — `--force` escalates to apply them too. Exit `6` = spec invalid under the closed vocabulary. See [Planning environments with project-guide](environments.md#planning-environments-with-project-guide).
 
 **Examples:**
 
 ```bash
 # Set up the default testenv
-pyve testenv init
-pyve testenv install -r requirements-dev.txt
+pyve env init
+pyve env install -r requirements-dev.txt
 
-# Set up a named env (requires [tool.pyve.testenvs.smoke] declaration)
-pyve testenv init smoke
-pyve testenv install smoke         # uses declared `requirements` / `extra` / `manifest`
+# Set up a named env (requires an [env.smoke] declaration in pyve.toml)
+pyve env init smoke                # materializes smoke's full declared recipe
+
+# Rebuild an env from its declaration (purge + create + install, state restored)
+pyve env init smoke --force
 
 # Install every declared non-lazy env in one shot
-pyve testenv install
+pyve env install
 
 # Run dev tools from the default testenv
-pyve testenv run ruff check .
-pyve testenv run mypy src/
-pyve testenv run black --check .
+pyve env run ruff check .
+pyve env run mypy src/
+pyve env run black --check .
 
 # Run a tool in a named env (note the `--` separator)
-pyve testenv run smoke -- pytest -v
+pyve env run smoke -- pytest -v
 
 # See what's on disk
-pyve testenv list
+pyve env list
 
 # Remove envs nobody has used since 2026-01-01
-pyve testenv prune --unused-since 2026-01-01
+pyve env prune --unused-since 2026-01-01
 
-# Tear down a specific env / every declared env
-pyve testenv purge smoke
-pyve testenv purge --force
+# Tear down the default env / one env / every declared env
+pyve env purge
+pyve env purge smoke
+pyve env purge --all --yes
+
+# Reconcile the planned env spec into pyve.toml
+pyve env sync
 ```
 
 **Notes:**
 
-- Every env survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes them.
+- Every named env survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes them.
 - `pyve test` is a convenience shortcut that runs pytest inside the resolved env with auto-install support and the silent-skip advisory.
 - Exit code matches the executed command's exit code (single env) or the worst-case aggregate (`install` no-arg iteration / `purge --all`).
-- Concurrent `pyve testenv install <same-env>` from two shells serialize via a `mkdir`-based lock at `.pyve/testenvs/<name>/.lock/`; the holder's PID is in `lock/pid`. `--no-wait` fast-fails with a "(pid N)" message instead of queuing.
+- Concurrent `pyve env install <same-env>` from two shells serialize via a `mkdir`-based lock in the env's state directory; the holder's PID is in `lock/pid`. `--no-wait` fast-fails with a "(pid N)" message instead of queuing.
 
 **Legacy flag forms (removed in v2.3.0).**
 
-`pyve testenv --init`, `pyve testenv --install`, and `pyve testenv --purge` were delegated-with-warning through v2.2.x and hard-removed in v2.3.0 (Story J.d). They now fall through to the dispatcher's unknown-flag path. See the [Migration guide](migration.md) for the mapping.
+`pyve testenv --init`, `pyve testenv --install`, and `pyve testenv --purge` were delegated-with-warning through v2.2.x and hard-removed in v2.3.0. They now fall through to the dispatcher's unknown-flag path. See the [Migration guide](migration.md) for the mapping.
 
 ---
 
@@ -632,17 +638,19 @@ pyve check
 
 **What it checks:**
 
-- `.pyve/config` presence and parseability
+- `pyve.toml` presence and schema validity (the manifest is the declaration)
 - Backend configured and implementation available (micromamba binary, when applicable)
 - Environment path exists and has `bin/python`
-- Python version matches the pinned source-of-truth (`.tool-versions` / `.python-version` / config)
+- Python version matches the pinned source-of-truth (`.tool-versions` / `.python-version`)
 - Venv path sanity (warns if project was relocated after creation)
 - `.envrc` / `.env` presence
 - `conda-lock.yml` presence and freshness (micromamba only)
 - Duplicate `.dist-info` directories in `site-packages` (micromamba only)
 - iCloud-Drive collision artifacts (macOS, micromamba only)
 - conda/pip native-library conflicts (micromamba only)
-- testenv status (if the project uses `pyve test`)
+- Named-env status (if the project uses `pyve test`)
+- Env-spec drift — a non-empty diff between the planned env spec (§4 of `docs/specs/env-dependencies.md`, path read from `.project-guide.yml`'s `env_spec_path`) and `pyve.toml` warns with a "run `pyve env sync` to reconcile" hint (exit stays 0)
+- An info-only `[defaults]` section reports when Pyve's built-in defaults changed since the project was created — reported, never applied retroactively
 
 **Exit codes:**
 
@@ -658,7 +666,7 @@ Safe for CI use.
 Pyve Environment Check
 ======================
 
-✓ Configuration: .pyve/config
+✓ Configuration: pyve.toml
 ✓ Backend: venv
 ✗ Virtual environment: .venv (missing)
   → Run: pyve init --force
@@ -686,7 +694,7 @@ pyve status
 
 **Output sections:**
 
-- **Project** — path, backend, config version, configured Python
+- **Project** — path, backend, declaration (`pyve.toml`), configured Python
 - **Environment** — path, Python, package count, backend-specific rows (environment.yml + lock status for micromamba)
 - **Integrations** — direnv, `.env`, project-guide, testenv
 
@@ -701,7 +709,7 @@ Pyve project status
 Project
   Path:           /Users/foo/Developer/bar
   Backend:        venv
-  Pyve config:    v2.0.0 (current)
+  Declaration:    pyve.toml
   Python:         3.14.4 (.tool-versions via asdf)
 
 Environment
@@ -720,7 +728,7 @@ Integrations
 
 ### `update`
 
-Non-destructive upgrade path. Refreshes `.pyve/config`, managed files, and `project-guide` scaffolding without rebuilding the environment.
+Non-destructive refresh path. Refreshes the files Pyve manages around your project and the `project-guide` scaffolding without touching any environment.
 
 **Usage:**
 
@@ -730,17 +738,16 @@ pyve update [--no-project-guide]
 
 **What it does:**
 
-1. Rewrites `.pyve/config`'s `pyve_version` to the running pyve's `VERSION`.
-2. Refreshes the Pyve-managed sections of `.gitignore`.
-3. Refreshes `.vscode/settings.json` (only if it already exists — never creates one on update).
-4. Refreshes `.pyve/` layout (bootstraps scaffolding if missing).
-5. Runs `project-guide update --no-input` (unless `--no-project-guide` or an auto-skip condition applies).
+1. Refreshes the Pyve-managed sections of `.gitignore`.
+2. Refreshes `.vscode/settings.json` (only if it already exists — never creates one on update).
+3. Refreshes `.pyve/` layout (bootstraps scaffolding if missing).
+4. Runs `project-guide update --no-input` (unless `--no-project-guide` or an auto-skip condition applies).
 
 **What it does NOT do:**
 
-- Never rebuilds the venv / micromamba environment — use `pyve init --force` for that.
+- Never rebuilds the venv / micromamba environment — use `pyve init --force` for that; to re-resolve dependencies in place, use `pyve upgrade`.
 - Never creates a `.env` or `.envrc` that doesn't exist — those are user state.
-- Never re-prompts for backend. The backend recorded in `.pyve/config` is preserved.
+- Never re-prompts for backend. The backend declared in `pyve.toml` is untouched.
 - Never prompts interactively.
 
 **Exit codes:**
@@ -863,7 +870,7 @@ pyve --version
 **Output:**
 
 ```
-pyve version 1.13.0
+pyve version 3.1.0
 ```
 
 ---
@@ -904,9 +911,10 @@ pyve purge --help
 pyve check --help
 pyve status --help
 pyve update --help
+pyve upgrade --help
 pyve python --help
 pyve lock --help
-pyve testenv --help
+pyve env --help
 pyve self install --help
 pyve self uninstall --help
 ```
@@ -953,6 +961,10 @@ pyve init
 
 ## Configuration Files
 
+### `pyve.toml`
+
+The project's declaration — every environment, its purpose, backend, and setup recipe, in one root-level manifest. Written fully explicit by `pyve init`; reconciled from a planned env spec by `pyve env sync`. Everything under `.pyve/` is materialized state, never configuration. See the [`pyve.toml` reference](pyve-toml.md) for the full schema.
+
 ### `.python-version`
 
 Specifies the Python version for the project.
@@ -984,7 +996,7 @@ if [[ -f ".env" ]]; then
 fi
 ```
 
-For the micromamba backend, `PATH_add` points at `.pyve/envs/<env>/bin` and the sentinel becomes `CONDA_PREFIX`. The file is project-directory independent: `PATH_add` resolves relative paths at runtime, and `$PWD` in the sentinel export expands when direnv sources the file.
+For the micromamba backend, `PATH_add` points at `.pyve/envs/root/conda/bin` and the sentinel becomes `CONDA_PREFIX`. The file is project-directory independent: `PATH_add` resolves relative paths at runtime, and `$PWD` in the sentinel export expands when direnv sources the file.
 
 - Created by `pyve init` if direnv is installed (skipped with `--no-direnv`)
 - Automatically activates the virtual environment on `cd`
@@ -1094,9 +1106,10 @@ git commit -m "Initial commit"
 # Current: venv backend
 pyve status  # Shows: Backend: venv
 
-# Switch to micromamba
-pyve purge
-pyve init --backend micromamba
+# Switch to micromamba: rebuild the root env with the new backend
+# (updates the manifest; a stray env of the old backend is backed up
+# to .pyve/.v2-legacy/, never deleted)
+pyve init --force --backend micromamba
 
 # Verify
 pyve status  # Shows: Backend: micromamba

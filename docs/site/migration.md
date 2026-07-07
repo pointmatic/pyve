@@ -1,8 +1,6 @@
-# Migration guide — pyve v2.x → v3.0
+# Migration guide — pyve v2.x → v3
 
-Pyve 3.0 introduces the declarative [`pyve.toml`](pyve-toml.md) manifest and the plugin model. Your v2 project keeps working against a v3.0 binary **without** an immediate migration — but the clean, permanent move is one command: `pyve self migrate`.
-
-This guide covers what changes, the one-step migrator, and the three coordinated surfaces that manage the transition window.
+Pyve 3 describes each project with the declarative [`pyve.toml`](pyve-toml.md) manifest and the plugin model. **As of v3.1 the v2 compatibility window is closed**: nothing reads `.pyve/config` anymore, the `pyve self migrate` bridge has been removed, and a project with only v2 configuration reads as **uninitialized**. The move to v3 is one command: re-run `pyve init`.
 
 ## What changes
 
@@ -10,57 +8,34 @@ This guide covers what changes, the one-step migrator, and the three coordinated
 |---|---|
 | `.pyve/config` (YAML) + `[tool.pyve.testenvs.*]` in `pyproject.toml` | A single root-level [`pyve.toml`](pyve-toml.md) |
 | "main env" + "testenvs" | Named `[env.<name>]` blocks with a `purpose` ([Named Environments](environments.md)) |
-| State under `.pyve/envs/` and `.pyve/testenvs/` | One root: `.pyve/envs/<name>/<backend>/` |
-| `pyve testenv <sub>` | `pyve env <sub>` (the old spelling still works, with a warning) |
+| State split across `.pyve/envs/` and `.pyve/testenvs/` | One root: `.pyve/envs/<name>/<backend>/` |
+| `pyve testenv <sub>` | `pyve env <sub>` (the old spelling still works, with a warning; removed in v4.0) |
+| One dependency source per env (`requirements` ⊕ `extra` ⊕ `manifest`) | Composable [setup directives](pyve-toml.md#setup-directives-a-composable-recipe), including `editable` |
 | Python-only | Plugin model — Python and Node, more through the contract |
 
 Your code, `pyproject.toml`, `package.json`, lockfiles, and non-empty `.env` files are never touched by migration.
 
-## `pyve self migrate` — the one-step move
+## Migrating a v2 project (v3.1 and later)
 
-`pyve self migrate` is the deterministic migrator. It:
+1. **Upgrade Pyve** (`brew upgrade pointmatic/tap/pyve`, or `git pull && ./pyve.sh self install` from source).
+2. **Re-run `pyve init`** in the project. The wizard re-detects the stack — the backend from `environment.yml` / `pyproject.toml`, the Python pin from `.tool-versions` / `.python-version` — and writes a fully-explicit `pyve.toml`. Add `--yes` to accept every default without prompting.
+3. **On-disk environments migrate opportunistically.** A legacy env under `.pyve/testenvs/<name>/` is relocated to `.pyve/envs/<name>/<backend>/` the first time a command needs it. During a forced rebuild, a stray env whose backend contradicts the manifest is backed up to `.pyve/.v2-legacy/` — recoverable, never deleted.
+4. **Re-declare named envs in `pyve.toml`.** Attributes that lived in `[tool.pyve.testenvs.<name>]` become an `[env.<name>]` block: `requirements` / `extra` / `manifest` / `lazy` / `backend` carry over one-to-one, `default = "<name>"` becomes `default = true` on the env itself — and the directives now [compose](pyve-toml.md#setup-directives-a-composable-recipe) (the v2 pick-one rule is gone), including the new `editable` directive.
+5. **Verify.** `pyve status` (read the new manifest), `pyve check` (health). A leftover `.pyve/config` is inert — nothing reads it, and `pyve purge` deletes it opportunistically.
+6. **Update scripts:** `pyve testenv …` → `pyve env …` (the alias keeps working until v4.0).
 
-1. **Writes `pyve.toml`** from your v2 sources (`.pyve/config` + `[tool.pyve.testenvs.*]`).
-2. **Backs the legacy files up** into `.pyve/.v2-legacy/` — the single, deterministic backup location.
-3. **Rebuilds your environments** at the v3 layout (`pyve init --force` under the hood).
+## The transition history
 
-It is **idempotent** — running it twice is safe — and offers flags to preview or stage the work:
+The v2 → v3 transition passed through two releases:
 
-```bash
-pyve self migrate --dry-run      # show what would happen, change nothing
-pyve self migrate --no-rebuild   # write pyve.toml + back up, skip the env rebuild
-pyve self migrate                # full migration
-```
+- **v3.0** shipped three coordinated surfaces: a read-compat layer (v2 sources synthesized into the v3 model in memory, so unmigrated projects kept working), a one-shot soft banner nudging toward migration, and the `pyve self migrate` bridge (write `pyve.toml` from v2 sources, back them up under `.pyve/.v2-legacy/`, rebuild).
+- **v3.1** closed the window: the read-compat layer, the banner, and the `self migrate` bridge were all removed. `pyve self migrate` survives only as a reserved stub for future schema migrations (e.g. v3 → v4) — it recognizes no v2 sources.
 
-If something looks wrong after a migration, `.pyve/.v2-legacy/` holds your original files.
-
-## The three coordinated surfaces
-
-The v2 → v3 transition is managed by three surfaces, each for a different user state. Don't expect a fourth nudge — these are the only ones.
-
-### 1. The deterministic migrator
-
-`pyve self migrate` (above) — for when you're ready to migrate.
-
-### 2. The v3.0 soft banner
-
-While you're on v3.0 with v2 sources and no `pyve.toml`, Pyve shows a **one-shot banner** nudging you to migrate. It fires at most once per shell session and skips `--help` / `--version` / `--config` and the `self` namespace. Suppress it entirely with:
-
-```bash
-export PYVE_QUIET=1
-```
-
-### 3. The v3.0 read-compat window
-
-This is what lets you defer. During the v3.0 window, when a project has v2 sources but no `pyve.toml`, Pyve **synthesizes** the v3 model in memory from your legacy files, so every command keeps working as before — you can migrate on your own schedule. The read-compat layer is removed in v3.1.
-
-### 4. The v3.1 hard gate
-
-In **v3.1**, the soft banner is replaced by a hard interactive gate — *"Pyve v2.x configuration is no longer supported. Ready to migrate? [Y/n]"* — that runs `pyve self migrate` on accept. The read-compat layer is removed at the same time, so v3.1 expects a `pyve.toml`. Migrate before v3.1 and you'll never see it.
+**Still on v3.0.x?** You can run `pyve self migrate` there before upgrading to v3.1 — the smoothest path for a heavily-customized v2 project. On v3.1+, `pyve init` is the migration.
 
 ## CLI renames
 
-The v2 → v3 command renames, all backward-compatible during the v3.x window:
+The v2 → v3 command renames, aliased during the v3.x window:
 
 | v2 form | v3 form | Status |
 |---|---|---|
@@ -73,11 +48,14 @@ The diagnostics split from the v1.x → v2.0 era still holds: `pyve doctor` / `p
 
 ## Quick recipe
 
-For a repo moving from v2 to v3:
+For a repo moving from v2 to v3.1+:
 
-1. Upgrade Pyve (`brew upgrade pointmatic/tap/pyve`, or `git pull && ./pyve.sh self install` from source).
-2. In each project, preview first: `pyve self migrate --dry-run`.
-3. Run `pyve self migrate`.
-4. Confirm: `pyve status` (read the new manifest), `pyve check` (verify health).
-5. Once you're happy, the legacy backup in `.pyve/.v2-legacy/` can be removed at your leisure.
-6. Update scripts: `pyve testenv …` → `pyve env …` (the old form keeps working until v4.0).
+```bash
+brew upgrade pointmatic/tap/pyve     # 1. upgrade Pyve
+cd ~/my-v2-project
+pyve init                            # 2. re-detect the stack, write pyve.toml
+pyve status                          # 3. confirm the manifest reads correctly
+pyve check                           # 4. verify health
+```
+
+Then re-declare any named test envs as `[env.<name>]` blocks, and update scripts from `pyve testenv` to `pyve env`.

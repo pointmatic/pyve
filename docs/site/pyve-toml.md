@@ -5,7 +5,7 @@ From v3.0, every Pyve project is described by a single root-level **`pyve.toml`*
 `pyve.toml` is the **declaration**. Everything under `.pyve/` is materialized **state** (environments, locks, sentinels, backups) — never configuration. You edit `pyve.toml`; Pyve manages `.pyve/`.
 
 !!! note "Coming from v2?"
-    v2 split configuration across `.pyve/config` (YAML) and `[tool.pyve.testenvs.*]` in `pyproject.toml`. v3 consolidates both into `pyve.toml`. Run [`pyve self migrate`](migration.md) to generate it from your v2 sources — you rarely need to write it by hand.
+    v2 split configuration across `.pyve/config` (YAML) and `[tool.pyve.testenvs.*]` in `pyproject.toml`. v3 consolidates both into `pyve.toml`, and as of v3.1 the v2 sources are no longer read — re-run `pyve init` to generate the manifest (see [Migration](migration.md)). You rarely write it by hand: `pyve init` generates it, and [`pyve env sync`](environments.md#planning-environments-with-project-guide) reconciles a planned env spec into it.
 
 ## A minimal manifest
 
@@ -32,8 +32,11 @@ In practice you rarely need even this much: a project with **no** `pyve.toml` (o
 
 ```toml
 [project]
-name = "demo"   # display name; optional
+name = "demo"                  # display name; optional
+pyve_defaults_version = "1"    # stamped by pyve init; see below
 ```
+
+`pyve_defaults_version` records which **defaults-set** the project was created with. A default is resolved once and frozen into the manifest — a later Pyve release changing a built-in default never mutates an existing repo. When the repo's stamp trails the current set, `pyve check` reports the changed defaults in an info-only `[defaults]` section (never applied automatically).
 
 ## `[env.<name>]` — environment blocks
 
