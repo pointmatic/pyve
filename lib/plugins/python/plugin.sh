@@ -947,6 +947,11 @@ _init_testenv_to_materialize() {
     fi
     local name="${PYVE_TESTENVS_DEFAULT:-}"
     [[ -z "$name" ]] && return 0
+    # A lazy env provisions on first use — init must leave it
+    # unrealized (including a forced re-init).
+    if is_env_lazy "$name"; then
+        return 0
+    fi
     local be
     be="$(_env_resolve_backend "$name")" || be="venv"
     [[ "$be" == "venv" ]] && printf '%s' "$name"

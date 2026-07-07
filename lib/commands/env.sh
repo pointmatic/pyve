@@ -94,6 +94,11 @@ env_init() {
     # CI/non-TTY skips; PYVE_FORCE_PROMPT=1 forces the prompt. An
     # absent env degrades to plain init — nothing to purge, nothing to
     # confirm.
+    # Snapshot-then-replay: a force rebuild is a RESTORE, not a factory
+    # reset. Capture the operational-state record before the purge so
+    # the rebuilt env comes back with its installed dimension and usage
+    # provenance; only `pyve env purge` truly destroys the record.
+    local snap_have=0 snap_installed_at=0 snap_last_used=0
     if [[ "$force" == "1" ]]; then
         local env_root
         env_root="$(dirname "$(resolve_env_path "$name")")"
@@ -114,12 +119,37 @@ env_init() {
                     return 0
                 fi
             fi
+            if state_read "$name" 2>/dev/null; then
+                snap_have=1
+                snap_installed_at="${PYVE_TESTENV_STATE_INSTALLED_AT:-0}"
+                snap_last_used="${PYVE_TESTENV_STATE_LAST_USED_AT:-0}"
+            fi
             purge_env_dir "$name" || return $?
         fi
     fi
 
     ensure_env_exists "$name" || return $?
-    _env_init_materialize_recipe "$name"
+    _env_init_materialize_recipe "$name" || return $?
+
+    # Replay the snapshot. Installed dimension first: when the record
+    # said installed but the recipe step didn't re-install (an env with
+    # no declared directives, originally populated via the install
+    # fallback chain), run the install path so the env comes back
+    # installed — freshly re-stamped, never a stale copy. Then restore
+    # last_used_at (usage provenance survives a rebuild).
+    if [[ "$snap_have" == "1" ]]; then
+        if [[ "$snap_installed_at" != "0" ]]; then
+            if state_read "$name" 2>/dev/null \
+               && [[ "${PYVE_TESTENV_STATE_INSTALLED_AT:-0}" == "0" ]]; then
+                local replay_env_path
+                replay_env_path="$(resolve_env_path "$name")"
+                _env_install_with_lock "$name" "$replay_env_path" "" "wait" || return $?
+            fi
+        fi
+        if [[ "$snap_last_used" != "0" ]]; then
+            state_touch_last_used "$name" "$snap_last_used" || true
+        fi
+    fi
 }
 
 # Install the declared pip directives (editable/requirements/extra)

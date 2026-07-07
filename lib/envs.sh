@@ -504,12 +504,16 @@ state_read() {
 # fields. Returns 1 if the .state file is missing.
 state_touch_last_used() {
     local name="$1"
+    # Optional second arg: an explicit epoch (used by the force-rebuild
+    # replay to restore usage provenance); default is "now".
+    local at="${2:-}"
+    [[ -z "$at" ]] && at="$(date +%s)"
     state_read "$name" || return 1
     state_write "$name" "$PYVE_TESTENV_STATE_BACKEND" \
         manifest="$PYVE_TESTENV_STATE_MANIFEST" \
         manifest_sha256="$PYVE_TESTENV_STATE_MANIFEST_SHA256" \
         provisioned_at="$PYVE_TESTENV_STATE_PROVISIONED_AT" \
-        last_used_at="$(date +%s)" \
+        last_used_at="$at" \
         installed_at="$PYVE_TESTENV_STATE_INSTALLED_AT" \
         installed_sha256="$PYVE_TESTENV_STATE_INSTALLED_SHA256"
 }

@@ -983,13 +983,14 @@ Record actual (vs. declared) env state so rebuild can restore it. The per-env `.
 
 ---
 
-### Story P.n: Rebuild restores state; purge resets it [Planned]
+### Story P.n: Rebuild restores state; purge resets it [Done]
 
 `pyve init --force` and `pyve env init <name> --force` **snapshot-then-replay** the operational-state record (P.m): re-realize and re-install whatever was realized-and-installed; leave a never-realized lazy env unrealized. Only `pyve purge` / `pyve env purge` truly destroys. Symmetry (P4): `pyve env init <name> --force` is to a named env what `pyve init --force` is to root.
 
-- [ ] `--force` snapshots `.state` before purge and replays it after rebuild (restore, not factory-reset).
-- [ ] `pyve env init <name> --force` rebuilds a single named env from its declaration (P.l) + restores its recorded state.
-- [ ] Tests: a realized+installed lazy env survives `--force` as realized+installed; a never-realized one stays unrealized; `purge` wipes it.
+- [x] `pyve env init <name> --force` snapshot-then-replays: `env_init` reads `.state` before `purge_env_dir`, and after the rebuild (a) restores the **installed dimension** — when the snapshot recorded installed but the declared-recipe materialization didn't re-install (no-directive envs whose install came from the fallback chain), the install path re-runs so the env comes back installed, freshly re-stamped; and (b) restores **usage provenance** — `last_used_at` carries over from the snapshot (`state_touch_last_used` gains an optional epoch arg). A realized-only snapshot (installed_at=0) replays as realized-only: no install fires.
+- [x] Root-side: `pyve init` / `pyve init --force` leave a never-realized **lazy** default testenv unrealized — `_init_testenv_to_materialize` now skips a `lazy = true` default (previously eagerly realized it empty). Non-default declared envs were already untouched by init; named envs already survive root `--force` via the keep-envs purge.
+- [x] Purge is the only true destroy: `pyve env purge <name>` removes `.state` with the env root — pinned explicitly.
+- [x] Tests: replay restores installed+last_used_at on a declared-recipe env; fallback-installed (no-directive) env re-installs on `--force`; realized-only env stays realized-only (no install replay); lazy default skipped by the init materializer; purge wipes `.state` — 3 red → 5 green in [test_env_init_force.bats](../../tests/unit/test_env_init_force.bats) + [test_oo2_init_gate.bats](../../tests/unit/test_oo2_init_gate.bats). Full suite green (2142 tests, 0 failures); zero shellcheck warning/error findings on all three edited lib files (unchanged from before).
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

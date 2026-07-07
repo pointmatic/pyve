@@ -118,3 +118,21 @@ TOML
     run grep -nE '^\s*ensure_env_exists\s*$' "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     [ "$status" -ne 0 ]
 }
+
+@test "lazy default testenv → init leaves it unrealized (provision on first use)" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+[project]
+name = "demo"
+[env.root]
+purpose = "utility"
+backend = "venv"
+[env.testenv]
+purpose = "test"
+backend = "venv"
+lazy = true
+TOML
+    run _init_testenv_to_materialize
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}

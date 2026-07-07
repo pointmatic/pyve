@@ -203,3 +203,58 @@ SH
     [[ "$output" == *"root environment"* ]]
     [[ "$output" == *"pyve env init <name> --force"* ]]
 }
+
+# ============================================================
+# Rebuild restores state (snapshot-then-replay); purge resets it
+# ============================================================
+
+@test "force replay: declared-recipe env comes back installed, last_used_at preserved" {
+    _fixture_declared_envs
+    _make_marked_venv testenv
+    _stub_run_cmd_records_and_creates
+    state_write testenv venv installed_at=11111 installed_sha256=oldhash last_used_at=22222
+    run env_command init testenv --force --yes
+    [ "$status" -eq 0 ]
+    # The declared recipe re-installed (fresh stamp), usage provenance restored.
+    [[ "$output" == *"pip install -r requirements-dev.txt"* ]]
+    state_read testenv
+    [ "$PYVE_TESTENV_STATE_INSTALLED_AT" != "0" ]
+    [ "$PYVE_TESTENV_STATE_LAST_USED_AT" = "22222" ]
+}
+
+@test "force replay: fallback-installed env (no directives) re-installs to restore the installed dimension" {
+    _fixture_declared_envs
+    _make_marked_venv smoke
+    _stub_run_cmd_records_and_creates
+    state_write smoke venv installed_at=11111 last_used_at=333
+    run env_command init smoke --force --yes
+    [ "$status" -eq 0 ]
+    # smoke declares no directives — the recipe step is a no-op, so the
+    # replay must re-run the install path (fallback chain) itself.
+    [[ "$output" == *"pip install -r requirements-dev.txt"* ]]
+    state_read smoke
+    [ "$PYVE_TESTENV_STATE_INSTALLED_AT" != "0" ]
+    [ "$PYVE_TESTENV_STATE_LAST_USED_AT" = "333" ]
+}
+
+@test "force replay: realized-only env stays realized-only (no install replay)" {
+    _fixture_declared_envs
+    _make_marked_venv smoke
+    _stub_run_cmd_records_and_creates
+    state_write smoke venv
+    run env_command init smoke --force --yes
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"pip install"* ]]
+    state_read smoke
+    [ "$PYVE_TESTENV_STATE_INSTALLED_AT" = "0" ]
+}
+
+@test "purge is the only true destroy: env purge removes .state with the env" {
+    _fixture_declared_envs
+    _make_marked_venv smoke
+    state_write smoke venv installed_at=1
+    [ -f ".pyve/envs/smoke/.state" ]
+    run env_command purge smoke
+    [ "$status" -eq 0 ]
+    [ ! -d ".pyve/envs/smoke" ]
+}
