@@ -251,3 +251,29 @@ TOML
     [ ! -d ".pyve/envs/testenv" ]
     [ ! -d ".pyve/envs/smoke" ]
 }
+
+# ============================================================
+# --all: the explicit spelling of the whole-declaration sweep
+# ============================================================
+
+@test "env purge --all --yes: sweeps every declared env (explicit spelling)" {
+    _fixture_multi_envs
+    _make_fake_named_venv testenv
+    _make_fake_named_venv smoke
+    mkdir -p ".pyve/envs/hardware/conda"
+
+    run env_command purge --all --yes
+    [ "$status" -eq 0 ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ ! -d ".pyve/envs/hardware" ]
+}
+
+@test "env purge <name> --all: conflicting selection is rejected" {
+    _fixture_multi_envs
+    _make_fake_named_venv smoke
+    run env_command purge smoke --all
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"--all"* ]]
+    [ -d ".pyve/envs/smoke" ]
+}

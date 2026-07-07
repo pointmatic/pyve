@@ -1305,7 +1305,7 @@ _init_valid_flags() {
     # Operational toggles (imperative; not decision-graph parameters) + --help.
     printf '%s\n' \
         --auto-bootstrap --bootstrap-to --strict --no-lock --node-path \
-        --auto-install-deps --no-install-deps --local-env --force --allow-synced-dir \
+        --auto-install-deps --no-install-deps --local-env --force --all --allow-synced-dir \
         --project-guide-completion --no-project-guide-completion \
         --yes -y \
         --help
@@ -1824,6 +1824,13 @@ init_project() {
                 # callers. See phase-H-cli-refactor-design.md §5 D3.
                 legacy_flag_error "init --update" "update"
                 ;;
+            --all)
+                # Batch fan-out marker. Validated (requires --force) and
+                # executed by compose_init AFTER the root flow; parsed here
+                # so the allow-list accepts it and messaging can widen.
+                PYVE_INIT_ALL="1"
+                shift
+                ;;
             --force)
                 PYVE_REINIT_MODE="force"
                 shift
@@ -1925,6 +1932,9 @@ init_project() {
         if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
             warn "Force re-initialization: this will purge and rebuild the root environment ($existing_backend)"
+            if [[ "${PYVE_INIT_ALL:-}" == "1" ]]; then
+                warn "--all: after the root rebuild, every declared env is rebuilt from its declaration and its recorded state restored"
+            fi
 
             # Run pre-flight checks BEFORE purging so the environment is still intact
             # if the user decides to abort or a check fails.
@@ -2375,6 +2385,8 @@ Options:
                                      (destructive). Named envs under .pyve/envs/
                                      are untouched — rebuild one with
                                      'pyve env init <name> --force'
+  --all                              With --force: after the root rebuild, rebuild
+                                     every declared env and restore its recorded state
   --allow-synced-dir                 Bypass cloud-sync directory check
   --yes, -y                          Easy mode: accept every wizard default with
                                      no prompts, then write the explicit pyve.toml

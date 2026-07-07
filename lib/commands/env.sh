@@ -1178,6 +1178,7 @@ env_command() {
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
+    local purge_all=0              # --all: explicit whole-declaration sweep
     local init_force=0             # escalate init to purge-and-rebuild
     local init_yes=0               # assent to the rebuild's confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
@@ -1272,6 +1273,10 @@ env_command() {
                             # Deprecated prompt-skip alias — warns, still honored.
                             warn_force_prompt_skip_deprecated
                             purge_force=1
+                            shift
+                            ;;
+                        --all)
+                            purge_all=1
                             shift
                             ;;
                         -*)
@@ -1372,7 +1377,7 @@ pyve env - Manage one or more declared project environments
 Usage:
   pyve env init [<name>] [--force] [--yes]
   pyve env install [<name>] [-r requirements-dev.txt] [--no-wait]
-  pyve env purge [<name>] [--yes]
+  pyve env purge [<name> | --all] [--yes]
   pyve env run [<name> --] <command> [args...]
   pyve env list
   pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]
@@ -1407,8 +1412,8 @@ Notes:
     `--no-wait` fast-fails with "another pyve process is installing
     '<name>' (pid N)" instead of waiting.
   - `purge` no-arg iterates over every declared env (including lazy and
-    conda-backed) and prompts `y/N` on interactive shells; `--yes` (-y) skips
-    the prompt. Non-TTY (CI) invocations skip the prompt automatically.
+    conda-backed) and prompts `y/N` on interactive shells; `--all` is the
+    explicit spelling of that same sweep; `--yes` (-y) skips the prompt. Non-TTY (CI) invocations skip the prompt automatically.
     `--force` is a deprecated alias for the prompt-skip and still works, with
     a warning. `purge <name>` removes only that env's root, no prompt.
   - `run` requires the `--` separator when routing to a named env:
@@ -1544,7 +1549,12 @@ EOF
         purge)
             # Story M.i.4: with-arg removes one env; no-arg iterates
             # over every declared env with a TTY-aware confirm gate.
-            if [[ -n "$action_name" ]]; then
+            # `--all` is the explicit spelling of that sweep; combining
+            # it with a name is a contradiction, not a selection.
+            if [[ "$purge_all" == "1" && -n "$action_name" ]]; then
+                log_error "env purge: pass a <name> OR --all, not both"
+                leaf_rc=1
+            elif [[ -n "$action_name" ]]; then
                 if assert_env_name_actionable "$action_name" "purge"; then
                     env_purge "$action_name" || leaf_rc=$?
                 else

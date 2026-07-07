@@ -996,13 +996,16 @@ Record actual (vs. declared) env state so rebuild can restore it. The per-env `.
 
 ---
 
-### Story P.o: Batch lifecycle — `--all` fans across every declared env [Planned]
+### Story P.o: Batch lifecycle — `--all` fans across every declared env [Done]
 
 `pyve init --force --all` rebuilds (and restores, per P.n) every declared env in one command — killing the N×`env purge`/`env init`/`env install` chore. `--all` is the explicit fan-out on the root-scoped lifecycle verbs.
 
-- [ ] `pyve init --force --all` iterates every declared env (root + named), restoring each per P.n.
-- [ ] `--all` on the relevant lifecycle verbs (and `pyve env purge --all`, per P.q's sweep).
-- [ ] Tests: a 5-env project rebuilds + restores in one command; per-env headers; worst-case exit code.
+- [x] `pyve init --force --all`: `--all` joins the operational toggles (parse arm, `_init_valid_flags`, help); `--all` without `--force` hard-errors before any dispatch; the force pre-flight messaging widens from "root only" to "root + every declared env" when `--all` is present.
+- [x] Fan-out `_compose_init_force_all_envs` ([init_composer.sh](../../lib/init_composer.sh)) runs after the composition tail: per declared non-root env — banner header, then `env_init <name>` force+yes in a subshell (each env gets P.n's snapshot-then-replay; one env's failure never aborts the fan-out); lazy never-realized envs skip with a note (provision-on-first-use contract); advisory backends ride the standing skip-note; worst-case exit code propagates.
+- [x] `pyve env purge --all`: explicit spelling of the config-driven whole-declaration sweep (same confirm gate as no-arg today); `<name>` + `--all` together rejected; help surfaces updated. (P.q later re-points the bare no-arg default; unchanged here.)
+- [x] Tests: new [test_init_all.bats](../../tests/unit/test_init_all.bats) (guard: `--all` without `--force` errors; fan-out rebuilds+restores realized envs with per-env banners and preserved `last_used_at`; lazy never-realized skipped; advisory skip-note; worst-case rc with continue-past-failure — 5 red → green) + purge `--all` coverage in [test_testenv_purge_name.bats](../../tests/unit/test_testenv_purge_name.bats) + the valid-flags pin gains `--all`. Full suite green (2149 tests, 0 failures); zero shellcheck warning/error findings across the four touched lib files.
+
+**Also (pre-existing gap surfaced by the fan-out, fixed here):** `ensure_env_exists` had no advisory branch — `pyve env init <name>` on a `backend = "none"` env fell through to the venv builder and **materialized a real venv** for an env explicitly declared not-materializable, violating the standing advisory carve-out ("any code path that branches on a backend value must ask `_env_backend_is_advisory` before rejecting/materializing"). The guard now skips with the standing §B note ([utils.sh](../../lib/utils.sh)); the fan-out and plain `pyve env init` both inherit it.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

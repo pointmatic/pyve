@@ -1325,6 +1325,15 @@ ensure_env_exists() {
     local backend
     backend="$(_env_resolve_backend "$name")" || backend="venv"
 
+    # A declared advisory backend (e.g. `none`) is recorded but never
+    # materialized — skip with the standing note rather than falling
+    # through to the venv builder (which would materialize a real venv
+    # for an env explicitly declared as not-materializable).
+    if _env_backend_is_advisory "$backend"; then
+        info "env '$name' declares backend '$backend', which pyve does not yet materialize; provision it manually per the env spec"
+        return 0
+    fi
+
     local testenv_env_path testenv_root
     testenv_env_path="$(resolve_env_path "$name")"
     # Strip either the /venv or /conda suffix to get the env root.

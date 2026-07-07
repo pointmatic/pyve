@@ -32,7 +32,7 @@ PARAM_FLAGS=(--backend --python-version --project-guide --no-project-guide --no-
 EXPECTED_VALID_FLAGS=(
     --python-version --backend --auto-bootstrap --bootstrap-to
     --strict --no-lock --env-name --no-direnv --node-path
-    --auto-install-deps --no-install-deps --local-env --force --allow-synced-dir
+    --auto-install-deps --no-install-deps --local-env --force --all --allow-synced-dir
     --project-guide --no-project-guide
     --project-guide-completion --no-project-guide-completion
     --yes -y
