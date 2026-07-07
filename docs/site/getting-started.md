@@ -257,7 +257,7 @@ pyve upgrade           # re-resolve the env's dependencies to newest-within-cons
 pyve init --force      # destructive rebuild of the root env from the manifest
 ```
 
-`pyve upgrade --check` previews the plan without executing anything. See the [Usage Guide](usage.md#upgrade-env-name-all-check) for details.
+`pyve upgrade --check` previews the plan without executing anything. See [Project Lifecycle](reference/lifecycle.md#upgrade-env-name-all-check) for details.
 
 ### Cleaning Up
 

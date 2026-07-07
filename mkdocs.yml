@@ -55,6 +55,10 @@ nav:
       - CI/CD Integration: ci-cd.md
   - Reference:
       - Usage Guide: usage.md
+      - Project Lifecycle: reference/lifecycle.md
+      - Environments (env): reference/env.md
+      - Diagnostics: reference/diagnostics.md
+      - Tooling: reference/tooling.md
 
 # Extensions
 markdown_extensions:

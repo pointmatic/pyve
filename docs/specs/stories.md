@@ -1098,7 +1098,7 @@ At the end of each release in Phase P, refresh the public docs via `refactor_doc
 
 ---
 
-### Story P.t: Finalize the Reference documentation — split `usage.md` into per-command reference pages [Planned]
+### Story P.t: Finalize the Reference documentation — split `usage.md` into per-command reference pages [Done]
 
 *(Follows P.s, which restructures the site nav into the 5-tab hierarchy but deliberately keeps `usage.md` whole — the Reference tab therefore launches with a single 1,182-line page. This story fills the tab out properly. Deferred out of P.s because the split breaks inbound deep links unless redirects land with it.)*
 
@@ -1106,11 +1106,13 @@ At the end of each release in Phase P, refresh the public docs via `refactor_doc
 
 **Tasks.**
 
-- [ ] Settle the page grouping (refine at implementation): Project Lifecycle (`init`, `update`, `upgrade`, `purge`), Environments (`env` namespace incl. `sync`), Diagnostics (`check`, `status`), Tooling (`run`, `test`, `lock`, `package`, `python`, `self`) — plus a slim `usage.md` overview that indexes the group pages.
-- [ ] Split the content into the per-group pages under the Reference tab; every moved section keeps a stable heading/anchor.
-- [ ] Add the `mkdocs-redirects` plugin with an old→new mapping for the retired `usage/#…` anchors (at minimum every anchor referenced from outside the site).
-- [ ] Audit inbound deep links and repoint or confirm redirect coverage: CLI output strings in `pyve.sh` + `lib/`, `README.md`, and the project-guide artifact templates / `project-essentials.md` (e.g. the `usage/#env-subcommand` reference).
-- [ ] Site-wide link/anchor check; zero dead fragments; confirm the Reference tab sidebar renders the group pages cleanly.
+- [x] Settle the page grouping (refined at implementation): Project Lifecycle (`init`, `update`, `upgrade`, `purge`), Environments (`env` namespace incl. `sync`), Diagnostics (`check`, `status`), Tooling (`run`, `test`, `lock`, `package`, `python`, `self`) — plus a slim `usage.md` overview that indexes the group pages. Refinements: the global `--version` / `--config` / `--help` sections stay on the overview (global CLI surface, beside Universal Flags); `package` — which the old page never documented — gets a short reserved-verb entry on Tooling pointing at the Packaging workflow page.
+- [x] Split the content into the per-group pages under the Reference tab (`docs/site/reference/{lifecycle,env,diagnostics,tooling}.md`); every moved section keeps its exact heading text, so each slug is stable on its new page. Content moved verbatim except heading level (`###`→`##`) and `../`-prefixing the relative links that crossed into the subdirectory.
+- [x] Ship old→new coverage for the retired `usage/#…` anchors — **as-built: a client-side fragment forwarder on `usage.md`**, not `mkdocs-redirects`. The plugin only maps retired *pages*, and `usage.md` still exists (as the overview), so a fragment like `usage/#env-subcommand` would land on the live page and never reach a redirect — fragments are client-side only. The forwarder maps all 14 moved command anchors plus the legacy v2 `#testenv-subcommand` (still baked into old CLI output) to their new homes; it fires only on exact map hits.
+- [x] Audit inbound deep links and repoint or confirm redirect coverage: `pyve.sh` + `lib/` and `README.md` link site *pages* only, no `usage/#…` anchors (verified by grep); in-site anchor links repointed (`getting-started.md` → `reference/lifecycle.md`, `testing.md` ×2 → `reference/env.md`); the project-guide artifact template's `usage/#env-subcommand` (install output — not hand-editable) is covered by the forwarder, as are the copies already installed in user projects.
+- [x] Site-wide link/anchor check; zero dead fragments (15 pages; slugify-accurate scratchpad script, MkDocs dash-collapsing rules; also verified every forwarder target slug exists on its destination page). Sidebar render check rides P.u's deploy confirmation — mkdocs isn't installed locally and the deploy (`mkdocs build --strict`) is the final arbiter, per the P.s precedent.
+
+**As-built notes (2026-07-07).** New nav: Reference = Usage Guide + Project Lifecycle + Environments (env) + Diagnostics + Tooling ([mkdocs.yml](../../mkdocs.yml)). `usage.md` drops 1,196 → ~460 lines: keeps Command Overview (rows now link into the group pages), Universal Flags, the global-flag sections, Environment Variables, Configuration Files, Workflow Examples, Tips, Next Steps. No `mkdocs.yml` plugin additions and no CI change (the redirect task's as-built mechanism needs neither). The deprecation-alias note appears once per page that mentions the alias (P.r pattern): overview + env page.
 
 **Version:** v3.1.0 bundle (Subphase P-1) — ships with the release so the redirects go live alongside the new nav. Developer owns number/placement.
 

@@ -5,7 +5,7 @@ Pyve separates the project's **runtime environment** from a dedicated **test env
 !!! note "v3 names and paths"
     Test environments are declared as `[env.<name>]` blocks in [`pyve.toml`](pyve-toml.md) (with `purpose = "test"`) and materialize at `.pyve/envs/<name>/<backend>/`. They are managed with the **`pyve env`** namespace — `pyve testenv …` is a deprecated alias that still re-dispatches with a one-shot warning and is removed in v4.0. See [Named Environments](environments.md) for the canonical model.
 
-If you only want command reference, see the [`env` namespace](usage.md#env-subcommand) in the Usage Guide. This page is the concept and how-to companion.
+If you only want command reference, see the [`env` namespace](reference/env.md#env-subcommand) reference page. This page is the concept and how-to companion.
 
 ## Overview
 
@@ -469,6 +469,6 @@ The `pyvenv.cfg` `version` field in `.pyve/envs/testenv/venv/` records the teste
 
 ## See also
 
-- [Usage Guide — `env` subcommand](usage.md#env-subcommand) — full command reference
+- [Environments (`env`) reference](reference/env.md#env-subcommand) — full command reference
 - [Backends](backends.md) — venv vs micromamba selection
 - [CI/CD Integration](ci-cd.md) — pipeline examples for both patterns above
