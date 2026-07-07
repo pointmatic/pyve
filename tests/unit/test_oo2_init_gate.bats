@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -116,4 +117,22 @@ TOML
     # The bare no-arg call (eager default-testenv creation) is gone.
     run grep -nE '^\s*ensure_env_exists\s*$' "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     [ "$status" -ne 0 ]
+}
+
+@test "lazy default testenv → init leaves it unrealized (provision on first use)" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+[project]
+name = "demo"
+[env.root]
+purpose = "utility"
+backend = "venv"
+[env.testenv]
+purpose = "test"
+backend = "venv"
+lazy = true
+TOML
+    run _init_testenv_to_materialize
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
 }

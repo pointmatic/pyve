@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=init
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -54,17 +55,19 @@ teardown() {
 }
 
 #============================================================
-# requirements-dev.txt → testenv install hint
+# requirements-dev.txt → env install hint (v3 spelling — never the
+# deprecated `pyve testenv` form)
 #============================================================
 
-@test "_init_print_next_steps: requirements-dev.txt present → testenv install step appears" {
+@test "_init_print_next_steps: requirements-dev.txt present → env install step appears" {
     touch requirements-dev.txt
     run _init_print_next_steps "venv" "false" "$TEST_DIR/.venv"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"pyve testenv install -r requirements-dev.txt"* ]]
+    [[ "$output" == *"pyve env install -r requirements-dev.txt"* ]]
+    [[ "$output" != *"pyve testenv"* ]]
 }
 
-@test "_init_print_next_steps: requirements-dev.txt absent → testenv install step omitted" {
+@test "_init_print_next_steps: requirements-dev.txt absent → env install step omitted" {
     run _init_print_next_steps "venv" "false" "$TEST_DIR/.venv"
     [ "$status" -eq 0 ]
     [[ "$output" != *"requirements-dev.txt"* ]]
@@ -136,7 +139,7 @@ teardown() {
     run _init_print_next_steps "micromamba" "false" "$TEST_DIR/.pyve/envs/test"
     [ "$status" -eq 0 ]
     [[ "$output" == *"direnv allow"* ]]
-    [[ "$output" == *"pyve testenv install -r requirements-dev.txt"* ]]
+    [[ "$output" == *"pyve env install -r requirements-dev.txt"* ]]
     [[ "$output" == *"docs/project-guide/go.md"* ]]
     [[ "$output" == *"ignore micromamba"* ]]
 }

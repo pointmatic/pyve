@@ -1,4 +1,4 @@
-# descriptions.md — Pyve (Python)
+# brand-descriptions.md — Pyve
 
 Canonical source of truth for all descriptive language used across the `pyve` project (including naming, taglines, and marketing phrasing). All consumer files (README.md, docs/index.html, pyproject.toml, features.md) should draw from these definitions. 
 
@@ -25,62 +25,57 @@ A single, easy entry point for managing all your virtual environments.
 
 ### Friendly Brief Description (follows one-liner)
 
-Pyve orchestrates virtual environments with any stack combo (init, auto-activate, purge) — auto-detects and configures asdf/pyenv, venv/micromamba/pnpm/docker/etc, and direnv.
+Pyve orchestrates virtual environments across any stack combo (init, auto-activate, purge) — auto-detects and configures asdf/pyenv/nvm, venv/micromamba/pnpm, and direnv.
 
 ## Two-clause Technical Description
 
-A command-line tool that simplifies setting up and managing just about any stack combination in virtual environments on macOS and Linux, orchestrating many languages (Python, Node.js, Ruby, etc.) with a broad choice of backends (venv, micromamba, pnpm, Docker/Podman, Homebrew, apt, etc.) all activated seamlessly with direnv and LLM-assisted by Project-Guide.
+A command-line tool that simplifies setting up and managing just about any stack combination in virtual environments on macOS and Linux, orchestrating multiple languages (Python and Node.js / SvelteKit) across a choice of backends (venv, micromamba, pnpm) all activated seamlessly with direnv and LLM-assisted by Project-Guide.
 
 **Note:**
-- Polyglot orchestration: **two implemented reference plugins** — Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn). 
-- Seamless activation: cross-stack orchestration is now **real at the CLI level** 
-— Critical CLI commands: `pyve init` / `check` / `status` / `purge` compose across every declared plugin into one `.envrc` / `.gitignore` / report (failure-safe, atomic writes). 
-- Composition layer: implemented
+- Polyglot orchestration: two reference plugins — Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn).
+- Seamless activation: `pyve init` / `check` / `status` / `purge` compose across every declared plugin into one `.envrc` / `.gitignore` / report (failure-safe, atomic writes).
+
+**Future (roadmap — not shipped in v3.0):** additional language plugins (e.g. Ruby) and backends (Docker / Podman, Homebrew, apt) are under consideration through the same plugin contract.
 
 ## Benefits
 
-*v3 baseline — comprehensive narrative reflow deferred to N-6.*
-
-- One-command environment setup (`pyve init`)
-- Pluggable backends — venv, micromamba, pnpm, and a contract for adding more
-- Declarative `pyve.toml` with named envs (`run`, `test`, `utility`, `temp`)
-- Language version management — plugin-owned (asdf / pyenv on the Python side)
-- direnv integration for seamless shell activation
-- CI/CD-ready with `--no-direnv`, `--auto-bootstrap`, and `--strict` flags
-- Clean teardown with `pyve purge` — preserves your secrets
-- Zero runtime dependencies — pure Bash, no daemons
+- One command for any stack — `pyve init` detects your project and materializes every environment it declares.
+- Declarative `pyve.toml` — each environment is named and given a purpose (`run`, `test`, `utility`, `temp`) in a single manifest.
+- Pluggable backends — venv, micromamba, and pnpm today, with a stable contract for adding more.
+- Polyglot by composition — Python and Node/SvelteKit activate together through one `.envrc`, one `.gitignore`, and one health report.
+- Seamless shell activation via direnv — no manual `activate`, no stale shell state.
+- Plugin-owned language versions — asdf / pyenv on the Python side, nvm / fnm / volta on the Node side.
+- CI/CD-ready — `--no-direnv`, `--auto-bootstrap`, and `--strict` for reproducible, non-interactive pipelines.
+- Clean teardown — `pyve purge` removes generated artifacts while preserving your secrets and user data.
+- One-step upgrade — `pyve self migrate` moves a v2 project onto the v3 manifest.
+- Zero runtime dependencies — pure Bash, no daemons, no background processes.
 
 ## Technical Description
 
-*v3 baseline — comprehensive narrative reflow deferred to N-6.*
-
-Pyve is a focused command-line tool that provides a single, deterministic entry point for setting up and managing project environments across multiple language ecosystems on macOS and Linux. It orchestrates language-version management, environment materialization (per-project virtualized, shared cache-backed, or check-only via plugins), and direnv-driven activation in one script. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
+Pyve is a focused command-line tool that gives every project a single, declarative entry point for setting up and running its environments across multiple language ecosystems on macOS and Linux. A root-level `pyve.toml` manifest names each environment and its purpose; language plugins (Python, Node/SvelteKit) materialize those environments through their own backends — per-project virtualized (venv, micromamba), cache-backed (pnpm), or check-only — and compose into one direnv-driven activation, one `.gitignore`, and one health report. It supports interactive workflows with auto-activation and non-interactive CI/CD pipelines with explicit execution via `pyve run`.
 
 ## Keywords
 
-*v3 baseline — comprehensive narrative reflow deferred to N-6.*
-
-`python`, `nodejs`, `sveltekit`, `virtual-environment`, `asdf`, `pyenv`, `venv`, `micromamba`, `conda`, `pnpm`, `direnv`, `environment-manager`, `plugin-architecture`, `polyglot`, `named-environments`, `cli`, `bash`, `macos`, `linux`, `devtools`
+`python`, `nodejs`, `sveltekit`, `polyglot`, `declarative`, `pyve.toml`, `named-environments`, `plugin-architecture`, `virtual-environment`, `asdf`, `pyenv`, `venv`, `micromamba`, `conda`, `pnpm`, `direnv`, `environment-manager`, `cli`, `bash`, `macos`, `linux`, `devtools`
 
 ---
 
 ## Feature Cards
 
-*v3 baseline — comprehensive narrative reflow deferred to N-6.*
-
 Short blurbs for landing pages and feature grids. Each card has a title and a one-to-two sentence description.
 
 | # | Title | Description |
 |---|-------|-------------|
-| 1 | One-Command Setup | Initialize the project environment, language version, direnv, and `.gitignore` in a single `pyve init`. |
-| 2 | Pluggable Backends | Choose venv, micromamba, pnpm, or a plugin-contributed backend — auto-detected from project files. |
-| 3 | Deterministic Execution | Run commands inside the project environment with `pyve run` — no manual activation, no shell state. |
-| 4 | Clean Teardown | `pyve purge` removes all artifacts while preserving your secrets and user data. |
-| 5 | CI/CD Ready | Non-interactive flags (`--no-direnv`, `--auto-bootstrap`, `--strict`) for reproducible pipelines. |
-| 6 | Environment Diagnostics | `pyve check` and `pyve status` report health, version compatibility, and lock file status. |
-| 7 | Named Test Environments | `pyve test` runs in a dedicated `[env.<name>]` with `purpose = "test"` that survives force re-initialization. |
-| 8 | Declarative Manifest | One `pyve.toml` declares every env (`purpose`, `backend`, plugin-private attrs); migration from v2 via `pyve self migrate`. |
-| 9 | Zero Dependencies | Pure Bash script — no runtime dependencies, no daemons, no background processes. |
+| 1 | One-Command Setup | Initialize the project's environments, language versions, direnv, and `.gitignore` in a single `pyve init`. |
+| 2 | Declarative Manifest | One `pyve.toml` declares every environment — its `purpose`, `backend`, and plugin-private attributes. |
+| 3 | Pluggable Backends | Choose venv, micromamba, pnpm, or a plugin-contributed backend — auto-detected from project files. |
+| 4 | Polyglot Composition | Python and Node/SvelteKit live side by side — Pyve composes every plugin into one `.envrc`, `.gitignore`, and health report. |
+| 5 | Deterministic Execution | Run commands inside the project environment with `pyve run` — no manual activation, no shell state. |
+| 6 | Named Test Environments | `pyve test` runs in a dedicated `[env.<name>]` with `purpose = "test"` that survives force re-initialization. |
+| 7 | Environment Diagnostics | `pyve check` and `pyve status` report health, version compatibility, and lock file status. |
+| 8 | Clean Teardown | `pyve purge` removes generated artifacts while preserving your secrets and user data. |
+| 9 | One-Step Migration | `pyve self migrate` moves a v2 project onto the v3 `pyve.toml` manifest. |
+| 10 | Zero Dependencies | Pure Bash script — no runtime dependencies, no daemons, no background processes. |
 
 ---
 

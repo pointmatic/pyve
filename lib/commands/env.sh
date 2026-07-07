@@ -62,38 +62,147 @@ _env_read_spec_json() {
 }
 
 #------------------------------------------------------------
-# Leaf: pyve testenv init [<name>]
+# Leaf: pyve env init [<name>] [--force] [--yes]
 #
 # Story M.i.2: accepts an optional <name>. No arg defaults to the
 # reserved `testenv`. Validation gates (M.i.1) live in the dispatcher
-# so all leaves share one check; `env_init` just creates.
+# so all leaves share one check.
+#
+# `--force` = one-shot rebuild: purge the env, then re-create and
+# re-materialize it from its declaration — the single "rebuild this
+# env" verb (rebuilding the root env is `pyve init --force`, which
+# touches only the root). `--yes` assents to the rebuild's
+# confirmation prompt.
+#
+# One-shot materialization — after creating the env,
+# realize its declared setup recipe so `pyve env init <name>` yields
+# an operable env in one command. Installs ONLY when the block
+# declares at least one directive ("init installs what you declared,
+# nothing you didn't") — an undeclared env comes up empty, and the
+# `pyve env install` fallback chain (requirements-dev.txt / bare
+# pytest) never fires from init.
 #------------------------------------------------------------
 
 env_init() {
     local name="${1:-testenv}"
-    ensure_env_exists "$name"
+    local force="${2:-0}"
+    local yes="${3:-0}"
+
+    # `--force` escalates init to a one-shot purge-and-rebuild from the
+    # declaration. The destructive step is gated like the other
+    # destructive verbs: prompt on interactive stdin unless --yes;
+    # CI/non-TTY skips; PYVE_FORCE_PROMPT=1 forces the prompt. An
+    # absent env degrades to plain init — nothing to purge, nothing to
+    # confirm.
+    # Snapshot-then-replay: a force rebuild is a RESTORE, not a factory
+    # reset. Capture the operational-state record before the purge so
+    # the rebuilt env comes back with its installed dimension and usage
+    # provenance; only `pyve env purge` truly destroys the record.
+    local snap_have=0 snap_installed_at=0 snap_last_used=0
+    if [[ "$force" == "1" ]]; then
+        local env_root
+        env_root="$(dirname "$(resolve_env_path "$name")")"
+        if [[ -d "$env_root" ]]; then
+            local should_prompt=0
+            if [[ "$yes" != "1" ]]; then
+                if [[ "${PYVE_FORCE_PROMPT:-0}" == "1" ]] || [[ -t 0 ]]; then
+                    should_prompt=1
+                fi
+            fi
+            if [[ "$should_prompt" == "1" ]]; then
+                printf "Rebuild '%s' from its declaration? This removes %s first. [y/N]: " \
+                    "$name" "$env_root"
+                local response
+                read -r response
+                if [[ ! "$response" =~ ^[Yy]$ ]]; then
+                    info "Aborted; '$name' was not rebuilt."
+                    return 0
+                fi
+            fi
+            if state_read "$name" 2>/dev/null; then
+                snap_have=1
+                snap_installed_at="${PYVE_TESTENV_STATE_INSTALLED_AT:-0}"
+                snap_last_used="${PYVE_TESTENV_STATE_LAST_USED_AT:-0}"
+            fi
+            purge_env_dir "$name" || return $?
+        fi
+    fi
+
+    ensure_env_exists "$name" || return $?
+    _env_init_materialize_recipe "$name" || return $?
+
+    # Replay the snapshot. Installed dimension first: when the record
+    # said installed but the recipe step didn't re-install (an env with
+    # no declared directives, originally populated via the install
+    # fallback chain), run the install path so the env comes back
+    # installed — freshly re-stamped, never a stale copy. Then restore
+    # last_used_at (usage provenance survives a rebuild).
+    if [[ "$snap_have" == "1" ]]; then
+        if [[ "$snap_installed_at" != "0" ]]; then
+            if state_read "$name" 2>/dev/null \
+               && [[ "${PYVE_TESTENV_STATE_INSTALLED_AT:-0}" == "0" ]]; then
+                local replay_env_path
+                replay_env_path="$(resolve_env_path "$name")"
+                _env_install_with_lock "$name" "$replay_env_path" "" "wait" || return $?
+            fi
+        fi
+        if [[ "$snap_last_used" != "0" ]]; then
+            state_touch_last_used "$name" "$snap_last_used" || true
+        fi
+    fi
+}
+
+# Install the declared pip directives (editable/requirements/extra)
+# into a freshly-inited env. For a conda-backed env the `manifest`
+# already landed via create, so the pip directives are what init still
+# owes; the install path re-syncs the manifest first (idempotent) so
+# the layers land in the fixed directive order. No declared pip
+# directives → nothing to do (and no redundant conda solve). Advisory
+# backends are never materialized (§B no-op).
+_env_init_materialize_recipe() {
+    local name="$1"
+    local backend
+    backend="$(_env_resolve_backend "$name")" || backend="venv"
+    if _env_backend_is_advisory "$backend"; then
+        return 0
+    fi
+    local editable extra
+    editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+    extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+    local -a reqs=()
+    _env_requirements_of "$name" reqs 2>/dev/null || true
+    if [[ -z "$editable" && -z "$extra" && "${#reqs[@]}" -eq 0 ]]; then
+        return 0
+    fi
+    local env_path
+    env_path="$(resolve_env_path "$name")"
+    _env_install_with_lock "$name" "$env_path" "" "wait"
 }
 
 #------------------------------------------------------------
-# Story M.l: venv-backed install with source dispatch.
+# Venv-backed install — compose the declared recipe.
 #
-# Renamed from `env_install` for symmetry with M.k's
-# `_env_install_conda`. Pre-condition: the venv must already
-# exist at `<env_path>`. Dispatches on the highest-precedence
-# install source available (1 = top precedence):
+# An `[env.<name>]` block is a composable recipe of setup directives
+# (the `requirements ⊕ extra ⊕ manifest` mutex is lifted; this replaces
+# the earlier pick-one precedence dispatch). Pre-condition: the venv must already
+# exist at `<env_path>`. The whole recipe is validated up front (files
+# exist, extra resolves) so a bad directive fails before any layer
+# installs, then every declared directive materializes in the fixed
+# order:
 #
-#   1. CLI `-r <file>` (today's explicit-override behavior).
-#   2. Declared `[env.<name>].requirements = ["a","b",...]` in pyve.toml
-#      → `pip install -r a -r b ...`.
-#   3. Declared `[env.<name>].extra = "<extra>"` in pyve.toml
-#      → resolve `[project.optional-dependencies].<extra>` via the
-#      Python helper, `pip install <pkg1> <pkg2> ...`.
-#   4. Auto-detected `requirements-dev.txt` in CWD → `pip install -r requirements-dev.txt`.
-#   5. Bare `pytest` fallback (pre-M.l default).
+#   1. `editable = ".[extras]"`    → `pip install -e ".[extras]"`
+#   2. `requirements = ["a", ...]` → `pip install -r a -r b ...`
+#   3. `extra = "<name>"`          → resolve `[project.optional-dependencies].<extra>`
+#                                    via the Python helper, `pip install <pkg1> ...`
 #
-# Mutex enforcement (`requirements ⊕ extra ⊕ manifest`) lives in the
-# M.g Python helper at config-read time, so by the time we get here
-# at most one of (2) and (3) is non-empty.
+# (The conda `manifest` layer orders before `editable`; that belongs to
+# the micromamba materializer — see `_env_install_conda`.)
+#
+# CLI `-r <file>` stays an explicit full override — it installs only
+# that file. When NO directive is declared, the pre-P.l fallback chain
+# is unchanged: auto-detected `requirements-dev.txt`, else bare
+# `pytest`. A single-directive block is the degenerate one-item recipe,
+# so pre-P.l manifests materialize exactly as before.
 #------------------------------------------------------------
 
 _env_install_venv() {
@@ -108,24 +217,30 @@ _env_install_venv() {
     fi
     info "Installing dev/test dependencies into '$env_path'..."
 
-    # Precedence 1: CLI `-r <file>` always wins.
+    # CLI `-r <file>` is an explicit full override — installs only that file.
     if [[ -n "$cli_req_file" ]]; then
         if [[ ! -f "$cli_req_file" ]]; then
             log_error "Requirements file not found: $cli_req_file"
             exit 1
         fi
         run_cmd "$env_path/bin/python" -m pip install -r "$cli_req_file"
+        state_mark_installed "$name" venv "$cli_req_file"
         success "Dev/test dependencies installed"
         return 0
     fi
 
-    # Precedence 2: declared `requirements = [...]`.
+    # Gather the declared recipe.
+    local declared_editable declared_extra
+    declared_editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
     local -a declared_reqs=()
     _env_requirements_of "$name" declared_reqs 2>/dev/null || true
-    if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
+
+    if [[ -n "$declared_editable" || -n "$declared_extra" || "${#declared_reqs[@]}" -gt 0 ]]; then
+        # Validate the whole recipe before materializing any layer.
         local r
         local -a r_args=()
-        for r in "${declared_reqs[@]}"; do
+        for r in "${declared_reqs[@]+"${declared_reqs[@]}"}"; do
             if [[ ! -f "$r" ]]; then
                 log_error "Declared requirements file not found: $r"
                 log_error "(declared as [env.$name].requirements in pyve.toml)"
@@ -133,37 +248,42 @@ _env_install_venv() {
             fi
             r_args+=("-r" "$r")
         done
-        run_cmd "$env_path/bin/python" -m pip install "${r_args[@]}"
+        local -a extra_pkgs=()
+        if [[ -n "$declared_extra" ]]; then
+            if ! _env_resolve_extra_packages "$declared_extra" extra_pkgs; then
+                exit 1
+            fi
+        fi
+
+        # Materialize in order: editable → requirements → extra.
+        if [[ -n "$declared_editable" ]]; then
+            run_cmd "$env_path/bin/python" -m pip install -e "$declared_editable"
+        fi
+        if [[ "${#r_args[@]}" -gt 0 ]]; then
+            run_cmd "$env_path/bin/python" -m pip install "${r_args[@]}"
+        fi
+        if [[ -n "$declared_extra" ]]; then
+            if [[ "${#extra_pkgs[@]}" -eq 0 ]]; then
+                info "Extra '$declared_extra' has no packages — skipping install"
+            else
+                run_cmd "$env_path/bin/python" -m pip install "${extra_pkgs[@]}"
+            fi
+        fi
+        state_mark_installed "$name" venv ""
         success "Dev/test dependencies installed"
         return 0
     fi
 
-    # Precedence 3: declared `extra = "<name>"`.
-    local declared_extra
-    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
-    if [[ -n "$declared_extra" ]]; then
-        local -a pkgs=()
-        if ! _env_resolve_extra_packages "$declared_extra" pkgs; then
-            exit 1
-        fi
-        if [[ "${#pkgs[@]}" -eq 0 ]]; then
-            info "Extra '$declared_extra' has no packages — skipping install"
-            return 0
-        fi
-        run_cmd "$env_path/bin/python" -m pip install "${pkgs[@]}"
-        success "Dev/test dependencies installed"
-        return 0
-    fi
-
-    # Precedence 4: auto-detect requirements-dev.txt.
+    # No declared directives — the pre-P.l fallback chain, unchanged:
+    # auto-detect requirements-dev.txt, else bare pytest.
     if [[ -f "requirements-dev.txt" ]]; then
         run_cmd "$env_path/bin/python" -m pip install -r "requirements-dev.txt"
+        state_mark_installed "$name" venv "requirements-dev.txt"
         success "Dev/test dependencies installed"
         return 0
     fi
-
-    # Precedence 5: bare pytest fallback.
     run_cmd "$env_path/bin/python" -m pip install pytest
+    state_mark_installed "$name" venv ""
     success "Dev/test dependencies installed"
 }
 
@@ -296,7 +416,9 @@ _env_list_one_row() {
         size="--"
     fi
 
+    local had_state=0
     if state_read "$name" 2>/dev/null; then
+        had_state=1
         if [[ "$PYVE_TESTENV_STATE_LAST_USED_AT" == "0" ]]; then
             last_used="never"
         else
@@ -308,7 +430,14 @@ _env_list_one_row() {
 
     if is_env_declared "$name"; then
         if [[ "$on_disk" == "1" ]]; then
-            state="ready"
+            # The recorded installed dimension, not a filesystem probe:
+            # installed_at>0 → operable ("ready"); otherwise the env is
+            # realized on disk but its recipe was never installed.
+            if [[ "$had_state" == "1" && "${PYVE_TESTENV_STATE_INSTALLED_AT:-0}" != "0" ]]; then
+                state="ready"
+            else
+                state="realized"
+            fi
         elif is_env_lazy "$name"; then
             state="lazy"
         else
@@ -353,13 +482,19 @@ env_prune() {
                 mode="all"
                 shift
                 ;;
+            --yes|-y)
+                force=1
+                shift
+                ;;
             --force)
+                # Deprecated prompt-skip alias — warns, still honored.
+                warn_force_prompt_skip_deprecated
                 force=1
                 shift
                 ;;
             *)
                 log_error "Unknown prune flag: $1"
-                log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                log_error "Usage: pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]"
                 exit 1
                 ;;
         esac
@@ -726,8 +861,8 @@ _env_release_install_lock() {
 # `exit 1` paths inside the install helpers (existence checks, missing
 # requirements file) and SIGINT/SIGTERM so the lock dir never strands
 # the env. Story M.k: dispatches on the resolved backend so a
-# conda-backed env goes through `_env_install_conda` (manifest-
-# driven sync); Story M.l: venv backend goes through
+# conda-backed env goes through `_env_install_conda` (manifest base
+# + pip directive layers); Story M.l: venv backend goes through
 # `_env_install_venv` (renamed from `env_install`), which
 # itself dispatches on declared sources (`requirements`/`extra`/
 # auto-detect/bare-pytest).
@@ -769,6 +904,7 @@ _env_install_with_lock() {
         return 1
     fi
     _env_acquire_install_lock "$name" "$lock_mode" || return $?
+    # shellcheck disable=SC2064 # expand $name now — it is a local not in scope when the trap fires at exit
     trap "_env_release_install_lock '$name'" EXIT INT TERM
     local rc=0
     if [[ "$backend" == "micromamba" ]]; then
@@ -791,9 +927,21 @@ _env_install_with_lock() {
 # natural one-shot (create + install packages) — there is no "empty
 # env" intermediate state for the conda backend.
 #
-# `_env_install_conda` syncs an *existing* env to its manifest via
-# `micromamba install -p <path> -f <manifest> -y`. If the env does not
-# exist, errors with a hint pointing at `pyve testenv init <name>`.
+# `_env_install_conda` materializes an *existing* env's full declared
+# recipe: the conda `manifest` layers first as the base (synced via
+# `micromamba install -p <path> -f <manifest> -y`), then every declared
+# pip directive materializes in the fixed order `editable` →
+# `requirements` → `extra` — installed INTO the conda env via
+# `micromamba run -p` so they land in this env's site-packages. conda
+# solves the heavy deps from the manifest; pip layers the rest (dev
+# tooling) on top. The whole recipe is validated up front (files exist,
+# extra resolves) so a bad directive fails before any layer installs —
+# including the conda solve. CLI `-r <file>` is an explicit full
+# override of the pip layer only; the manifest is always the base. The
+# venv-only conveniences (auto requirements-dev.txt, bare-pytest
+# fallback) do not apply — for conda the manifest is the base and the
+# pip layer is opt-in. If the env does not exist, errors with a hint
+# pointing at `pyve env init <name>`.
 #
 # Both require `manifest` to be declared in `[env.<name>]` in pyve.toml
 # — the conda backend has no implicit pip-style fallback.
@@ -864,6 +1012,40 @@ _env_install_conda() {
         return 1
     fi
 
+    # Gather + validate the whole pip recipe BEFORE the manifest sync —
+    # a bad directive fails before any layer installs, including the
+    # conda solve. CLI `-r <file>` overrides the declared pip recipe.
+    local pip_editable="" pip_extra=""
+    local -a pip_r_args=()
+    local -a pip_extra_pkgs=()
+    if [[ -n "$cli_req_file" ]]; then
+        if [[ ! -f "$cli_req_file" ]]; then
+            log_error "Requirements file not found: $cli_req_file"
+            return 1
+        fi
+        pip_r_args=("-r" "$cli_req_file")
+    else
+        pip_editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+        pip_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+        local -a declared_reqs=()
+        _env_requirements_of "$name" declared_reqs 2>/dev/null || true
+        local r
+        for r in "${declared_reqs[@]+"${declared_reqs[@]}"}"; do
+            if [[ ! -f "$r" ]]; then
+                log_error "Declared requirements file not found: $r"
+                log_error "(declared as [env.$name].requirements in pyve.toml)"
+                return 1
+            fi
+            pip_r_args+=("-r" "$r")
+        done
+        if [[ -n "$pip_extra" ]]; then
+            if ! _env_resolve_extra_packages "$pip_extra" pip_extra_pkgs; then
+                return 1
+            fi
+        fi
+    fi
+
+    # Layer 1: the conda manifest — the base every pip layer sits on.
     info "Syncing conda-backed testenv '$name' from $manifest..."
     if ! "$micromamba_path" install -p "$env_path" -f "$manifest" -y; then
         log_error "Failed to sync conda-backed testenv '$name'"
@@ -871,77 +1053,28 @@ _env_install_conda() {
     fi
     success "Synced conda-backed testenv '$name'"
 
-    # Pip layer: conda solves the heavy deps from the manifest; pip layers
-    # the rest (dev tooling) on top, installed INTO the conda env via
-    # `micromamba run -p` so it lands in this env's site-packages. Source
-    # precedence mirrors the venv path's CLI -r > declared `requirements` >
-    # declared `extra`; the venv-only conveniences (auto requirements-dev.txt,
-    # bare-pytest fallback) do not apply — for conda the manifest is the base
-    # and the pip layer is opt-in. A supplied/declared source that can't be
-    # applied errors here; it is never silently dropped.
-    _env_conda_pip_layer "$name" "$env_path" "$micromamba_path" "$cli_req_file" || return $?
-    return 0
-}
-
-# Apply the pip layer for a conda-backed env. Resolves the highest-precedence
-# pip source (CLI -r > declared `requirements` > declared `extra`) and installs
-# it into <env_path> via `micromamba run -p <env_path> python -m pip install`.
-# No source → no-op (the manifest sync already ran). A missing requirements
-# file (CLI or declared) is a hard error, never a silent skip.
-_env_conda_pip_layer() {
-    local name="$1" env_path="$2" micromamba_path="$3" cli_req_file="$4"
-
-    # Precedence 1: CLI `-r <file>`.
-    if [[ -n "$cli_req_file" ]]; then
-        if [[ ! -f "$cli_req_file" ]]; then
-            log_error "Requirements file not found: $cli_req_file"
-            return 1
-        fi
-        info "Installing pip requirements ($cli_req_file) into conda env '$name'..."
-        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install -r "$cli_req_file"
-        success "Pip requirements installed into '$name'"
-        return 0
+    # Pip layers, in the fixed directive order: editable → requirements
+    # → extra.
+    if [[ -n "$pip_editable" ]]; then
+        info "Installing editable self-install into conda env '$name'..."
+        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install -e "$pip_editable"
     fi
-
-    # Precedence 2: declared `requirements = [...]`.
-    local -a declared_reqs=()
-    _env_requirements_of "$name" declared_reqs 2>/dev/null || true
-    if [[ "${#declared_reqs[@]}" -gt 0 ]]; then
-        local r
-        local -a r_args=()
-        for r in "${declared_reqs[@]}"; do
-            if [[ ! -f "$r" ]]; then
-                log_error "Declared requirements file not found: $r"
-                log_error "(declared as [env.$name].requirements in pyve.toml)"
-                return 1
-            fi
-            r_args+=("-r" "$r")
-        done
-        info "Installing declared pip requirements into conda env '$name'..."
-        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${r_args[@]}"
-        success "Pip requirements installed into '$name'"
-        return 0
+    if [[ "${#pip_r_args[@]}" -gt 0 ]]; then
+        info "Installing pip requirements into conda env '$name'..."
+        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${pip_r_args[@]}"
     fi
-
-    # Precedence 3: declared `extra = "<name>"`.
-    local declared_extra
-    declared_extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
-    if [[ -n "$declared_extra" ]]; then
-        local -a pkgs=()
-        if ! _env_resolve_extra_packages "$declared_extra" pkgs; then
-            return 1
+    if [[ -n "$pip_extra" ]]; then
+        if [[ "${#pip_extra_pkgs[@]}" -eq 0 ]]; then
+            info "Extra '$pip_extra' has no packages — skipping pip layer"
+        else
+            info "Installing declared extra '$pip_extra' into conda env '$name'..."
+            run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${pip_extra_pkgs[@]}"
         fi
-        if [[ "${#pkgs[@]}" -eq 0 ]]; then
-            info "Extra '$declared_extra' has no packages — skipping pip layer"
-            return 0
-        fi
-        info "Installing declared extra '$declared_extra' into conda env '$name'..."
-        run_cmd "$micromamba_path" run -p "$env_path" python -m pip install "${pkgs[@]}"
-        success "Pip requirements installed into '$name'"
-        return 0
     fi
-
-    # No pip source — the manifest sync is the whole install.
+    if [[ -n "$pip_editable" || "${#pip_r_args[@]}" -gt 0 || -n "$pip_extra" ]]; then
+        success "Pip layer installed into '$name'"
+    fi
+    state_mark_installed "$name" micromamba "$cli_req_file"
     return 0
 }
 
@@ -1045,6 +1178,9 @@ env_command() {
     local action_name=""           # Story M.i.2: optional positional <name>
     local requirements_file=""
     local purge_force=0            # Story M.i.4: --force skips the confirm prompt
+    local purge_all=0              # --all: explicit whole-declaration sweep
+    local init_force=0             # escalate init to purge-and-rebuild
+    local init_yes=0               # assent to the rebuild's confirm prompt
     local install_no_wait=0        # Story M.j: --no-wait fast-fails on lock collision
     local -a prune_args=()         # Story M.p: prune flags forwarded to env_prune
     local -a sync_args=()          # sync flags forwarded to env_sync
@@ -1055,11 +1191,34 @@ env_command() {
             init)
                 action="init"
                 shift
-                # Story M.i.2: optional positional <name> after `init`.
-                if [[ $# -gt 0 && "${1:0:1}" != "-" ]]; then
-                    action_name="$1"
-                    shift
-                fi
+                # Optional positional <name> plus the one-shot rebuild
+                # flags, in any order. `--force` escalates init to
+                # purge-and-rebuild; `--yes`/`-y` assents to the rebuild's
+                # confirmation prompt. Unrecognized flags break back to
+                # the outer loop for the canonical unknown_flag_error.
+                while [[ $# -gt 0 ]]; do
+                    case "$1" in
+                        --force)
+                            init_force=1
+                            shift
+                            ;;
+                        --yes|-y)
+                            init_yes=1
+                            shift
+                            ;;
+                        -*)
+                            break
+                            ;;
+                        *)
+                            if [[ -n "$action_name" ]]; then
+                                log_error "env init: unexpected positional '$1' (already named '$action_name')"
+                                exit 1
+                            fi
+                            action_name="$1"
+                            shift
+                            ;;
+                    esac
+                done
                 ;;
             install)
                 action="install"
@@ -1090,7 +1249,7 @@ env_command() {
                             ;;
                         *)
                             if [[ -n "$action_name" ]]; then
-                                log_error "testenv install: unexpected positional '$1' (already named '$action_name')"
+                                log_error "env install: unexpected positional '$1' (already named '$action_name')"
                                 exit 1
                             fi
                             action_name="$1"
@@ -1106,8 +1265,18 @@ env_command() {
                 # Unrecognized flags break back to the outer loop.
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
-                        --force)
+                        --yes|-y)
                             purge_force=1
+                            shift
+                            ;;
+                        --force)
+                            # Deprecated prompt-skip alias — warns, still honored.
+                            warn_force_prompt_skip_deprecated
+                            purge_force=1
+                            shift
+                            ;;
+                        --all)
+                            purge_all=1
                             shift
                             ;;
                         -*)
@@ -1115,7 +1284,7 @@ env_command() {
                             ;;
                         *)
                             if [[ -n "$action_name" ]]; then
-                                log_error "testenv purge: unexpected positional '$1' (already named '$action_name')"
+                                log_error "env purge: unexpected positional '$1' (already named '$action_name')"
                                 exit 1
                             fi
                             action_name="$1"
@@ -1139,7 +1308,7 @@ env_command() {
                 # using a captured array.
                 while [[ $# -gt 0 ]]; do
                     case "$1" in
-                        --unused-since|--all|--force)
+                        --unused-since|--all|--force|--yes|-y)
                             prune_args+=("$1")
                             shift
                             ;;
@@ -1157,7 +1326,7 @@ env_command() {
                                 continue
                             fi
                             log_error "Unknown prune arg: $1"
-                            log_error "Usage: pyve testenv prune [--unused-since <YYYY-MM-DD>] [--all] [--force]"
+                            log_error "Usage: pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]"
                             exit 1
                             ;;
                     esac
@@ -1206,12 +1375,12 @@ env_command() {
 pyve env - Manage one or more declared project environments
 
 Usage:
-  pyve env init [<name>]
+  pyve env init [<name>] [--force] [--yes]
   pyve env install [<name>] [-r requirements-dev.txt] [--no-wait]
-  pyve env purge [<name>] [--force]
+  pyve env purge [<name> | --all] [--yes]
   pyve env run [<name> --] <command> [args...]
   pyve env list
-  pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--force]
+  pyve env prune [--unused-since <YYYY-MM-DD>] [--all] [--yes]
   pyve env sync [--dry-run] [--yes] [--force]
 
 Notes:
@@ -1229,7 +1398,7 @@ Notes:
       NAME / BACKEND / SIZE / LAST-USED / STATE.
     Last-used is from `.state.last_used_at` (M.m); `never` when 0.
     State is one of: ready / lazy / not provisioned / orphaned.
-  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--force`:
+  - `prune` (M.p) removes envs from disk, with confirmation (TTY) or `--yes`:
       no args            — remove orphans (on disk but not declared,
                             excluding the reserved `testenv`).
       --unused-since DATE — remove envs whose last-used is strictly older.
@@ -1242,10 +1411,12 @@ Notes:
     serialize concurrent installs into the same env. Default is wait+retry;
     `--no-wait` fast-fails with "another pyve process is installing
     '<name>' (pid N)" instead of waiting.
-  - `purge` no-arg iterates over every declared env (including lazy and
-    conda-backed) and prompts `y/N` on interactive shells; `--force` skips
-    the prompt. Non-TTY (CI) invocations skip the prompt automatically.
-    `purge <name>` removes only that env's root, no prompt.
+  - `purge` bare removes the DEFAULT env (like init/install/run — no
+    prompt); `purge <name>` removes that env's root, no prompt. `--all`
+    sweeps every declared env (including lazy and conda-backed) and prompts
+    `y/N` on interactive shells; `--yes` (-y) skips that prompt and non-TTY
+    (CI) invocations skip it automatically. `--force` is a deprecated alias
+    for the prompt-skip and still works, with a warning.
   - `run` requires the `--` separator when routing to a named env:
       pyve env run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
@@ -1255,10 +1426,18 @@ Notes:
     Non-destructive changes default to apply ([Y/n]); destructive changes
     (dropping a declared env, flipping a backend) default to skip ([y/N])
     and need `--force`. `--dry-run` shows the diff without writing.
-  - `testenv` and `root` are reserved names. `root` is selection-only
-    (use `pyve test --env root`), not creatable as an env.
-  - The default-env tree is preserved across `pyve init --force` and
-    `pyve purge --keep-testenv` (the `--keep-testenv` flag name is unchanged).
+  - `init <name> --force` rebuilds the env in one shot: purge, re-create,
+    and re-materialize its declared setup recipe. Destructive, so it
+    prompts y/N on interactive shells; `--yes` (-y) skips the prompt;
+    non-TTY (CI) skips automatically.
+  - `testenv` and `root` are reserved names. `root` is the main project
+    environment and stays selection-only here (`pyve test --env root`);
+    its lifecycle belongs to the top-level verbs:
+      pyve init (rebuild: pyve init --force) · pyve purge · pyve run <command>
+  - `pyve init --force` rebuilds ONLY the root env — named envs under
+    .pyve/envs/ are untouched. Rebuild a named env with
+    `pyve env init <name> --force`. (`pyve purge --keep-testenv` likewise
+    preserves the named-env tree; the flag name is unchanged.)
 EOF
                 exit 0
                 ;;
@@ -1311,7 +1490,7 @@ EOF
             run_name="$1"
             shift 2
         fi
-        assert_env_name_actionable "$run_name" || exit 1
+        assert_env_name_actionable "$run_name" "run" || exit 1
         local run_venv run_backend
         run_venv="$(resolve_env_path "$run_name")"
         run_backend="$(_env_resolve_backend "$run_name")" || run_backend="venv"
@@ -1331,12 +1510,11 @@ EOF
     # hard-codes the default; M.i.3/M.i.4 will accept `<name>` here.
     local target_name="${action_name:-testenv}"
     if [[ "$action" == "init" ]]; then
-        assert_env_name_actionable "$target_name" || exit 1
+        assert_env_name_actionable "$target_name" "init" || exit 1
         # Backend stub is enforced inside env_init -> ensure_env_exists.
     fi
-    local testenv_venv testenv_root
+    local testenv_venv
     testenv_venv="$(resolve_env_path "$target_name")"
-    testenv_root="${testenv_venv%/venv}"
 
     header_box "pyve env"
 
@@ -1346,7 +1524,7 @@ EOF
     local leaf_rc=0
     case "$action" in
         init)
-            env_init "$target_name" || leaf_rc=$?
+            env_init "$target_name" "$init_force" "$init_yes" || leaf_rc=$?
             ;;
         install)
             # Story M.i.3: with-arg installs into a single named env;
@@ -1358,7 +1536,7 @@ EOF
             local lock_mode="wait"
             [[ "$install_no_wait" == "1" ]] && lock_mode="no-wait"
             if [[ -n "$action_name" ]]; then
-                if assert_env_name_actionable "$action_name"; then
+                if assert_env_name_actionable "$action_name" "install"; then
                     local install_env_path
                     install_env_path="$(resolve_env_path "$action_name")"
                     _env_install_with_lock "$action_name" "$install_env_path" "$requirements_file" "$lock_mode" || leaf_rc=$?
@@ -1370,16 +1548,29 @@ EOF
             fi
             ;;
         purge)
-            # Story M.i.4: with-arg removes one env; no-arg iterates
-            # over every declared env with a TTY-aware confirm gate.
-            if [[ -n "$action_name" ]]; then
-                if assert_env_name_actionable "$action_name"; then
+            # Bare purge hits the DEFAULT env, promptless — the same
+            # selection rule as its siblings (init/install/run assume
+            # the default when unnamed). The whole-declaration sweep is
+            # ONLY the explicit `--all`, which keeps its TTY-aware
+            # confirm gate; combining `--all` with a name is a
+            # contradiction, not a selection.
+            if [[ "$purge_all" == "1" && -n "$action_name" ]]; then
+                log_error "env purge: pass a <name> OR --all, not both"
+                leaf_rc=1
+            elif [[ "$purge_all" == "1" ]]; then
+                _env_purge_all_with_confirm "$purge_force" || leaf_rc=$?
+            elif [[ -n "$action_name" ]]; then
+                if assert_env_name_actionable "$action_name" "purge"; then
                     env_purge "$action_name" || leaf_rc=$?
                 else
                     leaf_rc=1
                 fi
             else
-                _env_purge_all_with_confirm "$purge_force" || leaf_rc=$?
+                if assert_env_name_actionable "testenv" "purge"; then
+                    env_purge "testenv" || leaf_rc=$?
+                else
+                    leaf_rc=1
+                fi
             fi
             ;;
         list)

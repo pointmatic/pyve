@@ -27,6 +27,9 @@
 #   PYVE_TESTENV_EXTRA[]        — parallel: pyproject extra name or ""
 #   PYVE_TESTENV_MANIFEST[]     — parallel: conda manifest path or ""
 #   PYVE_TESTENV_REQUIREMENTS_Q[] — parallel: shell-quoted requirements list
+#   PYVE_TESTENV_EDITABLE[]     — parallel: `editable` directive or ""
+#                                 (v3 manifest path only; the v2 helper
+#                                 predates the directive and never emits it)
 #
 # This file is sourced by pyve.sh's library-loading block. It must not
 # be executed directly — see the guard immediately below.
@@ -61,6 +64,7 @@ _env_config_from_manifest() {
     PYVE_TESTENV_EXTRA=()
     PYVE_TESTENV_MANIFEST=()
     PYVE_TESTENV_REQUIREMENTS_Q=()
+    PYVE_TESTENV_EDITABLE=()
     local n=0
     [[ -n "${PYVE_ENV_NAMES+x}" ]] && n=${#PYVE_ENV_NAMES[@]}
     local i name be
@@ -79,6 +83,7 @@ _env_config_from_manifest() {
         PYVE_TESTENV_EXTRA+=("${PYVE_ENV_EXTRA[$i]}")
         PYVE_TESTENV_MANIFEST+=("${PYVE_ENV_MANIFEST[$i]}")
         PYVE_TESTENV_REQUIREMENTS_Q+=("${PYVE_ENV_REQUIREMENTS_Q[$i]}")
+        PYVE_TESTENV_EDITABLE+=("${PYVE_ENV_EDITABLE[$i]}")
         [[ "${PYVE_ENV_DEFAULT[$i]}" == "1" ]] && PYVE_TESTENVS_DEFAULT="$name"
     done
     if [[ -z "$PYVE_TESTENVS_DEFAULT" && "${#PYVE_TESTENVS_NAMES[@]}" -gt 0 ]]; then
@@ -121,6 +126,7 @@ read_env_config() {
         PYVE_TESTENV_EXTRA=("")
         PYVE_TESTENV_MANIFEST=("")
         PYVE_TESTENV_REQUIREMENTS_Q=("")
+        PYVE_TESTENV_EDITABLE=("")
         return 0
     fi
     # Pyve toolchain python — see lib/manifest.sh's note
@@ -164,6 +170,18 @@ _env_extra_of() {
 _env_manifest_of() {
     local i; i="$(_envs_name_to_index "$1")" || return 1
     printf '%s' "${PYVE_TESTENV_MANIFEST[$i]}"
+}
+# The `editable` setup directive: an editable self-install target
+# with optional extras (e.g. ".[dev]"), or "" when undeclared. Guarded read:
+# the v2 pyproject helper path predates the directive and never emits
+# PYVE_TESTENV_EDITABLE, so stay bash-3.2 `set -u`-safe (cf.
+# manifest_get_packaging's guard in lib/manifest.sh).
+_env_editable_of() {
+    local i; i="$(_envs_name_to_index "$1")" || return 1
+    if [[ -n "${PYVE_TESTENV_EDITABLE+x}" ]] \
+       && [[ "$i" -lt "${#PYVE_TESTENV_EDITABLE[@]}" ]]; then
+        printf '%s' "${PYVE_TESTENV_EDITABLE[$i]}"
+    fi
 }
 # Populate a caller-named array with the env's requirements list.
 # Usage: declare -a reqs; _env_requirements_of <name> reqs
@@ -229,30 +247,48 @@ validate_env_decl() {
 # config location.
 assert_env_name_actionable() {
     local name="${1:-}"
+    local verb="${2:-}"
     if [[ -z "$name" ]]; then
         printf "error: testenv name is required\n" >&2
         return 1
     fi
+    # `root` is the main project environment: `pyve env` manages named
+    # envs only, and root's lifecycle belongs to the top-level verbs. A
+    # rejection alone is a dead-end, so signpost the verb that does the
+    # job (the caller passes which env verb was attempted).
     if [[ "$name" == "root" ]]; then
-        printf "error: 'root' is selection-only (use 'pyve test --env root' to run pytest in the main project env). It is not a testenv and cannot be created/installed/purged.\n" >&2
+        printf "error: 'root' is the main project environment — 'pyve env' manages named envs only ('root' stays selection-only, e.g. 'pyve test --env root').\n" >&2
+        case "$verb" in
+            init)
+                printf "Manage the root env with: pyve init  (rebuild: pyve init --force)\n" >&2
+                ;;
+            install)
+                printf "Materialize the root env and its declared setup with: pyve init\n" >&2
+                ;;
+            purge)
+                printf "Purge the root env with: pyve purge\n" >&2
+                ;;
+            run)
+                printf "Run a command in the root env with: pyve run <command>\n" >&2
+                ;;
+            *)
+                printf "Root env verbs: pyve init (rebuild: pyve init --force), pyve purge, pyve run <command>\n" >&2
+                ;;
+        esac
         return 1
     fi
-    # Story N.bf.19: recognize the canonical v3 declaration surface —
-    # `[env.<name>]` in `pyve.toml` (via `manifest_load`, which also
-    # read-compat-synthesizes from `.pyve/config` + `[tool.pyve.testenvs.*]`).
-    # The trailing `is_env_declared` arm is the legacy pyproject reader kept
-    # as a defensive bridge during the read-compat window.
+    # Recognize the canonical v3 declaration surface — `[env.<name>]` in
+    # `pyve.toml` (via `manifest_load`). The reserved `testenv` name is always
+    # recognized.
     if [[ "$name" == "testenv" ]] \
-       || _env_declared_in_manifest "$name" \
-       || is_env_declared "$name"; then   # is_env_declared: v3.0-only read-compat, remove in N-10
+       || _env_declared_in_manifest "$name"; then
         return 0
     fi
-    # Story N.bf.18: a non-reserved, non-declared name on a project that
-    # was never initialized should point at `pyve init`, not tell the user
-    # to "declare" an env in a project that doesn't exist yet. Init signal:
-    # `pyve.toml` (canonical v3) or `.pyve/config` (v2, read-compat window;
-    # the .pyve/config arm goes away with read-compat in N-10).
-    if [[ ! -f "pyve.toml" && ! -f ".pyve/config" ]]; then
+    # A non-reserved, non-declared name on a project that was never initialized
+    # should point at `pyve init`, not tell the user to "declare" an env in a
+    # project that doesn't exist yet. Init signal: `pyve.toml` (the sole v3
+    # declaration).
+    if [[ ! -f "pyve.toml" ]]; then
         printf "error: this isn't an initialized Pyve project — run 'pyve init' to set one up.\n" >&2
         return 1
     fi
@@ -260,9 +296,8 @@ assert_env_name_actionable() {
     return 1
 }
 
-# Story N.bf.19: is <name> declared as `[env.<name>]` in the v3 manifest?
-# Loads `pyve.toml` (or read-compat synthesis from `.pyve/config` +
-# `[tool.pyve.testenvs.*]`) into PYVE_ENV_NAMES and checks membership.
+# Is <name> declared as `[env.<name>]` in the v3 manifest?
+# Loads `pyve.toml` into PYVE_ENV_NAMES and checks membership.
 # Graceful: returns 1 when the manifest can't be loaded (no toolchain
 # Python, malformed/empty manifest, etc.) so callers fall through to their
 # next arm rather than crashing.
@@ -274,12 +309,11 @@ _env_declared_in_manifest() {
 # Resolve <name>'s effective backend. An explicit concrete backend
 # (`venv` / `micromamba`) is returned as-is. `inherit` — which a
 # no-backend env now defaults to — mirrors the ROOT backend, read from the
-# canonical manifest first (`pyve.toml [env.root]` via `manifest_get_backend
-# root`), falling back to `.pyve/config` (v3.0-only read-compat, removed in
-# N-10), then `venv`. The root value passes through verbatim, including an
-# advisory `none` — so a no-backend testenv on a `none` root resolves to
-# `none` and is treated as declarative-only downstream. Undeclared names
-# resolve to `venv`.
+# canonical manifest (`pyve.toml [env.root]` via `manifest_get_backend root`),
+# defaulting to `venv`. The root value passes
+# through verbatim, including an advisory `none` — so a no-backend testenv on a
+# `none` root resolves to `none` and is treated as declarative-only downstream.
+# Undeclared names resolve to `venv`.
 _env_resolve_backend() {
     local name="$1"
     local raw
@@ -290,20 +324,18 @@ _env_resolve_backend() {
     fi
     local main_backend
     main_backend="$(manifest_get_backend root 2>/dev/null || true)"
-    [[ -z "$main_backend" ]] && main_backend="$(read_config_value backend 2>/dev/null || true)"
     [[ -z "$main_backend" ]] && main_backend="venv"
     printf '%s' "$main_backend"
 }
 
-# Story N.bf.14: resolve the reserved `root` env's backend. `root` is
-# never in PYVE_TESTENVS_NAMES, so the regular `_env_resolve_backend`
-# can't see it; read it from `.pyve/config` (v3 read-compat) then the
-# manifest, defaulting to `venv`. Defensive under `set -u` and when the
-# config/manifest helpers aren't sourced (returns `venv`).
+# Resolve the reserved `root` env's backend. `root` is never in
+# PYVE_TESTENVS_NAMES, so the regular `_env_resolve_backend` can't see it; read
+# it from the manifest (a v2 project resolves via the synthesized root
+# backend), defaulting to `venv`. Defensive under `set -u` and when the
+# manifest helpers aren't sourced (returns `venv`).
 _env_resolve_root_backend() {
     local b=""
-    b="$(read_config_value backend 2>/dev/null || true)"
-    [[ -z "$b" ]] && b="$(manifest_get_backend root 2>/dev/null || true)"
+    b="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$b" ]] && b="venv"
     printf '%s' "$b"
 }
@@ -371,6 +403,14 @@ env_exec_conda() {
 #   manifest_sha256=<64-hex or empty>
 #   provisioned_at=<unix epoch seconds>
 #   last_used_at=<unix epoch seconds or 0>
+#   installed_at=<unix epoch seconds or 0>   (0 = realized only, deps never installed)
+#   installed_sha256=<64-hex or empty>       (digest of the effective install spec)
+#
+# `installed_at`/`installed_sha256` record the ACTUAL operational
+# state (deps installed, and from what spec) as distinct from the env
+# merely being realized on disk — recorded at install time, never
+# re-derived from the filesystem. Pre-existing five-field .state files
+# read with installed_at=0 (realized, not installed).
 
 # Print the .state file path for <name>.
 state_path() {
@@ -383,6 +423,8 @@ state_path() {
 #   manifest_sha256=<hex>
 #   provisioned_at=<epoch>   (default: current epoch)
 #   last_used_at=<epoch>     (default: 0)
+#   installed_at=<epoch>     (default: 0 — realized only)
+#   installed_sha256=<hex>
 # Unknown keys are a hard error.
 state_write() {
     local name="${1:-}" backend="${2:-}"
@@ -391,16 +433,18 @@ state_write() {
         return 1
     fi
     shift 2
-    local manifest="" sha="" prov="" last="0"
+    local manifest="" sha="" prov="" last="0" inst_at="0" inst_sha=""
     local arg key val
     for arg in "$@"; do
         key="${arg%%=*}"
         val="${arg#*=}"
         case "$key" in
-            manifest)        manifest="$val" ;;
-            manifest_sha256) sha="$val" ;;
-            provisioned_at)  prov="$val" ;;
-            last_used_at)    last="$val" ;;
+            manifest)         manifest="$val" ;;
+            manifest_sha256)  sha="$val" ;;
+            provisioned_at)   prov="$val" ;;
+            last_used_at)     last="$val" ;;
+            installed_at)     inst_at="$val" ;;
+            installed_sha256) inst_sha="$val" ;;
             *)
                 printf "error: state_write: unknown keyword arg '%s'\n" "$key" >&2
                 return 1
@@ -416,6 +460,8 @@ state_write() {
         printf 'manifest_sha256=%s\n' "$sha"
         printf 'provisioned_at=%s\n'  "$prov"
         printf 'last_used_at=%s\n'    "$last"
+        printf 'installed_at=%s\n'    "$inst_at"
+        printf 'installed_sha256=%s\n' "$inst_sha"
     } > "$file"
 }
 
@@ -428,36 +474,118 @@ state_read() {
     # Source into local vars first (subshell isolation), then promote.
     # Use a clean associative read rather than a raw `source` so a
     # malformed .state cannot inject arbitrary shell.
-    local backend="" manifest="" sha="" prov="" last="0"
+    local backend="" manifest="" sha="" prov="" last="0" inst_at="0" inst_sha=""
     local line key val
     while IFS= read -r line || [[ -n "$line" ]]; do
         key="${line%%=*}"
         val="${line#*=}"
         case "$key" in
-            backend)         backend="$val" ;;
-            manifest)        manifest="$val" ;;
-            manifest_sha256) sha="$val" ;;
-            provisioned_at)  prov="$val" ;;
-            last_used_at)    last="$val" ;;
+            backend)          backend="$val" ;;
+            manifest)         manifest="$val" ;;
+            manifest_sha256)  sha="$val" ;;
+            provisioned_at)   prov="$val" ;;
+            last_used_at)     last="$val" ;;
+            installed_at)     inst_at="$val" ;;
+            installed_sha256) inst_sha="$val" ;;
         esac
     done < "$file"
     PYVE_TESTENV_STATE_BACKEND="$backend"
     PYVE_TESTENV_STATE_MANIFEST="$manifest"
     PYVE_TESTENV_STATE_MANIFEST_SHA256="$sha"
     PYVE_TESTENV_STATE_PROVISIONED_AT="$prov"
+    # shellcheck disable=SC2034 # exposed state global, read in lib/commands/env.sh (cross-file)
     PYVE_TESTENV_STATE_LAST_USED_AT="$last"
+    PYVE_TESTENV_STATE_INSTALLED_AT="$inst_at"
+    # shellcheck disable=SC2034 # exposed state global (cross-file readers)
+    PYVE_TESTENV_STATE_INSTALLED_SHA256="$inst_sha"
 }
 
 # Update only `last_used_at` to the current epoch; preserve all other
 # fields. Returns 1 if the .state file is missing.
 state_touch_last_used() {
     local name="$1"
+    # Optional second arg: an explicit epoch (used by the force-rebuild
+    # replay to restore usage provenance); default is "now".
+    local at="${2:-}"
+    [[ -z "$at" ]] && at="$(date +%s)"
     state_read "$name" || return 1
     state_write "$name" "$PYVE_TESTENV_STATE_BACKEND" \
         manifest="$PYVE_TESTENV_STATE_MANIFEST" \
         manifest_sha256="$PYVE_TESTENV_STATE_MANIFEST_SHA256" \
         provisioned_at="$PYVE_TESTENV_STATE_PROVISIONED_AT" \
-        last_used_at="$(date +%s)"
+        last_used_at="$at" \
+        installed_at="$PYVE_TESTENV_STATE_INSTALLED_AT" \
+        installed_sha256="$PYVE_TESTENV_STATE_INSTALLED_SHA256"
+}
+
+# Digest of <name>'s effective install spec — what a re-install would
+# consume: the editable target, each requirements file's content, the
+# extra group (plus pyproject.toml, which defines it), and for conda
+# the environment.yml content. A CLI -r file replaces the declared pip
+# recipe, mirroring the materializers' override semantics. Empty
+# output + non-zero when no SHA-256 tool exists (pyve_string_sha256's
+# contract — never a weaker hash).
+env_recipe_sha256() {
+    local name="$1" backend="$2" cli_req_file="${3:-}"
+    local buf="" f fsha
+    if [[ "$backend" == "micromamba" ]]; then
+        local manifest
+        manifest="$(_env_manifest_of "$name" 2>/dev/null)" || manifest=""
+        if [[ -n "$manifest" && -f "$manifest" ]]; then
+            fsha="$(pyve_file_sha256 "$manifest")" || return 1
+            buf+="manifest:$manifest:$fsha"$'\n'
+        fi
+    fi
+    if [[ -n "$cli_req_file" && -f "$cli_req_file" ]]; then
+        fsha="$(pyve_file_sha256 "$cli_req_file")" || return 1
+        buf+="cli-r:$cli_req_file:$fsha"$'\n'
+    else
+        local editable extra
+        editable="$(_env_editable_of "$name" 2>/dev/null || printf '')"
+        extra="$(_env_extra_of "$name" 2>/dev/null || printf '')"
+        local -a reqs=()
+        _env_requirements_of "$name" reqs 2>/dev/null || true
+        [[ -n "$editable" ]] && buf+="editable:$editable"$'\n'
+        for f in "${reqs[@]+"${reqs[@]}"}"; do
+            [[ -f "$f" ]] || continue
+            fsha="$(pyve_file_sha256 "$f")" || return 1
+            buf+="requirements:$f:$fsha"$'\n'
+        done
+        if [[ -n "$extra" ]]; then
+            buf+="extra:$extra"$'\n'
+            local pyproject="${PYVE_PYPROJECT:-pyproject.toml}"
+            if [[ -f "$pyproject" ]]; then
+                fsha="$(pyve_file_sha256 "$pyproject")" || return 1
+                buf+="pyproject:$fsha"$'\n'
+            fi
+        fi
+    fi
+    pyve_string_sha256 "$buf"
+}
+
+# Record a completed install in <name>'s .state: stamp installed_at
+# and the installed-spec digest so realized-vs-installed is recorded,
+# not re-derived from the filesystem. Preserves the existing record's
+# provisioning fields; creates a fresh record when none exists yet
+# (envs realized before the installed dimension shipped). A digest
+# failure (no SHA-256 tool) degrades to an empty hash — the
+# installed_at stamp still lands.
+state_mark_installed() {
+    local name="$1" backend="$2" cli_req_file="${3:-}"
+    local inst_sha
+    inst_sha="$(env_recipe_sha256 "$name" "$backend" "$cli_req_file" 2>/dev/null)" || inst_sha=""
+    local manifest="" msha="" prov="" last="0"
+    if state_read "$name" 2>/dev/null; then
+        manifest="$PYVE_TESTENV_STATE_MANIFEST"
+        msha="$PYVE_TESTENV_STATE_MANIFEST_SHA256"
+        prov="$PYVE_TESTENV_STATE_PROVISIONED_AT"
+        last="$PYVE_TESTENV_STATE_LAST_USED_AT"
+        [[ -z "$backend" ]] && backend="$PYVE_TESTENV_STATE_BACKEND"
+    fi
+    local -a args=("$name" "$backend" manifest="$manifest" manifest_sha256="$msha" \
+        last_used_at="$last" installed_at="$(date +%s)" installed_sha256="$inst_sha")
+    [[ -n "$prov" ]] && args+=(provisioned_at="$prov")
+    state_write "${args[@]}"
 }
 
 # =====================================================================
@@ -599,16 +727,15 @@ micromamba_root_prefix() {
     printf '%s' ".pyve/envs/root/conda"
 }
 
-# Story N.bf.14: non-mutating resolver for the main micromamba env path.
-# Returns the v3 root slot (`.pyve/envs/root/conda`) if it exists, else
-# the legacy flat path (`.pyve/envs/<configured>/`) derived from the
-# passed name or `.pyve/config:micromamba.env_name`, else the canonical
-# root slot (so a caller's existence check reports "missing" against the
-# right path). Unlike `resolve_env_path root`, this does NOT trigger the
-# opportunistic move — read paths (`check` / `status` / `run`) use it to
-# tolerate both layouts during the transition window without mutating the
-# tree on a diagnostic; the move fires on the write paths (`init` /
-# `update` / `test` / `env *`).
+# Non-mutating resolver for the main micromamba env path. Returns the v3 root
+# slot (`.pyve/envs/root/conda`) if it exists, else the legacy flat path
+# (`.pyve/envs/<configured>/`) derived from the passed name or the v3 env-name
+# source (`environment.yml` `name:`, via `resolve_micromamba_env_name`), else
+# the canonical root slot (so a caller's existence check reports "missing"
+# against the right path). Unlike `resolve_env_path root`, this does NOT trigger
+# the opportunistic move — read paths (`check` / `status` / `run`) use it to
+# tolerate both layouts without mutating the tree on a diagnostic; the move
+# fires on the write paths (`init` / `update` / `test` / `env *`).
 resolve_main_micromamba_path() {
     local root
     root="$(micromamba_root_prefix)"
@@ -617,7 +744,7 @@ resolve_main_micromamba_path() {
         return 0
     fi
     local name="${1:-}"
-    [[ -z "$name" ]] && name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
+    [[ -z "$name" ]] && name="$(resolve_micromamba_env_name 2>/dev/null || true)"
     if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name" ]]; then
         printf '%s' ".pyve/envs/$name"
         return 0
@@ -692,25 +819,16 @@ _migrate_main_micromamba_to_v3() {
         return 0
     fi
 
-    # Locate the flat main env. Prefer the configured name from
-    # `.pyve/config` (micromamba backend); fall back to a scan for a
-    # `.pyve/envs/*/conda-meta` directory that is not `root`.
-    local name="" flat=""
-    if config_file_exists 2>/dev/null \
-       && [[ "$(read_config_value backend 2>/dev/null || true)" == "micromamba" ]]; then
-        name="$(read_config_value micromamba.env_name 2>/dev/null || true)"
-    fi
-    if [[ -n "$name" && "$name" != "root" && -d ".pyve/envs/$name/conda-meta" ]]; then
-        flat=".pyve/envs/$name"
-    else
-        local d
-        for d in .pyve/envs/*/; do
-            [[ -d "${d}conda-meta" ]] || continue
-            [[ "$(basename "$d")" == "root" ]] && continue
-            flat="${d%/}"
-            break
-        done
-    fi
+    # Locate the flat main env: scan for a `.pyve/envs/*/conda-meta`
+    # directory that is not `root`. A v2 flat layout has exactly one
+    # such main env.
+    local flat="" d
+    for d in .pyve/envs/*/; do
+        [[ -d "${d}conda-meta" ]] || continue
+        [[ "$(basename "$d")" == "root" ]] && continue
+        flat="${d%/}"
+        break
+    done
 
     # Case 4: greenfield for this boundary (no flat main env).
     [[ -n "$flat" && -d "$flat/conda-meta" ]] || return 0

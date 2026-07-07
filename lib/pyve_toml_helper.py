@@ -236,6 +236,7 @@ KNOWN_ENV_KEYS = frozenset(
         "lazy",
         "extra",
         "manifest",
+        "editable",
         "app_type",
         "packaging",
         "requirements",
@@ -257,6 +258,10 @@ def _normalize_env(name, decl):
         "lazy": "1" if bool(decl.get("lazy", False)) else "0",
         "extra": decl.get("extra") or "",
         "manifest": decl.get("manifest") or "",
+        # `editable` directive — an editable self-install with optional
+        # extras (e.g. ".[corruptions]"). Composes with the other directives
+        # (the requirements/extra/manifest mutex was lifted).
+        "editable": decl.get("editable") or "",
         "app_type": decl.get("app_type") or "",
         # S15: `packaging` is a core scalar read by `pyve package`. v3.0
         # reads it leniently — closed-set validation is F6 in N-6.
@@ -283,6 +288,7 @@ def _empty_cfg():
     return {
         "schema_version": SCHEMA_VERSION,
         "project_name": "",
+        "defaults_version": "",
         "envs": {},
         "plugins": {},
     }
@@ -304,7 +310,11 @@ def load(manifest_path):
     with manifest_path.open("rb") as f:
         data = tomllib.load(f)
     schema = data.get("pyve_schema", SCHEMA_VERSION)
-    project_name = data.get("project", {}).get("name", "")
+    project = data.get("project", {})
+    project_name = project.get("name", "")
+    # Story P.k: the framework defaults-set stamp the repo was materialized
+    # under. Absent on pre-P.k manifests → "" (no drift baseline).
+    defaults_version = str(project.get("pyve_defaults_version", ""))
     envs = {}
     for name, decl in data.get("env", {}).items():
         if isinstance(decl, dict):
@@ -316,6 +326,7 @@ def load(manifest_path):
     return {
         "schema_version": schema,
         "project_name": project_name,
+        "defaults_version": defaults_version,
         "envs": envs,
         "plugins": plugins,
     }
@@ -334,18 +345,12 @@ def validate(cfg):
         # (purpose/backend/languages/frameworks/packaging/app_type). Unknown
         # value → error; advisory and implemented values pass.
         errors.extend(env_value_errors(name, env))
-        sources = sum(
-            [
-                bool(env["requirements"]),
-                bool(env["extra"]),
-                bool(env["manifest"]),
-            ]
-        )
-        if sources > 1:
-            errors.append(
-                f"pyve.env.{name}: only one of "
-                f"'requirements'/'extra'/'manifest' may be declared"
-            )
+        # The `requirements ⊕ extra ⊕ manifest` mutex is LIFTED — an
+        # env block is a COMPOSABLE recipe of directives. They (and `editable`)
+        # layer, materialized in a fixed order by the plugin (conda `manifest`
+        # → `editable` → `requirements` → `extra`; see the materializer). A
+        # single-directive block is just the degenerate one-item recipe, so
+        # every pre-P.l manifest stays valid unchanged.
         if env["default"] == "1":
             default_envs.append(name)
     if len(default_envs) > 1:
@@ -366,11 +371,13 @@ def emit(cfg, out):
     names = list(cfg["envs"].keys())
     print(f"PYVE_SCHEMA_VERSION={shlex.quote(cfg['schema_version'])}", file=out)
     print(f"PYVE_PROJECT_NAME={shlex.quote(cfg['project_name'])}", file=out)
+    print(f"PYVE_PROJECT_DEFAULTS_VERSION={shlex.quote(cfg.get('defaults_version', ''))}", file=out)
     print(f"PYVE_ENV_NAMES=({_quote_array(names)})", file=out)
     scalar_fields = [
         ("PYVE_ENV_PURPOSE", "purpose"),
         ("PYVE_ENV_BACKEND", "backend"),
         ("PYVE_ENV_PATH", "path"),
+        ("PYVE_ENV_EDITABLE", "editable"),
         ("PYVE_ENV_DEFAULT", "default"),
         ("PYVE_ENV_LAZY", "lazy"),
         ("PYVE_ENV_EXTRA", "extra"),

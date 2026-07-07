@@ -45,6 +45,11 @@ setup_pyve_env() {
     # (lib/project_guide.sh). Source it before the Python plugin so tests
     # that drive init_project have the orchestration defined.
     source "$PYVE_ROOT/lib/project_guide.sh"
+    # The Python plugin's init wizard / valid-flag list build the parameter
+    # decision-graph (pg_* helpers). Source param_graph.sh before the plugin,
+    # mirroring pyve.sh's sourcing order, so every helper-using suite has the
+    # engine defined without per-file source bloat.
+    source "$PYVE_ROOT/lib/param_graph.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/backend_detect.sh"
     source "$PYVE_ROOT/lib/micromamba_core.sh"
@@ -75,6 +80,28 @@ create_test_dir() {
 cleanup_test_dir() {
     if [[ -n "$TEST_DIR" && -d "$TEST_DIR" ]]; then
         rm -rf "$TEST_DIR"
+    fi
+}
+
+# Skip a test when running under kcov coverage instrumentation.
+#
+# kcov instruments every bash subprocess it spawns by enabling xtrace
+# (it sets BASH_XTRACEFD + PS4="kcov@...") — including the nested
+# `run bash -c 'set -euo pipefail; ...'` subshells that some regression
+# tests use to reproduce errexit/pipefail behavior faithfully. Under that
+# instrumentation the nested `set -e` shell exits non-zero regardless of its
+# body, so a test that asserts the subshell's status == 0 fails for a tooling
+# reason, not a code reason. Detection keys off kcov's own env markers, which
+# are present in the instrumented shell.
+#
+# STANDBY UTILITY (not currently called): the CI "Bash Coverage (kcov)" job's
+# bats step is non-gating (`|| true`) precisely because this false-failure
+# class is broad and not worth chasing per-test — coverage is informational;
+# correctness is gated by the regular "Bats" job. Kept as an opt-in for any
+# future test that wants to skip cleanly under kcov rather than false-fail.
+skip_if_kcov() {
+    if [[ -n "${KCOV_BASH_XTRACEFD:-}${KCOV_BASH_COMMAND:-}" ]]; then
+        skip "kcov instruments the nested 'set -euo pipefail' subshell, perturbing its exit status"
     fi
 }
 
@@ -109,6 +136,48 @@ create_pyve_config() {
     else
         printf '%s\n' "$@" > .pyve/config
     fi
+    # Opt-in v3 scaffold: a suite that sets PYVE_TEST_AUTOSCAFFOLD_TOML=1 also
+    # gets a minimal pyve.toml, so a project scaffolded the v2 way is recognized
+    # under v3 (pyve.toml is the sole declaration). The root backend mirrors the
+    # config's `backend:` line; a config with no backend yields a backend-less
+    # root (which exercises the "backend not configured" paths). The guard skips
+    # when the test already wrote its own pyve.toml.
+    if [[ "${PYVE_TEST_AUTOSCAFFOLD_TOML:-0}" == "1" ]] && [[ ! -f pyve.toml ]]; then
+        local _b
+        _b="$(sed -n 's/^backend:[[:space:]]*//p' .pyve/config | head -1)"
+        if [[ -n "$_b" ]]; then
+            create_pyve_toml "$_b"
+        else
+            cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+EOF
+        fi
+    fi
+}
+
+# Create a minimal v3 pyve.toml declaring a single `root` env.
+# Usage: create_pyve_toml [backend] [project-name]   (backend default: venv)
+# This is the v3-native replacement for scaffolding a project with
+# `create_pyve_config "backend: <x>"` — pyve.toml is the sole declaration.
+create_pyve_toml() {
+    local backend="${1:-venv}"
+    local name="${2:-demo}"
+    cat > pyve.toml <<EOF
+pyve_schema = "3.0"
+
+[project]
+name = "${name}"
+
+[env.root]
+purpose = "utility"
+backend = "${backend}"
+EOF
 }
 
 # Create a pyproject.toml file

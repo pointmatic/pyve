@@ -123,15 +123,16 @@ _lock_main_env() {
 
     local platform
 
-    # Guard 1: venv backend projects do not use conda-lock
-    if config_file_exists; then
-        local config_backend
-        config_backend="$(read_config_value "backend")"
-        if [[ "$config_backend" == "venv" ]]; then
-            log_error "pyve lock is for micromamba projects only."
-            log_error "This project uses the venv backend. conda-lock.yml is not used by venv."
-            exit 1
-        fi
+    # Guard 1: venv backend projects do not use conda-lock. Resolve the backend
+    # from the manifest (authoritative) so a v3-native venv project is rejected
+    # here too, not just a v2 one — a v2 project resolves via its synthesized
+    # root backend.
+    local resolved_backend
+    resolved_backend="$(manifest_get_backend root 2>/dev/null || true)"
+    if [[ "$resolved_backend" == "venv" ]]; then
+        log_error "pyve lock is for micromamba projects only."
+        log_error "This project uses the venv backend. conda-lock.yml is not used by venv."
+        exit 1
     fi
 
     # Guard 2: environment.yml must exist

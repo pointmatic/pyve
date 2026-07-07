@@ -766,58 +766,12 @@ remove_pattern_from_gitignore() {
     fi
 }
 
-#============================================================
-# YAML Configuration Parser
-#============================================================
 
-# Read a simple YAML value from .pyve/config
-# Usage: read_config_value "backend" or read_config_value "micromamba.env_name"
-# Returns the value or empty string if not found
-read_config_value() {
-    local key="$1"
-    local config_file=".pyve/config"
-    
-    # Return empty if config file doesn't exist
-    if [[ ! -f "$config_file" ]]; then
-        echo ""
-        return 0
-    fi
-    
-    # Handle nested keys (e.g., "micromamba.env_name")
-    if [[ "$key" == *.* ]]; then
-        local section="${key%%.*}"
-        local subkey="${key#*.}"
-        
-        # Extract value from nested section using awk
-        # This handles simple YAML: section:\n  subkey: value
-        awk -v section="$section" -v subkey="$subkey" '
-            /^[a-z_]+:/ { current_section = $1; gsub(/:/, "", current_section) }
-            current_section == section && $1 == subkey ":" {
-                # Remove leading/trailing whitespace and quotes
-                value = $2
-                gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", value)
-                print value
-                exit
-            }
-        ' "$config_file"
-    else
-        # Handle top-level keys
-        awk -v key="$key" '
-            /^[a-z_]+:/ && $1 == key ":" {
-                # Remove leading/trailing whitespace and quotes
-                value = $2
-                gsub(/^["'\''[:space:]]+|["'\''[:space:]]+$/, "", value)
-                print value
-                exit
-            }
-        ' "$config_file"
-    fi
-}
-
-# Check if .pyve/config file exists
-# Returns 0 if exists, 1 if not
-config_file_exists() {
-    [[ -f ".pyve/config" ]]
+# The root env's venv directory. In v3 the root venv is always the `.venv`
+# default (`resolve_env_path root` returns the same). Centralized here so
+# consumers resolve the directory through one helper. Never returns empty.
+resolve_venv_directory() {
+    printf '%s' "${DEFAULT_VENV_DIR:-.venv}"
 }
 
 #============================================================
@@ -1131,6 +1085,7 @@ doctor_check_venv_path() {
 # Skips if the file already exists, unless PYVE_REINIT_MODE=force.
 # Usage: write_vscode_settings <env_name>
 write_vscode_settings() {
+    # shellcheck disable=SC2034 # $1 accepted for caller compat; main env lives at the v3 root slot, not the configured name
     local env_name="$1"
     local vscode_dir=".vscode"
     local settings_file="$vscode_dir/settings.json"
@@ -1179,6 +1134,20 @@ pyve_file_sha256() {
         sha256sum "$file" | awk '{print $1}'
     elif command -v shasum >/dev/null 2>&1; then
         shasum -a 256 "$file" | awk '{print $1}'
+    else
+        return 1
+    fi
+}
+
+# SHA-256 of a string argument. Same tool order and no-weaker-hash
+# contract as pyve_file_sha256 (sha256sum → shasum -a 256; non-zero
+# with no output when neither exists — callers must handle it, never
+# substitute a CRC).
+pyve_string_sha256() {
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$1" | sha256sum | awk '{print $1}'
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
     else
         return 1
     fi
@@ -1355,6 +1324,15 @@ ensure_env_exists() {
 
     local backend
     backend="$(_env_resolve_backend "$name")" || backend="venv"
+
+    # A declared advisory backend (e.g. `none`) is recorded but never
+    # materialized — skip with the standing note rather than falling
+    # through to the venv builder (which would materialize a real venv
+    # for an env explicitly declared as not-materializable).
+    if _env_backend_is_advisory "$backend"; then
+        info "env '$name' declares backend '$backend', which pyve does not yet materialize; provision it manually per the env spec"
+        return 0
+    fi
 
     local testenv_env_path testenv_root
     testenv_env_path="$(resolve_env_path "$name")"

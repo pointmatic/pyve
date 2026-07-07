@@ -53,79 +53,62 @@ For requirements and behavior, see [`features.md`](features.md). For the impleme
 pyve/
 ├── pyve.sh                          # Thin entry point — globals, sourcing, top-level dispatcher, legacy/unknown flag catches, main()
 ├── lib/
-│   ├── utils.sh                     # Logging, prompts, .gitignore management, config parsing, validation
+│   ├── utils.sh                     # Logging, prompts, .gitignore management, shared env helpers, validation
+│   ├── manifest.sh                  # v3.0 pyve.toml reader: manifest_load + flat accessors
+│   ├── envs.sh                      # Named-env foundation: read_env_config, .state record, resolve_env_path, legacy-layout migrator
+│   ├── toolchain_python.sh          # pyve_toolchain_python resolver (hidden Pyve-owned toolchain venv)
+│   ├── project_guide.sh             # project-guide hosting + scaffolding integration
 │   ├── ui/
-│   │   ├── core.sh                  # Core module of the extractable lib/ui/ library: colors, symbols, prompts, run_cmd, banners, is_verbose() gate
-│   │   ├── run.sh                   # Quiet-replay-on-failure subprocess wrapper (run_quiet, run_quiet_with_label); honors PYVE_VERBOSE
-│   │   ├── progress.sh              # Step counter (step_begin/_end_ok/_end_fail), backgrounded spinner, ASCII progress bar; honors PYVE_VERBOSE and TTY
-│   │   └── select.sh                # Arrow-key single/multi-select prompts (ui_select / ui_multi_select); numbered TTY-fallback for non-interactive callers
-│   ├── env_detect.sh                # Shell profile sourcing, version manager detection (asdf/pyenv), is_asdf_active gate, direnv check
+│   │   ├── core.sh                  # Core of the extractable lib/ui/ library: colors, symbols, prompts, run_cmd, banners, is_verbose() gate
+│   │   ├── run.sh                   # Quiet-replay-on-failure subprocess wrapper; honors PYVE_VERBOSE
+│   │   ├── progress.sh              # Step counter, backgrounded spinner, ASCII progress bar; honors PYVE_VERBOSE and TTY
+│   │   └── select.sh                # Arrow-key single/multi-select prompts; numbered TTY-fallback
+│   ├── env_detect.sh                # Shell profile sourcing, version-manager detection (asdf/pyenv), is_asdf_active gate, direnv check
 │   ├── backend_detect.sh            # Backend auto-detection from project files, backend validation
 │   ├── micromamba_core.sh           # Micromamba binary detection, version, location
 │   ├── micromamba_env.sh            # Environment file parsing, naming, creation, lock file validation
 │   ├── micromamba_bootstrap.sh      # Micromamba download and installation (interactive + auto)
 │   ├── version.sh                   # Version comparison, installation validation, config writing
-│   ├── testenvs.sh                  # Named-testenv config foundation (M.g): read [tool.pyve.testenvs], predicates, path resolver
-│   ├── pyve_testenvs_helper.py      # Python tomllib helper for lib/testenvs.sh (V3 bash-array-literal wire format)
-│   └── commands/                    # One file per top-level command; each defines a function with the same name as the file
-│       ├── init.sh                  # init() — full project initialization (both backends)
-│       ├── purge.sh                 # purge() — removal of pyve artifacts
-│       ├── update.sh                # update() — non-destructive upgrade (config + managed files + project-guide)
-│       ├── check.sh                 # check() — diagnostics with 0/1/2 exit codes
-│       ├── status.sh                # status() — read-only project state dashboard
-│       ├── lock.sh                  # lock() — conda-lock wrapper (micromamba only)
-│       ├── run.sh                   # run() — execute command in project environment
-│       ├── test.sh                  # test() — pytest in dev/test environment
-│       ├── testenv.sh               # testenv() dispatcher + testenv_init/install/purge/run
-│       ├── python.sh                # python() dispatcher + python_set/python_show
-│       └── self.sh                  # self() dispatcher + self_install/self_uninstall
+│   ├── envrc_safety.sh              # PC-1 input-safety validators (plugin-emitted .envrc/.gitignore snippets)
+│   ├── {init,check,status,purge,envrc,gitignore}_composer.sh   # Cross-plugin composition of each lifecycle surface
+│   ├── pyve_toml_helper.py          # Python tomllib reader for manifest.sh
+│   ├── pyve_env_spec_helper.py / pyve_env_sync_helper.py / pyve_testenvs_helper.py   # Python helpers (env-spec, sync, --resolve-extra)
+│   ├── completion/                  # Shell-completion assets
+│   ├── plugins/                     # Plugin layer (FR-4)
+│   │   ├── registry.sh              # Active-plugin registry + plugin_dispatch
+│   │   ├── contract.sh              # No-op default hooks (the contract)
+│   │   ├── backend_registry.sh      # Backend-provider registry + bp_dispatch
+│   │   ├── packaging_registry.sh    # pyve package provider registry (reserved)
+│   │   ├── python/plugin.sh         # Python plugin: init/purge/update/check/status/run/test, wizard, venv/micromamba backends
+│   │   └── node/                    # Node plugin (plugin.sh, runtime_detect.sh)
+│   └── commands/                    # Non-plugin top-level commands (the Python lifecycle bodies live in plugins/python/plugin.sh)
+│       ├── env.sh                   # env namespace (formerly testenv): env_command + env_init/install/purge/run/list/prune
+│       ├── lock.sh                  # lock_environment — conda-lock wrapper (micromamba only)
+│       ├── package.sh               # package — reserved artifact-materialization verb
+│       └── self.sh                  # self namespace: install/uninstall/migrate/provision/unprovision
 ├── tests/
-│   ├── unit/                        # Bats unit tests (white-box, one file per lib module)
-│   │   ├── test_utils.bats
-│   │   ├── test_backend_detect.bats
-│   │   ├── test_config_parse.bats
-│   │   ├── test_env_naming.bats
-│   │   ├── test_lock_validation.bats
-│   │   ├── test_micromamba_bootstrap.bats
-│   │   ├── test_micromamba_core.bats
-│   │   ├── test_reinit.bats
-│   │   ├── test_testenvs.bats       # M.g: lib/testenvs.sh foundation tests
-│   │   ├── test_testenvs_state.bats  # M.h.1: .state read/write helpers
-│   │   ├── test_testenvs_migration.bats # M.h.2: legacy-layout migration helper
-│   │   ├── test_testenvs_activate.bats  # M.h.3: resolver fallback + sweep guard
-│   │   ├── test_testenv_install_lock.bats  # M.j: mkdir-based install lock + --no-wait
-│   │   ├── test_testenv_conda.bats     # M.k: conda backend init/install + inherit resolution
-│   │   ├── test_testenv_venv_manifest.bats # M.l: venv source dispatch (requirements/extra/fallback)
-│   │   ├── test_test_env_resolver.bats # M.m: pyve test --env <name> resolver + .state last-used touch
-│   │   ├── test_test_env_lazy_autoprovision.bats # M.n: lazy auto-provisioning + PYVE_NO_AUTO_PROVISION opt-out
-│   │   ├── test_test_env_advisory.bats     # M.o: generalized silent-skip advisory (root + all declared envs)
-│   │   ├── test_testenv_list_prune.bats    # M.p: testenv list (table) + testenv prune (orphan/--unused-since/--all)
-│   │   ├── test_lock_per_env.bats          # M.q: pyve lock --env <name> + --all (per-testenv conda-lock dispatch)
-│   │   ├── test_test_env_matrix.bats       # M.r: pyve test --env a,b,c matrix (serial, exit aggregation, headers)
-│   │   └── test_version.bats
+│   ├── unit/                        # Bats unit tests (white-box, one file per lib module / behavior)
+│   │   ├── test_utils.bats, test_backend_detect.bats, test_version.bats, …   # per-helper coverage
+│   │   ├── test_manifest*.bats       # pyve.toml reader + accessors
+│   │   ├── test_envs*.bats / test_env_*.bats   # envs.sh foundation, .state, legacy migration, env namespace
+│   │   ├── test_plugin_*.bats / test_*_composer.bats   # plugin contract, registries, composition
+│   │   └── test_init_*.bats           # wizard, flags, next-steps
 │   ├── integration/                 # pytest integration tests (black-box, one file per workflow)
 │   │   ├── conftest.py              # Shared fixtures (temp dirs, pyve runner)
-│   │   ├── test_venv_workflow.py
-│   │   ├── test_micromamba_workflow.py
-│   │   ├── test_auto_detection.py
-│   │   ├── test_bootstrap.py
-│   │   ├── test_cross_platform.py
-│   │   ├── test_reinit.py
-│   │   ├── test_run_command.py
-│   │   └── test_testenv.py
+│   │   ├── test_venv_workflow.py, test_micromamba_workflow.py, test_auto_detection.py
+│   │   ├── test_bootstrap.py, test_cross_platform.py, test_reinit.py, test_run_command.py
+│   │   └── test_env.py, test_project_guide_integration.py
 │   ├── helpers/
 │   │   ├── test_helper.bash         # Bats helper (setup, teardown, assertions, sources all lib modules)
 │   │   └── pyve_test_helpers.py     # pytest helper (PyveRunner, temp project scaffolding)
 │   └── fixtures/                    # Test data (sample environment.yml, conda-lock.yml, etc.)
 ├── docs/
-│   ├── guides/
-│   │   └── project_guide.md         # LLM-assisted project creation workflow
 │   └── specs/
+│       ├── concept.md               # Why (problem/solution)
 │       ├── features.md              # Requirements (what)
-│       ├── tech_spec.md             # Architecture (how) — this file
+│       ├── tech-spec.md             # Architecture (how) — this file
 │       ├── stories.md               # Implementation plan (when)
-│       ├── testing_spec.md          # Testing strategy details
-│       └── pyve-run-examples.md     # Usage examples for pyve run
+│       └── project-essentials.md    # Must-know facts for future contributors
 ├── .github/workflows/
 │   └── test.yml                     # CI pipeline (unit, integration, micromamba, lint, coverage)
 ├── Makefile                         # Convenience targets (test, test-unit, test-integration, coverage)
@@ -188,7 +171,7 @@ One file per top-level command. Each file owns the implementation of its command
 
 - `lib/commands/<name>.sh` defines a top-level function named `<name>` that takes the subcommand's positional + flag arguments. The dispatcher in `pyve.sh` calls it with `"$@"` after stripping the subcommand token.
 - **Namespace commands** (`testenv`, `python`, `self`) define the namespace dispatcher *and* the leaf functions in the same file. Leaf functions use the `<namespace>_<leaf>` naming convention:
-  - `lib/commands/testenv.sh` → `testenv()`, `testenv_init()`, `testenv_install()`, `testenv_purge()`, `testenv_run()`
+  - `lib/commands/env.sh` → `env_command()`, `env_init()`, `env_install()`, `env_purge()`, `env_run()` (namespace `env`, formerly `testenv`)
   - `lib/commands/python.sh` → `python()`, `python_set()`, `python_show()`
   - `lib/commands/self.sh` → `self()`, `self_install()`, `self_uninstall()`
 - **Command-private helpers** stay inside the command file with a `_<command>_` prefix (e.g., `_init_write_envrc()`, `_check_run_diagnostics()`). They are not callable from other commands.
@@ -210,13 +193,13 @@ No private helpers — `run_command` is self-contained and calls only cross-comm
 
 | Function | Signature | Description |
 |---|---|---|
-| `lock_environment` | `([--check] [--env <name>] [--all])` | Dispatcher. Default mode (no flags): main env via `_lock_main_env`. `--env <name>`: lock the named conda-backed testenv via `_lock_one_env`. `--all`: main env (via subshell so its `exit` doesn't kill the iteration) + every conda-backed testenv via `_lock_all_conda_testenvs`. `--check` applies only to the main env (per-env `--check` is out of scope for M.q). Pre-M.q this function held the main-env body inline; M.q factored it into `_lock_main_env` so `--all` can reuse it. |
+| `lock_environment` | `([--check] [--env <name>] [--all])` | Dispatcher. Default mode (no flags): main env via `_lock_main_env`. `--env <name>`: lock the named conda-backed env via `_lock_one_env`. `--all`: main env (via subshell so its `exit` doesn't kill the iteration) + every conda-backed env via `_lock_all_conda_testenvs`. `--check` applies only to the main env. |
 | `_lock_main_env` | `()` | The pre-M.q main-env locking body. Reads `check_mode` via dynamic scoping from `lock_environment`. `--check`: pure mtime comparison via `is_lock_file_stale`, never invokes `conda-lock`. Otherwise: invokes `conda-lock -f environment.yml -p <platform>`, filters the misleading "conda-lock install" post-run message, detects "spec hash already locked" → "already up to date", otherwise emits success + `pyve init --force` rebuild hint. Three guards run before `conda-lock`: (1) refuses venv backend, (2) requires `environment.yml`, (3) requires `conda-lock` on `$PATH`. |
-| `_lock_one_env` | `(<name>)` → 0/1 | Story M.q. Lock a single conda-backed testenv. Loads `read_testenv_config` (idempotent). Hard-errors for `root` (with a "use `pyve lock` no-args" hint), undeclared names (with a `[tool.pyve.testenvs]` hint), non-micromamba backends (after `_testenv_resolve_backend` so `inherit` resolves to the main backend), missing `manifest` declaration, and missing manifest file on disk. Resolves the output path via `_lock_env_lock_path`, invokes `conda-lock -f <manifest> -p <platform> --lockfile <out>`. Uses `return` (not `exit`) so callers can iterate. |
+| `_lock_one_env` | `(<name>)` → 0/1 | Lock a single conda-backed env. Loads `read_env_config` (idempotent). Hard-errors for `root` (with a "use `pyve lock` no-args" hint), undeclared names (with a `pyve.toml [env.<name>]` hint), non-micromamba backends (after `_env_resolve_backend` so `inherit` resolves to the root backend), missing `manifest` declaration, and missing manifest file on disk. Resolves the output path via `_lock_env_lock_path`, invokes `conda-lock -f <manifest> -p <platform> --lockfile <out>`. Uses `return` (not `exit`) so callers can iterate. |
 | `_lock_env_lock_path` | `(<manifest>)` → string | Story M.q. Derive the sibling lock-file path: `tests/env.yml` → `tests/env-lock.yml`. Strips `.yaml`/`.yml` extension, appends `-lock.yml`. Preserves the manifest's directory; bare `<base>.yml` → `<base>-lock.yml`. |
-| `_lock_all_conda_testenvs` | `()` → 0/1 | Story M.q. Iterate `PYVE_TESTENVS_NAMES`, skip non-`micromamba` backends, call `_lock_one_env` per env. Per-env failures `warn` and accumulate into a non-zero return; iteration always completes. |
+| `_lock_all_conda_testenvs` | `()` → 0/1 | Iterate the declared env names, skip non-`micromamba` backends, call `_lock_one_env` per env. Per-env failures `warn` and accumulate into a non-zero return; iteration always completes. (Internal name retains the `testenvs` spelling — `lock.sh` predates the `env` rename.) |
 
-**Cross-command helpers called:** `config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `warn`, `success`, `is_lock_file_stale`, `get_conda_platform`. Story M.q adds calls to `read_testenv_config`, `is_testenv_declared`, `_testenv_resolve_backend`, `_testenv_manifest_of` (all in `lib/testenvs.sh`, sourced before commands in `pyve.sh`).
+**Cross-command helpers called:** `config_file_exists`, `read_config_value`, `unknown_flag_error`, `log_error`, `log_info`, `warn`, `success`, `is_lock_file_stale`, `get_conda_platform`, plus `read_env_config`, `is_env_declared`, `_env_resolve_backend`, `_env_manifest_of` (in `lib/envs.sh`, sourced before commands in `pyve.sh`).
 
 **Renamed from `run_lock`** in K.c. Final name `lock_environment()` adopted in the K.f follow-up under the project-essentials "Function naming convention: `<verb>_<operand>`" rule — `pyve lock` operates on the environment's dependency graph (`environment.yml` → `conda-lock.yml`). The K.c interim name `lock()` was a rule violation (no operand suffix) and was retired alongside K.e's `self()`. No external callers — only the dispatcher arm referenced the function name.
 
@@ -260,54 +243,54 @@ Single-file namespace per project-essentials F-9. Largest extraction so far (~45
 | Function | Signature | Description |
 |---|---|---|
 | `test_tests` | `([--env <name>[,<name>...]] [pytest args...])` | Run pytest. Parses the pyve-owned `--env` selector (`--env <val>` and `--env=<val>` forms) out of the arg list — everything else passes through to pytest verbatim via a bash-3.2-safe `args[]` array (read with `"${args[@]+"${args[@]}"}"`). **Story M.r: comma-separated values** (`--env a,b,c`) trigger the matrix path; one-element values (no comma) take the single-env path. Both paths delegate to `_test_run_one_env`. Matrix: each name runs in its own subshell sequentially with `=== Env: <name> ===` printed before each invocation; the M.o silent-skip advisory is suppressed inside matrix subshells (`PYVE_NO_TESTENV_ADVISORY=1` exported per-iteration) since the user has explicitly named multiple envs; exit code is the worst-case aggregate (highest failing rc); iteration always completes (a failing env does not halt the loop). Single-env: calls `_test_run_one_env` directly, preserving the pre-M.r exec contract verbatim. |
-| `_test_run_one_env` | `(<name> <explicit> [pytest args...])` | Story M.r. Per-env worker extracted from `test_tests` so the matrix loop can call it inside a subshell without losing the M.m exec behavior on the single-env path. `<explicit>` is `1` when `--env` was passed (always `1` from the matrix loop; `0` only when the single-env path had no `--env` at all). Behavior: **`--env main`** hard-errors with a precise rename hint (Category-B catch, Story M.e v2.7.1) — no silent delegation. **`--env root`**: delegates to `run_command python -m pytest <args>` (Story M.c; value renamed from `main` in M.e), reusing run_command's backend detection + asdf reshim guard + exec; returns immediately (run_command execs). **Story M.m: `<name>` accepts any name declared in `[tool.pyve.testenvs]`.** Loads `read_testenv_config` (idempotent), defaults `<name>` to `${PYVE_TESTENVS_DEFAULT:-testenv}` when `<explicit>` is `0`, hard-errors on undeclared names with a list of valid choices (`root`, `testenv`, plus declared names). Conda-backed envs are rejected via `assert_testenv_venv_backend` (same gate as `pyve testenv run` — run is venv-only). Lazy envs that have not been provisioned yet **auto-provision (Story M.n)**: `ensure_testenv_exists <name>` creates the env, then `_testenv_install_with_lock <name> <path> "" wait` installs per the declared sources. The whole path is gated by `PYVE_NO_AUTO_PROVISION=1` for strict CI — when set, the M.m hard-error returns (with a `pyve testenv install <name>` hint). For the resolved venv path, auto-creates via `ensure_testenv_exists <name>` if missing; if pytest isn't yet installed, in CI / `PYVE_TEST_AUTO_INSTALL_PYTEST=1` mode auto-installs it, on a TTY prompts y/N (declining exits 1), non-TTY without auto-install errors with the `pyve testenv install -r requirements-dev.txt` next-step. Before exec, the silent-skip advisory (Stories M.c, M.o) scans `root` + every declared env with `_test_env_has_pytest`, skipping the target itself; if any candidate has pytest importable, prints a one-line `warn` listing them as alternatives (e.g. `--env root, --env smoke`). Suppressible via `PYVE_NO_TESTENV_ADVISORY=1` (which matrix mode sets automatically). Touches `.state`'s `last_used_at` via `state_touch_last_used <name>` (best-effort; silent no-op when `.state` is missing) so M.p's `pyve testenv list` / `prune` can report active envs. Finally `exec`s `<env>/bin/python -m pytest <args>` so pytest's exit code propagates verbatim. |
-| `_test_env_has_pytest` | `(<name>)` → 0/1 | Story M.o (renamed from `_test_main_env_has_pytest` in M.c). Probe whether the env named `<name>` has pytest importable. `<name> == "root"` resolves the main project env (first `.pyve/envs/*/bin/python`, else `$DEFAULT_VENV_DIR/bin/python`); any other name resolves via `resolve_testenv_path <name>` and probes its `bin/python`. Returns 1 if the env doesn't exist on disk, pytest is absent, or the probe fails. Invokes the env's python directly (no `micromamba run`) to keep the probe cheap. Drives the generalized silent-skip advisory in `test_tests`. |
-| `_test_has_pytest` | `(<testenv_venv>)` → 0/1 | Probe whether the testenv at `<testenv_venv>` has pytest installed. Returns 1 if `bin/python` is missing, otherwise 0/1 from `python -c 'import pytest'`. |
-| `_test_install_pytest_into_testenv` | `(<testenv_venv>)` | Pip-install pytest (or `requirements-dev.txt` if present) into the testenv via `<testenv_venv>/bin/python -m pip install ...`. |
+| `_test_run_one_env` | `(<name> <explicit> [pytest args...])` | Per-env worker, called once on the single-env path and once per name (in a subshell) on the matrix path. `<explicit>` is `1` when `--env` was passed. Behavior: **`--env main`** hard-errors with a precise rename hint (Category-B catch) — no silent delegation. **`--env root`** delegates to `run_command python -m pytest <args>`, reusing `run_command`'s backend detection + asdf reshim guard + exec. Otherwise `<name>` accepts any env declared in `pyve.toml`; loads `read_env_config` (idempotent), defaults `<name>` to `${PYVE_TESTENVS_DEFAULT:-testenv}` when `<explicit>` is `0`, hard-errors on undeclared names with a list of valid choices, and applies the **purpose gate** (next paragraph). Backend dispatch mirrors `pyve env run` — a venv env execs its `bin/python -m pytest`; a conda-backed env runs via `micromamba run -p <env_path>`. Lazy unprovisioned envs **auto-provision** (`ensure_env_exists <name>` + `_env_install_with_lock <name> <path> "" wait`), gated by `PYVE_NO_AUTO_PROVISION=1` for strict CI (which restores the hard-error with a `pyve env install <name>` hint). If pytest isn't installed: CI / `PYVE_TEST_AUTO_INSTALL_PYTEST=1` auto-installs; a TTY prompts y/N (declining exits 1); non-TTY without auto-install errors with the `pyve env install -r requirements-dev.txt` next-step. Before exec, the silent-skip advisory scans `root` + every declared env via `_test_env_has_pytest` and `warn`s if another candidate has pytest (suppressible via `PYVE_NO_TESTENV_ADVISORY=1`, set automatically in matrix mode). Touches `.state.last_used_at` via `state_touch_last_used <name>` (best-effort) so `pyve env list` / `prune` can report active envs. pytest's exit code propagates verbatim. |
+| `_test_env_has_pytest` | `(<name>)` → 0/1 | Probe whether the env named `<name>` has pytest importable. `<name> == "root"` resolves the main project env (first `.pyve/envs/*/bin/python`, else `$DEFAULT_VENV_DIR/bin/python`); any other name resolves via `resolve_env_path <name>` and probes its `bin/python`. Returns 1 if the env doesn't exist on disk, pytest is absent, or the probe fails. Invokes the env's python directly (no `micromamba run`) to keep the probe cheap. Drives the generalized silent-skip advisory in `test_tests`. |
+| `_test_has_pytest` | `(<env_venv>)` → 0/1 | Probe whether the env at `<env_venv>` has pytest installed. Returns 1 if `bin/python` is missing, otherwise 0/1 from `python -c 'import pytest'`. |
+| `_test_install_pytest_into_env` | `(<env_venv>)` | Pip-install pytest (or `requirements-dev.txt` if present) into the env via `<env_venv>/bin/python -m pip install ...`. |
 
 **`--env root` reuses `run_command` (Story M.c; value renamed from `main` in M.e v2.7.1).** Rather than re-implement backend detection + the asdf reshim guard, `test_tests --env root` calls `run_command python -m pytest <args>` directly — a standard intra-`lib/commands/` cross-file call resolved at runtime via the global function table. This makes the documented `pyve run python -m pytest` workaround for the micromamba-testenv trap (see `docs/specs/.archive/phase-m-pyve-micromamba-testenv-trap.md`) a first-class flag without duplicating run_command's logic.
 
-**Story N.d: purpose gate.** `_test_run_one_env` calls `manifest_load` (when `pyve.toml` is present) and then `manifest_resolve_purpose <env_target>` immediately after name validation and before the conda gate. If the resolved purpose is not `test`, the selector hard-errors with a precise hint at `pyve env run <name> -- <cmd>`. The gate sits AFTER the `--env root` short-circuit (line 210-ish), so `--env root` is never subject to it — `root` defaults to `purpose = "utility"` but its delegation to `run_command` makes the gate irrelevant. v2-source-only paths (no `pyve.toml`, named non-`testenv` envs in `[tool.pyve.testenvs.*]`) currently hit the gate as `purpose = "utility"` by name-based default rule — Story N.i's read-compat shim closes the gap by propagating `purpose = "test"` for every v2 testenv block; until N.i lands, the affected bats coverage carries `N.i-pending` skip markers, documented as deliberate technical debt to be retired by N.i's close-out.
+**Purpose gate.** `_test_run_one_env` calls `manifest_load` (when `pyve.toml` is present) and then `manifest_resolve_purpose <env_target>` immediately after name validation and before backend dispatch. If the resolved purpose is not `test`, the selector hard-errors with a precise hint at `pyve env run <name> -- <cmd>`. The gate sits AFTER the `--env root` short-circuit, so `--env root` is never subject to it — `root` defaults to `purpose = "utility"` but its delegation to `run_command` makes the gate irrelevant. The read-compat synthesis propagates `purpose = "test"` for v2 testenv blocks so v2-source-only projects resolve correctly during the deprecation window; the few remaining gaps are tracked by the load-bearing `N.i-pending` skip markers in the bats suite (see [`project-essentials.md`](project-essentials.md)).
 
 **Category-B catch for legacy `--env main` (Story M.e v2.7.1).** Per the *Deprecation removal policy* in [`project-essentials.md`](project-essentials.md), the rename ships with a hard-error catch — three lines inside `_test_parse_args` validation: match `--env main`, print `pyve test --env main: renamed to --env root. Run 'pyve test --env root' instead.`, exit non-zero. The catch lives in `lib/commands/test.sh` (not in `pyve.sh`'s top-level dispatcher) because `--env` is a *value* parsed inside `test_tests` — `pyve.sh` never sees it. No Category-A silent delegation.
 
 **Function name `test_tests` (NOT `test` or `test_command`)** — applies the project-essentials "Function naming convention: `<verb>_<operand>`" rule: `pyve test [args]` operates on tests (whether the args explicitly select a subset or are absent, in which case the implicit operand is "all tests"). This naming also avoids the F-11 `test` shadowing trap (`test` is a bash builtin / `/usr/bin/test`); the K.f initial extraction used `test_command()` (also F-11-safe) but was renamed in the same K.f follow-up that aligned `lock_environment()` and reverted `self_command()`.
 
-**Cross-file call (post-K.g):** `test_tests` calls `ensure_testenv_exists`, which lives in `lib/utils.sh` (moved there by K.g per audit F-8). Bash resolves the call at runtime via the global function table.
+**Cross-file call:** the test path calls `ensure_env_exists`, which lives in `lib/utils.sh`. Bash resolves the call at runtime via the global function table.
 
-**F-8 correction:** the K.f story's "Temporary cross-file call to `testenv_run`" caveat is stale — there is no `testenv_run` function in `pyve.sh`. `test_command` does NOT call `testenv_run`; it calls `ensure_testenv_exists`, the test-private helpers, and ends with `exec ... pytest`. The `testenv` namespace handles its own `run` action inline in the namespace dispatcher (see K.g).
+The Python plugin's test path does NOT call `env_run`; it calls `ensure_env_exists`, the test-private helpers, and ends with `exec ... pytest`. The `env` namespace handles its own `run` action through the namespace dispatcher.
 
 #### `env` namespace — `env_command` + leaves (in `lib/commands/env.sh`; formerly `testenv`)
 
 Largest namespace command — 4 leaves: `init`, `install`, `purge`, `run`. The K.g extraction also refactored the previous inline `case "$action" in` arms into named leaf functions per project-essentials F-9 (one function per sub-command, leaf names follow `<namespace>_<leaf>`).
 
+> The leaf and helper functions below carry the **v3 `env_*` / `_env_*` names** (the namespace was renamed from `testenv` to `env` per Story N.b); the descriptions are the current behavior. The deprecated `pyve testenv <sub>` alias re-dispatches into the same `env_command`.
+
 | Function | Signature | Description |
 |---|---|---|
-| `testenv_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `init [<name>]`, `install [<name>] [-r <file>] [--no-wait]`, `purge [<name>] [--force]`, `run [<name> --] <cmd> [args...]`. Pre-parses each sub-command's flags + the optional positional `<name>` (Stories M.i.1–M.i.4), then calls the matching leaf. Loads `read_testenv_config` once before action dispatch (idempotent if already populated). The `run` action skips the `header_box`/`footer_box` wrapper because exec replaces the shell — the called command owns the rest of the terminal. Captures leaf return codes (M.i.2) so the dispatcher does not mask failures with `footer_box`'s 0 exit. `--help` and unknown-flag/unknown-action paths exit before the leaf is reached. |
-| `testenv_init` | `([<name>])` | Story M.i.2 + M.k. Calls `ensure_testenv_exists` (in `lib/utils.sh`), which now dispatches on `_testenv_resolve_backend`: venv → `python -m venv <path>`; micromamba → `_testenv_init_conda` (`micromamba create -p <path> -f <manifest> -y`). |
-| `_testenv_install_venv` | `(<name> <env_path> <cli_req_file?>)` | Story M.l (renamed from `testenv_install` for symmetry with `_testenv_install_conda`). Pip-install into a venv testenv with five-stage source dispatch: (1) CLI `-r <file>` always wins; (2) declared `requirements = [...]` → `pip install -r a -r b`; (3) declared `extra = "<n>"` → resolve `[project.optional-dependencies].<n>` via the Python helper's `--resolve-extra` mode, install package list; (4) auto-detected `requirements-dev.txt` in CWD → `-r requirements-dev.txt`; (5) bare `pytest` fallback. Exits 1 if the env doesn't exist, the CLI/declared file is missing, or the helper's extra-resolution fails. **Conda-backed envs do NOT call this leaf** — backend dispatch in `_testenv_install_with_lock` routes them to `_testenv_install_conda` instead. |
-| `_testenv_resolve_extra_packages` | `(<extra_name> <out_var>)` | Story M.l. Invoke the Python helper's `--resolve-extra <pyproject> <extra_name>` mode and populate the caller-named array `<out_var>` with the resolved package list. Honors `${PYVE_PYPROJECT:-pyproject.toml}` for the pyproject path. Returns the helper's exit code (2 for missing pyproject / missing extra / malformed extra; helper's stderr surfaces the precise error). |
-| `testenv_purge` | `([<name>])` | Story M.i.4. Thin wrapper around `purge_testenv_dir` (in `lib/utils.sh`), passing through the optional `<name>` (defaults to `testenv`). Backend-agnostic — `rm -rf` covers both venv and conda layouts. |
-| `testenv_run` | `(<testenv_venv> [<cmd> args...])` | `exec` a command inside the testenv. Prefers `<testenv_venv>/bin/<cmd>` when present; otherwise falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<testenv_venv>/bin` to `PATH`. **Venv-only** (Story M.k): dispatcher gates with `assert_testenv_venv_backend` before invocation; conda-backed envs hard-error with a `micromamba run -p <path> <cmd>` workaround hint. Errors with exit 1 if no command is provided or the testenv doesn't exist. |
-| `_testenv_install_lock_dir` / `_testenv_acquire_install_lock` / `_testenv_release_install_lock` | M.j | `mkdir`-based atomic install lock at `.pyve/testenvs/<name>/.lock/` with `pid` file. Acquire is wait+retry by default (1-second sleep, 10-minute cap); `no-wait` mode fast-fails with a "(pid N)" message. Stale-lock reclamation via `kill -0 <pid>`. Release only removes the lock when the caller's `$$` matches the recorded pid. |
-| `_testenv_install_with_lock` | M.j + M.k | Wraps a per-env install with lock acquire/release + a `trap EXIT INT TERM` that releases the lock on any exit path (including `testenv_install`'s `exit 1` hard-errors). Dispatches on `_testenv_resolve_backend`: micromamba → `_testenv_install_conda`; else → `testenv_install`. |
-| `_testenv_init_conda` / `_testenv_install_conda` | M.k | Conda-backed init/install via `micromamba create -p <path> -f <manifest> -y` / `micromamba install -p <path> -f <manifest> -y`. Both require `manifest` declared in `[tool.pyve.testenvs.<name>]`; both error cleanly when the manifest file is missing. `_init_conda` is idempotent (info+skip if `conda-meta` already exists); `_install_conda` requires the env to exist (errors with a `pyve testenv init <name>` hint otherwise). See *Conda backend dispatch (Story M.k)* under `lib/testenvs.sh` for the wider design. |
-| `_testenv_install_all_nonlazy` | M.i.3 + M.k | Iteration loop for no-arg `install`. Iterates `PYVE_TESTENVS_NAMES`, skips lazy envs, calls `_testenv_install_with_lock` for each remaining env. Conda envs are no longer skipped post-M.k — backend dispatch is uniform across iteration and single-env paths. |
-| `_testenv_purge_all_with_confirm` | M.i.4 | Iteration loop for no-arg `purge`. TTY-aware `y/N` confirmation (`--force` skips; `PYVE_FORCE_PROMPT=1` forces). |
-| `testenv_list` | M.p | Walk the union of declared (`PYVE_TESTENVS_NAMES`) and on-disk (`.pyve/testenvs/*/`) env names; print a header (`NAME BACKEND SIZE LAST-USED STATE`) followed by one row per env via `_testenv_list_one_row`. Read-mostly; no mutations. |
-| `_testenv_list_all_names` / `_testenv_list_one_row` | M.p | `_all_names` emits the union of declared + on-disk names, deduped via bash-3.2-safe string-membership (no `declare -A`). `_one_row` resolves backend (declared → `_testenv_resolve_backend`; orphaned → infer from on-disk shape), runs `du -sh`, reads `.state.last_used_at` (`never` for `0`, ISO date otherwise via `_testenv_format_epoch`), and assigns `STATE` (`ready` / `lazy` / `not provisioned` / `orphaned`). |
-| `testenv_prune` | M.p | Three modes: default (orphans, declared-name guard + reserved-`testenv` guard), `--unused-since <ISO-date>` (compares `.state.last_used_at` against the parsed epoch; preserves `last_used=0` "never used" entries), `--all` (every on-disk env, disk-driven — distinct from `testenv purge` no-arg's config-driven walk). Bad date format hard-errors before walking. Confirmation gating mirrors `_testenv_purge_all_with_confirm` (`--force` / `PYVE_FORCE_PROMPT=1` / TTY). Calls `purge_testenv_dir` per candidate; accumulates the worst exit. |
-| `_testenv_format_epoch` / `_testenv_parse_iso_date` | M.p | Cross-platform date helpers — BSD `date -r`/`date -j -f` on Darwin, GNU `date -d @…`/`date -d <iso>` elsewhere. Both fail closed (`?` / non-zero return) on bad input. |
+| `env_command` | `(<sub> [args...])` | Namespace dispatcher. Sub-commands: `init [<name>] [--force]`, `install [<name>] [-r <file>] [--no-wait]`, `purge [<name>] [--force] [--all]`, `run [<name> --] <cmd> [args...]`, `list`, `prune`. Pre-parses each sub-command's flags + the optional positional `<name>`, then calls the matching leaf. Loads `read_env_config` once before action dispatch (idempotent if already populated). The `run` action skips the `header_box`/`footer_box` wrapper because exec replaces the shell — the called command owns the rest of the terminal. Captures leaf return codes so the dispatcher does not mask failures with `footer_box`'s 0 exit. `--help` and unknown-flag/unknown-action paths exit before the leaf is reached. |
+| `env_init` | `([<name>] [--force])` | Calls `ensure_env_exists` (in `lib/utils.sh`), which dispatches on `_env_resolve_backend`: venv → `python -m venv <path>`; micromamba → `_env_init_conda` (`micromamba create -p <path> -f <manifest> -y`). *(v3.1.0, P-1: `--force` rebuilds-and-restores from the operational-state record — see [features.md FR-25](features.md#fr-25-operational-state-record--restore-on-rebuild).)* |
+| `_env_install_venv` | `(<name> <env_path> <cli_req_file?>)` | Pip-install into a venv env with five-stage source dispatch: (1) CLI `-r <file>` always wins; (2) declared `requirements = [...]` → `pip install -r a -r b`; (3) declared `extra = "<n>"` → resolve `[project.optional-dependencies].<n>` via the Python helper's `--resolve-extra` mode, install package list; (4) auto-detected `requirements-dev.txt` in CWD → `-r requirements-dev.txt`; (5) bare `pytest` fallback. Exits 1 if the env doesn't exist, the CLI/declared file is missing, or the helper's extra-resolution fails. **Conda-backed envs do NOT call this leaf** — backend dispatch in `_env_install_with_lock` routes them to `_env_install_conda` instead. *(v3.1.0, P-1: the source stages become composable directives + an `editable` directive — [features.md FR-26](features.md#fr-26-declarative-environment-setup).)* |
+| `_env_resolve_extra_packages` | `(<extra_name> <out_var>)` | Invoke the Python helper's `--resolve-extra <pyproject> <extra_name>` mode and populate the caller-named array `<out_var>` with the resolved package list. Honors `${PYVE_PYPROJECT:-pyproject.toml}` for the pyproject path. Returns the helper's exit code (2 for missing pyproject / missing extra / malformed extra; helper's stderr surfaces the precise error). |
+| `env_purge` | `([<name>] [--all])` | Thin wrapper around `purge_env_dir` (in `lib/utils.sh`), passing through the optional `<name>`. Backend-agnostic — `rm -rf` covers both venv and conda layouts. *(v3.1.0, P-1: bare form targets the **default** env; `--all` is the explicit sweep — [features.md FR-10](features.md#fr-10-environment-purge-pyve-purge).)* |
+| `env_run` | `(<env_path> [<cmd> args...])` | `exec` a command inside the env. For a venv env: prefers `<env_path>/bin/<cmd>`, else falls back to `$PATH` after exporting `VIRTUAL_ENV` and prepending `<env_path>/bin`. For a conda-backed env: delegates to `env_exec_conda` (`micromamba run -p <env_path>`, sets `CONDA_PREFIX`, runs `activate.d`). Errors with exit 1 if no command is provided or the env doesn't exist. |
+| `_env_install_lock_dir` / `_env_acquire_install_lock` / `_env_release_install_lock` | — | `mkdir`-based atomic install lock at `.pyve/envs/<name>/.lock/` with a `pid` file. Acquire is wait+retry by default (1-second sleep, 10-minute cap); `no-wait` mode fast-fails with a "(pid N)" message. Stale-lock reclamation via `kill -0 <pid>`. Release only removes the lock when the caller's `$$` matches the recorded pid. |
+| `_env_install_with_lock` | — | Wraps a per-env install with lock acquire/release + a `trap EXIT INT TERM` that releases the lock on any exit path. Dispatches on `_env_resolve_backend`: micromamba → `_env_install_conda`; else → `_env_install_venv`. |
+| `_env_init_conda` / `_env_install_conda` | — | Conda-backed init/install via `micromamba create -p <path> -f <manifest> -y` / `micromamba install -p <path> -f <manifest> -y`. Both require `manifest` declared in `pyve.toml [env.<name>]`; both error cleanly when the manifest file is missing. `_init_conda` is idempotent (info+skip if `conda-meta` already exists); `_install_conda` requires the env to exist (errors with a `pyve env init <name>` hint otherwise). See *Conda backend dispatch* under `lib/envs.sh` for the wider design. |
+| `_env_install_all_nonlazy` | — | Iteration loop for no-arg `install`. Iterates the declared env names, skips lazy envs, calls `_env_install_with_lock` for each remaining env. Backend dispatch is uniform across iteration and single-env paths (conda and venv alike). |
+| `_env_purge_all_with_confirm` | — | Iteration loop for the `--all` sweep. TTY-aware `y/N` confirmation (`--force` skips; `PYVE_FORCE_PROMPT=1` forces). |
+| `env_list` | — | Walk the union of declared and on-disk (`.pyve/envs/*/`) env names; print a header (`NAME BACKEND SIZE LAST-USED STATE`) followed by one row per env via `_env_list_one_row`. Read-mostly; no mutations. |
+| `_env_list_all_names` / `_env_list_one_row` | — | `_all_names` emits the union of declared + on-disk names, deduped via bash-3.2-safe string-membership (no `declare -A`). `_one_row` resolves backend (declared → `_env_resolve_backend`; orphaned → infer from on-disk shape), runs `du -sh`, reads `.state.last_used_at` (`never` for `0`, ISO date otherwise via `_env_format_epoch`), and assigns `STATE` (`ready` / `lazy` / `not provisioned` / `orphaned`). |
+| `env_prune` | — | Three modes: default (orphans, declared-name guard + reserved-`testenv` guard), `--unused-since <ISO-date>` (compares `.state.last_used_at` against the parsed epoch; preserves `last_used=0` "never used" entries), `--all` (every on-disk env, disk-driven — distinct from `env purge`'s config-driven walk). Bad date format hard-errors before walking. Confirmation gating mirrors `_env_purge_all_with_confirm` (`--force` / `PYVE_FORCE_PROMPT=1` / TTY). Calls `purge_env_dir` per candidate; accumulates the worst exit. |
+| `_env_format_epoch` / `_env_parse_iso_date` | — | Cross-platform date helpers — BSD `date -r`/`date -j -f` on Darwin, GNU `date -d @…`/`date -d <iso>` elsewhere. Both fail closed (`?` / non-zero return) on bad input. |
 
-**F-7 / F-8 helper moves (K.g performs):** `purge_testenv_dir`, `ensure_testenv_exists`, and `testenv_paths` move from `pyve.sh` to `lib/utils.sh` because they are each shared by 2+ commands (per project-essentials cross-command-helper rule):
+**Shared env helpers in `lib/utils.sh`** (`env_paths`, `ensure_env_exists`, `purge_env_dir` — formerly `testenv_*`, moved out of `pyve.sh` because each is shared by 2+ commands, per the cross-command-helper rule):
 
-- `ensure_testenv_exists` — used by `init` (still in pyve.sh), `testenv_init`, and `test_tests` (in `lib/commands/test.sh`).
-- `purge_testenv_dir` — used by `purge` (still in pyve.sh) and `testenv_purge`.
-- `testenv_paths` — only called by `ensure_testenv_exists`; moves alongside it as an implementation dependency.
+- `ensure_env_exists` — used by `init`, `env_init`, and the Python plugin's test path.
+- `purge_env_dir` — used by `purge` and `env_purge`.
+- `env_paths` — only called by `ensure_env_exists`; lives alongside it as an implementation dependency.
 
-After K.g, `lib/commands/test.sh::test_tests` no longer makes a cross-file call back into `pyve.sh` — the call to `ensure_testenv_exists` resolves through `lib/utils.sh` (already sourced by `pyve.sh` before the per-command files).
-
-**Function name `testenv_command`** — applies the project-essentials "Function naming convention" rule: namespace dispatchers use `<namespace>_command` because the operand is the sub-command name that follows. No K.e-style `testenv()` rename — the rule was tightened during K.f follow-up.
+**Function name `env_command`** — applies the project-essentials "Function naming convention" rule: namespace dispatchers use `<namespace>_command` because the operand is the sub-command name that follows.
 
 #### `status` — `show_status`
 
@@ -369,7 +352,7 @@ Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` 
 
 | Function | Signature | Description |
 |---|---|---|
-| `purge_project` | `([<dir>] [--keep-testenv] [--yes\|-y])` | Orchestrator. Parses flags, prompts y/N for confirmation (skipped on `--yes`/`-y` / `CI=1` / `PYVE_FORCE_YES=1`), sources shell profiles, and calls each helper in sequence: `_purge_version_file`, `_purge_venv`, `_purge_pyve_dir` + `purge_testenv_dir` (or the `--keep-testenv` branch that preserves `.pyve/testenv`), `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`. The venv directory defaults to `$DEFAULT_VENV_DIR`, but if no positional arg is given AND `.pyve/config` exists, `venv.directory` from config wins. Always exits 0 on success or user-aborted prompt. |
+| `purge_project` | `([<dir>] [--keep-testenv] [--yes\|-y])` | Orchestrator. Parses flags, prompts y/N for confirmation (skipped on `--yes`/`-y` / `CI=1` / `PYVE_FORCE_YES=1`), sources shell profiles, and calls each helper in sequence: `_purge_version_file`, `_purge_venv`, `_purge_pyve_dir` + `purge_env_dir` (or the `--keep-testenv` branch that preserves the `.pyve/envs/` tree), `_purge_envrc`, `_purge_dotenv`, `_purge_gitignore`. The venv directory defaults to `$DEFAULT_VENV_DIR`, but if no positional arg is given AND `.pyve/config` exists, `venv.directory` from config wins. Always exits 0 on success or user-aborted prompt. |
 | `_purge_version_file` | `()` | Remove `.tool-versions` AND `.python-version` if present. |
 | `_purge_venv` | `(<venv_dir>)` | Remove the venv directory; emits an info line if absent. |
 | `_purge_pyve_dir` | `()` | Remove `.pyve/`. If `.pyve/envs/` exists and micromamba is available, attempts a clean `micromamba env remove` first (named, then prefix-based fallback) before the directory `rm -rf`. Safe no-op when `.pyve/` doesn't exist. |
@@ -382,9 +365,9 @@ Remove pyve-managed environment artifacts. Optionally preserves `.pyve/testenv` 
 **Cross-command callsites** (resolved at runtime via global function table):
 - `init_project` (in `lib/commands/init.sh` post-K.l) calls `purge_project --keep-testenv --yes` from its `--force` pre-flight and from the interactive option-2 (purge-and-rebuild) path. Standard intra-`lib/commands/` cross-file call resolved at runtime via the global function table.
 
-**F-7 settled in K.g** — `purge_testenv_dir` already lives in `lib/utils.sh` and is called from both `purge_project` (here) and `testenv_purge` (in `lib/commands/testenv.sh`).
+`purge_env_dir` lives in `lib/utils.sh` and is called from both `purge_project` (here) and `env_purge` (in `lib/commands/env.sh`).
 
-**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui/core.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_testenv_dir` (lib/utils.sh, F-7).
+**Cross-command helpers (lib/) used:** `unknown_flag_error`, `log_error`, `header_box`, `footer_box`, `warn`, `info`, `success`, `ask_yn` (lib/utils.sh + lib/ui/core.sh); `source_shell_profiles`, `detect_version_manager` (lib/env_detect.sh); `config_file_exists`, `read_config_value` (lib/utils.sh); `get_micromamba_path` (lib/micromamba_core.sh); `is_file_empty`, `remove_pattern_from_gitignore` (lib/utils.sh); `purge_env_dir` (lib/utils.sh).
 
 #### `init` — `init_project`
 
@@ -392,7 +375,7 @@ Largest extraction in the phase. The orchestrator (`init_project`, ~545 lines) p
 
 | Function | Signature | Description |
 |---|---|---|
-| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_testenv_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
+| `init_project` | `([<dir>] [options...])` | Orchestrator. Parses ~17 flags + the optional `<dir>` positional. Detects re-init state (existing `.pyve/config`); on `--force`, runs the pre-flight (scaffold starter `environment.yml` for fresh micromamba dirs, `validate_lock_file_status`, prompt-then-`purge_project --keep-testenv --yes`). Without `--force`: interactive 3-way menu (update / purge-and-rebuild / cancel). Then runs the main flow: source profiles, detect version manager, ensure direnv (unless `--no-direnv`), ensure Python version installed, create venv (`_init_venv`) or micromamba env (`create_micromamba_env`), configure direnv (`_init_direnv_venv` / `_init_direnv_micromamba`), create `.env` (`_init_dotenv`), update `.gitignore` (`_init_gitignore` for venv; `write_gitignore_template` for micromamba), write `.pyve/config`, write `.vscode/settings.json` (micromamba), `ensure_env_exists` (venv), prompt pip-deps install, run `_init_run_project_guide_hooks`. |
 | `_init_python_version` | `(<version>)` | Write `.tool-versions` or `.python-version` (via `set_local_python_version`). No-op if file already exists. |
 | `_init_venv` | `(<venv_dir>)` | `python -m venv <venv_dir>` if directory absent. |
 | `_init_direnv_venv` | `(<venv_dir>)` | Wrapper around `write_envrc_template` with `VIRTUAL_ENV` sentinel. |
@@ -603,30 +586,32 @@ Version comparison, installation validation, and config file management.
 
 ---
 
-### `lib/envs.sh` — Named-environment config foundation (formerly `lib/testenvs.sh`)
+### `lib/envs.sh` — Named-environment foundation (formerly `lib/testenvs.sh`)
 
-Reads `[tool.pyve.testenvs]` from a project's `pyproject.toml` and exposes a flat predicate/accessor surface for the bundle's downstream consumers (`pyve testenv` namespace, `pyve test --env <name>`, `pyve lock --env <name>`). This is **the canonical TOML reader for pyve** — future pyve consumers that need to read TOML reuse this helper, they do not write an ad-hoc bash parser. Spike that fixed the design: [spike-m-f-testenvs-config.md](.archive/phase-m-spike-f-testenvs-config.md).
+The named-environment foundation: it reads the declared env set from `pyve.toml` (via [`manifest_load`](#libmanifestsh--v30-canonical-manifest-reader)), exposes a flat predicate/accessor surface to the env lifecycle (`pyve env` namespace, `pyve test --env <name>`, `pyve lock --env <name>`), and owns on-disk path resolution (`resolve_env_path`), the per-env operational-state record (`.state`), and the opportunistic legacy-layout migrator. `read_env_config` calls `manifest_load` and maps the manifest's `PYVE_ENV_*` arrays into the lifecycle `PYVE_TESTENV_*` arrays the downstream consumers still read — the `PYVE_TESTENV_*` names are a stable internal wire format, not a second config source.
+
+> **Source-of-truth note.** Since the v3.0 manifest landed, this module no longer reads `[tool.pyve.testenvs]` from `pyproject.toml` or `backend` from `.pyve/config`; `pyve.toml` is the only declaration. Backend resolution (`_env_resolve_backend` / `_env_resolve_root_backend`) reads the manifest, never `read_config_value`.
 
 | Function | Signature | Description |
 |----------|-----------|-------------|
-| `read_testenv_config` | `([<pyproject.toml path>])` | Invoke the Python tomllib helper and populate the V3 parallel-indexed-array state in the calling shell. Default path: `./pyproject.toml`. Missing file or missing `[tool.pyve.testenvs]` block synthesizes the implicit default (single venv `testenv`). Validation errors propagate via non-zero exit + stderr. |
-| `resolve_testenv_path` | `(<name>)` → string | Print the on-disk path the env should live at: `root` → `.venv`; venv-backed `<name>` → `.pyve/testenvs/<name>/venv`; conda-backed `<name>` → `.pyve/testenvs/<name>/conda`. Does **not** check existence — that is the caller's responsibility. **Backend dispatch (M.k):** routes through `_testenv_resolve_backend` so `inherit` produces a venv-shaped path when main is venv and a conda-shaped path when main is micromamba. **Side effect (M.h.3):** when `<name> == "testenv"` and only the legacy `.pyve/testenv/venv/` layout exists, calls `migrate_legacy_testenv_layout` before returning. Other names short-circuit. |
-| `_testenv_resolve_backend` | `(<name>)` → string | Story M.k. Resolve `<name>`'s effective backend to a concrete literal (`venv` or `micromamba` — never `inherit`). For `inherit`, reads main env's backend via `read_config_value backend` (from `.pyve/config`); falls back to `venv` if no config (bash-only / greenfield project case). For undeclared names, returns `venv`. Used by `resolve_testenv_path` (for path shape), `ensure_testenv_exists` and `_testenv_install_with_lock` (for init/install dispatch), and `assert_testenv_venv_backend` (so the run-only gate sees the *resolved* backend). |
-| `assert_testenv_venv_backend` | `(<name>)` → 0/1 | Story M.i.1 / M.k. Venv-only gate for `pyve testenv run`. 0 when `_testenv_resolve_backend` returns `venv`; 1 (with a stderr error pointing at the `micromamba run -p <path> <cmd>` workaround) for `micromamba` and `inherit` resolving to micromamba. M.k landed conda init/install but kept `run` venv-only because PATH-only activation does not set `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. |
-| `migrate_legacy_testenv_layout` | `()` → 0 | Story M.h.2. Move `.pyve/testenv/venv/` → `.pyve/testenvs/testenv/venv/`, write initial `.state`, log a one-line `info()`. Idempotent across all four state cases (legacy-only / new-only / both / neither). Invoked by `pyve update` (via the `_update_migrate_legacy_layout` wrapper in `lib/commands/update.sh`) and by `resolve_testenv_path testenv`'s opportunistic-migration fallback. See the *Legacy-layout migration* subsection below. |
-| `state_path` / `state_write` / `state_read` / `state_touch_last_used` | per row | Story M.h.1. `.state` per-env state file helpers (path, write/overwrite, read into `PYVE_TESTENV_STATE_*` vars, touch-last-used). Full schema + signatures in the *`.state` per-env state file* subsection below. |
-| `validate_testenv_decl` | `(<name>)` → 0/1 | 0 if `<name>` is reserved (`root`, `testenv`) or declared in the read state; 1 (with a stderr error) otherwise. Schema-level validation already happened in the Python helper at read time; this function is the name-legality guard. |
-| `is_testenv_declared` | `(<name>)` → 0/1 | 0 if `<name>` appears in `PYVE_TESTENVS_NAMES`. **Note:** `root` is reserved-but-not-declared (never in `NAMES`), so `is_testenv_declared root` returns 1. |
-| `is_testenv_reserved` | `(<name>)` → 0/1 | 0 if `<name>` is `root` or `testenv`. |
-| `is_testenv_lazy` | `(<name>)` → 0/1 | 0 if `<name>` is declared with `lazy = true`, 1 otherwise (including: not declared at all). |
-| `list_testenv_names` | `()` → stdout | Print declared env names + `root` (reserved), one per line. |
-| `_testenvs_name_to_index` | `(<name>)` → int via stdout | Private: 0-based index of `<name>` in `PYVE_TESTENVS_NAMES`, or return 1. |
-| `_testenv_backend_of` / `_testenv_extra_of` / `_testenv_manifest_of` | `(<name>)` → string | Private accessors: print the named field, or return 1 if name is unknown. |
-| `_testenv_requirements_of` | `(<name> <out_var>)` | Private: populate the caller-named array with the env's requirements list (uses `eval` against `PYVE_TESTENV_REQUIREMENTS_Q[i]`'s shell-quoted form). |
+| `read_env_config` | `([<pyve.toml path>])` | Call `manifest_load` and map the manifest's `PYVE_ENV_*` arrays into the lifecycle `PYVE_TESTENV_*` parallel arrays in the calling shell. Missing `pyve.toml` → the implicit single venv `testenv` default. Validation errors propagate via non-zero exit + stderr. |
+| `resolve_env_path` | `(<name>)` → string | Print the on-disk path the env should live at: `root` → backend-aware (`venv` → `.venv`; `micromamba` → `.pyve/envs/root/conda/`); venv-backed `<name>` → `.pyve/envs/<name>/venv`; conda-backed `<name>` → `.pyve/envs/<name>/conda`. **Side effect:** fires `migrate_legacy_env_layout` to opportunistically relocate v2.7 / v2.8 / v3-flat layouts. Does **not** check existence — that is the caller's responsibility. |
+| `_env_resolve_backend` | `(<name>)` → string | Resolve `<name>`'s effective backend to a concrete literal (`venv` or `micromamba` — never `inherit`). For a no-backend / `inherit` env, mirrors the root via `_env_resolve_root_backend` (reads the manifest, **not** `.pyve/config`); falls back to `venv` for greenfield. Single source of truth for path shape (`resolve_env_path`) and init/install dispatch. |
+| `_env_resolve_root_backend` | `()` → string | Resolve the root env's backend from the manifest (`manifest_get_backend root`), falling back to the filesystem heuristic / `venv`. The mirror target for `inherit`. |
+| `env_exec_conda` | `(<env_path> <cmd…>)` | Exec a command inside a conda-backed env via `micromamba run -p <env_path>` — sets `CONDA_PREFIX`, runs `activate.d`. The conda path for `pyve env run` (conda is no longer rejected; the former venv-only `run` gate is retired). |
+| `state_path` / `state_write` / `state_read` / `state_touch_last_used` | per row | `.state` per-env operational-state record helpers (path, write/overwrite, read into `PYVE_TESTENV_STATE_*` vars, touch-last-used). Full schema + signatures in the *`.state` per-env state file* subsection below. |
+| `migrate_legacy_env_layout` | `()` → 0 | The opportunistic layout mover (fired as a side effect of `resolve_env_path` and by `pyve update`). Relocates v2.7 (`.pyve/testenv/venv/`), v2.8 (`.pyve/testenvs/<name>/…`), and v3-flat layouts into `.pyve/envs/<name>/<backend>/`, calling `_env_repair_baked_prefix` after each move. Idempotent. |
+| `_env_repair_baked_prefix` | `(<old_abs> <new_abs> <env_dir>)` | After relocating an env prefix, rewrite the baked absolute prefix (old → new) in `bin/*` text scripts, `conda-meta/*.json`, and `*.pth` — Mach-O/ELF binaries are skipped. A conda/venv env is not relocatable by bare `mv`; this repairs the dead-shebang console scripts a move would otherwise leave. |
+| `micromamba_root_prefix` / `resolve_main_micromamba_path` | per row | `micromamba_root_prefix` is the single source of the `.pyve/envs/root/conda` literal; `resolve_main_micromamba_path [<name>]` is a **non-mutating** tolerant resolver for read paths (`check` / `status` / `run`) — returns the root slot if present, else the legacy flat path, without triggering the move. |
+| `validate_env_decl` / `assert_env_name_actionable` | `(<name>)` → 0/1 | Name-legality guards. `validate_env_decl` passes for a reserved name or one declared in the read state; `assert_env_name_actionable` rejects `root` from create/install/purge (selection-only) with a precise error. Schema validation already happened in the Python helper at read time. |
+| `is_env_declared` / `is_env_reserved` / `is_env_lazy` | `(<name>)` → 0/1 | Predicates over the read state. `root` is reserved-but-not-declared, so `is_env_declared root` returns 1. |
+| `list_env_names` | `()` → stdout | Print declared env names + `root` (reserved), one per line. |
+| `_env_backend_is_advisory` | `(<backend>)` → 0/1 | Shell front-end to the Python `classify` vocabulary: 0 for an advisory backend (`none`), so gates skip-with-note rather than hard-erroring on an unregistered-but-declared backend. |
+| `_envs_name_to_index` / `_env_backend_of` / `_env_extra_of` / `_env_manifest_of` / `_env_requirements_of` | per row | Private accessors: index lookup and per-field reads (the list accessor populates a caller-named array via `eval` against the shell-quoted `PYVE_TESTENV_REQUIREMENTS_Q[i]`). |
 
-**Companion helper:** [`lib/pyve_testenvs_helper.py`](../../lib/pyve_testenvs_helper.py) — the Python tomllib reader, invoked via `${PYVE_PYTHON:-python} lib/pyve_testenvs_helper.py <pyproject.toml>`. Emits plain bash-assignment syntax (no `declare`) to land assignments in the calling function's global scope under bash 3.2 — see the inline comment for the rationale.
+**Readers.** The manifest itself is read by `manifest_load` through [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py) (see the manifest-reader section below); `read_env_config` consumes that. The legacy [`lib/pyve_testenvs_helper.py`](../../lib/pyve_testenvs_helper.py) survives only for the `--resolve-extra` side mode (expanding a declared `extra` into a concrete package list). Both are invoked through Pyve's toolchain interpreter (`pyve_toolchain_python`), not the developer's project Python. Each emits plain bash-assignment syntax (no `declare`) to land assignments in the calling function's global scope under bash 3.2.
 
-**Wire format (V3 — bash-array-literal, plain assignment).** Populated by `read_testenv_config`:
+**Wire format (lifecycle bridge — bash-array-literal, plain assignment).** Mapped by `read_env_config` from the manifest's `PYVE_ENV_*` arrays into the lifecycle arrays the env-lifecycle code reads:
 
 ```bash
 PYVE_TESTENVS_DEFAULT="testenv"
@@ -642,78 +627,53 @@ Parallel indexed arrays keyed by position in `PYVE_TESTENVS_NAMES`. Bash-3.2-saf
 
 **Caching policy: none.** The Python helper is invoked at most once per `pyve` command. Cold-start measured ~60 ms (Python startup alone is ~44 ms — the 30 ms threshold floated in the spike was below pyve's existing baseline). Caching's complexity (invalidation, concurrency, stale-cache support) was judged a worse trade than the marginal 16 ms. Decision recorded in [spike-m-f-testenvs-config.md §Decision 2](.archive/phase-m-spike-f-testenvs-config.md).
 
-**Validation locus: the Python helper, at read time.** Cross-rule checks (`requirements ⊕ extra ⊕ manifest`, `manifest requires conda backend`, reserved-name violations, unknown backend) live in `validate()` in `pyve_testenvs_helper.py`. Errors are batched, printed to stderr with the prefix `error: pyve.testenvs.<env>[.<key>]: <message>`, exit status **2** (distinct from operation-failed exit 1). Filesystem existence checks (does `requirements-dev.txt` actually exist on disk) are **deferred to consumers** — `pyve testenv install` is the right surface for "manifest not found" errors. Spike: [§Decision 4](.archive/phase-m-spike-f-testenvs-config.md).
+**Validation locus: the Python helper, at read time.** Cross-rule checks (`requirements ⊕ extra ⊕ manifest`, `manifest requires conda backend`, reserved-name violations, unknown backend) live in `validate()` in [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py). Errors are batched, printed to stderr with the prefix `error: pyve.<key>: <message>`, exit status **2** (distinct from operation-failed exit 1). Filesystem existence checks (does `requirements-dev.txt` actually exist on disk) are **deferred to consumers** — `pyve env install` is the right surface for "manifest not found" errors. *(v3.1.0, Subphase P-1: the `requirements ⊕ extra ⊕ manifest` mutex check is removed when the directives become composable and an `editable` directive is added — see [features.md FR-26](features.md#fr-26-declarative-environment-setup); the closed-vocabulary validation moves to the directive set.)*
 
-**Side mode: `--resolve-extra <pyproject> <extra_name>` (Story M.l).** The same Python helper, invoked with `--resolve-extra <pyproject_path> <extra_name>` as its first three argv entries, emits the resolved package list from `[project.optional-dependencies].<extra_name>` — one package spec per line. Used by `_testenv_install_venv` to expand a declared `extra = "<n>"` into a concrete `pip install` argument list. Errors with exit **2** + stderr message when pyproject.toml is missing, the extra is not declared (lists available extras), or the extra is not a list. Reusing the same helper file (instead of a new `pyve_extra_helper.py`) keeps every pyproject-reading concern in one auditable place.
+**Side mode: `--resolve-extra <pyproject> <extra_name>`.** The `pyve_testenvs_helper.py` helper, invoked with `--resolve-extra <pyproject_path> <extra_name>` as its first three argv entries, emits the resolved package list from `[project.optional-dependencies].<extra_name>` — one package spec per line. Used by `_env_install_venv` to expand a declared `extra = "<n>"` into a concrete `pip install` argument list. Errors with exit **2** + stderr message when pyproject.toml is missing, the extra is not declared (lists available extras), or the extra is not a list. Reusing the same helper file (instead of a new `pyve_extra_helper.py`) keeps every pyproject-reading concern in one auditable place.
 
-**Reserved-name semantics.** `root` is the project's main `.venv/` (or conda env) — selection-only, **cannot** be redeclared in `[tool.pyve.testenvs]`. `testenv` is the well-known default at `.pyve/testenvs/testenv/...` — **may** be redeclared to override its defaults. Both names are excluded from any user-declared name space.
+**Reserved-name semantics.** `root` is the project's main `.venv/` (or conda env at `.pyve/envs/root/conda/`) — selection-only, **cannot** be redeclared as a named env. `testenv` is the well-known default at `.pyve/envs/testenv/...` — **may** be redeclared in `pyve.toml` to override its defaults. Both names are excluded from any user-declared name space.
 
-**Python interpreter resolution.** `read_testenv_config` honors `${PYVE_PYTHON:-python}`. Useful for bats tests (which cwd into temp dirs that break relative PATH entries via the asdf shim) and for any caller that needs to pin a specific interpreter. The default `python` works in any pyve-activated shell.
+**Python interpreter resolution.** Pyve's helpers run under `pyve_toolchain_python` (the hidden toolchain venv → `PYVE_PYTHON` override → bare `python`), never the developer's project interpreter, so manifest parsing works even on a non-Python stack. See *Pyve's toolchain Python* in `project-essentials.md`.
 
-**Consumers (out of scope for M.g, landing in later stories):**
+**Lifecycle consumers.** The env-lifecycle leaves live in [`lib/commands/env.sh`](../../lib/commands/env.sh) (`env_init` / `env_install` / `env_purge` / `env_run` / `env_list` / `env_prune`, reached through the `pyve env` dispatcher and the deprecated `pyve testenv` alias); `pyve test --env <name>` (resolver + lazy auto-provision + matrix), and `pyve lock --env <name>` / `--all`. Conda-backed envs are init/install/run-capable (`env_run` uses `env_exec_conda`). Backend dispatch and path shape both route through `_env_resolve_backend` / `resolve_env_path` — neither inlines a backend check.
 
-- M.h.1–M.h.4 (this bundle): `.state` schema + helpers, legacy-layout migration helper, opportunistic-fallback wiring + consumer sweep, docs sweep.
-- M.i: `testenv` namespace leaves (`testenv_init`, `_install`, `_purge`, `_run`) accept the optional `<name>` argument.
-- M.j: per-env install lock at `.pyve/testenvs/<name>/.lock` (`mkdir`-based portable lock; pid file inside; `--no-wait` fast-fails on collision; stale-lock reclamation via `kill -0`; landed).
-- M.k: conda backend plumbing — `_testenv_init_conda` / `_testenv_install_conda` in `lib/commands/testenv.sh`, `inherit` resolution via `_testenv_resolve_backend`, single-env + iteration install paths dispatch on resolved backend (landed). `pyve testenv run` for conda envs is **not** in M.k — kept venv-only via `assert_testenv_venv_backend` because PATH-only activation does not set `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. See the *Conda backend dispatch* subsection below.
-- M.l: venv manifest sources — `_testenv_install_venv` (renamed from `testenv_install` for symmetry with M.k's `_testenv_install_conda`) dispatches on declared `requirements = [...]` / `extra = "<n>"` with a CLI `-r <file>` override and an auto-detect `requirements-dev.txt` / bare-pytest fallback chain (landed). The Python helper grew a `--resolve-extra` side mode to expand declared extras into a concrete package list.
-- M.m: `pyve test --env <name>` resolver extension — accepts any declared name, defaults to `[tool.pyve.testenvs].default`, hard-errors on undeclared names (lists valid choices), hard-errors on conda-backed envs (run is venv-only), hard-errors on unprovisioned lazy envs with an install hint, touches `.state.last_used_at` on the success path. `ensure_testenv_exists` and `_testenv_init_conda` write initial `.state` on env creation so the touch has something to update (landed).
-- M.n: lazy provisioning — `pyve test --env <lazy-name>` auto-provisions on first targeted use via `ensure_testenv_exists` + `_testenv_install_with_lock`; `PYVE_NO_AUTO_PROVISION=1` opt-out restores the M.m hard-error for strict CI (landed).
-- M.o: silent-skip advisory generalization — `_test_main_env_has_pytest` → `_test_env_has_pytest <name>`; advisory in `test_tests` now scans `root` + every declared env and lists every alternative that has pytest importable (landed).
-- M.p: `pyve testenv list` / `pyve testenv prune` — `list` prints a table (name / backend / size / last-used / state) over the union of declared + on-disk envs; `prune` has three modes (orphans default, `--unused-since <ISO-date>`, `--all`) with the standard `--force` / TTY confirmation. Consumes the `.state.last_used_at` field M.m started writing (landed).
-- M.q: `pyve lock --env <name>` / `pyve lock --all` — extends `lock_environment` (factored: `_lock_main_env` + `_lock_one_env` + `_lock_all_conda_testenvs`). Output lock-file path follows `_lock_env_lock_path` (`tests/env.yml` → `tests/env-lock.yml`). Venv-backed envs, undeclared names, missing manifest declarations / files, and `--env root` all hard-error with precise messages (landed).
-- M.n: M.c silent-skip advisory generalized to every named env.
-- M.o: `pyve test --env <name>` resolver extension.
-- M.p: `pyve testenv list` / `prune`.
-- M.q: `pyve lock --env <name>` / `--all`.
-- M.r: matrix execution via comma-separated `--env` — `test_tests` factored into a thin CSV dispatcher + per-env worker `_test_run_one_env`; matrix path runs each name in a subshell (sequential), prints `=== Env: <name> ===` per env, suppresses the M.o silent-skip advisory inside the matrix (user explicitly named multiple envs), aggregates exit codes worst-case, and never halts iteration on a failing env (landed).
+#### `.state` per-env operational-state record
 
-#### `.state` per-env state file
-
-Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state` (next to `venv/` or `conda/`). Plain `key=value` lines, sourceable; written via `state_write`, read via `state_read`. Schema:
+Each named env has a sibling `.state` file at `.pyve/envs/<name>/.state` (next to `venv/` or `conda/`). Plain `key=value` lines (parsed line-by-line, **never** sourced); written via `state_write`, read via `state_read`. This is the *actual*-state half of the desired-vs-actual split — `pyve.toml` is desired, `.state` is observed (see [features.md FR-25](features.md#fr-25-operational-state-record--restore-on-rebuild)). Schema:
 
 | Field | Meaning | Example |
 |---|---|---|
 | `backend` | The backend used to provision this env. One of `venv`, `micromamba`, `inherit`. | `backend=micromamba` |
 | `manifest` | Relative path to the manifest source (requirements.txt, environment.yml, or empty for an implicit-default env). | `manifest=tests/env.yml` |
-| `manifest_sha256` | SHA-256 of the manifest contents at provisioning time. Empty when no manifest. Drives M.p's "stale" indicator. | `manifest_sha256=abc123…` |
+| `manifest_sha256` | SHA-256 of the manifest contents at provisioning time. Empty when no manifest. Drives the "stale" indicator in `pyve env list`. | `manifest_sha256=abc123…` |
 | `provisioned_at` | Unix epoch seconds when the env was first built. | `provisioned_at=1700000000` |
-| `last_used_at` | Unix epoch seconds of the most recent `pyve test --env <name>`. Touched by M.o; consumed by M.p's `prune --unused-since`. `0` until first use. | `last_used_at=0` |
+| `last_used_at` | Unix epoch seconds of the most recent `pyve test --env <name>`. Consumed by `pyve env prune --unused-since`. `0` until first use. | `last_used_at=0` |
 
-**Helpers in [`lib/testenvs.sh`](../../lib/testenvs.sh):**
+*v3.1.0 (Subphase P-1) — operational-state record additions.* In v3.0 `.state` is written only at **realize** (env dir built), never at **install** — so there is no recorded "deps installed" bit (only the conda `manifest_sha256` baseline; venv records nothing), and realized-vs-installed is recomputed live from the filesystem. P-1 adds an **installed-spec hash for both backends** (venv: the resolved requirement set; conda: the existing manifest hash) plus a **realized/installed marker**, written from the install path (`_env_install_venv` / `_env_install_conda`), so the distinction is recorded rather than re-derived:
+
+| Field | Meaning |
+|---|---|
+| `installed_spec_sha256` | *(v3.1.0)* Hash of the resolved install spec at install time — the "deps installed, and these are the deps" record for **both** backends. |
+| `state` | *(v3.1.0)* `realized` (dir built, deps not installed) vs `installed` (deps installed). `pyve env list`'s STATE column reads this rather than re-probing. |
+
+**Restore-on-rebuild (v3.1.0).** `pyve init --force` / `pyve env init <name> --force` snapshot `.state` before purge and replay it after rebuild: a realized-and-installed env comes back realized-and-installed; a never-realized lazy env stays unrealized. Only `purge` resets the record. This is the snapshot-then-replay mechanism behind [features.md FR-25](features.md#fr-25-operational-state-record--restore-on-rebuild).
+
+**Helpers in [`lib/envs.sh`](../../lib/envs.sh):**
 
 | Function | Behavior |
 |---|---|
-| `state_path <name>` | Print `.pyve/testenvs/<name>/.state`. |
-| `state_write <name> <backend> [manifest=<path>] [manifest_sha256=<hex>] [provisioned_at=<epoch>] [last_used_at=<epoch>]` | Write/overwrite. Required positional `<name> <backend>`; optional keyword args parsed by splitting on the first `=` (so manifest paths with embedded `=` survive). Missing optional fields default to empty / current epoch / `0`. Unknown keyword keys hard-error. |
+| `state_path <name>` | Print `.pyve/envs/<name>/.state`. |
+| `state_write <name> <backend> [manifest=<path>] [manifest_sha256=<hex>] [provisioned_at=<epoch>] [last_used_at=<epoch>]` | Write/overwrite. Required positional `<name> <backend>`; optional keyword args parsed by splitting on the first `=` (so manifest paths with embedded `=` survive). Missing optional fields default to empty / current epoch / `0`. Unknown keyword keys hard-error. *(v3.1.0 extends the keyword set with `installed_spec_sha256` / `state`.)* |
 | `state_read <name>` | Populate `PYVE_TESTENV_STATE_{BACKEND,MANIFEST,MANIFEST_SHA256,PROVISIONED_AT,LAST_USED_AT}` in the calling shell. Returns 1 (no shell mutation) if the file is missing. **Parses via `IFS= read` loop, NOT `source`** — a malformed `.state` cannot inject arbitrary shell. |
 | `state_touch_last_used <name>` | Read + rewrite, updating only `last_used_at` to the current epoch. Returns 1 if `.state` is missing. |
 
 #### Legacy-layout migration
 
-**The v2.7→v2.8 structural boundary.** v2.7 and earlier hard-coded a single testenv at `.pyve/testenv/venv/` (singular `testenv`, driven by the `TESTENV_DIR_NAME` global in `pyve.sh`). v2.8 generalizes to `.pyve/testenvs/<name>/{venv,conda}/` (plural, name-keyed). The reserved `testenv` resolves to `.pyve/testenvs/testenv/venv/`.
+`migrate_legacy_env_layout` (the one-shot opportunistic mover) is documented in the *v2 → v3 state-directory boundary* subsection immediately below — it subsumes the older v2.7→v2.8 `migrate_legacy_testenv_layout` and now also handles the v3-flat case, calling `_env_repair_baked_prefix` after each relocation. Two still-relevant policy facts:
 
-**`migrate_legacy_testenv_layout` in [`lib/testenvs.sh`](../../lib/testenvs.sh)** is the one-shot mover. Four outcome cases:
+**`--keep-testenv` semantics.** `pyve purge --keep-testenv` preserves the whole `.pyve/envs/` tree (the default `testenv` plus any user-declared named envs), so purging the run env doesn't force a costly rebuild of the rest.
 
-| State | Action |
-|---|---|
-| `.pyve/testenvs/testenv/venv/` exists (new layout already in place) | No-op (idempotent). |
-| `.pyve/testenv/venv/` exists; new layout absent | `mkdir -p .pyve/testenvs/testenv`, `mv .pyve/testenv/venv .pyve/testenvs/testenv/venv`, write initial `.state` via M.h.1's `state_write` (`backend=venv`, `provisioned_at=<legacy mtime>`, defaults elsewhere), `rmdir .pyve/testenv` if empty, log a one-line `info()` so the user sees what happened. |
-| Both legacy and new exist | No-op (preserve new; leave legacy alone — silent deletion of user state is the wrong default). |
-| Neither exists (greenfield) | No-op. |
-
-**Two call sites wired in M.h.3:**
-
-1. **`pyve update`** — `update_project` in [`lib/commands/update.sh`](../../lib/commands/update.sh) calls a thin private wrapper `_update_migrate_legacy_layout` as a pre-step (after the config sanity check, before `header_box`). The wrapper exists so the wiring is grep-visible from `update.sh` for source-level audit; a regression test asserts the call by name.
-2. **Opportunistic-migration fallback in `resolve_testenv_path testenv`** — when only the legacy layout exists, the resolver runs the migration as a side effect before returning the new path. Means `pyve test` / `pyve testenv …` / `pyve check` / `pyve status` work even on a v2.7-era project that hasn't yet run `pyve update`. Only the reserved `testenv` name triggers migration; `root` and user-declared named envs short-circuit.
-
-**Consumer sweep (M.h.3).** Every reference to `.pyve/$TESTENV_DIR_NAME/venv` or hard-coded `.pyve/testenv/venv` was replaced with `resolve_testenv_path testenv` (or via `testenv_paths` in [`lib/utils.sh`](../../lib/utils.sh), which derives from it). Files swept: `lib/utils.sh`, `lib/commands/{test,testenv,check,status,purge}.sh`. A bats test in [`tests/unit/test_testenvs_activate.bats`](../../tests/unit/test_testenvs_activate.bats) greps the production files and fails if a legacy literal is ever re-introduced.
-
-**`--keep-testenv` semantic expansion.** `pyve purge --keep-testenv` previously preserved the singleton `.pyve/testenv/`; it now preserves the whole `.pyve/testenvs/` tree, covering the default `testenv` plus any user-declared named envs from `[tool.pyve.testenvs]`. The single-env preservation behavior was the pre-named-envs equivalent of the same intent.
-
-**Gitignore template.** [`lib/utils.sh`](../../lib/utils.sh)'s Pyve-managed `.gitignore` section emits `.pyve/testenvs` (was `.pyve/testenv`) — covers the new layout for fresh `pyve init` runs.
-
-**`TESTENV_DIR_NAME` global** in `pyve.sh` is retained as a back-compat constant pointing at `testenv` (the reserved name). No internal code reads it post-M.h.3; the constant exists only so any external script referencing it doesn't break. Deprecation-removal can be a later cleanup story.
+**Gitignore template.** [`lib/utils.sh`](../../lib/utils.sh)'s Pyve-managed `.gitignore` section ignores the materialized state tree under `.pyve/` for fresh `pyve init` runs.
 
 #### v2 → v3 state-directory boundary
 
@@ -747,7 +707,9 @@ Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state`
 
 **Why N.f handles only the testenv-side rename, not the micromamba main-env move.** The micromamba main-env relocation (`.pyve/envs/<old_name>/` → `.pyve/envs/root/conda/`) is a rename + restructure at once: the env loses its user-chosen name and gains a backend-subdir. That cutover ships with `pyve self migrate` (Story N.g) where the user gets full `.pyve/.v2-legacy/` backup and rollback. N.f's scope is the flat parent swap (`testenvs` → `envs`) — same name, same shape, opportunistically migrated so pre-N.g code paths don't silently lose envs.
 
-#### v3.0-only read-compat layer — removed in Subphase N-10
+#### v3.0-only read-compat layer — removed in v3.1.0 (Subphase P-1)
+
+> **Removal moved.** This sweep was originally scoped to "Subphase N-10." N-10 became Phase O, and the read-compat / `.pyve/config`-removal work now lands in **v3.1.0 (Subphase P-1), Story P.i** — alongside making `pyve.toml` the *sole* config source (the manifest backend is written by `init`, the ~64 `.pyve/config` read-sites migrate onto `manifest_load`, and the legacy write stops). The `v3.0-only: remove in N-10` code markers keep their literal text (a grep target) until P.i deletes them.
 
 `manifest_load` in [`lib/manifest.sh`](../../lib/manifest.sh) **synthesizes** the v3 array shape from legacy v2 sources when `pyve.toml` is absent. This is the **deprecation-window** mechanism that lets v2.7/v2.8 projects continue to operate against v3.0 binaries *without* having to run `pyve self migrate` first.
 
@@ -762,32 +724,30 @@ Each named testenv has a sibling `.state` file at `.pyve/testenvs/<name>/.state`
 
 **One-shot deprecation warning per (session, cwd).** Each synthesis emits a single `warning: pyve is reading legacy v2 sources …` line to stderr, memoized via a sentinel under `${XDG_STATE_HOME:-$HOME/.local/state}/pyve/legacy-read-warn-<session>-<cksum-of-cwd>`. The session key reuses the N.h banner's `PYVE_V2_BANNER_SESSION` override seam so test harnesses (and explicit user override) work identically across both surfaces.
 
-**N-10 cleanup is mechanical.** Every read-compat code path in `lib/manifest.sh` is tagged with the literal comment `v3.0-only: remove in N-10`. A unit test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker exists. The N-10 sweep removes:
+**The cleanup is mechanical (lands in Story P.i).** Every read-compat code path in `lib/manifest.sh` is tagged with the literal comment `v3.0-only: remove in N-10`. A unit test in [`tests/unit/test_n_i_read_compat.bats`](../../tests/unit/test_n_i_read_compat.bats) asserts the marker exists. The P.i sweep removes:
 
 1. The `_manifest_has_legacy_sources` / `_manifest_synthesize_from_legacy` / `_manifest_deprecation_warn_legacy` helpers.
 2. The fallback branch in `manifest_load` that calls them.
 3. The N.h soft banner (per Subphase N-10's plan — replaced by the hard interactive gate).
 4. The corresponding regression tests.
 
-After N-10, `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally; v2-configured projects must run `pyve self migrate` to function.
+After P.i, `manifest_load` on a missing-pyve.toml project returns the empty-config baseline unconditionally; v2-configured projects must run `pyve self migrate` to function.
 
 #### Conda backend dispatch
 
-`pyve testenv init/install` now supports conda-backed envs declared as `backend = "micromamba"` or `backend = "inherit"` in `[tool.pyve.testenvs.<name>]`. The plumbing reuses `lib/micromamba_core.sh::get_micromamba_path` (binary resolution: project sandbox → user sandbox → system PATH) — no new bootstrap path is introduced. Conda envs land at `.pyve/testenvs/<name>/conda/` (the resolver shape); no `.envrc` is ever emitted for testenvs (testenvs are activated through their wrapper commands, not direnv).
+`pyve env init/install` supports conda-backed envs declared as `backend = "micromamba"` or `backend = "inherit"` in `pyve.toml [env.<name>]`. The plumbing reuses `lib/micromamba_core.sh::get_micromamba_path` (binary resolution: project sandbox → user sandbox → system PATH) — no new bootstrap path is introduced. Conda envs land at `.pyve/envs/<name>/conda/` (the `resolve_env_path` shape); no `.envrc` is emitted for named envs (they are activated through their wrapper commands, not direnv).
 
 | Function | Signature | Description |
 |---|---|---|
-| `_testenv_init_conda` | `(<name> <env_path> <manifest>)` | Idempotent create. If `<env_path>/conda-meta` already exists → info+skip. Else: validate `<manifest>` is non-empty and the file exists, then `micromamba create -p <env_path> -f <manifest> -y`. Conda's `create` both creates and installs packages in one shot — there is no "empty env" intermediate state for the conda backend, in contrast to venv's `python -m venv` (empty) + later `pip install`. |
-| `_testenv_install_conda` | `(<name> <env_path> <manifest>)` | Sync an existing conda env to its manifest via `micromamba install -p <env_path> -f <manifest> -y`. If the env directory is missing (`conda-meta` absent), errors with a `pyve testenv init <name>` hint instead of silently creating — keeps the verbs aligned with venv (`init` creates; `install` populates). |
-| `_testenv_install_with_lock` | `(<name> <env_path> <req_file> <lock_mode>)` | Story M.j wrapper, extended in M.k. Acquires the per-env install lock, dispatches on `_testenv_resolve_backend`: `micromamba` → `_testenv_install_conda` (`manifest` from declaration); else → `testenv_install` (pip). Trap covers both branches' exit-1 paths and SIGINT. |
+| `_env_init_conda` | `(<name> <env_path> <manifest>)` | Idempotent create. If `<env_path>/conda-meta` already exists → info+skip. Else: validate `<manifest>` is non-empty and the file exists, then `micromamba create -p <env_path> -f <manifest> -y`. Conda's `create` both creates and installs packages in one shot — there is no "empty env" intermediate state for the conda backend, in contrast to venv's `python -m venv` (empty) + later `pip install`. |
+| `_env_install_conda` | `(<name> <env_path> <manifest>)` | Sync an existing conda env to its manifest via `micromamba install -p <env_path> -f <manifest> -y`. If the env directory is missing (`conda-meta` absent), errors with a `pyve env init <name>` hint instead of silently creating — keeps the verbs aligned with venv (`init` creates; `install` populates). |
+| `_env_install_all_nonlazy` | `()` | Iterates every non-lazy declared env (venv or conda), dispatching on `_env_resolve_backend` (`micromamba` → `_env_install_conda` with the declared `manifest`; else → `_env_install_venv`). Lazy envs are skipped (auto-provisioned on first targeted use). |
 
-**Manifest declaration is required.** A conda-backed env with no `manifest` declared in `[tool.pyve.testenvs.<name>]` hard-errors at init/install time with a stderr hint pointing at the canonical declaration. The Python helper does not enforce this at validation time (M.g's batched errors only cover `requirements ⊕ extra ⊕ manifest` and `manifest requires conda backend`); the runtime catch in `_testenv_init_conda` / `_testenv_install_conda` is the surface where the user sees it.
+**Manifest declaration is required.** A conda-backed env with no `manifest` declared hard-errors at init/install time with a stderr hint pointing at the canonical declaration. The Python helper does not enforce this at validation time; the runtime catch in `_env_init_conda` / `_env_install_conda` is the surface where the user sees it.
 
-**`backend = "inherit"` resolves at runtime via `.pyve/config`.** `_testenv_resolve_backend` returns the literal `venv` or `micromamba` based on the main env's recorded backend; the on-disk path slot from `resolve_testenv_path` follows the same resolution, so a project that switches main backend then re-runs `pyve testenv init <inherited-name>` provisions at the correct layout shape. The resolver and the dispatch are the single source of truth — neither inlines the `read_config_value backend` check.
+**`backend = "inherit"` resolves at runtime via the manifest.** `_env_resolve_backend` returns the literal `venv` or `micromamba` by mirroring the root env's backend (`_env_resolve_root_backend` → `manifest_get_backend root`); `resolve_env_path` follows the same resolution, so a project that switches root backend then re-runs `pyve env init <inherited-name>` provisions at the correct layout shape. The resolver and the dispatch are the single source of truth — neither reads `.pyve/config`.
 
-**`pyve testenv run` is venv-only.** `testenv_run` exports `VIRTUAL_ENV` and prepends `<env>/bin` to `PATH`, then `exec`s. For conda envs this is insufficient — `CONDA_PREFIX` / `CONDA_PYTHON_EXE` are not set, so Python tools that introspect their interpreter via conda's env vars misbehave. M.k keeps the venv-only gate via `assert_testenv_venv_backend`; the error message points at the manual workaround `micromamba run -p .pyve/testenvs/<name>/conda <command>`. Conda `run` support is a future-story candidate, not in M.k's scope.
-
-**Iteration includes conda envs (M.k).** `_testenv_install_all_nonlazy` no longer skips conda-backed envs with a "see Story M.k" line. Each non-lazy declared env (venv or conda) is iterated through `_testenv_install_with_lock`, which dispatches on resolved backend. Lazy envs are still skipped (M.m wires the auto-provision path on first targeted use).
+**`pyve env run` handles conda.** `env_run` runs venv envs by exporting `VIRTUAL_ENV` + PATH-prepending `<env>/bin`; for a conda-backed env it delegates to `env_exec_conda` (`micromamba run -p <env_path>`), which sets `CONDA_PREFIX` and runs `activate.d` so conda-aware tools introspect correctly. (The former venv-only `run` gate is retired.)
 
 ---
 
@@ -896,18 +856,9 @@ PYVE_ENV_LANGUAGES_Q=("" "")
 
 Parallel indexed arrays keyed by position in `PYVE_ENV_NAMES`. Bash-3.2-safe (no `declare -A`). List-valued fields (`_REQUIREMENTS_Q`, `_FRAMEWORKS_Q`, `_LANGUAGES_Q`) carry one shell-quoted joined string per env; consumers expand with `eval "out=( $val )"` — same wire shape Story M.g uses for `PYVE_TESTENV_REQUIREMENTS_Q`.
 
-**Subphase N-1 consumer roadmap (not in scope for N.a):**
+**Consumers (all shipped in Phase N).** `manifest_load` + its accessors are now the single declaration reader across pyve: the `env` namespace (formerly `testenv`), the `purpose:` default rules + `pyve test --env <name>` selector (`manifest_resolve_purpose`), `pyve init`'s `pyve.toml` write path, the v3 state-directory layout, `pyve self migrate` (write path), the soft migration banner, and the read-compat synthesis layer (above; removed in v3.1.0 / Story P.i). `lib/manifest.sh` is sourced explicitly in `pyve.sh` before the per-command modules.
 
-- **N.b:** rename `lib/testenvs.sh` → `lib/envs.sh` and `lib/commands/testenv.sh` → `lib/commands/env.sh` (the v2 helper rename — independent of this v3 manifest reader).
-- **N.c:** register `pyve env <sub>` dispatcher; `pyve testenv <sub>` becomes Category A legacy sugar.
-- **N.d:** `purpose:` default rules + `pyve test --env <name>` selector semantics layered on top of `manifest_get_purpose`.
-- **N.e:** `pyve init` writes `pyve.toml` on fresh projects.
-- **N.f:** decide the final v3 state-directory path.
-- **N.g:** `pyve self migrate` consumes both this manifest helper (write path) and the legacy testenvs helper (read path) to produce a fresh `pyve.toml` from v2 sources.
-- **N.h:** soft migration banner detects "v2 sources present AND `pyve.toml` absent."
-- **N.i:** read-compat layer — when `pyve.toml` is absent but legacy sources exist, parse them and emit a synthesized in-memory v3 shape so the rest of pyve sees a uniform model.
-
-**No sourcing in `pyve.sh` yet.** Per Story N.a's "no CLI dispatcher changes," `lib/manifest.sh` is not added to `pyve.sh`'s explicit source block in this story. Sourcing lands when the first command consumes the helper (Story N.e — `pyve init` write path — is the canonical first consumer).
+*v3.1.0 (Subphase P-1) note.* The remaining ~64 `.pyve/config` read-sites that have not yet migrated to `manifest_load` are swept in Story P.i, which also makes `pyve init` write the resolved backend into `pyve.toml [env.root]` and stops writing `.pyve/config` — see [Configuration](#libmanifestsh--v30-canonical-manifest-reader) and [features.md FR-24](features.md#fr-24-explicit-by-construction-manifest--versioned-defaults).
 
 ---
 
@@ -963,6 +914,8 @@ Three coordinated registries split the responsibilities: the **plugin registry**
 | File-management (×2) | `gitignore_entries`, `purge_inventory` | From the gitignore composer and `pyve purge`; the plugin declares the patterns / created-vs-authored paths it owns. |
 
 Total: 1 + 1 + 1 + 7 + 1 + 1 + 2 = 14. The 7 lifecycle hooks and the activation hook are the load-bearing surface for v3.0; `diagnostics` is forward-looking.
+
+*v3.1.0 (Subphase P-1) — parameter/wizard contribution hook.* The contract today has **no** hook for the wizard or flags, so the init wizard is Python-hardcoded and adding a parameter touches ≥4 hand-synced sites. P-1 adds a contribution hook (default no-op, matching the subset-of-hooks design) that lets a plugin register its own subtree of the keystone parameter decision-graph — Python contributes `backend → version-manager → version → test-env`, Node contributes `provider → runtime-manager`. The framework owns the top differentiators (Language, project-guide, `.env`/direnv, composition) and prunes Language→subtree; a polyglot selection fans into both. See the *Parameter decision-graph* section below and [features.md FR-23](features.md#fr-23-keystone-parameter-decision-graph).
 
 **Two dispatch layers.** `plugin_dispatch` and `bp_dispatch` route different concerns:
 
@@ -1354,6 +1307,34 @@ User-authored content round-trips verbatim: `.envrc` preserves everything below 
 
 ---
 
+### Parameter decision-graph (v3.1.0 — Subphase P-1)
+
+*Designed for v3.1.0; the concrete Bash representation is proven by an architectural spike (Story P.e) before the full extraction. Net-new — there is no registry to extend in v3.0.*
+
+The keystone of the UX overhaul: a single **conditional decision-graph** that is the one source from which six parameter surfaces are generated, eliminating the v3.0 reality where adding one `pyve init` parameter touches ≥4 hand-synced sites (the flag `case` loop, the `unknown_flag_error` allow-list, `show_init_help`, the default initializer) plus a source-position-ordered `_init_wizard` block.
+
+**Node schema.** Each node declares:
+
+| Field | Meaning |
+|---|---|
+| `name` | The parameter (also the `pyve.toml` key it resolves into). |
+| `applicability` | Predicate over prior answers — the node is skipped (pruned) when it doesn't apply. |
+| `choices` | The choice set, possibly **computed** from prior answers (Backend's options are a function of Language). |
+| `default` | The **versioned** default (so a later change is detectable as drift, never retroactively applied — see Configuration below). |
+| `flag` / `env` | The CLI flag and env var that resolve the node non-interactively. |
+| `owner` | Framework or a contributing plugin. |
+| `required` | Whether a value is mandatory. |
+
+**Walk engine.** A top-down walk prunes inapplicable nodes and narrows choices from prior answers. The wizard walks the graph for prompts; the **same graph**, resolved by flags instead of prompts, is the non-interactive / CI surface — flag-vs-prompt equivalence is a tested invariant.
+
+**Six generated outputs (the DRY consolidation):** the **wizard** (prompts + order are *data*, not source position), the **flag/CLI parser** + valid-flag list, **`--help`**, **the defaults the manifest reader applies**, **the explicit `pyve.toml`** ([Configuration](#libmanifestsh--v30-canonical-manifest-reader) — explicit-by-construction), and **default-drift detection**.
+
+**Contribution model.** The framework owns the top differentiators and cross-cutting nodes (Language, project-guide, `.env`/direnv, composition); each plugin contributes its language subtree through the new contract contribution hook (above). A single-stack Python project prunes to a 2–3-node path ("easy mode" is the graph being shallow there); a polyglot selection fans into per-language subtrees. Gnarly topologies (per-framework isolation, monorepo env counts) are *not* encoded in the core graph — the deferred templates feature pre-seeds subtree answers.
+
+**Migration of the existing wizard (Story P.g).** `_init_wizard`, the flag `case` loop, the `unknown_flag_error` allow-list, and `show_init_help` are regenerated from the graph — a pure DRY consolidation, since the parameters are already conceptually 1:1 across the four sites. The v3.0 wizard description below becomes the *behavior-parity baseline* the migration is tested against.
+
+---
+
 ## Configuration
 
 ### `pyve.toml` — the canonical declaration
@@ -1362,12 +1343,20 @@ From v3.0, every project's declaration lives in a root-level `pyve.toml` (`pyve_
 
 During the v3.0 deprecation window, a project that still has only v2 sources (`.pyve/config` / `[tool.pyve.testenvs.*]`) and no `pyve.toml` keeps working via the read-compat synthesis layer (above); `pyve self migrate` writes a fresh `pyve.toml` from those sources.
 
+**v3.1.0 (Subphase P-1) — explicit-by-construction & sole source (Stories P.i, P.j, P.k).** Three coupled changes make the manifest *complete*, *honest*, and *stable*:
+
+- **Explicit write.** `pyve init` writes a fully-explicit `pyve.toml` — every resolved value (backend, python, env-name, and the rest of the graph's parameters) recorded, sourced from the decision-graph's defaults. The wizard (and its easy-mode fast-accept) does the authoring, so the explicit file is generated, not hand-typed. Today `_init_write_pyve_toml` no-ops when `pyve.toml` exists and hardcodes a backend-less `[env.root]`; P.j replaces that.
+- **Sole source.** The resolved backend is written into `pyve.toml [env.root]` on both fresh and existing manifests, the ~64 `.pyve/config` read-sites migrate onto `manifest_load`, and the `.pyve/config` write is retired (Story P.i — the deferred read-compat sweep). This also fixes the v3.0 bug where `pyve init --force` silently no-ops on a `.pyve/config`-less v3 project (the reinit gate keyed off `config_file_exists` rather than manifest presence).
+- **Pinned, versioned defaults.** A default is resolved once and frozen into `pyve.toml`; a later Pyve-version default change never mutates an existing repo. A check/update surface *reports* the divergence with the new value as **info**, leaving the pinned value untouched (Story P.k). The graph carries versioned defaults so "which default applied at which version" is recoverable.
+
 ### Precedence
 
 1. CLI flags
 2. `pyve.toml` (`[env.<name>]` / `[plugins.<name>]`)
 3. Project files (`environment.yml`, `pyproject.toml`, `package.json`, etc.)
 4. Hardcoded defaults in `pyve.sh` (`DEFAULT_PYTHON_VERSION`, `DEFAULT_VENV_DIR`, …)
+
+*(v3.1.0: tier 4 is the decision-graph's versioned defaults, applied **at authoring time** and then frozen into tier 2 — so on a project authored by `pyve init`, every value is explicit in `pyve.toml` and tiers 3–4 no longer participate in its resolution.)*
 
 ---
 
@@ -1384,15 +1373,17 @@ Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`
 | `pyve lock [--check] [--env <name>] [--all]` | Generate/update `conda-lock.yml` for the current platform (micromamba-backed envs) |
 | `pyve run <cmd> [args]` | Execute a command in the project environment |
 | `pyve test [--env <name>[,…]] [args]` | Run tests in a `test`-purpose environment (matrix via comma-separated `--env`) |
-| `pyve env init [<name>]` | Create a named environment |
+| `pyve env init [<name>] [--force]` | Create a named environment (v3.1.0: `--force` rebuilds-and-restores it from its declaration) |
 | `pyve env install [<name>] [-r <file>]` | Install dependencies into a named environment |
-| `pyve env purge [<name>]` | Remove a named environment |
-| `pyve env run [<name> --] <cmd>` | Execute a command in a named environment |
+| `pyve env purge [<name>] [--all]` | Remove a named environment. **v3.1.0:** bare form targets the **default** env (matching its siblings); `--all` is the explicit sweep (was: bare = sweep-all) |
+| `pyve env run [<name> --] <cmd>` | Execute a command in a named environment (venv or conda) |
 | `pyve env list` / `pyve env prune` | List named environments / prune orphaned or unused ones |
 | `pyve package` | Reserved artifact-materialization verb — prints a clean advisory until a packaging provider ships |
 | `pyve check` | Diagnose problems, composed across active plugins (CI-safe 0/1/2 exit codes) |
 | `pyve status` | Read-only project-state dashboard, composed across active plugins (always exit 0) |
-| `pyve update` | Non-destructive upgrade: refresh config + managed files + project-guide; never rebuilds an env |
+| `pyve update` | Non-destructive refresh of the files Pyve manages *around* the project: managed files + project-guide + manifest version; never rebuilds an env or touches env deps |
+| `pyve upgrade [--env <name>\|--all] [--check]` | **v3.1.0 (P-1)** — re-resolve/upgrade an env's deps to newest-within-constraints, keep the env, restore state, re-lock; `--check` previews |
+| `pyve init --force [--all]` | **v3.1.0 (P-1)** — purge + rebuild the env(s), restoring prior operational state; `--all` fans across every declared env |
 | `pyve python set <ver>` / `pyve python show` | Pin / print the project Python version + its source |
 | `pyve self install` / `uninstall` | Install / remove pyve (provisions / removes the toolchain venv) |
 | `pyve self provision` / `unprovision` | Provision / remove Pyve-managed global tooling (e.g. hosted project-guide) |
@@ -1400,6 +1391,8 @@ Pyve uses a subcommand-style CLI consistent with modern developer tooling (`git`
 | `pyve self` | Show `self` namespace help (no subcommand → namespace help only) |
 
 `pyve testenv <sub>` is the **deprecated v2 spelling** of `pyve env <sub>`; it re-dispatches to `env_command` with a one-shot deprecation warning (removal scheduled for v4.0).
+
+**Update vs. upgrade — boundary (v3.1.0, Subphase P-1).** Pinned verbatim in `--help` and docs: **`update` touches the files Pyve manages *around* your project; `init` / `force` / `upgrade` touch the *environments themselves*.** This matches the apt mental model (`apt update` refreshes the index; `apt upgrade` installs newer versions). The full command/verb matrix (root / named env / all envs × first-materialize / upgrade / rebuild / destroy / refresh) lives in [features.md FR-27](features.md#fr-27-dependency-upgrade-pyve-upgrade--lifecycle-verb-model). Bare `pyve env <sub>` (no name) uniformly targets the **default** env.
 
 **Check vs. status — invariant.** `check` and `status` are intentionally disjoint: `check` surfaces problems with severity-bearing exit codes (0/1/2) and emits one actionable remediation per failure; `status` is a read-only snapshot with always-zero exit (unless pyve itself errors). Each command's `--help` text mirrors this invariant verbatim — the help output is the user-facing contract. If a diagnostic would surface "something looks wrong", it belongs in `check`; if the answer is "what is this project?", it belongs in `status`. See [phase-h-check-status-design.md §2](.archive/phase-h-check-status-design.md) for the canonical statement.
 
@@ -1464,7 +1457,18 @@ All modifier flags keep their names from pre-v1.11.0 and attach to their renamed
 | `--project-guide-completion` | `pyve init` | Force shell completion wiring |
 | `--no-project-guide-completion` | `pyve init` | Skip shell completion wiring |
 
+**v3.1.0 (Subphase P-1) additions:**
+
+| Flag | Applies to | Description |
+|------|-----------|-------------|
+| `--all` | `pyve init --force`, `pyve upgrade`, `pyve env purge` | Fan the action across every declared env (and, for `env purge`, the explicit sweep) |
+| `--env <name>` | `pyve upgrade` (already on `test` / `lock` / `package`) | Target a named environment |
+| `--check` | `pyve upgrade` (already on `lock`) | Preview the re-resolution without applying |
+| `--force` | `pyve env init` (already on `pyve init`) | Rebuild-and-restore a named env from its declaration |
+
 ### Interactive `pyve init` wizard
+
+> **v3.0 baseline (superseded in v3.1.0).** The fixed three-prompt, source-ordered wizard described here is the v3.0 implementation. In v3.1.0 (Subphase P-1, Story P.g) the prompt set and order become *data* walked from the keystone [parameter decision-graph](#parameter-decision-graph-v310--subphase-p-1) — this section is the **behavior-parity baseline** the migration is tested against, not the end state.
 
 When `pyve init` is invoked, an interactive wizard walks the user through three prompts: **backend → Python version pin → project-guide install**. Strong repo signals make the happy path highlight the strongest choice so the user can press enter through those choices. Any explicit flag (e.g., `--backend`, `--python-version`, `--project-guide`) on the same invocation skips its corresponding prompt, displaying the flag's value in the wizard flow, and wins over detection-based defaults; flag-driven invocations therefore remain fully non-interactive (for that parameter).
 

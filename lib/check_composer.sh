@@ -140,6 +140,43 @@ _compose_check_pyve_hosting() {
     return 0
 }
 
+# Story P.k: versioned-defaults drift — INFO-ONLY. Compares the repo's
+# recorded defaults-set stamp (`pyve_defaults_version` in [project], read into
+# PYVE_PROJECT_DEFAULTS_VERSION by manifest_load) against the framework's
+# current PYVE_PARAM_DEFAULTS_VERSION. When the repo was built under an older
+# set, it lists the baked-in defaults that have changed since — as neutral
+# information. It NEVER rewrites the manifest and NEVER contributes to the
+# severity verdict: a pin is a deliberate choice and a moved default is not an
+# error, so the composer prints this without reading its return code into
+# `worst` (and it always returns 0). Silent on pre-P.k manifests (no stamp)
+# and when the repo is already at the current set. The `declare -F` guard
+# keeps it inert in piecemeal test subshells.
+_compose_check_defaults_drift() {
+    [[ -f pyve.toml ]] || return 0
+    declare -F pg_defaults_changed_since >/dev/null 2>&1 || return 0
+
+    local repo_ver="${PYVE_PROJECT_DEFAULTS_VERSION:-}"
+    local cur_ver="${PYVE_PARAM_DEFAULTS_VERSION:-}"
+    [[ "$repo_ver" =~ ^[0-9]+$ ]] || return 0
+    [[ "$cur_ver" =~ ^[0-9]+$ ]] || return 0
+    (( repo_ver < cur_ver )) || return 0
+
+    local rows
+    rows="$(pg_defaults_changed_since "$repo_ver")"
+    [[ -n "$rows" ]] || return 0
+
+    printf 'Defaults have advanced since this project was created (set v%s → v%s).\n' \
+        "$repo_ver" "$cur_ver"
+    printf 'Your pinned values are unchanged. Changed defaults:\n'
+    local ver param old new
+    while IFS='|' read -r ver param old new; do
+        [[ -n "$param" ]] || continue
+        printf '  - %s: %s → %s (default set v%s)\n' "$param" "$old" "$new" "$ver"
+    done <<<"$rows"
+    printf "Re-run 'pyve init --force' to adopt the current defaults, or keep your pins.\n"
+    return 0
+}
+
 # Orchestrate per-plugin checks and roll up the worst severity.
 #
 # Returns 2 when any plugin reports an error; 0 otherwise (warn-only or
@@ -237,6 +274,18 @@ compose_check() {
     if [[ -n "$adv_out" ]]; then
         printf '[advisories]\n'
         printf '%s\n' "$adv_out"
+        printf '\n'
+    fi
+
+    # versioned-defaults drift (Story P.k) — INFO-ONLY: the framework's
+    # baked-in defaults have advanced past the set this repo was created
+    # under. Reports what changed; never rewrites pins, never affects the
+    # verdict. Silent at the current set / on pre-P.k manifests.
+    local defaults_out
+    defaults_out="$(_compose_check_defaults_drift)"
+    if [[ -n "$defaults_out" ]]; then
+        printf '[defaults]\n'
+        printf '%s\n' "$defaults_out"
         printf '\n'
     fi
 

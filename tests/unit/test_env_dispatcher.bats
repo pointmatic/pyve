@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -56,8 +57,12 @@ run_pyve() {
 @test "dispatch: 'pyve env --help' shows no deprecation warning" {
     run_pyve env --help
     [ "$status" -eq 0 ]
-    [[ "$output" != *"deprecated"* ]]
-    [[ "$output" != *"renamed"* ]]
+    # The canonical `env` spelling must not emit the `pyve testenv` rename nag.
+    # Anchor on the nag's signature phrases — not the bare word "deprecated",
+    # which `env --help` now legitimately uses to document the deprecated
+    # `--force` prompt-skip alias (deprecated, warns).
+    [[ "$output" != *"has been renamed to"* ]]
+    [[ "$output" != *"legacy form will be removed"* ]]
 }
 
 @test "dispatch: 'pyve env' routes through dispatch trace as DISPATCH:env" {

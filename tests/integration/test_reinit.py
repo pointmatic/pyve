@@ -62,7 +62,35 @@ class TestReinitForce:
         # lib/ui/core.sh primitives route to stdout (not stderr).
         assert "Force re-initialization" in result.stdout
         assert not venv_marker.exists()
-    
+
+    def test_force_rebuilds_on_v3_only_project(self, pyve, project_builder):
+        """--force rebuilds the env even with no `.pyve/config` (v3-native).
+
+        Regression (Story P.i.1): the re-init/--force gate keyed off
+        `config_file_exists`, so on a `.pyve/config`-less v3 project the entire
+        reinit/purge block was skipped — `--force` fell through to "already
+        exists, skipping" and never rebuilt the env. The gate now fires on
+        manifest presence (`pyve.toml`) too.
+        """
+        pyve.init(backend="venv")
+
+        # Simulate a v3-native project: drop the v2 read-compat file, keeping
+        # `pyve.toml` (which now records the backend) and the materialized .venv.
+        config = project_builder.project_dir / ".pyve" / "config"
+        if config.exists():
+            config.unlink()
+        assert (project_builder.project_dir / "pyve.toml").exists()
+
+        marker = project_builder.project_dir / ".venv" / "marker.txt"
+        marker.write_text("test marker")
+
+        result = pyve.run("init", "--force", input="y\n")
+
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "Force re-initialization" in result.stdout
+        assert "already exists, skipping" not in result.stdout
+        assert not marker.exists()
+
     @pytest.mark.skipif(os.environ.get('CI') == 'true', reason="Interactive prompts skipped in CI")
     def test_force_prompts_for_confirmation(self, pyve, project_builder, clean_env):
         """Test that --force prompts for confirmation."""
@@ -146,13 +174,15 @@ class TestReinitInteractive:
         old_version = "0.8.7"
         
         pyve.init()
-        
-        # Manually set config to old version
+
+        # Simulate a legacy project whose .pyve/config records an older version.
+        # `init` no longer writes `.pyve/config`; the interactive re-init menu
+        # still reads it during the read-compat window (removed with the menu in
+        # a later story), so seed it directly.
         config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        config_content = config_content.replace(f'pyve_version: "{current_version}"', f'pyve_version: "{old_version}"')
-        config_path.write_text(config_content)
-        
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(f'pyve_version: "{old_version}"\nbackend: venv\n')
+
         result = pyve.run("init", input="3\n")
         
         assert old_version in result.stdout
@@ -166,7 +196,12 @@ class TestConflictDetection:
     def test_backend_conflict_in_interactive_mode(self, pyve, project_builder):
         """Test backend conflict detection in interactive mode."""
         pyve.init()
-        
+        # Seed a legacy .pyve/config so the config-gated interactive re-init menu
+        # fires (read-compat window); init no longer writes one.
+        config_path = project_builder.project_dir / ".pyve" / "config"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text("backend: venv\n")
+
         result = pyve.run("init", "--backend", "micromamba", input="1\n")
 
         assert result.returncode == 1
@@ -180,6 +215,11 @@ class TestConflictDetection:
     def test_no_conflict_without_backend_flag(self, pyve, project_builder):
         """Test no conflict when backend not specified."""
         pyve.init()
+        # Seed a legacy .pyve/config so the config-gated interactive re-init menu
+        # fires (read-compat window); init no longer writes one.
+        config_path = project_builder.project_dir / ".pyve" / "config"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text("backend: venv\n")
 
         result = pyve.run("init", input="1\n")
         
@@ -201,40 +241,38 @@ class TestLegacyProjects:
         assert "What would you like to do?" in result.stdout
 
 
-class TestConfigCreation:
-    """Test that config files are created with version tracking."""
-    
-    def test_venv_init_creates_config(self, pyve, project_builder):
-        """Test that venv init creates config with version."""
+class TestManifestCreation:
+    """Test that `pyve.toml` is created with the resolved backend."""
+
+    def test_venv_init_creates_manifest(self, pyve, project_builder):
+        """Test that venv init records the backend in pyve.toml."""
         result = pyve.run("init")
-        
+
         assert result.returncode == 0
-        
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        
-        config_content = config_path.read_text()
-        assert "pyve_version" in config_content
-        assert "backend: venv" in config_content
-    
+
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        assert manifest_path.exists()
+
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "venv"' in manifest_content
+
     @pytest.mark.skipif(
         not os.environ.get("MICROMAMBA_AVAILABLE"),
         reason="Micromamba not available"
     )
-    def test_micromamba_init_creates_config(self, pyve, project_builder):
-        """Test that micromamba init creates config with version."""
+    def test_micromamba_init_creates_manifest(self, pyve, project_builder):
+        """Test that micromamba init records the backend in pyve.toml."""
         project_builder.create_environment_yml()
-        
+
         result = pyve.run("init", "--backend", "micromamba", "--auto-bootstrap")
-        
+
         assert result.returncode == 0
-        
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        
-        config_content = config_path.read_text()
-        assert "pyve_version" in config_content
-        assert "backend: micromamba" in config_content
+
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        assert manifest_path.exists()
+
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "micromamba"' in manifest_content
 
 
 class TestEdgeCases:

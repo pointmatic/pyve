@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -43,6 +44,41 @@ SH
 }
 
 _fixture_multi_envs() {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
+requirements = ["tests/smoke-requirements.txt"]
+
+[env.hardware]
+purpose = "test"
+backend = "micromamba"
+manifest = "tests/env.yml"
+TOML
+}
+
+# The no-arg bulk sweep runs in an isolated subshell that sources only
+# envs.sh/env.sh (no manifest layer), so it enumerates declared envs via
+# read_env_config's pyproject `[tool.pyve.testenvs]` reader (a surface separate
+# from the manifest; migrating the sweep onto the manifest is its own work, not
+# the synthesis removal). `read_env_config` prefers pyve.toml when present, so
+# the bulk-sweep tests use this pyproject-only fixture.
+_fixture_multi_envs_pyproject() {
     cat > pyproject.toml <<'TOML'
 [tool.pyve.testenvs.testenv]
 requirements = ["requirements-dev.txt"]
@@ -112,10 +148,11 @@ TOML
 }
 
 # ============================================================
-# No-arg with single declared env (implicit-default): non-TTY skips prompt
+# Bare purge hits the DEFAULT env — like its siblings
+# (init/install/run all assume the default when unnamed)
 # ============================================================
 
-@test "testenv purge: no-arg, single env, non-TTY (bats) — purges without prompt" {
+@test "testenv purge: bare invocation purges the default env" {
     # No pyproject.toml → implicit-default config (one env: testenv).
     _make_fake_named_venv testenv
     run env_command purge
@@ -123,12 +160,7 @@ TOML
     [ ! -d ".pyve/envs/testenv" ]
 }
 
-# ============================================================
-# No-arg with multiple declared envs: non-TTY still skips prompt
-# (matches `pyve init`'s prompt pattern — CI must not hang)
-# ============================================================
-
-@test "testenv purge: no-arg, multi env, non-TTY (bats) — purges all without prompt" {
+@test "testenv purge: bare invocation with multiple declared envs removes ONLY the default" {
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
@@ -138,22 +170,24 @@ TOML
     run env_command purge
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]
-    [ ! -d ".pyve/envs/smoke" ]
-    [ ! -d ".pyve/envs/hardware" ]
+    # The siblings survive — the sweep is `--all`, never implicit.
+    [ -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/hardware" ]
 }
 
 # ============================================================
 # --force flag: skip confirm explicitly (forces interactive paths too)
 # ============================================================
 
-@test "testenv purge --force: removes all without prompt" {
+@test "testenv purge --force: default-only removal + deprecation warning" {
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
     run env_command purge --force
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]
-    [ ! -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/smoke" ]
+    [[ "$output" == *"deprecated"* ]]
 }
 
 @test "testenv purge <name> --force: --force accepted on with-arg path (no-op)" {
@@ -169,7 +203,7 @@ TOML
 # ============================================================
 
 @test "testenv purge: simulated TTY with 'n' declines and aborts (no removal)" {
-    _fixture_multi_envs
+    _fixture_multi_envs_pyproject
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
 
@@ -186,7 +220,7 @@ TOML
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'n' | env_command purge
+        echo 'n' | env_command purge --all
     "
     [ "$status" -eq 0 ]
     [ -d ".pyve/envs/testenv" ]
@@ -194,7 +228,7 @@ TOML
 }
 
 @test "testenv purge: simulated TTY with 'y' confirms and removes all" {
-    _fixture_multi_envs
+    _fixture_multi_envs_pyproject
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
 
@@ -209,9 +243,35 @@ TOML
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'y' | env_command purge
+        echo 'y' | env_command purge --all
     "
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]
     [ ! -d ".pyve/envs/smoke" ]
+}
+
+# ============================================================
+# --all: the explicit spelling of the whole-declaration sweep
+# ============================================================
+
+@test "env purge --all --yes: sweeps every declared env (explicit spelling)" {
+    _fixture_multi_envs
+    _make_fake_named_venv testenv
+    _make_fake_named_venv smoke
+    mkdir -p ".pyve/envs/hardware/conda"
+
+    run env_command purge --all --yes
+    [ "$status" -eq 0 ]
+    [ ! -d ".pyve/envs/testenv" ]
+    [ ! -d ".pyve/envs/smoke" ]
+    [ ! -d ".pyve/envs/hardware" ]
+}
+
+@test "env purge <name> --all: conflicting selection is rejected" {
+    _fixture_multi_envs
+    _make_fake_named_venv smoke
+    run env_command purge smoke --all
+    [ "$status" -ne 0 ]
+    [[ "$output" == *"--all"* ]]
+    [ -d ".pyve/envs/smoke" ]
 }

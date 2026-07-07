@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=check
 #
 # Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -13,6 +14,7 @@
 load ../helpers/test_helper
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     # Capture an absolute working python BEFORE create_test_dir cd's into a
     # temp dir with no version-manager pin (an asdf shim there errors "No
@@ -151,26 +153,21 @@ TOML
     [[ "$output" == *"venv"* ]]
 }
 
-@test "status: Project section shows recorded pyve version" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
-    run "$PYVE_SCRIPT" status
-    [ "$status" -eq 0 ]
-    [[ "$output" == *"0.9.9"* ]]
-}
+@test "status: Project section shows Declaration: pyve.toml for a v3 project" {
+    cat > pyve.toml <<'EOF'
+pyve_schema = "3.0"
 
-@test "status: Project section notes version drift vs current" {
-    create_pyve_config "backend: venv" "pyve_version: \"0.9.9\""
-    run "$PYVE_SCRIPT" status
-    [ "$status" -eq 0 ]
-    # Some signal that the recorded version is not the current pyve version.
-    [[ "$output" == *"current:"* ]] || [[ "$output" == *"$CURRENT_VERSION"* ]] || [[ "$output" == *"drift"* ]] || [[ "$output" == *"stale"* ]]
-}
+[project]
+name = "demo"
 
-@test "status: Project section marks current version when matching" {
-    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
+[env.root]
+purpose = "utility"
+backend = "venv"
+EOF
     run "$PYVE_SCRIPT" status
     [ "$status" -eq 0 ]
-    [[ "$output" == *"(current)"* ]]
+    [[ "$output" == *"Declaration"* ]]
+    [[ "$output" == *"pyve.toml"* ]]
 }
 
 #============================================================

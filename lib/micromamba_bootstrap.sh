@@ -31,8 +31,9 @@ fi
 # Get the appropriate micromamba download URL for the current platform
 # Returns: URL string or empty if platform not supported
 get_micromamba_download_url() {
-    local os="$(uname -s)"
-    local arch="$(uname -m)"
+    local os arch
+    os="$(uname -s)"
+    arch="$(uname -m)"
     local version="latest"  # Use latest release
     
     # Determine platform string

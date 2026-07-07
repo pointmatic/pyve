@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -38,15 +39,6 @@ teardown() {
     run assert_env_name_actionable foo
     [ "$status" -ne 0 ]
     # Reaches the normal declared-name validation, NOT the init hint.
-    [[ "$output" == *"not declared"* ]]
-    [[ "$output" != *"pyve init"* ]]
-}
-
-@test "assert_env_name_actionable: v2 project (.pyve/config) is NOT told to re-init" {
-    mkdir -p .pyve
-    printf 'backend: venv\n' > .pyve/config
-    run assert_env_name_actionable foo
-    [ "$status" -ne 0 ]
     [[ "$output" == *"not declared"* ]]
     [[ "$output" != *"pyve init"* ]]
 }

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=check
 #
 # Unit tests for detect_install_source() in lib/utils.sh
 #

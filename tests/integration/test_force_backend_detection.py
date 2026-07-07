@@ -49,10 +49,10 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Verify micromamba environment was created
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: micromamba" in config_content
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "micromamba"' in manifest_content
         
         # Step 3: Run --init --force (this should purge and re-detect backend)
         result = pyve.run("init", "--force", "--auto-bootstrap", input="y\n")
@@ -61,9 +61,9 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Check that config was recreated with micromamba backend
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: micromamba" in config_content, \
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "micromamba"' in manifest_content, \
             "Expected micromamba backend after --force, but got venv (bug reproduced)"
         
         # Verify micromamba environment exists
@@ -92,10 +92,10 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Verify micromamba environment was created
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: micromamba" in config_content
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "micromamba"' in manifest_content
         
         # Step 3: Run --init --force WITHOUT --backend flag
         # This should preserve micromamba backend despite ambiguity
@@ -105,9 +105,9 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Check that config was recreated with micromamba backend (not venv)
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: micromamba" in config_content, \
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "micromamba"' in manifest_content, \
             "Expected micromamba backend to be preserved after --force in ambiguous case"
         
         # Verify micromamba environment exists
@@ -127,10 +127,10 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Verify venv was created
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: venv" in config_content
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "venv"' in manifest_content
         
         # Step 3: Run --init --force (this should purge and re-detect backend)
         result = pyve.run("init", "--force", input="y\n")
@@ -139,94 +139,13 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Check that config was recreated with venv backend
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: venv" in config_content
+        assert manifest_path.exists()
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "venv"' in manifest_content
         
         # Verify venv exists
         venv_dir = project_builder.project_dir / ".venv"
         assert venv_dir.exists(), "Venv directory should exist"
-    
-    def test_force_reinit_prompts_and_respects_venv_choice_in_ambiguous_case(self, pyve, project_builder):
-        """
-        Test that pyve init --force prompts for backend choice when both
-        environment.yml and pyproject.toml exist, and respects user choosing venv.
-
-        Prompt order after F.k/F.l fixes:
-          1. "Initialize with micromamba backend? [Y/n]:"  ← backend detection (skip config)
-          2. "Proceed? [y/N]:"                             ← force confirmation
-        """
-        # Step 1: Create BOTH environment.yml and pyproject.toml (ambiguous)
-        project_builder.create_environment_yml("test-env")
-        project_builder.create_pyproject_toml("test-project")
-
-        # Step 2: Initialize with venv backend explicitly
-        result = pyve.run("init", "--backend", "venv")
-        assert result.returncode == 0
-
-        # Verify venv was created
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: venv" in config_content
-
-        # Step 3: Run --init --force
-        # Prompt 1 (backend): 'n' → choose venv (not micromamba)
-        # Prompt 2 (confirmation): 'y' → proceed with purge
-        result = pyve.run("init", "--force", input="n\ny\n")
-
-        # Step 4: Verify the backend prompt was shown (proving skip_config worked)
-        combined = (result.stdout or "") + (result.stderr or "")
-        assert "Initialize with micromamba backend?" in combined, \
-            "Expected backend detection prompt — skip_config should bypass stale venv config"
-
-        # Verify it used venv (user chose 'n')
-        assert result.returncode == 0
-
-        # Check that config was recreated with venv backend
-        assert config_path.exists()
-        config_content = config_path.read_text()
-        assert "backend: venv" in config_content, \
-            "Expected venv backend after user chose 'n' in backend prompt"
-
-        # Verify venv exists
-        venv_dir = project_builder.project_dir / ".venv"
-        assert venv_dir.exists(), "Venv directory should exist"
-
-    def test_force_reinit_ignores_stale_config_backend(self, pyve, project_builder):
-        """
-        Regression test for F.l: --force pre-flight must bypass .pyve/config (Priority 2)
-        and re-detect the backend from project files.
-
-        Scenario: project has both environment.yml + pyproject.toml (ambiguous).
-        Initial --init --backend venv writes backend: venv to config. A subsequent
-        --init --force must skip the stale config and show the backend detection
-        prompt (proving file detection ran).
-
-        If skip_config were NOT working, Priority 2 would return "venv" immediately
-        and the backend prompt would never appear. The assert below would then fail,
-        catching the regression.
-        """
-        # Step 1: Create ambiguous project files
-        project_builder.create_environment_yml("test-env")
-        project_builder.create_pyproject_toml("test-project")
-
-        # Step 2: Initialize with venv explicitly → writes backend: venv to config
-        result = pyve.run("init", "--backend", "venv")
-        assert result.returncode == 0
-
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        assert "backend: venv" in config_path.read_text()
-
-        # Step 3: Force reinit interactively
-        # Prompt 1 (backend, ambiguous): 'y' → choose micromamba
-        # Prompt 2 (confirmation):        'y' → proceed with purge
-        result = pyve.run("init", "--force", input="y\ny\n")
-
-        # Step 4: Verify the backend detection prompt appeared (proving skip_config worked)
-        combined = (result.stdout or "") + (result.stderr or "")
-        assert "Initialize with micromamba backend?" in combined, \
-            "Expected backend detection prompt — skip_config should have bypassed backend: venv in .pyve/config"
     
     @pytest.mark.skipif(
         not os.environ.get("MICROMAMBA_AVAILABLE"),
@@ -248,9 +167,9 @@ class TestForceBackendDetection:
         assert result.returncode == 0
         
         # Verify venv backend was used despite environment.yml
-        config_path = project_builder.project_dir / ".pyve" / "config"
-        config_content = config_path.read_text()
-        assert "backend: venv" in config_content
+        manifest_path = project_builder.project_dir / "pyve.toml"
+        manifest_content = manifest_path.read_text()
+        assert 'backend = "venv"' in manifest_content
 
         venv_dir = project_builder.project_dir / ".venv"
         assert venv_dir.exists()
@@ -267,7 +186,7 @@ class TestForceBackendDetection:
         pre-flight duplicated the lock validation but forgot the scaffold step,
         so it failed on directories that the non-force path handles fine.
         """
-        # Initialize with venv backend → writes .pyve/config with backend: venv.
+        # Initialize with venv backend → records backend = "venv" in pyve.toml.
         result = pyve.run("init", "--backend", "venv")
         assert result.returncode == 0
         assert not (project_builder.project_dir / "environment.yml").exists()

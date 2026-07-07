@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -55,25 +56,40 @@ _stub_run_cmd_records() {
 }
 
 _fixture_named_envs() {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.testenv]
-requirements = ["requirements-dev.txt"]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
 
-[tool.pyve.testenvs.smoke]
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/smoke-requirements.txt"]
 
-[tool.pyve.testenvs.heavy]
+[env.heavy]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/heavy.txt"]
 lazy = true
 
-[tool.pyve.testenvs.hardware]
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
-    # Story M.l: declared `requirements = [...]` is now consumed at
-    # install time (pre-M.l the declaration was inert and `pyve testenv
-    # install` defaulted to bare pytest). Create the declared files
-    # on disk so the fixture stays usable across the install tests.
+    # Declared `requirements = [...]` is consumed at install time. Create the
+    # declared files on disk so the fixture stays usable across the install tests.
     mkdir -p tests
     printf 'pytest\n' > requirements-dev.txt
     printf 'pytest-asyncio\n' > tests/smoke-requirements.txt

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=cli
 #
 # Unit tests for the top-level CLI dispatcher in pyve.sh.
 #
@@ -319,4 +320,10 @@ run_pyve() {
     run_pyve --help
     [ "$status" -eq 0 ]
     [[ "$output" == *"pyve test"* ]]
+}
+
+@test "dispatch: 'pyve upgrade' routes to the upgrade handler" {
+    PYVE_DISPATCH_TRACE=1 run_pyve upgrade
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"DISPATCH:upgrade"* ]]
 }

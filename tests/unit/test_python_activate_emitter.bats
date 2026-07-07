@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=plugin
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -20,6 +21,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper.bash
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/envrc_safety.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
@@ -32,25 +34,16 @@ teardown() {
 }
 
 _write_config_venv() {
-    mkdir -p .pyve
-    cat > .pyve/config <<EOF
-pyve_version: "9.9.9"
-backend: venv
-venv:
-  directory: ${1:-.venv}
-python:
-  version: 3.13.7
-EOF
+    create_pyve_toml venv
+    # Activate resolves the backend from the manifest. Load it so these unit
+    # tests mirror production, where compose_project_envrc calls manifest_load
+    # before activate.
+    manifest_load >/dev/null 2>&1 || true
 }
 
 _write_config_micromamba() {
-    mkdir -p .pyve
-    cat > .pyve/config <<EOF
-pyve_version: "9.9.9"
-backend: micromamba
-micromamba:
-  env_name: ${1:-test-env}
-EOF
+    create_pyve_toml micromamba
+    manifest_load >/dev/null 2>&1 || true
 }
 
 # ════════════════════════════════════════════════════════════════════
@@ -80,18 +73,19 @@ EOF
     [ ! -f .envrc ]
 }
 
-@test "emitter (venv): honors a custom venv directory from .pyve/config" {
+@test "emitter (venv): a v2 custom venv directory is ignored (defaults to .venv)" {
     _write_config_venv "myenv"
     run python_pyve_plugin_activate
     [ "$status" -eq 0 ]
-    [[ "$output" == *'PATH_add "myenv/bin"'* ]]
-    [[ "$output" == *'export VIRTUAL_ENV="$PWD/myenv"'* ]]
+    [[ "$output" == *'PATH_add ".venv/bin"'* ]]
+    [[ "$output" == *'export VIRTUAL_ENV="$PWD/.venv"'* ]]
 }
 
 @test "emitter (micromamba): CONDA_PREFIX + PATH from the v3 root slot" {
-    # Story N.bf.14: the main micromamba env lives at the uniform root
-    # slot .pyve/envs/root/conda/; PYVE_ENV_NAME stays the configured name.
+    # The main micromamba env lives at the uniform root slot
+    # .pyve/envs/root/conda/; PYVE_ENV_NAME comes from environment.yml's name:.
     _write_config_micromamba "sci"
+    printf 'name: sci\ndependencies:\n  - python\n' > environment.yml
     run python_pyve_plugin_activate
     [ "$status" -eq 0 ]
     [[ "$output" == *'PATH_add ".pyve/envs/root/conda/bin"'* ]]
@@ -156,15 +150,4 @@ EOF
     run python_pyve_plugin_activate
     [ "$status" -ne 0 ]
     [[ "$output" == *'`pwd`'* ]] || [[ "$output" == *"rejected"* ]] || [[ "$output" == *"PC-1"* ]]
-}
-
-@test "emitter: unknown backend in config → error, no section, no file" {
-    mkdir -p .pyve
-    cat > .pyve/config <<'EOF'
-backend: quantum-foo
-EOF
-    rm -f .envrc
-    run python_pyve_plugin_activate
-    [ "$status" -ne 0 ]
-    [ ! -f .envrc ]
 }

@@ -3,9 +3,9 @@
 Pyve separates the project's **runtime environment** from a dedicated **test environment** (a `test`-purpose env, named `testenv` by default). This guide explains the two-environment model, the test-env lifecycle, how its Python inheritance differs by backend, and the activation-context rules that matter when you run env commands from a non-activated shell (or from an LLM agent).
 
 !!! note "v3 names and paths"
-    In v3.0 test environments are declared as `[env.<name>]` blocks in [`pyve.toml`](pyve-toml.md) (with `purpose = "test"`) and materialize at `.pyve/envs/<name>/<backend>/`. They are managed with the **`pyve env`** namespace. This page predates the rename in places: read `pyve testenv …` as `pyve env …` (the old spelling still works, with a warning), `.pyve/testenvs/<name>/` as `.pyve/envs/<name>/`, and `[tool.pyve.testenvs]` as the manifest's `[env.<name>]` blocks. See [Named Environments](environments.md) for the canonical model.
+    Test environments are declared as `[env.<name>]` blocks in [`pyve.toml`](pyve-toml.md) (with `purpose = "test"`) and materialize at `.pyve/envs/<name>/<backend>/`. They are managed with the **`pyve env`** namespace — `pyve testenv …` is a deprecated alias that still re-dispatches with a one-shot warning and is removed in v4.0. See [Named Environments](environments.md) for the canonical model.
 
-If you only want command reference, see the [`env` namespace](usage.md) in the Usage Guide. This page is the concept and how-to companion.
+If you only want command reference, see the [`env` namespace](reference/env.md#env-subcommand) reference page. This page is the concept and how-to companion.
 
 ## Overview
 
@@ -39,80 +39,80 @@ The default test env is **always a plain Python venv** regardless of the project
 
 !!! note "Migrating from v2"
 
-    v2 projects carried test environments under `.pyve/testenvs/<name>/` and declared them in `pyproject.toml` under `[tool.pyve.testenvs]`. v3 consolidates state under `.pyve/envs/<name>/` and moves the declaration into `pyve.toml`'s `[env.<name>]` blocks. `pyve self migrate` performs the move; opportunistic migration also relocates a legacy testenv the first time it's needed. See the [Migration guide](migration.md).
+    v2 projects carried test environments under `.pyve/testenvs/<name>/` and declared them in `pyproject.toml` under `[tool.pyve.testenvs]`. v3 consolidates state under `.pyve/envs/<name>/` and moves the declaration into `pyve.toml`'s `[env.<name>]` blocks. As of v3.1 there is no automated bridge (the v2 window is closed) — re-run `pyve init` to bring a v2 project onto the manifest; opportunistic state migration still relocates a legacy on-disk testenv the first time it's needed. See the [Migration guide](migration.md).
 
 ## Backend deltas
 
-`pyve testenv init` runs `python -m venv .pyve/testenvs/testenv/venv` against whichever `python` resolves on PATH at that moment. The active project environment determines that resolution:
+`pyve env init` runs `python -m venv .pyve/envs/testenv/venv` against whichever `python` resolves on PATH at that moment. The active project environment determines that resolution:
 
 | Backend | Source of `python` when testenv is created | Testenv Python ends up as |
 |---|---|---|
 | **venv** | `.venv/bin/python` (when direnv has activated the project env) | The same interpreter `.venv/` was built with — i.e., the asdf/pyenv-managed version pinned in `.tool-versions` / `.python-version` |
-| **micromamba** | `.pyve/envs/<name>/bin/python` (when direnv has activated the project env) | The Python recorded in `environment.yml` (e.g. `python=3.12` → 3.12.x) |
+| **micromamba** | `.pyve/envs/root/conda/bin/python` (when direnv has activated the project env) | The Python recorded in `environment.yml` (e.g. `python=3.12` → 3.12.x) |
 
-!!! warning "Activation must be live when `pyve testenv init` runs"
+!!! warning "Activation must be live when `pyve env init` runs"
 
-    `pyve testenv init` does **not** activate the project environment for you. It uses whatever `python` is currently on PATH. If you run it from a shell where direnv hasn't activated the project env (a fresh terminal that hasn't `cd`'d in yet, a CI step, an LLM agent's subprocess), `python` will resolve to your *outer* shell's interpreter — typically an asdf/pyenv shim that may have no version pin, surfacing an error like "No version is set for command python."
+    `pyve env init` does **not** activate the project environment for you. It uses whatever `python` is currently on PATH. If you run it from a shell where direnv hasn't activated the project env (a fresh terminal that hasn't `cd`'d in yet, a CI step, an LLM agent's subprocess), `python` will resolve to your *outer* shell's interpreter — typically an asdf/pyenv shim that may have no version pin, surfacing an error like "No version is set for command python."
 
     The fix is to make the project env active first, either by `cd`'ing into the directory under direnv or by wrapping the command:
 
     ```bash
-    pyve run pyve testenv init
-    pyve run pyve testenv install -r requirements-dev.txt
+    pyve run pyve env init
+    pyve run pyve env install -r requirements-dev.txt
     ```
 
     See [Activation context](#activation-context) below.
 
-If the project env's Python changes later (you bump `environment.yml` or `.tool-versions`), the testenv won't follow automatically. Pyve detects the drift the next time `pyve testenv init` runs and rebuilds the testenv against the new Python — but until then, the testenv stays on its original base.
+If the project env's Python changes later (you bump `environment.yml` or `.tool-versions`), the testenv won't follow automatically. Pyve detects the drift the next time `pyve env init` runs and rebuilds the testenv against the new Python — but until then, the testenv stays on its original base.
 
 ## Testenv lifecycle
 
-Six sub-commands; one file lives behind them all ([lib/commands/testenv.sh](https://github.com/pointmatic/pyve/blob/main/lib/commands/testenv.sh)). All `[<name>]` arguments are optional and default to the implicit `testenv`; for the named-envs case see [Named test environments](#named-test-environments).
+Six sub-commands; one file lives behind them all ([lib/commands/env.sh](https://github.com/pointmatic/pyve/blob/main/lib/commands/env.sh)). All `[<name>]` arguments are optional and default to the implicit `testenv`; for the named-envs case see [Named test environments](#named-test-environments).
 
-### Create — `pyve testenv init [<name>]`
+### Create — `pyve env init [<name>]`
 
-One-time. Creates `.pyve/testenvs/<name>/venv/` using the active project Python. Required before `install` or `run` will work — those subcommands deliberately do *not* auto-create the env.
-
-```bash
-pyve testenv init                  # implicit-default testenv
-pyve testenv init smoke            # named env
-```
-
-### Install dependencies — `pyve testenv install [<name>] [-r <file>] [--no-wait]`
-
-Without `<name>`, **iterates over every declared non-lazy env** (in the implicit-default config that's exactly one — the `testenv`). With `<name>`, installs into one specific env. `-r <file>` overrides any declared source for this run; declared `requirements = [...]` / `extra = "<n>"` / `manifest = "<env.yml>"` in `[tool.pyve.testenvs.<name>]` are used otherwise (see [Named test environments](#named-test-environments) for the source-precedence rules):
+One-time. Creates `.pyve/envs/<name>/venv/` using the active project Python. Required before `install` or `run` will work — those subcommands deliberately do *not* auto-create the env.
 
 ```bash
-pyve testenv install                            # iterate all non-lazy envs (default config: just testenv with bare pytest fallback)
-pyve testenv install -r requirements-dev.txt    # CLI override for the default env
-pyve testenv install smoke                      # one named env, declared source
-pyve testenv install heavy -r requirements-heavy.txt
+pyve env init                  # implicit-default testenv
+pyve env init smoke            # named env
 ```
 
-A per-env install lock (`.pyve/testenvs/<name>/.lock/`) serializes concurrent installers of the same env; pass `--no-wait` to fast-fail instead of queuing.
+### Install dependencies — `pyve env install [<name>] [-r <file>] [--no-wait]`
 
-The recommended pattern for the default env: maintain a `requirements-dev.txt` so the testenv is reproducible in two commands (`pyve testenv init && pyve testenv install -r requirements-dev.txt`).
+Without `<name>`, **iterates over every declared non-lazy env** (in the implicit-default config that's exactly one — the `testenv`). With `<name>`, installs into one specific env. `-r <file>` overrides the declared pip-layer recipe for this run; the directives declared in the env's `[env.<name>]` block (`editable` / `requirements` / `extra` / `manifest`) are used otherwise (see [Named test environments](#named-test-environments)):
 
-### Run a tool — `pyve testenv run [<name> --] <cmd> [args...]`
+```bash
+pyve env install                            # iterate all non-lazy envs (default config: just testenv with bare pytest fallback)
+pyve env install -r requirements-dev.txt    # CLI override for the default env
+pyve env install smoke                      # one named env, declared source
+pyve env install heavy -r requirements-heavy.txt
+```
+
+A per-env install lock (`.pyve/envs/<name>/.lock/`) serializes concurrent installers of the same env; pass `--no-wait` to fast-fail instead of queuing.
+
+The recommended pattern for the default env: maintain a `requirements-dev.txt` so the testenv is reproducible in two commands (`pyve env init && pyve env install -r requirements-dev.txt`).
+
+### Run a tool — `pyve env run [<name> --] <cmd> [args...]`
 
 Executes any command inside a testenv. With no name, runs in the implicit-default `testenv`; with a name, the `--` separator disambiguates name from command:
 
 ```bash
-pyve testenv run ruff check .              # default testenv
-pyve testenv run mypy src/
-pyve testenv run smoke -- pytest -v        # named env: `smoke --` then the command
+pyve env run ruff check .              # default testenv
+pyve env run mypy src/
+pyve env run smoke -- pytest -v        # named env: `smoke --` then the command
 ```
 
 !!! note "venv-only"
 
-    `pyve testenv run` activates the env via PATH (`<env>/bin` prepended, `VIRTUAL_ENV` exported) — sufficient for venv-backed envs but not for conda-backed ones, which need `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. Conda-backed envs hard-error with a `micromamba run -p <env-path> <cmd>` workaround hint.
+    `pyve env run` activates the env via PATH (`<env>/bin` prepended, `VIRTUAL_ENV` exported) — sufficient for venv-backed envs but not for conda-backed ones, which need `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. Conda-backed envs hard-error with a `micromamba run -p <env-path> <cmd>` workaround hint.
 
 ### Run tests — `pyve test [--env <name>[,<name>...]] [pytest args]`
 
-Convenience shortcut for the common case. Equivalent to `pyve testenv run pytest`, plus an interactive auto-install prompt if pytest isn't yet installed and the [silent-skip advisory](#choosing-which-environment-runs-your-tests) for cross-env hints:
+Convenience shortcut for the common case. Equivalent to `pyve env run pytest`, plus an interactive auto-install prompt if pytest isn't yet installed and the [silent-skip advisory](#choosing-which-environment-runs-your-tests) for cross-env hints:
 
 ```bash
-pyve test                                       # default env (testenv unless [tool.pyve.testenvs].default is set)
+pyve test                                       # default env (testenv unless another env declares default = true)
 pyve test -q tests/integration/test_foo.py      # default env, pytest args pass through
 pyve test --env root                            # bundled-env trap workaround (see below)
 pyve test --env smoke                           # named env
@@ -121,97 +121,96 @@ pyve test --env smoke,heavy                     # matrix (sequential)
 
 If pytest is missing, `pyve test` prompts to install it (interactive) or exits with instructions (non-interactive). Set `PYVE_TEST_AUTO_INSTALL_PYTEST=1` to auto-install in CI.
 
-### List installed envs — `pyve testenv list`
+### List installed envs — `pyve env list`
 
-Tabulates every testenv pyve knows about — the union of names declared in `[tool.pyve.testenvs]` and directories under `.pyve/testenvs/`:
+Tabulates every named env pyve knows about — the union of names declared in `pyve.toml` and directories under `.pyve/envs/`:
 
 ```bash
-pyve testenv list
+pyve env list
 ```
 
 Columns: `NAME / BACKEND / SIZE / LAST-USED / STATE`. `STATE` is one of `ready` (declared and on disk), `lazy` (declared `lazy = true`, not yet provisioned), `not provisioned` (declared non-lazy but absent from disk), or `orphaned` (on disk but not declared). `LAST-USED` is the ISO date of the most recent `pyve test --env <name>` (or `never` for envs that have never been run).
 
-### Prune unused envs — `pyve testenv prune [--unused-since <YYYY-MM-DD>|--all] [--force]`
+### Prune unused envs — `pyve env prune [--unused-since <YYYY-MM-DD>|--all] [--yes]`
 
 Three modes for clearing disk:
 
 ```bash
-pyve testenv prune                          # remove every orphan (on-disk but not declared)
-pyve testenv prune --unused-since 2026-01-01   # remove envs whose last use predates the cutoff
-pyve testenv prune --all                    # remove every env on disk (declared and orphaned)
+pyve env prune                          # remove every orphan (on-disk but not declared)
+pyve env prune --unused-since 2026-01-01   # remove envs whose last use predates the cutoff
+pyve env prune --all                    # remove every env on disk (declared and orphaned)
 ```
 
 `--unused-since` reads each env's `.state.last_used_at`; envs that have never been used (`last_used_at = 0`) are preserved so freshly-provisioned envs are not eaten. Bad date format hard-errors before any disk walk.
 
-`prune` is **disk-driven** — it walks `.pyve/testenvs/`. The distinct `pyve testenv purge` (next section) is **config-driven** — it walks `PYVE_TESTENVS_NAMES`. Both prompt `y/N` on an interactive TTY (skip with `--force`).
+`prune` is **disk-driven** — it walks `.pyve/envs/`. The distinct `pyve env purge` (next section) is **declaration-driven** — it walks the envs declared in `pyve.toml`. Both prompt `y/N` on an interactive TTY (skip with `--yes`; `--force` is a deprecated prompt-skip alias that warns).
 
-### Remove — `pyve testenv purge [<name>] [--force]`
+### Remove — `pyve env purge [<name>|--all] [--yes]`
 
-With `<name>`, removes one env's directory. Without, removes every declared env (with confirmation):
+Bare `pyve env purge` removes the **default** env — the same target its siblings (`init` / `install` / `run`) assume when unnamed. `<name>` removes one env; `--all` sweeps every declared env (with confirmation):
 
 ```bash
-pyve testenv purge                  # all declared envs (prompts y/N; --force skips)
-pyve testenv purge smoke            # one env
-pyve testenv purge --force          # all declared envs, no prompt
+pyve env purge                  # the default env
+pyve env purge smoke            # one env
+pyve env purge --all            # every declared env (prompts y/N; --yes skips)
 ```
 
-Backend-agnostic — works the same for venv and conda layouts. Re-run `pyve testenv init [<name>]` (and `install`) to recreate.
+Backend-agnostic — works the same for venv and conda layouts. Re-run `pyve env init [<name>]` (and `install`) to recreate — or rebuild in one step with `pyve env init <name> --force`, which also restores the env's recorded state.
 
 ## Named test environments
 
-The implicit-default config gives you one testenv (`.pyve/testenvs/testenv/venv/`). For projects that need multiple — a fast smoke env on every commit, a heavy GPU env on demand, a separate hardware-integration env, a per-Python-version matrix — declare them in `pyproject.toml`:
+The implicit-default config gives you one testenv (`.pyve/envs/testenv/venv/`). For projects that need multiple — a fast smoke env on every commit, a heavy GPU env on demand, a separate hardware-integration env, a per-Python-version matrix — declare them in `pyve.toml`:
 
 ```toml
-[tool.pyve.testenvs]
-default = "smoke"            # what `pyve test` picks when --env is omitted
-
-[tool.pyve.testenvs.testenv]
-requirements = ["requirements-dev.txt"]
-
-[tool.pyve.testenvs.smoke]
+[env.smoke]
+purpose = "test"
+default = true               # what `pyve test` picks when --env is omitted
 extra = "dev"                # resolves [project.optional-dependencies].dev
 
-[tool.pyve.testenvs.heavy]
+[env.heavy]
+purpose = "test"
 requirements = ["tests/heavy.txt"]
 lazy = true                  # auto-provision on first `pyve test --env heavy`
 
-[tool.pyve.testenvs.hardware]
-backend = "micromamba"       # per-env backend — independent of the main env's backend
+[env.hardware]
+purpose = "test"
+backend = "micromamba"       # per-env backend — independent of the root env's backend
 manifest = "tests/env.yml"
 ```
 
-Each env materializes under `.pyve/testenvs/<name>/` (with `venv/` or `conda/` suffix depending on backend) and carries its own `.state` file tracking provisioning time and last-used time. The full schema (including the `requirements` / `extra` / `manifest` mutex and the `inherit` backend) lives in [features.md FR-11a](https://github.com/pointmatic/pyve/blob/main/docs/specs/features.md#fr-11a-named-test-environments-toolpyvetestenvs).
+Each env materializes under `.pyve/envs/<name>/` (with `venv/` or `conda/` suffix depending on backend) and carries its own `.state` file recording provisioning, install, and last-used time. The full schema (the composable setup directives and the `inherit` backend) lives in the [`pyve.toml` reference](pyve-toml.md).
 
-### Per-env dependency source
+### Per-env setup recipe
 
-Each env declares one of three sources. The Python helper enforces the mutex at config-read time, so a single env never has more than one of these populated:
+Each env declares a **composable recipe** of setup directives. Directives layer — a single env may declare several — and materialize in one fixed order: conda `manifest` first, then `editable`, `requirements`, `extra`:
 
-| Declaration | Backend | What gets installed |
+| Directive | Backend | What gets installed |
 |---|---|---|
+| `manifest = "env.yml"` | micromamba | `micromamba create/install -p <path> -f env.yml -y` |
+| `editable = ".[dev]"` | venv | `pip install -e ".[dev]"` — editable self-install, optionally with extras |
 | `requirements = ["a.txt", "b.txt"]` | venv | `pip install -r a.txt -r b.txt` |
 | `extra = "dev"` | venv | `[project.optional-dependencies].dev` resolved to a package list, then `pip install ...` |
-| `manifest = "env.yml"` | micromamba | `micromamba create/install -p <path> -f env.yml -y` |
 
-If none of the three is declared on a venv-backed env, the install dispatch falls back to (in order): CLI `-r <file>` if given, auto-detected `requirements-dev.txt` in CWD, then bare `pytest`. This is what keeps the implicit-default `testenv` working without any declaration.
+`pyve env init <name>` validates the whole recipe up front (files exist, extras resolve), then materializes every declared directive — one command reproduces the env. If no directive is declared on a venv-backed env, the install dispatch falls back to (in order): CLI `-r <file>` if given, auto-detected `requirements-dev.txt` in CWD, then bare `pytest`. This is what keeps the implicit-default `testenv` working without any declaration.
 
 ### Reserved names
 
-| Name | `pyve test --env <name>` | `pyve testenv <op> <name>` |
+| Name | `pyve test --env <name>` | `pyve env <op> <name>` |
 |---|---|---|
-| `root` | routes to the root project env via `run_command python -m pytest` | hard-errors — `root` is selection-only |
-| `testenv` | the implicit default when no `[tool.pyve.testenvs]` block exists | always actionable (declared or implicit) |
+| `root` | routes to the root project env (equivalent to `pyve run python -m pytest`) | hard-errors with a signpost to the root-scoped verb (`pyve init --force` to rebuild, `pyve purge` to remove) |
+| `testenv` | the implicit default when no test env is declared in `pyve.toml` | always actionable (declared or implicit) |
 
-You can't declare a user env named `root` or `testenv` — the config helper rejects it.
+You can't declare a user env named `root` — the reserved name belongs to the project's main environment.
 
 ### Lazy provisioning
 
 Heavy envs that you rarely use (multi-GB ML stacks, GPU runners, integration harnesses with a fragile install) should be marked `lazy = true`. Then:
 
-- `pyve testenv install` (no name) **skips** the env in its iteration.
-- `pyve test --env <lazy-name>` **auto-provisions** the env on first use: `ensure_testenv_exists` creates the venv, then the standard per-env install lock + declared-source dispatch installs dependencies, then pytest runs.
-- For strict CI that prefers an explicit "is this env already built?" gate, set `PYVE_NO_AUTO_PROVISION=1` — the same flow hard-errors with a `pyve testenv install <lazy-name>` hint instead of building.
+- `pyve env install` (no name) **skips** the env in its iteration.
+- `pyve test --env <lazy-name>` **auto-provisions** the env on first use: the env is created, then the standard per-env install lock + declared-recipe dispatch installs dependencies, then pytest runs.
+- For strict CI that prefers an explicit "is this env already built?" gate, set `PYVE_NO_AUTO_PROVISION=1` — the same flow hard-errors with a `pyve env install <lazy-name>` hint instead of building.
 
-The auto-provision path acquires the same install lock (`mkdir`-based at `.pyve/testenvs/<name>/.lock/`) used by `pyve testenv install`, so two concurrent `pyve test --env <lazy-name>` calls serialize cleanly.
+The auto-provision path acquires the same install lock (`mkdir`-based at `.pyve/envs/<name>/.lock/`) used by `pyve env install`, so two concurrent `pyve test --env <lazy-name>` calls serialize cleanly.
 
 ### Conda-backed test environments
 
@@ -219,7 +218,7 @@ Set `backend = "micromamba"` (with `manifest = "env.yml"`) on any named env to p
 
 Conda-backed envs have two current limitations:
 
-- **`pyve testenv run` does not support them.** The activation pattern in `run` is PATH-only (`<env>/bin` prepended) which is insufficient for conda's `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. Use `micromamba run -p .pyve/testenvs/<name>/conda <cmd>` as a manual workaround.
+- **`pyve env run` does not support them.** The activation pattern in `run` is PATH-only (`<env>/bin` prepended) which is insufficient for conda's `CONDA_PREFIX` / `CONDA_PYTHON_EXE`. Use `micromamba run -p .pyve/envs/<name>/conda <cmd>` as a manual workaround.
 - **`pyve test --env <conda-name>` also hard-errors** for the same activation reason. Route via `--env root` against a conda main env, or run pytest via `micromamba run` manually.
 
 For lock-file determinism on conda-backed envs, see `pyve lock --env <name>` / `pyve lock --all` below.
@@ -229,11 +228,11 @@ For lock-file determinism on conda-backed envs, see `pyve lock --env <name>` / `
 `pyve lock` (no args) locks the main env's `environment.yml` → `conda-lock.yml`. Per-env locking lands as:
 
 ```bash
-pyve lock --env hardware            # one conda-backed testenv (writes tests/env-lock.yml next to env.yml)
-pyve lock --all                     # main env + every conda-backed testenv
+pyve lock --env hardware            # one conda-backed named env (writes tests/env-lock.yml next to env.yml)
+pyve lock --all                     # main env + every conda-backed named env
 ```
 
-`--env <name>` rejects venv-backed envs (they live outside conda-lock's scope) and undeclared names. `--all` iterates: it locks the main env (in a subshell so its exit-paths don't abort the iteration), then every micromamba-backed env in `[tool.pyve.testenvs]`. Per-env failures `warn` and accumulate into a non-zero exit; venv-backed envs are silently skipped.
+`--env <name>` rejects venv-backed envs (they live outside conda-lock's scope) and undeclared names. `--all` iterates: it locks the main env (in a subshell so its exit-paths don't abort the iteration), then every micromamba-backed env declared in `pyve.toml`. Per-env failures `warn` and accumulate into a non-zero exit; venv-backed envs are silently skipped.
 
 ### Matrix execution — `pyve test --env a,b,c`
 
@@ -244,13 +243,13 @@ pyve test --env smoke,integration                       # two envs sequentially
 pyve test --env smoke,integration -- -k test_user_auth  # same, with pytest args
 ```
 
-Each env's output is preceded by `=== Env: <name> ===` so you can find the boundary in CI logs. The run is **sequential** (no parallel execution — that's deliberately out of scope for v2.8) and **non-halting** — a failure in the first env doesn't stop the second. The aggregate exit code is the worst-case (highest failing rc); 0 only when every env passes.
+Each env's output is preceded by `=== Env: <name> ===` so you can find the boundary in CI logs. The run is **sequential** (parallel execution is deliberately out of scope) and **non-halting** — a failure in the first env doesn't stop the second. The aggregate exit code is the worst-case (highest failing rc); 0 only when every env passes.
 
 Inside the matrix loop, the silent-skip advisory is auto-suppressed (the user has explicitly named multiple envs; the cross-env hint would be noise).
 
 ## Choosing which environment runs your tests
 
-By default `pyve test` runs pytest in the **testenv** (`.pyve/testenvs/testenv/venv/`) — or, when `[tool.pyve.testenvs].default` is set, in the env named there. That's the right choice for a normal repo checkout: the root env holds only runtime dependencies, pytest lives in the testenv, and the two stay isolated.
+By default `pyve test` runs pytest in the **testenv** (`.pyve/envs/testenv/venv/`) — or, when a declared env carries `default = true`, in that env. That's the right choice for a normal repo checkout: the root env holds only runtime dependencies, pytest lives in the testenv, and the two stay isolated.
 
 But there's a scenario where the default is wrong — the **bundled-environment trap**:
 
@@ -271,13 +270,13 @@ This is the first-class form of the `pyve run python -m pytest …` workaround �
 | Repo checkout (runtime deps in root env, pytest in testenv) | `pyve test` (default) |
 | Bundled env (pytest **and** the stack-under-test both in the root env) | `pyve test --env root` |
 
-**Pyve warns you.** When pyve routes `pyve test` to env `<T>`, it scans every other env it knows about (`root` plus every name in `[tool.pyve.testenvs]`, skipping `<T>` itself) for pytest-importability. If **any** other env has pytest installed — meaning its dependency stack might be what the tests need — pyve prints a one-line advisory listing the alternatives before running. The original M.c form (target = `testenv`, candidate = `root`) is the canonical case; the generalized scan in M.o covers any combination of named envs.
+**Pyve warns you.** When pyve routes `pyve test` to env `<T>`, it scans every other env it knows about (`root` plus every declared env, skipping `<T>` itself) for pytest-importability. If **any** other env has pytest installed — meaning its dependency stack might be what the tests need — pyve prints a one-line advisory listing the alternatives before running. The canonical case is target `testenv`, candidate `root`; the scan covers any combination of named envs.
 
 In a normal repo checkout with one testenv (no pytest elsewhere) the advisory never fires. If you keep pytest in multiple envs deliberately and don't want the nudge, set `PYVE_NO_TESTENV_ADVISORY=1` to silence it (matrix mode does this automatically).
 
 !!! note "Renamed in v2.7.1"
 
-    The `--env` value was renamed `main → root` in v2.7.1 (Story M.e). The previous form `pyve test --env main` now hard-errors with the rename hint — there is no silent delegation, per the Category-B deprecation-removal policy. Update any scripts to `--env root`.
+    The `--env` value was renamed `main → root` in v2.7.1. The previous form `pyve test --env main` now hard-errors with the rename hint — there is no silent delegation, per the Category-B deprecation-removal policy. Update any scripts to `--env root`.
 
 ## Editable installs
 
@@ -304,9 +303,22 @@ pythonpath = ["."]   # or ["src"] for src layout
 Required when your tests invoke the project's CLI entry points (console scripts). `pythonpath` only handles imports — it doesn't register entry points — so the CLI script must be installed into whichever environment runs the test:
 
 ```bash
-pyve testenv init                          # one-time, if not already created
-pyve testenv run pip install -e .          # editable into the testenv
-pyve testenv install -r requirements-dev.txt
+pyve env init                          # one-time, if not already created
+pyve env run pip install -e .          # editable into the testenv
+pyve env install -r requirements-dev.txt
+```
+
+Or declare it once — the `editable` directive composes with `requirements` in the env's block, and one command materializes both:
+
+```toml
+[env.testenv]
+purpose = "test"
+editable     = "."                       # or ".[dev]" to include extras
+requirements = ["requirements-dev.txt"]
+```
+
+```bash
+pyve env init testenv                    # materializes the full declared recipe
 ```
 
 **Rule of thumb**: `pythonpath` for library/package projects; editable install in testenv for projects whose tests exercise CLI entry points.
@@ -326,8 +338,8 @@ types-requests
 ```
 
 ```bash
-pyve testenv init
-pyve testenv install -r requirements-dev.txt
+pyve env init
+pyve env install -r requirements-dev.txt
 ```
 
 Anyone (you on a fresh machine, a contributor, a CI runner) gets the same dev environment from those two commands.
@@ -346,8 +358,8 @@ If you've `cd`'d into the project and direnv has loaded `.envrc`, the project en
 
 ```bash
 cd ~/Developer/my-project           # direnv activates the env
-pyve testenv init                   # python resolves to the project env
-pyve testenv install -r requirements-dev.txt
+pyve env init                   # python resolves to the project env
+pyve env install -r requirements-dev.txt
 pyve test
 ```
 
@@ -358,8 +370,8 @@ This is the standard interactive flow. Most users never need anything more.
 If direnv isn't loaded (you used `--no-direnv` at init, you're in a subshell that didn't inherit direnv's state, or you haven't allowed `.envrc` yet), the project env isn't active. Wrap with `pyve run`:
 
 ```bash
-pyve run pyve testenv init
-pyve run pyve testenv install -r requirements-dev.txt
+pyve run pyve env init
+pyve run pyve env install -r requirements-dev.txt
 pyve run pyve test
 ```
 
@@ -373,13 +385,13 @@ The rule for LLM-internal invocation: **always wrap with `pyve run`** when runni
 
 ```bash
 # ✅ LLM-internal (works regardless of activation state)
-pyve run pyve testenv init
-pyve run pyve testenv install -r requirements-dev.txt
+pyve run pyve env init
+pyve run pyve env install -r requirements-dev.txt
 pyve run pyve test
 
 # ❌ LLM-internal (fails on non-activated shell — python falls back to asdf shim
 #    with no pin, error: "No version is set for command python.")
-pyve testenv init
+pyve env init
 ```
 
 This rule is specific to LLM-internal execution. Commands the LLM *suggests to the developer* should use the bare form (the developer's shell is typically activated), matching the form used throughout this documentation.
@@ -398,8 +410,8 @@ When you want the same two-env model in CI that you use locally:
 
 ```bash
 pyve init --no-direnv --auto-bootstrap --strict
-pyve run pyve testenv init
-pyve run pyve testenv install -r requirements-dev.txt
+pyve run pyve env init
+pyve run pyve env install -r requirements-dev.txt
 pyve run pyve test
 ```
 
@@ -416,49 +428,47 @@ The testenv exists but pytest isn't installed in it, or you're trying to run pyt
 ```bash
 pyve test                                  # prompts to install if missing
 # or explicitly:
-pyve testenv install                       # bare pytest
-pyve testenv install -r requirements-dev.txt
+pyve env install                       # bare pytest
+pyve env install -r requirements-dev.txt
 ```
 
 **Don't** `pip install pytest` into the project's main venv — that collapses the two-environment model.
 
 ### `Dev/test runner environment not initialized`
 
-You ran `pyve testenv install` or `pyve testenv run` before `pyve testenv init`. The install/run subcommands do not auto-create the testenv.
+You ran `pyve env install` or `pyve env run` before `pyve env init`. The install/run subcommands do not auto-create the testenv.
 
 ```bash
-pyve testenv init
-pyve testenv install -r requirements-dev.txt
+pyve env init
+pyve env install -r requirements-dev.txt
 ```
 
-### `No version is set for command python` (from `pyve testenv init`)
+### `No version is set for command python` (from `pyve env init`)
 
-You ran `pyve testenv init` from a shell where the project env wasn't active. `python -m venv` (inside `testenv init`) fell back to an asdf or pyenv shim with no pin. Fix:
+You ran `pyve env init` from a shell where the project env wasn't active. `python -m venv` (inside `testenv init`) fell back to an asdf or pyenv shim with no pin. Fix:
 
 ```bash
-pyve run pyve testenv init                 # always works
+pyve run pyve env init                 # always works
 # or
 cd <project-dir>                           # let direnv activate
 direnv allow                               # if not yet allowed
-pyve testenv init                          # bare form now works
+pyve env init                          # bare form now works
 ```
 
 See [Activation context](#activation-context) for the full explanation.
 
 ### Testenv Python doesn't match project Python after a switch
 
-You changed `environment.yml`'s Python version (or `.tool-versions` / `.python-version`) and `pyve init --force`'d, but the testenv is still on the old version. Pyve detects this drift the next time `pyve testenv init` runs and rebuilds. To force a rebuild now:
+You changed `environment.yml`'s Python version (or `.tool-versions` / `.python-version`) and `pyve init --force`'d, but the testenv is still on the old version. Pyve detects this drift the next time `pyve env init` runs and rebuilds. To force a rebuild now:
 
 ```bash
-pyve testenv purge
-pyve testenv init
-pyve testenv install -r requirements-dev.txt
+pyve env init testenv --force            # one-shot: purge + recreate + reinstall, state restored
 ```
 
-The `pyvenv.cfg` `version` field in `.pyve/testenvs/testenv/venv/` records the testenv's base Python; the rebuild check compares it against the active project Python and rebuilds on mismatch.
+The `pyvenv.cfg` `version` field in `.pyve/envs/testenv/venv/` records the testenv's base Python; the rebuild check compares it against the active project Python and rebuilds on mismatch.
 
 ## See also
 
-- [Usage Guide — `testenv` subcommand](usage.md#testenv-subcommand) — full command reference
+- [Environments (`env`) reference](reference/env.md#env-subcommand) — full command reference
 - [Backends](backends.md) — venv vs micromamba selection
 - [CI/CD Integration](ci-cd.md) — pipeline examples for both patterns above

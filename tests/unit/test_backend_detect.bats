@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=core
 #
 # Unit tests for lib/backend_detect.sh
 # Tests backend detection logic and priority resolution
@@ -98,13 +99,15 @@ teardown() {
     [ "$output" = "micromamba" ]
 }
 
-@test "get_backend_priority: config file takes priority over file detection" {
+@test "get_backend_priority: a stale .pyve/config no longer overrides file detection" {
+    # Priority-2 (.pyve/config) was removed: the manifest reaches this resolver
+    # as the CLI flag, so with no flag it arbitrates file detection only.
     create_pyve_config "backend: micromamba"
     create_requirements_txt "requests==2.31.0"
-    
+
     run get_backend_priority ""
     [ "$status" -eq 0 ]
-    [ "$output" = "micromamba" ]
+    [ "$output" = "venv" ]
 }
 
 @test "get_backend_priority: file detection works when no CLI or config" {
@@ -121,12 +124,14 @@ teardown() {
     [ "$output" = "venv" ]
 }
 
-@test "get_backend_priority: 'auto' flag defers to config and file detection" {
+@test "get_backend_priority: 'auto' flag defers to file detection" {
+    # 'auto' is not a concrete flag, so it falls through to file detection; a
+    # stale .pyve/config is no longer consulted. No files → venv default.
     create_pyve_config "backend: micromamba"
-    
+
     run get_backend_priority "auto"
     [ "$status" -eq 0 ]
-    [ "$output" = "micromamba" ]
+    [ "$output" = "venv" ]
 }
 
 @test "get_backend_priority: defaults to 'micromamba' for ambiguous file detection in CI mode" {
@@ -174,33 +179,3 @@ teardown() {
     [ "$status" -eq 1 ]
 }
 
-#============================================================
-# validate_config_file() tests
-#============================================================
-
-@test "validate_config_file: returns 0 when no config file exists" {
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_config_file: returns 0 for valid backend in config" {
-    create_pyve_config "backend: venv"
-    
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}
-
-@test "validate_config_file: returns 1 for invalid backend in config" {
-    create_pyve_config "backend: invalid"
-    
-    run validate_config_file
-    [ "$status" -eq 1 ]
-}
-
-@test "validate_config_file: returns 0 for empty config file" {
-    mkdir -p .pyve
-    touch .pyve/config
-    
-    run validate_config_file
-    [ "$status" -eq 0 ]
-}

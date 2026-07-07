@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=cli
 #
 # Copyright (c) 2025-2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -129,15 +130,14 @@ teardown() {
     [[ "$output" != *"3.12.10"* ]]
 }
 
-@test "python: 'python show' falls back to .pyve/config when no version files" {
-    # Story K.d backfill (K.a.3 audit gap 2). show_python_version's third
-    # branch reads python.version from .pyve/config when neither
-    # .tool-versions nor .python-version exists.
+@test "python: 'python show' ignores a v2 .pyve/config python.version (not pinned without pin files)" {
+    # `python show` resolves the pin from .tool-versions / .python-version only;
+    # a v2 .pyve/config python.version is no longer consulted.
     create_pyve_config "backend: venv" "python:" "  version: 3.11.9"
     run "$PYVE_SCRIPT" python show
     [ "$status" -eq 0 ]
-    [[ "$output" == *"3.11.9"* ]]
-    [[ "$output" == *".pyve/config"* ]]
+    [[ "$output" == *"not pinned"* ]]
+    [[ "$output" != *"3.11.9"* ]]
 }
 
 @test "python: 'python show' rejects extra positional arguments" {

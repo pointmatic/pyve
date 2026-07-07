@@ -90,7 +90,7 @@ self_install() {
     # __pycache__ — compiled bytecode is regenerated on demand and copying
     # it ships a stale .pyc.
     if [[ -d "$source_dir/lib" ]]; then
-        rm -rf "$TARGET_BIN_DIR/lib"
+        rm -rf "${TARGET_BIN_DIR:?}/lib"
         mkdir -p "$TARGET_BIN_DIR/lib"
         cp -R "$source_dir/lib/." "$TARGET_BIN_DIR/lib/"
         find "$TARGET_BIN_DIR/lib" -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -426,7 +426,7 @@ self_uninstall() {
 
     # Remove lib directory
     if [[ -d "$TARGET_BIN_DIR/lib" ]]; then
-        rm -rf "$TARGET_BIN_DIR/lib"
+        rm -rf "${TARGET_BIN_DIR:?}/lib"
         log_success "Removed $TARGET_BIN_DIR/lib"
     fi
 
@@ -571,381 +571,22 @@ _self_uninstall_prompt_hook() {
 #------------------------------------------------------------
 
 # ============================================================
-# `pyve self migrate` (v2 → v3 migration command)
+# `pyve self migrate` — reserved migration verb
 # ============================================================
 #
-# Deterministic, idempotent path that brings a v2.7/v2.8 project to
-# v3: writes `pyve.toml` from legacy artifacts and backs them up under
-# `.pyve/.v2-legacy/`. It does NOT rebuild envs — the rebuild was the
-# dangerous, backend-converting step: it re-derived the backend from
-# filesystem heuristics and could convert a micromamba project to venv,
-# orphaning the intact conda env. Rebuilding is a separate, explicit step
-# the developer runs when ready: `pyve init --force` now honors the
-# backend the manifest declares.
-#
-# Flags:
-#   --dry-run     Print the migration plan; perform no writes.
-#   --no-rebuild  Accepted for back-compat; redundant now that migrate
-#                 never rebuilds.
-#
-# Idempotency: re-running on a fully-migrated project (pyve.toml
-# present, no v2 sources) is a clean no-op with an informational
-# message — never destructive.
-
-# Detect v2 configuration. Returns:
-#   0 — v2 sources present AND `pyve.toml` absent (migration needed)
-#   1 — already migrated, never v2, or pyve.toml present (no-op)
-#
-# Sources that mark a project as v2:
-#   .pyve/config                              (the canonical v2 YAML)
-#   .pyve/testenvs/                           (v2.8 layout on disk)
-#   [tool.pyve.testenvs.*] in pyproject.toml  (v2.8 declared testenvs)
-#
-# Presence of `pyve.toml` short-circuits to "no-op" — even if legacy
-# sources also exist, the v3 manifest wins and self_migrate stays a
-# no-op. The user can manually delete `pyve.toml` to force a fresh
-# migration pass.
-_self_migrate_detect_v2_sources() {
-    [[ -f pyve.toml ]] && return 1
-    [[ -f .pyve/config ]] && return 0
-    [[ -d .pyve/testenvs ]] && return 0
-    if [[ -f pyproject.toml ]] \
-       && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
-        return 0
-    fi
-    return 1
-}
-
-# Read v2 .pyve/config + [tool.pyve.testenvs.*] into private shell
-# state variables. Resets state on entry so repeated calls are
-# self-contained.
-#
-# Populates:
-#   _MIGRATE_V2_BACKEND                  — "venv" | "micromamba" | ""
-#   _MIGRATE_V2_VENV_DIR                 — venv.directory or ""
-#   _MIGRATE_V2_PYTHON_VERSION           — python.version or ""
-#   _MIGRATE_V2_MICROMAMBA_ENV_NAME      — micromamba.env_name or ""
-#   _MIGRATE_V2_TESTENV_NAMES[]          — declared env names
-#   _MIGRATE_V2_TESTENV_BACKEND[]        — backend per env
-#   _MIGRATE_V2_TESTENV_LAZY[]           — "0" / "1"
-#   _MIGRATE_V2_TESTENV_EXTRA[]          — pyproject extra or ""
-#   _MIGRATE_V2_TESTENV_MANIFEST[]       — manifest path or ""
-#   _MIGRATE_V2_TESTENV_REQUIREMENTS_Q[] — shell-quoted requirements list
-_self_migrate_read_legacy() {
-    _MIGRATE_V2_BACKEND=""
-    _MIGRATE_V2_VENV_DIR=""
-    _MIGRATE_V2_PYTHON_VERSION=""
-    _MIGRATE_V2_MICROMAMBA_ENV_NAME=""
-    _MIGRATE_V2_TESTENV_NAMES=()
-    _MIGRATE_V2_TESTENV_BACKEND=()
-    _MIGRATE_V2_TESTENV_LAZY=()
-    _MIGRATE_V2_TESTENV_EXTRA=()
-    _MIGRATE_V2_TESTENV_MANIFEST=()
-    _MIGRATE_V2_TESTENV_REQUIREMENTS_Q=()
-
-    if [[ -f .pyve/config ]]; then
-        _MIGRATE_V2_BACKEND="$(read_config_value backend 2>/dev/null || true)"
-        _MIGRATE_V2_VENV_DIR="$(read_config_value venv.directory 2>/dev/null || true)"
-        _MIGRATE_V2_PYTHON_VERSION="$(read_config_value python.version 2>/dev/null || true)"
-        _MIGRATE_V2_MICROMAMBA_ENV_NAME="$(read_config_value micromamba.env_name 2>/dev/null || true)"
-    fi
-
-    if [[ -f pyproject.toml ]] \
-       && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
-        # read_env_config (lib/envs.sh) populates PYVE_TESTENVS_* arrays
-        # via the Python helper. Pass an explicit pyproject path so the
-        # migrator always reads the v2 [tool.pyve.testenvs] source it is
-        # extracting — never the pyve.toml manifest (which a prior migrate
-        # run may already have written).
-        read_env_config pyproject.toml
-        local i n
-        n=${#PYVE_TESTENVS_NAMES[@]}
-        for ((i=0; i<n; i++)); do
-            _MIGRATE_V2_TESTENV_NAMES+=("${PYVE_TESTENVS_NAMES[$i]}")
-            _MIGRATE_V2_TESTENV_BACKEND+=("${PYVE_TESTENV_BACKEND[$i]}")
-            _MIGRATE_V2_TESTENV_LAZY+=("${PYVE_TESTENV_LAZY[$i]}")
-            _MIGRATE_V2_TESTENV_EXTRA+=("${PYVE_TESTENV_EXTRA[$i]}")
-            _MIGRATE_V2_TESTENV_MANIFEST+=("${PYVE_TESTENV_MANIFEST[$i]}")
-            _MIGRATE_V2_TESTENV_REQUIREMENTS_Q+=("${PYVE_TESTENV_REQUIREMENTS_Q[$i]}")
-        done
-    fi
-}
-
-# Render the v3 `pyve.toml` to stdout based on the private state
-# populated by `_self_migrate_read_legacy`. Caller decides whether
-# to capture, write, or compare.
-#
-# Layout produced:
-#   pyve_schema = "3.0"
-#   [project]   name = "<project_name>"
-#   [env.root]  purpose = "utility", backend = <v2 backend>
-#   [env.<n>]   purpose = "test", per-env attrs from legacy
-#
-# Defaulting rules:
-#   - The env named "testenv" (or, if no testenvs declared, an
-#     implicit `[env.testenv]`) gets `default = true`.
-#   - Omitted scalar fields (extra, manifest, lazy, requirements)
-#     are not emitted at all (TOML's "absent = default" semantics).
-_self_migrate_render_pyve_toml() {
-    local project_name="${1:-$(basename "$(pwd)")}"
-
-    printf 'pyve_schema = "3.0"\n\n'
-    printf '[project]\n'
-    printf 'name = "%s"\n' "$project_name"
-    printf '\n'
-
-    printf '[env.root]\n'
-    printf 'purpose = "utility"\n'
-    if [[ -n "$_MIGRATE_V2_BACKEND" ]]; then
-        printf 'backend = "%s"\n' "$_MIGRATE_V2_BACKEND"
-    fi
-    printf '\n'
-
-    local n=${#_MIGRATE_V2_TESTENV_NAMES[@]}
-
-    # If no testenvs are declared in the v2 pyproject, emit the
-    # implicit default `[env.testenv]` to match N.e's fresh-init
-    # behavior — the project gets one default test env.
-    if [[ "$n" -eq 0 ]]; then
-        printf '[env.testenv]\n'
-        printf 'purpose = "test"\n'
-        printf 'default = true\n'
-        return 0
-    fi
-
-    # Determine which env should carry `default = true`: prefer the
-    # explicit `testenv` name; otherwise the first declared.
-    local default_idx=-1
-    local i
-    for ((i=0; i<n; i++)); do
-        if [[ "${_MIGRATE_V2_TESTENV_NAMES[$i]}" == "testenv" ]]; then
-            default_idx=$i
-            break
-        fi
-    done
-    if [[ "$default_idx" -lt 0 ]]; then
-        default_idx=0
-    fi
-
-    for ((i=0; i<n; i++)); do
-        local name="${_MIGRATE_V2_TESTENV_NAMES[$i]}"
-        printf '[env.%s]\n' "$name"
-        printf 'purpose = "test"\n'
-
-        local backend="${_MIGRATE_V2_TESTENV_BACKEND[$i]}"
-        # Omit `backend = "venv"` — it's the implicit default per
-        # lib/envs.sh's empty-array fallback. Emit any other value.
-        if [[ -n "$backend" ]] && [[ "$backend" != "venv" ]]; then
-            printf 'backend = "%s"\n' "$backend"
-        fi
-
-        if [[ "${_MIGRATE_V2_TESTENV_LAZY[$i]}" == "1" ]]; then
-            printf 'lazy = true\n'
-        fi
-
-        if [[ -n "${_MIGRATE_V2_TESTENV_EXTRA[$i]}" ]]; then
-            printf 'extra = "%s"\n' "${_MIGRATE_V2_TESTENV_EXTRA[$i]}"
-        fi
-        if [[ -n "${_MIGRATE_V2_TESTENV_MANIFEST[$i]}" ]]; then
-            printf 'manifest = "%s"\n' "${_MIGRATE_V2_TESTENV_MANIFEST[$i]}"
-        fi
-        # Requirements come in already shell-quoted from the Python
-        # helper. Split on whitespace honoring the quotes, then
-        # re-emit as a TOML array of strings.
-        if [[ -n "${_MIGRATE_V2_TESTENV_REQUIREMENTS_Q[$i]}" ]]; then
-            printf 'requirements = ['
-            local first=1 req
-            local -a _reqs=()
-            eval "_reqs=( ${_MIGRATE_V2_TESTENV_REQUIREMENTS_Q[$i]} )"
-            for req in "${_reqs[@]+"${_reqs[@]}"}"; do
-                if [[ "$first" -eq 1 ]]; then
-                    first=0
-                else
-                    printf ', '
-                fi
-                printf '"%s"' "$req"
-            done
-            printf ']\n'
-        fi
-
-        if [[ "$i" -eq "$default_idx" ]]; then
-            printf 'default = true\n'
-        fi
-        printf '\n'
-    done
-}
-
-# Extract every `[tool.pyve.testenvs(.<name>)]` block from
-# pyproject.toml into the backup file, then rewrite pyproject.toml
-# without those lines. Idempotent — if there's nothing to extract,
-# the function is a clean no-op.
-#
-# Block boundaries: a top-level header line `^\[...\]` starts a new
-# block; the previous block ends. The implementation runs in one
-# awk pass over pyproject.toml.
-_self_migrate_extract_pyproject_testenvs() {
-    local backup="$1"
-    if ! grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
-        return 0
-    fi
-    local tmp_remainder
-    tmp_remainder="$(mktemp)"
-    awk -v backup="$backup" -v remainder="$tmp_remainder" '
-        BEGIN { in_block = 0 }
-        /^\[/ {
-            if ($0 ~ /^\[tool\.pyve\.testenvs(\]|\.)/) {
-                in_block = 1
-            } else {
-                in_block = 0
-            }
-        }
-        {
-            if (in_block) {
-                print >> backup
-            } else {
-                print >> remainder
-            }
-        }
-    ' pyproject.toml
-    mv "$tmp_remainder" pyproject.toml
-}
-
-# Move/copy legacy sources into `.pyve/.v2-legacy/`. Layout:
-#   .pyve/.v2-legacy/pyve-config              (was .pyve/config)
-#   .pyve/.v2-legacy/testenvs/<name>/...      (was .pyve/testenvs/<name>/...)
-#   .pyve/.v2-legacy/pyproject-testenvs.toml  (extracted from pyproject.toml)
-#
-# Arg: $1 = "true" → dry-run (print plan, no writes)
-#          "false" → execute
-_self_migrate_backup() {
-    local dry_run="$1"
-
-    if [[ "$dry_run" == "true" ]]; then
-        [[ -f .pyve/config ]] && \
-            info "  Would move .pyve/config → .pyve/.v2-legacy/pyve-config"
-        [[ -d .pyve/testenvs ]] && \
-            info "  Would move .pyve/testenvs → .pyve/.v2-legacy/testenvs"
-        if [[ -f pyproject.toml ]] \
-           && grep -qE '^\[tool\.pyve\.testenvs(\]|\.)' pyproject.toml; then
-            info "  Would extract [tool.pyve.testenvs.*] from pyproject.toml → .pyve/.v2-legacy/pyproject-testenvs.toml"
-        fi
-        return 0
-    fi
-
-    mkdir -p .pyve/.v2-legacy
-
-    if [[ -f .pyve/config ]]; then
-        mv .pyve/config .pyve/.v2-legacy/pyve-config
-    fi
-    if [[ -d .pyve/testenvs ]]; then
-        mv .pyve/testenvs .pyve/.v2-legacy/testenvs
-    fi
-    if [[ -f pyproject.toml ]]; then
-        _self_migrate_extract_pyproject_testenvs ".pyve/.v2-legacy/pyproject-testenvs.toml"
-    fi
-}
-
-# Orchestrator. See banner at top of section for flag semantics.
+# The v2 (.pyve/config / [tool.pyve.testenvs.*]) migration bridge was
+# removed once v2 support ended, so there is no migration for the
+# current pyve schema. The verb is kept as a stable home for a future
+# schema migration (e.g. v3 -> v4); when one exists this function is
+# re-fleshed to perform it. Until then it is an inert, non-destructive
+# no-op: it recognizes no legacy sources and writes nothing.
 self_migrate() {
-    local dry_run=false
-    local no_rebuild=false
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            --dry-run)
-                dry_run=true
-                shift
-                ;;
-            --no-rebuild)
-                no_rebuild=true
-                shift
-                ;;
-            --help|-h)
-                show_self_migrate_help
-                return 0
-                ;;
-            *)
-                log_error "Unknown 'pyve self migrate' flag: $1"
-                log_error "See: pyve self migrate --help"
-                exit 1
-                ;;
-        esac
-    done
-
-    # Detection. Two cases yield a no-op:
-    #   - pyve.toml present (already migrated, or v3 from the start)
-    #   - no legacy sources at all (greenfield)
-    if ! _self_migrate_detect_v2_sources; then
-        if [[ -f pyve.toml ]]; then
-            info "pyve.toml is already in place — nothing to migrate."
-        else
-            info "No v2 configuration detected — nothing to migrate."
-        fi
+    if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
+        show_self_migrate_help
         return 0
     fi
-
-    header_box "pyve self migrate"
-    info "Detected v2 configuration. Planning migration to v3."
-
-    _self_migrate_read_legacy
-
-    local project_name
-    project_name="$(basename "$(pwd)")"
-
-    if [[ "$dry_run" == "true" ]]; then
-        info ""
-        info "Migration plan (--dry-run; no writes):"
-        info "  Would write pyve.toml ($project_name, backend=${_MIGRATE_V2_BACKEND:-?})"
-        _self_migrate_backup true
-        info "  Would refresh .gitignore so the .pyve/ state tree is ignored"
-        info "  Next step (run yourself): 'pyve init --force' to rebuild envs at the v3 layout"
-        footer_box
-        return 0
-    fi
-
-    # Step 1: write pyve.toml.
-    _self_migrate_render_pyve_toml "$project_name" > pyve.toml
-    success "Wrote pyve.toml"
-
-    # Step 2: back up legacy sources.
-    _self_migrate_backup false
-    success "Backed up legacy sources to .pyve/.v2-legacy/"
-
-    # Refresh .gitignore so the freshly-created .pyve/.v2-legacy/ backup
-    # (and all other .pyve/ state) is ignored. The rebuild path calls
-    # init_project directly, which skips the gitignore compose tail, and
-    # --no-rebuild skips init entirely — so without this the legacy venv
-    # tree the backup just captured stays committable, the exact failure
-    # that dumped 1000+ files into a commit.
-    if compose_project_gitignore ".gitignore" >/dev/null 2>&1; then
-        success "Refreshed .gitignore (.pyve/ state ignored)"
-    else
-        warn "Could not refresh .gitignore — ensure '.pyve/' is git-ignored before committing."
-    fi
-
-    # Migrate no longer rebuilds. The rebuild was the dangerous step: it
-    # ran `pyve init --force`, which re-derived the backend from filesystem
-    # heuristics and could silently convert a micromamba project to venv,
-    # orphaning the intact conda env. Migrate's durable value is the
-    # deterministic `pyve.toml` seed + legacy backup; the rebuild is a
-    # separate, explicit step the developer runs when ready. `init --force`
-    # now honors the manifest backend, so the standalone rebuild is safe.
-    # `--no-rebuild` is accepted but redundant — it now describes the only
-    # behavior.
-    info "Skipped rebuild (migrate no longer rebuilds). Run 'pyve init --force' when ready."
-
-    # Step 4: summary.
-    _self_migrate_summary
-    footer_box
-}
-
-_self_migrate_summary() {
-    info ""
-    info "Migration complete."
-    info "  Manifest:      pyve.toml"
-    info "  Legacy backup: .pyve/.v2-legacy/"
-    info "  Rebuild:       not performed by migrate"
-    info "  Next step:     'pyve init --force' to rebuild envs at the v3 layout"
+    info "No migration applies for the current pyve schema — nothing to do."
+    return 0
 }
 
 #------------------------------------------------------------
@@ -1305,44 +946,24 @@ EOF
 }
 show_self_migrate_help() {
     cat << 'EOF'
-pyve self migrate - Migrate a v2.7/v2.8 project to v3
+pyve self migrate - Reserved migration verb (no migration for the current schema)
 
 Usage:
-  pyve self migrate [--dry-run] [--no-rebuild]
+  pyve self migrate
 
 Description:
-  Deterministic, idempotent path from v2 to v3:
-    1. Detects v2 configuration (.pyve/config, [tool.pyve.testenvs.*]
-       in pyproject.toml, .pyve/testenvs/ on disk).
-    2. Writes a new root-level pyve.toml derived from those sources.
-       The main env becomes [env.root] with purpose = "utility"; each
-       testenv becomes [env.<name>] with purpose = "test".
-    3. Moves legacy sources to .pyve/.v2-legacy/ (preserved for one
-       release cycle so you can roll back manually if needed).
-    4. Prints a summary.
+  A stable home for schema migrations. The legacy v2 -> v3 bridge was
+  removed once v2 support ended, so there is no migration to perform for
+  the current pyve schema: this command recognizes no legacy sources,
+  writes nothing, and exits cleanly.
 
-  Migrate does NOT rebuild your environments. The rebuild was the
-  dangerous step — it could re-derive the backend from filesystem
-  heuristics and convert a micromamba project to venv. Run the rebuild
-  yourself when ready: 'pyve init --force' now honors the backend your
-  pyve.toml declares.
-
-  Re-running on a fully-migrated project (pyve.toml present, no v2
-  sources) is a clean no-op.
-
-Options:
-  --dry-run        Print the migration plan; perform no writes.
-  --no-rebuild     Accepted for back-compat. Redundant now that migrate
-                   never rebuilds — its presence changes nothing.
-
-Examples:
-  pyve self migrate              # Seed pyve.toml + back up legacy sources
-  pyve self migrate --dry-run    # Inspect the plan without touching disk
-  pyve init --force              # Then rebuild envs at the v3 layout
+  The verb is retained so a future schema migration (e.g. v3 -> v4) has a
+  predictable command to attach to. When such a migration exists, this
+  command will perform it.
 
 See also:
-  pyve init --force              Rebuild envs after migration (manifest-honoring)
-  pyve check                     Verify the v3 layout after migration
+  pyve init --force              Rebuild envs at the current layout
+  pyve check                     Verify the environment layout
 EOF
 }
 show_self_provision_help() {

@@ -43,16 +43,17 @@ class TestInitNextSteps:
     def test_next_steps_includes_testenv_install_when_requirements_dev_exists(
         self, pyve, project_builder
     ):
-        """`requirements-dev.txt` in the project → testenv install hint shows up."""
+        """`requirements-dev.txt` in the project → env install hint (v3 spelling) shows up."""
         (pyve.cwd / "requirements-dev.txt").write_text("pytest\n")
         result = pyve.init(backend="venv")
         assert result.returncode == 0
-        assert "pyve testenv install -r requirements-dev.txt" in result.stdout
+        assert "pyve env install -r requirements-dev.txt" in result.stdout
+        assert "pyve testenv" not in result.stdout
 
     def test_next_steps_omits_testenv_install_when_no_requirements_dev(
         self, pyve, project_builder
     ):
-        """No `requirements-dev.txt` → testenv install hint is omitted."""
+        """No `requirements-dev.txt` → env install hint is omitted."""
         result = pyve.init(backend="venv")
         assert result.returncode == 0
         assert "requirements-dev.txt" not in result.stdout
