@@ -1025,13 +1025,14 @@ A new top-level verb (apt mental model): `pyve upgrade` re-resolves/upgrades an 
 
 ---
 
-### Story P.q: `pyve env purge` no-arg consistency fix (default env, not sweep-all) [Planned]
+### Story P.q: `pyve env purge` no-arg consistency fix (default env, not sweep-all) [Done]
 
 Bare `pyve env <sub>` should uniformly operate on the **default** env. Today `pyve env purge` (no name) sweeps **all** envs while its siblings (`init`/`install`/`run`) assume the default — an inconsistency a developer hit in the field. Make bare `pyve env purge` hit the default env; `pyve env purge --all` is the explicit sweep.
 
-- [ ] Bare `pyve env purge` → the default env (matching its siblings); `--all` → the sweep.
-- [ ] **Breaking-change note (Step 5):** behavior-breaking for scripts relying on the old sweep, but a trivially-breaking ergonomics fix on a young surface (`--all` preserves the old behavior) → stays **minor** (v3.1.0).
-- [ ] Tests: bare purge hits only the default env; `--all` sweeps; the help documents both.
+- [x] Bare `pyve env purge` → the default env, promptless — exactly `env purge testenv` semantics, matching its siblings (`init`/`install`/`run` assume the default when unnamed); `--all` (shipped in P.o) is the sweep with its confirm gate intact.
+- [x] **Breaking-change note:** behavior-breaking for scripts relying on the old no-arg sweep, but a trivially-breaking ergonomics fix on a young surface (`--all` preserves the old behavior verbatim) → stays **minor** (v3.1.0).
+- [x] Teaching surfaces re-pointed: `pyve env --help` purge bullet; usage.md's worst-case-aggregate note names `--all`.
+- [x] Tests re-anchored red-first in [test_testenv_purge_name.bats](../../tests/unit/test_testenv_purge_name.bats): bare multi-env purge removes ONLY the default (siblings survive); bare `--force` = default-only + deprecation warn; the TTY confirm y/n pair re-anchored to `--all`; single-env bare case retitled (same observable). 2 red → 45/45 green across the four affected suites. Full suite green (2159/2159 on the clean run; one unrelated transient in test_env_spec_helper's setup — python resolution 127 under parallel load — not reproducible); zero shellcheck findings on env.sh.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

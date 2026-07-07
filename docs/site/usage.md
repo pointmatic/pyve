@@ -611,7 +611,7 @@ pyve testenv purge --force
 
 - Every env survives `pyve init --force` and `pyve purge --keep-testenv`; plain `pyve purge` removes them.
 - `pyve test` is a convenience shortcut that runs pytest inside the resolved env with auto-install support and the silent-skip advisory.
-- Exit code matches the executed command's exit code (single env) or the worst-case aggregate (`install` / `purge` no-arg iteration).
+- Exit code matches the executed command's exit code (single env) or the worst-case aggregate (`install` no-arg iteration / `purge --all`).
 - Concurrent `pyve testenv install <same-env>` from two shells serialize via a `mkdir`-based lock at `.pyve/testenvs/<name>/.lock/`; the holder's PID is in `lock/pid`. `--no-wait` fast-fails with a "(pid N)" message instead of queuing.
 
 **Legacy flag forms (removed in v2.3.0).**

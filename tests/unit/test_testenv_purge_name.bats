@@ -148,10 +148,11 @@ TOML
 }
 
 # ============================================================
-# No-arg with single declared env (implicit-default): non-TTY skips prompt
+# Bare purge hits the DEFAULT env — like its siblings
+# (init/install/run all assume the default when unnamed)
 # ============================================================
 
-@test "testenv purge: no-arg, single env, non-TTY (bats) — purges without prompt" {
+@test "testenv purge: bare invocation purges the default env" {
     # No pyproject.toml → implicit-default config (one env: testenv).
     _make_fake_named_venv testenv
     run env_command purge
@@ -159,12 +160,7 @@ TOML
     [ ! -d ".pyve/envs/testenv" ]
 }
 
-# ============================================================
-# No-arg with multiple declared envs: non-TTY still skips prompt
-# (matches `pyve init`'s prompt pattern — CI must not hang)
-# ============================================================
-
-@test "testenv purge: no-arg, multi env, non-TTY (bats) — purges all without prompt" {
+@test "testenv purge: bare invocation with multiple declared envs removes ONLY the default" {
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
@@ -174,22 +170,24 @@ TOML
     run env_command purge
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]
-    [ ! -d ".pyve/envs/smoke" ]
-    [ ! -d ".pyve/envs/hardware" ]
+    # The siblings survive — the sweep is `--all`, never implicit.
+    [ -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/hardware" ]
 }
 
 # ============================================================
 # --force flag: skip confirm explicitly (forces interactive paths too)
 # ============================================================
 
-@test "testenv purge --force: removes all without prompt" {
+@test "testenv purge --force: default-only removal + deprecation warning" {
     _fixture_multi_envs
     _make_fake_named_venv testenv
     _make_fake_named_venv smoke
     run env_command purge --force
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]
-    [ ! -d ".pyve/envs/smoke" ]
+    [ -d ".pyve/envs/smoke" ]
+    [[ "$output" == *"deprecated"* ]]
 }
 
 @test "testenv purge <name> --force: --force accepted on with-arg path (no-op)" {
@@ -222,7 +220,7 @@ TOML
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'n' | env_command purge
+        echo 'n' | env_command purge --all
     "
     [ "$status" -eq 0 ]
     [ -d ".pyve/envs/testenv" ]
@@ -245,7 +243,7 @@ TOML
         export DEFAULT_VENV_DIR='.venv'
         export PYVE_FORCE_PROMPT=1
         cd '$TEST_DIR'
-        echo 'y' | env_command purge
+        echo 'y' | env_command purge --all
     "
     [ "$status" -eq 0 ]
     [ ! -d ".pyve/envs/testenv" ]

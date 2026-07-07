@@ -1411,11 +1411,12 @@ Notes:
     serialize concurrent installs into the same env. Default is wait+retry;
     `--no-wait` fast-fails with "another pyve process is installing
     '<name>' (pid N)" instead of waiting.
-  - `purge` no-arg iterates over every declared env (including lazy and
-    conda-backed) and prompts `y/N` on interactive shells; `--all` is the
-    explicit spelling of that same sweep; `--yes` (-y) skips the prompt. Non-TTY (CI) invocations skip the prompt automatically.
-    `--force` is a deprecated alias for the prompt-skip and still works, with
-    a warning. `purge <name>` removes only that env's root, no prompt.
+  - `purge` bare removes the DEFAULT env (like init/install/run — no
+    prompt); `purge <name>` removes that env's root, no prompt. `--all`
+    sweeps every declared env (including lazy and conda-backed) and prompts
+    `y/N` on interactive shells; `--yes` (-y) skips that prompt and non-TTY
+    (CI) invocations skip it automatically. `--force` is a deprecated alias
+    for the prompt-skip and still works, with a warning.
   - `run` requires the `--` separator when routing to a named env:
       pyve env run smoke -- pytest -v
     Without `--`, the first positional is the command (today's behavior preserved).
@@ -1547,13 +1548,17 @@ EOF
             fi
             ;;
         purge)
-            # Story M.i.4: with-arg removes one env; no-arg iterates
-            # over every declared env with a TTY-aware confirm gate.
-            # `--all` is the explicit spelling of that sweep; combining
-            # it with a name is a contradiction, not a selection.
+            # Bare purge hits the DEFAULT env, promptless — the same
+            # selection rule as its siblings (init/install/run assume
+            # the default when unnamed). The whole-declaration sweep is
+            # ONLY the explicit `--all`, which keeps its TTY-aware
+            # confirm gate; combining `--all` with a name is a
+            # contradiction, not a selection.
             if [[ "$purge_all" == "1" && -n "$action_name" ]]; then
                 log_error "env purge: pass a <name> OR --all, not both"
                 leaf_rc=1
+            elif [[ "$purge_all" == "1" ]]; then
+                _env_purge_all_with_confirm "$purge_force" || leaf_rc=$?
             elif [[ -n "$action_name" ]]; then
                 if assert_env_name_actionable "$action_name" "purge"; then
                     env_purge "$action_name" || leaf_rc=$?
@@ -1561,7 +1566,11 @@ EOF
                     leaf_rc=1
                 fi
             else
-                _env_purge_all_with_confirm "$purge_force" || leaf_rc=$?
+                if assert_env_name_actionable "testenv" "purge"; then
+                    env_purge "testenv" || leaf_rc=$?
+                else
+                    leaf_rc=1
+                fi
             fi
             ;;
         list)
