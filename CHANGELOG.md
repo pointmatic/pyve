@@ -5,6 +5,43 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-07-07
+
+**The UX overhaul: one explicit manifest, one declarative recipe per environment, one meaning per flag.** Subphase P-1 re-grounds Pyve's day-to-day surface on the `pyve.toml` manifest — now the *sole* configuration source (`.pyve/config` is fully retired), written fully explicit by a graph-driven `pyve init` with a true easy mode (`--yes`). Every `[env.<name>]` block is a composable setup recipe materialized in one shot; rebuilds restore recorded operational state; `--all` fans lifecycle verbs across every declared env; and the new `pyve upgrade` completes the three-verb model (`update` = refresh managed files, `upgrade` = re-resolve deps in place, `init --force` = rebuild). This entry consolidates everything since 3.0.5, folding in the unreleased 3.0.6–3.0.8 patch content.
+
+### Added
+
+- **`pyve upgrade [--env <name>|--all] [--check]`** (Story P.p) — re-resolve an env's dependencies to newest-within-constraints **in place**: the env directory is kept, the operational-state record is re-stamped, micromamba envs re-lock when a `conda-lock.yml` participates, and `--check` previews the plan without executing.
+- **Easy-mode wizard + explicit-by-construction manifest** (Story P.j) — `pyve init --yes` accepts every wizard default with no prompts; `init` now writes `pyve.toml` fully explicit (every env records its `purpose`, `backend`, `default`), so the manifest is self-documenting and reproducible.
+- **Declarative env setup recipes** (Stories P.l.2–P.l.4) — the new **`editable`** directive (editable self-install + extras, e.g. `editable = ".[dev]"`) joins `requirements` / `extra` / `manifest`, and the old source mutex is **lifted**: directives compose and materialize in one fixed order (conda `manifest` → `editable` → `requirements` → `extra`), on both the venv and micromamba materializers, with the whole recipe validated before any layer installs. A field-surfaced four-command, partly-imperative test-env rebuild collapses to one declaration.
+- **One-shot per-env rebuild** (Stories P.l.5, P.l.6) — `pyve env init <name> --force` = purge + re-create + re-materialize with recorded state restored; `pyve init --force` explicitly touches only the root env (the silent "rebuild root, keep testenv" magic is retired); every `pyve env <verb> root` rejection signposts the correct root-level verb, so rebuild has no dead-ends.
+- **Operational-state record + restore-on-rebuild** (Stories P.m, P.n) — each env's `.state` gains an installed dimension recording what was realized and installed; forced rebuilds snapshot-then-replay it (a never-realized lazy env stays unrealized), and only `pyve purge` / `pyve env purge` truly resets it.
+- **`--all` batch lifecycle** (Story P.o) — `pyve init --force --all`, `pyve env install --all`, `pyve env purge --all`, `pyve upgrade --all`, and `pyve lock --all` fan across every declared env with worst-case exit aggregation.
+- **Versioned defaults + drift surfacing** (Story P.k) — the manifest records the defaults generation it was created under (`pyve_defaults_version`); when Pyve's built-in defaults later change, `pyve check` reports the drift in an info-only `[defaults]` section — reported, never applied retroactively.
+- **Parameter decision-graph keystone** (Stories P.e–P.h) — every `pyve init` parameter is defined once as a graph node from which the wizard prompts, valid-flag list, defaults, and `--help` are generated (retiring the 4-hand-synced-sites drift class); plugins contribute parameters through a new contract hook.
+
+### Changed
+
+- **`--yes` / `--force` mean one thing each across every destructive command** (Story P.l.1) — `--yes`/`-y` = "assent to the confirmation prompt" (uniform, newly accepted by `pyve env purge` / `env prune`); `--force` = "override a refusal / escalate to a more destructive action" (`init --force`, `env sync --force`), never a prompt-skip synonym. The old `--force`-as-prompt-skip on the purge family still works for one release with a deprecation warning.
+- **`pyve env purge` (no arg) now removes the default env** (Story P.q) — matching its sibling subcommands, which assume the default env when unnamed; the previous sweep-everything behavior moved to the explicit `pyve env purge --all`.
+- **CLI output consistently teaches `pyve env`** (Story P.r) — every fresh user-facing suggestion string was swept off the deprecated `pyve testenv` spelling.
+- **Public docs refreshed for v3.1 and the site restructured** (Stories P.s, P.t) — 5-tab navigation (Home / Start Here / Concepts / Workflows / Reference); `usage.md` split into per-command-group Reference pages (Project Lifecycle / Environments / Diagnostics / Tooling) with client-side forwarding for the retired `usage/#…` deep-link anchors; `migration.md` rewritten for the real v3.1 migration path (re-run `pyve init`); README staleness corrected against the live CLI.
+- **Test infrastructure** (Stories P.l.8–P.l.13) — the unit suite runs parallel (`bats --jobs`, ~4–6 min → ~1:37) with subsystem tags and an impact-map script for targeted runs; two CI defects fixed (a Linux runner-suite recursion hang; a stat-idiom mtime flake).
+
+### Removed
+
+- **`.pyve/config` is fully retired** (Stories P.i.1–P.i.17) — the resolved backend is written to (and read from) `pyve.toml [env.root]`; every runtime read-site migrated to v3 sources (`.tool-versions` / `.python-version` for the Python pin, `resolve_env_path` for env paths, `environment.yml` metadata for conda naming); the write path, presence gates, read-compat synthesis, v2 migration banner, and the v2→v3 `self migrate` bridge are all removed (`pyve self migrate` is now a reserved stub). A v2-only project reads as uninitialized — re-run `pyve init` to bring it onto the manifest. The long-vestigial `pyve init <custom-venv-dir>` / `pyve purge <dir>` positionals now hard-error with hints.
+
+### Fixed
+
+*(Folds in the unreleased 3.0.6–3.0.8 patch content — 3.0.6/3.0.7 shipped as tags without CHANGELOG entries.)*
+
+- **3.0.6 (Stories O.g–O.o.4):** `pyve check` no longer hard-errors ".pyve/config missing" on a valid v3 project (and `init` no longer papers over it by re-writing the v2 config); `pyve init` stops re-asking the project-guide completion prompt every run; box-command footers no longer print "All done." after a failure; `pyve init` no longer crashes on a declared `none`/advisory root backend (a no-Python-root + micromamba-testenv topology now initializes); `pyve test` / `pyve env run` can operate conda-backed testenvs; `pyve env install -r` gains the conda+pip layer instead of silently dropping pip requirements; a no-backend testenv resolves `inherit` against the manifest root rather than hardcoded venv; `init` materializes a testenv only when one is declared ("empty-until-demand" contract documented); env-lifecycle config reads migrated onto the manifest with accurate `pyve.toml [env.<name>]` help/error strings; Homebrew formula validation + CLI install/upgrade housekeeping.
+- **3.0.7 (Story P.a):** `pyve self install` ships every `lib/` subtree via recursive copy instead of a drifting allowlist (stale-module class of install breakage eliminated); default Python bumped to 3.14.6.
+- **3.0.8 (Story P.a.1):** `pyve init` completes its composition tail (`.gitignore` / `.envrc` / next-steps) even when a secondary plugin's install exits non-zero.
+- **`pyve init --force` reinit gate on v3 projects** (Story P.i.1) — the "already initialized" detection now keys on the manifest, not the retired v2 config.
+- **Wizard/keystone fixes surfaced during P.g** (Story P.g.6) — prompt/flag edge cases caught while migrating the wizard onto the graph.
+
 ## [3.0.5] - 2026-06-11
 
 **A sane v2→v3 migration path: `pyve init --force` and `pyve self migrate` stop silently corrupting micromamba projects.** Two coupled bugs made migrating a micromamba project unsafe — a forced rebuild re-derived the backend from filesystem heuristics (converting micromamba → venv and orphaning the conda env), and relocating a conda env with a bare `mv` left every console script with a dead-shebang. Both are fixed; migrate no longer rebuilds at all.

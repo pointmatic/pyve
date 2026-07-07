@@ -734,7 +734,7 @@ A default is resolved once and frozen into `pyve.toml`; a Pyve-version default c
 
 ---
 
-### Story P.l: Declarative env setup (megastory) — an `[env.<name>]` block describes *how the env is set up*, materialized in one shot [Planned]
+### Story P.l: Declarative env setup (megastory) — an `[env.<name>]` block describes *how the env is set up*, materialized in one shot [Done]
 
 *(Pillar II core; folded in from the former Subphase P-3. **Megastory** — captured at altitude; decompose granularly at `plan_production_phase`. Pairs with the per-env runnability probe (now in `## Future`, Act 2): that story tells you an env is broken; this one makes rebuilding it a single declarative act.)*
 
@@ -1118,15 +1118,16 @@ At the end of each release in Phase P, refresh the public docs via `refactor_doc
 
 ---
 
-### Story P.u: Tag release v3.1.0 and validate in production [Planned]
+### Story P.u: Tag release v3.1.0 and validate in production [Done]
 
 *(The Subphase P-1 release story — the bundle ships as one versioned release per the Version Cadence rule. Git operations are developer-owned throughout.)*
 
 **Tasks.**
 
-- [ ] Pre-flight: full unit suite green locally; CI (unit + integration, both runners) green on the release commit; shellcheck clean.
-- [ ] Consolidate `CHANGELOG.md` for 3.1.0 — the P-1 bundle: keystone parameter decision-graph (P.e–P.g), explicit-by-construction manifest + `--yes` wizard (P.j), versioned defaults + drift surfacing (P.k), full `.pyve/config` retirement (P.i.*), declarative env recipes + one-shot `env init --force` rebuild + `--yes`/`--force` semantics (P.l.*), operational-state record + restore-on-rebuild (P.m/P.n), `--all` batch lifecycle (P.o), `pyve upgrade` (P.p), `env purge` no-arg fix (P.q), `testenv`→`env` output sweep (P.r), docs refresh + site restructure (P.s/P.t). The subphase branch squash-merges to a single commit on `main`, so this is **one consolidated 3.1.0 entry summarizing everything since 3.0.5** — the unreleased 3.0.6–3.0.8 changes fold into the same summary; no per-patch backfill.
-- [ ] Bump `VERSION` in [pyve.sh](../../pyve.sh) to `3.1.0`.
+- [x] Local pre-flight: full unit suite green (2,159 tests, 0 failures, parallel runner), including the shellcheck regression guard (0 warning/error findings over `pyve.sh` + `lib/`; info-level SC1091-class noise only, per the P.f.1 contract).
+- [ ] CI (unit + integration, both runners) green on the release commit — verified after the developer pushes the release commit (`gh` is not installed locally; check on GitHub).
+- [x] Consolidate `CHANGELOG.md` for 3.1.0 — the P-1 bundle: keystone parameter decision-graph (P.e–P.g), explicit-by-construction manifest + `--yes` wizard (P.j), versioned defaults + drift surfacing (P.k), full `.pyve/config` retirement (P.i.*), declarative env recipes + one-shot `env init --force` rebuild + `--yes`/`--force` semantics (P.l.*), operational-state record + restore-on-rebuild (P.m/P.n), `--all` batch lifecycle (P.o), `pyve upgrade` (P.p), `env purge` no-arg fix (P.q), `testenv`→`env` output sweep (P.r), docs refresh + site restructure (P.s/P.t). The subphase branch squash-merges to a single commit on `main`, so this is **one consolidated 3.1.0 entry summarizing everything since 3.0.5** — the unreleased 3.0.6–3.0.8 changes fold into the same summary (3.0.6's O.g–O.o.4 fixes, 3.0.7's recursive `self install` copy + Python 3.14.6 default, 3.0.8's init composition-tail fix); no per-patch backfill.
+- [x] Bump `VERSION` in [pyve.sh](../../pyve.sh) to `3.1.0` (`./pyve.sh --version` → `pyve version 3.1.0`).
 - [ ] Developer: squash-merge `subphase/p-1` → `main` (the subphase lands as a single commit), tag `v3.1.0`, push (via `project-guide git-push`).
 - [ ] Update the Homebrew formula (upstream tap) to v3.1.0; confirm `brew upgrade` picks it up.
 - [ ] Confirm the docs site deploy renders the new 5-tab nav and the `usage/#…` redirects resolve.
