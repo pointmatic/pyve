@@ -29,22 +29,31 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.0.7"
+VERSION="3.1.0"
 DEFAULT_PYTHON_VERSION="3.14.6"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
+# shellcheck disable=SC2034 # global config consumed by sourced lib/utils.sh + lib/envs.sh
 TESTENV_DIR_NAME="testenv"
 
 # When set to 1, pyve may auto-install pytest into the dev/test runner environment
 # without prompting (intended for CI and automated test harnesses).
+# shellcheck disable=SC2034 # global config consumed by sourced lib/plugins/python/plugin.sh
 PYVE_TEST_AUTO_INSTALL_PYTEST_DEFAULT="${PYVE_TEST_AUTO_INSTALL_PYTEST:-}"
 
-# Installation paths
+# Installation paths. The TARGET_*/LOCAL_ENV/SOURCE_DIR/PROMPT_HOOK globals are
+# consumed by sourced lib/commands/self.sh + lib/plugins/python/plugin.sh
+# (cross-file; shellcheck's single-file analysis cannot see those reads).
 TARGET_BIN_DIR="$HOME/.local/bin"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 TARGET_SCRIPT_PATH="$TARGET_BIN_DIR/pyve.sh"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 TARGET_SYMLINK_PATH="$TARGET_BIN_DIR/pyve"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh + lib/plugins/python/plugin.sh
 LOCAL_ENV_FILE="$HOME/.local/.env"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 SOURCE_DIR_FILE="$HOME/.local/.pyve_source"
+# shellcheck disable=SC2034 # consumed by lib/commands/self.sh
 PROMPT_HOOK_FILE="$HOME/.local/.pyve_prompt.sh"
 
 #============================================================
@@ -126,6 +135,14 @@ if [[ -f "$SCRIPT_DIR/lib/version.sh" ]]; then
     source "$SCRIPT_DIR/lib/version.sh"
 else
     printf "ERROR: Cannot find lib/version.sh\n" >&2
+    exit 1
+fi
+
+if [[ -f "$SCRIPT_DIR/lib/param_graph.sh" ]]; then
+    # shellcheck source=lib/param_graph.sh
+    source "$SCRIPT_DIR/lib/param_graph.sh"
+else
+    printf "ERROR: Cannot find lib/param_graph.sh\n" >&2
     exit 1
 fi
 
@@ -358,6 +375,8 @@ fi
 if [[ -f "$SCRIPT_DIR/lib/commands/env.sh" ]]; then
     # shellcheck source=lib/commands/env.sh
     source "$SCRIPT_DIR/lib/commands/env.sh"
+    # shellcheck source=lib/commands/upgrade.sh
+    source "$SCRIPT_DIR/lib/commands/upgrade.sh"
 else
     printf "ERROR: Cannot find lib/commands/env.sh\n" >&2
     exit 1
@@ -432,7 +451,6 @@ UNIVERSAL FLAGS:
 
 EXAMPLES:
     pyve init                            # Initialize with defaults (auto-detect backend)
-    pyve init myenv                      # Use custom venv directory
     pyve init --python-version 3.12.0    # Specify Python version
     pyve init --backend venv             # Explicitly use venv backend
     pyve init --backend micromamba       # Explicitly use micromamba backend
@@ -467,14 +485,14 @@ show_version() {
 show_config() {
     local detected_backend
     detected_backend="$(detect_backend_from_files)"
-    
-    local config_backend=""
-    local config_exists="no"
-    if config_file_exists; then
-        config_exists="yes"
-        config_backend="$(read_config_value "backend")"
-    fi
-    
+
+    # The declared backend comes from the manifest — a native `pyve.toml` or the
+    # v3.0 read-compat synthesis for a v2 project. `manifest_load` may not have
+    # run for this informational command, so load it here.
+    manifest_load 2>/dev/null || true
+    local manifest_backend
+    manifest_backend="$(manifest_get_backend root 2>/dev/null || true)"
+
     # Check micromamba status
     local micromamba_status="not found"
     local micromamba_location=""
@@ -509,10 +527,7 @@ show_config() {
     printf "  Default Python version: %s\n" "$DEFAULT_PYTHON_VERSION"
     printf "  Default venv directory: %s\n" "$DEFAULT_VENV_DIR"
     printf "  Default backend:        venv\n"
-    printf "  Config file (.pyve/config): %s\n" "$config_exists"
-    if [[ "$config_exists" == "yes" ]] && [[ -n "$config_backend" ]]; then
-        printf "  Config backend:         %s\n" "$config_backend"
-    fi
+    printf "  Configured backend:     %s\n" "${manifest_backend:-none}"
     printf "  Detected backend:       %s\n" "$detected_backend"
     printf "  Micromamba:             %s\n" "$micromamba_status"
     printf "  Conda env file:         %s\n" "$env_file_status"
@@ -604,68 +619,6 @@ unknown_flag_error() {
 }
 
 
-#------------------------------------------------------------
-# soft migration banner for v2-configured projects.
-#
-# Pre-dispatch hook that nudges users on v2.7/v2.8 projects toward
-# `pyve self migrate` without blocking the command. Suppressed
-# under PYVE_QUIET=1, by the presence of `pyve.toml` (already
-# migrated), and on informational / self-namespace commands where
-# a project-state nudge would be off-topic.
-#
-# Per-(parent-shell PID, cwd) memoization via a sentinel file under
-# `$XDG_STATE_HOME/pyve/`. Sentinel filename encodes both keys so:
-#   - Two pyve invocations in the same shell, same cwd → fire once.
-#   - Different cwd, same shell → fires again (different project).
-#   - New shell → new PPID → fires again (one nudge per shell).
-#
-# The hard-gate replacement lands in N-8 (post-v3.0.0); the
-# read-compat for the actual command behavior is N.i.
-#------------------------------------------------------------
-
-# Derive a stable per-(session, cwd) sentinel path. The session key
-# is `$PPID` by default — for a real interactive shell, every pyve
-# invocation has the user's shell as its parent, so PPID is stable
-# across calls in the same session.
-#
-# `PYVE_V2_BANNER_SESSION` overrides the session key when set; this
-# is the seam bats tests use to drive deterministic memoization
-# behavior (bats's `run` forks a fresh subshell per invocation, so
-# PPID is not stable across `run` calls within a single @test).
-# In normal use the env var is unset and PPID wins.
-#
-# Hashing uses cksum (POSIX, present on macOS + Linux) to keep the
-# filename short and avoid an external sha256sum dep.
-_pyve_v2_banner_sentinel_path() {
-    local state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/pyve"
-    local session_key="${PYVE_V2_BANNER_SESSION:-${PPID:-0}}"
-    local hash
-    hash="$(printf '%s' "$PWD" | cksum | awk '{print $1}')"
-    printf '%s/migrate-banner-%s-%s' "$state_dir" "$session_key" "$hash"
-}
-
-# Fire the banner once per (PPID, cwd) when the project is
-# v2-configured. Silent on every short-circuit (PYVE_QUIET=1,
-# pyve.toml present, no v2 sources, sentinel already on disk).
-_pyve_maybe_show_v2_banner() {
-    [[ "${PYVE_QUIET:-0}" == "1" ]] && return 0
-    [[ -f pyve.toml ]] && return 0
-    _self_migrate_detect_v2_sources || return 0
-
-    local sentinel
-    sentinel="$(_pyve_v2_banner_sentinel_path)"
-    if [[ -f "$sentinel" ]]; then
-        return 0
-    fi
-
-    # Emit through warn() so the message lands on stderr with the
-    # existing UX styling. Banner wording is the canonical N.h form.
-    warn "Pyve v3 detected v2 configuration. Run 'pyve self migrate' to upgrade — legacy support ends at v3.1."
-
-    mkdir -p "$(dirname "$sentinel")" 2>/dev/null || true
-    : >| "$sentinel" 2>/dev/null || true
-}
-
 main() {
     # Global flags consumed before subcommand dispatch (Story L.f).
     # `--verbose` is parsed here so every subcommand sees PYVE_VERBOSE=1
@@ -705,17 +658,6 @@ main() {
         show_help
         exit 1
     fi
-
-    # soft v2-migration banner. Fires before dispatch on
-    # subcommands that operate on the current project; skipped on
-    # informational verbs (`--help` / `--version` / `--config`) and
-    # the `self` namespace (self-install / self-uninstall / self-
-    # migrate don't act on the project, and showing the banner while
-    # the user is *running* `pyve self migrate` would be off-key).
-    case "$1" in
-        --help|-h|--version|-v|--config|-c|self) ;;
-        *) _pyve_maybe_show_v2_banner ;;
-    esac
 
     # Parse command
     case "$1" in
@@ -869,6 +811,16 @@ main() {
         lock)
             shift
             lock_environment "$@"
+            ;;
+        upgrade)
+            # re-resolve env dependencies in place (the env
+            # directory is kept; `update` refreshes project scaffolding).
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:upgrade %s\n' "$*"
+                exit 0
+            fi
+            upgrade_environment "$@"
             ;;
         package)
             # artifact-materialization verb. Reserved in v3.0 —

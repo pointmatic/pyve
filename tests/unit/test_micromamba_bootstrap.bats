@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=micromamba
 
 load ../helpers/test_helper.bash
 

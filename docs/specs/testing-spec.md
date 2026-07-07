@@ -94,6 +94,44 @@ tests/
 
 ---
 
+## Running the unit suite — parallel, targeted, and at the gates
+
+`make test-unit` (backed by `scripts/run-unit-tests.sh`) runs the whole Bats unit suite, parallelized across files via `bats --jobs` when GNU parallel is installed (~4–6 min serial → under 2 min on a 14-core machine; `PYVE_TEST_JOBS=<n>` overrides the job count). Without GNU parallel it degrades to a serial run — parallelism is a wall-clock optimization, never a semantic switch.
+
+### Subsystem tags
+
+Every `tests/unit/*.bats` file carries a `# bats file_tags=<tag>` line (line 2, right after the shebang) drawn from a **closed** vocabulary:
+
+| Tag | Covers |
+|---|---|
+| `env` | the `pyve env` namespace: lifecycle, materializers, testenv-era suites, `pyve test` selection, `.state` |
+| `init` | `pyve init`: wizard, param graph, composed init, scaffolds, `.envrc`/`.gitignore` composers |
+| `purge` | `pyve purge` and the purge composer/UX |
+| `manifest` | `pyve.toml` reading/validation: schema, directives, vocabulary, spec helper |
+| `micromamba` | the conda backend: bootstrap, core, lock, env-name/layout resolution |
+| `plugin` | plugin contract, registries, the Python/Node plugin hooks, polyglot |
+| `check` | `pyve check` / `status` / diagnostics / drift surfacing |
+| `self` | the `self` namespace, toolchain Python, project-guide hosting |
+| `ui` | `lib/ui/` primitives and output-contract suites |
+| `cli` | dispatcher, flags, help, completion, deprecations, versioning |
+| `core` | shared helpers (`utils`, `env_detect`, …), compat suites, retirement sweeps, test infrastructure |
+
+Targeted runs: `make test-tag TAG=<t>`, or the shorthands `make test-env` / `test-init` / `test-plugin` / `test-check` (all honor `PYVE_TEST_TAGS` through the runner script). A new test file **must** pick the closest tag — the drift guard (`tests/unit/test_tags_guard.bats`, the vocabulary's single source of truth in code) fails the build on an untagged file or an out-of-vocabulary tag. A genuinely new subsystem extends the vocabulary in the guard, this table, and (if high-traffic) the Makefile shorthands, in the same change.
+
+### Impact-mapped runs
+
+`make test-impact` (backed by `scripts/test-impact.sh`) selects test files from your current working-tree changes: a changed test file selects itself; a changed `lib/`/`scripts/` source file selects every test file that references its path suffix or any function name it defines; a 2-file smoke set (`test_cli_dispatch`, `test_tags_guard`) always rides along. `scripts/test-impact.sh --list [<files>…]` prints the selection without running it.
+
+### The cadence contract
+
+Bash has no import graph and pyve's function table is global, so targeted selection is an **iteration heuristic**, never proof of safety — the field record (a function shadow that passed 725 unit tests and broke only in CI; a SIGPIPE bug that surfaced only on the macOS runner in the full suite) is why the tail matters. The contract:
+
+- **iterating:** run the touched subsystem's tag group (seconds);
+- **story gates:** run the full unit suite (`make test-unit`, ~2 min parallel);
+- **CI:** the whole matrix is the ultimate arbiter.
+
+---
+
 ## Bats Test Examples
 
 ### Unit Test: Backend Detection

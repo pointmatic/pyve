@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=manifest
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -105,12 +106,21 @@ default = true
 TOML
 }
 
-_fixture_source_conflict() {
+# What was once a "source conflict" is now a legal composed recipe —
+# directives layer (the requirements ⊕ extra ⊕ manifest mutex was lifted).
+_fixture_composed_directives() {
     cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+[project]
+name = "demo"
 [env.x]
+purpose = "test"
 backend = "micromamba"
 manifest = "env.yml"
+editable = "."
 requirements = ["dev.txt"]
+extra = "dev"
+default = true
 TOML
 }
 
@@ -322,12 +332,11 @@ TOML
     [[ "$output" == *"default"* ]]
 }
 
-@test "manifest_load: requirements + extra + manifest conflict errors" {
-    _fixture_source_conflict
+@test "manifest_load: requirements + extra + manifest + editable COMPOSE (mutex lifted)" {
+    _fixture_composed_directives
     run manifest_load
-    [ "$status" -ne 0 ]
-    [[ "$output" == *"pyve.env.x"* ]]
-    [[ "$output" == *"only one of"* ]]
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"only one of"* ]]
 }
 
 # ============================================================

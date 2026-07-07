@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -15,7 +16,7 @@
 #      `testenv`) when `--env` is omitted.
 #   3. Hard-error on undeclared names with a list of valid choices.
 #   4. Hard-error on lazy envs that have not been provisioned yet,
-#      pointing at `pyve testenv install <name>` (auto-provision is
+#      pointing at `pyve env install <name>` (auto-provision is
 #      M.n's job — M.m stays self-contained).
 #   5. Operate conda-backed envs by routing the exec through
 #      `micromamba run -p <env_path>` (sets CONDA_PREFIX / activate.d /
@@ -63,21 +64,35 @@ SH
 }
 
 _fixture_default_smoke() {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs]
-default = "smoke"
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
 
-[tool.pyve.testenvs.testenv]
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
 requirements = ["requirements-dev.txt"]
 
-[tool.pyve.testenvs.smoke]
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/smoke-requirements.txt"]
+default = true
 
-[tool.pyve.testenvs.heavy]
+[env.heavy]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/heavy.txt"]
 lazy = true
 
-[tool.pyve.testenvs.hardware]
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
@@ -130,7 +145,7 @@ TOML
 }
 
 # ============================================================
-# Lazy envs: hard-error pointing at `pyve testenv install <name>`
+# Lazy envs: hard-error pointing at `pyve env install <name>`
 # (M.n will replace this with auto-provisioning)
 # ============================================================
 
@@ -144,7 +159,7 @@ TOML
     run test_tests --env heavy
     [ "$status" -ne 0 ]
     [[ "$output" == *"heavy"* ]]
-    [[ "$output" == *"pyve testenv install heavy"* ]]
+    [[ "$output" == *"pyve env install heavy"* ]]
     [[ "$output" == *"PYVE_NO_AUTO_PROVISION"* ]]
 }
 

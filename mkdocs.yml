@@ -40,17 +40,25 @@ site_dir: site
 
 nav:
   - Home: index.html
-  - Getting Started: getting-started.md
-  - Usage Guide: usage.md
-  - pyve.toml Reference: pyve-toml.md
-  - Named Environments: environments.md
-  - Backends: backends.md
-  - Plugins: plugins.md
-  - Polyglot Projects: polyglot.md
-  - Testing: testing.md
-  - Packaging: packaging.md
-  - CI/CD Integration: ci-cd.md
-  - Migration (v2 → v3): migration.md
+  - Start Here:
+      - Getting Started: getting-started.md
+      - Migration (v2 → v3): migration.md
+  - Concepts:
+      - pyve.toml Reference: pyve-toml.md
+      - Named Environments: environments.md
+      - Backends: backends.md
+      - Plugins: plugins.md
+  - Workflows:
+      - Testing: testing.md
+      - Polyglot Projects: polyglot.md
+      - Packaging: packaging.md
+      - CI/CD Integration: ci-cd.md
+  - Reference:
+      - Usage Guide: usage.md
+      - Project Lifecycle: reference/lifecycle.md
+      - Environments (env): reference/env.md
+      - Diagnostics: reference/diagnostics.md
+      - Tooling: reference/tooling.md
 
 # Extensions
 markdown_extensions:

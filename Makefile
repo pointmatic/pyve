@@ -1,7 +1,7 @@
 # Pyve Test Makefile
 # Provides convenient targets for running tests
 
-.PHONY: test test-unit test-integration test-perf test-integration-ci test-all coverage coverage-kcov clean help
+.PHONY: test test-unit test-tag test-env test-init test-plugin test-check test-impact test-integration test-perf test-integration-ci test-all coverage coverage-kcov clean help
 
 PYTHON ?= python3
 
@@ -9,7 +9,9 @@ PYTHON ?= python3
 help:
 	@echo "Pyve Test Targets:"
 	@echo "  make test                          - Run all tests (unit + integration)"
-	@echo "  make test-unit                     - Run only Bats unit tests"
+	@echo "  make test-unit                     - Run only Bats unit tests (parallel with GNU parallel; PYVE_TEST_JOBS=<n> overrides)"
+	@echo "  make test-tag TAG=<t>              - Run one subsystem tag group (also: test-env / test-init / test-plugin / test-check)"
+	@echo "  make test-impact                   - Run only tests impacted by current changes (heuristic; full suite at gates)"
 	@echo "  make test-perf                     - Run only the Bats latency budget regression (PC-4b)"
 	@echo "  make test-integration              - Run only pytest integration tests"
 	@echo "  make test-integration-ci           - Run venv tests with CI=true (simulates CI)"
@@ -21,6 +23,7 @@ help:
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - Bats: brew install bats-core (macOS) or sudo apt-get install bats (Linux)"
+	@echo "  - GNU parallel (optional, ~3x faster unit suite): brew install parallel / apt-get install parallel"
 	@echo "  - pytest: $(PYTHON) -m pip install -r requirements-dev.txt"
 	@echo "  make test-deps                     - Install Python dev/test dependencies"
 
@@ -32,21 +35,35 @@ test-deps:
 	@echo "Installing Python dev/test dependencies..."
 	@$(PYTHON) -m pip install -r requirements-dev.txt
 
-# Run only Bats unit tests
+# Run only Bats unit tests. Parallel across files when GNU parallel is
+# installed (~4-6 min serial -> under 2 min on a 14-core machine);
+# PYVE_TEST_JOBS=<n> overrides the job count (default: CPU count).
 test-unit:
-	@echo "Running Bats unit tests..."
-	@if command -v bats >/dev/null 2>&1; then \
-		if [ -n "$$(find tests/unit -name '*.bats' 2>/dev/null)" ]; then \
-			bats tests/unit/*.bats; \
-		else \
-			echo "No Bats tests found in tests/unit/"; \
-		fi \
-	else \
-		echo "Error: Bats not installed. Install with:"; \
-		echo "  macOS: brew install bats-core"; \
-		echo "  Linux: sudo apt-get install bats"; \
+	@./scripts/run-unit-tests.sh
+
+# Targeted subsystem runs (bats --filter-tags). The closed tag vocabulary
+# lives in tests/unit/test_tags_guard.bats and docs/specs/testing-spec.md.
+test-tag:
+	@if [ -z "$(TAG)" ]; then \
+		echo "Usage: make test-tag TAG=<tag>   (tags: check cli core env init manifest micromamba plugin purge self ui)"; \
 		exit 1; \
 	fi
+	@PYVE_TEST_TAGS="$(TAG)" ./scripts/run-unit-tests.sh
+
+# Shorthands for the highest-traffic subsystem groups.
+test-env:
+	@PYVE_TEST_TAGS=env ./scripts/run-unit-tests.sh
+test-init:
+	@PYVE_TEST_TAGS=init ./scripts/run-unit-tests.sh
+test-plugin:
+	@PYVE_TEST_TAGS=plugin ./scripts/run-unit-tests.sh
+test-check:
+	@PYVE_TEST_TAGS=check ./scripts/run-unit-tests.sh
+
+# Run only the test files impacted by your current working-tree changes
+# (heuristic — full suite at the gate; see docs/specs/testing-spec.md).
+test-impact:
+	@./scripts/test-impact.sh
 
 # Run only the perf/latency regression (Bats). Story N.ak (PC-4b): enforces
 # the per-plugin activation latency budget (p95 <= 50ms). Skips gracefully

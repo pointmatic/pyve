@@ -31,9 +31,9 @@ fi
 
 # Composed `pyve init` entry point.
 #
-# N.av.2: the Python hook (init_project) now MATERIALIZES the env +
-# writes .pyve/config + scaffolds pyve.toml + runs the Python-specific
-# setup (vscode / testenv / pip-deps), then hands the stack-agnostic
+# The Python hook (init_project) now MATERIALIZES the env + scaffolds
+# pyve.toml + runs the Python-specific setup (vscode / testenv /
+# pip-deps), then hands the stack-agnostic
 # COMPOSITION TAIL up to compose_init via the PYVE_INIT_TAIL_* result
 # globals. compose_init runs that tail (compose .envrc / .gitignore →
 # project-guide → next-steps), so it is owned at orchestration level
@@ -48,6 +48,26 @@ compose_init() {
     # Reset the hand-off so a stale value from a prior in-process call can
     # never trigger a spurious tail (matters for tests / library callers).
     PYVE_INIT_TAIL_BACKEND=""
+    # Consumed by the Python plugin's force pre-flight messaging (set by
+    # its --all parse arm); reset here so a stale value from a prior
+    # in-process call can't widen the next call's messaging.
+    # shellcheck disable=SC2034 # written here, read in the plugin
+    PYVE_INIT_ALL=""
+
+    # `--all` is the batch fan-out on the rebuild verb: refuse it without
+    # `--force` BEFORE any dispatch, so nothing materializes on a bad call.
+    local _ci_all=0 _ci_force=0 _ci_arg
+    for _ci_arg in "$@"; do
+        case "$_ci_arg" in
+            --all)   _ci_all=1 ;;
+            --force) _ci_force=1 ;;
+        esac
+    done
+    if [[ "$_ci_all" == "1" && "$_ci_force" != "1" ]]; then
+        log_error "pyve init: --all requires --force (the fan-out rebuilds every declared env)"
+        log_error "Use: pyve init --force --all"
+        return 1
+    fi
     if _compose_init_is_node_only; then
         # a fresh Node-only project materializes node_modules
         # and gets NO Python app env.
@@ -60,7 +80,40 @@ compose_init() {
         # node at its sub-path) from the freshly-scaffolded manifest.
         _compose_init_materialize_secondary_plugins
     fi
-    _compose_init_run_tail
+    _compose_init_run_tail || return $?
+    if [[ "$_ci_all" == "1" ]]; then
+        _compose_init_force_all_envs
+    fi
+}
+
+# `pyve init --force --all` — after the root rebuild and composition
+# tail, rebuild every declared non-root env from its declaration via
+# the per-env force verb (snapshot-then-replay: installed dimension
+# and usage provenance restore per the operational-state record).
+# Each env runs in a subshell so one env's hard failure (exit) cannot
+# abort the fan-out; the worst exit code is returned. A lazy env that
+# was never realized is skipped — provision-on-first-use is its
+# declared contract, and a batch rebuild must not pre-empt it.
+_compose_init_force_all_envs() {
+    if [[ -z "${PYVE_TESTENVS_NAMES+x}" ]]; then
+        read_env_config
+    fi
+    local rc=0 erc name
+    for name in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do
+        [[ -z "$name" || "$name" == "root" ]] && continue
+        if is_env_lazy "$name" && [[ ! -d ".pyve/envs/$name" ]]; then
+            info "--all: skipping lazy env '$name' (never realized; it provisions on first use)"
+            continue
+        fi
+        banner "Rebuilding env '$name'"
+        erc=0
+        ( env_init "$name" 1 1 ) || erc=$?
+        if [[ "$erc" -ne 0 ]]; then
+            warn "--all: rebuild of '$name' failed (exit $erc) — continuing with the remaining envs"
+            if [[ "$erc" -gt "$rc" ]]; then rc="$erc"; fi
+        fi
+    done
+    return "$rc"
 }
 
 # After the Python materializer has run + scaffolded the manifest,
@@ -85,8 +138,16 @@ _compose_init_materialize_secondary_plugins() {
         [[ "$name" == "python" ]] && continue   # already materialized above
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
         [[ -z "$path" ]] && path="."
-        plugin_dispatch "$name" init "$path"
+        # A secondary-plugin (e.g. Node) install must not abort the
+        # composition tail (.envrc / .gitignore / next-steps). Under
+        # `set -e` a bare failing dispatch would kill the whole init; guard
+        # it so a non-zero return warns and the tail still runs.
+        if ! plugin_dispatch "$name" init "$path"; then
+            warn "init: '$name' setup did not finish — continuing; complete it later with 'pyve env install'"
+        fi
     done < <(plugin_list_active)
+    # Never propagate a secondary-plugin failure: the tail must always run.
+    return 0
 }
 
 # True for a FRESH Node-only project: no pyve.toml yet, Node detected at
@@ -135,7 +196,12 @@ _compose_init_node_only() {
         [[ -z "$name" ]] && continue
         path="$(manifest_get_plugin_path "$name" 2>/dev/null || printf '.')"
         [[ -z "$path" ]] && path="."
-        plugin_dispatch "$name" init "$path"
+        # A failed Node install must not abort the composition tail (it would
+        # under `set -e` from a bare dispatch); warn and continue so .envrc /
+        # .gitignore / next-steps still land.
+        if ! plugin_dispatch "$name" init "$path"; then
+            warn "init: '$name' setup did not finish — continuing; complete it later with 'pyve env install'"
+        fi
     done < <(plugin_list_active)
 
     # Node-variant tail: no Python backend, no project-guide (a non-Python
@@ -157,6 +223,7 @@ pyve_schema = "3.0"
 
 [project]
 name = "${project_name}"
+pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"
 
 [plugins.node]
 EOF

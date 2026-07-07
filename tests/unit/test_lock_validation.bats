@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=micromamba
 #
 # Unit tests for lib/micromamba_env.sh - Lock file validation functions
 # Tests is_lock_file_stale(), get_file_mtime_formatted(), and validate_lock_file_status()

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=core
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -18,6 +19,7 @@ bats_require_minimum_version 1.5.0
 load ../helpers/test_helper.bash
 
 setup() {
+    export PYVE_TEST_AUTOSCAFFOLD_TOML=1
     setup_pyve_env
     source "$PYVE_ROOT/lib/ui/core.sh"
     create_test_dir
@@ -91,16 +93,15 @@ EOF
 
     # zzz-env sorts AFTER testenv so the v2-era `env_dirs[0]` glob
     # picks testenv first — the assertion below verifies the fix
-    # consults config.micromamba.env_name instead of relying on the
-    # alphabetical accident.
+    # consults the configured env name (environment.yml's name:) instead
+    # of relying on the alphabetical accident.
     mkdir -p .pyve/envs/zzz-env/bin .pyve/envs/testenv/venv/bin
     printf 'backend=micromamba\n' > .pyve/envs/testenv/.state
-    cat > .pyve/config << 'EOF'
-pyve_version: "3.0.0"
-backend: micromamba
-micromamba:
-  env_name: zzz-env
-EOF
+    printf 'name: zzz-env\ndependencies:\n  - python\n' > environment.yml
+    create_pyve_toml micromamba
+    # run_command resolves the backend from the manifest. Load it so this direct
+    # unit test mirrors production (main() calls manifest_load before dispatch).
+    manifest_load >/dev/null 2>&1 || true
 
     source_shell_profiles() { :; }
     detect_version_manager() { :; }
@@ -125,7 +126,7 @@ EOF
 
     run run_command python --version
     [ "$status" -eq 0 ]
-    # Must be .pyve/envs/zzz-env (from config.micromamba.env_name), NOT
+    # Must be .pyve/envs/zzz-env (from environment.yml's name:), NOT
     # .pyve/envs/testenv (the alphabetically-first glob entry).
     [[ "$output" == *"run -p .pyve/envs/zzz-env python --version"* ]]
 }

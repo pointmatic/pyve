@@ -71,6 +71,31 @@ node_pyve_plugin_register_backends() {
 }
 
 #------------------------------------------------------------
+# node_pyve_plugin_register_params — decision-graph contribution (P.h).
+#
+# The Node plugin's subtree of the keystone decision-graph, registered onto the
+# framework graph by plugin_build_param_graph (lib/plugins/registry.sh) when the
+# node plugin is active. Order is prompt order: provider → runtime-manager. Both
+# nodes gate on `@_node_param_active`, so the subtree is pruned for a non-Node
+# language and kept for a polyglot `multiple` selection. The framework rows carry
+# no Node vocabulary (pnpm / nvm) — that knowledge lives only here.
+#------------------------------------------------------------
+node_pyve_plugin_register_params() {
+    pg_add_node "provider|node|@_node_param_active|pnpm,npm,yarn|pnpm|--provider|PYVE_NODE_PROVIDER|no|Node package manager|Package manager: pnpm, npm, or yarn"
+    pg_add_node "runtime-manager|node|@_node_param_active|nvm,fnm,volta,asdf,none|none|--runtime-manager|PYVE_NODE_RUNTIME_MGR|no|Node runtime manager|Node version manager: nvm, fnm, volta, asdf, or none"
+}
+
+# Applicability predicate: the Node subtree applies when the selected language is
+# Node or a polyglot `multiple`. Consulted by the graph walk via the `@fn`
+# applicability form (lib/param_graph.sh § Resolvers).
+_node_param_active() {
+    case "$(pg_answer_get language)" in
+        node|multiple) return 0 ;;
+        *)             return 1 ;;
+    esac
+}
+
+#------------------------------------------------------------
 # Per-provider string-mapping helpers.
 #
 # Pure mappings from a provider name to that package manager's
@@ -271,6 +296,15 @@ _node_provider_run_install() {
         return 1
     fi
 
+    # Run the provider live while capturing its output, so a benign pnpm
+    # "ignored build scripts" notice can be classified as non-fatal. errexit
+    # is suspended around the pipeline so a non-zero provider exit doesn't
+    # abort init before it is inspected; PIPESTATUS[0] is the provider's own
+    # status, independent of pipefail / tee.
+    local rc=0 log _had_errexit=0
+    log="$(mktemp)"
+    case "$-" in *e*) _had_errexit=1 ;; esac
+    set +e
     (
         cd "$path" || exit 1
         if [[ "$mode" == "refresh" && -n "${CI:-}" ]]; then
@@ -292,7 +326,22 @@ _node_provider_run_install() {
                     ;;
             esac
         fi
-    )
+    ) 2>&1 | tee "$log"
+    rc=${PIPESTATUS[0]}
+    [[ "$_had_errexit" -eq 1 ]] && set -e
+
+    # pnpm's ignored-build-scripts notice is a warning, not a failure: the
+    # install completed; pnpm only declined to run dependency build scripts
+    # not in the onlyBuiltDependencies allowlist. Treat it as success so it
+    # never aborts init — a genuine install error still propagates.
+    if (( rc != 0 )) && [[ "$provider" == "pnpm" ]] \
+        && grep -q "ERR_PNPM_IGNORED_BUILDS" "$log"; then
+        warn "node: pnpm skipped some dependency build scripts (run 'pnpm approve-builds' in '$path' to allow). Continuing."
+        rc=0
+    fi
+
+    rm -f "$log"
+    return "$rc"
 }
 
 # Smart-purge: remove only the artifacts a Node env generates. Never

@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -59,8 +60,19 @@ _stub_run_cmd_records() {
 # ============================================================
 
 @test "venv install: declared 'requirements' (single file) → 'pip install -r <file>'" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.smoke]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/smoke-requirements.txt"]
 TOML
     mkdir -p tests
@@ -87,8 +99,19 @@ TOML
 }
 
 @test "venv install: declared 'requirements' with a missing file hard-errors" {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.smoke]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/missing.txt"]
 TOML
     _make_fake_named_venv smoke

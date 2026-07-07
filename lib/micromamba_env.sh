@@ -111,6 +111,7 @@ parse_environment_name() {
 # Arguments:
 #   $1 - env_file (default: environment.yml)
 # Returns: 0 if conda-lock is declared, 1 otherwise (including no env file)
+# shellcheck disable=SC2120 # optional env_file arg defaults to environment.yml; current callers use the default, direct callers may pass a specific file
 is_conda_lock_declared() {
     local env_file="${1:-environment.yml}"
 
@@ -488,7 +489,8 @@ sanitize_environment_name() {
     fi
     
     # Convert to lowercase (Bash 3.x compatible)
-    local sanitized="$(echo "$raw_name" | tr '[:upper:]' '[:lower:]')"
+    local sanitized
+    sanitized="$(echo "$raw_name" | tr '[:upper:]' '[:lower:]')"
     
     # Replace spaces and special characters with hyphens
     # Keep only alphanumeric, hyphens, and underscores
@@ -586,18 +588,7 @@ resolve_environment_name() {
         return 0
     fi
     
-    # Priority 2: .pyve/config → micromamba.env_name
-    if config_file_exists; then
-        local config_name
-        config_name="$(read_config_value "micromamba.env_name")"
-        if [[ -n "$config_name" ]]; then
-            resolved_name="$config_name"
-            echo "$resolved_name"
-            return 0
-        fi
-    fi
-    
-    # Priority 3: environment.yml → name: field
+    # Priority 2: environment.yml → name: field
     if [[ -f "environment.yml" ]]; then
         local env_file_name
         env_file_name="$(parse_environment_name "environment.yml")"
@@ -608,13 +599,26 @@ resolve_environment_name() {
         fi
     fi
     
-    # Priority 4: Project directory basename (sanitized)
+    # Priority 3: Project directory basename (sanitized)
     local project_dir
     project_dir="$(basename "$(pwd)")"
     resolved_name="$(sanitize_environment_name "$project_dir")"
     
     echo "$resolved_name"
     return 0
+}
+
+# The configured micromamba env name from the v3 source, or empty string when
+# it declares none: `environment.yml`'s `name:` metadata (the name survives only
+# as conda env metadata, no longer keying the directory). Unlike
+# resolve_environment_name there is NO basename fallback: empty is meaningful,
+# and callers treat it as "not configured".
+resolve_micromamba_env_name() {
+    local name=""
+    if [[ -f "environment.yml" ]]; then
+        name="$(parse_environment_name "environment.yml" 2>/dev/null || true)"
+    fi
+    printf '%s' "$name"
 }
 
 #============================================================

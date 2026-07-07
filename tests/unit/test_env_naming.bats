@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Unit tests for lib/micromamba_env.sh - Environment naming functions
 # Tests sanitize_environment_name(), validate_environment_name(), and resolve_environment_name()
@@ -209,17 +210,17 @@ teardown() {
     [ "$output" = "cli-name" ]
 }
 
-@test "resolve_environment_name: config file takes priority over environment.yml" {
+@test "resolve_environment_name: environment.yml is authoritative; a v2 config env_name is ignored" {
     mkdir -p .pyve
     cat > .pyve/config << EOF
 micromamba:
   env_name: config-name
 EOF
     create_environment_yml "file-name" "python=3.11"
-    
+
     run resolve_environment_name ""
     [ "$status" -eq 0 ]
-    [ "$output" = "config-name" ]
+    [ "$output" = "file-name" ]
 }
 
 @test "resolve_environment_name: environment.yml takes priority over directory name" {

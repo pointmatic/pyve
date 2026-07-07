@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -48,17 +49,37 @@ SH
 }
 
 _fixture_named_envs() {
-    cat > pyproject.toml <<'TOML'
-[tool.pyve.testenvs.testenv]
-requirements = ["requirements-dev.txt"]
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
 
-[tool.pyve.testenvs.smoke]
+[project]
+name = "demo"
+
+[env.root]
+purpose = "utility"
+backend = "venv"
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+requirements = ["requirements-dev.txt"]
+default = true
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
 requirements = ["tests/smoke-requirements.txt"]
 
-[tool.pyve.testenvs.hardware]
+[env.hardware]
+purpose = "test"
 backend = "micromamba"
 manifest = "tests/env.yml"
 TOML
+    # `env init` now materializes the declared recipe, so the
+    # declared requirements files must exist for init to succeed.
+    mkdir -p tests
+    printf 'pytest\n' > requirements-dev.txt
+    printf 'ruff\n' > tests/smoke-requirements.txt
 }
 
 # ============================================================

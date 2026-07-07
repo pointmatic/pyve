@@ -42,15 +42,14 @@ detect_backend_from_files() {
     plugin_dispatch python detect
 }
 
-# Get backend priority based on CLI flag, config file, and file detection
+# Get backend priority based on CLI flag and file detection. The manifest's
+# declared root backend reaches here as the CLI flag (the wizard seeds it),
+# so this resolver only arbitrates flag vs. filesystem detection.
 # Arguments:
 #   $1 - CLI backend flag value (venv, micromamba, auto, or empty)
-#   $2 - skip_config: pass "true" to skip Priority 2 (config file).
-#        Used by --force pre-flight so a stale config cannot override file detection.
 # Returns: "venv" or "micromamba"
 get_backend_priority() {
     local cli_backend="${1:-}"
-    local skip_config="${2:-false}"
 
     # Priority 1: CLI flag (if not "auto")
     if [[ -n "$cli_backend" ]] && [[ "$cli_backend" != "auto" ]]; then
@@ -58,17 +57,7 @@ get_backend_priority() {
         return 0
     fi
 
-    # Priority 2: .pyve/config file (skipped when --force discards it)
-    if [[ "$skip_config" != "true" ]] && config_file_exists; then
-        local config_backend
-        config_backend="$(read_config_value "backend")"
-        if [[ -n "$config_backend" ]]; then
-            echo "$config_backend"
-            return 0
-        fi
-    fi
-    
-    # Priority 3: File-based detection
+    # Priority 2: File-based detection
     local detected_backend
     detected_backend="$(detect_backend_from_files)"
     
@@ -110,7 +99,7 @@ get_backend_priority() {
         return 0
     fi
     
-    # Priority 4: Default to venv
+    # Priority 3: Default to venv
     echo "venv"
     return 0
 }
@@ -132,51 +121,4 @@ validate_backend() {
             return 1
             ;;
     esac
-}
-
-# Validate .pyve/config file
-# Returns: 0 if valid or doesn't exist, 1 if invalid
-validate_config_file() {
-    if ! config_file_exists; then
-        return 0  # No config file is valid
-    fi
-    
-    local config_file=".pyve/config"
-    local has_errors=false
-    
-    # Check if backend value is valid (if present)
-    local backend
-    backend="$(read_config_value "backend")"
-    if [[ -n "$backend" ]]; then
-        if ! validate_backend "$backend"; then
-            log_error "Invalid backend in $config_file: $backend"
-            has_errors=true
-        fi
-    fi
-    
-    # Check if venv.directory is valid (if present)
-    local venv_dir
-    venv_dir="$(read_config_value "venv.directory")"
-    if [[ -n "$venv_dir" ]]; then
-        if ! validate_venv_dir_name "$venv_dir"; then
-            log_error "Invalid venv.directory in $config_file: $venv_dir"
-            has_errors=true
-        fi
-    fi
-    
-    # Check if python.version is valid (if present)
-    local python_version
-    python_version="$(read_config_value "python.version")"
-    if [[ -n "$python_version" ]]; then
-        if ! validate_python_version "$python_version"; then
-            log_error "Invalid python.version in $config_file: $python_version"
-            has_errors=true
-        fi
-    fi
-    
-    if [[ "$has_errors" == true ]]; then
-        return 1
-    fi
-    
-    return 0
 }

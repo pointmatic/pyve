@@ -277,10 +277,9 @@ _python_pyve_plugin_render_advisories() {
 #     - `[plugins.python]` declared in pyve.toml
 #     - any declared env with a Python backend (venv / micromamba) or
 #       `languages` containing `python` (an explicit Python env declaration)
-#     - `.pyve/config` present (v2 Python project marker)
-#       (`.project-guide.yml` is NO LONGER a signal — project-
-#        guide is globally hosted, so its per-project marker no longer
-#        implies a project Python env.)
+#       (`.project-guide.yml` is NOT a signal — project-guide is globally
+#        hosted, so its per-project marker no longer implies a project
+#        Python env.)
 #     - root-scoped Python application files
 #       (pyproject.toml / setup.py / requirements*.txt /
 #        environment*.yml / *.py). Root-scoped via `compgen -G` so
@@ -337,14 +336,12 @@ python_plugin_is_active_in_project() {
         done
     done < <(manifest_list_envs 2>/dev/null)
 
-    # 3. v2 Python project marker. (`.project-guide.yml` is NO
-    #    longer a Python-active signal — project-guide is globally hosted, so
-    #    its per-project marker no longer implies a project Python env. On a
-    #    Node-only project that accepts project-guide there is no `.venv` for
-    #    the Python plugin to report, so it must stay suppressed.)
-    [[ -f ".pyve/config" ]] && return 0
-
-    # 4. Root-scoped Python application files (no recursion — `compgen -G`).
+    # 3. Root-scoped Python application files (no recursion — `compgen -G`).
+    #    (`.project-guide.yml` is NO longer a Python-active signal —
+    #    project-guide is globally hosted, so its per-project marker no longer
+    #    implies a project Python env. On a Node-only project that accepts
+    #    project-guide there is no `.venv` for the Python plugin to report, so
+    #    it must stay suppressed.)
     if [[ -f "pyproject.toml" ]] || [[ -f "setup.py" ]] \
         || compgen -G "requirements*.txt" >/dev/null 2>&1 \
         || compgen -G "environment*.yml" >/dev/null 2>&1 \
@@ -538,13 +535,12 @@ python_pyve_plugin_purge_inventory() {
 # NO file write — the composed `.envrc` is assembled and atomically written
 # by compose_envrc.
 #
-# Self-resolution: backend / env_path / env_name come from `.pyve/config`
-# (the authoritative backend record init writes), with manifest + convention
-# fallbacks:
-#   - backend:  .pyve/config `backend` → manifest default-env backend → "venv"
-#   - venv:     env_path = .pyve/config `venv.directory` (honors a custom
-#               `pyve init <dir>`) → ".venv"; env_name = basename "$PWD"
-#   - micromamba: env_name = .pyve/config `micromamba.env_name` → basename;
+# Self-resolution: backend / env_path / env_name come from the v3 manifest
+# and resolvers:
+#   - backend:  `manifest_get_backend root` → "venv"
+#   - venv:     env_path = ".venv" (`resolve_venv_directory`); env_name = basename "$PWD"
+#   - micromamba: env_name from `environment.yml` `name:`
+#               (`resolve_micromamba_env_name`) → basename;
 #               env_path = ".pyve/envs/<env_name>"
 #
 # Compose → PC-1 validate → emit. On validation failure (a buggy/malicious
@@ -556,22 +552,22 @@ python_pyve_plugin_activate() {
     # resolved from project state below).
     local _path="${1:-.}"
 
+    # Backend from the manifest (authoritative; `compose_project_envrc` calls
+    # `manifest_load` before dispatching activate).
     local backend
-    backend="$(read_config_value "backend")"
-    [[ -z "$backend" ]] && backend="$(manifest_get_backend root 2>/dev/null || true)"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     [[ -z "$backend" ]] && backend="venv"
 
     local env_path env_name
     case "$backend" in
         venv)
-            env_path="$(read_config_value "venv.directory")"
-            [[ -z "$env_path" ]] && env_path=".venv"
+            env_path="$(resolve_venv_directory)"
             env_name="$(basename "$PWD")"
             ;;
         micromamba)
             # PYVE_ENV_NAME stays the configured (human-facing) name; the
             # CONDA_PREFIX/PATH come from the v3 root slot (Story N.bf.14).
-            env_name="$(read_config_value "micromamba.env_name")"
+            env_name="$(resolve_micromamba_env_name)"
             [[ -z "$env_name" ]] && env_name="$(basename "$PWD")"
             env_path="$(micromamba_root_prefix)"
             ;;
@@ -655,17 +651,14 @@ python_set() {
 }
 
 python_show() {
-    local version="" source=""
-    if [[ -f ".tool-versions" ]]; then
-        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
-        source=".tool-versions"
-    elif [[ -f ".python-version" ]]; then
-        version="$(cat .python-version 2>/dev/null | head -1)"
-        source=".python-version"
-    else
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source=".pyve/config"
-    fi
+    local out version source
+    out="$(resolve_python_version)"
+    version="${out%%|*}"
+    source="${out##*|}"
+    case "$source" in
+        tool-versions)  source=".tool-versions" ;;
+        python-version) source=".python-version" ;;
+    esac
 
     if [[ -z "$version" ]]; then
         printf "No Python version pinned in this project.\n"
@@ -735,13 +728,13 @@ EOF
 #
 # Auto-detects backend (venv vs micromamba), resolves the version
 # manager (asdf or pyenv), creates the environment, configures
-# direnv (unless --no-direnv), writes .pyve/config, and runs the
+# direnv (unless --no-direnv), scaffolds pyve.toml, and runs the
 # project-guide post-init hooks.
 #
 # Function-name note: this function is named `init_project` per the
 # project-essentials "Function naming convention: verb_<operand>"
-# rule — `pyve init` operates on the project (creates venv, writes
-# .pyve/config, configures direnv, etc.).
+# rule — `pyve init` operates on the project (creates venv, scaffolds
+# pyve.toml, configures direnv, etc.).
 #
 # Cross-command callsite: `init_project --force` calls
 # `purge_project --keep-testenv --yes` — both functions now live in
@@ -793,14 +786,46 @@ _init_manifest_root_backend() {
     manifest_get_backend root 2>/dev/null || true
 }
 
+# Absolute path to the in-place manifest writer (resolved once at source time;
+# lib/plugins/python/plugin.sh → ../../ is lib/).
+_PYVE_MANIFEST_WRITE_HELPER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/pyve_manifest_write.py"
+
+# Ensure pyve.toml's [env.root] records the resolved backend. Used on the refresh
+# / --force path where pyve.toml already exists, so _init_scaffold_manifest would
+# otherwise no-op and leave the canonical manifest backend-less (the split-brain
+# `pyve status` reports "not configured"). A structure-preserving tomlkit edit
+# (lib/pyve_manifest_write.py); idempotent. Degrades to a silent no-op when
+# pyve.toml is absent or tomlkit is unavailable — in which case the backend
+# is simply not recorded in the manifest.
+_init_manifest_ensure_root_backend() {
+    local backend="$1"
+    [[ -n "$backend" ]] || return 0
+    [[ -f pyve.toml ]] || return 0
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    local rc=0
+    "$py" "$_PYVE_MANIFEST_WRITE_HELPER" set-env-attr pyve.toml root backend "$backend" || rc=$?
+    # rc 3 = tomlkit unavailable → not fatal (the backend is simply not recorded).
+    [[ $rc -eq 3 ]] && return 0
+    return $rc
+}
+
+# True (0) when the cwd already holds a Pyve project — declared by `pyve.toml`.
+# The re-init / `--force` handling keys off this so a forced rebuild fires on an
+# already-initialized project.
+_init_is_reinit() {
+    [[ -f pyve.toml ]] && return 0
+    return 1
+}
+
 # On a forced rebuild, never silently orphan a materialized env whose
 # backend differs from the target backend. The re-init purge only removes
-# the env that `.pyve/config` records; a stray foreign-backend env (e.g. a
-# `.venv` materialized alongside a micromamba manifest, when the config is
-# absent or contradictory) would otherwise survive the rebuild and leave
-# the project straddling two backends. Move any
-# such foreign env into the `.pyve/.v2-legacy/` backup tree (recoverable,
-# never deleted) and warn. The target backend's OWN env is left untouched.
+# the env for the manifest's declared backend; a stray foreign-backend env
+# (e.g. a `.venv` materialized alongside a micromamba manifest) would
+# otherwise survive the rebuild and leave the project straddling two
+# backends. Move any such foreign env into the `.pyve/.v2-legacy/` backup
+# tree (recoverable, never deleted) and warn. The target backend's OWN env
+# is left untouched.
 # Arg: $1 = target backend (venv|micromamba). Always returns 0.
 _init_backup_foreign_env() {
     local target="$1"
@@ -880,6 +905,14 @@ _init_detect_project_guide_present() {
 # (`pyve test --env testenv`) resolve.
 _init_write_pyve_toml() {
     local project_name="$1"
+    # The resolved root backend (venv / micromamba). `pyve init` always
+    # passes it; the no-arg form defaults to venv so the emitted manifest
+    # is ALWAYS fully explicit (Story P.j — explicit-by-construction):
+    # every [env.<name>] block records purpose + backend + default, never
+    # leaning on TOML "absent = default" inference. The test env is venv by
+    # default (the fresh scaffold's materialized default test env), recorded
+    # explicitly even when the root env is micromamba.
+    local backend="${2:-venv}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
@@ -888,12 +921,16 @@ pyve_schema = "3.0"
 
 [project]
 name = "${project_name}"
+pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"
 
 [env.root]
 purpose = "utility"
+backend = "${backend}"
+default = false
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
 EOF
 }
@@ -910,6 +947,11 @@ _init_testenv_to_materialize() {
     fi
     local name="${PYVE_TESTENVS_DEFAULT:-}"
     [[ -z "$name" ]] && return 0
+    # A lazy env provisions on first use — init must leave it
+    # unrealized (including a forced re-init).
+    if is_env_lazy "$name"; then
+        return 0
+    fi
     local be
     be="$(_env_resolve_backend "$name")" || be="venv"
     [[ "$be" == "venv" ]] && printf '%s' "$name"
@@ -979,6 +1021,10 @@ _init_validate_existing_manifest() {
 _init_write_pyve_toml_polyglot() {
     local project_name="$1"
     local node_path="$2"
+    # Explicit-by-construction (Story P.j), mirroring `_init_write_pyve_toml`:
+    # every [env.<name>] block records purpose + backend + default. No-arg
+    # backend defaults to venv so the block is never backend-less.
+    local backend="${3:-venv}"
     if [[ -f pyve.toml ]]; then
         return 0
     fi
@@ -987,12 +1033,16 @@ pyve_schema = "3.0"
 
 [project]
 name = "${project_name}"
+pyve_defaults_version = "${PYVE_PARAM_DEFAULTS_VERSION:-1}"
 
 [env.root]
 purpose = "utility"
+backend = "${backend}"
+default = false
 
 [env.testenv]
 purpose = "test"
+backend = "venv"
 default = true
 
 [plugins.python]
@@ -1096,8 +1146,14 @@ _init_resolve_node_path() {
 _init_scaffold_manifest() {
     local project_name="$1"
     local node_path_flag="$2"
+    # The resolved root backend, recorded into [env.root] so pyve.toml is the
+    # canonical source of the backend. On an existing
+    # manifest (refresh / --force), backfill the backend in place rather than
+    # no-op'ing, so a re-init never leaves the manifest backend-less.
+    local backend="${3:-}"
 
     if [[ -f pyve.toml ]]; then
+        _init_manifest_ensure_root_backend "$backend"
         return 0
     fi
 
@@ -1105,7 +1161,7 @@ _init_scaffold_manifest() {
     node_signal="$(plugin_dispatch node detect 2>/dev/null || true)"
 
     if [[ "$node_signal" != "node" ]]; then
-        _init_write_pyve_toml "$project_name"
+        _init_write_pyve_toml "$project_name" "$backend"
         success "Created pyve.toml"
         return 0
     fi
@@ -1123,7 +1179,7 @@ _init_scaffold_manifest() {
     info "Node sub-path: ${node_path}"
     info "Manifest: Python at \".\", Node at \"${node_path}\"."
 
-    _init_write_pyve_toml_polyglot "$project_name" "$node_path"
+    _init_write_pyve_toml_polyglot "$project_name" "$node_path" "$backend"
     success "Created pyve.toml (polyglot: python + node)"
 
     # surface a SvelteKit framework hint when detected.
@@ -1149,6 +1205,110 @@ _init_list_available_python_versions() {
                 | grep -E '^3\.' || true
             ;;
     esac
+}
+
+# Build the `pyve init` parameter decision-graph: the 5 framework-level
+# parameters whose wizard prompt / flag / valid-flag-list / --help / default
+# all derive from one node definition (the keystone, lib/param_graph.sh). The
+# operational toggles (--force, --strict, --bootstrap-to, …) are NOT graph
+# parameters — they stay hand-parsed. Each row carries its full CLI flag-set (a
+# boolean parameter lists both spellings; a negation-only one lists just its
+# `--no-` form) and a `--help` blurb. Defaults are recorded for the wizard /
+# manifest writer; the valid-flag-list generator below consumes only the flags.
+_init_build_param_graph() {
+    pg_reset
+    pg_add_node "backend|python|*|venv,micromamba,auto|@_init_detect_backend_default|--backend|-|no|Backend|Backend to use: venv, micromamba, auto"
+    pg_add_node "python-version|python|*|-|${DEFAULT_PYTHON_VERSION}|--python-version|-|no|Python version|Set Python version (e.g., 3.13.7)"
+    pg_add_node "project-guide|python|*|yes,no|-|--project-guide,--no-project-guide|-|no|Install project-guide|Install/refresh project-guide (post-init hook)"
+    pg_add_node "direnv|python|*|yes,no|yes|--no-direnv|-|no|direnv activation|Skip .envrc creation (for CI/CD)"
+    pg_add_node "env-name|python|*|-|-|--env-name|-|no|Environment name|Environment name (micromamba backend)"
+}
+
+# ── decision-graph contribution (P.h plugin-contract `register_params` hook) ──
+# The Python plugin's subtree of the keystone decision-graph, registered onto the
+# framework graph by plugin_build_param_graph (lib/plugins/registry.sh) when the
+# python plugin is active. Order is prompt order: backend → version-manager →
+# python-version → test-env. Every node gates on `@_python_param_active` so the
+# whole subtree is pruned for a non-Python language and kept for a polyglot
+# `multiple` selection. Framework rows (language / project-guide / direnv) carry
+# no Python vocabulary — that knowledge lives only here.
+python_pyve_plugin_register_params() {
+    pg_add_node "backend|python|@_python_param_active|venv,micromamba|@_init_detect_backend_default|--backend|PYVE_BACKEND|no|Backend|Backend to use: venv or micromamba"
+    pg_add_node "version-manager|python|@_python_param_needs_vmgr|asdf,pyenv|asdf|--version-manager|PYVE_VMGR|no|Python version manager|Version manager for the Python pin"
+    pg_add_node "python-version|python|@_python_param_active|-|${DEFAULT_PYTHON_VERSION:-}|--python-version|PYVE_PYTHON_VERSION|no|Python version|Set Python version (e.g., 3.13.7)"
+    pg_add_node "test-env|python|@_python_param_active|yes,no|yes|--test-env,--no-test-env|PYVE_TEST_ENV|no|Default test environment|Create a default test environment"
+}
+
+# Applicability predicate: the Python subtree applies when the selected language
+# is Python or a polyglot `multiple`. Consulted by the graph walk via the `@fn`
+# applicability form (lib/param_graph.sh § Resolvers).
+_python_param_active() {
+    case "$(pg_answer_get language)" in
+        python|multiple) return 0 ;;
+        *)               return 1 ;;
+    esac
+}
+
+# Applicability predicate: the version-manager node applies only for a venv
+# backend (micromamba pins Python itself, so no separate manager is needed) and
+# only while the Python subtree itself applies.
+_python_param_needs_vmgr() {
+    _python_param_active && [[ "$(pg_answer_get backend)" == "venv" ]]
+}
+
+# Resolve a parameter's default from the decision-graph — the single source of
+# parameter defaults. Builds the graph, finds the node by name, and echoes its
+# resolved default (`pg_resolve_default` honors computed `@fn` defaults).
+# Returns non-zero (no output) for an unknown node. init_project consumes this
+# so default values are read from the graph, not re-referenced from constants in
+# a second place (the live consumer the P.j manifest writer / P.k drift detector
+# build on).
+_init_param_default() {
+    local want="$1" row
+    _init_build_param_graph
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        if [[ "${row%%|*}" == "$want" ]]; then
+            pg_resolve_default "$row"
+            return 0
+        fi
+    done <<<"$(pg_list_nodes)"
+    return 1
+}
+
+# Which graph nodes the interactive wizard prompts for. Interactivity is a
+# wizard-only concern (direnv / env-name ARE applicable to flag resolution —
+# they are simply flag-only, never prompted), so it lives here in the wizard
+# layer rather than in the shared node-row schema. The wizard walks the graph
+# in node order and dispatches each interactive node to its
+# `_init_prompt_<name>` renderer. To add a prompt later (e.g. direnv): add the
+# node name here and define `_init_prompt_direnv`.
+_init_node_is_interactive() {
+    case "$1" in
+        backend|python-version|project-guide) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Print the full set of flags `pyve init` accepts, one per line: the graph
+# parameters' CLI flags (single-sourced from _init_build_param_graph) followed
+# by the retained operational toggles and --help. This is the single source for
+# the unknown_flag_error allow-list — adding a graph parameter no longer means
+# editing a separate hand-maintained list.
+_init_valid_flags() {
+    _init_build_param_graph
+    local row
+    while IFS= read -r row; do
+        [[ -n "$row" ]] || continue
+        pg_node_flags "$row"
+    done <<<"$(pg_list_nodes)"
+    # Operational toggles (imperative; not decision-graph parameters) + --help.
+    printf '%s\n' \
+        --auto-bootstrap --bootstrap-to --strict --no-lock --node-path \
+        --auto-install-deps --no-install-deps --local-env --force --all --allow-synced-dir \
+        --project-guide-completion --no-project-guide-completion \
+        --yes -y \
+        --help
 }
 
 # Interactive `pyve init` wizard (Story L.k.2 skeleton + L.k.3 backend prompt).
@@ -1204,18 +1364,44 @@ _init_wizard() {
 
     header_box "pyve init"
 
-    # Prompt 1 — backend (Story L.k.3 + L.k.7 auto handling).
-    # `--backend auto` is the explicit "let pyve detect" form; treat it
-    # like the no-flag auto-detect path so the wizard resolves to a real
-    # backend before downstream prompts (Python/project-guide) branch on
-    # backend_flag. Without this, backend_flag stays "auto" through the
-    # Python prompt, which would then fall to the venv branch and
-    # hard-fail on no managers — even when env.yml says micromamba.
-    # When no --backend flag is given, an existing pyve.toml's declared
-    # root backend is authoritative (a refresh / forced rebuild must not
-    # re-derive the backend and silently convert the project). It outranks
-    # the filesystem heuristic and suppresses the interactive prompt, but
-    # an explicit --backend still wins.
+    # Drive the prompts from the parameter decision-graph: build the graph, then
+    # walk it in node order and dispatch each interactive, applicable node to its
+    # `_init_prompt_<name>` render callback (the bespoke renderers do the
+    # ui_select interaction + side effects via dynamic scope). Prompt order is
+    # now graph data (the order nodes are registered), not source position.
+    # The here-string keeps the loop body in this shell so the renderers'
+    # dynamic-scope writes (backend_flag / python_version / …) propagate.
+    _init_build_param_graph
+    local _wiz_row _wiz_name _wiz_fn
+    while IFS= read -r _wiz_row; do
+        [[ -n "$_wiz_row" ]] || continue
+        _wiz_name="${_wiz_row%%|*}"
+        _init_node_is_interactive "$_wiz_name" || continue
+        pg_applicable "$_wiz_row" || continue
+        _wiz_fn="_init_prompt_${_wiz_name//-/_}"
+        "$_wiz_fn"
+    done <<<"$(pg_list_nodes)"
+
+    return 0
+}
+
+# Wizard prompt — backend selection. Dispatched by _init_wizard's graph walk
+# (the `backend` node). Reads the wizard's arg_backend_flag and writes the
+# resolved backend into the caller's backend_flag via dynamic scope.
+#
+# backend (Story L.k.3 + L.k.7 auto handling).
+# `--backend auto` is the explicit "let pyve detect" form; treat it
+# like the no-flag auto-detect path so the wizard resolves to a real
+# backend before downstream prompts (Python/project-guide) branch on
+# backend_flag. Without this, backend_flag stays "auto" through the
+# Python prompt, which would then fall to the venv branch and
+# hard-fail on no managers — even when env.yml says micromamba.
+# When no --backend flag is given, an existing pyve.toml's declared
+# root backend is authoritative (a refresh / forced rebuild must not
+# re-derive the backend and silently convert the project). It outranks
+# the filesystem heuristic and suppresses the interactive prompt, but
+# an explicit --backend still wins.
+_init_prompt_backend() {
     local manifest_backend=""
     if [[ -z "$arg_backend_flag" ]]; then
         manifest_backend="$(_init_manifest_root_backend)"
@@ -1256,11 +1442,18 @@ _init_wizard() {
         info "Backend: $default_backend (auto-detected)"
         backend_flag="$default_backend"
     fi
+}
 
-    # Prompt 2 — Python version pin (Story L.k.4). Backend-aware: venv pins
-    # via asdf/pyenv writing .tool-versions / .python-version; micromamba
-    # pins via the `python=X` line in environment.yml (the existing
-    # scaffolder writes it later in the init flow).
+# Wizard prompt — Python version pin. Dispatched by _init_wizard's graph walk
+# (the `python-version` node, after `backend`). Reads backend_flag (resolved by
+# the earlier backend node), arg_python_supplied / arg_python_value; writes
+# python_version and VERSION_MANAGER via dynamic scope.
+#
+# Backend-aware (Story L.k.4): venv pins
+# via asdf/pyenv writing .tool-versions / .python-version; micromamba
+# pins via the `python=X` line in environment.yml (the existing
+# scaffolder writes it later in the init flow).
+_init_prompt_python_version() {
     if [[ "$backend_flag" == "micromamba" ]]; then
         if [[ -f environment.yml ]]; then
             info "Python: managed via environment.yml"
@@ -1383,14 +1576,20 @@ _init_wizard() {
             info "Python: skipped (no pin)"
         fi
     fi
+}
 
-    # Prompt 3 — project-guide install (Story L.k.5). Detection is keyed on
-    # `.project-guide.yml` (the canonical install marker, matching what
-    # `pyve update` already uses). Deps-managed signal (project-guide
-    # declared in pyproject.toml / requirements.txt / environment.yml)
-    # wins over the install-marker check — when the user manages
-    # project-guide via project deps, pyve refuses to touch it to avoid
-    # version-pin conflicts at the next `pip install -e .`.
+# Wizard prompt — project-guide install. Dispatched by _init_wizard's graph walk
+# (the `project-guide` node). Reads arg_pg_mode; writes project_guide_mode via
+# dynamic scope.
+#
+# Detection (Story L.k.5) is keyed on
+# `.project-guide.yml` (the canonical install marker, matching what
+# `pyve update` already uses). Deps-managed signal (project-guide
+# declared in pyproject.toml / requirements.txt / environment.yml)
+# wins over the install-marker check — when the user manages
+# project-guide via project deps, pyve refuses to touch it to avoid
+# version-pin conflicts at the next `pip install -e .`.
+_init_prompt_project_guide() {
     if [[ "$arg_pg_mode" == "yes" ]]; then
         info "project-guide: install (--project-guide)"
     elif [[ "$arg_pg_mode" == "no" ]]; then
@@ -1442,18 +1641,6 @@ _init_resolve_version_manager() {
     detect_version_manager
 }
 
-# Print the interactive re-initialization menu (Story N.bf.13). Option 1's label
-# is explicit that an in-place update refreshes Pyve config/files only — it does
-# NOT apply environment.yml/dependency edits (those require option 2's purge +
-# rebuild). The old "(preserves environment, updates config)" wording implied
-# dependency edits would be picked up, which silently misled users.
-_init_print_reinit_menu() {
-    printf "\n  What would you like to do?\n"
-    printf "    1. Update in-place — refresh Pyve config/files (does NOT apply environment.yml/dependency edits; use option 2 for those)\n"
-    printf "    2. Purge and re-initialize (clean slate)\n"
-    printf "    3. Cancel\n\n"
-}
-
 # Emit the gentle lock nudge at the end of a successful non-strict micromamba
 # init (Story N.bf.9). Fires only when `conda-lock` is a declared dependency
 # but no lock file exists yet — the signal that the user opted into locking but
@@ -1467,24 +1654,6 @@ _init_lock_nudge() {
     is_conda_lock_declared || return 0
     info "conda-lock is in your environment.yml, so Pyve expects a conda-lock.yml."
     info "When your dependencies are finalized, run \`pyve lock\` to resolve them into the lock file."
-}
-
-# Story N.bf.15: has `environment.yml` changed since the main micromamba
-# env was built? Compares the live SHA-256 against the one stored in
-# root's `.state` (`manifest_sha256`, written by `create_micromamba_env`).
-# Returns 0 (drift) only when ALL of: environment.yml exists, root's
-# .state has a non-empty stored hash, and the two differ. Otherwise 1 —
-# including the graceful cases (no environment.yml, no .state, empty
-# stored hash on a pre-N.bf.15 or migrated env, or no hash tool available)
-# so a missing baseline never produces a false drift signal.
-_init_environment_yml_drifted() {
-    [[ -f "environment.yml" ]] || return 1
-    state_read root || return 1
-    local stored="${PYVE_TESTENV_STATE_MANIFEST_SHA256:-}"
-    [[ -n "$stored" ]] || return 1
-    local current
-    current="$(pyve_file_sha256 environment.yml 2>/dev/null)" || return 1
-    [[ "$current" != "$stored" ]]
 }
 
 # Select the environment file micromamba builds from. The default prefers a
@@ -1533,7 +1702,12 @@ _init_resolve_scaffold_conda_lock() {
 
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
-    local python_version="$DEFAULT_PYTHON_VERSION"
+    # Python-version default is read from the decision-graph (the single source
+    # of parameter defaults), not the DEFAULT_PYTHON_VERSION constant directly —
+    # the graph's `python-version` node interpolates the same constant, so this
+    # is functionally identical while making the graph the consumed default path.
+    local python_version
+    python_version="$(_init_param_default python-version)"
     local python_version_supplied=false
     local use_local_env=false
     local backend_flag=""
@@ -1650,8 +1824,26 @@ init_project() {
                 # callers. See phase-H-cli-refactor-design.md §5 D3.
                 legacy_flag_error "init --update" "update"
                 ;;
+            --all)
+                # Batch fan-out marker. Validated (requires --force) and
+                # executed by compose_init AFTER the root flow; parsed here
+                # so the allow-list accepts it and messaging can widen.
+                PYVE_INIT_ALL="1"
+                shift
+                ;;
             --force)
                 PYVE_REINIT_MODE="force"
+                shift
+                ;;
+            --yes|-y)
+                # Easy mode (Story P.j): fast-accept every wizard default.
+                # Reuses the non-interactive resolution path so every
+                # prompt-bearing parameter (backend / python / project-guide /
+                # node path) resolves to its graph default with no prompts —
+                # then init writes the same fully-explicit pyve.toml the
+                # interactive path would. Explicit `--backend`, `--python-version`,
+                # etc. still win when supplied alongside `--yes`.
+                export PYVE_INIT_NONINTERACTIVE=1
                 shift
                 ;;
             --project-guide)
@@ -1687,18 +1879,19 @@ init_project() {
                 shift
                 ;;
             -*)
-                unknown_flag_error "init" "$1" \
-                    --python-version --backend --auto-bootstrap --bootstrap-to \
-                    --strict --no-lock --env-name --no-direnv --node-path \
-                    --auto-install-deps \
-                    --no-install-deps --local-env --force --allow-synced-dir \
-                    --project-guide --no-project-guide \
-                    --project-guide-completion --no-project-guide-completion \
-                    --help
+                # Valid-flag allow-list single-sourced from the parameter
+                # decision-graph (graph flags) ⊕ the operational toggles.
+                local _vf=() _vf_flag
+                while IFS= read -r _vf_flag; do
+                    [[ -n "$_vf_flag" ]] && _vf+=("$_vf_flag")
+                done <<<"$(_init_valid_flags)"
+                unknown_flag_error "init" "$1" "${_vf[@]}"
                 ;;
             *)
-                venv_dir="$1"
-                shift
+                log_error "Unexpected argument: $1"
+                log_error "pyve init takes no positional arguments (the venv is always '${DEFAULT_VENV_DIR}')."
+                log_error "See: pyve init --help"
+                exit 1
                 ;;
         esac
     done
@@ -1725,27 +1918,29 @@ init_project() {
     # Refuse to initialize inside a cloud-synced directory (use --allow-synced-dir to override)
     check_cloud_sync_path
 
-    # Check for existing installation (re-initialization detection)
-    if config_file_exists; then
+    # Check for existing installation (re-initialization detection).
+    # Keys off the presence of `pyve.toml` via `_init_is_reinit`.
+    if _init_is_reinit; then
+        # Read the existing backend from the manifest for the force/notice
+        # messaging (`manifest_load` runs in `main` before dispatch).
         local existing_backend
-        existing_backend="$(read_config_value "backend")"
-        local existing_version
-        existing_version="$(read_config_value "pyve_version")"
+        existing_backend="$(manifest_get_backend root 2>/dev/null || true)"
 
         # Handle re-initialization based on mode.
         # (PYVE_REINIT_MODE="update" path removed in v2.0 / H.e.9 —
         # `pyve update` is the new entry point.)
         if [[ "${PYVE_REINIT_MODE:-}" == "force" ]]; then
             # Force re-initialization mode
-            warn "Force re-initialization: this will purge the existing environment ($existing_backend)"
+            warn "Force re-initialization: this will purge and rebuild the root environment ($existing_backend)"
+            if [[ "${PYVE_INIT_ALL:-}" == "1" ]]; then
+                warn "--all: after the root rebuild, every declared env is rebuilt from its declaration and its recorded state restored"
+            fi
 
             # Run pre-flight checks BEFORE purging so the environment is still intact
             # if the user decides to abort or a check fails.
             # We capture the backend here and reuse it in the main flow to avoid
             # prompting the user twice in the ambiguous case (env.yml + pyproject.toml).
-            # skip_config=true: --force is a clean slate — the config records the OLD
-            # backend and must not prevent re-detection from project files.
-            preflight_backend="$(get_backend_priority "$backend_flag" "true")"
+            preflight_backend="$(get_backend_priority "$backend_flag")"
             if [[ "$preflight_backend" == "micromamba" ]]; then
                 # Mirror the non-force flow (see the main micromamba branch below):
                 # scaffold a starter environment.yml on a fresh dir BEFORE lock
@@ -1770,8 +1965,9 @@ init_project() {
                 if [[ "$preflight_backend" != "$existing_backend" ]]; then
                     warn "Backend change: $existing_backend → $preflight_backend"
                 fi
-                info "Purge:   existing $existing_backend environment"
-                info "Rebuild: fresh $preflight_backend environment"
+                info "Purge:   existing $existing_backend root environment"
+                info "Rebuild: fresh $preflight_backend root environment"
+                info "Named envs under .pyve/envs/ are untouched — rebuild one with: pyve env init <name> --force"
                 if ! ask_yn "Proceed"; then
                     info "Cancelled — no changes made, existing environment preserved"
                     exit 0
@@ -1788,98 +1984,15 @@ init_project() {
             success "Environment purged"
             banner "Rebuilding fresh environment"
 
-        else
-            # Interactive mode (no flag specified)
-            warn "Project already initialized with Pyve"
-            if [[ -n "$existing_version" ]]; then
-                info "Recorded version: $existing_version"
-            fi
-            info "Current version:  $VERSION"
-            info "Backend:          $existing_backend"
-            _init_print_reinit_menu
-            printf "  %sChoose [1/2/3]:%s " "${Y}" "${RESET}"
-            read -r choice
-
-            case "$choice" in
-                1)
-                    # Check for conflicts before updating
-                    if [[ -n "$backend_flag" ]] && [[ "$backend_flag" != "$existing_backend" ]]; then
-                        warn "Cannot update in-place: backend change detected ($existing_backend → $backend_flag)"
-                        fail "Use option 2 to purge and re-initialize with new backend"
-                    fi
-
-                    # Perform safe update
-                    if ! update_config_version; then
-                        fail "Failed to update configuration (config may be corrupted)"
-                    fi
-                    success "Configuration updated"
-                    if [[ -n "$existing_version" ]]; then
-                        info "Version: $existing_version → $VERSION"
-                    else
-                        info "Version: (not recorded) → $VERSION"
-                    fi
-                    info "Backend: $existing_backend (unchanged)"
-                    info "Project updated to Pyve v$VERSION"
-
-                    # If the environment directory is missing (e.g. freshly cloned repo
-                    # where .venv is gitignored), fall through to create it.
-                    local _interactive_env_missing=false
-                    if [[ "$existing_backend" == "venv" ]]; then
-                        local _interactive_venv_dir
-                        _interactive_venv_dir="$(read_config_value "venv.directory")"
-                        _interactive_venv_dir="${_interactive_venv_dir:-$DEFAULT_VENV_DIR}"
-                        if [[ ! -d "$_interactive_venv_dir" ]]; then
-                            info "Environment directory '$_interactive_venv_dir' not found — creating it now..."
-                            _interactive_env_missing=true
-                        fi
-                    elif [[ "$existing_backend" == "micromamba" ]]; then
-                        local _interactive_env_name _interactive_env_path
-                        _interactive_env_name="$(read_config_value "micromamba.env_name")"
-                        # v3 root slot (Story N.bf.14), tolerant of a
-                        # not-yet-moved flat env.
-                        _interactive_env_path="$(resolve_main_micromamba_path "$_interactive_env_name")"
-                        if [[ -n "$_interactive_env_name" ]] && [[ ! -d "$_interactive_env_path" ]]; then
-                            info "Environment '$_interactive_env_path' not found — creating it now..."
-                            _interactive_env_missing=true
-                        elif _init_environment_yml_drifted; then
-                            # Story N.bf.15: environment.yml changed since the
-                            # env was built. Nudge-only — in-place update does
-                            # NOT rebuild (that would muddy "update preserves
-                            # the environment"); steer the user to option 2.
-                            warn "Your 'environment.yml' changed since this environment was built."
-                            info "In-place update does not apply dependency edits — re-run and choose option 2 (purge + rebuild) to apply them."
-                        fi
-                    fi
-                    if [[ "$_interactive_env_missing" == false ]]; then
-                        footer_box
-                        return 0
-                    fi
-                    # Fall through to environment creation below.
-                    ;;
-                2)
-                    # Purge and continue
-                    banner "Purging existing environment"
-                    purge_project --keep-testenv --yes
-                    success "Environment purged"
-                    banner "Rebuilding fresh environment"
-                    ;;
-                3)
-                    info "Initialization cancelled"
-                    exit 0
-                    ;;
-                *)
-                    fail "Invalid choice: $choice"
-                    ;;
-            esac
         fi
     fi
 
     # On a forced rebuild, back up any materialized env whose backend
     # differs from the target (manifest-declared) backend before creating
-    # the new one. The re-init purge above only removes the env that
-    # `.pyve/config` records; this catches a stray foreign-backend env the
-    # config doesn't account for, so the rebuild never leaves the project
-    # straddling two backends. No-op when nothing foreign is present.
+    # the new one. The re-init purge above only removes the env for the
+    # manifest's declared backend; this catches a stray foreign-backend env
+    # the manifest doesn't account for, so the rebuild never leaves the
+    # project straddling two backends. No-op when nothing foreign is present.
     if [[ "${PYVE_REINIT_MODE:-}" == "force" ]] && [[ -n "$backend_flag" ]]; then
         _init_backup_foreign_env "$backend_flag"
     fi
@@ -1894,7 +2007,7 @@ init_project() {
     # a genuinely-unknown `--backend bogus` still hard-errors.
     if [[ -z "$arg_backend_explicit" ]] && _env_backend_is_advisory "$backend_flag"; then
         info "env 'root' declares backend '$backend_flag', which pyve does not yet materialize; skipping root env creation (provision it manually per the env spec)"
-        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "$backend_flag"
         PYVE_INIT_TAIL_BACKEND="$backend_flag"
         PYVE_INIT_TAIL_ENV_PATH=""
         PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
@@ -1997,36 +2110,24 @@ init_project() {
             warn "Environment created but verification failed"
         fi
 
-        # .envrc is composed below, AFTER .pyve/config and
-        # pyve.toml exist (see the venv branch for the rationale).
+        # .envrc is composed below, AFTER pyve.toml exists (see the venv
+        # branch for the rationale).
         local env_path
         env_path="$(micromamba_root_prefix)"
 
         # Create .env file
         _init_dotenv "$use_local_env"
 
-        # .gitignore is composed below, after .pyve/config +
-        # pyve.toml exist, via compose_project_gitignore (gathers every
-        # active plugin's ignore entries through the managed section).
+        # .gitignore is composed below, after pyve.toml exists, via
+        # compose_project_gitignore (gathers every active plugin's ignore
+        # entries through the managed section).
 
-        # Create .pyve/config with version tracking
-        mkdir -p .pyve
-        cat > .pyve/config << EOF
-pyve_version: "$VERSION"
-backend: micromamba
-micromamba:
-  env_name: $env_name
-EOF
-        success "Created .pyve/config"
-
-        # write the v3.0 canonical manifest. No-op if
-        # it already exists (refresh path). When Node is detected at root
-        # alongside Python, this writes a polyglot manifest with explicit
-        # [plugins.python] + [plugins.node] blocks; pure-Python projects
-        # get the plain manifest. `.pyve/config` continues to be written
-        # above for the v3.0 read-compat window; it is dropped when that
-        # read-compat layer is removed.
-        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+        # write the v3.0 canonical manifest — the sole declaration `init`
+        # creates. No-op if it already exists (refresh path). When Node is
+        # detected at root alongside Python, this writes a polyglot manifest
+        # with explicit [plugins.python] + [plugins.node] blocks; pure-Python
+        # projects get the plain manifest.
+        _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "micromamba"
 
         # Generate .vscode/settings.json so IDEs use the correct interpreter
         write_vscode_settings "$env_name"
@@ -2097,37 +2198,22 @@ EOF
     # Create virtual environment
     _init_venv "$venv_dir"
 
-    # .envrc is composed below, AFTER .pyve/config and
-    # pyve.toml exist — the composer's Python activate hook resolves the
-    # backend / env path from .pyve/config, and plugin enumeration reads
-    # the freshly-written manifest.
+    # .envrc is composed below, AFTER pyve.toml exists — the composer's
+    # Python activate hook resolves the backend / env path from the manifest,
+    # and plugin enumeration reads the freshly-written manifest.
 
     # Create .env file
     _init_dotenv "$use_local_env"
 
-    # .gitignore is composed below, after .pyve/config +
-    # pyve.toml exist (the composer reads venv.directory from .pyve/config
-    # to ignore a custom venv dir, and enumerates plugins from pyve.toml).
+    # .gitignore is composed below, after pyve.toml exists, and enumerates
+    # plugins from it (the composer resolves the venv dir via
+    # resolve_venv_directory to ignore a custom dir).
 
-    # Create .pyve/config with version tracking
-    mkdir -p .pyve
-    cat > .pyve/config << EOF
-pyve_version: "$VERSION"
-backend: venv
-venv:
-  directory: $venv_dir
-python:
-  version: $python_version
-EOF
-    success "Created .pyve/config"
-
-    # write the v3.0 canonical manifest. No-op if it
-    # already exists (refresh path). Polyglot Python+Node projects get
-    # explicit [plugins.python] + [plugins.node] blocks; pure-Python
-    # projects get the plain manifest. `.pyve/config` continues to be
-    # written above for the v3.0 read-compat window; it is dropped when
-    # that read-compat layer is removed.
-    _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag"
+    # write the v3.0 canonical manifest — the sole declaration `init` creates.
+    # No-op if it already exists (refresh path). Polyglot Python+Node projects
+    # get explicit [plugins.python] + [plugins.node] blocks; pure-Python
+    # projects get the plain manifest.
+    _init_scaffold_manifest "$(basename "$(pwd)")" "$node_path_flag" "venv"
 
     # Materialize the declared default test env (venv-backed only), gated on an
     # actual declaration — never inject an undeclared `testenv`. Conda/advisory
@@ -2146,10 +2232,15 @@ EOF
     # hand the stack-agnostic composition tail (compose
     # .envrc/.gitignore → project-guide → next-steps) up to compose_init
     # via the result globals (see the micromamba branch + lib/init_composer.sh).
+    # shellcheck disable=SC2034 # result globals consumed by lib/init_composer.sh's compose tail (cross-file)
     PYVE_INIT_TAIL_BACKEND="venv"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_ENV_PATH="$_venv_abs"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_NO_DIRENV="$no_direnv"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_PG_MODE="$project_guide_mode"
+    # shellcheck disable=SC2034 # result global, see above
     PYVE_INIT_TAIL_COMP_MODE="$project_guide_completion_mode"
 }
 
@@ -2224,7 +2315,7 @@ _init_dotenv() {
 # Conditional items:
 #   - direnv allow                     (when --no-direnv was NOT passed)
 #   - pyve run <command>               (when --no-direnv WAS passed)
-#   - pyve testenv install -r requirements-dev.txt
+#   - pyve env install -r requirements-dev.txt
 #                                      (when requirements-dev.txt exists)
 #   - Read docs/project-guide/go.md   (when .project-guide.yml exists —
 #                                      same canonical signal pyve update
@@ -2253,7 +2344,7 @@ _init_print_next_steps() {
 
     if [[ -f requirements-dev.txt ]]; then
         n=$((n + 1))
-        printf '  %d. pyve testenv install -r requirements-dev.txt\n' "$n"
+        printf '  %d. pyve env install -r requirements-dev.txt\n' "$n"
     fi
 
     if [[ -f .project-guide.yml ]]; then
@@ -2273,10 +2364,7 @@ show_init_help() {
 pyve init - Initialize a Python virtual environment in the current directory
 
 Usage:
-  pyve init [<dir>] [options]
-
-Arguments:
-  <dir>                              Custom venv directory name (default: .venv)
+  pyve init [options]
 
 Options:
   --python-version <ver>             Set Python version (e.g., 3.13.7)
@@ -2293,9 +2381,15 @@ Options:
   --auto-install-deps                Auto-install from pyproject.toml / requirements.txt
   --no-install-deps                  Skip dependency installation prompt (for CI/CD)
   --local-env                        Copy ~/.local/.env template
-  --update                           Safely update an existing installation
-  --force                            Purge and re-initialize (destructive)
+  --force                            Purge and rebuild the root environment only
+                                     (destructive). Named envs under .pyve/envs/
+                                     are untouched — rebuild one with
+                                     'pyve env init <name> --force'
+  --all                              With --force: after the root rebuild, rebuild
+                                     every declared env and restore its recorded state
   --allow-synced-dir                 Bypass cloud-sync directory check
+  --yes, -y                          Easy mode: accept every wizard default with
+                                     no prompts, then write the explicit pyve.toml
 
   project-guide integration (three-step post-init hook):
     1. pip install --upgrade project-guide   (latest version)
@@ -2323,17 +2417,17 @@ Options:
     project-guide install             → INSTALL (matches interactive default)
     project-guide shell completion    → SKIP (editing rc files in CI is surprising)
 
-  Note: pyve init --update does NOT run the project-guide hook (minimal-touch).
+  Note: pyve update does NOT run the project-guide hook (minimal-touch).
 
 Examples:
   pyve init                                # Auto-detect backend, default venv
-  pyve init myenv                          # Custom venv directory name
+  pyve init --yes                          # Easy mode: accept all defaults, no prompts
   pyve init --backend venv                 # Force venv backend
   pyve init --backend micromamba           # Force micromamba backend
   pyve init --python-version 3.13.7        # Pin Python version
   pyve init --no-direnv                    # Skip direnv (CI/CD)
   pyve init --node-path src/frontend       # Polyglot: place Node at src/frontend
-  pyve init --force                        # Purge and rebuild
+  pyve init --force                        # Rebuild the root env (named envs untouched)
   pyve init --project-guide                # Install project-guide without prompting
   pyve init --no-project-guide             # Skip project-guide entirely
 
@@ -2365,7 +2459,6 @@ EOF
 purge_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local keep_testenv=false
-    local venv_dir_explicit=false
     local skip_confirm=false
 
     # Parse arguments
@@ -2383,9 +2476,10 @@ purge_project() {
                 unknown_flag_error "purge" "$1" --keep-testenv --yes --help
                 ;;
             *)
-                venv_dir="$1"
-                venv_dir_explicit=true
-                shift
+                log_error "Unexpected argument: $1"
+                log_error "pyve purge takes no positional arguments."
+                log_error "See: pyve purge --help"
+                exit 1
                 ;;
         esac
     done
@@ -2431,15 +2525,8 @@ purge_project() {
     # Remove version file
     _purge_version_file
 
-    # If a project config exists, prefer its venv directory when the user did not
-    # explicitly pass a venv dir to purge.
-    if [[ "$venv_dir_explicit" == false ]] && config_file_exists; then
-        local configured_venv_dir
-        configured_venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        if [[ -n "$configured_venv_dir" ]]; then
-            venv_dir="$configured_venv_dir"
-        fi
-    fi
+    # Resolve the venv directory (always `.venv` in v3).
+    venv_dir="$(resolve_venv_directory)"
 
     # Remove virtual environment
     _purge_venv "$venv_dir"
@@ -2449,7 +2536,8 @@ purge_project() {
     # and shares its parent with the micromamba main env (pre-N.g layout
     # at `.pyve/envs/<configured_name>/` — no /conda subdir). `--keep-testenv`
     # therefore preserves `.pyve/envs/` as a whole and surgically deletes
-    # only the micromamba main-env subdir (identified from `.pyve/config`).
+    # only the micromamba main-env subdir (identified via the resolved
+    # micromamba env name).
     # The legacy `.pyve/testenvs/` directory is also preserved defensively
     # in case the opportunistic migrator (`migrate_legacy_env_layout`)
     # hasn't run yet on a v2.8 project. Granular per-`purpose` preservation
@@ -2457,13 +2545,14 @@ purge_project() {
     if [[ "$keep_testenv" == true ]]; then
         if [[ -d ".pyve" ]]; then
             if [[ -d ".pyve/envs" ]] || [[ -d ".pyve/testenvs" ]]; then
+                # Resolve the backend from the manifest (the env_name migration
+                # below is inert on a v3-native project otherwise). A v2 project
+                # resolves here too via the synthesized root backend.
                 local main_env_subdir=""
-                if [[ -f ".pyve/config" ]]; then
-                    local cfg_backend
-                    cfg_backend="$(read_config_value backend 2>/dev/null || true)"
-                    if [[ "$cfg_backend" == "micromamba" ]]; then
-                        main_env_subdir="$(read_config_value micromamba.env_name 2>/dev/null || true)"
-                    fi
+                local cfg_backend
+                cfg_backend="$(manifest_get_backend root 2>/dev/null || true)"
+                if [[ "$cfg_backend" == "micromamba" ]]; then
+                    main_env_subdir="$(resolve_micromamba_env_name 2>/dev/null || true)"
                 fi
                 rm -rf ".pyve/config" 2>/dev/null || true
                 # Main micromamba env: the v3 root slot (Story N.bf.14),
@@ -2541,11 +2630,9 @@ _purge_pyve_dir() {
                 # Get environment name from config if it exists.
                 # Initialize on declaration: a declared-but-unset `local` is
                 # an unbound-variable error under `set -u` on bash 4.4+ when
-                # config_file_exists is false (no v2 .pyve/config). (N.bf.5)
+                # neither source declares a name. (N.bf.5)
                 local env_name=""
-                if config_file_exists; then
-                    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
-                fi
+                env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
 
                 # If we have an env name, try to remove it
                 if [[ -n "$env_name" ]]; then
@@ -2627,21 +2714,19 @@ show_purge_help() {
 pyve purge - Remove all Python environment artifacts
 
 Usage:
-  pyve purge [<dir>] [options]
-
-Arguments:
-  <dir>                       Custom venv directory name (default: .venv)
+  pyve purge [options]
 
 Options:
   --keep-testenv              Preserve .pyve/envs/ (all dev/test runner envs)
   --yes, -y                   Skip the destructive-confirmation prompt.
                               Equivalent to setting CI=1 or PYVE_FORCE_YES=1.
+  --force                     Deprecated alias for --yes (warns). '--force' now
+                              means "override a refusal" elsewhere (pyve init --force).
 
 Examples:
   pyve purge                               # Remove .pyve and the venv (prompts)
   pyve purge --yes                         # Remove without the prompt
   pyve purge --keep-testenv                # Preserve the testenv across purge
-  pyve purge custom_venv                   # Remove a custom-named venv
 
 See `pyve --help` for the full command list.
 EOF
@@ -2662,8 +2747,8 @@ EOF
 #
 # Function-name note: this function is named `update_project` per
 # the project-essentials "Function naming convention: verb_<operand>"
-# rule — `pyve update` operates on the project (`.pyve/config`,
-# `.gitignore`, `.vscode/settings.json`, project-guide scaffolding).
+# rule — `pyve update` operates on the project (`.gitignore`,
+# `.vscode/settings.json`, project-guide scaffolding).
 #============================================================
 
 # Update-private wrapper around the M.h.2 migration helper. Exists as
@@ -2694,24 +2779,22 @@ update_project() {
         esac
     done
 
-    # Sanity check: .pyve/config must exist. Without it we don't know the
-    # backend or how to refresh anything.
-    if ! config_file_exists; then
+    # Sanity check: the project must be initialized. A project declares itself
+    # via `pyve.toml`; the backend is resolved from the manifest below.
+    if [[ ! -f "pyve.toml" ]]; then
         log_error "pyve update requires an initialized project."
-        log_error "No .pyve/config found. Run 'pyve init' first."
+        log_error "No pyve.toml found. Run 'pyve init' first."
         exit 1
     fi
 
+    # Backend from the manifest (authoritative).
     local backend
-    backend="$(read_config_value "backend")"
+    backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
-        log_error "Corrupt .pyve/config: missing 'backend' key."
+        log_error "Could not determine the project backend."
         log_error "Run: pyve init --force"
         exit 1
     fi
-
-    local previous_version
-    previous_version="$(read_config_value "pyve_version")"
 
     # Pre-step: opportunistically migrate any v2.7 `.pyve/testenv/venv/`
     # or v2.8 `.pyve/testenvs/<name>/{venv,conda}/` layout to the v3
@@ -2723,28 +2806,10 @@ update_project() {
 
     header_box "pyve update v$VERSION"
 
-    # Step 1/4 — bump pyve_version in .pyve/config (idempotent; writes
-    # even when already at current version, simplifying the happy path).
-    local step1_label
-    if [[ -z "$previous_version" ]]; then
-        step1_label="[1/5] pyve_version: (not recorded) → $VERSION"
-    elif [[ "$previous_version" == "$VERSION" ]]; then
-        step1_label="[1/5] pyve_version: $VERSION (already current)"
-    else
-        step1_label="[1/5] pyve_version: $previous_version → $VERSION"
-    fi
-    step_begin "$step1_label"
-    if ! update_config_version >/dev/null 2>&1; then
-        step_end_fail
-        log_error "Failed to update .pyve/config."
-        exit 1
-    fi
-    step_end_ok
-
-    # Step 2/5 — refresh the composed .gitignore managed section across all
+    # Step 1/4 — refresh the composed .gitignore managed section across all
     # active plugins. User content above/below the managed
     # markers is preserved; prior file backed up to .gitignore.prev.
-    step_begin "[2/5] Refresh .gitignore (Pyve-managed section)"
+    step_begin "[1/4] Refresh .gitignore (Pyve-managed section)"
     if run_quiet compose_project_gitignore ".gitignore"; then
         step_end_ok
     else
@@ -2758,7 +2823,7 @@ update_project() {
     # manifest/registry, preserves user content below the managed end
     # marker, and backs the prior file up to .envrc.prev.
     if [[ -f ".envrc" ]]; then
-        step_begin "[3/5] Refresh .envrc (Pyve-managed section)"
+        step_begin "[2/4] Refresh .envrc (Pyve-managed section)"
         if run_quiet compose_project_envrc ".envrc"; then
             step_end_ok
         else
@@ -2766,7 +2831,7 @@ update_project() {
             log_warning "  .envrc refresh failed; existing file left intact."
         fi
     else
-        step_begin "[3/5] .envrc: absent — skipped (use 'pyve init' to opt into direnv)"
+        step_begin "[2/4] .envrc: absent — skipped (use 'pyve init' to opt into direnv)"
         step_end_ok
     fi
 
@@ -2774,20 +2839,20 @@ update_project() {
     # Never create — that's user opt-in at init time.
     if [[ -f ".vscode/settings.json" ]] && [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name")"
+        env_name="$(resolve_micromamba_env_name)"
         if [[ -n "$env_name" ]]; then
-            step_begin "[4/5] Refresh .vscode/settings.json"
+            step_begin "[3/4] Refresh .vscode/settings.json"
             PYVE_REINIT_MODE=force write_vscode_settings "$env_name" >/dev/null 2>&1
             step_end_ok
         else
-            step_begin "[4/5] .vscode/settings.json: micromamba env_name missing — skipped"
+            step_begin "[3/4] .vscode/settings.json: micromamba env_name missing — skipped"
             step_end_ok
         fi
     elif [[ -f ".vscode/settings.json" ]]; then
-        step_begin "[4/5] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
+        step_begin "[3/4] .vscode/settings.json: present but only refreshed for micromamba backends — skipped"
         step_end_ok
     else
-        step_begin "[4/5] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
+        step_begin "[3/4] .vscode/settings.json: absent — skipped (use 'pyve init --force' to opt in)"
         step_end_ok
     fi
 
@@ -2796,14 +2861,13 @@ update_project() {
 
     # Step 5/5 — refresh project-guide scaffolding if present and allowed.
     if [[ "$pg_mode" == "no" ]]; then
-        step_begin "[5/5] project-guide refresh skipped (--no-project-guide)"
+        step_begin "[4/4] project-guide refresh skipped (--no-project-guide)"
         step_end_ok
     elif [[ -f ".project-guide.yml" ]]; then
         local env_path=""
         if [[ "$backend" == "venv" ]]; then
             local venv_dir
-            venv_dir="$(read_config_value "venv.directory")"
-            venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+            venv_dir="$(resolve_venv_directory)"
             env_path="$venv_dir"
         elif [[ "$backend" == "micromamba" ]]; then
             # Main micromamba env at the v3 root slot (Story N.bf.14); the
@@ -2812,7 +2876,7 @@ update_project() {
             env_path="$(micromamba_root_prefix)"
         fi
         if [[ -n "$env_path" ]] && [[ -d "$env_path" ]]; then
-            step_begin "[5/5] Refresh project-guide artifacts"
+            step_begin "[4/4] Refresh project-guide artifacts"
             if run_quiet run_project_guide_update_in_env "$backend" "$env_path"; then
                 step_end_ok
             else
@@ -2820,12 +2884,12 @@ update_project() {
                 log_warning "  Run 'project-guide update' manually to retry."
             fi
         else
-            step_begin "[5/5] project-guide: environment not found — skipped"
+            step_begin "[4/4] project-guide: environment not found — skipped"
             step_end_ok
             log_warning "  (Run 'pyve init --force' to rebuild the environment.)"
         fi
     else
-        step_begin "[5/5] project-guide: .project-guide.yml absent — skipped"
+        step_begin "[4/4] project-guide: .project-guide.yml absent — skipped"
         step_end_ok
     fi
 
@@ -2845,7 +2909,6 @@ Description:
   project; idempotent.
 
   Refreshes:
-    - pyve_version in .pyve/config
     - Pyve-managed sections of .gitignore
     - .envrc managed section (only if it already exists; user content
       below the managed end marker is preserved, prior file → .envrc.prev)
@@ -2864,11 +2927,14 @@ Options:
 
 Exit codes:
   0    Success (including no-op when already at current version).
-  1    Failure (missing .pyve/config, corrupt config, unwritable files).
+  1    Failure (not a pyve project, or unwritable files).
 
 See also:
   pyve init --force          Destroy + rebuild the environment
   pyve --help                Full command list
+Boundary:
+  pyve update touches the files Pyve manages around your project;
+  pyve init --force / pyve upgrade touch the environments themselves.
 EOF
 }
 
@@ -2956,30 +3022,17 @@ check_environment() {
     fi
 
     # --- Check 1: pyve project present ------------------------------------
-    # Route presence + backend through the v3 manifest. `manifest_load`
-    # handles both a native `pyve.toml` and the v3.0 read-compat synthesis
-    # from `.pyve/config`, so a pyve.toml-only project is recognized. The
-    # old bare `config_file_exists` gate was v2-blind: a migrated project
-    # (pyve.toml present, no .pyve/config) hard-failed here.
+    # `pyve.toml` is the sole declaration; a project without it is not a pyve
+    # project.
     manifest_load 2>/dev/null || true
-    local has_pyve_toml=false
-    [[ -f "pyve.toml" ]] && has_pyve_toml=true
-    if [[ "$has_pyve_toml" == false ]] && ! config_file_exists; then
+    if [[ ! -f "pyve.toml" ]]; then
         _check_fail "Configuration: no pyve.toml (not a pyve project)" "→ Run: pyve init"
         _check_summary_and_exit
     fi
-    if [[ "$has_pyve_toml" == true ]]; then
-        _check_pass "Configuration: pyve.toml"
-    else
-        _check_pass "Configuration: .pyve/config (v2)"
-    fi
+    _check_pass "Configuration: pyve.toml"
 
     # --- Check 3: backend configured --------------------------------------
-    # Read the main (`root`) env's backend from the manifest accessor —
-    # works for v3-native (pyve.toml) and v2 (read-compat synthesis from
-    # .pyve/config) alike. (Check 2 slots below — runs after we know the
-    # backend so we can point the user at either `pyve update` or
-    # `pyve init --force` as appropriate.)
+    # Read the main (`root`) env's backend from the manifest accessor.
     local backend
     backend="$(manifest_get_backend root 2>/dev/null || true)"
     if [[ -z "$backend" ]]; then
@@ -2989,46 +3042,16 @@ check_environment() {
     fi
     _check_pass "Backend: $backend"
 
-    # --- Check 2: pyve_version drift --------------------------------------
-    # The recorded-version drift check is a v2 `.pyve/config` concept —
-    # `pyve.toml` carries no pyve_version. Only run it when a `.pyve/config`
-    # is present; a pyve.toml-only project legitimately has no recorded
-    # version there, and the "legacy project → pyve update" nudge would be
-    # misleading on a native v3 project.
-    if config_file_exists; then
-        local recorded_version
-        recorded_version="$(read_config_value "pyve_version")"
-        if [[ -z "$recorded_version" ]]; then
-            _check_warn "Pyve version: not recorded (legacy project)" \
-                "→ Run: pyve update"
-        else
-            case "$(compare_versions "$recorded_version" "$VERSION")" in
-                equal)
-                    _check_pass "Pyve version: $recorded_version (current)"
-                    ;;
-                less)
-                    _check_warn "Pyve version: $recorded_version (current: $VERSION)" \
-                        "→ Run: pyve update"
-                    ;;
-                greater)
-                    _check_warn "Pyve version: $recorded_version (newer than running pyve v$VERSION)" \
-                        "→ Upgrade pyve or re-initialize the project"
-                    ;;
-            esac
-        fi
-    fi
-
     # --- Backend-specific checks ------------------------------------------
     local env_path=""
     if [[ "$backend" == "venv" ]]; then
         local venv_dir
-        venv_dir="$(read_config_value "venv.directory")"
-        venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+        venv_dir="$(resolve_venv_directory)"
         env_path="$venv_dir"
         _check_venv_backend "$env_path"
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name")"
+        env_name="$(resolve_micromamba_env_name)"
         # Main micromamba env at the v3 root slot (Story N.bf.14), tolerant
         # of a not-yet-moved flat env (non-mutating — `check` is a diagnostic).
         env_path="$(resolve_main_micromamba_path "$env_name")"
@@ -3053,20 +3076,34 @@ check_environment() {
         _check_warn ".env: missing" "→ Run: touch .env"
     fi
 
-    # Check 16: testenv (conditional — only warn if exists but broken)
-    local testenv_venv
-    testenv_venv="$(resolve_env_path testenv)"
-    if [[ -d "$testenv_venv" ]]; then
-        if [[ -x "$testenv_venv/bin/python" ]] && \
-           "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
-            _check_pass "testenv: pytest installed"
-        else
-            _check_warn "testenv: present but pytest not installed" \
-                "→ Run: pyve test"
-        fi
-    fi
+    # Check 16: testenv (conditional — only speaks when the env exists).
+    _check_default_testenv
 
     _check_summary_and_exit
+}
+
+# Default-testenv line for `pyve check`. Routes the fault to the verb
+# that actually repairs it: a structurally broken env (present but no
+# runnable python — a runnability probe, not an existence stat) needs
+# the rebuild verb `pyve env init testenv --force`; a healthy python
+# that merely lacks pytest is repopulated by `pyve test`. Absent env →
+# silent (the check is conditional). Emits via the caller's _check_*
+# closures (dynamic scope from check_environment).
+_check_default_testenv() {
+    local testenv_venv
+    testenv_venv="$(resolve_env_path testenv)"
+    [[ -d "$testenv_venv" ]] || return 0
+    if ! "$testenv_venv/bin/python" --version >/dev/null 2>&1; then
+        _check_warn "testenv: present but broken (no runnable python)" \
+            "→ Run: pyve env init testenv --force"
+        return 0
+    fi
+    if "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
+        _check_pass "testenv: pytest installed"
+    else
+        _check_warn "testenv: present but pytest not installed" \
+            "→ Run: pyve test"
+    fi
 }
 
 # Per-backend helpers. These escalate via the outer _check_* closures and
@@ -3286,13 +3323,10 @@ show_status() {
         printf "%s───────────────────%s\n\n" "${DIM}" "${RESET}"
     fi
 
-    # Recognize a v3-native project (pyve.toml) as well as a v2 one
-    # (.pyve/config). `manifest_load` covers both — a native pyve.toml or
-    # the v3.0 read-compat synthesis from .pyve/config. Gating on bare
-    # `config_file_exists` was v2-blind: a migrated project reported as
-    # "Not a pyve-managed project".
+    # `pyve.toml` is the sole declaration; a project without it is not a
+    # pyve-managed project.
     manifest_load 2>/dev/null || true
-    if [[ ! -f "pyve.toml" ]] && ! config_file_exists; then
+    if [[ ! -f "pyve.toml" ]]; then
         # Non-project fallback. Don't treat it as an error; status reports
         # reality, and "not a pyve project" is a valid reality.
         _status_row "Not a pyve-managed project" ""
@@ -3333,28 +3367,9 @@ _status_section_project() {
         _status_row "Backend:" "${DIM}not configured${RESET}"
     fi
 
-    # The recorded pyve_version is a v2 `.pyve/config` concept (pyve.toml
-    # carries none). Only surface the row when a `.pyve/config` is present;
-    # a pyve.toml-only project legitimately has no recorded version there.
-    local recorded_version
-    recorded_version="$(read_config_value "pyve_version" 2>/dev/null || true)"
-    if [[ ! -f ".pyve/config" ]]; then
-        _status_row "Declaration:" "pyve.toml"
-    elif [[ -z "$recorded_version" ]]; then
-        _status_row "Pyve config:" "${DIM}version not recorded${RESET}"
-    else
-        case "$(compare_versions "$recorded_version" "$VERSION")" in
-            equal)
-                _status_row "Pyve config:" "v${recorded_version} (current)"
-                ;;
-            less)
-                _status_row "Pyve config:" "v${recorded_version} (current: v${VERSION})"
-                ;;
-            greater)
-                _status_row "Pyve config:" "v${recorded_version} (newer than pyve v${VERSION})"
-                ;;
-        esac
-    fi
+    # The project is declared by pyve.toml (the caller only reaches this section
+    # when pyve.toml exists; a project without it is reported as non-managed).
+    _status_row "Declaration:" "pyve.toml"
 
     _status_row "Python:" "$(_status_configured_python)"
     printf "\n"
@@ -3363,15 +3378,21 @@ _status_section_project() {
 # Detect the configured Python version source. Returns a human-readable
 # string like "3.14.4 (.tool-versions via asdf)" or "(not pinned)".
 #
+# The project's backend, for status display. Reads the v3 manifest — `pyve.toml`
+# is authoritative for the root backend, and `show_status` calls `manifest_load`
+# before these sections run.
+_status_backend() {
+    manifest_get_backend root 2>/dev/null || true
+}
+
 # Backend-aware: micromamba projects pin Python in environment.yml
 # (`python=<spec>`); venv-style backends use .tool-versions /
-# .python-version / .pyve/config. Without the dispatch the Project
-# section falsely reports "not pinned" for a pinned micromamba project,
-# contradicting the Environment section's actual interpreter version
-# (Phase L audit T1-01).
+# .python-version. Without the dispatch the Project section falsely
+# reports "not pinned" for a pinned micromamba project, contradicting
+# the Environment section's actual interpreter version.
 _status_configured_python() {
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
     if [[ "$backend" == "micromamba" ]]; then
         _status_configured_python_micromamba
     else
@@ -3380,17 +3401,14 @@ _status_configured_python() {
 }
 
 _status_configured_python_venv() {
-    local version="" source=""
-    if [[ -f ".tool-versions" ]]; then
-        version="$(grep "^python " .tool-versions 2>/dev/null | awk '{print $2}')"
-        source=".tool-versions via asdf"
-    elif [[ -f ".python-version" ]]; then
-        version="$(cat .python-version 2>/dev/null)"
-        source=".python-version via pyenv"
-    else
-        version="$(read_config_value "python.version" 2>/dev/null || true)"
-        source=".pyve/config"
-    fi
+    local out version source
+    out="$(resolve_python_version)"
+    version="${out%%|*}"
+    source="${out##*|}"
+    case "$source" in
+        tool-versions)  source=".tool-versions via asdf" ;;
+        python-version) source=".python-version via pyenv" ;;
+    esac
     if [[ -z "$version" ]]; then
         printf "%snot pinned%s" "${DIM}" "${RESET}"
     else
@@ -3435,7 +3453,7 @@ _status_section_environment() {
     _status_header "Environment"
 
     local backend
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
 
     if [[ "$backend" == "micromamba" ]]; then
         _status_env_micromamba
@@ -3450,8 +3468,7 @@ _status_section_environment() {
 
 _status_env_venv() {
     local venv_dir
-    venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-    venv_dir="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+    venv_dir="$(resolve_venv_directory)"
 
     if [[ ! -d "$venv_dir" ]]; then
         _status_row "Path:" "${venv_dir} (${DIM}missing${RESET})"
@@ -3489,7 +3506,7 @@ _status_venv_package_count() {
 
 _status_env_micromamba() {
     local env_name env_path
-    env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+    env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
     if [[ -z "$env_name" ]]; then
         _status_row "Name:" "${DIM}not configured${RESET}"
         return 0
@@ -3555,15 +3572,14 @@ _status_section_integrations() {
 
     # project-guide: look for the binary in the project environment.
     local backend env_path pg_info
-    backend="$(read_config_value "backend" 2>/dev/null || true)"
+    backend="$(_status_backend)"
     env_path=""
     if [[ "$backend" == "venv" ]]; then
         local venv_dir
-        venv_dir="$(read_config_value "venv.directory" 2>/dev/null || true)"
-        env_path="${venv_dir:-${DEFAULT_VENV_DIR:-.venv}}"
+        env_path="$(resolve_venv_directory)"
     elif [[ "$backend" == "micromamba" ]]; then
         local env_name
-        env_name="$(read_config_value "micromamba.env_name" 2>/dev/null || true)"
+        env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
         [[ -n "$env_name" ]] && env_path="$(resolve_main_micromamba_path "$env_name")"
     fi
     if [[ -n "$env_path" ]] && [[ -x "$env_path/bin/project-guide" ]]; then
@@ -3622,9 +3638,9 @@ EOF
 # pyve run — execute a command inside the active project environment
 # (Option 1 relocation from lib/commands/run.sh)
 #
-# Auto-detects the active backend (venv vs micromamba) by probing
-# .pyve/config first (authoritative), then falling back to the
-# directory heuristic for legacy projects. exec()s the target command
+# Auto-detects the active backend (venv vs micromamba) by reading the
+# manifest first (authoritative), then falling back to the
+# directory heuristic for bare projects. exec()s the target command
 # with environment activation done in-process (no shell layer).
 #
 # No private `_run_*` helpers and no `show_run_help` block exist —
@@ -3640,9 +3656,9 @@ run_command() {
         exit 1
     fi
 
-    # Detect active backend. Authoritative source is .pyve/config's
-    # `backend:` field; the directory heuristic is only a fallback for
-    # legacy projects with no config. With the v3 state layout, the
+    # Detect active backend. Authoritative source is the manifest's root
+    # `backend`; the directory heuristic is only a fallback for bare
+    # projects with no manifest. With the v3 state layout, the
     # `.pyve/envs/*` glob also matches testenvs (e.g. .pyve/envs/testenv/),
     # so the older "any child under .pyve/envs/ means micromamba" rule
     # would mis-route every venv-backed project that has a testenv to the
@@ -3652,14 +3668,14 @@ run_command() {
     local venv_dir="$DEFAULT_VENV_DIR"
     local mm_env_name=""
 
-    if [[ -f ".pyve/config" ]]; then
-        backend="$(read_config_value backend 2>/dev/null || printf '')"
-        if [[ "$backend" == "micromamba" ]]; then
-            mm_env_name="$(read_config_value micromamba.env_name 2>/dev/null || printf '')"
-        fi
+    # Backend from the manifest (the env_name resolve is inert on a v3-native
+    # project otherwise).
+    backend="$(manifest_get_backend root 2>/dev/null || printf '')"
+    if [[ "$backend" == "micromamba" ]]; then
+        mm_env_name="$(resolve_micromamba_env_name 2>/dev/null || printf '')"
     fi
 
-    # Fallback for legacy projects with no .pyve/config: prefer the
+    # Fallback for bare projects (no manifest): prefer the
     # explicit `.venv/` signal; otherwise look for a single-tenant
     # `.pyve/envs/<name>/` (pre-N.f micromamba layout).
     if [[ -z "$backend" ]]; then
@@ -3722,11 +3738,11 @@ run_command() {
             exit 1
         fi
 
-        # Identify the micromamba main env. mm_env_name was set above
-        # from `.pyve/config:micromamba.env_name` (or, for legacy
-        # projects with no config, from the sole .pyve/envs/* entry).
+        # Identify the micromamba main env. mm_env_name was set above from
+        # `resolve_micromamba_env_name` (environment.yml `name:`), or for bare
+        # projects with no manifest, from the sole .pyve/envs/* entry.
         if [[ -z "$mm_env_name" ]]; then
-            log_error "Micromamba env_name not recorded in .pyve/config"
+            log_error "Micromamba env_name not found (set 'name:' in environment.yml)"
             exit 1
         fi
         # v3 root slot (Story N.bf.14), tolerant of a not-yet-moved flat
@@ -4084,7 +4100,7 @@ _test_run_one_env() {
         if [[ "${PYVE_NO_AUTO_PROVISION:-0}" == "1" ]]; then
             log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
             log_error "PYVE_NO_AUTO_PROVISION=1 is set — refusing to auto-provision."
-            log_error "Run: pyve testenv install $env_target"
+            log_error "Run: pyve env install $env_target"
             exit 1
         fi
         info "Lazy testenv '$env_target' not yet provisioned — auto-provisioning..."
@@ -4115,12 +4131,12 @@ _test_run_one_env() {
                 if [[ "$response" =~ ^[Yy]$ ]]; then
                     _test_install_pytest_into_testenv "$testenv_venv"
                 else
-                    log_info "Install skipped. You can install with: pyve testenv install -r requirements-dev.txt"
+                    log_info "Install skipped. You can install with: pyve env install -r requirements-dev.txt"
                     exit 1
                 fi
             else
                 log_error "pytest is not installed in the dev/test runner environment."
-                log_error "Run: pyve testenv install -r requirements-dev.txt"
+                log_error "Run: pyve env install -r requirements-dev.txt"
                 exit 1
             fi
         fi

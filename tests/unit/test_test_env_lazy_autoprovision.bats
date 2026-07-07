@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=env
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0
@@ -6,7 +7,7 @@
 # Unit tests for Story M.n — lazy auto-provisioning.
 #
 # M.m left a hard-error site for `pyve test --env <lazy-name>` when the
-# env hadn't been provisioned yet (pointing the user at `pyve testenv
+# env hadn't been provisioned yet (pointing the user at `pyve env
 # install <name>`). M.n replaces that hard-error with auto-provisioning
 # on the same code path: `ensure_env_exists <name>` then
 # `_env_install_with_lock <name> <path> "" wait`, gated by a
@@ -99,7 +100,7 @@ SH
     [ "$status" -ne 0 ]
     [[ "$output" == *"heavy"* ]]
     [[ "$output" == *"PYVE_NO_AUTO_PROVISION"* ]]
-    [[ "$output" == *"pyve testenv install heavy"* ]]
+    [[ "$output" == *"pyve env install heavy"* ]]
     # Auto-provision did NOT run.
     [ ! -d ".pyve/envs/heavy/venv" ]
 }

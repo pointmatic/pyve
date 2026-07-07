@@ -21,7 +21,7 @@ Pyve should be:
 ### Core Requirements
 
 1. Initialize a complete project environment in one command (`pyve init`) — across one or more stacks — covering language-version selection, environment materialization, direnv configuration, `.env` setup, `.gitignore` management, and optional `project-guide` installation.
-2. Declare every environment in a root-level `pyve.toml` manifest: `[project]`, `[env.<name>]` (purpose, backend, plugin-private attributes), and `[plugins.<lang>]`.
+2. Declare every environment in a root-level `pyve.toml` manifest: `[project]`, `[env.<name>]` (purpose, backend, plugin-private attributes), and `[plugins.<lang>]`. *(v3.1.0, Subphase P-1: `pyve init` writes this manifest **fully explicit** — every resolved value recorded — and it becomes the **sole** config source; see [FR-24](#fr-24-explicit-by-construction-manifest--versioned-defaults).)*
 3. Support named environments with purposes (`run`, `test`, `utility`, `temp`) and name-based defaults.
 4. Provide a plugin + backend-provider contract so languages and backends plug into one composition layer; ship Python (venv / micromamba) and Node / SvelteKit (pnpm / npm / yarn) as reference plugins.
 5. Compose lifecycle commands (`init` / `check` / `status` / `purge`) and generated files (`.envrc` / `.gitignore`) across every active plugin, including polyglot projects.
@@ -32,6 +32,8 @@ Pyve should be:
 10. Migrate v2 projects to the v3 manifest deterministically and idempotently (`pyve self migrate`).
 11. (for CI and Linux/non-Homebrew) Install and uninstall the Pyve script itself from a cloned GitHub repository, as an alternative to Homebrew. Examples: `./pyve.sh self install` (local script), `pyve self uninstall` (using the installed command). It hands off to the hidden toolchain. Homebrew / macOS users don't need to install Pyve this way (`brew install pointmatic/tap/pyve`, or `brew uninstall pyve`).
 12. When Pyve first sets up `project-guide` (e.g. during `pyve init`), it provisions a hidden, global Python toolchain — a Pyve-owned venv, separate from your project environments — currently used to host the [Project-Guide](https://pointmatic.github.io/project-guide/) integration. Upgrade it (the `project-guide` package) with `pyve self provision`; remove it with `pyve self unprovision`.
+13. *(v3.1.0, Subphase P-1)* Author the manifest and resolve every CLI surface (wizard prompts, flags, `--help`, defaults, default-drift detection) from one **parameter decision-graph**, so adding a parameter is a single-source change rather than editing several hand-synced sites; see [FR-23](#fr-23-keystone-parameter-decision-graph).
+14. *(v3.1.0, Subphase P-1)* Provide one consistent environment lifecycle: `pyve upgrade` re-resolves dependencies in place, `pyve init --force` / `pyve env init <name> --force` rebuild-and-restore, `--all` fans across every declared env, and rebuilds restore prior operational state instead of resetting to factory; see [FR-25](#fr-25-operational-state-record--restore-on-rebuild) and [FR-27](#fr-27-dependency-upgrade-pyve-upgrade--lifecycle-verb-model).
 
 ### Operational Requirements
 
@@ -76,7 +78,7 @@ Pyve should be:
 ### Required
 
 - **Subcommand or universal flag** — One of:
-  - Subcommands: `init`, `purge`, `update`, `check`, `status`, `run`, `test`, `env {init|install|purge|run|list|prune|sync}`, `lock`, `package`, `python {set|show}`, `self {install|uninstall|migrate|provision|unprovision}`.
+  - Subcommands: `init`, `purge`, `update`, `upgrade`, `check`, `status`, `run`, `test`, `env {init|install|purge|run|list|prune|sync}`, `lock`, `package`, `python {set|show}`, `self {install|uninstall|migrate|provision|unprovision}`. *(`upgrade` is v3.1.0, Subphase P-1.)*
   - Legacy sugar: `pyve testenv <sub>` is the deprecated alias for `pyve env <sub>` — it still works during the v3.x window (delegating to `pyve env`) and prints a one-time deprecation warning per shell. Hard-error replacement lands in v4.0.
   - Universal flags (CLI convention): `--help` / `-h`, `--version` / `-v`, `--config` / `-c`.
 
@@ -101,9 +103,10 @@ Pyve should be:
 | `--keep-testenv` | Preserve the other declared envs (test/utility/temp) during purge, to save a rebuild | `pyve purge --keep-testenv` |
 | `--project-guide` / `--no-project-guide` | Force / skip the project-guide hook (overrides auto-detection) | `pyve init --no-project-guide` |
 | `--project-guide-completion` / `--no-project-guide-completion` | Force / skip shell-completion wiring | `pyve init --project-guide-completion` |
-| `--env <name>` | (test/lock/package) target a named environment | `pyve test --env smoke` |
-| `--check` | (lock) verify lock freshness without regenerating | `pyve lock --check` |
-| `--all` | (lock) lock the main env + every conda-backed env | `pyve lock --all` |
+| `--env <name>` | (test/lock/package/upgrade) target a named environment | `pyve test --env smoke` |
+| `--check` | (lock/upgrade) verify freshness / preview without applying | `pyve lock --check` |
+| `--all` | (lock) lock the main env + every conda-backed env; (v3.1.0, P-1: init/upgrade/env purge) fan the action across every declared env | `pyve init --force --all` |
+| `--force` | (v3.1.0, P-1: also `env init`) rebuild-and-restore a named env | `pyve env init testenv --force` |
 | `--dry-run` / `--no-rebuild` | (self migrate) preview or skip the env-rebuild step | `pyve self migrate --dry-run` |
 
 ### Project Files (Auto-Detection)
@@ -158,7 +161,7 @@ Initialize a complete project environment in the current directory, composing ac
 6. Run the project-guide hook ([FR-19](#fr-19-project-guide-integration)) as the final step before the success summary.
 7. End with a single "Next steps:" block whose items appear conditionally (e.g. `direnv allow` unless `--no-direnv`; `pyve env install -r requirements-dev.txt` when `requirements-dev.txt` exists; `Read docs/project-guide/go.md` when `.project-guide.yml` exists).
 
-**Interactive wizard.** Every `pyve init` runs through a wizard; flags suppress only the *interactive* part of a prompt while still rendering the resolved value. Prompts, in fixed order: **backend → language-version pin → project-guide**. When at least one prompt would read stdin and stdin is not a TTY, `pyve init` exits non-zero naming the missing flags; `PYVE_INIT_NONINTERACTIVE=1` bypasses the guard (degrading each prompt to its auto-detect default).
+**Interactive wizard.** Every `pyve init` runs through a wizard; flags suppress only the *interactive* part of a prompt while still rendering the resolved value. In v3.0 the prompts run in a fixed source-ordered sequence: **backend → language-version pin → project-guide**. *(v3.1.0, Subphase P-1: prompt set and order become **data**, walked from the keystone parameter decision-graph — pruning questions that don't apply and narrowing choices from prior answers, with each plugin contributing its own subtree; see [FR-23](#fr-23-keystone-parameter-decision-graph). An "easy mode" fast-accept path runs the shallow common case in 2–3 prompts.)* When at least one prompt would read stdin and stdin is not a TTY, `pyve init` exits non-zero naming the missing flags; `PYVE_INIT_NONINTERACTIVE=1` bypasses the guard (degrading each prompt to its auto-detect default).
 
 **Polyglot scaffold.** When `pyve init` detects both a Python signal and a `package.json` at the root, it writes a polyglot `pyve.toml` with `[plugins.python]` (root) and `[plugins.node]` at a distinct sub-path — two plugins cannot both own `.`. The Node path is chosen by a convention walk (`src/frontend`, `frontend`, `web`, `client`, `ui`), `--node-path`, or a prompt (default `src/frontend`); the chosen path is always announced.
 
@@ -172,10 +175,12 @@ Initialize a complete project environment in the current directory, composing ac
 
 A single root-level `pyve.toml` is the canonical declaration of a Pyve project. Everything under `.pyve/` is materialized state, never configuration.
 
+*(v3.1.0, Subphase P-1: `pyve init` writes the manifest **fully explicit** — every resolved value recorded — and it becomes the **sole** config source: the resolved backend/python/env-name are written into `pyve.toml`, the legacy `.pyve/config` write is retired, and the v2 read-sites migrate onto the manifest reader. Defaults are pinned at authoring and never re-applied retroactively. See [FR-24](#fr-24-explicit-by-construction-manifest--versioned-defaults).)*
+
 **Behavior:**
 - `pyve_schema` (top-level, defaults to `"3.0"`) records the manifest schema version.
 - `[project]` holds project-level metadata.
-- `[env.<name>]` declares one environment surface: `purpose`, `backend`, and structured/plugin-private attributes (`languages`, `manual_steps`, `packaging`, and backend-source attributes like `requirements` / `extra` / `manifest`). Every field is optional; the reader applies documented defaults.
+- `[env.<name>]` declares one environment surface: `purpose`, `backend`, and structured/plugin-private attributes (`languages`, `manual_steps`, `packaging`, and backend-source attributes like `requirements` / `extra` / `manifest`). Every field is optional; the reader applies documented defaults. *(v3.1.0, Subphase P-1: the block also declares **how the environment is set up** — a composable set of plugin-interpreted setup directives, adding an `editable` self-install directive and lifting the `requirements ⊕ extra ⊕ manifest` mutex; see [FR-26](#fr-26-declarative-environment-setup).)*
 - `[plugins.<lang>]` declares an active plugin and its root `path` (defaulting to `.`).
 - The manifest is read through one helper (Pyve's toolchain Python) and exposed to the rest of Pyve through flat accessors; consumers never parse the TOML directly.
 
@@ -201,7 +206,7 @@ Every `[env.<name>]` carries a `purpose` from the closed set `{run, test, utilit
 | `test` | mostly reconstruction **cost** + fast iteration | cacheable; reproducible; low drift stakes |
 | `run` | upstream-churn insulation + **validated identity** | reproducibility mandate; lock + artifact-promotion target |
 
-Preservation is therefore two independent levers, not a permanence flag: **recovery fidelity** (make rebuild always faithful — a complete declaration) and **recovery cost** (a cache with declaration-hash invalidation; `run`/`test` rank higher, `utility`/`temp` little or none). For `run`, the durable thing lives *outside* the fragile env directory as a lockfile + promoted artifact (built wheelhouse/image), because the most-preserved env is paradoxically the most rot-prone. *(The cache-with-invalidation and artifact-promotion mechanics are the Phase P direction, not shipped in v3.0; the `purpose` vocabulary and the `pyve test --env` gate ship today.)*
+Preservation is therefore two independent levers, not a permanence flag: **recovery fidelity** (make rebuild always faithful — a complete declaration) and **recovery cost** (a cache with declaration-hash invalidation; `run`/`test` rank higher, `utility`/`temp` little or none). For `run`, the durable thing lives *outside* the fragile env directory as a lockfile + promoted artifact (built wheelhouse/image), because the most-preserved env is paradoxically the most rot-prone. *(The `purpose` vocabulary and the `pyve test --env` gate ship in v3.0. Recovery fidelity — the complete declaration ([FR-26](#fr-26-declarative-environment-setup)) and the operational-state record that powers restore-on-rebuild ([FR-25](#fr-25-operational-state-record--restore-on-rebuild)) — lands in v3.1.0, Subphase P-1; the cache-with-invalidation and artifact-promotion mechanics remain later-Phase-P direction.)*
 
 **Edge cases:**
 - `pyve test --env <name>` restricts to `purpose = "test"` envs; selecting any other purpose hard-errors with a precise "use `pyve env run <name> -- <command>`" hint.
@@ -216,6 +221,7 @@ A plugin contract and a backend-provider registry let languages and backends plu
 - Three backend categories are recognized: **virtualized** (per-project env directory, PATH-activated — `venv`, `micromamba`, `pnpm`), **cache-backed** (shared user cache + project lockfile — designed-in, none ship in v3.0), and **check-only** (verify presence/version, no install — designed-in, none ship in v3.0).
 - Each plugin registers its hooks (`init` / `purge` / `update` / `check` / `status` / `run` / `test` / `activate` / `.gitignore`) and the category of each backend; the framework routes lifecycle commands accordingly.
 - Plugin-supplied snippets pass an input-safety validator before they are composed into `.envrc` / `.gitignore`.
+- *(v3.1.0, Subphase P-1)* The contract gains a **parameter/wizard contribution hook**: a plugin registers its own subtree of the keystone decision-graph (Python: `backend → version-manager → version → test-env`; Node: `provider → runtime-manager`), so the framework owns the top-level differentiators and each language contributes the rest. See [FR-23](#fr-23-keystone-parameter-decision-graph).
 
 **Advisory attributes (declared, not enforced in v3.0):**
 - `languages` (string list) — declares the language flavors an env materializes. The only surfaced behavior is a conservative `pyve check` warning when `languages` is declared without `"python"` on a Python-managed env.
@@ -294,14 +300,15 @@ Remove all Pyve-created artifacts from the current directory, composed across pl
 - Each plugin smart-removes its generated environments and directories; version-manager pins and `.envrc` are removed; `.env` is removed only if empty (preserved with a warning if non-empty).
 - The Pyve-managed `.gitignore` section is cleaned; committed artifacts (`conda-lock.yml`, `environment.yml`, `package.json`, lockfiles) are never removed.
 - `--keep-testenv` preserves the project's other declared environments (test / utility / temp) so purging the run environment doesn't force a costly rebuild of the rest — a reconstruction-cost convenience, not a claim that those envs are precious (see [FR-3](#fr-3-named-environments--purposes)).
+- *(v3.1.0, Subphase P-1) `pyve env purge` no-arg consistency fix.* Bare `pyve env purge` operates on the **default** env (matching its siblings `init` / `install` / `run`); `pyve env purge --all` is the explicit sweep across every declared env. This flips the v3.0 behavior where bare `pyve env purge` swept all envs — behavior-breaking for a script relying on the old sweep, but a trivially-breaking ergonomics fix on a young surface (`--all` preserves the old behavior), so the v3.1.0 bundle stays a **minor** bump.
 
 **Edge cases:**
 - No environment found → informational message, no error.
 - A failed purge is resumable (delete-only); re-running is safe.
 
-### FR-11: Non-Destructive Upgrade (`pyve update`)
+### FR-11: Non-Destructive Refresh (`pyve update`)
 
-Project-level refresh that never rebuilds environments.
+Project-level refresh that never rebuilds environments and never touches environment dependencies. *(v3.1.0, Subphase P-1: the load-bearing boundary, pinned in `--help` and docs — **`update` touches the files Pyve manages *around* your project; `init` / `force` / `upgrade` touch the *environments themselves*.** Dependency re-resolution lives in the new `pyve upgrade` verb, [FR-27](#fr-27-dependency-upgrade-pyve-upgrade--lifecycle-verb-model).)*
 
 **Behavior:**
 - Rewrites the manifest's recorded Pyve version; refreshes Pyve-managed sections of `.gitignore` and (when present) `.vscode/settings.json`; bootstraps missing `.pyve/` scaffolding paths.
@@ -423,6 +430,93 @@ Make Pyve's own substrate bulletproof: explain *why* a command resolves the way 
 
 **Roadmap:** ships in the Phase P v3.x line; the exact release tag and the full story breakdown are deferred to the subphase plan. Builds on the v3.0 runnability override seam (`PYVE_PROJECT_GUIDE_BIN`) and the `pyve self provision --status` hosting-readiness contract.
 
+### FR-23: Keystone Parameter Decision-Graph
+
+*v3.1.0 (Subphase P-1) — designed; the Bash representation is proven by an architectural spike before the full extraction.*
+
+A single conditional **decision-graph** is the one source from which every parameter surface is generated, replacing the v3.0 reality where adding one `pyve init` parameter touches ≥4 hand-synced sites (the flag `case`, the unknown-flag allow-list, `--help`, the default initializer) plus a source-position-ordered wizard block.
+
+**Behavior:**
+- Each node declares: **applicability** (a predicate over prior answers — skip the node when not relevant), a **choice set** (possibly *computed* from prior answers — e.g. Backend's options are a function of Language), a **versioned default** (so drift is detectable, [FR-24](#fr-24-explicit-by-construction-manifest--versioned-defaults)), plus its **flag**, **env var**, **owning plugin**, and **required?** metadata.
+- The wizard walks the graph top-down, pruning irrelevant nodes and narrowing choices; the **same graph**, resolved by flags instead of prompts, is the non-interactive / CI surface (flag-vs-prompt equivalence is a tested invariant).
+- Six outputs are generated from the one artifact: the **wizard**, the **flag/CLI parser**, **`--help`**, **the defaults the manifest reader applies**, **the explicit `pyve.toml`** ([FR-24](#fr-24-explicit-by-construction-manifest--versioned-defaults)), and **default-drift detection**.
+- The framework owns the top differentiators and cross-cutting nodes (Language, project-guide, `.env`/direnv, composition); each plugin contributes its language subtree through the contract's parameter/wizard contribution hook ([FR-4](#fr-4-plugin--backend-provider-model)). A single-stack project prunes to a 2–3-node path ("easy mode"); a polyglot selection fans into per-language subtrees.
+
+**Edge cases:**
+- A genuinely gnarly topology (per-framework isolation, monorepo env counts) is *not* encoded in the core graph — it is pre-seeded by the deferred templates feature (out of scope here).
+
+### FR-24: Explicit-by-Construction Manifest & Versioned Defaults
+
+*v3.1.0 (Subphase P-1).*
+
+The manifest is *complete*, *honest*, and *stable*: `pyve init` records every resolved value, `pyve.toml` is the only config source, and defaults are frozen at authoring time.
+
+**Behavior:**
+- **Explicit-by-construction (P1).** `pyve init` writes a fully-explicit `pyve.toml` — every resolved value recorded, sourced from the graph's defaults. The wizard (and its easy-mode fast-accept) does the authoring, so a trivial Python project's explicit file is generated, not hand-typed. Permissiveness lives in the wizard, not the manifest.
+- **Sole config source.** The resolved backend (plus python / env-name) is written into `pyve.toml [env.root]` on both fresh and existing manifests; the v2 `.pyve/config` write is retired and the ~64 read-sites that still read it migrate onto the manifest reader. This also repairs the v3.0 bug where `pyve init --force` silently no-ops on a `.pyve/config`-less v3 project (the reinit gate keyed off `config_file_exists`).
+- **Defaults pinned + drift surfaced (P2).** Graph defaults are versioned. A default is resolved once and frozen into `pyve.toml`; a later Pyve-version default change never mutates an existing repo — a check/update surface *reports* the divergence with the new value as **info** ("default backend changed `venv`→`X`"), leaving the pinned value untouched.
+
+**Edge cases:**
+- An upgrade that changes a default leaves an existing manifest byte-identical; the divergence is surfaced, not applied.
+- Re-running `pyve init` from an explicit manifest is a deterministic, no-prompt replay.
+
+### FR-25: Operational-State Record & Restore-on-Rebuild
+
+*v3.1.0 (Subphase P-1).*
+
+`pyve.toml` is *desired* state (intent); a `.pyve/`-resident **operational-state record** is *actual* state (what's materialized). This is the IaC split (`main.tf` vs `terraform.tfstate`) — one is declared, one is observed; it is not a second source of truth, and no `pyve.yaml` is introduced.
+
+**Behavior:**
+- **Record actual state (P3).** The per-env `.state` store gains an **installed-spec hash** for both backends (venv: the resolved requirement set; conda: the existing manifest hash) plus a realized/installed marker, written from the install path — so the realized-vs-installed distinction is *recorded* rather than re-derived from the filesystem.
+- **Rebuild restores; purge resets (P3).** `pyve init --force` and `pyve env init <name> --force` **snapshot-then-replay** the operational-state record: re-realize and re-install whatever was realized-and-installed, and leave a never-realized lazy env unrealized. Only `pyve purge` / `pyve env purge` truly destroys.
+- **Symmetry (P4).** `pyve env init <name> --force` is to a named env exactly what `pyve init --force` is to root.
+
+**Edge cases:**
+- A realized-and-installed lazy env survives `--force` as realized-and-installed; a never-realized one stays unrealized; `purge` wipes it.
+
+### FR-26: Declarative Environment Setup
+
+*v3.1.0 (Subphase P-1).*
+
+An `[env.<name>]` block declares **how the environment is set up** — a composable set of declarative, plugin-interpreted **directives**, not a single mutually-exclusive source — so `pyve env init <name>` materializes a fully-operable env in one shot and the manifest fully describes the env.
+
+**Behavior:**
+- The directives **compose**: an editable self-install with extras, requirements files, an `extra` group, a conda manifest, and plain packages can layer together. The `requirements ⊕ extra ⊕ manifest` mutex is **lifted**.
+- A new **`editable`** directive (editable self-install + extras, e.g. `editable = ".[corruptions]"`) adds the expressiveness that previously forced an imperative `pip install -e` step.
+- The vocabulary is **closed and declarative** — a plugin-interpreted set of intents, never a list of shell steps; that boundary is what keeps it declarative rather than imperative-in-disguise. Each plugin interprets its own backend's directives (`editable` is the Python plugin's notion).
+- **One-shot materialization:** `pyve env init <name>` (and `--force`) realizes the full declared recipe; rebuild collapses to a single `pyve env init <name> --force`. Existing `requirements`/`extra`/`manifest`-only blocks stay valid (they are single-directive recipes).
+- A uniform "rebuild this env from its declaration" verb works for `root` and named envs alike — a developer never has to know which namespace owns which env to repair it.
+
+**Edge cases:**
+- Init installs what you declared and nothing you didn't (no implicit pytest); a fully-declared env still comes up operable.
+
+### FR-27: Dependency Upgrade (`pyve upgrade`) & Lifecycle Verb Model
+
+*v3.1.0 (Subphase P-1).*
+
+A new top-level verb and a consistent verb model that keeps the lifecycle legible.
+
+**Behavior:**
+- **`pyve upgrade [--env <name> | --all]`** re-resolves / upgrades an env's dependencies to newest-within-constraints, **keeps** the env directory, restores operational state ([FR-25](#fr-25-operational-state-record--restore-on-rebuild)), and re-locks. `--check` previews without applying. Additive and non-breaking.
+- **`--all` batch lifecycle.** `pyve init --force --all` rebuilds (and restores, per [FR-25](#fr-25-operational-state-record--restore-on-rebuild)) every declared env in one command — killing the N×`env purge`/`env init`/`env install` chore. `--all` is the explicit fan-out on the root-scoped lifecycle verbs; per-env headers and a worst-case exit code.
+- **The verb boundary** (pinned in `--help` and docs): **`update` touches the files Pyve manages *around* your project; `init` / `force` / `upgrade` touch the *environments themselves*.** This matches the apt mental model (`apt update` refreshes the index; `apt upgrade` installs newer versions).
+
+**Command & verb matrix:**
+
+| Intent | Root | Named env | All envs |
+|---|---|---|---|
+| First materialize (declarative) | `pyve init` | `pyve env init <name>` | `pyve init` materializes the declared set |
+| Upgrade deps, keep env, restore state | `pyve upgrade` | `pyve upgrade --env <name>` | `pyve upgrade --all` |
+| Purge + rebuild, restore state | `pyve init --force` | `pyve env init <name> --force` | `pyve init --force --all` |
+| Reset / destroy (no restore) | `pyve purge` | `pyve env purge <name>` | `pyve purge --all` |
+| Refresh Pyve scaffolding (no env) | `pyve update` | — | `pyve update` |
+
+Bare `pyve env <sub>` (no name) uniformly targets the **default** env ([FR-10](#fr-10-environment-purge-pyve-purge)).
+
+**Edge cases:**
+- `pyve upgrade` against an unknown env gives the standard "run `pyve init`" hint.
+- `upgrade` granularity (newest-within-constraints + re-lock vs. honor an existing lock) is resolved during story breakdown; the likely default is bump + re-lock with `--check` to preview.
+
 ---
 
 ## Configuration
@@ -453,9 +547,10 @@ purpose = "run"
 backend = "venv"
 
 [env.testenv]
-purpose = "test"
-backend = "venv"
-requirements = ["requirements-dev.txt"]
+purpose      = "test"
+backend      = "venv"
+editable     = ".[corruptions]"          # v3.1.0: editable self-install + extras
+requirements = ["requirements-dev.txt"]   # v3.1.0: composes — no mutex
 
 [env.web]
 purpose   = "run"
@@ -463,7 +558,7 @@ backend   = "pnpm"
 languages = ["typescript", "javascript"]
 ```
 
-`pyve.toml` is the only declaration file; everything under `.pyve/` is materialized state. Per-env backend-source attributes (`requirements` / `extra` / `manifest`) are mutually exclusive.
+`pyve.toml` is the only declaration file; everything under `.pyve/` is materialized state. In **v3.0**, per-env backend-source attributes (`requirements` / `extra` / `manifest`) are mutually exclusive. *(v3.1.0, Subphase P-1: the mutex is lifted and an `editable` directive is added so the block declares a composable setup recipe; see [FR-26](#fr-26-declarative-environment-setup). v3.1.0 also makes `pyve init` write the manifest fully explicit and retires the `.pyve/config` write; see [FR-24](#fr-24-explicit-by-construction-manifest--versioned-defaults).)*
 
 ### Environment Variables
 
@@ -527,3 +622,11 @@ languages = ["typescript", "javascript"]
 7. All operations are idempotent — repeated runs produce the same result.
 8. CI/CD workflows run without interactive prompts via the documented flags and environment variables.
 9. Unit and integration tests pass on macOS and Linux across the Python version matrix.
+
+**v3.1.0 (Subphase P-1):**
+
+10. `pyve init` writes a fully-explicit `pyve.toml` (every resolved value recorded), it is the sole config source (no `.pyve/config` write), and re-`init` from that manifest is a deterministic no-prompt replay.
+11. The wizard, flags, `--help`, and defaults are all generated from one parameter decision-graph; flag-driven and prompt-driven resolution are equivalent.
+12. A Pyve-version default change leaves an existing manifest byte-identical and is surfaced as info, never re-applied.
+13. `pyve init --force` (and `pyve env init <name> --force`) restore prior operational state rather than factory-resetting; `--all` fans across every declared env; only `purge` destroys.
+14. `pyve upgrade` re-resolves and re-locks an env's dependencies while preserving the env; `pyve update` still only refreshes scaffolding; bare `pyve env purge` targets the default env (`--all` sweeps).

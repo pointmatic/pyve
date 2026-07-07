@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=micromamba
 #
 # Copyright (c) 2026 Pointmatic, (https://www.pointmatic.com)
 # SPDX-License-Identifier: Apache-2.0

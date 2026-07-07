@@ -1,4 +1,5 @@
 #!/usr/bin/env bats
+# bats file_tags=micromamba
 #
 # Unit tests for lib/micromamba_core.sh
 # Tests micromamba binary detection, version checking, and location detection

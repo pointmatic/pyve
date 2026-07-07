@@ -21,6 +21,12 @@
 #   6. diagnostics           — plugin-internal health checks
 #   7. gitignore_entries     — `.gitignore` patterns owned by this plugin
 #   8. purge_inventory       — created-vs-authored inventory for purge
+#   9. register_params       — contribute a parameter decision-graph subtree
+#                              (pg_add_node rows) for the wizard / flags / help.
+#                              The framework owns the top differentiators
+#                              (language / project-guide / direnv); each plugin
+#                              owns its language subtree, so the graph is not
+#                              Python-hardcoded. Node order is prompt order.
 #
 # Defaults are silent: each prints nothing and returns 0. The dispatcher
 # never errors on a missing hook implementation — by design, since N-2
@@ -46,3 +52,4 @@ pyve_plugin_default_activate()           { :; }
 pyve_plugin_default_diagnostics()        { :; }
 pyve_plugin_default_gitignore_entries()  { :; }
 pyve_plugin_default_purge_inventory()    { :; }
+pyve_plugin_default_register_params()    { :; }
