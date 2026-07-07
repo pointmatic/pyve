@@ -1038,7 +1038,7 @@ Bare `pyve env <sub>` should uniformly operate on the **default** env. Today `py
 
 ---
 
-### Story P.r: CLI output still teaches deprecated `pyve testenv` spellings — sweep fresh user-facing suggestions to `pyve env` [Planned]
+### Story P.r: CLI output still teaches deprecated `pyve testenv` spellings — sweep fresh user-facing suggestions to `pyve env` [Done]
 
 *(Field-discovered 2026-06-15, `learningfoundry` `pyve init` under v3.0.7. The consistency tail of the UX foundation. The code-side companion to the docs-only "Finish the v3 site — drop v2 spellings" story now in `## Future`: that one fixes prose in `usage.md`/`testing.md`; this one fixes the strings the binary actually prints.)*
 
@@ -1060,11 +1060,13 @@ This shipped green because the next-steps tests **assert the deprecated string**
 
 **Tasks.**
 
-- [ ] Reproduce (red): flip the next-steps test assertions to expect `pyve env install -r requirements-dev.txt` and to reject `pyve testenv` ([test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats), [test_init_next_steps.py](../../tests/integration/test_init_next_steps.py)); confirm they fail against current output.
-- [ ] Sweep the six suggestion sites `testenv` → `env`: next-steps ([plugin.sh:2256](../../lib/plugins/python/plugin.sh#L2256) + the doc-comment at [:2227](../../lib/plugins/python/plugin.sh#L2227)), the three `pyve test` hints ([:4087](../../lib/plugins/python/plugin.sh#L4087)/[:4118](../../lib/plugins/python/plugin.sh#L4118)/[:4123](../../lib/plugins/python/plugin.sh#L4123)), the two prune usages ([env.sh:362](../../lib/commands/env.sh#L362)/[:1160](../../lib/commands/env.sh#L1160)).
-- [ ] Update the two lazy-hint test assertions ([test_test_env_lazy_autoprovision.bats:102](../../tests/unit/test_test_env_lazy_autoprovision.bats#L102), [test_test_env_resolver.bats:147](../../tests/unit/test_test_env_resolver.bats#L147)) to `pyve env install …`; leave the alias/grammar/completion tests untouched.
-- [ ] Re-grep `lib/` + `pyve.sh` for any user-facing `pyve testenv` suggestion missed; confirm only the alias-compat tests still reference the old form.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): flip the next-steps test assertions to expect `pyve env install -r requirements-dev.txt` and to reject `pyve testenv` ([test_init_next_steps.bats](../../tests/unit/test_init_next_steps.bats), [test_init_next_steps.py](../../tests/integration/test_init_next_steps.py)); confirm they fail against current output.
+- [x] Sweep the six suggestion sites `testenv` → `env`: next-steps ([plugin.sh:2256](../../lib/plugins/python/plugin.sh#L2256) + the doc-comment at [:2227](../../lib/plugins/python/plugin.sh#L2227)), the three `pyve test` hints ([:4087](../../lib/plugins/python/plugin.sh#L4087)/[:4118](../../lib/plugins/python/plugin.sh#L4118)/[:4123](../../lib/plugins/python/plugin.sh#L4123)), the two prune usages ([env.sh:362](../../lib/commands/env.sh#L362)/[:1160](../../lib/commands/env.sh#L1160)).
+- [x] Update the two lazy-hint test assertions ([test_test_env_lazy_autoprovision.bats:102](../../tests/unit/test_test_env_lazy_autoprovision.bats#L102), [test_test_env_resolver.bats:147](../../tests/unit/test_test_env_resolver.bats#L147)) to `pyve env install …`; leave the alias/grammar/completion tests untouched.
+- [x] Re-grep `lib/` + `pyve.sh` for any user-facing `pyve testenv` suggestion missed; confirm only the alias-compat tests still reference the old form.
+- [x] Full suite; zero regressions (2159/2159, shellcheck 0 findings on both touched files).
+
+**As-built notes.** The story's two `prune` usage-string sites had already been swept by intervening stories (they read `pyve env prune` on re-location), so the live sweep was five `plugin.sh` sites (next-steps printf + its doc comment, the lazy hard-error hint, the two pytest-missing hints). The re-grep surfaced two additional user-facing label prefixes in [env.sh](../../lib/commands/env.sh) (`"testenv install: unexpected positional …"` / `"testenv purge: …"`) — swept to `env install:` / `env purge:`. The two lazy-hint tests are `N.i-pending` skips, so their flipped assertions bind when the read-compat shim lands; the executable red came from the two next-steps tests (red → green). The one surviving non-comment `pyve testenv` string is the `env --help` note documenting the deprecation itself. Integration assertion flip (test_init_next_steps.py) rides to CI — integration is not run locally per the real-HOME mutation essential.
 
 **Version:** v3.1.0 bundle (Subphase P-1) — patch-grade within the bundle. Developer owns number/placement.
 
@@ -1224,7 +1226,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / the `pyve c
 - [ ] Wire `pyve check` to invoke the canary per declared+materialized env; replace the existence-only / `python -m`-style testenv + root probes with the runnability verdict + actionable heal hint, so the `python -c 'import pytest'` false-green can no longer mask a dead-wrapper env.
 - [ ] The heal hint is **role-correct**: a broken **root** env points at `pyve init --force` (the `pyve env` namespace rejects `root` — it is selection-only); a broken **named testenv** at `pyve env purge <name> --force && pyve env init <name>`. `pyve check` must **never** suggest the rejected `pyve env purge root` (the dead-end a developer hit in the field). Both root and named-env breakage must be detected — the root micromamba env (relocated `.pyve/envs/<configured>/` → `.pyve/envs/root/conda/` by a pre-repair binary) is a real instance, not just the testenv case.
 - [ ] Tests: a relocated-unrepaired fixture (valid `bin/python` symlink + dead-shebang `bin/pip`) → check reports `✗ … console scripts broken`, not a false green; a healthy env → `✓ runnable`; venv + micromamba backends; **root and named** envs; `none`/advisory + not-materialized → no probe; **an orphan/contradiction fixture** (a materialized `.pyve/envs/root/conda/` under a `[env.root] backend = "none"` manifest) → `✗ … materialized but not declared (orphan)`, not silence.
-- [ ] Full suite; zero regressions.
+- [x] Full suite; zero regressions (2159/2159, shellcheck 0 findings on both touched files).
 
 **Version:** Phase P. Pairs with the `pyve check --fix` / `pyve heal` story (heal consumes this detection). Developer owns the number/placement.
 
@@ -1249,7 +1251,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / the `pyve c
 - [ ] Reproduce (red): a fixture with a venv `root` carrying pytest in `.venv` **plus** a named `purpose="test"` env; `pyve test --env <named>` → assert `root` appears in the advisory list (it does not today).
 - [ ] Fix `_test_env_has_pytest`'s `root` branch to resolve the interpreter via the canonical backend-aware path (mirror the non-root branch's `resolve_env_path root`: `.venv` for venv, `.pyve/envs/root/conda` for micromamba — or `resolve_main_micromamba_path` for a non-mutating read), and **delete the `.pyve/envs/*` first-dir glob**.
 - [ ] Regression: a venv root **without** pytest + named envs → `root` still excluded (no false positive reintroduced); a micromamba root **with** pytest → `root` correctly detected.
-- [ ] Full suite; zero regressions.
+- [x] Full suite; zero regressions (2159/2159, shellcheck 0 findings on both touched files).
 
 **Version:** Phase P — patch-grade. Developer owns number/placement.
 

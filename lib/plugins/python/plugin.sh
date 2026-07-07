@@ -2315,7 +2315,7 @@ _init_dotenv() {
 # Conditional items:
 #   - direnv allow                     (when --no-direnv was NOT passed)
 #   - pyve run <command>               (when --no-direnv WAS passed)
-#   - pyve testenv install -r requirements-dev.txt
+#   - pyve env install -r requirements-dev.txt
 #                                      (when requirements-dev.txt exists)
 #   - Read docs/project-guide/go.md   (when .project-guide.yml exists —
 #                                      same canonical signal pyve update
@@ -2344,7 +2344,7 @@ _init_print_next_steps() {
 
     if [[ -f requirements-dev.txt ]]; then
         n=$((n + 1))
-        printf '  %d. pyve testenv install -r requirements-dev.txt\n' "$n"
+        printf '  %d. pyve env install -r requirements-dev.txt\n' "$n"
     fi
 
     if [[ -f .project-guide.yml ]]; then
@@ -4100,7 +4100,7 @@ _test_run_one_env() {
         if [[ "${PYVE_NO_AUTO_PROVISION:-0}" == "1" ]]; then
             log_error "Testenv '$env_target' is declared lazy and has not been provisioned yet."
             log_error "PYVE_NO_AUTO_PROVISION=1 is set — refusing to auto-provision."
-            log_error "Run: pyve testenv install $env_target"
+            log_error "Run: pyve env install $env_target"
             exit 1
         fi
         info "Lazy testenv '$env_target' not yet provisioned — auto-provisioning..."
@@ -4131,12 +4131,12 @@ _test_run_one_env() {
                 if [[ "$response" =~ ^[Yy]$ ]]; then
                     _test_install_pytest_into_testenv "$testenv_venv"
                 else
-                    log_info "Install skipped. You can install with: pyve testenv install -r requirements-dev.txt"
+                    log_info "Install skipped. You can install with: pyve env install -r requirements-dev.txt"
                     exit 1
                 fi
             else
                 log_error "pytest is not installed in the dev/test runner environment."
-                log_error "Run: pyve testenv install -r requirements-dev.txt"
+                log_error "Run: pyve env install -r requirements-dev.txt"
                 exit 1
             fi
         fi

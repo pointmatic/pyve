@@ -1249,7 +1249,7 @@ env_command() {
                             ;;
                         *)
                             if [[ -n "$action_name" ]]; then
-                                log_error "testenv install: unexpected positional '$1' (already named '$action_name')"
+                                log_error "env install: unexpected positional '$1' (already named '$action_name')"
                                 exit 1
                             fi
                             action_name="$1"
@@ -1284,7 +1284,7 @@ env_command() {
                             ;;
                         *)
                             if [[ -n "$action_name" ]]; then
-                                log_error "testenv purge: unexpected positional '$1' (already named '$action_name')"
+                                log_error "env purge: unexpected positional '$1' (already named '$action_name')"
                                 exit 1
                             fi
                             action_name="$1"
