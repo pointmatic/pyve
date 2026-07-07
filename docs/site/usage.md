@@ -30,7 +30,8 @@ Organized into four categories (same as `pyve --help`):
 |---------|-------------|
 | `init [<dir>]` | Initialize the project's environment(s) — auto-detects each stack, composed across plugins |
 | `purge [<dir>]` | Remove Pyve-managed environment artifacts (composed across plugins) |
-| `update` | Non-destructive upgrade: refresh config + managed files + project-guide (never rebuilds an env) |
+| `update` | Non-destructive refresh of the files Pyve manages around your project (never touches an env) |
+| `upgrade [--env <name>] [--all] [--check]` | Re-resolve env dependencies to newest-within-constraints in place (keeps the env; re-locks) |
 | `python set <ver>` | Pin the project Python version |
 | `python show` | Print the currently pinned Python version + source |
 | `lock [--check] [--env <name>] [--all]` | Generate or verify `conda-lock.yml` (micromamba-backed envs) |
@@ -748,6 +749,35 @@ pyve update [--no-project-guide]
 - `1` — failure (unwritable config, corrupt YAML, etc.)
 
 **v1.x migration.** `pyve update` replaces the v1.x `pyve init --update` flag (removed in v2.0). The new semantics are broader: the old flag only bumped `pyve_version`; `pyve update` also refreshes managed files + `project-guide` scaffolding. Typing `pyve init --update` in v2.0 produces a migration error pointing at `pyve update`.
+
+**The `update` / `upgrade` boundary:** `pyve update` touches the files Pyve manages *around* your project; `pyve init --force` and `pyve upgrade` touch the *environments themselves*.
+
+---
+
+### `upgrade [--env <name>|--all] [--check]`
+
+Re-resolve an environment's dependencies to newest-within-constraints **in place** — the env directory is kept, the operational-state record is re-stamped, and micromamba-backed envs re-lock when a `conda-lock.yml` participates.
+
+**Usage:**
+
+```bash
+pyve upgrade                  # upgrade the root env
+pyve upgrade --env smoke      # upgrade one declared env
+pyve upgrade --all            # root + every declared env
+pyve upgrade --check          # preview the plan; execute nothing
+```
+
+**What it does:**
+
+1. venv-backed: `pip install --upgrade` over the declared setup recipe (`editable` → `requirements` → `extra`); the root env falls back to `requirements.txt` (`-r`) or `pyproject.toml` (`-e .`) when its block declares no recipe.
+2. micromamba-backed: `micromamba update -f <manifest>` (newest within the manifest's constraints), then the pip layer with `--upgrade`, then a re-lock via the `pyve lock` machinery.
+3. Re-stamps the env's `.state` installed dimension (named envs).
+
+**What it does NOT do:**
+
+- Never creates an env — a never-realized target errors with a `pyve env init` hint. Use `pyve env init <name>` first.
+- Never rebuilds — that is `pyve init --force` (root) / `pyve env init <name> --force` (named).
+- With `--check`: never executes anything; prints `would run:` lines.
 
 ---
 

@@ -1011,14 +1011,15 @@ Record actual (vs. declared) env state so rebuild can restore it. The per-env `.
 
 ---
 
-### Story P.p: `pyve upgrade` verb — re-resolve deps, keep the env, restore state [Planned]
+### Story P.p: `pyve upgrade` verb — re-resolve deps, keep the env, restore state [Done]
 
 A new top-level verb (apt mental model): `pyve upgrade` re-resolves/upgrades an env's dependencies to newest-within-constraints, keeps the env directory, restores operational state, and re-locks. Pin the boundary everywhere: **`update` touches the files Pyve manages *around* your project; `init`/`force`/`upgrade` touch the *environments themselves*.** `--env <name>` / `--all`.
 
-- [ ] `pyve upgrade [--env <name>|--all]`: re-resolve deps (bump + re-lock), retain the env, restore state.
-- [ ] Document the `update` vs. `upgrade` boundary in `--help` and the docs; a `pyve upgrade` against an unknown env gives the standard hint.
-- [ ] Decide `upgrade` granularity (newest-within-constraints + re-lock; `--check` to preview) — see UX doc §10.
-- [ ] Tests: `upgrade` bumps a pinned dep + re-locks while preserving the env; `update` still only refreshes scaffolding.
+- [x] New top-level verb `pyve upgrade [--env <name>|--all] [--check]` (new [lib/commands/upgrade.sh](../../lib/commands/upgrade.sh), `upgrade_environment` per the naming convention; explicit source line + dispatcher arm in [pyve.sh](../../pyve.sh)). Bare = root env; `--all` = root + every declared env (lazy never-realized and advisory envs skip with notes; one env's failure continues the fan-out, worst rc wins). Upgrade **keeps** the env directory — a never-realized target is an error pointing at `pyve env init`, never an implicit create.
+- [x] Per-backend re-resolve: venv → `pip install --upgrade` over the declared recipe (editable → requirements → extra, the P.l order), root falling back to conventional sources (`requirements.txt` → `-r`, else `pyproject.toml` → `-e .`); conda → `micromamba update -p -f <manifest>` then the pip layer with `--upgrade`, then re-lock via the existing `pyve lock` machinery when the lock file participates. Named envs re-stamp the P.m installed dimension (root has no state slot yet — future story).
+- [x] Granularity decision (UX doc §10.2) settled as the leaning: newest-within-constraints + re-lock; `--check` is a dry-run that prints the plan and executes nothing.
+- [x] The `update` vs `upgrade` boundary pinned where it's taught: both `--help` texts + [usage.md](../site/usage.md) ("`update` touches the files Pyve manages around your project; `init --force`/`upgrade` touch the environments themselves"). Unknown `--env` gets the standard actionable hint.
+- [x] Tests: new [test_upgrade.bats](../../tests/unit/test_upgrade.bats) (9: root venv fallback sources ×2; declared-recipe upgrade preserves the env dir + re-stamps installed while `last_used_at` holds; never-realized target errors with the init hint; conda update→pip→re-lock ordering; `--check` executes nothing and leaves state untouched; `--all` fan-out with lazy skip; unknown env; boundary help) + the dispatch pin in test_cli_dispatch.bats — 10 red → green. Full suite green (2159 tests, 0 failures); zero shellcheck warning/error findings on upgrade.sh, pyve.sh, and plugin.sh.
 
 **Version:** v3.1.0 bundle (Subphase P-1).
 

@@ -375,6 +375,8 @@ fi
 if [[ -f "$SCRIPT_DIR/lib/commands/env.sh" ]]; then
     # shellcheck source=lib/commands/env.sh
     source "$SCRIPT_DIR/lib/commands/env.sh"
+    # shellcheck source=lib/commands/upgrade.sh
+    source "$SCRIPT_DIR/lib/commands/upgrade.sh"
 else
     printf "ERROR: Cannot find lib/commands/env.sh\n" >&2
     exit 1
@@ -809,6 +811,16 @@ main() {
         lock)
             shift
             lock_environment "$@"
+            ;;
+        upgrade)
+            # re-resolve env dependencies in place (the env
+            # directory is kept; `update` refreshes project scaffolding).
+            shift
+            if [[ -n "${PYVE_DISPATCH_TRACE:-}" ]]; then
+                printf 'DISPATCH:upgrade %s\n' "$*"
+                exit 0
+            fi
+            upgrade_environment "$@"
             ;;
         package)
             # artifact-materialization verb. Reserved in v3.0 —

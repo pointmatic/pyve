@@ -321,3 +321,9 @@ run_pyve() {
     [ "$status" -eq 0 ]
     [[ "$output" == *"pyve test"* ]]
 }
+
+@test "dispatch: 'pyve upgrade' routes to the upgrade handler" {
+    PYVE_DISPATCH_TRACE=1 run_pyve upgrade
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"DISPATCH:upgrade"* ]]
+}

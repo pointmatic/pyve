@@ -2932,6 +2932,9 @@ Exit codes:
 See also:
   pyve init --force          Destroy + rebuild the environment
   pyve --help                Full command list
+Boundary:
+  pyve update touches the files Pyve manages around your project;
+  pyve init --force / pyve upgrade touch the environments themselves.
 EOF
 }
 
