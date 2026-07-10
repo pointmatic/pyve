@@ -3792,40 +3792,23 @@ _test_has_pytest() {
     "$testenv_venv/bin/python" -c "import pytest" >/dev/null 2>&1
 }
 
-# Story M.o: probe whether `<name>` has pytest importable. Drives the
-# generalized silent-skip advisory — if any env *other* than the one
-# the user targeted has pytest, that env is a candidate for `--env <X>`
-# (its dependency stack may be what the tests actually need). M.c's
-# trap is the canonical instance: target = `testenv`, `root` has pytest
-# → warn. M.o expands to root + every declared name.
+# Probe whether `<name>` has pytest importable. Drives the silent-skip
+# advisory on `pyve test --env <X>`: if any env *other* than the
+# targeted one has pytest, that env is a candidate the user may have
+# meant — tests that `importorskip` its stack silently SKIP in the
+# targeted env and look green.
 #
-# `<name> == "root"` resolves the main project env (micromamba env
-# preferred at `.pyve/envs/<first>`, else `$DEFAULT_VENV_DIR/bin/python`).
-# Other names resolve via `resolve_env_path <name>` and probe its
-# `bin/python`. Returns 0 (env has pytest importable) / 1 (no env /
-# no pytest / probe failure).
-#
-# Renamed from `_test_main_env_has_pytest` in M.o.
+# Every name — `root` included — resolves through the canonical
+# backend-aware `resolve_env_path` (venv root → `.venv`; micromamba
+# root → the `.pyve/envs/root/conda` slot; named envs →
+# `.pyve/envs/<name>/{venv|conda}`) and probes the env's `bin/python`.
+# Returns 0 (env has pytest importable) / 1 (no env / no pytest /
+# probe failure).
 _test_env_has_pytest() {
     local env_name="$1"
-    local py=""
-
-    if [[ "$env_name" == "root" ]]; then
-        if [[ -d ".pyve/envs" ]]; then
-            local env_dirs=(.pyve/envs/*)
-            if [[ -d "${env_dirs[0]:-}" ]] && [[ "${env_dirs[0]:-}" != ".pyve/envs/*" ]]; then
-                py="${env_dirs[0]}/bin/python"
-            fi
-        fi
-        if [[ -z "$py" ]] && [[ -x "$DEFAULT_VENV_DIR/bin/python" ]]; then
-            py="$DEFAULT_VENV_DIR/bin/python"
-        fi
-    else
-        local env_path
-        env_path="$(resolve_env_path "$env_name" 2>/dev/null)" || return 1
-        py="$env_path/bin/python"
-    fi
-
+    local env_path py
+    env_path="$(resolve_env_path "$env_name" 2>/dev/null)" || return 1
+    py="$env_path/bin/python"
     [[ -x "$py" ]] || return 1
     "$py" -c "import pytest" >/dev/null 2>&1
 }

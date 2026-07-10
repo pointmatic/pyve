@@ -115,7 +115,7 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 ---
 
-### Story P.w: silent-skip advisory's `root` pytest probe is broken for a venv root + named envs (the standard v3 topology) [Planned]
+### Story P.w: silent-skip advisory's `root` pytest probe is broken for a venv root + named envs (the standard v3 topology) [Done]
 
 *(Field-discovered 2026-06-17, `modelfoundry`, while explaining why `pyve test --env smoke-pytorch` listed `testenv typecheck` in the silent-skip advisory. The advisory itself fired correctly; tracing it surfaced a latent false-negative in the `root` probe.)*
 
@@ -131,10 +131,10 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 **Tasks.**
 
-- [ ] Reproduce (red): a fixture with a venv `root` carrying pytest in `.venv` **plus** a named `purpose="test"` env; `pyve test --env <named>` → assert `root` appears in the advisory list (it does not today).
-- [ ] Fix `_test_env_has_pytest`'s `root` branch to resolve the interpreter via the canonical backend-aware path (mirror the non-root branch's `resolve_env_path root`: `.venv` for venv, `.pyve/envs/root/conda` for micromamba — or `resolve_main_micromamba_path` for a non-mutating read), and **delete the `.pyve/envs/*` first-dir glob**.
-- [ ] Regression: a venv root **without** pytest + named envs → `root` still excluded (no false positive reintroduced); a micromamba root **with** pytest → `root` correctly detected.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): a fixture with a venv `root` carrying pytest in `.venv` **plus** a named `purpose="test"` env; `pyve test --env <named>` → assert `root` appears in the advisory list (it does not today). *(Probe-level red plus a real-probe advisory-level red in `test_test_env_advisory.bats`.)*
+- [x] Fix `_test_env_has_pytest`'s `root` branch to resolve the interpreter via the canonical backend-aware path (mirror the non-root branch's `resolve_env_path root`: `.venv` for venv, `.pyve/envs/root/conda` for micromamba — or `resolve_main_micromamba_path` for a non-mutating read), and **delete the `.pyve/envs/*` first-dir glob**. *(Root and non-root branches collapsed into one `resolve_env_path`-based body.)*
+- [x] Regression: a venv root **without** pytest + named envs → `root` still excluded (no false positive reintroduced); a micromamba root **with** pytest → `root` correctly detected. *(Also: no root env at all + named envs → excluded, the modelfoundry accident shape.)*
+- [x] Full suite; zero regressions. *(Bats unit: 2164 green; integration: 217 passed — 3 additional `test_reinit.py` failures surfaced past the old `--maxfail` horizon, all verified pre-existing on clean HEAD, same family as the known interactive-reinit failures.)*
 
 ---
 

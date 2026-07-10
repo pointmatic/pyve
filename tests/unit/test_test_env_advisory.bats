@@ -25,6 +25,7 @@ load ../helpers/test_helper
 setup() {
     setup_pyve_env
     source "$PYVE_ROOT/lib/envs.sh"
+    source "$PYVE_ROOT/lib/manifest.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
     source "$PYVE_ROOT/lib/commands/env.sh"
     source "$PYVE_ROOT/lib/plugins/python/plugin.sh"
@@ -252,6 +253,84 @@ SH
     ensure_env_exists() { :; }
 
     run test_tests --env testenv -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--env root"* ]]
+}
+
+# ============================================================
+# root probe resolves the canonical backend-aware path — a venv
+# root plus named envs under .pyve/envs/ (the standard v3 topology)
+# must probe .venv, not a first-dir glob of .pyve/envs/*
+# ============================================================
+
+_make_fake_root_venv() {
+    local import_pytest_status="$1"
+    mkdir -p .venv/bin
+    cat > .venv/bin/python <<SH
+#!/usr/bin/env bash
+exit $import_pytest_status
+SH
+    chmod +x .venv/bin/python
+}
+
+@test "_test_env_has_pytest root: venv root with pytest + named envs → detected" {
+    _make_fake_named_venv_with_state smoke
+    _make_fake_root_venv 0
+    run _test_env_has_pytest root
+    [ "$status" -eq 0 ]
+}
+
+@test "_test_env_has_pytest root: venv root without pytest + named envs → excluded" {
+    _make_fake_named_venv_with_state smoke
+    _make_fake_root_venv 1
+    run _test_env_has_pytest root
+    [ "$status" -ne 0 ]
+}
+
+@test "_test_env_has_pytest root: no root env + named envs → excluded" {
+    _make_fake_named_venv_with_state smoke
+    run _test_env_has_pytest root
+    [ "$status" -ne 0 ]
+}
+
+@test "_test_env_has_pytest root: micromamba root with pytest → detected via root conda slot" {
+    cat > pyve.toml <<'TOML'
+[env.root]
+backend = "micromamba"
+TOML
+    # The probe is exercised directly (no `pyve test` entry point), so
+    # load the manifest the way pyve.sh's dispatcher does before any
+    # command runs — the accessors read state, they don't lazy-load.
+    manifest_load
+    mkdir -p .pyve/envs/root/conda/bin
+    cat > .pyve/envs/root/conda/bin/python <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    chmod +x .pyve/envs/root/conda/bin/python
+    run _test_env_has_pytest root
+    [ "$status" -eq 0 ]
+}
+
+# ============================================================
+# Advisory-level reproduction (the field shape): a venv root
+# carrying pytest in .venv plus a declared purpose="test" env —
+# targeting the named env must list root as an alternative,
+# with the REAL probe (no stubs).
+# ============================================================
+
+@test "advisory: venv root with pytest + named test-env target → root listed (real probe)" {
+    cat > pyve.toml <<'TOML'
+[env.smoke]
+purpose = "test"
+backend = "venv"
+TOML
+    _make_fake_root_venv 0
+    _make_fake_named_venv_with_state smoke
+    _test_has_pytest() { return 0; }
+    ensure_env_exists() { :; }
+
+    run test_tests --env smoke -q
     [ "$status" -eq 0 ]
     [[ "$output" == *"--env root"* ]]
 }
