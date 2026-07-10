@@ -3079,13 +3079,255 @@ check_environment() {
     # Check 16: testenv (conditional — only speaks when the env exists).
     _check_default_testenv
 
+    # Declared named envs beyond the reserved pair: canary each
+    # materialized one (empty-until-demand envs stay silent).
+    _check_declared_envs
+
+    # Manifest↔disk reconciliation: orphaned / contradictory trees.
+    _check_env_orphans
+
     _check_summary_and_exit
 }
 
+#============================================================
+# Per-env runnability canary (the env_probe plugin hook).
+#
+# Executes a CONSOLE-SCRIPT wrapper (`bin/pip --version`) — the artifact
+# that carries a baked shebang and actually breaks on relocation /
+# interpreter deletion. `python -m …` / `python -c …` bypass wrappers
+# (the env's `python` symlink survives exactly the faults that kill every
+# entry point), so they can never catch a dead-shebang env. Verdict
+# vocabulary is documented on the contract hook (lib/plugins/contract.sh).
+#============================================================
+
+# Run <cmd...> printing its combined output, bounded to
+# PYVE_PROBE_TIMEOUT seconds (default 10) — a wedged interpreter must not
+# hang `pyve check`. Pure bash (macOS ships no coreutils `timeout`).
+# Returns the command's status; a timed-out command is SIGKILLed (137).
+# Output is staged through a temp file, NOT streamed: SIGKILL on the
+# probed command cannot reach grandchildren it spawned, and an orphan
+# inheriting a command-substitution pipe would hold the caller's `$( )`
+# open past the deadline. Orphans hold only the unlinked temp file (and
+# every background job detaches stdio + closes bats's fd 3).
+_env_probe_bounded() {
+    local limit="${PYVE_PROBE_TIMEOUT:-10}"
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/pyve-probe.XXXXXX")" || return 1
+    "$@" >"$tmp" 2>&1 3>&- &
+    local pid=$!
+    ( sleep "$limit" && kill -9 "$pid" ) >/dev/null 2>&1 3>&- &
+    local watchdog=$!
+    local rc=0
+    wait "$pid" 2>/dev/null || rc=$?
+    kill "$watchdog" >/dev/null 2>&1 || true
+    cat "$tmp" 2>/dev/null || true
+    rm -f "$tmp"
+    return "$rc"
+}
+
+# The Python plugin's env_probe hook: probe <env_name> and print one
+# classified verdict (see lib/plugins/contract.sh for the vocabulary).
+# Self-sufficient — loads env/manifest state itself so it is callable as
+# a bare hook (check composer today, the heal mechanism later).
+python_pyve_plugin_env_probe() {
+    local env_name="$1"
+    read_env_config >/dev/null 2>&1 || true
+    local backend
+    if [[ "$env_name" == "root" ]]; then
+        backend="$(_env_resolve_root_backend)"
+    else
+        backend="$(_env_resolve_backend "$env_name")"
+    fi
+    case "$backend" in
+        venv|micromamba) ;;
+        *)
+            if _env_backend_is_advisory "$backend"; then
+                printf 'advisory'
+                return 0
+            fi
+            ;;
+    esac
+    local env_path=""
+    if [[ "$env_name" == "root" ]]; then
+        if [[ "$backend" == "micromamba" ]]; then
+            # Non-mutating root-slot resolution — a probe must not fire
+            # the opportunistic layout migrator.
+            local mm_name
+            mm_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
+            env_path="$(resolve_main_micromamba_path "$mm_name" 2>/dev/null || true)"
+        else
+            env_path="$(resolve_venv_directory 2>/dev/null || true)"
+            [[ -z "$env_path" ]] && env_path="${DEFAULT_VENV_DIR:-.venv}"
+        fi
+    else
+        env_path="$(resolve_env_path "$env_name" 2>/dev/null || true)"
+    fi
+    _env_probe_classify "$env_path" "$backend"
+}
+
+# Classify the env at <env_path> (backend <backend>). Prints the verdict;
+# returns 0 for runnable / not-materialized, 1 for the broken family.
+_env_probe_classify() {
+    local env_path="$1" backend="$2"
+    if [[ -z "$env_path" || ! -d "$env_path" ]]; then
+        printf 'not-materialized'
+        return 0
+    fi
+    local py="$env_path/bin/python"
+    if [[ -L "$py" && ! -e "$py" ]]; then
+        printf 'dangling-symlink'
+        return 1
+    fi
+    if [[ ! -e "$py" ]]; then
+        printf 'missing-interpreter'
+        return 1
+    fi
+    local wrapper="$env_path/bin/pip"
+    if [[ ! -e "$wrapper" ]]; then
+        # No console script to probe (minimal fixture envs, --without-pip
+        # venvs): a runnable interpreter is not condemned — the canary's
+        # target class is a PRESENT-but-dead wrapper.
+        if _env_probe_bounded "$py" --version >/dev/null; then
+            printf 'runnable'
+            return 0
+        fi
+        printf 'broken'
+        return 1
+    fi
+    # Execute the wrapper: venv directly; micromamba through
+    # `micromamba run -p` (CONDA_PREFIX / activate.d / lib paths), falling
+    # back to direct wrapper exec when the micromamba binary is absent —
+    # the wrapper's baked shebang is what breaks either way.
+    local mm="" out="" rc=0
+    if [[ "$backend" == "micromamba" ]] \
+        && declare -F get_micromamba_path >/dev/null 2>&1; then
+        mm="$(get_micromamba_path 2>/dev/null)" || mm=""
+    fi
+    if [[ -n "$mm" ]]; then
+        out="$(_env_probe_bounded "$mm" run -p "$env_path" pip --version)" || rc=$?
+    else
+        out="$(_env_probe_bounded "$wrapper" --version)" || rc=$?
+    fi
+    if [[ "$rc" -eq 0 && "$out" == pip* ]]; then
+        local ver
+        ver="$(printf '%s\n' "$out" | grep -oE '[0-9]+(\.[0-9]+)+' | head -n1 || true)"
+        printf 'runnable%s' "${ver:+ $ver}"
+        return 0
+    fi
+    # Exec failed — classify by the wrapper's baked shebang target.
+    local shebang interp
+    shebang="$(head -n1 "$wrapper" 2>/dev/null || true)"
+    if [[ "$shebang" == '#!'* ]]; then
+        interp="${shebang#\#!}"
+        interp="${interp#"${interp%%[![:space:]]*}"}"
+        interp="${interp%% *}"
+        if [[ -n "$interp" && ! -x "$interp" ]]; then
+            printf 'dead-shebang'
+            return 1
+        fi
+    fi
+    printf 'broken'
+    return 1
+}
+
+# Render a canary verdict through the caller's _check_* closures.
+# Usage: _check_env_canary <env_name> <label> <rebuild_hint> <fail|warn>
+# runnable prints a pass line; not-materialized / advisory print nothing
+# (empty-until-demand and declarative-only are legitimate states, not
+# findings); the broken family reports at the given severity with the
+# role-correct rebuild hint. Always returns 0 — severity flows through
+# the closures, never the return code.
+_check_env_canary() {
+    local env_name="$1" label="$2" hint="$3" severity="${4:-warn}"
+    local report="_check_warn"
+    [[ "$severity" == "fail" ]] && report="_check_fail"
+    local verdict class detail=""
+    verdict="$(python_pyve_plugin_env_probe "$env_name")" || true
+    class="${verdict%% *}"
+    [[ "$verdict" == *" "* ]] && detail="${verdict#* }"
+    case "$class" in
+        runnable)
+            if [[ -n "$detail" ]]; then
+                _check_pass "$label: console scripts runnable (pip $detail)"
+            else
+                _check_pass "$label: runnable"
+            fi
+            ;;
+        not-materialized|advisory|"")
+            : ;;
+        dead-shebang)
+            "$report" "$label: console scripts broken (dead shebang — env relocated or interpreter deleted)" "$hint" ;;
+        dangling-symlink)
+            "$report" "$label: broken (python is a dangling symlink — interpreter deleted)" "$hint" ;;
+        missing-interpreter)
+            "$report" "$label: broken (no python interpreter in the env)" "$hint" ;;
+        *)
+            "$report" "$label: console scripts broken (probe failed)" "$hint" ;;
+    esac
+    return 0
+}
+
+# Canary every declared named env beyond the reserved pair — `root` is
+# probed inside its backend section and `testenv` by
+# _check_default_testenv. Broken named envs route to their own rebuild
+# verb (`pyve env init <name> --force`), never a root-level verb.
+_check_declared_envs() {
+    manifest_load >/dev/null 2>&1 || return 0
+    local name
+    while IFS= read -r name; do
+        [[ -z "$name" || "$name" == "root" || "$name" == "testenv" ]] && continue
+        _check_env_canary "$name" "env '$name'" "→ Run: pyve env init $name --force" warn
+    done < <(manifest_list_envs 2>/dev/null || true)
+    return 0
+}
+
+# Manifest↔disk reconciliation: flag state↔declaration contradictions.
+#   (a) a materialized `.pyve/envs/<name>/` tree with no `[env.<name>]`
+#       declaration — the manifest is canonical; undeclared state is drift;
+#   (b) a root declared with a non-materializable (advisory) backend that
+#       nonetheless has a materialized env — the field shape:
+#       `[env.root] backend = "none"` with a stale `.pyve/envs/root/conda/`.
+# Warnings, not errors: a contradiction doesn't break the declared envs'
+# operation; it needs cleanup (the heal mechanism consumes these).
+_check_env_orphans() {
+    manifest_load >/dev/null 2>&1 || return 0
+    local name
+    while IFS= read -r name; do
+        [[ -z "$name" || "$name" == "root" ]] && continue
+        if ! manifest_get_env "$name" >/dev/null 2>&1; then
+            _check_warn "env '$name': materialized but not declared (orphan)" \
+                "→ Declare [env.$name] in pyve.toml, or remove the tree: rm -rf .pyve/envs/$name"
+        fi
+    done < <(list_materialized_env_names 2>/dev/null || true)
+
+    local root_backend
+    root_backend="$(_env_resolve_root_backend)"
+    case "$root_backend" in
+        venv|micromamba) return 0 ;;
+    esac
+    if _env_backend_is_advisory "$root_backend"; then
+        local slot
+        slot="$(micromamba_root_prefix)"
+        if [[ -d "$slot" ]]; then
+            _check_warn "root: declared backend '$root_backend' is not materializable, but a conda env is materialized at $slot (contradiction)" \
+                "→ Remove the tree: rm -rf $slot"
+        fi
+        local vd
+        vd="$(resolve_venv_directory 2>/dev/null || true)"
+        [[ -z "$vd" ]] && vd="${DEFAULT_VENV_DIR:-.venv}"
+        if [[ -d "$vd" ]]; then
+            _check_warn "root: declared backend '$root_backend' is not materializable, but a venv is materialized at $vd (contradiction)" \
+                "→ Remove the tree: rm -rf $vd"
+        fi
+    fi
+    return 0
+}
+
 # Default-testenv line for `pyve check`. Routes the fault to the verb
-# that actually repairs it: a structurally broken env (present but no
-# runnable python — a runnability probe, not an existence stat) needs
-# the rebuild verb `pyve env init testenv --force`; a healthy python
+# that actually repairs it, keyed off the canary verdict (a console-script
+# runnability probe — existence stats and `python -c 'import pytest'` both
+# rubber-stamp a relocated env whose wrappers are dead): a broken env
+# needs the rebuild verb `pyve env init testenv --force`; a healthy env
 # that merely lacks pytest is repopulated by `pyve test`. Absent env →
 # silent (the check is conditional). Emits via the caller's _check_*
 # closures (dynamic scope from check_environment).
@@ -3093,13 +3335,31 @@ _check_default_testenv() {
     local testenv_venv
     testenv_venv="$(resolve_env_path testenv)"
     [[ -d "$testenv_venv" ]] || return 0
-    if ! "$testenv_venv/bin/python" --version >/dev/null 2>&1; then
-        _check_warn "testenv: present but broken (no runnable python)" \
-            "→ Run: pyve env init testenv --force"
-        return 0
-    fi
-    if "$testenv_venv/bin/python" -c 'import pytest' >/dev/null 2>&1; then
-        _check_pass "testenv: pytest installed"
+    local verdict class
+    verdict="$(python_pyve_plugin_env_probe testenv)" || true
+    class="${verdict%% *}"
+    case "$class" in
+        runnable) ;;
+        not-materialized|advisory|"")
+            return 0 ;;
+        dead-shebang)
+            _check_warn "testenv: present but console scripts broken (dead shebang — env relocated or interpreter deleted)" \
+                "→ Run: pyve env init testenv --force"
+            return 0 ;;
+        *)
+            _check_warn "testenv: present but broken ($class)" \
+                "→ Run: pyve env init testenv --force"
+            return 0 ;;
+    esac
+    # pytest presence — probe the WRAPPER (bin/pytest), never `python -c
+    # 'import pytest'`: a dead wrapper must not masquerade as installed.
+    if [[ -e "$testenv_venv/bin/pytest" ]]; then
+        if _env_probe_bounded "$testenv_venv/bin/pytest" --version >/dev/null; then
+            _check_pass "testenv: pytest installed"
+        else
+            _check_warn "testenv: pytest wrapper present but broken (console scripts cannot run)" \
+                "→ Run: pyve env init testenv --force"
+        fi
     else
         _check_warn "testenv: present but pytest not installed" \
             "→ Run: pyve test"
@@ -3132,6 +3392,12 @@ _check_venv_backend() {
     if [[ -n "$py_version" ]]; then
         _check_pass "Python: $py_version"
     fi
+
+    # Canary: execute a console-script wrapper. A runnable `python` and a
+    # passing `-x` both rubber-stamp a relocated env whose every entry
+    # point is dead — only executing a wrapper catches it. Root repairs
+    # via the top-level rebuild verb (`pyve env` rejects root).
+    _check_env_canary root "Environment" "→ Run: pyve init --force" fail
 
     # Check 7: venv path mismatch (relocated project).
     local path_output
@@ -3220,6 +3486,9 @@ _check_micromamba_backend() {
     if [[ -n "$py_version" ]]; then
         _check_pass "Python: $py_version"
     fi
+
+    # Canary: execute a console-script wrapper (see the venv twin above).
+    _check_env_canary root "Environment" "→ Run: pyve init --force" fail
 
     # Check 13 / 14 / 15 reuse the existing helpers.
     local dup_output

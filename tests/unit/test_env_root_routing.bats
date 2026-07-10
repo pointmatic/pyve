@@ -158,6 +158,13 @@ SH
 exit 0
 SH
     chmod +x ".pyve/envs/testenv/venv/bin/python"
+    # pytest presence is now probed via the console-script WRAPPER (the
+    # canary model) — a healthy env with pytest carries the wrapper.
+    cat > ".pyve/envs/testenv/venv/bin/pytest" <<'SH'
+#!/usr/bin/env bash
+echo "pytest 8.0.0"
+SH
+    chmod +x ".pyve/envs/testenv/venv/bin/pytest"
     _stub_check_closures
     run _check_default_testenv
     [[ "$output" == *"PASS:"* ]]
