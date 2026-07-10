@@ -152,6 +152,18 @@ requirements = ["requirements-integration.txt"]
 
 `pyve init` skips a lazy env; the first `pyve test --env integration` provisions it on demand. Set `PYVE_NO_AUTO_PROVISION=1` (e.g. in strict CI) to turn that auto-provision into a hard error with an explicit `pyve env install` hint instead.
 
+## Deliberately isolated test envs
+
+A project that runs several isolated `purpose = "test"` envs — per-framework smoke suites, a typecheck env, each with its own pytest — trips the [silent-skip advisory](testing.md#choosing-which-environment-runs-your-tests) on every `pyve test --env <name>` run. Declare the isolation to silence it:
+
+```toml
+[env.smoke-pytorch]
+purpose = "test"
+isolated = true
+```
+
+The advisory stays quiet when a marked env is the target, and still fires (listing all candidates, marked or not) when an unmarked env like the catch-all `testenv` is targeted. The per-shell `PYVE_NO_TESTENV_ADVISORY=1` env var remains as a one-off/CI override.
+
 ## Rebuilding — one verb per role
 
 Because the declaration fully describes an env's setup, **rebuilding is a single command** — no purge/init/install choreography:

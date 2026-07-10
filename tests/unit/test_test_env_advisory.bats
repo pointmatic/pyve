@@ -334,3 +334,52 @@ TOML
     [ "$status" -eq 0 ]
     [[ "$output" == *"--env root"* ]]
 }
+
+# ============================================================
+# Declarative opt-out: `isolated = true` on the TARGETED env
+# suppresses the advisory — the project-scoped, reviewable
+# sibling of the PYVE_NO_TESTENV_ADVISORY env var. Target-side
+# only: a marked env still appears as a candidate when another
+# env is targeted.
+# ============================================================
+
+@test "advisory: isolated=true on the targeted env suppresses the advisory" {
+    cat > pyve.toml <<'TOML'
+[env.smoke]
+purpose = "test"
+backend = "venv"
+isolated = true
+TOML
+    _make_fake_root_venv 0
+    _make_fake_named_venv_with_state smoke
+    _test_has_pytest() { return 0; }
+    ensure_env_exists() { :; }
+
+    run test_tests --env smoke -q
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"--env root"* ]]
+    [[ "$output" != *"may be missing"* ]]
+}
+
+@test "advisory: targeting an unmarked env still warns; isolated envs stay listed as candidates" {
+    cat > pyve.toml <<'TOML'
+[env.smoke]
+purpose = "test"
+backend = "venv"
+isolated = true
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+TOML
+    _make_fake_root_venv 0
+    _make_fake_named_venv_with_state smoke
+    _make_fake_named_venv_with_state testenv
+    _test_has_pytest() { return 0; }
+    ensure_env_exists() { :; }
+
+    run test_tests --env testenv -q
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"--env root"* ]]
+    [[ "$output" == *"--env smoke"* ]]
+}

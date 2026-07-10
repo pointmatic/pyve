@@ -4125,17 +4125,23 @@ _test_run_one_env() {
         fi
     fi
 
-    # Silent-skip trap guard (Story M.c, generalized in M.o):
-    # if any env OTHER than the one we're targeting has pytest
-    # importable, that env is a candidate the user may have meant —
-    # tests that `importorskip` the alternative env's stack will
-    # silently SKIP in the targeted env and look green. Warn, list
-    # the alternatives, point at the supported escape hatch. One
-    # line, non-fatal. Suppressible via PYVE_NO_TESTENV_ADVISORY=1
-    # for users who keep pytest in multiple envs deliberately —
-    # matrix mode (M.r) sets the env-var inside its per-env subshell.
+    # Silent-skip trap guard: if any env OTHER than the one we're
+    # targeting has pytest importable, that env is a candidate the user
+    # may have meant — tests that `importorskip` the alternative env's
+    # stack will silently SKIP in the targeted env and look green. Warn,
+    # list the alternatives, point at the supported escape hatch. One
+    # line, non-fatal. Suppressible two ways, either suffices:
+    #   1. PYVE_NO_TESTENV_ADVISORY=1 — the per-shell one-off/CI
+    #      override (matrix mode sets it inside its per-env subshell);
+    #   2. the targeted env declares `isolated = true` in pyve.toml —
+    #      the project-scoped, reviewable opt-out for projects that run
+    #      multiple deliberately-isolated test envs.
+    # The manifest flag is target-side only: a marked env still appears
+    # as a candidate when another (unmarked) env is targeted, so the
+    # advisory keeps its value for the catch-all testenv.
     # shellcheck disable=SC2031
-    if [[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]]; then
+    if [[ "${PYVE_NO_TESTENV_ADVISORY:-0}" != "1" ]] \
+        && ! manifest_is_isolated "$env_target" 2>/dev/null; then
         local -a advisory_envs=()
         local probe
         # Candidates: root + every declared name (M.o). Skip the

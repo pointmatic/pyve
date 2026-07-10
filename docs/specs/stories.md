@@ -138,7 +138,7 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 ---
 
-### Story P.x: A declarative `pyve.toml` opt-out for the silent-skip advisory — project-scoped and visible, not a per-shell env var [Planned]
+### Story P.x: A declarative `pyve.toml` opt-out for the silent-skip advisory — project-scoped and visible, not a per-shell env var [Done]
 
 *(Design direction, 2026-06-17, from the `modelfoundry` advisory discussion. Pairs with Story P.w — same advisory — and resolves its out-of-scope note "whether declared `purpose=test` envs should be exempted… is a separate question.")*
 
@@ -158,12 +158,12 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 **Tasks.**
 
-- [ ] Decide the shape: project-wide toggle vs. per-env `isolated` flag (or both), and the schema home (new `[pyve]`/`[test]` section vs. per-env field); document the decision in the P-2 plan (§8.2).
-- [ ] Schema + reader: add the field to the closed vocabulary in [`pyve_toml_helper.py`](../../lib/pyve_toml_helper.py); expose a [`manifest.sh`](../../lib/manifest.sh) accessor; validate with a line-attributed error.
-- [ ] Gate: route the advisory's suppression check ([plugin.sh:4139](../../lib/plugins/python/plugin.sh#L4139)) through the manifest field as well — env var **or** manifest opt-out suppresses; document precedence.
-- [ ] Tests: a project declaring the opt-out → no advisory on `pyve test --env <X>`; without it → advisory still fires; the env var still works; (per-env shape) targeting an unmarked env still warns.
-- [ ] Docs: [environments.md](../site/environments.md) + [pyve-toml.md](../site/pyve-toml.md) document the field; note the env var remains for one-off/CI use.
-- [ ] Full suite; zero regressions.
+- [x] Decide the shape: project-wide toggle vs. per-env `isolated` flag (or both), and the schema home (new `[pyve]`/`[test]` section vs. per-env field); document the decision in the P-2 plan (§8.2). *(Per-env `isolated = true` on `[env.<name>]` — surgical, fits the existing closed vocabulary, defers the settings-section shape until a second preference key exists; target-side-only semantics.)*
+- [x] Schema + reader: add the field to the closed vocabulary in [`pyve_toml_helper.py`](../../lib/pyve_toml_helper.py); expose a [`manifest.sh`](../../lib/manifest.sh) accessor; validate with a line-attributed error. *(`KNOWN_ENV_KEYS` + strict-boolean normalization + `_decl_line` scan → `pyve.toml:<n>:`-prefixed error — the manifest's first line-attributed validation; `manifest_is_isolated` mirrors `manifest_is_lazy`.)*
+- [x] Gate: route the advisory's suppression check ([plugin.sh:4139](../../lib/plugins/python/plugin.sh#L4139)) through the manifest field as well — env var **or** manifest opt-out suppresses; document precedence. *(Either alone suffices; precedence documented at the gate.)*
+- [x] Tests: a project declaring the opt-out → no advisory on `pyve test --env <X>`; without it → advisory still fires; the env var still works; (per-env shape) targeting an unmarked env still warns. *(Plus: isolated envs stay listed as candidates when an unmarked env is targeted; core-key/attr non-leak; bash-3.2 `set -u` sweep.)*
+- [x] Docs: [environments.md](../site/environments.md) + [pyve-toml.md](../site/pyve-toml.md) document the field; note the env var remains for one-off/CI use. *(Also [testing.md](../site/testing.md), where the advisory + env var were already documented.)*
+- [x] Full suite; zero regressions.
 
 ---
 
