@@ -112,6 +112,15 @@ else
     exit 1
 fi
 
+# Heal engine for `pyve check --fix` (plan-then-confirm repairs over the
+# runnability probes; consumed by check_composer).
+if [[ -f "$SCRIPT_DIR/lib/heal.sh" ]]; then
+    source "$SCRIPT_DIR/lib/heal.sh"
+else
+    printf "ERROR: Cannot find lib/heal.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/backend_detect.sh"
 else

@@ -291,9 +291,18 @@ _compose_check_resolution() {
 compose_check() {
     # Argument validation lives here now (it left check_environment when
     # the composer took over dispatch). `--help` / `-h` are handled by the
-    # dispatcher in pyve.sh before compose_check is reached.
+    # dispatcher in pyve.sh before compose_check is reached. `--fix` opts
+    # into the heal engine (lib/heal.sh); `--yes` assents to its repair
+    # batch (the uniform prompt-skip flag — never `--force`).
+    local fix=0 assent=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --fix)
+                fix=1; shift
+                ;;
+            --yes|-y)
+                assent=1; shift
+                ;;
             -*)
                 unknown_flag_error "check" "$1" --help
                 ;;
@@ -304,6 +313,11 @@ compose_check() {
                 ;;
         esac
     done
+    if [[ "$assent" -eq 1 && "$fix" -eq 0 ]]; then
+        log_error "pyve check --yes only applies with --fix (there is nothing to assent to)"
+        log_error "See: pyve check --help"
+        exit 1
+    fi
 
     printf "Pyve Environment Check\n"
     printf "======================\n\n"
@@ -417,6 +431,17 @@ compose_check() {
     if [[ -n "$pyve_out" ]]; then
         printf '[pyve]\n'
         printf '%s\n' "$pyve_out"
+        printf '\n'
+    fi
+
+    # heal (--fix): plan-then-confirm repairs, streamed (NOT captured —
+    # the engine may prompt on a TTY). Runs after the diagnostic sections
+    # so the plan reads in context; the verdict below reflects the
+    # PRE-repair state (a healed system goes green on the next run), so
+    # the 0/2 exit contract is untouched.
+    if [[ "$fix" -eq 1 ]] && declare -F heal_run >/dev/null 2>&1; then
+        printf '[heal]\n'
+        heal_run "$assent" || true
         printf '\n'
     fi
 

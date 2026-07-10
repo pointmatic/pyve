@@ -248,40 +248,58 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.ab: Healing mechanism — classified failure → safe, idempotent, confirm-before-destroy repair (`pyve heal` / `pyve check --fix`) [Planned]
+### Story P.ab.1: Healing mechanism, part 1 — `pyve check --fix` surface, plan-then-confirm engine, non-destructive repairs [Done]
 
-*(Pillar 3 — plan §3. Consumes Story P.z's canary verdicts and Story P.aa's resolution findings. Supersedes the long-parked "Auto-Remediation for Diagnostics (`pyve check --fix`)" stub, retired from `## Future` with this roster.)*
+*(Pillar 3 — plan §3. Consumes the hosting probes' verdicts; the split of the former Story P.ab along the class→repair map's destructiveness seam, per its scope note. P.ab.2 lands the destructive tier. Supersedes the long-parked "Auto-Remediation for Diagnostics (`pyve check --fix`)" stub, retired from `## Future` with this roster.)*
 
-**The promise.** Every failure class the P-2 detection stories classify gets a safe, idempotent, confirm-before-destroy repair — the developer never hand-repairs Pyve-managed state:
+**The promise (both parts).** Every failure class the P-2 detection stories classify gets a safe, idempotent, confirm-before-destroy repair — the developer never hand-repairs Pyve-managed state:
 
-| Detected class (source) | Repair (existing machinery) |
-|---|---|
-| dead-interpreter toolchain venv (hosting probes) | rebuild via `pyve self provision` |
-| dangling `~/.local/bin` shim (hosting probes) | re-link / re-provision |
-| dead-shebang / dead-wrapper **root** env (P.z) | `pyve init --force` (destructive → confirm) |
-| dead-shebang / dead-wrapper **named** env (P.z) | `pyve env init <name> --force` (destructive → confirm) |
-| venv↔pin interpreter drift (P.aa) | rebuild toward the declared pin (destructive → confirm) |
-| orphaned tree — materialized but undeclared (P.z) | remove (destructive → confirm) |
-| missing managed command under the active pin (P.aa) | install into the *selected* interpreter |
+| Detected class (source) | Repair (existing machinery) | Tier | Part |
+|---|---|---|---|
+| dead-interpreter toolchain venv (hosting probes) | remove the version-keyed venv + rebuild via the `self provision` machinery | non-destructive (Pyve-owned, deterministically rebuildable) | P.ab.1 |
+| dead hosted project-guide script, runnable toolchain (hosting probes) | reinstall via the `self provision` machinery | non-destructive | P.ab.1 |
+| dangling `~/.local/bin` shim (hosting probes) | re-link (`pyve_link_project_guide_shim`) | non-destructive | P.ab.1 |
+| dead-shebang / dead-wrapper **root** env (P.z) | `pyve init --force` | destructive → confirm | P.ab.2 |
+| dead-shebang / dead-wrapper **named** env (P.z) | `pyve env init <name> --force` | destructive → confirm | P.ab.2 |
+| venv↔pin interpreter drift (P.aa) | rebuild toward the declared pin | destructive → confirm | P.ab.2 |
+| orphaned tree — materialized but undeclared (P.z) | remove | destructive → confirm | P.ab.2 |
 
-**Design constraints.**
+**Not faults (documented non-goals):** hosting that was *never provisioned* (optional by contract — a hint, not breakage); healthy-but-stale tools (Story P.ad's staleness hints — heal never upgrades, plan §8.5); project-managed project-guide (a deps-source declaration means pyve defers — "not my department").
+
+**Design constraints (both parts).**
 - **Plan-then-confirm:** enumerate detected faults + intended repairs before acting; `--yes` assents to the batch; destructive repairs are individually confirmed; `--force` stays reserved for escalation (never a prompt-skip synonym, per the P.l.1 flag semantics); never silently mutates.
-- **Idempotent + re-runnable:** a post-success re-run reports "nothing to heal"; a partial-failure re-run resumes safely.
-- **Repairs route through existing verbs** (`self provision`, `pyve init --force`, `pyve env init <name> --force`, shim re-link) — heal orchestrates; it does not grow a parallel rebuild path. Destructive rebuilds ride P-1's state record + `[env.<name>]` recipes: restore toward declared intent, never guess.
-- **Role-correct routing:** never suggests or executes the rejected `pyve env purge root`.
-- **No upgrades:** heal repairs broken state; healthy-but-stale tools are Story P.ad's hints (plan §8.5 — the boundary is confirmed in this story's first task).
+- **Idempotent + re-runnable:** a post-success re-run reports "nothing to heal".
+- **Repairs route through existing verbs/machinery** — heal orchestrates; it does not grow a parallel rebuild path.
+- **No upgrades:** heal repairs broken state; healthy-but-stale tools are Story P.ad's hints.
+
+**P.ab.1 gap being fixed:** the provisioning machinery is presence-gated (`[[ -x ]]`), so a dead-shebang toolchain venv / hosted script is *skipped* by `pyve_toolchain_python_ensure` / `pyve_project_guide_ensure` today — provisioned-but-broken hosting has no repair path at all.
 
 **Tasks.**
 
-- [ ] Decide the command surface — `pyve heal` vs. `pyve check --fix` vs. both-with-delegation (plan §8.1) — and confirm the heal-vs-upgrade boundary (plan §8.5); record both in the P-2 plan.
-- [ ] Define the class→repair map + destructiveness tiers; document the vocabulary alongside P.z's verdicts.
-- [ ] Implement plan-then-confirm execution over the map, routed through the existing verbs; `--yes`/`--force` per the established semantics; non-TTY behavior defined (report, never destroy).
-- [ ] Idempotency + partial-failure resume; exit codes documented.
-- [ ] Tests: one fixture per failure class → the correct repair is proposed and applied; refusal + non-TTY paths; a healthy project → "nothing to heal"; no silent mutation anywhere.
-- [ ] Help text + site docs for the new surface.
-- [ ] Full suite; zero regressions.
+- [x] Record the two decisions in the P-2 plan: command surface = `pyve check --fix` (§8.1, per the plan's strikethrough of `pyve heal`); heal-vs-upgrade boundary = strictly repair, never upgrade (§8.5).
+- [x] Define the class→repair map + destructiveness tiers; document the vocabulary in the heal module header, alongside P.z's verdict vocabulary.
+- [x] Heal engine (new `lib/heal.sh`): fault detection reusing the runnability probes (`pyve_toolchain_runnable`, `pyve_project_guide_runnable`, dangling-shim stat), a machine-parseable plan, plan-then-confirm execution; non-TTY without `--yes` → report-only (never mutates); TTY → one batch prompt for the non-destructive tier; `--yes` assents.
+- [x] Non-destructive repairs wired: dead toolchain venv → remove + rebuild via the provision machinery; dead hosted project-guide → reinstall (`--force-reinstall` — a plain `--upgrade` no-ops on a satisfied-but-broken install); dangling shim → re-link. "Nothing to heal" on a healthy/never-provisioned project. *(A toolchain-dead fault subsumes the finer pg/shim faults — its repair rebuilds hosting wholesale.)*
+- [x] `pyve check --fix` (+ `--yes`) flag surface: compose_check runs heal after the diagnostic sections; the 0/2 exit contract is unchanged (the verdict reflects the pre-repair check; a healed system goes green on the next run); help text documents both flags (`--yes` without `--fix` is rejected with a precise error).
+- [x] Tests: one fixture per non-destructive class → the correct repair proposed and applied; report-only in non-TTY without `--yes`; healthy → "nothing to heal"; project-managed pg → no heal item; no silent mutation anywhere; `pyve check` without `--fix` byte-identical to today. *(18 tests in `test_check_fix.bats`.)*
+- [x] Full suite; zero regressions.
 
-*(Scope note: likely splits into P.ab.# at implementation — the class→repair map is the natural seam.)*
+---
+
+### Story P.ab.2: Healing mechanism, part 2 — destructive tier (env rebuilds, orphan removal), resume, site docs [Planned]
+
+*(Pillar 3, second half — consumes Story P.z's canary verdicts and Story P.aa's resolution findings; builds on P.ab.1's engine.)*
+
+**Scope.** The destructive repairs from the class→repair map (P.ab.1's table): dead-wrapper **root** env → `pyve init --force`; dead-wrapper **named** env → `pyve env init <name> --force`; venv↔pin drift → rebuild toward the declared pin; orphaned/contradictory tree → remove. Each is individually confirmed (batch `--yes` assents to prompts; destructive actions still enumerate exactly what they will destroy first); non-TTY never destroys. Role-correct routing throughout — never the rejected `pyve env purge root`. Destructive rebuilds ride P-1's state record + `[env.<name>]` recipes: restore toward declared intent, never guess.
+
+**Tasks.**
+
+- [ ] Extend the heal plan with the destructive tier, consuming P.z's canary verdicts (dead-shebang root/named, orphan) and P.aa's `venv-pin-drift` finding; per-repair individual confirmation on top of the batch flow.
+- [ ] Route repairs: root → `pyve init --force`; named → `pyve env init <name> --force`; orphan → remove the undeclared tree; drift → role-correct rebuild toward the pin.
+- [ ] Refusal paths (decline one repair → others still run), idempotency + partial-failure resume; exit codes documented.
+- [ ] Tests: one fixture per destructive class → correct repair proposed/confirmed/applied; refusal + non-TTY (report, never destroy); re-run after success → "nothing to heal"; never `pyve env purge root`.
+- [ ] Site docs for `pyve check --fix` (both tiers) + help-text finalization.
+- [ ] Full suite; zero regressions.
 
 ---
 

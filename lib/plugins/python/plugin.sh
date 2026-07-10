@@ -3501,7 +3501,17 @@ show_check_help() {
 pyve check - Diagnose environment problems and suggest fixes
 
 Usage:
-  pyve check
+  pyve check [--fix [--yes]]
+
+Options:
+  --fix        After the diagnostics, detect broken Pyve-managed hosting
+               state (a toolchain venv or hosted tool that exists but
+               cannot run, a dangling shim) and repair it. Plan-then-
+               confirm: the faults and intended repairs are printed
+               first; nothing is repaired without assent.
+  --yes, -y    Assent to the repair batch (only with --fix). Without it,
+               an interactive run prompts once; a non-interactive run is
+               report-only and never mutates.
 
 Description:
   Runs a set of read-only diagnostics against the current project and
@@ -3519,9 +3529,11 @@ Exit codes:
        'pyve test'.
 
 Notes:
-  - pyve check is safe to run in CI (no side effects, stable exit codes).
-  - pyve check does not auto-remediate. An auto-fix mode ('pyve check
-    --fix') is tracked as a Future story in stories.md.
+  - pyve check (without --fix) is safe to run in CI (no side effects,
+    stable exit codes). With --fix it stays CI-safe unless --yes is
+    also passed: without assent it only reports what it would repair.
+  - The exit code always reflects the pre-repair diagnostics; a healed
+    system goes green on the next run.
 
 See also:
   pyve status            Read-only state snapshot (no diagnostics)
