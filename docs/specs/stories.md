@@ -167,7 +167,7 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 ---
 
-### Story P.y: `project-guide` status is split + v2-leftover — unify into one readout that names *how* it's present (local pip vs toolchain) + show its version (status & self provision) [Planned]
+### Story P.y: `project-guide` status is split + v2-leftover — unify into one readout that names *how* it's present (local pip vs toolchain) + show its version (status & self provision) [Done]
 
 *(v2-wiring removal — same family as P-1's config-source retirement (P.i, archived). project-guide stopped being a per-project Python dependency in v3, but a v2 status check survived.)*
 
@@ -182,12 +182,12 @@ Story breakdown for each subphase is drafted in its own `plan_production_phase` 
 
 **Tasks.**
 
-- [ ] Reproduce (red): a pyve-hosted, no-project-venv-copy project → `pyve status` emits BOTH `project-guide: not installed` ([python]) and `pyve-hosted (toolchain)` ([project-guide]). Assert a single, non-contradictory readout after the fix.
-- [ ] Remove the project-guide row from the `[python]` Integrations block ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)); the `[project-guide]` section is the sole readout.
-- [ ] Make `_compose_status_project_guide` name the presence mode — toolchain-hosted / project-local pip / neither — and **probe runnability** (`project-guide --version`), not just `-x` (existence ≠ runnability, the Phase P pillar).
-- [ ] Surface the resolved version in the status readout and in `self_provision`'s "Installed project-guide …" line ([self.sh](../../lib/commands/self.sh)).
-- [ ] Tests: hosted-only / local-pip-only / both / neither → one correct labeled readout each, with version; `self provision` prints the installed version.
-- [ ] Full suite; zero regressions.
+- [x] Reproduce (red): a pyve-hosted, no-project-venv-copy project → `pyve status` emits BOTH `project-guide: not installed` ([python]) and `pyve-hosted (toolchain)` ([project-guide]). Assert a single, non-contradictory readout after the fix. *(Full-binary test: `[project-guide]` present, no `project-guide:` row anywhere — deterministic on any host's hosting state.)*
+- [x] Remove the project-guide row from the `[python]` Integrations block ([plugin.sh:3567-3577](../../lib/plugins/python/plugin.sh#L3567-L3577)); the `[project-guide]` section is the sole readout. *(Help text's integration list updated too.)*
+- [x] Make `_compose_status_project_guide` name the presence mode — toolchain-hosted / project-local pip / neither — and **probe runnability** (`project-guide --version`), not just `-x` (existence ≠ runnability, the Phase P pillar). *(Modes: `local pip|conda [vX]` — wins the label, hosted copy named inline; `pyve-hosted (toolchain) [vX]`; hosted-but-broken → `broken` + repair hint; `not installed`. Local binary located backend-aware via the non-mutating resolvers.)*
+- [x] Surface the resolved version in the status readout and in `self_provision`'s "Installed project-guide …" line ([self.sh](../../lib/commands/self.sh)). *(Probe failure degrades to the unversioned message.)*
+- [x] Tests: hosted-only / local-pip-only / both / neither → one correct labeled readout each, with version; `self provision` prints the installed version. *(Plus hosted-but-broken and declared-not-installed; 8-test matrix in `test_pyve_hosting_diagnostic.bats`, 2 provision-message tests in `test_project_guide_hosting.bats`.)*
+- [x] Full suite; zero regressions.
 
 ---
 

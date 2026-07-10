@@ -3570,28 +3570,11 @@ _status_section_integrations() {
         _status_row ".env:" "${DIM}missing${RESET}"
     fi
 
-    # project-guide: look for the binary in the project environment.
-    local backend env_path pg_info
-    backend="$(_status_backend)"
-    env_path=""
-    if [[ "$backend" == "venv" ]]; then
-        local venv_dir
-        env_path="$(resolve_venv_directory)"
-    elif [[ "$backend" == "micromamba" ]]; then
-        local env_name
-        env_name="$(resolve_micromamba_env_name 2>/dev/null || true)"
-        [[ -n "$env_name" ]] && env_path="$(resolve_main_micromamba_path "$env_name")"
-    fi
-    if [[ -n "$env_path" ]] && [[ -x "$env_path/bin/project-guide" ]]; then
-        pg_info="$("$env_path/bin/project-guide" --version 2>/dev/null | head -1 | awk '{print $NF}')"
-        if [[ -n "$pg_info" ]]; then
-            _status_row "project-guide:" "installed (v${pg_info})"
-        else
-            _status_row "project-guide:" "installed"
-        fi
-    else
-        _status_row "project-guide:" "${DIM}not installed${RESET}"
-    fi
+    # project-guide deliberately has NO row here: in v3 it is a globally
+    # hosted tool (toolchain venv + shim), never installed into the project
+    # env this section describes, so a row probing the project env
+    # contradicted the real hosting state. The composed [project-guide]
+    # section (lib/status_composer.sh) is the sole readout.
 
     local testenv_venv
     testenv_venv="$(resolve_env_path testenv)"
@@ -3620,7 +3603,7 @@ Usage:
 Description:
   Prints an at-a-glance summary of how this project is set up:
   backend, Python version, environment location, package count, and
-  integration state (direnv, .env, project-guide, testenv).
+  integration state (direnv, .env, testenv).
 
   pyve status is read-only and never produces a non-zero exit code
   based on findings — if something looks wrong, use 'pyve check'.

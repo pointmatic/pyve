@@ -375,8 +375,18 @@ _self_install_project_guide() {
         return 0
     fi
     if run_quiet "$pip_cmd" install --upgrade 'project-guide>=2.15.0'; then
-        log_success "Installed project-guide into the Pyve toolchain"
-        # Shared shim-link helper (Story N.bh, lib/toolchain_python.sh).
+        # Name the installed version so the user sees what landed. The
+        # probe EXECUTES the console script (runnability, not existence);
+        # a probe failure degrades to the unversioned message.
+        local pg_ver=""
+        declare -F pyve_runnable_version >/dev/null 2>&1 \
+            && pg_ver="$(pyve_runnable_version "$venv_dir/bin/project-guide" 2>/dev/null || true)"
+        if [[ -n "$pg_ver" ]]; then
+            log_success "Installed project-guide v${pg_ver} into the Pyve toolchain"
+        else
+            log_success "Installed project-guide into the Pyve toolchain"
+        fi
+        # Shared shim-link helper (lib/toolchain_python.sh).
         pyve_link_project_guide_shim "$venv_dir"
         log_info "Linked project-guide → $HOME/.local/bin/project-guide"
     else
