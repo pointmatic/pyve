@@ -103,6 +103,15 @@ else
     exit 1
 fi
 
+# PATH-slot tracing + resolution findings (pure diagnostic helpers,
+# consumed by check_composer's [resolution] section).
+if [[ -f "$SCRIPT_DIR/lib/resolution_reasoning.sh" ]]; then
+    source "$SCRIPT_DIR/lib/resolution_reasoning.sh"
+else
+    printf "ERROR: Cannot find lib/resolution_reasoning.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/backend_detect.sh"
 else

@@ -223,7 +223,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.aa: Resolution reasoning in `pyve check` — narrate where each managed command resolves and why [Planned]
+### Story P.aa: Resolution reasoning in `pyve check` — narrate where each managed command resolves and why [Done]
 
 *(Pillar 2 — plan §3. The automated version of the manual four-layer trace from the 2026-06-09 triggering incident.)*
 
@@ -239,12 +239,12 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 **Tasks.**
 
-- [ ] Decide the managed-command set + default-vs-verbose depth (plan §8.4); document the finding-class vocabulary.
-- [ ] Implement the PATH-slot tracer + slot classifier (a pure, testable helper; no mutation, no network).
-- [ ] Implement drift detection: pin vs. winner, venv↔pin creation-time drift, version-manager "no version set" classification.
-- [ ] Compose into `pyve check` per the Phase O long-form patterns; each finding carries its class + a role-correct hint.
-- [ ] Tests: fixture PATH layouts reproducing the incident's four layers → the narrative names the shadow, the drift, and the fall-through; a healthy layout → quiet; bounded + offline (CI-safe).
-- [ ] Full suite; zero regressions.
+- [x] Decide the managed-command set + default-vs-verbose depth (plan §8.4); document the finding-class vocabulary. *(Set: `python` + `pip` on Python-shaped projects, `project-guide` any-stack — the incident trio; no plugin-extension hook yet (waits for P-4). Concise default: winner line per command + finding lines only on faults; full slot trace under verbose. Classes: `ok` / `venv-pin-drift` / `no-version-set` / `broken-winner` / `not-found`, machine class bracketed on each finding line for the heal map.)*
+- [x] Implement the PATH-slot tracer + slot classifier (a pure, testable helper; no mutation, no network). *(New [`lib/resolution_reasoning.sh`](../../lib/resolution_reasoning.sh): `resolution_path_slots` / `resolution_classify_slot` (project-env / local-bin / vm-shim / system, honoring `ASDF_DATA_DIR` / `PYENV_ROOT`) / `resolution_winner` / `resolution_analyze`.)*
+- [x] Implement drift detection: pin vs. winner, venv↔pin creation-time drift, version-manager "no version set" classification. *(Pin from `resolve_python_version`; drift fires when a project-env winner's probed version ≠ pin; shim rejection recognized by the "No version is set" signature. Probes ride `pyve_run_bounded` — the P.z bounded runner promoted to `lib/utils.sh` now that it has two consumers.)*
+- [x] Compose into `pyve check` per the Phase O long-form patterns; each finding carries its class + a role-correct hint. *(`[resolution]` composer section, warn-only on the composed ladder — the exit-code contract is untouched; drift → `pyve init --force`, project-guide fall-through → `pyve self provision`.)*
+- [x] Tests: fixture PATH layouts reproducing the incident's four layers → the narrative names the shadow, the drift, and the fall-through; a healthy layout → quiet; bounded + offline (CI-safe). *(19 tests in `test_resolution_reasoning.bats`, incl. the full incident fixture, the wedged-winner bound, and verbose/concise trace gating.)*
+- [x] Full suite; zero regressions.
 
 ---
 

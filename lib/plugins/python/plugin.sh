@@ -3100,30 +3100,8 @@ check_environment() {
 # vocabulary is documented on the contract hook (lib/plugins/contract.sh).
 #============================================================
 
-# Run <cmd...> printing its combined output, bounded to
-# PYVE_PROBE_TIMEOUT seconds (default 10) — a wedged interpreter must not
-# hang `pyve check`. Pure bash (macOS ships no coreutils `timeout`).
-# Returns the command's status; a timed-out command is SIGKILLed (137).
-# Output is staged through a temp file, NOT streamed: SIGKILL on the
-# probed command cannot reach grandchildren it spawned, and an orphan
-# inheriting a command-substitution pipe would hold the caller's `$( )`
-# open past the deadline. Orphans hold only the unlinked temp file (and
-# every background job detaches stdio + closes bats's fd 3).
-_env_probe_bounded() {
-    local limit="${PYVE_PROBE_TIMEOUT:-10}"
-    local tmp
-    tmp="$(mktemp "${TMPDIR:-/tmp}/pyve-probe.XXXXXX")" || return 1
-    "$@" >"$tmp" 2>&1 3>&- &
-    local pid=$!
-    ( sleep "$limit" && kill -9 "$pid" ) >/dev/null 2>&1 3>&- &
-    local watchdog=$!
-    local rc=0
-    wait "$pid" 2>/dev/null || rc=$?
-    kill "$watchdog" >/dev/null 2>&1 || true
-    cat "$tmp" 2>/dev/null || true
-    rm -f "$tmp"
-    return "$rc"
-}
+# Probes run through pyve_run_bounded (lib/utils.sh) — bounded to
+# PYVE_PROBE_TIMEOUT so a wedged interpreter can never hang `pyve check`.
 
 # The Python plugin's env_probe hook: probe <env_name> and print one
 # classified verdict (see lib/plugins/contract.sh for the vocabulary).
@@ -3187,7 +3165,7 @@ _env_probe_classify() {
         # No console script to probe (minimal fixture envs, --without-pip
         # venvs): a runnable interpreter is not condemned — the canary's
         # target class is a PRESENT-but-dead wrapper.
-        if _env_probe_bounded "$py" --version >/dev/null; then
+        if pyve_run_bounded "$py" --version >/dev/null; then
             printf 'runnable'
             return 0
         fi
@@ -3204,9 +3182,9 @@ _env_probe_classify() {
         mm="$(get_micromamba_path 2>/dev/null)" || mm=""
     fi
     if [[ -n "$mm" ]]; then
-        out="$(_env_probe_bounded "$mm" run -p "$env_path" pip --version)" || rc=$?
+        out="$(pyve_run_bounded "$mm" run -p "$env_path" pip --version)" || rc=$?
     else
-        out="$(_env_probe_bounded "$wrapper" --version)" || rc=$?
+        out="$(pyve_run_bounded "$wrapper" --version)" || rc=$?
     fi
     if [[ "$rc" -eq 0 && "$out" == pip* ]]; then
         local ver
@@ -3354,7 +3332,7 @@ _check_default_testenv() {
     # pytest presence — probe the WRAPPER (bin/pytest), never `python -c
     # 'import pytest'`: a dead wrapper must not masquerade as installed.
     if [[ -e "$testenv_venv/bin/pytest" ]]; then
-        if _env_probe_bounded "$testenv_venv/bin/pytest" --version >/dev/null; then
+        if pyve_run_bounded "$testenv_venv/bin/pytest" --version >/dev/null; then
             _check_pass "testenv: pytest installed"
         else
             _check_warn "testenv: pytest wrapper present but broken (console scripts cannot run)" \
