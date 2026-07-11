@@ -286,7 +286,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.ab.2: Healing mechanism, part 2 — destructive tier (env rebuilds, orphan removal), resume, site docs [Planned]
+### Story P.ab.2: Healing mechanism, part 2 — destructive tier (env rebuilds, orphan removal), resume, site docs [Done]
 
 *(Pillar 3, second half — consumes Story P.z's canary verdicts and Story P.aa's resolution findings; builds on P.ab.1's engine.)*
 
@@ -294,12 +294,12 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 **Tasks.**
 
-- [ ] Extend the heal plan with the destructive tier, consuming P.z's canary verdicts (dead-shebang root/named, orphan) and P.aa's `venv-pin-drift` finding; per-repair individual confirmation on top of the batch flow.
-- [ ] Route repairs: root → `pyve init --force`; named → `pyve env init <name> --force`; orphan → remove the undeclared tree; drift → role-correct rebuild toward the pin.
-- [ ] Refusal paths (decline one repair → others still run), idempotency + partial-failure resume; exit codes documented.
-- [ ] Tests: one fixture per destructive class → correct repair proposed/confirmed/applied; refusal + non-TTY (report, never destroy); re-run after success → "nothing to heal"; never `pyve env purge root`.
-- [ ] Site docs for `pyve check --fix` (both tiers) + help-text finalization.
-- [ ] Full suite; zero regressions.
+- [x] Extend the heal plan with the destructive tier, consuming P.z's canary verdicts (dead-shebang root/named, orphan) and P.aa's `venv-pin-drift` finding; per-repair individual confirmation on top of the batch flow. *(Plan format grew an operand field (`class|arg|desc|repair`); drift is probed as a state fact — the root venv's own interpreter vs. the pin, activation-independent — and suppressed when a root rebuild is already planned (one repair, not two). Non-interactive runs never apply destructive repairs, even with `--yes` — reported and skipped, so `check --fix --yes` stays CI-safe.)*
+- [x] Route repairs: root → `pyve init --force`; named → `pyve env init <name> --force`; orphan → remove the undeclared tree; drift → role-correct rebuild toward the pin. *(Self-invocation seam `_heal_pyve` with `PYVE_FORCE_YES` pre-assent — consent was already collected per repair; every repair re-probes before reporting healed.)*
+- [x] Refusal paths (decline one repair → others still run), idempotency + partial-failure resume; exit codes documented. *(The plan is recomputed from live probes on every run, so completed repairs drop out and a partial failure retries only what is still broken; skips/refusals are not failures.)*
+- [x] Tests: one fixture per destructive class → correct repair proposed/confirmed/applied; refusal + non-TTY (report, never destroy); re-run after success → "nothing to heal"; never `pyve env purge root`. *(11 new tests — 29 total in `test_check_fix.bats`; interactive flows driven through the `_heal_is_interactive` seam with stdin-fed confirmations.)*
+- [x] Site docs for `pyve check --fix` (both tiers) + help-text finalization. *(New `check --fix` section in [reference/diagnostics.md](../site/reference/diagnostics.md); also corrected that page's stale pre-composition exit-code list and its `status` example, which still showed the `[python]` Integrations project-guide row P.y removed.)*
+- [x] Full suite; zero regressions.
 
 ---
 

@@ -28,6 +28,7 @@ setup() {
     export PYVE_SCRIPT="$PYVE_ROOT/pyve.sh"
     source "$PYVE_ROOT/lib/ui/core.sh"
     source "$PYVE_ROOT/lib/utils.sh"
+    source "$PYVE_ROOT/lib/env_detect.sh"
     source "$PYVE_ROOT/lib/toolchain_python.sh"
     source "$PYVE_ROOT/lib/heal.sh"
 
@@ -255,4 +256,190 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"--fix"* ]]
     [[ "$output" == *"--yes"* ]]
+}
+
+# ============================================================
+# Destructive tier — project envs (canary verdicts,
+# drift, orphans). Providers are stubbed at this level; the glue (plan
+# assembly, confirm flow, verb routing) is what is under test. Full-binary
+# coverage of the real probes follows below.
+# ============================================================
+
+# Stub the canary/manifest providers around a two-env project (root +
+# smoke, both declared) with one undeclared materialized tree (stray).
+# A probe flips to runnable once "$TEST_DIR/fixed-<env>" exists — the
+# marker the _heal_pyve stub touches, so a successful repair re-probes
+# clean (idempotence is observable).
+_stub_project_envs() {
+    printf 'pyve_schema = "3.0"\n\n[project]\nname = "demo"\n\n[env.root]\nbackend = "venv"\n' > pyve.toml
+    manifest_load() { :; }
+    manifest_list_envs() { printf 'root\nsmoke\n'; }
+    manifest_get_env() { case "$1" in root|smoke) return 0 ;; *) return 1 ;; esac; }
+    # Disk-honest: report only trees that actually exist, so a repair's
+    # rm is observable in the re-planned output (idempotence).
+    list_materialized_env_names() {
+        [[ -d .pyve/envs/smoke ]] && printf 'smoke\n'
+        [[ -d .pyve/envs/stray ]] && printf 'stray\n'
+        return 0
+    }
+    _env_resolve_root_backend() { printf 'venv'; }
+    resolve_venv_directory() { printf '.venv'; }
+    python_pyve_plugin_env_probe() {
+        case "$1" in
+            root)  [[ -f "$TEST_DIR/fixed-root" ]] && { printf 'runnable'; return 0; }
+                   printf 'dead-shebang'; return 1 ;;
+            smoke) [[ -f "$TEST_DIR/fixed-smoke" ]] && { printf 'runnable'; return 0; }
+                   printf 'dead-shebang'; return 1 ;;
+            *)     printf 'runnable' ;;
+        esac
+    }
+    mkdir -p .pyve/envs/stray/venv/bin
+}
+
+# Repair-verb seam stub: log the invocation, mark the env repaired.
+_stub_heal_pyve() {
+    _heal_pyve() {
+        echo "pyve $*" >> "$TEST_DIR/calls.log"
+        case "$*" in
+            "init --force")        touch "$TEST_DIR/fixed-root" ;;
+            "env init smoke --force") touch "$TEST_DIR/fixed-smoke" ;;
+        esac
+        return 0
+    }
+}
+
+@test "heal_plan: destructive faults — dead root, dead named env, orphan tree" {
+    _stub_project_envs
+    run heal_plan
+    [[ "$output" == *"env-dead-root|.venv|"* ]]
+    [[ "$output" == *"env-dead|smoke|"* ]]
+    [[ "$output" == *"env-orphan|.pyve/envs/stray|"* ]]
+    # Root already has a rebuild planned — no second drift repair.
+    [[ "$output" != *"env-drift"* ]]
+    # Role-correct: never the rejected root purge.
+    [[ "$output" != *"env purge root"* ]]
+}
+
+@test "heal_plan: venv↔pin drift on a healthy root → env-drift naming both versions" {
+    _stub_project_envs
+    touch "$TEST_DIR/fixed-root" "$TEST_DIR/fixed-smoke"
+    rm -rf .pyve/envs/stray
+    printf 'python 3.12.13\n' > .tool-versions
+    mkdir -p .venv/bin
+    printf '#!/usr/bin/env bash\necho "Python 3.14.4"\n' > .venv/bin/python
+    chmod +x .venv/bin/python
+    run heal_plan
+    [[ "$output" == *"env-drift|.venv|"* ]]
+    [[ "$output" == *"3.14.4"* ]]
+    [[ "$output" == *"3.12.13"* ]]
+    [[ "$output" == *"pyve init --force"* ]]
+}
+
+@test "heal_plan: healthy declared envs, no strays → empty" {
+    _stub_project_envs
+    touch "$TEST_DIR/fixed-root" "$TEST_DIR/fixed-smoke"
+    rm -rf .pyve/envs/stray
+    run heal_plan
+    [ -z "$output" ]
+}
+
+@test "heal_plan: advisory root with a materialized tree → env-orphan contradiction" {
+    _stub_project_envs
+    touch "$TEST_DIR/fixed-root" "$TEST_DIR/fixed-smoke"
+    rm -rf .pyve/envs/stray
+    _env_resolve_root_backend() { printf 'none'; }
+    _env_backend_is_advisory() { [[ "$1" == "none" ]]; }
+    micromamba_root_prefix() { printf '.pyve/envs/root/conda'; }
+    mkdir -p .pyve/envs/root/conda
+    run heal_plan
+    [[ "$output" == *"env-orphan|.pyve/envs/root/conda|"* ]]
+}
+
+@test "heal_run: non-TTY --yes never destroys — destructive repairs are skipped" {
+    _stub_project_envs
+    run heal_run 1
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"(destructive)"* ]]
+    [[ "$output" == *"skipped"* ]]
+    [[ "$output" == *"interactive terminal"* ]]
+    [ -d .pyve/envs/stray ]
+    [[ "$output" == *"0 repair(s) applied, 3 skipped."* ]]
+}
+
+@test "heal_run: interactive per-repair confirmation — declining leaves state intact" {
+    _stub_project_envs
+    _heal_is_interactive() { return 0; }
+    run heal_run 0 <<< $'y\nn\nn\nn\n'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"declined"* ]]
+    [ -d .pyve/envs/stray ]
+    [[ "$output" == *"0 repair(s) applied, 3 skipped."* ]]
+}
+
+@test "heal_run: interactive --yes applies all destructive repairs; re-run is clean" {
+    _stub_project_envs
+    _heal_is_interactive() { return 0; }
+    _stub_heal_pyve
+    heal_run 1
+    grep -q "pyve init --force" "$TEST_DIR/calls.log"
+    grep -q "pyve env init smoke --force" "$TEST_DIR/calls.log"
+    ! grep -q "env purge root" "$TEST_DIR/calls.log"
+    [ ! -d .pyve/envs/stray ]
+    run heal_plan
+    [ -z "$output" ]
+}
+
+@test "heal_run: refusal of one repair does not skip the rest" {
+    # One destructive fault (smoke) + one non-destructive (dangling shim).
+    _stub_project_envs
+    touch "$TEST_DIR/fixed-root"
+    rm -rf .pyve/envs/stray
+    _fixture_dangling_shim
+    _heal_is_interactive() { return 0; }
+    _stub_heal_pyve
+    run heal_run 0 <<< $'y\nn\n'
+    [ "$status" -eq 0 ]
+    # smoke declined, shim re-linked anyway.
+    [[ "$output" == *"declined"* ]]
+    [[ "$output" == *"healed [shim-dangling]"* ]]
+    [[ "$output" == *"1 repair(s) applied, 1 skipped."* ]]
+}
+
+@test "heal_run: a failed destructive repair reports and returns nonzero" {
+    _stub_project_envs
+    touch "$TEST_DIR/fixed-root"
+    rm -rf .pyve/envs/stray
+    _heal_is_interactive() { return 0; }
+    _heal_pyve() { return 1; }
+    run heal_run 1
+    [ "$status" -eq 1 ]
+    [[ "$output" == *"repair failed [env-dead]"* ]]
+    [[ "$output" == *"1 failed."* ]]
+}
+
+# --- full binary: real probes, non-TTY safety ------------------------------
+
+@test "check --fix --yes (non-TTY): broken root env is planned but never destroyed" {
+    printf 'pyve_schema = "3.0"\n\n[project]\nname = "demo"\n\n[env.root]\nbackend = "venv"\n' > pyve.toml
+    export DEFAULT_PYTHON_VERSION="$PYVE_BIN_PYVER"
+    mkdir -p .venv/bin
+    printf '#!/usr/bin/env bash\necho "Python 3.12.0"\n' > .venv/bin/python
+    chmod +x .venv/bin/python
+    printf '#!%s/gone/python\nnever\n' "$TEST_DIR" > .venv/bin/pip
+    chmod +x .venv/bin/pip
+    run "$PYVE_SCRIPT" check --fix --yes
+    [[ "$output" == *"env-dead-root"* ]]
+    [[ "$output" == *"skipped"* ]]
+    [ -d .venv ]
+    [ -e .venv/bin/pip ]
+}
+
+@test "check --fix --yes (non-TTY): orphan tree is planned but never removed" {
+    printf 'pyve_schema = "3.0"\n\n[project]\nname = "demo"\n\n[env.root]\nbackend = "none"\n' > pyve.toml
+    export DEFAULT_PYTHON_VERSION="$PYVE_BIN_PYVER"
+    mkdir -p .pyve/envs/stray/venv/bin
+    run "$PYVE_SCRIPT" check --fix --yes
+    [[ "$output" == *"env-orphan"* ]]
+    [[ "$output" == *"stray"* ]]
+    [ -d .pyve/envs/stray ]
 }

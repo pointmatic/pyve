@@ -79,7 +79,7 @@ Organized into four categories (same as `pyve --help`); each command links to it
 
 | Command | Description |
 |---------|-------------|
-| [`check`](reference/diagnostics.md#check) | Diagnose problems with CI-safe 0/1/2 exit codes (composed across plugins) |
+| [`check [--fix]`](reference/diagnostics.md#check) | Diagnose problems with CI-safe exit codes (composed across plugins); `--fix` repairs broken Pyve-managed state (plan-then-confirm) |
 | [`status`](reference/diagnostics.md#status) | Read-only project-state dashboard, always exit 0 (composed across plugins) |
 
 #### Self management

@@ -3504,14 +3504,25 @@ Usage:
   pyve check [--fix [--yes]]
 
 Options:
-  --fix        After the diagnostics, detect broken Pyve-managed hosting
-               state (a toolchain venv or hosted tool that exists but
-               cannot run, a dangling shim) and repair it. Plan-then-
-               confirm: the faults and intended repairs are printed
-               first; nothing is repaired without assent.
-  --yes, -y    Assent to the repair batch (only with --fix). Without it,
-               an interactive run prompts once; a non-interactive run is
-               report-only and never mutates.
+  --fix        After the diagnostics, detect broken Pyve-managed state
+               and repair it. Plan-then-confirm: the faults and intended
+               repairs are printed first; nothing is repaired without
+               assent. Two tiers:
+                 - non-destructive (hosting): a toolchain venv or hosted
+                   tool that exists but cannot run, a dangling shim —
+                   rebuilt/re-linked via the provision machinery;
+                 - destructive (project envs): a broken root or named
+                   env (dead console scripts), a venv off the declared
+                   pin, an orphaned undeclared tree — each repair is
+                   individually confirmed and routed through the
+                   role-correct verb (pyve init --force for root;
+                   pyve env init <name> --force for named envs).
+  --yes, -y    Assent to the prompts (only with --fix) — the batch and
+               the per-repair destructive confirmations. Without it, an
+               interactive run prompts; a non-interactive run is
+               report-only and never mutates. A NON-INTERACTIVE run
+               never applies destructive repairs even with --yes: they
+               are reported and skipped, so CI stays safe.
 
 Description:
   Runs a set of read-only diagnostics against the current project and
@@ -3530,10 +3541,13 @@ Exit codes:
 
 Notes:
   - pyve check (without --fix) is safe to run in CI (no side effects,
-    stable exit codes). With --fix it stays CI-safe unless --yes is
-    also passed: without assent it only reports what it would repair.
+    stable exit codes). With --fix it stays CI-safe: without --yes it
+    only reports what it would repair, and destructive repairs are
+    never applied non-interactively at all.
   - The exit code always reflects the pre-repair diagnostics; a healed
-    system goes green on the next run.
+    system goes green on the next run. A failed repair returns via the
+    normal error path — re-running is safe (completed repairs drop out
+    of the plan).
 
 See also:
   pyve status            Read-only state snapshot (no diagnostics)
