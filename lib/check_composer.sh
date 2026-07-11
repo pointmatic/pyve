@@ -303,6 +303,11 @@ compose_check() {
             --yes|-y)
                 assent=1; shift
                 ;;
+            --offline)
+                # Suppress the staleness network probe (equivalent to
+                # PYVE_NO_NETWORK=1; the cache may still be read).
+                export PYVE_NO_NETWORK=1; shift
+                ;;
             -*)
                 unknown_flag_error "check" "$1" --help
                 ;;
@@ -424,13 +429,19 @@ compose_check() {
     fi
 
     # environment-level [pyve] addendum (Story N.bi) — hosted toolchain +
-    # project-guide hosting. INFO-ONLY: deliberately does NOT touch `worst`,
-    # so an unprovisioned (optional) toolchain never affects the verdict.
-    local pyve_out
+    # project-guide hosting, plus the staleness hints (a bounded, cached,
+    # human-runs-only network probe). INFO-ONLY: deliberately does NOT
+    # touch `worst`, so neither an unprovisioned (optional) toolchain nor
+    # an available update — nor any network failure — affects the verdict.
+    local pyve_out stale_out=""
     pyve_out="$(_compose_check_pyve_hosting)"
-    if [[ -n "$pyve_out" ]]; then
+    if declare -F staleness_hint_lines >/dev/null 2>&1; then
+        stale_out="$(staleness_hint_lines)"
+    fi
+    if [[ -n "$pyve_out" || -n "$stale_out" ]]; then
         printf '[pyve]\n'
-        printf '%s\n' "$pyve_out"
+        [[ -n "$pyve_out" ]] && printf '%s\n' "$pyve_out"
+        [[ -n "$stale_out" ]] && printf '%s\n' "$stale_out"
         printf '\n'
     fi
 

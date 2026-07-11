@@ -3501,7 +3501,7 @@ show_check_help() {
 pyve check - Diagnose environment problems and suggest fixes
 
 Usage:
-  pyve check [--fix [--yes]]
+  pyve check [--fix [--yes]] [--offline]
 
 Options:
   --fix        After the diagnostics, detect broken Pyve-managed state
@@ -3523,6 +3523,11 @@ Options:
                report-only and never mutates. A NON-INTERACTIVE run
                never applies destructive repairs even with --yes: they
                are reported and skipped, so CI stays safe.
+  --offline    Skip the update-availability probe (equivalent to
+               PYVE_NO_NETWORK=1). The probe is info-only, bounded, and
+               cached (24h); it already skips itself in CI, in piped/
+               scripted runs, and on any network failure — the exit
+               code can never depend on the network.
 
 Description:
   Runs a set of read-only diagnostics against the current project and

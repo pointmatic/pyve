@@ -194,7 +194,8 @@ Pyve recognizes the following environment variables:
 | `PYVE_NO_PROJECT_GUIDE` | Skip the project-guide three-step hook (same as `--no-project-guide`) | Unset |
 | `PYVE_PROJECT_GUIDE_COMPLETION` | Add shell completion only (same as `--project-guide-completion`) | Unset |
 | `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Skip shell completion only (same as `--no-project-guide-completion`) | Unset |
-| `CI` | Detected CI environment (auto-sets non-interactive mode) | Not set |
+| `PYVE_NO_NETWORK` | Skip `pyve check`'s update-availability probe (same as `--offline`); the probe is info-only, cached 24h, and also auto-skips in CI, in piped runs, and on any network failure | Unset |
+| `CI` | Detected CI environment (auto-sets non-interactive mode; also suppresses the update-availability probe) | Not set |
 
 **Examples:**
 

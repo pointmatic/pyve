@@ -121,6 +121,15 @@ else
     exit 1
 fi
 
+# Staleness hints for the hosted tools (bounded, cached, info-only
+# network probe; consumed by check_composer's [pyve] section).
+if [[ -f "$SCRIPT_DIR/lib/staleness.sh" ]]; then
+    source "$SCRIPT_DIR/lib/staleness.sh"
+else
+    printf "ERROR: Cannot find lib/staleness.sh\n" >&2
+    exit 1
+fi
+
 if [[ -f "$SCRIPT_DIR/lib/backend_detect.sh" ]]; then
     source "$SCRIPT_DIR/lib/backend_detect.sh"
 else

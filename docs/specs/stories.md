@@ -318,7 +318,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.ad: `pyve check` surfaces available updates for the hosted tools and pyve itself [Planned]
+### Story P.ad: `pyve check` surfaces available updates for the hosted tools and pyve itself [Done]
 
 **Raised:** 2026-06-08 (developer, during Story N.bj). Post-v3.0.0.
 
@@ -341,12 +341,12 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 **Tasks.**
 
-- [ ] Adopt the network model from P.ac's recorded outcome (opt-in vs opt-out, timeout, cache TTL + location, `--offline` / `PYVE_NO_NETWORK` surface). Confirm a network failure can never change the exit code.
-- [ ] Implement a best-effort latest-version probe for project-guide (PyPI JSON) and pyve (tap / GitHub releases), each degrading silently offline.
-- [ ] Wire an `info`-level staleness line into the `[pyve]` check section with the install-source-correct remediation command.
-- [ ] Tests: stubbed-network "newer available → correct hint", "up-to-date → no hint", and "offline/timeout → silent, exit code unchanged".
-- [ ] Document the new env var / flag in the Environment Variables table and `pyve check --help`.
-- [ ] Full suite; zero regressions.
+- [x] Adopt the network model from P.ac's recorded outcome (opt-in vs opt-out, timeout, cache TTL + location, `--offline` / `PYVE_NO_NETWORK` surface). Confirm a network failure can never change the exit code. *(One addition beyond the record, faithful to its "interactive human runs" phrase: the probe also suppresses on a non-interactive stdout — so scripted, piped, CI, and the test suites' `check` runs are offline by construction, not by configuration.)*
+- [x] Implement a best-effort latest-version probe for project-guide (PyPI JSON) and pyve (tap / GitHub releases), each degrading silently offline. *(New [`lib/staleness.sh`](../../lib/staleness.sh); pyve's source is the raw tap formula per the corrected P.ac record; pure-bash numeric version compare — no `sort -V` dependency.)*
+- [x] Wire an `info`-level staleness line into the `[pyve]` check section with the install-source-correct remediation command. *(Never touches the severity roll-up; `--offline` flag added to `check`.)*
+- [x] Tests: stubbed-network "newer available → correct hint", "up-to-date → no hint", and "offline/timeout → silent, exit code unchanged". *(17 tests in `test_check_staleness.bats`, incl. the cache-preservation and suppression matrix; one portability find: `find -mmin -0` is BSD/GNU-ambiguous, so TTL ≤ 0 is handled explicitly.)*
+- [x] Document the new env var / flag in the Environment Variables table and `pyve check --help`.
+- [x] Full suite; zero regressions.
 
 ---
 
