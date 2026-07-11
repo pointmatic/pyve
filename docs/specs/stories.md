@@ -350,17 +350,17 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.ae: Subphase P-2 documentation sweep [Planned]
+### Story P.ae: Subphase P-2 documentation sweep [Done]
 
 **Scope.** The end-of-subphase coherence pass across the public docs for every P-2 surface (mirroring P.s's shape for P-1): `check`'s canary verdicts + resolution narrative (what the new lines mean, how to read a classified finding), the heal command's reference page (repair classes, confirmation model, flag semantics), the `pyve.toml` opt-out field, the staleness hints + network model, and the Environment Variables table. Per-story docs land with their stories; this pass makes them read as one system.
 
 **Tasks.**
 
-- [ ] Sweep the site docs for the new `check` output (canary verdicts, resolution reasoning) with a worked example from the triggering-incident scenario.
-- [ ] Heal reference page + cross-links from the check docs ("check detects → heal repairs").
-- [ ] `pyve-toml.md` (opt-out field) + `environments.md` cross-refs verified; Environment Variables table updated (`PYVE_NO_NETWORK` and any new vars).
-- [ ] Coherence pass: one vocabulary across check/heal/status docs (verdict names, presence modes, remediation verbs).
-- [ ] CHANGELOG entries staged for every P-2 story, ready for the release story.
+- [x] Sweep the site docs for the new `check` output (canary verdicts, resolution reasoning) with a worked example from the triggering-incident scenario. *(New "Runnability verdicts", "Resolution reasoning", and "Update hints" sections in [reference/diagnostics.md](../site/reference/diagnostics.md) — verdict table with role-correct repairs, finding-class list, the incident narrated as example output, and the staleness network model; "What it checks" updated to match.)*
+- [x] Heal reference page + cross-links from the check docs ("check detects → heal repairs"). *(The `check --fix` section — heal's reference home since the surface is a check flag — now opens with "check detects; `--fix` repairs" tied to the verdict vocabulary above it; See-also links to environments/testing/usage added.)*
+- [x] `pyve-toml.md` (opt-out field) + `environments.md` cross-refs verified; Environment Variables table updated (`PYVE_NO_NETWORK` and any new vars). *(All three opt-out pages cross-link with consistent target-side semantics; the env-var row landed with P.ad — verified.)*
+- [x] Coherence pass: one vocabulary across check/heal/status docs (verdict names, presence modes, remediation verbs). *(Greps clean: no `pyve heal` mentions, no stale "does not auto-remediate" note, presence-mode labels and rebuild-verb spellings consistent; `--keep-testenv` confirmed live, not stale.)*
+- [x] CHANGELOG entries staged for every P-2 story, ready for the release story. *(An `[Unreleased]` section in the 3.1.0 house style — themed lead + Added/Changed/Fixed covering P.v–P.ae; Story P.af dates it to v3.2.0.)*
 
 ---
 
