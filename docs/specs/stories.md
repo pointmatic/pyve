@@ -303,7 +303,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.ac: Integration spike — Pyve's first network touchpoint: bounded latest-version lookup (PyPI + Homebrew tap), cache, offline degrade [Planned]
+### Story P.ac: Integration spike — Pyve's first network touchpoint: bounded latest-version lookup (PyPI + Homebrew tap), cache, offline degrade [Done]
 
 *(Integration spike per the new-integration-boundary rule: `pyve check` has been offline by design, and Story P.ad adds a network dimension. Time-boxed; the deliverable is the documented outcome, not production code.)*
 
@@ -311,10 +311,10 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 **Deliverables (documented outcome).**
 
-- [ ] Prove the fetch pattern: `curl` with connect/total timeouts against both endpoints; measure worst-case wall-time on unreachable/blackholed hosts.
-- [ ] Prove the degrade: no network / DNS failure / 403 rate-limit → empty result, zero stderr noise, exit code unchanged.
-- [ ] Decide + record: opt-in vs. opt-out network model, flag/env-var names (`--offline` / `PYVE_NO_NETWORK`), cache TTL + location.
-- [ ] Write the outcome into the P-2 plan (§8.3, resolving that open question) and hand the pattern to Story P.ad.
+- [x] Prove the fetch pattern: `curl` with connect/total timeouts against both endpoints; measure worst-case wall-time on unreachable/blackholed hosts. *(Happy path 190–270 ms; blackholed 2.05 s, bounded by `--connect-timeout 2`; 5 s `--max-time` ceiling. The GitHub releases API shows v1.13.3 — the last Release under the retired pre-merge-flow workflow (Releases are no longer cut; tags ride branches merged to main) — so pyve's latest comes from the raw tap formula, which is current without any workflow change and sidesteps the 60/hr API rate limit.)*
+- [x] Prove the degrade: no network / DNS failure / 403 rate-limit → empty result, zero stderr noise, exit code unchanged. *(`curl -fsSL … 2>/dev/null || true` — the `2>/dev/null` is load-bearing: `-s` alone still emits error text.)*
+- [x] Decide + record: opt-in vs. opt-out network model, flag/env-var names (`--offline` / `PYVE_NO_NETWORK`), cache TTL + location. *(Opt-out for interactive runs; suppressed by `--offline` / `PYVE_NO_NETWORK=1` / the `CI` env var / an unexpired cache; `${XDG_CACHE_HOME:-$HOME/.cache}/pyve/latest/<tool>`, mtime TTL 24 h, failures never overwrite a cached value.)*
+- [x] Write the outcome into the P-2 plan (§8.3, resolving that open question) and hand the pattern to Story P.ad.
 
 ---
 
