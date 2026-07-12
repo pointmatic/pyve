@@ -1131,7 +1131,18 @@ pyve_run_bounded() {
     tmp="$(mktemp "${TMPDIR:-/tmp}/pyve-probe.XXXXXX")" || return 1
     "$@" >"$tmp" 2>&1 3>&- &
     local pid=$!
-    ( sleep "$limit" && kill -9 "$pid" ) >/dev/null 2>&1 3>&- &
+    # The watchdog's timer sleep runs in its background with a TERM trap
+    # tearing it down: bash delivers SIGTERM to the subshell but not to a
+    # foreground child, so a bare `sleep && kill` shape would strand the
+    # sleep as a limit-long orphan on every probe — a real process leak
+    # (a multi-env `pyve check` herds them; under a parallel test suite
+    # they feed the fork pressure that flakes small CI runners).
+    (
+        sleep "$limit" &
+        timer=$!
+        trap 'kill "$timer" 2>/dev/null || true; exit 0' TERM
+        wait "$timer" && kill -9 "$pid"
+    ) >/dev/null 2>&1 3>&- &
     local watchdog=$!
     local rc=0
     wait "$pid" 2>/dev/null || rc=$?

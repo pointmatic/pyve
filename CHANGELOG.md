@@ -5,9 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
-
-*(Staged for v3.2.0 — Subphase P-2, "Runnability probes & environment healing". The release story dates this entry.)*
+## [3.2.0] - 2026-07-11
 
 **Harden & heal: existence is not runnability.** `pyve check` now *executes* what it certifies — a canary console-script probe per environment, a narrated account of where every managed command resolves from — and, with the new `--fix`, repairs what it finds: plan-then-confirm, role-correct, never destructive without an interactive confirmation. The four-layer PATH/pin/shim trace a developer once reconstructed by hand is now three sections of `check` output and one repair command.
 
@@ -29,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Silent-skip advisory: `root` was never probed on the standard v3 topology** (Story P.w) — the probe's `root` branch globbed `.pyve/envs/*` and built a path that never exists, so whenever any named env was materialized, `root` reported "no pytest" unconditionally and the advisory failed to warn exactly where it mattered. `root` now resolves through the canonical backend-aware path.
 - **The integration suite can no longer mutate the real `$HOME`** (Story P.v) — the test harness's fake home symlinked the developer's real `~/.local` / `~/.asdf` / `~/.pyenv` into itself, so provisioning tests wrote real hosting artifacts that dangled when the tmpdir was reaped (the manufacturing cause of the triggering incident). The sandbox is now fully self-contained (in-sandbox fake version managers, sanitized PATH, interpreter and project-guide injected by value), one live leaking test was stubbed, and a suite-level guard fails teardown if a run ever touches the real home again.
+- **Bounded probes no longer strand a watchdog `sleep`** (Story P.ae.1) — every `pyve_run_bounded` call (each canary and resolution probe) left its watchdog's timer `sleep` running as an orphan for the rest of the probe timeout, so a multi-env `pyve check` accumulated a herd of stray `sleep 10` processes — and under the parallel test suite they fed the fork pressure that intermittently flaked small CI runners. The watchdog now tears its timer down when dismissed.
 
 ## [3.1.0] - 2026-07-07
 

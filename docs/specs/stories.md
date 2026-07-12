@@ -364,14 +364,39 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
+### Story P.ae.1: Bounded-probe watchdog leaks an orphaned `sleep` per call — the fork-pressure feeder behind the macOS CI flake [Done]
+
+**Symptom.** A macOS CI run failed `test_resolution_reasoning.bats` test "analyze: project-env winner matching the pin → ok" (`[[ "$output" == ok\|* ]]` failed) while the immediately preceding drift test — the identical machinery — passed. Not reproducible in isolation (2,000 direct iterations + 300 solo bats runs green); a local 3× full-suite reproduction flaked a *different* test once, confirming a roving, load-shaped class rather than a broken test.
+
+**Root cause, two layers.**
+
+1. **Product bug (the pressure source):** `pyve_run_bounded`'s watchdog was `( sleep $limit && kill -9 $pid ) &`, dismissed with `kill $watchdog`. SIGTERM kills the subshell but not its foreground `sleep` child, which survives as an orphan for the rest of the limit — one stranded `sleep 10` per probe, verified live (a single `pyve check` herds several; the parallel suite keeps dozens alive at once). On a 3–4-core CI runner this inflates the process table toward the fork ceiling.
+2. **Test gap (the failure shape):** under transient fork pressure bash prints `fork: retry: Resource temporarily unavailable` to stderr and recovers — and bats' `run` merges stderr into `$output` *ahead* of the (correct) finding line, so whole-output equality/prefix assertions fail even though the code under test behaved perfectly. Mechanism reproduced exactly under `ulimit -u` fork churn.
+
+**Fix.** (a) The watchdog now runs its timer `sleep` in its own background with a TERM trap that tears it down (`lib/utils.sh`) — dismissal reaps the whole watchdog; the timeout path (SIGKILL at the limit) is unchanged. (b) A shared `result_line` helper (`tests/helpers/test_helper.bash`) returns the last line of `run` output; the single-line-result assertions in `test_resolution_reasoning.bats` and `test_env_probe_canary.bats` now assert the finding line instead of the whole buffer, and the slot-tracer's ordered-lines assertion is end-anchored. Composer-section tests already used noise-immune substring matches.
+
+**Tasks.**
+
+- [x] Failing test first: "watchdog timer does not outlive the call" (pgrep for a distinctive `sleep 947` after a fast probe) — red before the fix, green after; wedged-kill timeout test still green.
+- [x] Fix the watchdog teardown in `pyve_run_bounded` (`lib/utils.sh`) — killable timer via background sleep + TERM trap.
+- [x] Regression test codifying the incident's noise shape: a stderr `fork: retry:` line ahead of a correct finding must not fail the assertion.
+- [x] Harden single-line-result assertions to `result_line` in `test_resolution_reasoning.bats` (8) and `test_env_probe_canary.bats` (12); end-anchor the slot-tracer ordered assertion.
+- [x] End-to-end: `./pyve.sh check` on a fixture project exercises live canary + resolution probes and leaves zero stray sleeps.
+- [x] Full unit suite green (parallel, post-fix).
+- [ ] Housekeeping (P-3 candidate): if load flakes recur after this lands, add a serial re-run-failures backstop to `scripts/run-unit-tests.sh` and/or a `bats --timing`-based contention survey — fits P-3's "flaky-test triage" theme; not warranted pre-emptively.
+
+**Version:** rides the v3.2.0 bundle (Story P.af dates the release; the CHANGELOG `Fixed` entry landed in the staged 3.2.0 section).
+
+---
+
 ### Story P.af: v3.2.0 Tag release and validate in production [Planned]
 
 **Scope.** Owns Subphase P-2's minor bump per the phase's multi-release exception (mirrors P.u's shape for v3.1.0).
 
 **Tasks.**
 
-- [ ] Pre-flight: full unit + integration suites green on main; CHANGELOG complete for every P-2 story; docs site builds clean.
-- [ ] Developer invokes `project-guide bump-version 3.2.0` (version bump + CHANGELOG seed); tag ships through the normal release flow (Homebrew formula update follows).
+- [x] Pre-flight: full unit + integration suites green on main; CHANGELOG complete for every P-2 story; docs site builds clean. *(Bats 2269 + integration 217 green — the latter twice: the first pre-flight run tripped the P.v real-home guard on a genuine mid-window mutation of real hosting (a full `self provision` at 21:01:09 Jul 10 — pyyaml/tomlkit upgraded, project-guide 2.15→2.17.0, shim re-linked); solo re-runs of both suites under a live filesystem watcher were mutation-free, exonerating both suites — the developer confirmed they ran `pyve self provision` at that moment to verify project-guide was current. A true positive on a benign concurrent write. CHANGELOG covers all 11 P-2 stories; `mkdocs build --strict` clean.)*
+- [x] Release staging is the LLM's job, in-repo: bump `VERSION` in `pyve.sh` (the single source of truth — verified: `lib/version.sh` is comparison helpers only; test fixtures inject their own; docs examples updated alongside), date the CHANGELOG entry. The developer then releases with git alone: commit, tag `v3.2.0`, push, GitHub/Homebrew-formula steps. *(The original task text said "developer invokes `project-guide bump-version`" — wrong on two counts: that command mutates `pyproject.toml`, which this bash project doesn't have, and it is deprecated in project-guide — a leftover from the Python-specific era of both tools. Corrected here and staged accordingly. Staged and verified: `bash pyve.sh --version` → `pyve version 3.2.0`; CHANGELOG dated `[3.2.0] - 2026-07-11`; `usage.md` example updated; no stale `3.1.0` strings outside archives; the CHANGELOG link-reference block ends at 1.5.1 by house style, so no new ref.)*
 - [ ] Validate in production on a real project: an incident-shaped fixture (dead shim / drifted venv / dead-wrapper env) → `pyve check` names it, heal repairs it with confirmation, re-check goes green.
 - [ ] Post-release: verify the `brew upgrade` path and a clean-clone `pyve self install`; confirm the docs site deployed.
 

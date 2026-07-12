@@ -122,7 +122,7 @@ _stub_check_closures() {
     _mk_env_healthy .pyve/envs/smoke/venv
     run python_pyve_plugin_env_probe smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == "runnable 25.1" ]]
+    [[ "$(result_line)" == "runnable 25.1" ]]
 }
 
 @test "probe: dead-shebang pip wrapper with a valid python → 'dead-shebang' (the false-green killer)" {
@@ -130,7 +130,7 @@ _stub_check_closures() {
     _mk_env_dead_pip .pyve/envs/smoke/venv
     run python_pyve_plugin_env_probe smoke
     [ "$status" -ne 0 ]
-    [[ "$output" == "dead-shebang" ]]
+    [[ "$(result_line)" == "dead-shebang" ]]
 }
 
 @test "probe: dangling python symlink → 'dangling-symlink'" {
@@ -141,7 +141,7 @@ _stub_check_closures() {
     chmod +x .pyve/envs/smoke/venv/bin/pip
     run python_pyve_plugin_env_probe smoke
     [ "$status" -ne 0 ]
-    [[ "$output" == "dangling-symlink" ]]
+    [[ "$(result_line)" == "dangling-symlink" ]]
 }
 
 @test "probe: no interpreter in the env → 'missing-interpreter'" {
@@ -151,14 +151,14 @@ _stub_check_closures() {
     chmod +x .pyve/envs/smoke/venv/bin/pip
     run python_pyve_plugin_env_probe smoke
     [ "$status" -ne 0 ]
-    [[ "$output" == "missing-interpreter" ]]
+    [[ "$(result_line)" == "missing-interpreter" ]]
 }
 
 @test "probe: declared but not materialized → 'not-materialized' (no probe, rc 0)" {
     _manifest_with_smoke
     run python_pyve_plugin_env_probe smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == "not-materialized" ]]
+    [[ "$(result_line)" == "not-materialized" ]]
 }
 
 @test "probe: advisory backend → 'advisory' (declarative-only, no probe)" {
@@ -174,7 +174,7 @@ backend = "none"
 TOML
     run python_pyve_plugin_env_probe tools
     [ "$status" -eq 0 ]
-    [[ "$output" == "advisory" ]]
+    [[ "$(result_line)" == "advisory" ]]
 }
 
 @test "probe: interpreter-only env (no pip wrapper) → 'runnable' via the python fallback" {
@@ -187,7 +187,7 @@ TOML
     chmod +x .pyve/envs/smoke/venv/bin/python
     run python_pyve_plugin_env_probe smoke
     [ "$status" -eq 0 ]
-    [[ "$output" == "runnable" ]]
+    [[ "$(result_line)" == "runnable" ]]
 }
 
 @test "probe: wedged wrapper is killed by the bounded runtime → 'broken' (no hang)" {
@@ -202,7 +202,7 @@ TOML
     run python_pyve_plugin_env_probe smoke
     end=$SECONDS
     [ "$status" -ne 0 ]
-    [[ "$output" == "broken" ]]
+    [[ "$(result_line)" == "broken" ]]
     # Bounded: nowhere near the wrapper's 30s sleep.
     [ $((end - start)) -lt 10 ]
 }
@@ -216,7 +216,7 @@ TOML
     _mk_env_healthy .venv
     run python_pyve_plugin_env_probe root
     [ "$status" -eq 0 ]
-    [[ "$output" == "runnable 25.1" ]]
+    [[ "$(result_line)" == "runnable 25.1" ]]
 }
 
 @test "probe: venv root with dead-shebang pip → 'dead-shebang'" {
@@ -224,7 +224,7 @@ TOML
     _mk_env_dead_pip .venv
     run python_pyve_plugin_env_probe root
     [ "$status" -ne 0 ]
-    [[ "$output" == "dead-shebang" ]]
+    [[ "$(result_line)" == "dead-shebang" ]]
 }
 
 @test "probe: micromamba root falls back to direct wrapper exec when micromamba is absent" {
@@ -242,7 +242,7 @@ TOML
     get_micromamba_path() { return 1; }
     run python_pyve_plugin_env_probe root
     [ "$status" -eq 0 ]
-    [[ "$output" == "runnable 25.1" ]]
+    [[ "$(result_line)" == "runnable 25.1" ]]
 }
 
 @test "probe: micromamba root routes through 'micromamba run -p' when available" {
@@ -266,7 +266,7 @@ SH
     get_micromamba_path() { printf '%s' "$PWD/fake-mm"; }
     run python_pyve_plugin_env_probe root
     [ "$status" -eq 0 ]
-    [[ "$output" == "runnable 25.1" ]]
+    [[ "$(result_line)" == "runnable 25.1" ]]
     [[ -f mm-args.txt ]]
     grep -q "run -p .*conda pip --version" mm-args.txt
 }

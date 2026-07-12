@@ -57,8 +57,7 @@ _mk_cmd() {
     _mk_cmd "$TEST_DIR/b" mycmd "b"
     PATH="$TEST_DIR/a:$TEST_DIR/b:$REAL_PATH" run resolution_path_slots mycmd
     [ "$status" -eq 0 ]
-    [ "${lines[0]}" = "$TEST_DIR/a" ]
-    [ "${lines[1]}" = "$TEST_DIR/b" ]
+    [[ "$output" == *"$TEST_DIR/a"$'\n'"$TEST_DIR/b" ]]
 }
 
 @test "resolution_path_slots: empty for a command nowhere on PATH" {
@@ -100,41 +99,56 @@ _mk_cmd() {
     _mk_cmd "$TEST_DIR/sys" mycmd "mycmd 1.2.3"
     PATH="$TEST_DIR/sys:$REAL_PATH" run resolution_analyze mycmd
     [ "$status" -eq 0 ]
-    [[ "$output" == "ok|$TEST_DIR/sys/mycmd|system|1.2.3|" ]]
+    [[ "$(result_line)" == "ok|$TEST_DIR/sys/mycmd|system|1.2.3|" ]]
 }
 
 @test "analyze: command nowhere on PATH → not-found" {
     run resolution_analyze pyve-no-such-cmd-xyz
     [ "$status" -eq 0 ]
-    [[ "$output" == "not-found||||" ]]
+    [[ "$(result_line)" == "not-found||||" ]]
 }
 
 @test "analyze: version-manager shim rejecting under the pin → no-version-set" {
     _mk_cmd "$HOME/.asdf/shims" project-guide "No version is set for command project-guide" 1
     PATH="$HOME/.asdf/shims:$REAL_PATH" run resolution_analyze project-guide
     [ "$status" -eq 0 ]
-    [[ "$output" == "no-version-set|$HOME/.asdf/shims/project-guide|vm-shim||" ]]
+    [[ "$(result_line)" == "no-version-set|$HOME/.asdf/shims/project-guide|vm-shim||" ]]
 }
 
 @test "analyze: winner exists but exec fails for another reason → broken-winner" {
     _mk_cmd "$TEST_DIR/sys" mycmd "boom" 1
     PATH="$TEST_DIR/sys:$REAL_PATH" run resolution_analyze mycmd
     [ "$status" -eq 0 ]
-    [[ "$output" == "broken-winner|$TEST_DIR/sys/mycmd|system||" ]]
+    [[ "$(result_line)" == "broken-winner|$TEST_DIR/sys/mycmd|system||" ]]
 }
 
 @test "analyze: project-env winner off the declared pin → venv-pin-drift" {
     _mk_cmd "$PWD/.venv/bin" python "Python 3.14.4"
     PATH="$PWD/.venv/bin:$REAL_PATH" run resolution_analyze python 3.12.13
     [ "$status" -eq 0 ]
-    [[ "$output" == "venv-pin-drift|$PWD/.venv/bin/python|project-env|3.14.4|3.12.13" ]]
+    [[ "$(result_line)" == "venv-pin-drift|$PWD/.venv/bin/python|project-env|3.14.4|3.12.13" ]]
 }
 
 @test "analyze: project-env winner matching the pin → ok" {
     _mk_cmd "$PWD/.venv/bin" python "Python 3.12.13"
     PATH="$PWD/.venv/bin:$REAL_PATH" run resolution_analyze python 3.12.13
     [ "$status" -eq 0 ]
-    [[ "$output" == ok\|* ]]
+    [[ "$(result_line)" == ok\|* ]]
+}
+
+@test "analyze: finding survives preceding harness stderr noise (fork-pressure shape)" {
+    # Under transient process pressure bash itself prints "fork: retry:
+    # Resource temporarily unavailable" to stderr and recovers; `run`
+    # merges stderr into $output AHEAD of the (correct) finding line.
+    # The result_line contract keeps the assertion about the finding.
+    _noisy_analyze() {
+        echo "bash: fork: retry: Resource temporarily unavailable" >&2
+        resolution_analyze "$@"
+    }
+    _mk_cmd "$PWD/.venv/bin" python "Python 3.12.13"
+    PATH="$PWD/.venv/bin:$REAL_PATH" run _noisy_analyze python 3.12.13
+    [ "$status" -eq 0 ]
+    [[ "$(result_line)" == ok\|* ]]
 }
 
 @test "analyze: wedged winner is killed by the bounded runtime → broken-winner, fast" {
@@ -147,7 +161,7 @@ _mk_cmd() {
     PATH="$TEST_DIR/sys:$REAL_PATH" run resolution_analyze mycmd
     end=$SECONDS
     [ "$status" -eq 0 ]
-    [[ "$output" == broken-winner\|* ]]
+    [[ "$(result_line)" == broken-winner\|* ]]
     [ $((end - start)) -lt 10 ]
 }
 
@@ -159,7 +173,7 @@ _mk_cmd() {
     _mk_cmd "$TEST_DIR/sys" okcmd "hello"
     run pyve_run_bounded "$TEST_DIR/sys/okcmd"
     [ "$status" -eq 0 ]
-    [[ "$output" == "hello" ]]
+    [[ "$(result_line)" == "hello" ]]
     _mk_cmd "$TEST_DIR/sys" badcmd "nope" 3
     run pyve_run_bounded "$TEST_DIR/sys/badcmd"
     [ "$status" -eq 3 ]
@@ -175,6 +189,25 @@ _mk_cmd() {
     end=$SECONDS
     [ "$status" -ne 0 ]
     [ $((end - start)) -lt 10 ]
+}
+
+@test "pyve_run_bounded: watchdog timer does not outlive the call" {
+    # A distinctive limit so pgrep can't match anything else on the box.
+    # An orphaned `sleep <limit>` per probe is a real process leak: a
+    # multi-env `pyve check` strands a herd of them, and under a parallel
+    # test suite they feed the fork pressure that flakes small CI runners.
+    export PYVE_PROBE_TIMEOUT=947
+    _mk_cmd "$TEST_DIR/sys" okcmd "hello"
+    run pyve_run_bounded "$TEST_DIR/sys/okcmd"
+    [ "$status" -eq 0 ]
+    # SIGTERM delivery to the watchdog is asynchronous — poll briefly.
+    local i
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        pgrep -f "sleep 947" >/dev/null 2>&1 || break
+        sleep 0.1
+    done
+    run pgrep -f "sleep 947"
+    [ -z "$output" ]
 }
 
 # ============================================================

@@ -127,7 +127,7 @@ pyve --version
 **Output:**
 
 ```
-pyve version 3.1.0
+pyve version 3.2.0
 ```
 
 ---
