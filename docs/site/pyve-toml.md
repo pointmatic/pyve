@@ -78,6 +78,7 @@ default = true
 | `path` | string | `"."` | Working / detection root. Non-`.` makes the env a *visitor* at a sub-tree (monorepos). |
 | `default` | bool | `false` | At most one env per manifest may set `true`. |
 | `lazy` | bool | `false` | Provision on first targeted use instead of at `init`. |
+| `isolated` | bool | `false` | This env is deliberately isolated: the [silent-skip advisory](testing.md#choosing-which-environment-runs-your-tests) stays quiet when the env is the `pyve test --env` target. Target-side only — a marked env still appears as a candidate when another env is targeted. |
 | `app_type` | string | `""` | Advisory metadata. |
 | `languages` | list | `[]` | Advisory metadata, surfaced in `check`/`status`. |
 | `frameworks` | list | `[]` | Advisory metadata (e.g. `["sveltekit"]`). |

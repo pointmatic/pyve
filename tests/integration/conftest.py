@@ -16,6 +16,7 @@
 pytest fixtures for Pyve integration tests.
 """
 
+import os
 import pytest
 from pathlib import Path
 import sys
@@ -25,6 +26,35 @@ helpers_path = Path(__file__).parent.parent / 'helpers'
 sys.path.insert(0, str(helpers_path))
 
 from pyve_test_helpers import PyveRunner, ProjectBuilder
+from home_guard import diff_hosting_state, snapshot_hosting_state
+
+
+@pytest.fixture(scope="session", autouse=True)
+def real_home_mutation_guard():
+    """
+    Suite-level regression guard for the test-isolation leak: the suite
+    must NEVER mutate the real home's Pyve hosting artifacts (the
+    ~/.local/bin/project-guide shim and the toolchain tree under
+    ${XDG_DATA_HOME:-~/.local/share}/pyve/toolchain). Their state is
+    recorded before the first test; teardown fails the run if it changed.
+
+    PYVE_TEST_GUARD_HOME overrides the guarded home for manual
+    verification of the guard itself.
+    """
+    home = Path(os.environ.get("PYVE_TEST_GUARD_HOME") or os.path.expanduser("~"))
+    xdg = os.environ.get("XDG_DATA_HOME")
+    before = snapshot_hosting_state(home, xdg)
+    yield
+    problems = diff_hosting_state(before, snapshot_hosting_state(home, xdg))
+    if problems:
+        pytest.fail(
+            f"Integration suite mutated real Pyve hosting state under {home}:\n  "
+            + "\n  ".join(problems)
+            + "\nEvery test that can reach provisioning must run inside "
+            "_isolate_home's self-contained sandbox "
+            "(tests/integration/test_project_guide_integration.py).",
+            pytrace=False,
+        )
 
 
 @pytest.fixture

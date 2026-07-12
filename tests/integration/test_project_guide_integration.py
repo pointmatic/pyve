@@ -13,34 +13,78 @@
 # limitations under the License.
 
 """
-Integration tests for the project-guide install + completion hooks (Story G.c).
+Integration tests for the project-guide install + completion hooks, and the
+isolated-$HOME harness those hooks (and any provisioning path) must run in.
 
-Test layers (per Q2/Q5 design decisions):
-  - Fast tests: mutex errors + skip paths (no real pip install, no network)
-  - Slow tests: one happy-path real install + one CI-asymmetry validation.
-                These actually `pip install project-guide` into the project venv.
-                Network required.
-  - Idempotency test: verifies that re-running the hook doesn't re-pip-install
-                      (timing-based: second invocation must be much faster).
+=== Harness contract (_isolate_home) ===
 
-Bats (`tests/unit/test_project_guide.bats`) already covers all 9 helper
-functions in isolation — this file only verifies pyve-init wiring.
+Every test that can reach $HOME-relative resolution or writes — rc-file
+edits, hosting provisioning (`self install` / `self provision` /
+pyve_project_guide_ensure), version-manager reads — runs inside the
+fully self-contained sandbox built by `_isolate_home`.
+
+What is FAKED (in-sandbox, no real-home reach):
+  - $HOME itself, plus every $HOME-derived resolution root pyve consults:
+    PYENV_ROOT, ASDF_DATA_DIR, XDG_DATA_HOME / XDG_STATE_HOME /
+    XDG_CONFIG_HOME / XDG_CACHE_HOME — all pinned inside the fake home.
+  - The version managers: a fake `pyenv` and a fake `asdf` on a sanitized
+    PATH answer the subset pyve drives (detection, version listing, pin
+    writing, prefix resolution) from fixture prefixes inside the sandbox.
+  - PATH: the inherited PATH minus every entry that resolves into the real
+    home (version-manager shims, ~/.local/bin, repo venvs), with the
+    sandbox bin dir prepended.
+
+What is INJECTED BY VALUE (the top-precedence override seams):
+  - The interpreter: PYVE_PYTHON is pinned to the binary running this test
+    process — pyve never *discovers* an interpreter through real-home
+    version-manager state.
+  - project-guide: PYVE_PROJECT_GUIDE_BIN is pinned to the network-free
+    stub via `_install_pg_stub`. Internal callsites resolve project-guide
+    by HOSTED absolute path (deliberately ignoring PATH), so a PATH-only
+    stub is silently bypassed — the env seam is the only honest redirect.
+
+What a new test must NEVER do:
+  - Run a pyve command that can provision hosting without `_isolate_home`
+    (and, unless it deliberately tests real provisioning, without
+    `_install_pg_stub`). The provisioning write path targets
+    $HOME-relative state; outside the sandbox that is the developer's
+    real home. The suite-level guard in conftest.py
+    (real_home_mutation_guard) fails the run if the real
+    ~/.local/bin/project-guide shim or toolchain tree changes.
+  - Symlink real-home state (~/.asdf, ~/.pyenv, ~/.local, …) into the
+    fake home. That was the original leak: provisioning tests wrote
+    through the symlinks into real developer state, which dangled when
+    the tmpdir was reaped (the 2026-06-09 incident).
+  - Rely on a PATH-only project-guide stub (see the seam note above).
+
+=== Test layers ===
+
+  - Fast tests: mutex errors + skip paths (no install, no network).
+  - Hook tests: drive the pyve-hosted project-guide contract against the
+    stub (`init`/`update` with backup/restore) — network-free.
+  - TestProvisioningIsSandboxed: the one REAL provisioning run
+    (`pyve self provision`), contained in the sandbox; its pip layer
+    needs network and degrades to a warning without it.
+
+Bats (`tests/unit/test_project_guide.bats`) already covers the helper
+functions in isolation — this file verifies pyve-init wiring.
 
 `pyve self uninstall` removal of the sentinel block is covered indirectly:
   - `remove_project_guide_completion` behavior: tests/unit/test_project_guide.bats
   - `uninstall_self` wiring: visual inspection of pyve.sh (the
     uninstall_project_guide_completion helper is called at the end of
-    uninstall_self). A full end-to-end test would require running
-    `pyve self uninstall` against a fake install target, which is out of
-    scope for this story.
+    uninstall_self).
 """
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+from home_guard import diff_hosting_state, snapshot_hosting_state
 
 # project-guide requires Python >= 3.11. The pyve CI matrix runs Python 3.10,
 # 3.11, and 3.12 — the 3.10 entry can't run real-install tests because pip
@@ -199,38 +243,372 @@ def _install_pg_stub(monkeypatch, tmp_path):
     return bin_dir
 
 
+def _base_interpreter() -> str:
+    """
+    Absolute, version-manager-independent path to the interpreter running
+    this test process, resolved past venv indirection and shims. This is
+    the ONE real-machine artifact the sandbox is seeded with — injected by
+    value (a path to a known-runnable binary), never discovered through
+    real-home version-manager state.
+    """
+    base = getattr(sys, "_base_executable", None) or sys.executable
+    return os.path.realpath(base)
+
+
+def _write_exec_shim(path: Path, target: str) -> None:
+    """Write a regular-file exec shim (NOT a symlink) forwarding to <target>."""
+    path.write_text(f'#!/bin/sh\nexec "{target}" "$@"\n')
+    path.chmod(0o755)
+
+
+# Minimal in-sandbox pyenv, mirroring the CI harness shape (real pyenv with a
+# symlinked setup-python interpreter) but fully inside the fake $HOME. It
+# emulates only the subset pyve and the test helpers drive; anything else
+# fails loudly so a new dependency on pyenv behavior surfaces immediately.
+_FAKE_PYENV_SCRIPT = """#!/usr/bin/env bash
+# In-sandbox fake pyenv for the isolated-$HOME harness.
+set -euo pipefail
+cmd="${1:-}"
+case "$cmd" in
+  version-name) echo "__VERSION__" ;;
+  version)      echo "__VERSION__ (set by fake pyenv)" ;;
+  versions)     echo "__VERSION__" ;;   # same output with or without --bare
+  prefix)
+    ver="${2:-__VERSION__}"
+    if [ "$ver" = "__VERSION__" ]; then
+      echo "__PREFIX__"
+    else
+      echo "pyenv: version \\`$ver' not installed (fake pyenv)" >&2
+      exit 1
+    fi
+    ;;
+  install)
+    if [ "${2:-}" = "--list" ] || [ "${2:-}" = "-l" ]; then
+      echo "  __VERSION__"
+    else
+      echo "pyenv(fake): refusing to install inside the test sandbox" >&2
+      exit 1
+    fi
+    ;;
+  local)  [ -n "${2:-}" ] && printf '%s\\n' "$2" > .python-version ;;
+  rehash) : ;;
+  init)   : ;;   # `eval "$(pyenv init -)"` in profile sourcing — nothing to emit
+  root)   echo "__PYENV_ROOT__" ;;
+  *)
+    echo "pyenv(fake): unsupported subcommand: $cmd" >&2
+    exit 1
+    ;;
+esac
+"""
+
+
+# Minimal in-sandbox asdf. pyve PREFERS asdf over pyenv when both resolve,
+# so the sandbox must answer the asdf surface pyve drives (detection, version
+# listing, pin writing, toolchain prefix resolution) from sandbox fixtures —
+# otherwise a real /opt/homebrew/bin/asdf on the developer's PATH wins
+# detection and then fails against the empty fake $ASDF_DATA_DIR.
+_FAKE_ASDF_SCRIPT = """#!/usr/bin/env bash
+# In-sandbox fake asdf for the isolated-$HOME harness.
+set -euo pipefail
+case "${1:-}|${2:-}|${3:-}" in
+  "plugin|list|")        echo "python" ;;
+  "list|all|python")     echo "__VERSION__" ;;
+  "list|python|")        echo "  __VERSION__" ;;
+  "current|python|")     printf 'python  __VERSION__  %s\\n' "$PWD/.tool-versions" ;;
+  "where|python|__VERSION__") echo "__PREFIX__" ;;
+  "where|python|"*)
+    echo "asdf(fake): version not installed: ${3:-}" >&2
+    exit 1
+    ;;
+  "set|python|"*|"local|python|"*)
+    printf 'python %s\\n' "$3" > .tool-versions
+    ;;
+  "reshim|python|") : ;;
+  "install|python|"*)
+    echo "asdf(fake): refusing to install inside the test sandbox" >&2
+    exit 1
+    ;;
+  *)
+    echo "asdf(fake): unsupported invocation: $*" >&2
+    exit 1
+    ;;
+esac
+"""
+
+
 def _isolate_home(monkeypatch, tmp_path):
     """
-    Redirect $HOME to a fresh tmp directory so rc-file edits don't touch the
-    real user config, BUT symlink the version-manager state (.asdf, .pyenv,
-    .tool-versions, .python-version) from the real home so pyve init can
-    still resolve Python versions without trying to build from scratch.
+    Redirect $HOME (and every $HOME-derived resolution root) to a fully
+    self-contained sandbox. NOTHING inside it symlinks into the real home
+    — the old harness passed `~/.asdf` / `~/.pyenv` / `~/.local` through,
+    so provisioning tests wrote hosting artifacts into REAL developer
+    state that dangled when the tmpdir was reaped (the 2026-06-09
+    triggering incident).
 
-    Returns the fake home Path.
+    The sandbox supplies, in-sandbox:
+      - `python` / `python3` on a sanitized PATH (exec shims to the
+        interpreter running this test process — injected by value);
+      - a fake pyenv whose versions/prefix answers are backed by a fixture
+        prefix under the fake `$PYENV_ROOT`;
+      - PYVE_PYTHON pinned to the same interpreter (pyve's internal
+        toolchain seam);
+      - PYENV_ROOT / ASDF_DATA_DIR / XDG_* pinned inside the fake home so
+        inherited shell env can't redirect a write outside it.
+
+    PATH is the inherited PATH minus every entry that resolves into the
+    real home (version-manager shims, ~/.local/bin, repo venvs), with the
+    sandbox bin dir prepended. Returns the fake home Path.
     """
-    real_home = Path(os.path.expanduser("~"))
+    real_home = Path(os.path.expanduser("~")).resolve()
     fake_home = tmp_path / "fake_home"
     fake_home.mkdir(exist_ok=True)
 
-    # Symlink only the version-manager state — NOT .zshrc / .bashrc /
-    # .zprofile / .bash_profile. The rc-file isolation is the whole
-    # point of this fixture.
-    passthrough_names = [
-        ".asdf",
-        ".pyenv",
-        ".tool-versions",
-        ".python-version",
-        ".local",  # direnv etc.
-    ]
-    for name in passthrough_names:
-        src = real_home / name
-        if src.exists():
-            dst = fake_home / name
-            if not dst.exists():
-                dst.symlink_to(src)
+    interpreter = _base_interpreter()
+    probe = subprocess.run(
+        [interpreter, "--version"], capture_output=True, text=True
+    )
+    match = re.search(r"(\d+\.\d+\.\d+)", (probe.stdout or "") + (probe.stderr or ""))
+    assert match, f"cannot version-probe the sandbox interpreter {interpreter}"
+    version = match.group(1)
+    major_minor = ".".join(version.split(".")[:2])
+    python_names = ("python", "python3", f"python{major_minor}")
+
+    # Fixture pyenv prefix: <PYENV_ROOT>/versions/<ver>/bin/python…
+    pyenv_root = fake_home / ".pyenv"
+    prefix_bin = pyenv_root / "versions" / version / "bin"
+    prefix_bin.mkdir(parents=True, exist_ok=True)
+    for name in python_names:
+        _write_exec_shim(prefix_bin / name, interpreter)
+
+    # Fixture asdf prefix: <ASDF_DATA_DIR>/installs/python/<ver>/bin/python…
+    asdf_data = fake_home / ".asdf"
+    asdf_prefix_bin = asdf_data / "installs" / "python" / version / "bin"
+    asdf_prefix_bin.mkdir(parents=True, exist_ok=True)
+    for name in python_names:
+        _write_exec_shim(asdf_prefix_bin / name, interpreter)
+
+    # Sandbox PATH bin: python shims + the fake version managers.
+    sandbox_bin = fake_home / "sandbox-bin"
+    sandbox_bin.mkdir(exist_ok=True)
+    for name in python_names:
+        _write_exec_shim(sandbox_bin / name, interpreter)
+    fake_pyenv = sandbox_bin / "pyenv"
+    fake_pyenv.write_text(
+        _FAKE_PYENV_SCRIPT
+        .replace("__VERSION__", version)
+        .replace("__PREFIX__", str(prefix_bin.parent))
+        .replace("__PYENV_ROOT__", str(pyenv_root))
+    )
+    fake_pyenv.chmod(0o755)
+    fake_asdf = sandbox_bin / "asdf"
+    fake_asdf.write_text(
+        _FAKE_ASDF_SCRIPT
+        .replace("__VERSION__", version)
+        .replace("__PREFIX__", str(asdf_prefix_bin.parent))
+    )
+    fake_asdf.chmod(0o755)
+
+    # Sanitized PATH: drop every inherited entry that resolves into the
+    # real home so neither command resolution nor writes can reach real
+    # developer state.
+    kept = []
+    for entry in os.environ.get("PATH", "").split(os.pathsep):
+        if entry and not _resolves_into(Path(entry), real_home):
+            kept.append(entry)
+    monkeypatch.setenv("PATH", os.pathsep.join([str(sandbox_bin), *kept]))
 
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("PYENV_ROOT", str(pyenv_root))
+    monkeypatch.setenv("ASDF_DATA_DIR", str(fake_home / ".asdf"))
+    monkeypatch.setenv("XDG_DATA_HOME", str(fake_home / ".local" / "share"))
+    monkeypatch.setenv("XDG_STATE_HOME", str(fake_home / ".local" / "state"))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(fake_home / ".cache"))
+    monkeypatch.setenv("PYVE_PYTHON", interpreter)
     return fake_home
+
+
+def _resolves_into(path: Path, root: Path) -> bool:
+    """True if <path> (following symlinks) lands inside <root>."""
+    try:
+        resolved = Path(os.path.realpath(path))
+    except OSError:
+        return False
+    return resolved == root or str(resolved).startswith(str(root) + os.sep)
+
+
+# ---------------------------------------------------------------------------
+# Harness contract: the isolated $HOME is fully self-contained
+# ---------------------------------------------------------------------------
+
+class TestIsolatedHomeIsSelfContained:
+    """
+    Contract tests for the _isolate_home harness.
+
+    The sandbox must be fully self-contained: no entry inside it may
+    symlink into the real home, no $HOME-derived resolution root
+    (version-manager data dirs, XDG roots) may escape it, and the PATH
+    handed to pyve subprocesses may not reach real developer state.
+    The interpreter is injected BY VALUE via PYVE_PYTHON — never
+    discovered through real-home version-manager state.
+    """
+
+    def test_sandbox_is_fully_self_contained(self, monkeypatch, tmp_path):
+        real_home = Path(os.path.expanduser("~")).resolve()
+        fake_home = _isolate_home(monkeypatch, tmp_path)
+
+        # $HOME is redirected to the sandbox.
+        assert os.environ["HOME"] == str(fake_home)
+
+        # Nothing inside the sandbox symlinks into the real home — a
+        # symlinked ~/.local / ~/.asdf / ~/.pyenv is exactly how the suite
+        # used to write hosting artifacts into real developer state.
+        offenders = [
+            str(p) for p in fake_home.rglob("*")
+            if p.is_symlink() and _resolves_into(p, real_home)
+        ]
+        assert offenders == [], (
+            f"sandbox entries symlink into the real home: {offenders}"
+        )
+
+        # No PATH entry reaches into the real home (version-manager shims,
+        # ~/.local/bin, repo venvs) — writes can't land there and command
+        # resolution can't silently depend on it.
+        bad_path = [
+            e for e in os.environ["PATH"].split(os.pathsep)
+            if e and _resolves_into(Path(e), real_home)
+        ]
+        assert bad_path == [], (
+            f"PATH entries reach into the real home: {bad_path}"
+        )
+
+        # Every $HOME-derived resolution root pyve consults is pinned
+        # inside the sandbox, so even env vars inherited from the
+        # developer's shell can't redirect a write outside it.
+        for var in (
+            "PYENV_ROOT",
+            "ASDF_DATA_DIR",
+            "XDG_DATA_HOME",
+            "XDG_STATE_HOME",
+            "XDG_CONFIG_HOME",
+            "XDG_CACHE_HOME",
+        ):
+            value = os.environ.get(var, "")
+            assert value.startswith(str(fake_home)), (
+                f"{var}={value!r} escapes the sandbox {fake_home}"
+            )
+
+        # The internal-interpreter seam is supplied by value and runnable.
+        py = os.environ.get("PYVE_PYTHON", "")
+        assert py and os.access(py, os.X_OK), (
+            "PYVE_PYTHON must hand the sandbox a runnable interpreter"
+        )
+
+    def test_sandbox_supplies_a_working_python_and_version_manager(
+        self, monkeypatch, tmp_path
+    ):
+        """pyve init needs `python` and a version manager to resolve inside
+        the sandbox without real-home state: a PATH `python3`, and a pyenv
+        whose versions/prefix answers are backed by sandbox fixtures."""
+        fake_home = _isolate_home(monkeypatch, tmp_path)
+        env = os.environ.copy()
+
+        probe = subprocess.run(
+            ["python3", "--version"], capture_output=True, text=True, env=env
+        )
+        assert probe.returncode == 0, probe.stderr
+
+        version = subprocess.run(
+            ["pyenv", "version-name"], capture_output=True, text=True, env=env
+        )
+        assert version.returncode == 0, version.stderr
+        ver = version.stdout.strip()
+        assert ver
+
+        prefix = subprocess.run(
+            ["pyenv", "prefix", ver], capture_output=True, text=True, env=env
+        )
+        assert prefix.returncode == 0, prefix.stderr
+        prefix_dir = Path(prefix.stdout.strip())
+        assert _resolves_into(prefix_dir, fake_home), (
+            f"pyenv prefix {prefix_dir} is not inside the sandbox"
+        )
+        assert os.access(prefix_dir / "bin" / "python", os.X_OK)
+
+        # pyve PREFERS asdf when it resolves — the sandbox asdf must answer
+        # from sandbox fixtures (a real asdf on PATH would win detection and
+        # then fail against the empty fake $ASDF_DATA_DIR).
+        plugins = subprocess.run(
+            ["asdf", "plugin", "list"], capture_output=True, text=True, env=env
+        )
+        assert plugins.returncode == 0 and "python" in plugins.stdout
+
+        where = subprocess.run(
+            ["asdf", "where", "python", ver],
+            capture_output=True, text=True, env=env,
+        )
+        assert where.returncode == 0, where.stderr
+        asdf_prefix = Path(where.stdout.strip())
+        assert _resolves_into(asdf_prefix, fake_home), (
+            f"asdf prefix {asdf_prefix} is not inside the sandbox"
+        )
+        assert os.access(asdf_prefix / "bin" / "python", os.X_OK)
+
+
+# ---------------------------------------------------------------------------
+# Real provisioning is sandboxed (slow — builds the toolchain venv; the pip
+# layer needs network and degrades to a warning without it)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.venv
+class TestProvisioningIsSandboxed:
+    """
+    `pyve self provision` — the REAL provisioning path (toolchain venv
+    build + hosted project-guide pip install + shim link) — must land every
+    artifact inside the fake $HOME (positive) and never touch the real
+    home's hosting state (negative). This is the write path that used to
+    escape through the old harness's ~/.local symlink and corrupt real
+    developer state.
+    """
+
+    def test_self_provision_lands_in_fake_home_only(
+        self, pyve, test_project, tmp_path, monkeypatch
+    ):
+        # Snapshot the REAL home's hosting artifacts before entering the
+        # sandbox ($HOME still points at the real home here).
+        real_home = Path(os.path.expanduser("~"))
+        real_xdg = os.environ.get("XDG_DATA_HOME")
+        before = snapshot_hosting_state(real_home, real_xdg)
+
+        fake_home = _isolate_home(monkeypatch, tmp_path)
+        result = pyve.run("self", "provision", timeout=600)
+        assert result.returncode == 0, f"self provision failed: {result.stderr}"
+
+        # Positive: the toolchain venv materialized inside the sandbox.
+        toolchain = fake_home / ".local" / "share" / "pyve" / "toolchain"
+        venv_pythons = list(toolchain.glob("*/venv/bin/python"))
+        assert venv_pythons, (
+            f"expected a toolchain venv under {toolchain}; "
+            f"provision output:\n{result.stdout}\n{result.stderr}"
+        )
+
+        # Positive (network-dependent): when the hosted project-guide
+        # install succeeded, its shim must live in the fake home and
+        # resolve inside it. Offline, `self provision` warns and skips —
+        # the sandbox containment below still holds.
+        combined = (result.stdout or "") + (result.stderr or "")
+        if "Installed project-guide into the Pyve toolchain" in combined:
+            fake_shim = fake_home / ".local" / "bin" / "project-guide"
+            assert fake_shim.is_symlink(), (
+                "expected the project-guide shim inside the fake home"
+            )
+            assert _resolves_into(fake_shim, fake_home), (
+                f"shim {fake_shim} resolves outside the sandbox"
+            )
+
+        # Negative: the REAL home's hosting artifacts are untouched.
+        after = snapshot_hosting_state(real_home, real_xdg)
+        assert diff_hosting_state(before, after) == []
 
 
 # ---------------------------------------------------------------------------
@@ -398,6 +776,12 @@ class TestAutoSkipWhenInProjectDeps:
         info message must NOT appear.
         """
         _isolate_home(monkeypatch, tmp_path)
+        # Pin the hook to the network-free stub: without the override seam
+        # the explicit --project-guide flag drives pyve_project_guide_ensure,
+        # which really provisions hosting (toolchain venv build + network
+        # pip + shim write). The assertion here is about the auto-skip
+        # message — decided before any install — so the stub is sufficient.
+        _install_pg_stub(monkeypatch, tmp_path)
         monkeypatch.setenv("SHELL", "/bin/zsh")
         # Opt in to the project-guide hook (the explicit --project-guide flag
         # below would otherwise be neutralised by the test-runner default).
@@ -411,12 +795,9 @@ class TestAutoSkipWhenInProjectDeps:
             "myapp", dependencies=["project-guide==2.0.20"]
         )
 
-        # We *want* pyve to attempt the install path here. To keep the test
-        # network-free, we accept that it will try `pip install --upgrade
-        # project-guide` and possibly fail (the venv pip might not have
-        # network in CI), but the failure is non-fatal so pyve init still
-        # exits 0. What we're asserting is that the auto-skip message is
-        # NOT printed — the explicit flag overrode it.
+        # We *want* pyve to take the install path here (stubbed). What we're
+        # asserting is that the auto-skip message is NOT printed — the
+        # explicit flag overrode it.
         result = pyve.run("init", "--no-direnv", "--force", "--project-guide", timeout=300)
         assert result.returncode == 0
 

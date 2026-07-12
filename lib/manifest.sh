@@ -23,6 +23,7 @@
 #   PYVE_ENV_EDITABLE[]         — `editable` setup directive | ""
 #   PYVE_ENV_DEFAULT[]          — "0" / "1"
 #   PYVE_ENV_LAZY[]             — "0" / "1"
+#   PYVE_ENV_ISOLATED[]         — "0" / "1"
 #   PYVE_ENV_EXTRA[]            — pyproject extra name | ""
 #   PYVE_ENV_MANIFEST[]         — conda/pip manifest path | ""
 #   PYVE_ENV_APP_TYPE[]         — structured attr | ""
@@ -108,6 +109,7 @@ _manifest_reset_state() {
     PYVE_ENV_EDITABLE=()
     PYVE_ENV_DEFAULT=()
     PYVE_ENV_LAZY=()
+    PYVE_ENV_ISOLATED=()
     PYVE_ENV_EXTRA=()
     PYVE_ENV_MANIFEST=()
     PYVE_ENV_APP_TYPE=()
@@ -260,6 +262,15 @@ manifest_is_default() {
 manifest_is_lazy() {
     local i; i="$(_manifest_name_to_index "$1")" || return 1
     [[ "${PYVE_ENV_LAZY[$i]}" == "1" ]]
+}
+
+# True (0) when the env declares `isolated = true` — the project-scoped
+# opt-out for the silent-skip advisory ("this env is deliberately
+# isolated; don't suggest other pytest-carrying envs when it is the
+# target"). 1 for undeclared and unknown envs.
+manifest_is_isolated() {
+    local i; i="$(_manifest_name_to_index "$1")" || return 1
+    [[ "${PYVE_ENV_ISOLATED[$i]}" == "1" ]]
 }
 
 # List-valued accessors: populate a caller-named array with the env's

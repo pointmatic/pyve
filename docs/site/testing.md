@@ -272,7 +272,17 @@ This is the first-class form of the `pyve run python -m pytest …` workaround �
 
 **Pyve warns you.** When pyve routes `pyve test` to env `<T>`, it scans every other env it knows about (`root` plus every declared env, skipping `<T>` itself) for pytest-importability. If **any** other env has pytest installed — meaning its dependency stack might be what the tests need — pyve prints a one-line advisory listing the alternatives before running. The canonical case is target `testenv`, candidate `root`; the scan covers any combination of named envs.
 
-In a normal repo checkout with one testenv (no pytest elsewhere) the advisory never fires. If you keep pytest in multiple envs deliberately and don't want the nudge, set `PYVE_NO_TESTENV_ADVISORY=1` to silence it (matrix mode does this automatically).
+In a normal repo checkout with one testenv (no pytest elsewhere) the advisory never fires. If you keep pytest in multiple envs deliberately, silence the nudge per env — declare `isolated = true` on the env in `pyve.toml`:
+
+```toml
+[env.smoke-pytorch]
+purpose = "test"
+isolated = true
+```
+
+The advisory then stays quiet whenever that env is the `--env` target. The flag is target-side only: a marked env still shows up as a *candidate* when you target an unmarked env, so the hint keeps its value for the catch-all `testenv`. Because it lives in the manifest, the opt-out is project-scoped, visible in the diff, and doesn't leak into other projects.
+
+For a one-off run or CI job, `PYVE_NO_TESTENV_ADVISORY=1` suppresses the advisory for every env in that shell (matrix mode sets it automatically). Either surface alone is sufficient.
 
 !!! note "Renamed in v2.7.1"
 

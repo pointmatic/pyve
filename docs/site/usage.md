@@ -79,7 +79,7 @@ Organized into four categories (same as `pyve --help`); each command links to it
 
 | Command | Description |
 |---------|-------------|
-| [`check`](reference/diagnostics.md#check) | Diagnose problems with CI-safe 0/1/2 exit codes (composed across plugins) |
+| [`check [--fix]`](reference/diagnostics.md#check) | Diagnose problems with CI-safe exit codes (composed across plugins); `--fix` repairs broken Pyve-managed state (plan-then-confirm) |
 | [`status`](reference/diagnostics.md#status) | Read-only project-state dashboard, always exit 0 (composed across plugins) |
 
 #### Self management
@@ -127,7 +127,7 @@ pyve --version
 **Output:**
 
 ```
-pyve version 3.1.0
+pyve version 3.2.0
 ```
 
 ---
@@ -194,7 +194,8 @@ Pyve recognizes the following environment variables:
 | `PYVE_NO_PROJECT_GUIDE` | Skip the project-guide three-step hook (same as `--no-project-guide`) | Unset |
 | `PYVE_PROJECT_GUIDE_COMPLETION` | Add shell completion only (same as `--project-guide-completion`) | Unset |
 | `PYVE_NO_PROJECT_GUIDE_COMPLETION` | Skip shell completion only (same as `--no-project-guide-completion`) | Unset |
-| `CI` | Detected CI environment (auto-sets non-interactive mode) | Not set |
+| `PYVE_NO_NETWORK` | Skip `pyve check`'s update-availability probe (same as `--offline`); the probe is info-only, cached 24h, and also auto-skips in CI, in piped runs, and on any network failure | Unset |
+| `CI` | Detected CI environment (auto-sets non-interactive mode; also suppresses the update-availability probe) | Not set |
 
 **Examples:**
 

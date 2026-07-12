@@ -324,6 +324,18 @@ YML
     [[ "$output" == *".env"* ]]
 }
 
+@test "status: single project-guide readout — no [python] Integrations row, [project-guide] is the sole home" {
+    create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
+    run "$PYVE_SCRIPT" status
+    [ "$status" -eq 0 ]
+    # The composed [project-guide] section is the one and only readout …
+    [[ "$output" == *"[project-guide]"* ]]
+    # … and the v2-era `project-guide:` row (which probed the project venv,
+    # where v3 never installs project-guide, and so contradicted the real
+    # hosting state) is gone from the [python] Integrations block.
+    [[ "$output" != *"project-guide:"* ]]
+}
+
 @test "status: Integrations section notes testenv presence when present" {
     create_pyve_config "backend: venv" "pyve_version: \"$CURRENT_VERSION\""
     mkdir -p .pyve/envs/testenv/venv/bin

@@ -216,6 +216,25 @@ is_env_lazy() {
 
 # Print declared env names + reserved names, one per line. Reserved
 # names that overlap with declared ones (i.e. `testenv`) print once.
+# Enumerate materialized env slots on disk: one <name> per line for every
+# `.pyve/envs/<name>/` holding a backend subdir (`venv/` or `conda/`). A
+# directory carrying only bookkeeping (`.state`) is not a materialized env.
+# Read-only (never fires the opportunistic layout migrator) — built for
+# manifest↔disk reconciliation passes, where the names of interest are by
+# definition not resolvable through the declared-env helpers.
+list_materialized_env_names() {
+    local d name
+    for d in .pyve/envs/*/; do
+        [[ -d "$d" ]] || continue
+        name="${d#.pyve/envs/}"
+        name="${name%/}"
+        if [[ -d "${d}venv" || -d "${d}conda" ]]; then
+            printf '%s\n' "$name"
+        fi
+    done
+    return 0
+}
+
 list_env_names() {
     local n
     for n in "${PYVE_TESTENVS_NAMES[@]+"${PYVE_TESTENVS_NAMES[@]}"}"; do

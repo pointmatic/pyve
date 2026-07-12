@@ -21,6 +21,7 @@
 #   PYVE_ENV_PATH=("." ".")
 #   PYVE_ENV_DEFAULT=("0" "1")
 #   PYVE_ENV_LAZY=("0" "0")
+#   PYVE_ENV_ISOLATED=("0" "0")
 #   PYVE_ENV_EXTRA=("" "")
 #   PYVE_ENV_MANIFEST=("" "")
 #   PYVE_ENV_APP_TYPE=("" "")
@@ -234,6 +235,7 @@ KNOWN_ENV_KEYS = frozenset(
         "path",
         "default",
         "lazy",
+        "isolated",
         "extra",
         "manifest",
         "editable",
@@ -256,6 +258,12 @@ def _normalize_env(name, decl):
         "path": decl.get("path") or ".",
         "default": "1" if bool(decl.get("default", False)) else "0",
         "lazy": "1" if bool(decl.get("lazy", False)) else "0",
+        # `isolated = true` — the env is deliberately isolated; the
+        # silent-skip advisory stays quiet when it is the target. Strict
+        # boolean: only a TOML `true` sets it; any non-boolean value is
+        # rejected by validate() (the raw value rides along for that check).
+        "isolated": "1" if decl.get("isolated", False) is True else "0",
+        "_isolated_raw": decl.get("isolated"),
         "extra": decl.get("extra") or "",
         "manifest": decl.get("manifest") or "",
         # `editable` directive — an editable self-install with optional
@@ -291,6 +299,7 @@ def _empty_cfg():
         "defaults_version": "",
         "envs": {},
         "plugins": {},
+        "manifest_path": "",
     }
 
 
@@ -329,7 +338,36 @@ def load(manifest_path):
         "defaults_version": defaults_version,
         "envs": envs,
         "plugins": plugins,
+        # Kept for error attribution: validate() maps a bad declaration
+        # back to its manifest line.
+        "manifest_path": str(manifest_path),
     }
+
+
+def _decl_line(manifest_path, env_name, key):
+    """Best-effort 1-based line number of `<key> = …` inside [env.<env_name>].
+
+    Used to line-attribute validation errors. tomllib exposes no source
+    positions, so this is a plain text scan: track the current `[section]`
+    header, and inside the matching env section report the first line whose
+    left-hand side is exactly `key`. Returns None when the file can't be
+    read or the key isn't found — callers omit the location prefix then.
+    """
+    try:
+        text = Path(manifest_path).read_text()
+    except (OSError, TypeError, ValueError):
+        return None
+    section = ""
+    for lineno, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if stripped.startswith("["):
+            section = stripped.split("#")[0].strip()
+            continue
+        if section == f"[env.{env_name}]":
+            lhs, sep, _ = stripped.partition("=")
+            if sep and lhs.strip() == key:
+                return lineno
+    return None
 
 
 def validate(cfg):
@@ -353,6 +391,17 @@ def validate(cfg):
         # every pre-P.l manifest stays valid unchanged.
         if env["default"] == "1":
             default_envs.append(name)
+        # `isolated` is strictly boolean — a quoted "true"/"yes" would
+        # silently read as not-isolated, so reject it loudly, pointing at
+        # the offending manifest line when it can be found.
+        raw_isolated = env.get("_isolated_raw")
+        if raw_isolated is not None and not isinstance(raw_isolated, bool):
+            lineno = _decl_line(cfg.get("manifest_path", ""), name, "isolated")
+            prefix = f"pyve.toml:{lineno}: " if lineno else ""
+            errors.append(
+                f"{prefix}pyve.env.{name}.isolated: expected a boolean "
+                f"(true / false), got '{raw_isolated}'"
+            )
     if len(default_envs) > 1:
         errors.append(
             f"pyve.env: only one env may declare 'default = true' "
@@ -380,6 +429,7 @@ def emit(cfg, out):
         ("PYVE_ENV_EDITABLE", "editable"),
         ("PYVE_ENV_DEFAULT", "default"),
         ("PYVE_ENV_LAZY", "lazy"),
+        ("PYVE_ENV_ISOLATED", "isolated"),
         ("PYVE_ENV_EXTRA", "extra"),
         ("PYVE_ENV_MANIFEST", "manifest"),
         ("PYVE_ENV_APP_TYPE", "app_type"),

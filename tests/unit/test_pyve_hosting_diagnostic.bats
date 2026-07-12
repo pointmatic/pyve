@@ -42,6 +42,25 @@ _host_pg_shim() {
     mkdir -p "$HOME/.local/bin"
     : > "$HOME/.local/bin/project-guide"; chmod +x "$HOME/.local/bin/project-guide"
 }
+# Hosted shim that answers `--version` with a real version string.
+_host_pg_shim_versioned() {
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/bin/sh\necho "project-guide %s"\n' "$1" > "$HOME/.local/bin/project-guide"
+    chmod +x "$HOME/.local/bin/project-guide"
+}
+# Hosted shim that passes [[ -x ]] but cannot exec (dead shebang) — the
+# existence != runnability trap.
+_host_pg_shim_broken() {
+    mkdir -p "$HOME/.local/bin"
+    printf '#!/nonexistent/interp\n' > "$HOME/.local/bin/project-guide"
+    chmod +x "$HOME/.local/bin/project-guide"
+}
+# A project-env (v2-style "local pip") project-guide binary in .venv.
+_local_pg_bin() {
+    mkdir -p .venv/bin
+    printf '#!/bin/sh\necho "project-guide %s"\n' "$1" > .venv/bin/project-guide
+    chmod +x .venv/bin/project-guide
+}
 
 #============================================================
 # check: [pyve] addendum (_compose_check_pyve_hosting)
@@ -107,11 +126,11 @@ _host_pg_shim() {
 # status: [project-guide] addendum (_compose_status_project_guide)
 #============================================================
 
-@test "status [project-guide]: not integrated → provision reminder" {
+@test "status [project-guide]: neither local nor hosted → 'not installed' + provision reminder" {
     run _compose_status_project_guide
     [ "$status" -eq 0 ]
     [[ "$output" == *"[project-guide]"* ]]
-    [[ "$output" == *"not integrated"* ]]
+    [[ "$output" == *"not installed"* ]]
     [[ "$output" == *"Run 'pyve self provision' to install"* ]]
 }
 
@@ -123,29 +142,52 @@ _host_pg_shim() {
     [[ "$output" == *"pyve self unprovision --all"* ]]
 }
 
-@test "status [project-guide]: project-managed (pip) → no provision reminder" {
-    printf 'project-guide\n' > requirements.txt
+@test "status [project-guide]: pyve-hosted → runnability-probed version shown" {
+    _host_pg_shim_versioned "2.15.1"
     run _compose_status_project_guide
-    [[ "$output" == *"project-managed (pip)"* ]]
+    [[ "$output" == *"pyve-hosted (toolchain) v2.15.1"* ]]
+}
+
+@test "status [project-guide]: hosted-but-broken shim → reported broken with repair hint, not healthy" {
+    _host_pg_shim_broken
+    run _compose_status_project_guide
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"broken"* ]]
+    [[ "$output" == *"pyve self provision"* ]]
+    [[ "$output" != *"pyve-hosted (toolchain) v"* ]]
+}
+
+@test "status [project-guide]: local pip binary in the project env → 'local pip' with version" {
+    _local_pg_bin "2.13.0"
+    run _compose_status_project_guide
+    [[ "$output" == *"local pip v2.13.0"* ]]
     [[ "$output" != *"pyve self provision"* ]]
 }
 
-@test "status [project-guide]: project-managed (conda)" {
+@test "status [project-guide]: declared in deps, not installed → 'local pip', declared, no provision hint" {
+    printf 'project-guide\n' > requirements.txt
+    run _compose_status_project_guide
+    [[ "$output" == *"local pip"* ]]
+    [[ "$output" == *"declared"* ]]
+    [[ "$output" != *"pyve self provision"* ]]
+}
+
+@test "status [project-guide]: declared via environment.yml → 'local conda'" {
     cat > environment.yml << 'EOF'
 name: e
 dependencies:
   - project-guide
 EOF
     run _compose_status_project_guide
-    [[ "$output" == *"project-managed (conda)"* ]]
+    [[ "$output" == *"local conda"* ]]
 }
 
-@test "status [project-guide]: project-managed wins over pyve-hosted" {
-    _host_pg_shim
-    printf 'project-guide\n' > requirements.txt
+@test "status [project-guide]: local wins the label over pyve-hosted; hosted copy still named" {
+    _host_pg_shim_versioned "2.15.1"
+    _local_pg_bin "2.13.0"
     run _compose_status_project_guide
-    [[ "$output" == *"project-managed (pip)"* ]]
-    [[ "$output" != *"pyve-hosted"* ]]
+    [[ "$output" == *"local pip v2.13.0"* ]]
+    [[ "$output" == *"also pyve-hosted (toolchain) v2.15.1"* ]]
 }
 
 #============================================================

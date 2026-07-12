@@ -53,14 +53,20 @@ EOF
 }
 
 @test "the migrated status sections route the backend through the manifest helper" {
-    # Each of the three migrated sites calls _status_backend and no longer reads
+    # Each backend-consuming section calls _status_backend and no longer reads
     # the backend straight from .pyve/config. Extract each function body (awk
-    # flag-scope) and assert: contains _status_backend, not read_config_value "backend".
+    # flag-scope) and assert: contains _status_backend, not read_config_value
+    # "backend". _status_section_integrations is checked for the negative only:
+    # its sole backend-dependent row (the v2 project-guide row) moved to the
+    # composed [project-guide] section, so it consumes no backend at all now.
     local fn body
-    for fn in _status_configured_python _status_section_environment _status_section_integrations; do
+    for fn in _status_configured_python _status_section_environment; do
         body="$(awk -v f="$fn" '$0 ~ "^"f"\\(\\)"{flag=1} flag{print} flag && /^}/{exit}' \
             "$PYVE_ROOT/lib/plugins/python/plugin.sh")"
         [[ "$body" == *"_status_backend"* ]] || { echo "$fn: does not call _status_backend"; false; }
         [[ "$body" != *'read_config_value "backend"'* ]] || { echo "$fn: still reads backend from .pyve/config"; false; }
     done
+    body="$(awk '$0 ~ "^_status_section_integrations\\(\\)"{flag=1} flag{print} flag && /^}/{exit}' \
+        "$PYVE_ROOT/lib/plugins/python/plugin.sh")"
+    [[ "$body" != *'read_config_value "backend"'* ]] || { echo "_status_section_integrations: still reads backend from .pyve/config"; false; }
 }

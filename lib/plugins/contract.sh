@@ -28,6 +28,36 @@
 #                              owns its language subtree, so the graph is not
 #                              Python-hardcoded. Node order is prompt order.
 #
+#  10. env_probe            — per-env runnability canary. Given an env
+#                             name, execute a minimal CONSOLE-SCRIPT
+#                             wrapper in that env (the artifact that
+#                             carries a baked shebang and actually breaks
+#                             on relocation / interpreter deletion — never
+#                             `python -m …`, which bypasses wrappers) and
+#                             print one classified verdict:
+#                               runnable [<ver>]  — wrapper executed and
+#                                   answered as expected (version appended
+#                                   when probed)
+#                               dead-shebang      — wrapper exists but its
+#                                   baked interpreter is gone (env
+#                                   relocated or interpreter deleted)
+#                               dangling-symlink  — env python is a symlink
+#                                   to a deleted target
+#                               missing-interpreter — no python in the env
+#                               broken            — residual: wrapper exec
+#                                   failed for another reason (incl. the
+#                                   bounded-runtime kill of a wedged env)
+#                               not-materialized  — declared, nothing on
+#                                   disk (empty-until-demand; not a fault)
+#                               advisory          — declarative-only
+#                                   backend; nothing to probe
+#                             Returns 0 for runnable / not-materialized /
+#                             advisory, non-zero for the broken family.
+#                             Orphan detection (materialized-but-undeclared,
+#                             declared-advisory-yet-materialized) is a
+#                             manifest↔disk reconciliation, not part of
+#                             this per-env hook.
+#
 # Defaults are silent: each prints nothing and returns 0. The dispatcher
 # never errors on a missing hook implementation — by design, since N-2
 # stories register Python's hooks one at a time.
@@ -53,3 +83,4 @@ pyve_plugin_default_diagnostics()        { :; }
 pyve_plugin_default_gitignore_entries()  { :; }
 pyve_plugin_default_purge_inventory()    { :; }
 pyve_plugin_default_register_params()    { :; }
+pyve_plugin_default_env_probe()          { :; }

@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.1.0"
+VERSION="3.2.0"
 DEFAULT_PYTHON_VERSION="3.14.6"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
@@ -100,6 +100,33 @@ if [[ -f "$SCRIPT_DIR/lib/toolchain_python.sh" ]]; then
     source "$SCRIPT_DIR/lib/toolchain_python.sh"
 else
     printf "ERROR: Cannot find lib/toolchain_python.sh\n" >&2
+    exit 1
+fi
+
+# PATH-slot tracing + resolution findings (pure diagnostic helpers,
+# consumed by check_composer's [resolution] section).
+if [[ -f "$SCRIPT_DIR/lib/resolution_reasoning.sh" ]]; then
+    source "$SCRIPT_DIR/lib/resolution_reasoning.sh"
+else
+    printf "ERROR: Cannot find lib/resolution_reasoning.sh\n" >&2
+    exit 1
+fi
+
+# Heal engine for `pyve check --fix` (plan-then-confirm repairs over the
+# runnability probes; consumed by check_composer).
+if [[ -f "$SCRIPT_DIR/lib/heal.sh" ]]; then
+    source "$SCRIPT_DIR/lib/heal.sh"
+else
+    printf "ERROR: Cannot find lib/heal.sh\n" >&2
+    exit 1
+fi
+
+# Staleness hints for the hosted tools (bounded, cached, info-only
+# network probe; consumed by check_composer's [pyve] section).
+if [[ -f "$SCRIPT_DIR/lib/staleness.sh" ]]; then
+    source "$SCRIPT_DIR/lib/staleness.sh"
+else
+    printf "ERROR: Cannot find lib/staleness.sh\n" >&2
     exit 1
 fi
 

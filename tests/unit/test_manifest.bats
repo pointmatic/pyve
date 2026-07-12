@@ -18,6 +18,7 @@
 #   manifest_get_app_type <name>
 #   manifest_is_default <name>
 #   manifest_is_lazy <name>
+#   manifest_is_isolated <name>
 #   manifest_get_frameworks <name> <out_var>
 #   manifest_get_languages <name> <out_var>
 #   manifest_get_requirements <name> <out_var>
@@ -238,6 +239,67 @@ TOML
     ! manifest_is_lazy testenv
 }
 
+# The `isolated` opt-out: an env declaring `isolated = true` says "this
+# env is deliberately isolated" — the silent-skip advisory stays quiet
+# when it is the target.
+_fixture_isolated_env() {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.smoke]
+purpose = "test"
+backend = "venv"
+isolated = true
+
+[env.testenv]
+purpose = "test"
+backend = "venv"
+TOML
+}
+
+@test "manifest_is_isolated: 0 for env with isolated=true, 1 otherwise" {
+    _fixture_isolated_env
+    manifest_load
+    manifest_is_isolated smoke
+    ! manifest_is_isolated testenv
+}
+
+@test "manifest_is_isolated: returns 1 for unknown env" {
+    _fixture_isolated_env
+    manifest_load
+    ! manifest_is_isolated nonexistent
+}
+
+@test "manifest_is_isolated: core key is not exposed as a provider-private attr" {
+    _fixture_isolated_env
+    manifest_load
+    run manifest_get_env_attr smoke isolated
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "manifest_load: non-boolean isolated errors with pyve.toml line attribution" {
+    cat > pyve.toml <<'TOML'
+pyve_schema = "3.0"
+
+[project]
+name = "demo"
+
+[env.smoke]
+purpose = "test"
+isolated = "yes"
+TOML
+    run manifest_load
+    [ "$status" -eq 2 ]
+    [[ "$output" == *"pyve.env.smoke.isolated"* ]]
+    [[ "$output" == *"expected a boolean"* ]]
+    # `isolated = "yes"` sits on line 8 of the heredoc above.
+    [[ "$output" == *"pyve.toml:8:"* ]]
+}
+
 @test "manifest_get_frameworks: populates caller-named array" {
     _fixture_full_manifest
     manifest_load
@@ -455,6 +517,7 @@ TOML
         manifest_get_backend nonexistent || true
         manifest_is_default nonexistent || true
         manifest_is_lazy nonexistent || true
+        manifest_is_isolated nonexistent || true
     " 2>&1)" || true
     [[ "$output" != *"unbound variable"* ]] || {
         echo "stderr contained 'unbound variable':"

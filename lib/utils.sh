@@ -1114,7 +1114,45 @@ EOF
 # Content hashing
 #============================================================
 
-# Story N.bf.15: portable SHA-256 of a file's contents. Probes the two
+# Run <cmd...> printing its combined output, bounded to
+# PYVE_PROBE_TIMEOUT seconds (default 10) — a wedged interpreter must not
+# hang a diagnostic. Pure bash (macOS ships no coreutils `timeout`).
+# Returns the command's status; a timed-out command is SIGKILLed (137).
+# Output is staged through a temp file, NOT streamed: SIGKILL on the
+# probed command cannot reach grandchildren it spawned, and an orphan
+# inheriting a command-substitution pipe would hold the caller's `$( )`
+# open past the deadline. Orphans hold only the unlinked temp file (and
+# every background job detaches stdio + closes bats's fd 3). Shared by
+# the env-probe canary (lib/plugins/python/plugin.sh) and the resolution
+# reasoning probes (lib/resolution_reasoning.sh).
+pyve_run_bounded() {
+    local limit="${PYVE_PROBE_TIMEOUT:-10}"
+    local tmp
+    tmp="$(mktemp "${TMPDIR:-/tmp}/pyve-probe.XXXXXX")" || return 1
+    "$@" >"$tmp" 2>&1 3>&- &
+    local pid=$!
+    # The watchdog's timer sleep runs in its background with a TERM trap
+    # tearing it down: bash delivers SIGTERM to the subshell but not to a
+    # foreground child, so a bare `sleep && kill` shape would strand the
+    # sleep as a limit-long orphan on every probe — a real process leak
+    # (a multi-env `pyve check` herds them; under a parallel test suite
+    # they feed the fork pressure that flakes small CI runners).
+    (
+        sleep "$limit" &
+        timer=$!
+        trap 'kill "$timer" 2>/dev/null || true; exit 0' TERM
+        wait "$timer" && kill -9 "$pid"
+    ) >/dev/null 2>&1 3>&- &
+    local watchdog=$!
+    local rc=0
+    wait "$pid" 2>/dev/null || rc=$?
+    kill "$watchdog" >/dev/null 2>&1 || true
+    cat "$tmp" 2>/dev/null || true
+    rm -f "$tmp"
+    return "$rc"
+}
+
+# Portable SHA-256 of a file's contents. Probes the two
 # tools that cover the OSes pyve supports — `sha256sum` (Linux/coreutils)
 # then `shasum -a 256` (macOS, where `sha256sum` is absent) — and prints
 # the 64-hex digest to stdout.

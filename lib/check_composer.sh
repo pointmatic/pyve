@@ -177,6 +177,112 @@ _compose_check_defaults_drift() {
     return 0
 }
 
+# Human label for a resolution slot class (lib/resolution_reasoning.sh).
+# shellcheck disable=SC2088 # '~/.local/bin' is a display label, not a path
+_resolution_slot_label() {
+    case "$1" in
+        project-env) printf 'project env' ;;
+        local-bin)   printf '~/.local/bin' ;;
+        vm-shim)     printf 'version-manager shim' ;;
+        *)           printf 'system PATH' ;;
+    esac
+}
+
+# Resolution reasoning (the [resolution] section): narrate where each
+# MANAGED command resolves from and why — the automated version of the
+# manual PATH/pin/shim trace. Managed set (plan §8.4 decision): `python`
+# + `pip` on Python-shaped projects, `project-guide` always. Concise by
+# default (one winner line per command + a finding line only when
+# something is wrong); the full slot-by-slot trace renders under verbose.
+# Findings are machine-classified ([venv-pin-drift] &c. — the heal map's
+# input) with a plain-language line and a role-correct hint.
+#
+# Offline and bounded (probes ride pyve_run_bounded). Returns 2 when any
+# finding is present — WARN on the composed ladder, so the process exit
+# stays 0 (the reasoning is diagnostic narrative; only genuinely broken
+# plugin checks drive the error exit). Silent in piecemeal test subshells
+# where the module isn't sourced.
+_compose_check_resolution() {
+    declare -F resolution_analyze >/dev/null 2>&1 || return 0
+
+    local cmds=() pin=""
+    if [[ -f pyve.toml || -d .venv ]]; then
+        cmds+=(python pip)
+        if declare -F resolve_python_version >/dev/null 2>&1; then
+            pin="$(resolve_python_version 2>/dev/null | cut -d'|' -f1)" || pin=""
+        fi
+    fi
+    cmds+=(project-guide)
+
+    local findings=0 cmd line finding path cls ver p label
+    for cmd in "${cmds[@]}"; do
+        p=""
+        [[ "$cmd" == "python" ]] && p="$pin"
+        line="$(resolution_analyze "$cmd" "$p")"
+        IFS='|' read -r finding path cls ver p <<<"$line"
+        label="$(_resolution_slot_label "$cls")"
+        case "$finding" in
+            ok)
+                printf '%s → %s (%s%s)\n' "$cmd" "$path" "$label" "${ver:+, $ver}"
+                ;;
+            venv-pin-drift)
+                findings=1
+                printf '%s → %s (%s, %s)\n' "$cmd" "$path" "$label" "$ver"
+                printf '  ⚠ shadows the version-manager pin (%s): the env was created on a different interpreter than the current pin [venv-pin-drift]\n' "$p"
+                printf '  → Rebuild toward the pin: pyve init --force\n'
+                ;;
+            no-version-set)
+                findings=1
+                printf '%s → %s (%s)\n' "$cmd" "$path" "$label"
+                printf '  ⚠ the version-manager shim rejects it under the active pin ("No version is set") [no-version-set]\n'
+                if [[ "$cmd" == "project-guide" ]]; then
+                    printf '  → Run: pyve self provision   (hosts project-guide outside the pin)\n'
+                else
+                    printf '  → Install the pinned version, or repoint the pin (.tool-versions / .python-version)\n'
+                fi
+                ;;
+            broken-winner)
+                findings=1
+                printf '%s → %s (%s)\n' "$cmd" "$path" "$label"
+                printf '  ⚠ resolves but cannot run (probe failed) [broken-winner]\n'
+                ;;
+            not-found)
+                # project-guide absence is the [pyve] hosting section's
+                # finding (with its remediation); here it is narrative only.
+                if [[ "$cmd" == "project-guide" ]]; then
+                    printf '%s → not found on PATH\n' "$cmd"
+                else
+                    findings=1
+                    printf '%s → not found on PATH [not-found]\n' "$cmd"
+                    printf '  → Activate the env (direnv allow) or run through: pyve run %s\n' "$cmd"
+                fi
+                ;;
+        esac
+    done
+
+    if declare -F is_verbose >/dev/null 2>&1 && is_verbose; then
+        printf 'PATH trace:\n'
+        local dir first
+        for cmd in "${cmds[@]}"; do
+            printf '  %s:\n' "$cmd"
+            first=1
+            while IFS= read -r dir; do
+                [[ -z "$dir" ]] && continue
+                if [[ "$first" -eq 1 ]]; then
+                    printf '    * %s/%s (%s) ← winner\n' "$dir" "$cmd" "$(_resolution_slot_label "$(resolution_classify_slot "$dir")")"
+                    first=0
+                else
+                    printf '      %s/%s (%s) — shadowed\n' "$dir" "$cmd" "$(_resolution_slot_label "$(resolution_classify_slot "$dir")")"
+                fi
+            done < <(resolution_path_slots "$cmd")
+            [[ "$first" -eq 1 ]] && printf '    (not found on PATH)\n'
+        done
+    fi
+
+    [[ "$findings" -eq 1 ]] && return 2
+    return 0
+}
+
 # Orchestrate per-plugin checks and roll up the worst severity.
 #
 # Returns 2 when any plugin reports an error; 0 otherwise (warn-only or
@@ -185,9 +291,23 @@ _compose_check_defaults_drift() {
 compose_check() {
     # Argument validation lives here now (it left check_environment when
     # the composer took over dispatch). `--help` / `-h` are handled by the
-    # dispatcher in pyve.sh before compose_check is reached.
+    # dispatcher in pyve.sh before compose_check is reached. `--fix` opts
+    # into the heal engine (lib/heal.sh); `--yes` assents to its repair
+    # batch (the uniform prompt-skip flag — never `--force`).
+    local fix=0 assent=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --fix)
+                fix=1; shift
+                ;;
+            --yes|-y)
+                assent=1; shift
+                ;;
+            --offline)
+                # Suppress the staleness network probe (equivalent to
+                # PYVE_NO_NETWORK=1; the cache may still be read).
+                export PYVE_NO_NETWORK=1; shift
+                ;;
             -*)
                 unknown_flag_error "check" "$1" --help
                 ;;
@@ -198,6 +318,11 @@ compose_check() {
                 ;;
         esac
     done
+    if [[ "$assent" -eq 1 && "$fix" -eq 0 ]]; then
+        log_error "pyve check --yes only applies with --fix (there is nothing to assent to)"
+        log_error "See: pyve check --help"
+        exit 1
+    fi
 
     printf "Pyve Environment Check\n"
     printf "======================\n\n"
@@ -254,6 +379,20 @@ compose_check() {
         printf '\n'
     done < <(plugin_list_active)
 
+    # resolution reasoning addendum — where each managed command
+    # resolves from and why. Warn-only by contract (findings are
+    # diagnostic narrative; the composed exit stays 0 unless a plugin
+    # check errors).
+    local resolution_out resolution_rc=0
+    resolution_out="$(_compose_check_resolution)" || resolution_rc=$?
+    if [[ -n "$resolution_out" ]]; then
+        printf '[resolution]\n'
+        printf '%s\n' "$resolution_out"
+        sev="$(_compose_check_rc_to_severity "$resolution_rc")"
+        (( sev > worst )) && worst="$sev"
+        printf '\n'
+    fi
+
     # project-level env-spec drift addendum (not a plugin, so
     # it is not counted in the plugin tally). Warn-only by contract.
     local drift_out drift_rc=0
@@ -290,13 +429,30 @@ compose_check() {
     fi
 
     # environment-level [pyve] addendum (Story N.bi) — hosted toolchain +
-    # project-guide hosting. INFO-ONLY: deliberately does NOT touch `worst`,
-    # so an unprovisioned (optional) toolchain never affects the verdict.
-    local pyve_out
+    # project-guide hosting, plus the staleness hints (a bounded, cached,
+    # human-runs-only network probe). INFO-ONLY: deliberately does NOT
+    # touch `worst`, so neither an unprovisioned (optional) toolchain nor
+    # an available update — nor any network failure — affects the verdict.
+    local pyve_out stale_out=""
     pyve_out="$(_compose_check_pyve_hosting)"
-    if [[ -n "$pyve_out" ]]; then
+    if declare -F staleness_hint_lines >/dev/null 2>&1; then
+        stale_out="$(staleness_hint_lines)"
+    fi
+    if [[ -n "$pyve_out" || -n "$stale_out" ]]; then
         printf '[pyve]\n'
-        printf '%s\n' "$pyve_out"
+        [[ -n "$pyve_out" ]] && printf '%s\n' "$pyve_out"
+        [[ -n "$stale_out" ]] && printf '%s\n' "$stale_out"
+        printf '\n'
+    fi
+
+    # heal (--fix): plan-then-confirm repairs, streamed (NOT captured —
+    # the engine may prompt on a TTY). Runs after the diagnostic sections
+    # so the plan reads in context; the verdict below reflects the
+    # PRE-repair state (a healed system goes green on the next run), so
+    # the 0/2 exit contract is untouched.
+    if [[ "$fix" -eq 1 ]] && declare -F heal_run >/dev/null 2>&1; then
+        printf '[heal]\n'
+        heal_run "$assent" || true
         printf '\n'
     fi
 

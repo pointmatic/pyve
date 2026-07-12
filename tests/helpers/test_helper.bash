@@ -222,6 +222,18 @@ assert_file_contains() {
     }
 }
 
+# Last line of `run` output — the single-line RESULT of a probe-backed
+# helper. `run` merges stderr into $output, so transient harness noise
+# (e.g. bash's "fork: retry: Resource temporarily unavailable" under
+# parallel-suite load) can precede an otherwise-correct result line and
+# break a whole-output match. Tests asserting a machine-parseable
+# single-line result compare this instead of "$output".
+result_line() {
+    local n="${#lines[@]}"
+    [[ "$n" -gt 0 ]] || return 0
+    printf '%s' "${lines[$((n - 1))]}"
+}
+
 # Assert output contains text
 assert_output_contains() {
     local text="$1"

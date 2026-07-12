@@ -75,6 +75,26 @@ _make_toolchain_venv() {
     [[ "$target" == "$(pyve_toolchain_venv_dir)/bin/project-guide" ]]
 }
 
+@test "_self_install_project_guide: success message names the installed version (runnability-probed)" {
+    _make_toolchain_venv ok
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"
+    printf '#!/bin/sh\necho "project-guide, version 2.15.1"\n' > "$bin/project-guide"
+    chmod +x "$bin/project-guide"
+    run _self_install_project_guide
+    assert_status_equals 0
+    [[ "$output" == *"Installed project-guide v2.15.1 into the Pyve toolchain"* ]]
+}
+
+@test "_self_install_project_guide: version probe failure degrades to the unversioned message" {
+    _make_toolchain_venv ok
+    local bin; bin="$(pyve_toolchain_venv_dir)/bin"
+    printf '#!/nonexistent/interp\n' > "$bin/project-guide"
+    chmod +x "$bin/project-guide"
+    run _self_install_project_guide
+    assert_status_equals 0
+    [[ "$output" == *"Installed project-guide into the Pyve toolchain"* ]]
+}
+
 @test "_self_install_project_guide: non-fatal + no shim when toolchain venv absent" {
     # No _make_toolchain_venv → no pip in the (unprovisioned) venv.
     run _self_install_project_guide
