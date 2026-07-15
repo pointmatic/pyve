@@ -402,6 +402,51 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
+### Story P.af.1: v3.2.1 — a toolchain slot must hold the Python its name promises (strict provisioning, bounded probe, truthful report) [Done]
+
+*(Field-discovered 2026-07-14 during P.af's "validate in production" task — the developer ran the released v3.2.0 `pyve check` on a real project. Standalone patch on top of v3.2.0.)*
+
+**Symptom.** `pyve check` appeared to **hang**; after a long delay it reported `project-guide → ~/.local/bin/project-guide … ⚠ resolves but cannot run (probe failed) [broken-winner]`. Meanwhile the same run cheerfully reported `Toolchain Python: provisioned (3.14.6)`.
+
+**What was actually on disk.** The toolchain venv keyed `toolchain/3.14.6/venv` contained **Python 3.12.13**, built from an **asdf-owned** interpreter (`pyvenv.cfg`: `home = ~/.asdf/installs/python/3.12.13/bin`). So `check` was asserting a version it never probed, while the toolchain was silently coupled to the developer's version manager — one `asdf uninstall python 3.12.13` away from stranding project-guide exactly as observed.
+
+**Root cause — the slot's name is a promise nothing enforced.** Three defects compounded:
+
+1. **The build could not keep the key's promise.** `pyve_toolchain_venv_dir` keys the slot by the `DEFAULT_PYTHON_VERSION` *constant*, but `_pyve_toolchain_bootstrap_python` resolved the exact version **or fell back to the first `python3` on PATH** — normally the *project's* python via a version-manager shim. `_pyve_toolchain_ensure_interpreter` only *attempts* the exact install; on decline **or any non-interactive run** it proceeded to that fallback. Result: `toolchain/<V>/venv` built from not-`<V>`, re-coupling the toolchain to the very version manager it exists to be independent of.
+2. **Nothing ever re-checked it.** `pyve_toolchain_python_ensure` accepted the slot on `[[ -x "$venv_dir/bin/python" ]]` — **existence alone**. A wrong-version venv runs perfectly well, so it passed forever and was never rebuilt, even once the pinned version *was* installed. (The same existence-≠-correct trap as the `create_micromamba_env` essentials entry, one rung further up the ladder: **existence → runnable → correct version**.)
+3. **The report laundered the lie.** `_compose_check_pyve_hosting` probed runnability, then discarded the probed version and printed the `DEFAULT_PYTHON_VERSION` constant — asserting a fact it never established, which hid the drift it exists to surface.
+
+Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so a wedged artifact hangs `pyve check` with no feedback — the reported "hang."
+
+**Fix (developer chose the strict policy).**
+
+- **Strict bootstrap:** `_pyve_toolchain_bootstrap_python` resolves the exact `DEFAULT_PYTHON_VERSION` **or fails** — never borrows a mismatched PATH python. Failing is correct: the caller prints how to install `<V>`, and the *resolver* (`pyve_toolchain_python`) still degrades to bare `python` at **use** time, so Pyve keeps working without ever materializing a mislabeled toolchain.
+- **Version fidelity:** new `_pyve_toolchain_venv_is_current` gates the slot on *runs AND reports `<V>`*; `pyve_toolchain_python_ensure` **rebuilds** a slot that fails it. Self-heals the field state the moment `<V>` is installed.
+- **Truthful report:** the hosting readout prints the version it **probed**, plus a drift warning + repair hint when it ≠ `DEFAULT_PYTHON_VERSION`; a timed-out probe reads "cannot verify", distinct from "not provisioned".
+- **Bounded probe:** `pyve_runnable_version` runs through the existing `pyve_run_bounded` (`lib/utils.sh`) — **reused, not re-rolled**: that primitive already carries P.ae.1's hard-won watchdog teardown, and a hand-rolled bound would have re-introduced the orphaned-`sleep` fork-pressure leak. Outcomes are now 0 = ran / 1 = failed / 124 = timed out (the watchdog's SIGKILL 137 normalized to the conventional 124).
+
+**Tasks.**
+
+- [x] Reproduce (red): [tests/unit/test_toolchain_version_fidelity.bats](../../tests/unit/test_toolchain_version_fidelity.bats) — 14 cases. 4 red against v3.2.0: unbounded probe never self-bounds (outer watchdog must SIGKILL it → 137), `_pyve_toolchain_venv_is_current` absent, `ensure` accepts a wrong-version slot, bootstrap borrows a PATH python.
+- [x] Fix 1 — strict `_pyve_toolchain_bootstrap_python` (exact version or non-zero) ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)).
+- [x] Fix 2 — `_pyve_toolchain_venv_is_current` + rebuild-on-mismatch in `pyve_toolchain_python_ensure`; actionable "install Python `<V>`, then re-run `pyve self provision`" diagnostic.
+- [x] Fix 3 — `_compose_check_pyve_hosting` reports the **probed** version, warns on drift, distinguishes a timed-out probe ([lib/check_composer.sh](../../lib/check_composer.sh)).
+- [x] Fix 4 — `pyve_runnable_version` bounded via the shared `pyve_run_bounded`; 137 → 124.
+- [x] Update the three tests that encoded the *old, buggy* contracts (they asserted the defects): the PATH-fallback test inverted to assert strict refusal ([test_toolchain_python_lifecycle.bats](../../tests/unit/test_toolchain_python_lifecycle.bats)); `_make_fake_venv_python` / `_host_toolchain_python` fixtures now actually report a version, since the code now probes rather than trusts a constant ([test_toolchain_python.bats](../../tests/unit/test_toolchain_python.bats), [test_pyve_hosting_diagnostic.bats](../../tests/unit/test_pyve_hosting_diagnostic.bats)).
+- [x] Bump `VERSION` `3.2.0` → `3.2.1` ([pyve.sh:32](../../pyve.sh#L32)).
+- [x] Full unit suite green: **2285 pass, 0 fail**; `shellcheck` clean on both changed libs.
+
+**Prevention scan.**
+
+- [x] Reused `pyve_run_bounded` instead of writing a second bounded-run primitive — the DRY tenet doing real work here: an independent implementation would have re-introduced P.ae.1's orphaned-`sleep` leak.
+- [x] Audited the other hosting probe: `pyve_project_guide_runnable` shares `pyve_runnable_version`, so it inherits the bound and the timeout class for free.
+- [ ] Candidate `project-essentials` entry — **"A version-keyed path is a claim; enforce it."** `toolchain/<V>/venv` must *hold* `<V>`. Gate such slots on `runs AND reports <V>`, never on `[[ -x ]]`; never build one from a fallback interpreter (that re-couples Pyve to the developer's version manager); and never print a version you did not probe. Extends the runnability pillar: **existence → runnable → correct version.**
+- [ ] Follow-up (P-3 candidate): `pyve check`'s `[resolution]` probes are bounded, but a `broken-winner` finding still doesn't say *why* it cannot run (dead shebang vs. missing interpreter vs. timeout). Classifying the failure would have named this incident in one line.
+
+**Version:** **v3.2.1** (patch). Standalone field fix on the released v3.2.0; P.af's production-validation task is what surfaced it.
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.

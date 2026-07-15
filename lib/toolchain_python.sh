@@ -145,11 +145,26 @@ pyve_project_guide_is_hosted() {
 # passes `[[ -x ]]` yet cannot exec, and reporting it "ready" is exactly the
 # corruption that strands a developer (the health-checks-probe-runnability
 # rule). On a successful run, prints the first version-like token (may be
-# empty if the artifact runs but emits no version) and returns 0; on any exec
-# failure prints nothing and returns non-zero.
+# empty if the artifact runs but emits no version) and returns 0.
+#
+# Executing an artifact means it can also WEDGE (a dead interpreter mid-lookup,
+# an unreachable network mount) — an unbounded probe then hangs `pyve check`
+# outright. So it runs through `pyve_run_bounded` (lib/utils.sh), the shared
+# watchdog primitive the canary/resolution probes already use; reusing it keeps
+# the one hard-won teardown (its timer sleep is reaped on dismissal — a bare
+# `sleep && kill` shape strands an orphan per probe and feeds the fork pressure
+# that flakes small CI runners).
+#
+# Three distinct outcomes, so a caller can say "cannot verify" instead of
+# hanging: 0 = ran, 1 = failed to run, 124 = timed out. The watchdog SIGKILLs a
+# wedged probe (wait → 137); that is normalized to the conventional 124 here so
+# callers branch on one timeout code rather than a signal number.
 pyve_runnable_version() {
-    local bin="$1" out ver
-    if ! out="$("$bin" --version 2>&1)"; then
+    local bin="$1" out ver rc=0
+    out="$(pyve_run_bounded "$bin" --version)" || rc=$?
+    if (( rc == 137 )); then
+        return 124
+    elif (( rc != 0 )); then
         return 1
     fi
     # Capture-then-extract with `|| true` so a no-match grep (artifact ran but
@@ -363,26 +378,30 @@ _pyve_toolchain_confirm_install() {
 # Pure resolver — no prompt, no install, so it is safe inside command
 # substitution (its only stdout is the interpreter path).
 #
-# Order (version-tracking fidelity):
-#   1. the version manager's install for the EXACT DEFAULT_PYTHON_VERSION,
-#      if present (installation is handled earlier by
-#      _pyve_toolchain_ensure_interpreter);
-#   2. a PATH python3 / python (legacy fallback — the version may differ;
-#      best-effort so a venv is still built when no version manager exists).
+# STRICT: the ONLY acceptable interpreter is the version manager's install for
+# the EXACT DEFAULT_PYTHON_VERSION (installation is handled earlier by
+# _pyve_toolchain_ensure_interpreter). Returns non-zero when that is absent.
+#
+# It deliberately does NOT fall back to a PATH python3. That fallback is what
+# built a `toolchain/<V>/venv` out of whatever interpreter the developer's shell
+# happened to expose — normally their *project's* python, via a version-manager
+# shim — producing a slot whose name lied about its contents and re-coupling the
+# toolchain to the very version manager it exists to be independent of. Failing
+# here is the correct outcome: the caller reports how to install <V>, and the
+# resolver (pyve_toolchain_python) still degrades to bare `python` at USE time,
+# so Pyve keeps working without ever materializing a mislabeled toolchain.
 _pyve_toolchain_bootstrap_python() {
     local version="$1"
     if declare -F detect_version_manager >/dev/null 2>&1; then
         detect_version_manager >/dev/null 2>&1 || true
     fi
-    # Exact-version interpreter via the active version manager.
     local exact
     exact="$(_pyve_toolchain_versioned_python "$version")"
     if [[ -n "$exact" && -x "$exact" ]]; then
         printf '%s' "$exact"
         return 0
     fi
-    # Fall back to a PATH python3 / python (the legacy bootstrap source).
-    _pyve_toolchain_path_python
+    return 1
 }
 
 # Print the first runnable `python3` / `python` on PATH; non-zero if none.
@@ -426,17 +445,51 @@ _pyve_toolchain_versioned_python() {
 # Returns 0 when the venv exists (already or newly built); non-zero with
 # a stderr diagnostic when the build failed. Callers treat a failure as
 # "fall back to bare python" rather than a hard abort.
+# Is the toolchain slot at <venv_dir> the one its NAME promises?
+#
+# The slot is version-keyed, so `toolchain/<V>/venv` asserts "this holds Python
+# <V>". Existence does not establish that, and neither does runnability: a venv
+# built from a fallback interpreter runs perfectly well while being the wrong
+# Python — right slot, wrong contents. That state is invisible to `[[ -x ]]`
+# and to a bare runnability check, and it silently couples the toolchain to the
+# developer's version manager (a later `asdf uninstall` of that version then
+# strands the whole toolchain). So the gate is: it runs AND it reports <V>.
+_pyve_toolchain_venv_is_current() {
+    local venv_dir="$1"
+    local py="$venv_dir/bin/python" ver
+    [[ -x "$py" ]] || return 1
+    ver="$(pyve_runnable_version "$py")" || return 1
+    # No pinned default (unset in odd embeddings) → runnability is all we can ask.
+    [[ -n "${DEFAULT_PYTHON_VERSION:-}" ]] || return 0
+    [[ "$ver" == "${DEFAULT_PYTHON_VERSION}" ]]
+}
+
+# Returns 0 when the venv exists at the pinned version (already or newly built);
+# non-zero with a stderr diagnostic when the build failed. Callers treat a
+# failure as "fall back to bare python" rather than a hard abort.
 pyve_toolchain_python_ensure() {
     local venv_dir
     venv_dir="$(pyve_toolchain_venv_dir)"
-    if [[ -x "$venv_dir/bin/python" ]]; then
+
+    # Accept the slot only if it holds the Python its name promises. A slot that
+    # exists but carries a different interpreter is stale, not usable — rebuild
+    # it rather than rubber-stamping it (existence → runnable → correct version).
+    if _pyve_toolchain_venv_is_current "$venv_dir"; then
         return 0
     fi
+    if [[ -e "$venv_dir" ]]; then
+        printf "  ▸ toolchain venv at %s is not Python %s — rebuilding\n" \
+            "$venv_dir" "${DEFAULT_PYTHON_VERSION:-unknown}" >&2
+        rm -rf "${venv_dir:?}"
+    fi
+
     if _pyve_toolchain_build "$venv_dir"; then
         return 0
     fi
     printf "error: could not provision Pyve toolchain Python (%s) at %s\n" \
         "${DEFAULT_PYTHON_VERSION:-unknown}" "$venv_dir" >&2
-    printf "       Pyve will fall back to 'python' on PATH; set PYVE_PYTHON to override.\n" >&2
+    printf "       Install Python %s via your version manager, then re-run 'pyve self provision'.\n" \
+        "${DEFAULT_PYTHON_VERSION:-unknown}" >&2
+    printf "       Pyve will fall back to 'python' on PATH meanwhile; set PYVE_PYTHON to override.\n" >&2
     return 1
 }

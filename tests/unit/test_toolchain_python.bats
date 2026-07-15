@@ -36,11 +36,14 @@ teardown() {
 }
 
 # Helper: create a fake executable interpreter at the toolchain venv path.
+# It reports DEFAULT_PYTHON_VERSION, because the slot is only accepted when the
+# interpreter it holds IS the version the slot is keyed to — a fake that printed
+# no version would (correctly) read as a stale slot and be rebuilt.
 _make_fake_venv_python() {
     local dir
     dir="$(pyve_toolchain_venv_dir)"
     mkdir -p "$dir/bin"
-    printf '#!/bin/sh\necho fake\n' > "$dir/bin/python"
+    printf '#!/bin/sh\necho "Python %s"\n' "${DEFAULT_PYTHON_VERSION}" > "$dir/bin/python"
     chmod +x "$dir/bin/python"
 }
 
@@ -99,14 +102,18 @@ _make_fake_venv_python() {
 # Provisioning (idempotent build)
 #------------------------------------------------------------
 
-@test "pyve_toolchain_python_ensure: idempotent no-op when venv already exists" {
+@test "pyve_toolchain_python_ensure: idempotent no-op when the venv already holds the pinned version" {
+    # Idempotency is conditioned on version fidelity, not mere existence: the
+    # slot is reused only when its interpreter IS DEFAULT_PYTHON_VERSION. (A slot
+    # holding some other Python is stale and gets rebuilt — see
+    # test_toolchain_version_fidelity.bats.)
     _make_fake_venv_python
     # Sentinel: if the builder is invoked, the test fails.
     _pyve_toolchain_build() { printf 'BUILD-INVOKED\n' >&2; return 1; }
     run pyve_toolchain_python_ensure
     assert_status_equals 0
     [[ "$output" != *"BUILD-INVOKED"* ]] || {
-        echo "builder was invoked despite existing venv" >&2
+        echo "builder was invoked despite an existing, correctly-versioned venv" >&2
         return 1
     }
 }
