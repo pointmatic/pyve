@@ -447,6 +447,35 @@ Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so
 
 ---
 
+### Story P.af.2: Strict provisioning vs. the P.v sandbox — re-pin the default instead of refusing forever [Done]
+
+**Symptom.** After P.af.1 landed, `test_self_provision_lands_in_fake_home_only` failed on **both** macOS and Ubuntu CI: `self provision` exited 0 but no toolchain venv materialized (`Python 3.14.6 is not available for installation` → strict refusal → best-effort warn).
+
+**Root cause — two deliberate contracts, structurally incompatible.** The P.v sandbox serves exactly **one** interpreter — the one running pytest, injected by value; its fake asdf/pyenv answer only for that version. P.af.1's strict bootstrap builds `toolchain/<V>/venv` only from a real `<V>` — never a PATH fallback. So inside the sandbox, provisioning *correctly* refuses whenever the pytest interpreter ≠ the shipped pin — which is **every CI matrix job** (3.12/3.14-latest vs. pin 3.14.6). The old test only passed because the pre-P.af.1 fallback built a mislabeled slot — the exact defect P.af.1 closed. Deterministic, and invisible in P.af.1's development: the dev machine's testenv Python **is** 3.14.6 (the one machine where both contracts agree), and P.af.1 ran only the unit suite pre-commit. (The CI log's install *attempt* traces to `PyveRunner` setting `PYVE_FORCE_YES=1` under `CI` — the fake asdf then reports 3.14.6 unavailable; locally the confirm gate skips straight to the same strict refusal.)
+
+**Fix — pin the promise, don't fake the interpreter.** A new env seam `PYVE_DEFAULT_PYTHON_VERSION` re-pins the default at the constant's single definition site ([pyve.sh](../../pyve.sh) — `${PYVE_DEFAULT_PYTHON_VERSION:-3.14.6}`), and `_isolate_home` pins it to the version the sandbox actually serves. Strict provisioning then *genuinely succeeds*: the slot is keyed by, built from, and fidelity-probed against the same real version — no fixture lies, and the strict path runs truthfully end-to-end (venv build → deps → project-guide pip → shim, all inside the fake home). Rejected alternatives: teaching the fake asdf to "install" 3.14.6 (builds a mislabeled slot — re-encodes the P.af.1 defect in the harness, and every subsequent `ensure` would probe the mismatch and rebuild in a loop); weakening the test to "refusal is fine" (guts P.v's containment coverage — the write path it exists to contain would never execute).
+
+**Tasks.**
+
+- [x] Reproduce (red): the failing test passes under a 3.14.6 pytest interpreter but fails under 3.14.3 with the exact CI shape — confirming the version-coincidence mechanism.
+- [x] Env seam at the constant's definition site ([pyve.sh](../../pyve.sh)); strictness unchanged, applied to the overridden value.
+- [x] `_isolate_home` pins `PYVE_DEFAULT_PYTHON_VERSION` to the sandbox interpreter's version ([tests/integration/test_project_guide_integration.py](../../tests/integration/test_project_guide_integration.py)).
+- [x] Unit coverage for the seam: subprocess `--config` reflects the override; without it the pin is a concrete version ([tests/unit/test_toolchain_version_fidelity.bats](../../tests/unit/test_toolchain_version_fidelity.bats)).
+- [x] Docs: `PYVE_DEFAULT_PYTHON_VERSION` row in the Environment Variables table ([docs/site/usage.md](../../docs/site/usage.md)).
+- [x] Collateral: [test_check_fix.bats](../../tests/unit/test_check_fix.bats) derived the binary's pin by sed-capturing the assignment's raw text, which the parameter expansion broke (it captured `${PYVE_DEFAULT_PYTHON_VERSION:-…}` verbatim); it now **evaluates** the assignment line with the override unset — robust to any future default-expression shape.
+- [x] Verified: failing test + full sandbox file (18 tests) green under 3.14.3 *and* 3.14.6; full unit suite green; `shellcheck` clean on `pyve.sh`.
+- [x] Staged the missing `[3.2.1]` CHANGELOG entry (P.af.1 bumped `VERSION` without staging one) covering P.af.1's strict-provisioning surface plus this story.
+
+**Prevention scan.**
+
+- [ ] Process gap behind both P.af.1 misses (no CHANGELOG staging, no integration run pre-commit): the unit suite alone cannot exercise `self provision` end-to-end. Candidate rule for `project-essentials`: a story that changes a provisioning/bootstrap surface runs the integration file that covers it before the gate.
+- [ ] Housekeeping: 17 integration tests fail locally **on clean HEAD** (verified byte-for-byte identical with and without this story's changes via stash baseline; CI's marker selection deselects them, so CI stays green): 8 in [test_reinit.py](../../tests/integration/test_reinit.py) (interactive-reinit UI assertions — "What would you like to do?" / "Configuration updated" missing from boxed output), 2 in [test_auto_detection.py](../../tests/integration/test_auto_detection.py) (v2-era `.pyve/config` override expectations), 6 in [test_subcommand_cli.py](../../tests/integration/test_subcommand_cli.py) (v2-era `pyve validate` / `pyve python-version` legacy-catch + help expectations), 1 in [test_venv_workflow.py](../../tests/integration/test_venv_workflow.py) (`test_reinit_after_purge`, same interactive-reinit family). Fold into the parked "Fix pre-existing integration test failures" story (P-3); triage which broke with the v3.2.x UI work vs. were stale since the v3 surface removals.
+- [ ] The `pyve init` default-python surface also reads the overridden constant — intended (the sandbox *wants* init to default to a servable version), but worth one line in the init docs if the seam is ever promoted beyond CI/test use.
+
+**Version:** rides **v3.2.1** (unreleased; same patch as P.af.1).
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.

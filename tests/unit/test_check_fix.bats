@@ -39,9 +39,16 @@ setup() {
     unset PYVE_PYTHON PYVE_PROJECT_GUIDE_BIN
     export DEFAULT_PYTHON_VERSION="3.12.13"
     # Full-binary tests must build hosting fixtures under the version the
-    # BINARY resolves (pyve.sh hardcodes its own DEFAULT_PYTHON_VERSION;
-    # the exported unit-level value does not reach it).
-    PYVE_BIN_PYVER="$(sed -n 's/^DEFAULT_PYTHON_VERSION="\(.*\)"/\1/p' "$PYVE_SCRIPT")"
+    # BINARY resolves (the exported unit-level value does not reach the
+    # pyve.sh subprocess). Evaluate the actual assignment line rather than
+    # sed-capturing its raw text: the default is a parameter expansion
+    # (`${PYVE_DEFAULT_PYTHON_VERSION:-<pin>}`), so only evaluation — with
+    # the override unset, as in a clean subprocess env — yields the pin.
+    PYVE_BIN_PYVER="$(
+        unset PYVE_DEFAULT_PYTHON_VERSION
+        eval "$(grep '^DEFAULT_PYTHON_VERSION=' "$PYVE_SCRIPT")"
+        printf '%s' "$DEFAULT_PYTHON_VERSION"
+    )"
     cd "$TEST_DIR"
     export NO_COLOR=1
 }

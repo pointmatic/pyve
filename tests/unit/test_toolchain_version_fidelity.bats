@@ -256,3 +256,25 @@ _stub_pg_absent() {
     assert_output_contains "timed out"
     [[ "$output" != *"not provisioned (falls back"* ]]
 }
+
+# ============================================================
+# The PYVE_DEFAULT_PYTHON_VERSION seam — pin the promise itself
+# ============================================================
+# Strict provisioning refuses to build toolchain/<V>/venv from anything
+# but a real <V>. On a host where <V> genuinely cannot exist (the
+# integration sandbox serves exactly one interpreter; a CI runner pins
+# its matrix python), the env override re-pins <V> — strictness still
+# applies, to the overridden value, so the slot stays truthful.
+
+@test "PYVE_DEFAULT_PYTHON_VERSION re-pins the default (subprocess --config)" {
+    run env PYVE_DEFAULT_PYTHON_VERSION=9.9.9 bash "$PYVE_ROOT/pyve.sh" --config
+    [ "$status" -eq 0 ]
+    assert_output_contains "Default Python version: 9.9.9"
+}
+
+@test "without the override the shipped pin is a concrete version" {
+    run env -u PYVE_DEFAULT_PYTHON_VERSION bash "$PYVE_ROOT/pyve.sh" --config
+    [ "$status" -eq 0 ]
+    [[ "$output" =~ Default\ Python\ version:\ [0-9]+\.[0-9]+\.[0-9]+ ]]
+    [[ "$output" != *"Default Python version: 9.9.9"* ]]
+}
