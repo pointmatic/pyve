@@ -185,6 +185,7 @@ Pyve recognizes the following environment variables:
 | `PYVE_BACKEND` | Force backend (`venv` / `micromamba`) | Auto-detect |
 | `PYVE_TEST_AUTO_INSTALL_PYTEST` | Auto-install pytest in `pyve test` | `0` (prompt) |
 | `PYVE_PYTHON_VERSION` | Override Python version | From `.python-version` |
+| `PYVE_DEFAULT_PYTHON_VERSION` | Re-pin pyve's default Python — the version `pyve init` offers a new project and the version the toolchain slot is keyed (and strictly built) on. For hosts where the shipped pin cannot exist (a CI runner pinned to its matrix python); strict provisioning still applies, to the overridden value | Shipped pin (see `pyve --config`) |
 | `PYVE_AUTO_INSTALL_DEPS` | Auto-install dependencies without prompting | `0` (prompt) |
 | `PYVE_NO_INSTALL_DEPS` | Skip dependency installation prompt | `0` (prompt) |
 | `PYVE_FORCE_YES` | Skip all interactive prompts (CI mode) | `0` (interactive) |

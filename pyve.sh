@@ -29,8 +29,14 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.2.0"
-DEFAULT_PYTHON_VERSION="3.14.6"
+VERSION="3.2.1"
+# The pinned default Python: the version `pyve init` offers a new project
+# AND the version the toolchain slot promises (toolchain/<V>/venv must
+# hold <V> — strict, never built from a fallback interpreter). The env
+# override is the seam for hosts where <V> genuinely cannot exist (the
+# integration sandbox serves exactly one interpreter; a CI runner pins
+# its matrix python) — strictness still applies, to the overridden value.
+DEFAULT_PYTHON_VERSION="${PYVE_DEFAULT_PYTHON_VERSION:-3.14.6}"
 DEFAULT_VENV_DIR=".venv"
 ENV_FILE_NAME=".env"
 # shellcheck disable=SC2034 # global config consumed by sourced lib/utils.sh + lib/envs.sh

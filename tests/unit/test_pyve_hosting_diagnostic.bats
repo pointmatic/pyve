@@ -34,9 +34,18 @@ teardown() {
     rm -rf "$TEST_DIR"
 }
 
+# Hosted toolchain interpreter that answers `--version`. Defaults to the pinned
+# DEFAULT_PYTHON_VERSION (the healthy case); pass a version to host a slot whose
+# Python does NOT match the version its slot is keyed to (the drift case).
+# It must actually report a version: the hosting report prints the version it
+# PROBED, never the DEFAULT_PYTHON_VERSION constant, so a silent binary reads as
+# "provisioned (unknown)".
 _host_toolchain_python() {
-    local bin; bin="$(pyve_toolchain_venv_dir)/bin"
-    mkdir -p "$bin"; : > "$bin/python"; chmod +x "$bin/python"
+    local ver="${1:-$DEFAULT_PYTHON_VERSION}" bin
+    bin="$(pyve_toolchain_venv_dir)/bin"
+    mkdir -p "$bin"
+    printf '#!/bin/sh\necho "Python %s"\n' "$ver" > "$bin/python"
+    chmod +x "$bin/python"
 }
 _host_pg_shim() {
     mkdir -p "$HOME/.local/bin"

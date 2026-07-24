@@ -425,6 +425,14 @@ def _isolate_home(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(fake_home / ".config"))
     monkeypatch.setenv("XDG_CACHE_HOME", str(fake_home / ".cache"))
     monkeypatch.setenv("PYVE_PYTHON", interpreter)
+    # Pin pyve's default Python to the ONE version this sandbox can serve.
+    # Strict toolchain provisioning (v3.2.1) builds toolchain/<V>/venv only
+    # from a real <V> interpreter — never a PATH fallback — so without the
+    # pin, provisioning inside the sandbox correctly refuses whenever the
+    # pytest interpreter's version differs from pyve's shipped default
+    # (every CI matrix job), and no toolchain venv can ever materialize.
+    # Pinning keeps the slot truthful: <V> is the version actually served.
+    monkeypatch.setenv("PYVE_DEFAULT_PYTHON_VERSION", version)
     return fake_home
 
 
