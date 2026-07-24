@@ -120,8 +120,24 @@ _compose_check_pyve_hosting() {
     # passes `[[ -x ]]` but cannot run. Share the same probe `--status` uses
     # (pyve_toolchain_runnable / pyve_project_guide_runnable) so the human
     # `pyve check` and the machine query can never disagree about "ready".
-    if pyve_toolchain_runnable >/dev/null 2>&1; then
-        printf 'Toolchain Python: provisioned (%s)\n' "${DEFAULT_PYTHON_VERSION:-unknown}"
+    # Report the version the probe actually READ, never the DEFAULT_PYTHON_VERSION
+    # constant: printing the constant asserts a fact the probe never established,
+    # so a slot holding the wrong Python reported as healthy at the pinned version
+    # — hiding the drift it exists to surface. 124 = the probe timed out, which is
+    # "cannot verify", distinct from "not provisioned".
+    local tc_ver="" tc_rc=0
+    tc_ver="$(pyve_toolchain_runnable 2>/dev/null)" || tc_rc=$?
+    if (( tc_rc == 0 )); then
+        printf 'Toolchain Python: provisioned (%s)\n' "${tc_ver:-unknown}"
+        if [[ -n "$tc_ver" && -n "${DEFAULT_PYTHON_VERSION:-}" \
+              && "$tc_ver" != "${DEFAULT_PYTHON_VERSION}" ]]; then
+            printf "  ⚠ version drift: this slot expects Python %s\n" "${DEFAULT_PYTHON_VERSION}"
+            printf "  → Run: pyve self provision   (rebuilds the toolchain at %s)\n" \
+                "${DEFAULT_PYTHON_VERSION}"
+        fi
+    elif (( tc_rc == 124 )); then
+        printf 'Toolchain Python: probe timed out — cannot verify\n'
+        printf "  → Run: pyve self provision\n"
     else
         printf 'Toolchain Python: not provisioned (falls back to python on PATH)\n'
     fi

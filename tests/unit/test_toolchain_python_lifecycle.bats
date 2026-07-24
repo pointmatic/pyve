@@ -126,9 +126,15 @@ _fake_build_succeeds() {
     assert_output_equals "$install/bin/python"
 }
 
-@test "_pyve_toolchain_bootstrap_python: falls back to a PATH python when no version-manager match" {
-    # A fake `python3` on PATH (the legacy bootstrap source) and no
-    # version manager resolution.
+@test "_pyve_toolchain_bootstrap_python: STRICT — will NOT fall back to a PATH python" {
+    # Was: "falls back to a PATH python when no version-manager match". That
+    # fallback was the defect, not a feature — it built `toolchain/<V>/venv` out
+    # of whatever interpreter the shell exposed (normally the *project's* python
+    # via a version-manager shim), so the slot's name lied about its contents and
+    # the toolchain was re-coupled to the version manager it exists to be free of.
+    # Absent the exact version, resolution must FAIL and say so; the caller then
+    # degrades to bare `python` at use time rather than materializing a
+    # mislabeled toolchain.
     local fakebin="$TEST_DIR/fakebin"
     mkdir -p "$fakebin"
     printf '#!/bin/sh\necho 3.12.0\n' > "$fakebin/python3"
@@ -138,8 +144,8 @@ _fake_build_succeeds() {
     ensure_python_version_installed() { return 1; }
 
     PATH="$fakebin:$PATH" run _pyve_toolchain_bootstrap_python "3.14.4"
-    assert_status_equals 0
-    assert_output_contains "python3"
+    [ "$status" -ne 0 ]
+    [[ "$output" != *"fakebin"* ]]
 }
 
 #------------------------------------------------------------

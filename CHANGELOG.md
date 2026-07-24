@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.1] - Unreleased
+
+**A toolchain slot must hold the Python its name promises.** Field-discovered during v3.2.0's production validation: `toolchain/<V>/venv` could be built from whatever python the shell exposed, `check` then asserted `<V>` without probing, and an unbounded probe could hang `check` outright.
+
+### Changed
+
+- **Strict toolchain provisioning** (Story P.af.1) — `pyve self provision` builds `toolchain/<V>/venv` only from a real `<V>` interpreter, never a PATH fallback (which re-coupled the toolchain to the developer's version manager and produced a slot whose name lied about its contents). When `<V>` is absent, provisioning reports how to install it and Pyve degrades to `python` on PATH at use time — a mislabeled toolchain is never materialized. The slot is now gated on *runs AND reports `<V>`* and rebuilds itself the moment the pinned version is available; the `pyve check` hosting readout prints the version it **probed** (with a drift warning when it differs from the pin), and the probe is time-bounded, so a wedged artifact reads "cannot verify" instead of hanging `check`.
+
+### Added
+
+- **`PYVE_DEFAULT_PYTHON_VERSION`** (Story P.af.2) — re-pins pyve's default Python (the `pyve init` default and the toolchain slot's version key) for hosts where the shipped pin genuinely cannot exist, e.g. a CI runner pinned to its matrix python. Strict provisioning still applies, to the overridden value, so the slot stays truthful.
+
+### Fixed
+
+- **Integration sandbox vs. strict provisioning** (Story P.af.2) — the P.v self-contained sandbox serves exactly one interpreter (the one running the tests), so strict provisioning correctly refused to build the toolchain whenever that version differed from the shipped pin — every CI matrix job. The sandbox now re-pins the default to the version it serves, and real provisioning is exercised truthfully end-to-end again.
+
 ## [3.2.0] - 2026-07-11
 
 **Harden & heal: existence is not runnability.** `pyve check` now *executes* what it certifies — a canary console-script probe per environment, a narrated account of where every managed command resolves from — and, with the new `--fix`, repairs what it finds: plan-then-confirm, role-correct, never destructive without an interactive confirmation. The four-layer PATH/pin/shim trace a developer once reconstructed by hand is now three sections of `check` output and one repair command.
