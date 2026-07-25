@@ -1369,18 +1369,25 @@ _init_wizard() {
     # `_init_prompt_<name>` render callback (the bespoke renderers do the
     # ui_select interaction + side effects via dynamic scope). Prompt order is
     # now graph data (the order nodes are registered), not source position.
-    # The here-string keeps the loop body in this shell so the renderers'
-    # dynamic-scope writes (backend_flag / python_version / …) propagate.
+    # Collect the rows FIRST, then dispatch from a plain for-loop — both in
+    # this shell so the renderers' dynamic-scope writes (backend_flag /
+    # python_version / …) propagate. Dispatching from inside a loop fed by
+    # a here-string would leave that here-string as fd 0 for every prompt
+    # callback: `[[ -t 0 ]]` goes false and reads consume graph rows
+    # instead of the terminal, silently de-interactivizing the wizard.
     _init_build_param_graph
-    local _wiz_row _wiz_name _wiz_fn
+    local _wiz_rows=() _wiz_row _wiz_name _wiz_fn
     while IFS= read -r _wiz_row; do
+        [[ -n "$_wiz_row" ]] && _wiz_rows+=("$_wiz_row")
+    done <<<"$(pg_list_nodes)"
+    for _wiz_row in "${_wiz_rows[@]:-}"; do
         [[ -n "$_wiz_row" ]] || continue
         _wiz_name="${_wiz_row%%|*}"
         _init_node_is_interactive "$_wiz_name" || continue
         pg_applicable "$_wiz_row" || continue
         _wiz_fn="_init_prompt_${_wiz_name//-/_}"
         "$_wiz_fn"
-    done <<<"$(pg_list_nodes)"
+    done
 
     return 0
 }
@@ -1557,9 +1564,12 @@ _init_prompt_python_version() {
                 fi
                 chosen_version="${more_options[$more_idx]}"
             else
-                # `skip` — no pin written.
+                # `skip` — the user declined a pin. Record it so the
+                # materializer skips the pin file, the version-manager
+                # requirement, and the default-version install.
                 info "Python: skipped (no pin)"
                 chosen_version=""
+                python_pin_skipped=true
             fi
             if [[ -n "$chosen_version" ]]; then
                 info "Python: $chosen_version (pinned via $picked_manager)"
@@ -1571,9 +1581,13 @@ _init_prompt_python_version() {
                 python_version="$chosen_version"
             fi
         else
-            # Non-TTY or bypass on, no flag → silent skip. No hard-fail on
-            # missing managers because no pin was requested.
-            info "Python: skipped (no pin)"
+            # Non-TTY or bypass on, no flag → no prompt; materialization
+            # pins the pyve default (long-standing non-interactive
+            # behavior). Say what will actually happen — this line used to
+            # read "skipped (no pin)" while init wrote the pin anyway.
+            # python_version is init_project's dynamic-scope local; guard
+            # for direct _init_wizard embeddings that don't carry it.
+            info "Python: ${python_version:-${DEFAULT_PYTHON_VERSION:-}} (pyve default)"
         fi
     fi
 }
@@ -1709,6 +1723,11 @@ init_project() {
     local python_version
     python_version="$(_init_param_default python-version)"
     local python_version_supplied=false
+    # Set (via dynamic scope) by the wizard's "skip (no pin)" selection:
+    # the user declined a version pin, so materialization must not write a
+    # pin file, require a version manager, or install the default — the
+    # venv builds from whatever `python` resolves on PATH.
+    local python_pin_skipped=false
     local use_local_env=false
     local backend_flag=""
     local auto_bootstrap=false
@@ -2159,26 +2178,34 @@ init_project() {
         exit 1
     fi
 
-    if ! validate_python_version "$python_version"; then
+    if [[ "$python_pin_skipped" != true ]] && ! validate_python_version "$python_version"; then
         exit 1
     fi
 
     banner "Initializing Python environment"
     info "Backend:        $backend"
-    info "Python version: $python_version"
+    if [[ "$python_pin_skipped" == true ]]; then
+        info "Python version: none (no pin — venv uses 'python' from PATH)"
+    else
+        info "Python version: $python_version"
+    fi
     info "Venv directory: $venv_dir"
 
     # Source shell profiles to find version managers
     source_shell_profiles
 
-    # Resolve the version manager. Honors the wizard's explicit pick
-    # (recorded in VERSION_MANAGER) rather than blindly re-detecting, which
-    # used to discard the user's selection — and could flip asdf → pyenv on a
-    # transient detection false-negative (Story N.bf.6).
-    if ! _init_resolve_version_manager; then
-        exit 1
+    # A declined pin needs no version manager, no install, and writes no
+    # pin file — the whole block is the pin's materialization.
+    if [[ "$python_pin_skipped" != true ]]; then
+        # Resolve the version manager. Honors the wizard's explicit pick
+        # (recorded in VERSION_MANAGER) rather than blindly re-detecting, which
+        # used to discard the user's selection — and could flip asdf → pyenv on a
+        # transient detection false-negative (Story N.bf.6).
+        if ! _init_resolve_version_manager; then
+            exit 1
+        fi
+        info "Using $VERSION_MANAGER for Python version management"
     fi
-    info "Using $VERSION_MANAGER for Python version management"
 
     # Check direnv (only if not using --no-direnv)
     if [[ "$no_direnv" == false ]]; then
@@ -2187,13 +2214,15 @@ init_project() {
         fi
     fi
 
-    # Ensure Python version is installed
-    if ! ensure_python_version_installed "$python_version"; then
-        exit 1
-    fi
+    if [[ "$python_pin_skipped" != true ]]; then
+        # Ensure Python version is installed
+        if ! ensure_python_version_installed "$python_version"; then
+            exit 1
+        fi
 
-    # Set local Python version
-    _init_python_version "$python_version"
+        # Set local Python version
+        _init_python_version "$python_version"
+    fi
 
     # Create virtual environment
     _init_venv "$venv_dir"
