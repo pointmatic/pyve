@@ -738,21 +738,24 @@ YAML
 }
 
 #============================================================
-# L.k.4: wizard Python-prompt — venv branch, bypass + no flag (silent skip)
+# L.k.4: wizard Python-prompt — venv branch, bypass + no flag announces the
+# default pin (materialization pins it; the old "skipped (no pin)" label
+# lied about that)
 #============================================================
 
-@test "_init_wizard: venv + bypass + no --python-version → 'Python: skipped (no pin)'" {
+@test "_init_wizard: venv + bypass + no --python-version → announces the default pin" {
     _stub_managers asdf
     PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "false" "yes"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Python: skipped (no pin)"* ]]
+    [[ "$output" == *"(pyve default)"* ]]
+    [[ "$output" != *"skipped (no pin)"* ]]
 }
 
-@test "_init_wizard: venv + bypass + no flag + no managers → silent skip (no hard-fail)" {
+@test "_init_wizard: venv + bypass + no flag + no managers → default announced, no hard-fail" {
     mkdir -p "$TEST_DIR/.emptybin"
     PATH="$TEST_DIR/.emptybin" PYVE_INIT_NONINTERACTIVE=1 run _init_wizard "venv" "3.13.7" "false" "yes"
     [ "$status" -eq 0 ]
-    [[ "$output" == *"Python: skipped (no pin)"* ]]
+    [[ "$output" == *"(pyve default)"* ]]
 }
 
 #============================================================
@@ -857,4 +860,56 @@ YAML
     [ "$status" -eq 0 ]
     [[ "$output" == *"project-guide: managed by your project dependencies"* ]]
     [[ "$output" != *"refresh (already installed)"* ]]
+}
+
+#============================================================
+# Wizard stdin integrity — prompt callbacks own the caller's fd 0
+#============================================================
+
+@test "_init_wizard: prompt callbacks read the caller's stdin, not graph rows" {
+    # Bypass the TTY guard (bats stdin is not a tty); the stub below reads
+    # unconditionally, so the guard setting doesn't mask the fd question.
+    export PYVE_INIT_NONINTERACTIVE=1
+    # A prompt callback that consumes one line of ITS stdin. When the graph
+    # walk dispatches callbacks from inside a loop fed by a here-string,
+    # fd 0 inside the callback IS that here-string: the read swallows the
+    # next graph row (also starving the walk of that node) instead of
+    # seeing what the wizard's caller fed on stdin.
+    _init_prompt_backend() {
+        local line=""
+        IFS= read -r line || true
+        printf 'CALLBACK_STDIN:%s\n' "$line"
+        backend_flag="venv"
+    }
+    run _init_wizard "" "" "false" "" <<<"MARKER-FROM-CALLER"
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"CALLBACK_STDIN:MARKER-FROM-CALLER"* ]]
+}
+
+#============================================================
+# Wizard 'skip (no pin)' — materialization honors the declined pin
+#============================================================
+
+@test "init: wizard 'skip (no pin)' materializes a pinless venv (no manager required)" {
+    export PYVE_INIT_NONINTERACTIVE=1
+    # init_project reads pyve.sh's config constants; calling it directly
+    # (not via the binary) means supplying them here.
+    export DEFAULT_VENV_DIR=".venv" ENV_FILE_NAME=".env" DEFAULT_PYTHON_VERSION="3.14.6"
+    # No version manager at all — the point of "skip (no pin)" is a machine
+    # (or an intent) without one. PATH still needs a runnable `python` for
+    # the venv build itself.
+    _stub_managers
+    mkdir -p "$TEST_DIR/.pybin"
+    ln -s "$PYVE_PYTHON" "$TEST_DIR/.pybin/python"
+    export PATH="$TEST_DIR/.pybin:$PATH"
+    # What the real wizard's skip selection produces via dynamic scope.
+    _init_wizard() {
+        backend_flag="venv"
+        python_pin_skipped=true
+    }
+    run init_project --no-direnv
+    [ "$status" -eq 0 ]
+    [ ! -f .tool-versions ]
+    [ ! -f .python-version ]
+    [ -x .venv/bin/python ]
 }

@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.2.1] - Unreleased
+## [3.2.2] - Unreleased
+
+**The init wizard gets its terminal back.** Field-reported on a real project: bare `pyve init` on an interactive terminal answered none of its own questions — and tried to editable-install an app that was never a package.
+
+### Fixed
+
+- **Wizard prompts never appeared** (Story P.af.3) — the parameter-graph walk dispatched every prompt callback from inside a loop fed by a here-string, so fd 0 inside the callbacks *was* the here-string: every TTY check failed and every node silently took its non-interactive branch. On a real terminal, `pyve init` showed "auto-detected" summaries instead of the backend / Python-version / project-guide selects. A v3.1.0 regression (every v3.1.0–v3.2.1 release affected); the walk now collects the graph rows first and dispatches with the caller's stdin intact.
+- **`skip (no pin)` now actually skips the pin** (Story P.af.3) — the wizard's skip selection previously changed nothing: materialization still required a version manager and wrote `.tool-versions` with the pyve default. Declining a pin now skips the version-manager requirement, the default-version install, and the pin file — the venv builds from `python` on PATH. Relatedly, the non-interactive summary line now reads `Python: <V> (pyve default)` instead of claiming "skipped (no pin)" while pinning anyway.
+- **No editable-install offer for a tool-config-only `pyproject.toml`** (Story P.af.3) — `pyve init` offered `pip install -e .` whenever `pyproject.toml` existed, including files that only carry `[tool.*]` settings for a flat-layout app — burying init in a setuptools auto-discovery failure. The offer is now gated on the file declaring `[project]` or `[build-system]` (or a legacy `setup.py`/`setup.cfg` alongside); parse failures degrade open, with pip staying the real authority.
+
+## [3.2.1] - 2026-07-24
 
 **A toolchain slot must hold the Python its name promises.** Field-discovered during v3.2.0's production validation: `toolchain/<V>/venv` could be built from whatever python the shell exposed, `check` then asserted `<V>` without probing, and an unbounded probe could hang `check` outright.
 

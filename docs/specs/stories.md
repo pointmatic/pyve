@@ -476,6 +476,35 @@ Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so
 
 ---
 
+### Story P.af.3: v3.2.2 — the init wizard never had a terminal (here-string stdin regression), skip-pin plumbing, and the tool-config pyproject trap [Done]
+
+*(Field-reported 2026-07-24 from a real project init (flat-layout FastAPI app): no wizard prompts on an interactive terminal, "Python: skipped (no pin)" followed by a 3.14.6 pin, an internal-jargon "project-guide: (env / CI default)" line, and a 50-line setuptools failure from an editable-install offer the project could never satisfy. Developer requested tracking as story "C.az.3" — that ID doesn't fit the Phase P scheme (Phase C is archived), so this landed as P.af.3; see the gate note.)*
+
+**Three defects, one transcript.**
+
+1. **The wizard has been silently non-interactive since v3.1.0.** `_init_wizard`'s graph walk dispatched every `_init_prompt_*` callback from inside `while read …; done <<<"$(pg_list_nodes)"` — so fd 0 inside every callback was the *here-string*, every `[[ -t 0 ]]` failed, and every node took its non-TTY branch on real terminals. The wizard's own TTY guard runs before the loop (stdin still the terminal), so nothing ever noticed; the unit suite exercises the wizard only under `PYVE_INIT_NONINTERACTIVE=1`, so no test drove a callback's stdin. Every v3.1.0–v3.2.1 release shipped with the designed interactive wizard dead. **Fix:** collect the rows first, dispatch from a plain `for` loop with the caller's stdin intact ([lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh)).
+2. **`skip (no pin)` was a no-op.** The skip selection left `python_version` at the seeded default, so materialization still demanded a version manager and wrote `.tool-versions` with the pyve default — and the non-TTY summary line claimed "skipped (no pin)" while doing it. **Fix:** the skip selection sets `python_pin_skipped` (dynamic scope); materialization then skips validation-of/install-of the default, the version-manager requirement, and the pin file — the venv builds from `python` on PATH (a pin-less init now works on a manager-less machine). The non-TTY summary line now tells the truth: `Python: <V> (pyve default)`.
+3. **Editable install offered for a non-installable `pyproject.toml`.** The offer keyed on file existence; a `[tool.*]`-only file (ruff config in a flat-layout app) fails setuptools auto-discovery with a wall of build output — twice per init. **Fix:** new `pyproject_declares_installable` ([lib/utils.sh](../../lib/utils.sh)) gates the offer on `[project]` / `[build-system]` (or legacy `setup.py`/`setup.cfg` alongside), parsed via the toolchain interpreter; parse failures degrade open (offer stands; pip stays the authority).
+
+**Tasks.**
+
+- [x] Red for 1: a stubbed prompt callback reading stdin receives a *graph row* instead of the marker fed to the wizard ([tests/unit/test_init_wizard.bats](../../tests/unit/test_init_wizard.bats)); green after the collect-then-dispatch rewrite. Pty verification: backend / manager / version / project-guide selects all render again.
+- [x] Red for 2: `init_project` with the wizard's skip signal hard-failed on the version-manager requirement; green after the plumbing — no `.tool-versions`, no manager needed, venv built from PATH `python`. Two tests that encoded the lying "skipped (no pin)" label updated to assert the truthful "(pyve default)" line.
+- [x] Red for 3: six `pyproject_declares_installable` / prompt-gate cases ([tests/unit/test_utils.bats](../../tests/unit/test_utils.bats)) — tool-config-only never offered; `[project]`, `[build-system]`, and legacy-setup layouts still offered. Pty verification on the field fixture: zero pyproject offers.
+- [x] `shellcheck` clean on both changed libs (pre-existing notes only); wizard file 81/81, utils file 67/67.
+- [x] Full unit suite green; integration wizard + reinit files compared against the P.af.2 pre-existing-failure baseline.
+- [x] Release staging: `VERSION` 3.2.1 → 3.2.2; CHANGELOG `[3.2.2]` entry; `[3.2.1]` heading dated 2026-07-24 (release housekeeping missed it); `usage.md` version example refreshed.
+
+**Prevention scan.**
+
+- [x] The wizard-interactivity test gap is closed by the stdin-marker test — the first test that drives a callback's fd 0 through the graph walk.
+- [ ] Candidate `project-essentials` entry — **"No reads inside redirected dispatch loops."** A loop that dispatches callbacks must not hold its work-list on fd 0 (`while read … <<<`/`| while read`): callbacks inherit that fd, TTY checks lie, and reads eat the work-list. Collect first, dispatch second (same shape as the SIGPIPE capture-then-grep rule).
+- [ ] The "(env / CI default)" project-guide summary label survives on genuine non-TTY runs — still internal jargon; reword when the wizard summary gets its next pass (P-3 UX polish candidate).
+
+**Version:** **v3.2.2** (patch, staged unreleased — date the CHANGELOG heading on release).
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.
