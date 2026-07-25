@@ -533,3 +533,50 @@ EOF
     [ "$status" -eq 0 ]
     [[ "$output" == *"Please answer yes or no"* ]]
 }
+
+#============================================================
+# pyproject_declares_installable — gate the editable-install offer
+#============================================================
+# A pyproject.toml that only carries tool config (e.g. [tool.ruff]) has
+# nothing `pip install -e .` can build; offering the install buries init
+# in a setuptools auto-discovery failure (flat-layout app projects).
+
+@test "pyproject_declares_installable: tool-config-only pyproject → non-installable" {
+    printf '[tool.ruff]\nline-length = 100\n' > pyproject.toml
+    run pyproject_declares_installable
+    [ "$status" -ne 0 ]
+}
+
+@test "pyproject_declares_installable: [project] table → installable" {
+    printf '[project]\nname = "demo"\nversion = "0.1.0"\n' > pyproject.toml
+    run pyproject_declares_installable
+    [ "$status" -eq 0 ]
+}
+
+@test "pyproject_declares_installable: [build-system] only → installable" {
+    printf '[build-system]\nrequires = ["setuptools"]\n' > pyproject.toml
+    run pyproject_declares_installable
+    [ "$status" -eq 0 ]
+}
+
+@test "pyproject_declares_installable: tool-config pyproject + setup.py → installable (legacy layout)" {
+    printf '[tool.ruff]\nline-length = 100\n' > pyproject.toml
+    touch setup.py
+    run pyproject_declares_installable
+    [ "$status" -eq 0 ]
+}
+
+@test "pyproject_declares_installable: no pyproject.toml → non-installable" {
+    run pyproject_declares_installable
+    [ "$status" -ne 0 ]
+}
+
+@test "prompt_install_pip_dependencies: tool-config-only pyproject is never offered" {
+    printf '[tool.ruff]\nline-length = 100\n' > pyproject.toml
+    mkdir -p .venv/bin && printf '#!/bin/sh\nexit 0\n' > .venv/bin/pip && chmod +x .venv/bin/pip
+    # No requirements.txt → with the pyproject gated out, there is nothing
+    # to install and no prompt may reach stdin.
+    run prompt_install_pip_dependencies "venv" "$PWD/.venv" </dev/null
+    [ "$status" -eq 0 ]
+    [[ "$output" != *"pyproject.toml"* ]]
+}

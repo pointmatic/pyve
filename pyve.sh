@@ -29,7 +29,7 @@ set -euo pipefail
 # Configuration
 #============================================================
 
-VERSION="3.2.1"
+VERSION="3.2.2"
 # The pinned default Python: the version `pyve init` offers a new project
 # AND the version the toolchain slot promises (toolchain/<V>/venv must
 # hold <V> — strict, never built from a fallback interpreter). The env

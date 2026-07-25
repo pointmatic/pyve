@@ -84,6 +84,38 @@ prompt_yes_no() {
     done
 }
 
+# True (0) when pyproject.toml declares something `pip install -e .` can
+# build: a `[project]` or `[build-system]` table, or a legacy setup.py /
+# setup.cfg alongside. A tool-config-only pyproject.toml (just [tool.*] —
+# ruff/black settings in a flat-layout app) has nothing to install, and
+# offering an editable install for it buries init in a setuptools
+# auto-discovery failure. Degrades open: when the file cannot be parsed
+# (no tomllib, malformed TOML), report installable and let pip be the
+# authority — its failure path already warns.
+pyproject_declares_installable() {
+    [[ -f "pyproject.toml" ]] || return 1
+    if [[ -f "setup.py" || -f "setup.cfg" ]]; then
+        return 0
+    fi
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    local rc=0
+    "$py" -c '
+import sys
+try:
+    import tomllib
+    with open("pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+except Exception:
+    sys.exit(2)
+sys.exit(0 if ("project" in data or "build-system" in data) else 1)
+' >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        1) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 # Prompt to install pip dependencies after environment creation
 # Detects pyproject.toml or requirements.txt and prompts user to install
 # Respects --auto-install-deps and --no-install-deps flags
@@ -102,7 +134,9 @@ prompt_install_pip_dependencies() {
     local has_pyproject=false
     local has_requirements=false
     
-    if [[ -f "pyproject.toml" ]]; then
+    # Only an installable pyproject.toml earns the editable-install offer —
+    # a tool-config-only file is skipped, not offered-and-failed.
+    if pyproject_declares_installable; then
         has_pyproject=true
     fi
     
