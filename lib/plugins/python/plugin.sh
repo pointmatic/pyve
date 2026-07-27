@@ -1714,6 +1714,152 @@ _init_resolve_scaffold_conda_lock() {
     return 0
 }
 
+#============================================================
+# Dependency installation (Python-owned)
+#============================================================
+# pyproject / pip / editable-install are Python-specific concerns, so
+# they live with the Python plugin rather than the general core — the
+# same encapsulation the Node plugin already has for its pnpm/npm
+# install. Both helpers are called from init_project's materializers.
+
+# True (0) when pyproject.toml declares something `pip install -e .` can
+# build: a `[project]` or `[build-system]` table, or a legacy setup.py /
+# setup.cfg alongside. A tool-config-only pyproject.toml (just [tool.*] —
+# ruff/black settings in a flat-layout app) has nothing to install, and
+# offering an editable install for it buries init in a setuptools
+# auto-discovery failure. Degrades open: when the file cannot be parsed
+# (no tomllib, malformed TOML), report installable and let pip be the
+# authority — its failure path already warns.
+_python_plugin_pyproject_declares_installable() {
+    [[ -f "pyproject.toml" ]] || return 1
+    if [[ -f "setup.py" || -f "setup.cfg" ]]; then
+        return 0
+    fi
+    local py
+    py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"
+    local rc=0
+    "$py" -c '
+import sys
+try:
+    import tomllib
+    with open("pyproject.toml", "rb") as f:
+        data = tomllib.load(f)
+except Exception:
+    sys.exit(2)
+sys.exit(0 if ("project" in data or "build-system" in data) else 1)
+' >/dev/null 2>&1 || rc=$?
+    case "$rc" in
+        1) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
+# Prompt to install pip dependencies after environment creation
+# Detects pyproject.toml or requirements.txt and prompts user to install
+# Respects --auto-install-deps and --no-install-deps flags
+# Usage: _python_plugin_prompt_install_deps [backend] [env_path]
+#   backend: "venv" or "micromamba" (optional, defaults to venv)
+#   env_path: path to micromamba environment (required if backend is micromamba)
+_python_plugin_prompt_install_deps() {
+    local backend="${1:-venv}"
+    local env_path="${2:-}"
+
+    # Check for --no-install-deps flag
+    if [[ "${PYVE_NO_INSTALL_DEPS:-}" == "1" ]]; then
+        return 0
+    fi
+
+    local has_pyproject=false
+    local has_requirements=false
+
+    # Only an installable pyproject.toml earns the editable-install offer —
+    # a tool-config-only file is skipped, not offered-and-failed.
+    if _python_plugin_pyproject_declares_installable; then
+        has_pyproject=true
+    fi
+
+    if [[ -f "requirements.txt" ]]; then
+        has_requirements=true
+    fi
+
+    # Nothing to install
+    if [[ "$has_pyproject" == false ]] && [[ "$has_requirements" == false ]]; then
+        return 0
+    fi
+
+    echo ""
+
+    # Determine pip command based on backend
+    local pip_cmd
+    if [[ "$backend" == "micromamba" ]]; then
+        if [[ -z "$env_path" ]]; then
+            log_warning "Cannot install pip dependencies: micromamba env_path not provided"
+            return 1
+        fi
+        local micromamba_path
+        micromamba_path="$(get_micromamba_path)"
+        if [[ -z "$micromamba_path" ]]; then
+            log_warning "Cannot install pip dependencies: micromamba not found"
+            return 1
+        fi
+        pip_cmd="$micromamba_path run -p $env_path pip"
+    else
+        # venv backend: use the venv's own pip to avoid the asdf shim
+        # (which installs into the base Python and auto-reshims).
+        if [[ -z "$env_path" ]]; then
+            log_warning "Cannot install pip dependencies: venv env_path not provided"
+            return 1
+        fi
+        pip_cmd="$env_path/bin/pip"
+        if [[ ! -x "$pip_cmd" ]]; then
+            log_warning "Cannot install pip dependencies: pip not found at $pip_cmd"
+            return 1
+        fi
+    fi
+
+    # Auto-install mode (CI or --auto-install-deps flag)
+    if [[ -n "${CI:-}" ]] || [[ "${PYVE_AUTO_INSTALL_DEPS:-}" == "1" ]]; then
+        if [[ "$has_pyproject" == true ]]; then
+            log_info "Auto-installing dependencies from pyproject.toml..."
+            $pip_cmd install -e . || log_warning "Failed to install from pyproject.toml"
+        fi
+        if [[ "$has_requirements" == true ]]; then
+            log_info "Auto-installing dependencies from requirements.txt..."
+            $pip_cmd install -r requirements.txt || log_warning "Failed to install from requirements.txt"
+        fi
+        return 0
+    fi
+
+    # Interactive mode: prompt for each file
+    if [[ "$has_pyproject" == true ]]; then
+        printf "Install pip dependencies from pyproject.toml? [Y/n]: "
+        read -r response
+
+        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+            log_info "Installing dependencies from pyproject.toml..."
+            if $pip_cmd install -e .; then
+                log_success "Installed dependencies from pyproject.toml"
+            else
+                log_warning "Failed to install from pyproject.toml"
+            fi
+        fi
+    fi
+
+    if [[ "$has_requirements" == true ]]; then
+        printf "Install pip dependencies from requirements.txt? [Y/n]: "
+        read -r response
+
+        if [[ -z "$response" ]] || [[ "$response" =~ ^[Yy]$ ]]; then
+            log_info "Installing dependencies from requirements.txt..."
+            if $pip_cmd install -r requirements.txt; then
+                log_success "Installed dependencies from requirements.txt"
+            else
+                log_warning "Failed to install from requirements.txt"
+            fi
+        fi
+    fi
+}
+
 init_project() {
     local venv_dir="$DEFAULT_VENV_DIR"
     # Python-version default is read from the decision-graph (the single source
@@ -2154,7 +2300,7 @@ init_project() {
         info "Environment location: $env_path"
 
         # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
-        prompt_install_pip_dependencies "micromamba" "$env_path"
+        _python_plugin_prompt_install_deps "micromamba" "$env_path"
 
         # Gentle nudge (Story N.bf.9): if conda-lock is declared but no lock
         # exists yet, point the user at `pyve lock` — no auto-lock, no error.
@@ -2256,7 +2402,7 @@ init_project() {
     _venv_abs="$(cd "$venv_dir" && pwd)"
 
     # Prompt to install pip dependencies if pyproject.toml or requirements.txt exists
-    prompt_install_pip_dependencies "venv" "$_venv_abs"
+    _python_plugin_prompt_install_deps "venv" "$_venv_abs"
 
     # hand the stack-agnostic composition tail (compose
     # .envrc/.gitignore → project-guide → next-steps) up to compose_init
