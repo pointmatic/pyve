@@ -389,7 +389,7 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 ---
 
-### Story P.af: v3.2.0 Tag release and validate in production [Planned]
+### Story P.af: v3.2.0 Tag release and validate in production [Done]
 
 **Scope.** Owns Subphase P-2's minor bump per the phase's multi-release exception (mirrors P.u's shape for v3.1.0).
 
@@ -397,8 +397,8 @@ This is the **detection** half; the heal action it feeds (Pillar 3 / Story P.ab)
 
 - [x] Pre-flight: full unit + integration suites green on main; CHANGELOG complete for every P-2 story; docs site builds clean. *(Bats 2269 + integration 217 green — the latter twice: the first pre-flight run tripped the P.v real-home guard on a genuine mid-window mutation of real hosting (a full `self provision` at 21:01:09 Jul 10 — pyyaml/tomlkit upgraded, project-guide 2.15→2.17.0, shim re-linked); solo re-runs of both suites under a live filesystem watcher were mutation-free, exonerating both suites — the developer confirmed they ran `pyve self provision` at that moment to verify project-guide was current. A true positive on a benign concurrent write. CHANGELOG covers all 11 P-2 stories; `mkdocs build --strict` clean.)*
 - [x] Release staging is the LLM's job, in-repo: bump `VERSION` in `pyve.sh` (the single source of truth — verified: `lib/version.sh` is comparison helpers only; test fixtures inject their own; docs examples updated alongside), date the CHANGELOG entry. The developer then releases with git alone: commit, tag `v3.2.0`, push, GitHub/Homebrew-formula steps. *(The original task text said "developer invokes `project-guide bump-version`" — wrong on two counts: that command mutates `pyproject.toml`, which this bash project doesn't have, and it is deprecated in project-guide — a leftover from the Python-specific era of both tools. Corrected here and staged accordingly. Staged and verified: `bash pyve.sh --version` → `pyve version 3.2.0`; CHANGELOG dated `[3.2.0] - 2026-07-11`; `usage.md` example updated; no stale `3.1.0` strings outside archives; the CHANGELOG link-reference block ends at 1.5.1 by house style, so no new ref.)*
-- [ ] Validate in production on a real project: an incident-shaped fixture (dead shim / drifted venv / dead-wrapper env) → `pyve check` names it, heal repairs it with confirmation, re-check goes green.
-- [ ] Post-release: verify the `brew upgrade` path and a clean-clone `pyve self install`; confirm the docs site deployed.
+- [x] Validate in production on a real project: an incident-shaped fixture (dead shim / drifted venv / dead-wrapper env) → `pyve check` names it, heal repairs it with confirmation, re-check goes green. *(Run against the Homebrew-installed v3.2.1 in a fully sandboxed fake `$HOME`: a five-fault fixture (dead-shebang root + named env, venv↔pin drift, orphan tree, dead hosting) → `check` named every class with role-correct hints (never `pyve env purge root`); `--fix` non-TTY = report-only, `--fix --yes` non-TTY = destructive tier reported-and-skipped (CI-safe), TTY-confirmed run rebuilt root (real 3.14.6, drift healed), removed the orphan, and honestly reported one partial failure with the retry hint (traced to the test harness's prompt feed, not the product — the verb succeeds with `PYVE_FORCE_YES`); re-check exit 0, canary certifying live wrappers (`pip 26.1.2`), heal reporting "Nothing to heal". Also field-validated the hard way by P.af.1 (the v3.2.1 toolchain-slot bug was found by exactly this task).)*
+- [x] Post-release: verify the `brew upgrade` path and a clean-clone `pyve self install`; confirm the docs site deployed. *(Brew path: the installed `/opt/homebrew/bin/pyve` is 3.2.1 delivered via the tap formula at v3.2.1 — the tag→formula flow demonstrably worked; the v3.2.2 formula bump is still pending on the developer's release flow. Docs site: live diagnostics page carries the P-2 content (verdicts, `check --fix`, finding classes). Clean-clone `self install` at v3.2.2 in a sandbox: full tree installed, sandbox binary runs 3.2.2, toolchain venv + hosted project-guide provisioned under strict slot rules — **and the run caught a real bug**: `install_self` exits 1 mid-function on machines with an empty rc file (the prompt-hook idempotency strip at `lib/commands/self.sh:248` — `grep -vF … > tmp` — returns grep's no-lines-selected status under `set -euo pipefail`), silently skipping the prompt hook and all later steps. Broken only on clean/CI-shaped machines, invisible on dev rc files — proposed as Story P.af.4.)*
 
 ---
 
@@ -505,6 +505,39 @@ Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so
 
 ---
 
+### Story P.ag: Upstream change request — retire `bump-version`, make project-guide's release step language-agnostic [Done]
+
+*(Cross-repo coordination per the essentials rule: request, don't work around. Surfaced during P.af's handoff — the story-templated `project-guide bump-version 3.2.0` instruction proved doubly wrong for this repo: the command mutates `pyproject.toml`, which a bash project doesn't have, and the maintainer regards it as deprecated. Root cause traced to project-guide's own installed guidance — the `plan_production_phase` mode template (step 10) and `developer/best-practices-guide.md` — which every planning session transcribes into consumer release stories: three consecutive pyve releases (N.bu, P.u, P.af) carried the instruction in a repo that could never run it.)*
+
+**Tasks.**
+
+- [x] Draft the self-contained change-request spec at [project-guide-requests/language-agnostic-release-step.md](project-guide-requests/language-agnostic-release-step.md): problem statement with the pyve field evidence; proposed template step-10 rewrite (LLM stages version source(s) of truth + dated CHANGELOG in-repo; developer releases with git/platform actions); a `project-essentials.md` "Version source of truth" entry so staging is mechanical; Category B-style hard retirement of the `bump-version` command; guidance sweep; compatibility notes (no pyve min-version dependency — instructional surface only).
+- [x] Correct this repo's live instance: P.af's release-staging task text rewritten (P.af task 2) and v3.2.0 staged in-repo accordingly.
+
+---
+
+### Story P.ah: Relocate Python dependency-install helpers into the Python plugin — core stays language-agnostic (Tier 1) [Done]
+
+*(Refactor surfaced during the myntagency-io field diagnosis: the pyproject/pip editable-install logic that fails on flat-layout FastAPI apps lived in the general core `lib/utils.sh`, not the Python plugin — asymmetric with Node, which already owns its pnpm/npm install inside its own plugin. This is the **Tier-1 relocation**; the Tier-2 declaration-driven redesign is the P-4 candidate above.)*
+
+**Why.** `pyproject_declares_installable` and `prompt_install_pip_dependencies` are 100% Python-specific (pyproject / pip / `install -e .` / setuptools) yet were defined in the general core `lib/utils.sh`. Their only callers were the Python plugin's init materializers. Per the plugin architecture (adapters own language-specific behavior — the Node plugin already owns `_node_provider_run_install`) and Phase P's anti-magic tenet, this logic belongs with the Python plugin, not core. A behavior-preserving move — no functional change, no version bump.
+
+**Tasks.**
+
+- [x] Move both functions `lib/utils.sh` → [lib/plugins/python/plugin.sh](../../lib/plugins/python/plugin.sh) (just above `init_project`, their caller), renamed to the plugin's `_python_plugin_*` idiom: `_python_plugin_pyproject_declares_installable`, `_python_plugin_prompt_install_deps`. Bodies unchanged; the internal `pyproject → prompt` call renamed with them.
+- [x] Update the two callers (venv + micromamba init materializers); `lib/utils.sh` keeps a one-line breadcrumb pointing at the new home.
+- [x] Relocate the 8 tests `tests/unit/test_utils.bats` → new [tests/unit/test_python_plugin_deps.bats](../../tests/unit/test_python_plugin_deps.bats) (sources the plugin), renamed to the new function names; `test_utils.bats` no longer references either name.
+- [x] Full unit suite green (behavior-preserving — **2295 pass, 0 fail**; the 8 relocated tests pass at their new home); `shellcheck` clean on both changed libs (pre-existing info-notes only).
+
+**Prevention scan.**
+
+- [x] Grepped the whole tree for both names before renaming — only the Python plugin + their tests referenced them, so the rename is total (no cross-cutting callers).
+- [ ] Candidate `project-essentials` entry — **"Language-specific logic lives in its plugin, not core."** pyproject/pip belong to the Python plugin; pnpm/npm to the Node plugin; `lib/utils.sh` and the other `lib/*.sh` core files stay language-agnostic. Before adding a language-named helper to core, put it in the plugin (same spirit as the `lib/ui/` pyve-agnostic boundary rule).
+
+**Version:** none (internal refactor, no behavior change — rides the next release).
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.
@@ -526,6 +559,23 @@ A parking lot of detailed candidate bodies. Each is assigned to a later subphase
 **Scope.** Enrich the plugin layer beyond the contract-proving baseline — deeper, language-aware behavior in the reference plugins, and any generalizable "language-flavor advisory" pattern future plugins inherit. Thin today; grows as plugin needs surface.
 
 **Candidate stories** (in `## Future`): deeper TypeScript integration for the Node plugin (`tsconfig.json` detection, `tsc --noEmit` advisories, opt-in pre-test type-check).
+
+### Candidate: Declaration-driven dependency materialization (a cross-plugin contract)
+
+**Problem.** Each language plugin installs dependencies **imperatively, by sniffing the filesystem at init time and guessing** — Python asks "does the `pyproject.toml` look installable?" and offers `pip install -e .`; Node picks a provider from whichever lockfile it finds and runs `pnpm/npm install`. Three failure modes have shown up in the field (wardcentral, myntagency-io — both Replit-generated FastAPI + SvelteKit repos):
+
+1. **The guess is wrong.** A `[project]`-metadata-only `pyproject.toml` (no `[build-system]`, deps live in `requirements.txt`) passes the installability guess, so init offers `pip install -e .` and buries the user in a setuptools flat-layout auto-discovery traceback (`Multiple top-level packages discovered: ['app', 'config', 'static']`). P.af.3 narrowed this (skips `[tool.*]`-only files) but the `[project]`-metadata-only case still slips through — because a filesystem guess can't know the layout is unbuildable.
+2. **The install is never recorded.** init installs from `requirements.txt` as a one-time side effect but writes **nothing** to `pyve.toml`, so the manifest can't reproduce the env — the root env has deps installed but no `requirements = [...]` declared. Violates the v3 "reproducible from the declaration alone" tenet; the user must hand-edit the manifest to make `pyve env install` / a rebuild work.
+3. **The logic was mislocated** (Python-specific dep-install code lived in the general core `lib/utils.sh` until the Tier-1 relocation — see [the relocation story]; Node already owns its install inside its plugin, so Python was the outlier).
+
+**Needed implementation.**
+
+- **Materialize from the declaration, not the filesystem.** Each plugin installs deps from the env's *declared* directives (`requirements` / `editable` / `extra` / `manifest` for Python; the provider + lockfile for Node) rather than sniffing-and-guessing. The `requirements ⊕ editable ⊕ extra` reader already exists ([lib/pyve_toml_helper.py](../../lib/pyve_toml_helper.py)); the missing half is init writing those directives.
+- **init back-fills the manifest.** When init detects/installs from `requirements*.txt` or an editable `pyproject.toml`, it records what it did on the matching env block (`[env.root].requirements = ["requirements.txt"]` / `editable = "."`; `[env.testenv].requirements = ["requirements-dev.txt"]`) so the declaration is self-describing.
+- **Demote the heuristic to the undeclared case.** `_python_plugin_pyproject_declares_installable` (the installability guess) becomes a fallback used *only* when the manifest declares nothing — or is retired once init writes the declaration. Once dep-install is declaration-driven, the offer-and-fail failure mode has **no code path to occur**.
+- **Lift it into a plugin-contract hook.** A `materialize_deps` (install-from-declaration) hook every language plugin implements makes "how deps get installed" uniform and declaration-driven across Python / Node / future plugins — squarely P-4's "generalizable pattern future plugins inherit" scope. This is the **Tier-2** design; the Tier-1 relocation (moving the Python dep-install helpers into the Python plugin) is its prerequisite and is done.
+
+This also completes the arc begun in the Phase-P env-lifecycle concept ([env-lifecycle-concept.md](env-lifecycle-concept.md)): the declaration should *fully* describe an env so one command reproduces it — dependency population being the piece init currently performs but never records.
 
 **Story breakdown deferred** to its own `plan_production_phase` session.
 
