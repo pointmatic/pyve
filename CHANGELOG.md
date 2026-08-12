@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+**Tab completion for `project-guide` actually registers now.** The block pyve appends to your shell rc had never worked on a Homebrew install — two independent defects, both silent. *(Version deliberately unassigned: this is one part of a broader "a pyve-provisioned project-guide doesn't act installed" problem still being scoped; the release ships once that is resolved whole.)*
+
+### Fixed
+
+- **`project-guide` completion never registered** (Story P.ai, [#70](https://github.com/pointmatic/pyve/issues/70)) — the emitted rc block guarded on `command -v project-guide`, but pyve hosts the shim at `~/.local/bin/project-guide` and only ever adds that directory to `PATH` inside `pyve self install`. Provisioning by any other route (Homebrew + `pyve self provision`, `pyve check --fix`, or the lazy ensure-on-init) left the guard false, so the block evaluated nothing. Independently, the generated zsh script ends in `compdef`, which does not exist until `compinit` has run — a shell whose startup files never initialize the completion system got `command not found: compdef`. The block now resolves the hosted shim by absolute path (falling back to `PATH` for a hand-installed project-guide) and bootstraps `compinit` when needed, staying a silent, clean no-op when project-guide is genuinely absent. **Note:** an rc file already carrying the old block is not repaired automatically — the insertion is sentinel-idempotent. Remove the `# >>> project-guide completion (added by pyve) >>>` block and re-run completion wiring to pick up the fix.
+
 ## [3.2.2] - Unreleased
 
 **The init wizard gets its terminal back.** Field-reported on a real project: bare `pyve init` on an interactive terminal answered none of its own questions — and tried to editable-install an app that was never a package.

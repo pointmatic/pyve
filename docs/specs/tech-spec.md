@@ -1564,16 +1564,30 @@ Testenv creation prompt, `--bootstrap-to`, `--auto-bootstrap`, `--force`, `--env
 
 The `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
 
-```bash
+```zsh
 # >>> project-guide completion (added by pyve) >>>
-command -v project-guide >/dev/null 2>&1 && \
-  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+_pyve_pg_bin="$HOME/.local/bin/project-guide"
+[ -x "$_pyve_pg_bin" ] || _pyve_pg_bin="$(command -v project-guide 2>/dev/null || true)"
+if [ -n "$_pyve_pg_bin" ]; then
+  (( $+functions[compdef] )) || { autoload -Uz compinit && compinit -i; } 2>/dev/null
+  if (( $+functions[compdef] )); then
+    eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source "$_pyve_pg_bin" 2>/dev/null)"
+  fi
+fi
+unset _pyve_pg_bin
 # <<< project-guide completion <<<
 ```
 
+The bash block is the same shape without the `compdef` guard (bash's `complete` is always available) and with `bash_source`.
+
+Two properties are load-bearing, both of them defects fixed after the field found the block was a **silent no-op** on a Homebrew install:
+
+- **Resolution is by absolute hosted path first, PATH second.** The shim lives at `~/.local/bin/project-guide`, and that directory only reaches `PATH` via `_self_install_update_path`, which runs *only* inside `pyve self install`. Every other provisioning route (Homebrew + `self provision`, `heal`, the lazy `pyve_project_guide_ensure`) creates the shim without touching `PATH` — so a bare `command -v project-guide` guard is false and the block evaluates nothing. Pyve's own callsites never surfaced this because `pyve_project_guide` resolves the hosted absolute path and deliberately ignores `PATH`. The `command -v` tier remains as the fallback for a hand-installed, non-hosted project-guide.
+- **zsh's completion system is bootstrapped, not assumed.** The generated script ends in `compdef …`, which does not exist until `compinit` has run. A user whose startup files never run `compinit` got `command not found: compdef` — masked in practice, because the `PATH` defect meant the eval never ran at all. The block bootstraps `compinit -i` when `compdef` is absent, re-checks, and skips registration rather than erroring; when the user's own config already ran `compinit`, it is left alone.
+
 The opening sentinel comment (`# >>> project-guide completion (added by pyve) >>>`) is the source of truth for idempotent insertion and removal:
 
-- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the eval block via an unquoted heredoc (a doubled `\\` followed by a real newline produces a proper shell line continuation in the output — see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead). Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
+- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the block via an unquoted heredoc, escaping `\$(...)` so the substitution is written literally and evaluates at shell startup rather than at block-construction time (see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead of a real newline). Emits a shell-specific block — the `compdef` guard is zsh-only. Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
 - **SDKMan-aware insertion** (`insert_text_before_sdkman_marker_or_append` in `lib/utils.sh`, v1.13.1+, Story G.e): if the SDKMan end-of-file marker `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present in the rc file, the new block is inserted *immediately above* it via awk so SDKMan retains its required last-position. Otherwise the block is appended to the end. Always emits a leading blank line before the inserted block (unless the file is empty in the SDKMan-absent case), which gives `remove_project_guide_completion` a stable preceding-blank to consume and guarantees byte-identical add → remove round-trips. The same helper is used by `install_prompt_hook` (currently in `pyve.sh`; moves alongside `init`/project-guide integration during the command-module extraction phase) so the prompt hook and the completion block share one SDKMan-aware code path.
 - **Removal** (`remove_project_guide_completion` in `lib/utils.sh`): removes only the sentinel-bracketed block plus one immediately-preceding blank line (so add → remove round-trips cleanly). Awk-based, BSD/GNU compatible.
 - **Detection** (`is_project_guide_completion_present` in `lib/utils.sh`): a single `grep -qF` against the opening sentinel.

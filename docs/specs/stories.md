@@ -538,6 +538,41 @@ Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so
 
 ---
 
+### Story P.ai: The project-guide completion block never registered (PATH-blind guard + assumed `compinit`) [Done]
+
+*(Field-reported as [issue #70](https://github.com/pointmatic/pyve/issues/70), reproduced and root-caused on the reporter's machine before hand-off. Placed as `P.ai` — appended after `P.ah` under the existing phase, the same way `P.ag`/`P.ah` were, rather than opening a new phase heading for a one-file bugfix.)*
+
+**The bug.** The completion block pyve appends to `~/.zshrc` was a silent no-op. Typing `project-guide <TAB>` fell through to filename completion, with no error to explain it. **Two independent defects**, either sufficient on its own:
+
+1. **The guard is PATH-blind.** The block led with `command -v project-guide >/dev/null 2>&1 && …`. Pyve hosts the shim at `~/.local/bin/project-guide`, and that directory only reaches `PATH` via `_self_install_update_path` ([lib/commands/self.sh](../../lib/commands/self.sh)) — called from exactly one place, `self install`. Every *other* provisioning route creates the shim and never touches `PATH`: Homebrew + `pyve self provision` ([self.sh](../../lib/commands/self.sh)), `pyve check --fix` ([lib/heal.sh](../../lib/heal.sh)), and the lazy `pyve_project_guide_ensure` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)). So on a Homebrew install the guard is false and the block evaluates nothing.
+2. **`compinit` is assumed, not established.** Click's `zsh_source` output ends in `compdef _project_guide_completion project-guide`. When no startup file has initialized zsh's completion system, `compdef` does not exist and the eval dies with `command not found: compdef`.
+
+Defect 1 masks defect 2 — the eval never runs, so its error never prints. Both are silent by construction: the guard fails quietly by design and `2>/dev/null` (load-bearing since M.b) suppresses the generator's stderr.
+
+**Why pyve never noticed.** Its own callsites resolve project-guide by *hosted absolute path* — `pyve_project_guide` deliberately ignores `PATH` (the N.bf.22 anti-asdf-shim fix). Only the emitted rc snippet, the one surface that used a bare command name, was exposed. The existing tests missed it because they asserted the block's *text* (`grep -qF "command -v project-guide"`) and its *syntax* (`zsh -n`), never its *effect*. The one behavioral test (M.b, stderr leak) sourced the zsh block with **bash** and asserted only the absence of one string.
+
+**Tasks.**
+
+- [x] Reproduce both defects in an isolated zsh against a Click-shaped fake generator: guard false with the shim off `PATH`; `command not found: compdef` with it on `PATH` but no `compinit`; both green with `PATH` + `compinit` (matches the reporter's trace exactly).
+- [x] Write the failing tests **first** — five behavioral tests in [tests/unit/test_project_guide.bats](../../tests/unit/test_project_guide.bats) that source the emitted block in a real zsh/bash and assert `$_comps[project-guide]` / `complete -p` registration: shim off `PATH`; `compdef` undefined; user's own `compinit` already run; project-guide absent entirely (silent, clean exit); bash block off `PATH`. All five failed pre-fix.
+- [x] Fix `add_project_guide_completion` ([lib/utils.sh](../../lib/utils.sh)): resolve `$HOME/.local/bin/project-guide` by absolute path first and fall back to `command -v` (keeps a hand-installed project-guide working); bootstrap `compinit -i` when `compdef` is absent, re-check, and skip registration rather than erroring. The block is now shell-specific — the `compdef` guard is zsh-only — and ends on `unset`, so a no-op block also exits 0 (it previously returned non-zero when the guard was false).
+- [x] Correct two tests that were pinned to the old block's incidental shape: the G.e assertion `grep -qE '&& \\$'` (the block no longer uses a line continuation — the durable invariant, "no literal `\n`", is retained and the eval-on-its-own-line check restated), and the M.b stderr-leak test, which sourced a **zsh** block with **bash** and so exercised it only incidentally — now runs under zsh behind the established `command -v zsh || skip` guard.
+- [x] Update the stale block reproduced verbatim in [tech-spec.md](tech-spec.md) § "project-guide rc-file Sentinel", plus the insertion bullet describing the removed `\\` continuation; document both load-bearing properties so the next editor doesn't re-simplify the guard back to `command -v`.
+- [x] Full unit suite green — **2300 pass, 0 fail** (2295 + the 5 new). `shellcheck lib/utils.sh` clean (the two SC2086/SC2016 info notes are pre-existing, verified identical against `HEAD`).
+
+**Prevention scan.**
+
+- [x] Swept `lib/` + `pyve.sh` for other emitted-snippet or hosted-tool resolutions that trust `PATH`. The only remaining bare `command -v project-guide` is in `pyve_project_guide_available` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) — that is the *documented* bare-PATH fallback tier, correct by design, not an instance of this bug.
+- [ ] **The larger finding this fix does not close: `~/.local/bin` is never put on `PATH` outside `pyve self install`.** Completion is only the symptom the reporter noticed — on a Homebrew install the developer cannot invoke the hosted `project-guide` *at all*, yet the developer-facing convention in `project-essentials.md` quotes bare `project-guide mode <x>` commands. Either shim provisioning should own the `PATH` entry the way `self install` does (install-method-agnostic, matching `pyve_project_guide_ensure`'s stated contract), or `pyve check` should report "hosted but unreachable from your shell" — today it reports `provisioned` and is right, which is precisely why nothing surfaced it. Needs a scope decision, not a drive-by: writing `PATH` from a Homebrew-installed tool is a bigger commitment than fixing a completion block. **P-3 candidate.**
+- [ ] Candidate `project-essentials` entry — **"A generated snippet is code we ship; test its effect, not its text."** Every prior test of this block asserted substring presence or `sh -n` syntax; both stayed green through a total functional failure across multiple releases. When pyve emits shell code into a user's environment, at least one test must *execute* it in the target shell and assert the observable result. This is the emitted-code corollary of the runnability pillar ([[Health checks must probe runnability, not just existence]]): text ≠ syntax ≠ effect.
+- [ ] Housekeeping: `CHANGELOG.md`'s `## [3.2.2]` heading still reads `- Unreleased` although `v3.2.2` is tagged (at `585c9f3`). Date it on the next release pass.
+
+**Not fixed (deliberate).** Users whose rc file already carries the broken block are not retroactively repaired — `add_project_guide_completion` is sentinel-idempotent, so it no-ops on the old block. Re-wiring requires removing the sentinel block and re-running completion wiring. This matches the M.b precedent, and `pyve check --fix` is the right long-term home for detecting a stale block (P-3 candidate, folded into the `PATH` item above).
+
+**Version:** v3.2.3 (patch — bugfix). Carries Story P.ah's unversioned internal refactor, which had no user-facing behavior change.
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.

@@ -299,7 +299,7 @@ EOF
 # Bug 2: SDKMan-blind append breaks SDKMan load order
 #============================================================
 
-@test "add_project_guide_completion: emits a real newline + backslash, not literal '\\n' (G.e bug 2)" {
+@test "add_project_guide_completion: emits real newlines, not literal '\\n' (G.e bug 2)" {
     add_project_guide_completion "$HOME/.zshrc" zsh
 
     # The pre-G.e bug emitted the 2-char sequence (backslash + 'n')
@@ -307,11 +307,12 @@ EOF
     # appears anywhere in the file.
     ! grep -qF '\n' "$HOME/.zshrc"
 
-    # The continuation line and the eval line must both exist as
-    # SEPARATE lines. Use grep -nE to confirm the eval is on its
-    # own line (not joined onto the &&\\ line).
-    grep -qE '&& \\$' "$HOME/.zshrc"
-    grep -qE '^  eval ' "$HOME/.zshrc"
+    # The block must be genuinely multi-line, with the eval on a line of
+    # its own rather than collapsed onto its guard. (The block no longer
+    # uses a `&& \` line continuation — it guards with a nested `if` —
+    # so this asserts the durable invariant, not the old line shape.)
+    grep -qE '^ +eval "\$\(_PROJECT_GUIDE_COMPLETE=' "$HOME/.zshrc"
+    [ "$(wc -l < "$HOME/.zshrc")" -ge 5 ]
 }
 
 @test "add_project_guide_completion: emitted block is syntactically valid zsh (G.e bug 2)" {
@@ -359,11 +360,159 @@ exit 126
 SH
     chmod +x "$fakebin/project-guide"
 
-    # Source the rc block (the only content in this isolated rc) with
-    # the fake shim first on PATH. bats `run` captures stdout+stderr.
-    run env PATH="$fakebin:$PATH" bash -c 'source "$HOME/.zshrc"'
+    # Source the rc block (the only content in this isolated rc) with the
+    # fake shim first on PATH — under zsh, the shell the block is written
+    # for. (It used to be sourced with bash, which cannot parse the zsh
+    # compdef guard and so exercised the block only incidentally.)
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    run env HOME="$HOME" PATH="$fakebin:/usr/bin:/bin" zsh -f -c 'source "$HOME/.zshrc"'
     [ "$status" -eq 0 ]
     [[ "$output" != *"No version is set for command project-guide"* ]]
+}
+
+#============================================================
+# The emitted block must actually REGISTER the completion.
+#
+# Two independent defects each made it a silent no-op:
+#
+#   1. PATH. The block resolved `project-guide` through PATH via a
+#      `command -v` guard, but pyve hosts the shim at
+#      ~/.local/bin/project-guide and only ever puts that directory on
+#      PATH inside `pyve self install`. A Homebrew-installed pyve
+#      provisions the shim (self provision / heal / the lazy
+#      pyve_project_guide_ensure) and never wires PATH — so the guard is
+#      false and the eval never runs. Pyve's own callsites resolve the
+#      hosted ABSOLUTE path (deliberately ignoring PATH), which is why
+#      only the emitted rc block was affected.
+#
+#   2. compinit. Click's zsh_source output ends in `compdef ...`. When
+#      no startup file has initialized zsh's completion system, compdef
+#      does not exist and the eval dies with "command not found: compdef".
+#
+# Both fail silently: defect 1 prints nothing, and defect 2's error is
+# masked because defect 1 means the eval never runs.
+#
+# These are behavioral tests — they source the emitted block in a real
+# zsh and assert the handler is registered in $_comps.
+#============================================================
+
+# A hosted fake project-guide that emits a Click-shaped zsh completion
+# script (the `compdef` branch, as an eval'd — not autoloaded — source).
+_make_hosted_pg_completion() {
+    mkdir -p "$HOME/.local/bin"
+    cat > "$HOME/.local/bin/project-guide" << 'SH'
+#!/usr/bin/env bash
+if [[ "${_PROJECT_GUIDE_COMPLETE:-}" == "zsh_source" ]]; then
+cat <<'INNER'
+_project_guide_completion() { :; }
+if [[ $zsh_eval_context[-1] == loadautofunc ]]; then
+    _project_guide_completion "$@"
+else
+    compdef _project_guide_completion project-guide
+fi
+INNER
+    exit 0
+fi
+echo "project-guide, version 2.18.1"
+SH
+    chmod +x "$HOME/.local/bin/project-guide"
+}
+
+@test "add_project_guide_completion: zsh block registers completion when ~/.local/bin is off PATH (defect 1)" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    _make_hosted_pg_completion
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # A PATH with no project-guide on it at all — the field condition on a
+    # Homebrew install. The block must still find the hosted shim.
+    run env HOME="$HOME" PATH="/usr/bin:/bin" zsh -f -c \
+        'source "$HOME/.zshrc"; print -r -- "registered=${_comps[project-guide]-none}"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"registered=_project_guide_completion"* ]]
+}
+
+@test "add_project_guide_completion: zsh block bootstraps compinit when compdef is undefined (defect 2)" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    # PATH-only project-guide (no hosted shim) isolates the compinit defect
+    # from the PATH defect.
+    local fakebin="$TEST_DIR/fakebin"
+    mkdir -p "$fakebin"
+    HOME="$TEST_DIR/pgsrc" _make_hosted_pg_completion
+    mv "$TEST_DIR/pgsrc/.local/bin/project-guide" "$fakebin/project-guide"
+    [ ! -e "$HOME/.local/bin/project-guide" ]
+
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    run env HOME="$HOME" PATH="$fakebin:/usr/bin:/bin" zsh -f -c \
+        'print -r -- "compdef_before=${+functions[compdef]}"
+         source "$HOME/.zshrc"
+         print -r -- "registered=${_comps[project-guide]-none}"'
+    [ "$status" -eq 0 ]
+    # Precondition: the completion system really was uninitialized.
+    [[ "$output" == *"compdef_before=0"* ]]
+    [[ "$output" == *"registered=_project_guide_completion"* ]]
+    [[ "$output" != *"command not found: compdef"* ]]
+}
+
+@test "add_project_guide_completion: zsh block leaves an already-initialized compinit alone" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    _make_hosted_pg_completion
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    # compinit already run by the user's own config → the block must not
+    # re-run it, and must still register.
+    run env HOME="$HOME" PATH="/usr/bin:/bin" zsh -f -c \
+        'autoload -Uz compinit; compinit -i -d "$HOME/.zcompdump-user"
+         source "$HOME/.zshrc"
+         print -r -- "registered=${_comps[project-guide]-none}"'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"registered=_project_guide_completion"* ]]
+}
+
+@test "add_project_guide_completion: zsh block is a silent no-op when project-guide is absent" {
+    if ! command -v zsh >/dev/null 2>&1; then
+        skip "zsh not on PATH"
+    fi
+    # No hosted shim, nothing on PATH — completion is best-effort (FR-16):
+    # no output, no error, clean exit.
+    add_project_guide_completion "$HOME/.zshrc" zsh
+
+    run env HOME="$HOME" PATH="/usr/bin:/bin" zsh -f -c 'source "$HOME/.zshrc"'
+    [ "$status" -eq 0 ]
+    [ -z "$output" ]
+}
+
+@test "add_project_guide_completion: bash block resolves the hosted shim off PATH (defect 1)" {
+    _make_hosted_pg_completion
+    # Rewrite the fake to emit a bash-shaped completion registration.
+    # Note: real Click emits `complete -o nosort -F ...`; `-o nosort` needs
+    # bash >= 4.4 and errors on the macOS system bash 3.2, so the fixture
+    # registers without it — the block under test is what matters here.
+    cat > "$HOME/.local/bin/project-guide" << 'SH'
+#!/usr/bin/env bash
+if [[ "${_PROJECT_GUIDE_COMPLETE:-}" == "bash_source" ]]; then
+    echo '_project_guide_completion() { :; }'
+    echo 'complete -F _project_guide_completion project-guide'
+    exit 0
+fi
+echo "project-guide, version 2.18.1"
+SH
+    chmod +x "$HOME/.local/bin/project-guide"
+
+    add_project_guide_completion "$HOME/.bashrc" bash
+
+    run env HOME="$HOME" PATH="/usr/bin:/bin" bash -c \
+        'source "$HOME/.bashrc"; complete -p project-guide'
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"_project_guide_completion"* ]]
 }
 
 @test "add_project_guide_completion: SDKMan absent — block appended to end (G.e bug 1)" {

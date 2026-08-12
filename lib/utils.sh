@@ -310,31 +310,66 @@ add_project_guide_completion() {
         return 0
     fi
 
-    # Build the completion block via an unquoted heredoc. The doubled
-    # backslash before the embedded newline (\\) is critical: bash
-    # heredoc processing turns \\ into a single literal backslash,
-    # which is then followed by a real newline, producing a proper
-    # shell line-continuation in the output. The escaped \$(...) is
-    # likewise critical: it writes a literal $(...) substitution to
-    # the rc file so the eval runs at SHELL STARTUP, not at
-    # block-construction time.
+    # Build the completion block via an unquoted heredoc. The escaped
+    # \$(...) is critical: it writes a literal $(...) substitution to the
+    # rc file so the eval runs at SHELL STARTUP, not at block-construction
+    # time. Everything the block must evaluate at startup is escaped;
+    # only $PROJECT_GUIDE_COMPLETION_* and ${shell} interpolate here.
+    #
+    # Resolution is by ABSOLUTE hosted path first, PATH second. A bare
+    # `command -v project-guide` guard is not enough: the shim lives at
+    # ~/.local/bin/project-guide, and that directory only reaches PATH
+    # inside `pyve self install`. Every other provisioning route (Homebrew
+    # + `self provision`, `heal`, the lazy pyve_project_guide_ensure)
+    # creates the shim without touching PATH, so the guard is false and
+    # the block evaluates nothing. Pyve's own callsites never noticed —
+    # they resolve the hosted absolute path and deliberately ignore PATH.
+    # The PATH fallback keeps a hand-installed (non-hosted) project-guide
+    # working.
     #
     # The `2>/dev/null` on the substitution is load-bearing: at shell
-    # startup the project env is not yet active (direnv hasn't run), so
-    # `project-guide` resolves to an asdf shim. If the asdf-resolved
-    # Python has no project-guide installed, the shim errors noisily to
-    # stderr ("No version is set for command project-guide"). The
-    # `command -v` guard does not catch this — the shim FILE exists —
-    # so without stderr suppression the error leaks at every shell
-    # startup. Completion is best-effort (FR-16); degrade silently.
+    # startup the project env is not yet active (direnv hasn't run), so a
+    # PATH-resolved `project-guide` can be an asdf shim. If the
+    # asdf-resolved Python has no project-guide installed, the shim errors
+    # noisily to stderr ("No version is set for command project-guide") —
+    # an existence check cannot catch this, since the shim FILE exists.
+    # Completion is best-effort (FR-16); degrade silently.
+    #
+    # zsh only: the generated script ends in `compdef ...`, which does not
+    # exist until the completion system is initialized. A user whose
+    # startup files never run compinit would get "command not found:
+    # compdef" — so bootstrap it when absent, and skip registration
+    # entirely if it still is not available. When the user's own config
+    # already ran compinit, the guard leaves it alone.
     local block
-    block="$(cat <<EOF
+    if [[ "$shell" == "zsh" ]]; then
+        block="$(cat <<EOF
 $PROJECT_GUIDE_COMPLETION_OPEN
-command -v project-guide >/dev/null 2>&1 && \\
-  eval "\$(_PROJECT_GUIDE_COMPLETE=${shell}_source project-guide 2>/dev/null)"
+_pyve_pg_bin="\$HOME/.local/bin/project-guide"
+[ -x "\$_pyve_pg_bin" ] || _pyve_pg_bin="\$(command -v project-guide 2>/dev/null || true)"
+if [ -n "\$_pyve_pg_bin" ]; then
+  (( \$+functions[compdef] )) || { autoload -Uz compinit && compinit -i; } 2>/dev/null
+  if (( \$+functions[compdef] )); then
+    eval "\$(_PROJECT_GUIDE_COMPLETE=zsh_source "\$_pyve_pg_bin" 2>/dev/null)"
+  fi
+fi
+unset _pyve_pg_bin
 $PROJECT_GUIDE_COMPLETION_CLOSE
 EOF
 )"
+    else
+        block="$(cat <<EOF
+$PROJECT_GUIDE_COMPLETION_OPEN
+_pyve_pg_bin="\$HOME/.local/bin/project-guide"
+[ -x "\$_pyve_pg_bin" ] || _pyve_pg_bin="\$(command -v project-guide 2>/dev/null || true)"
+if [ -n "\$_pyve_pg_bin" ]; then
+  eval "\$(_PROJECT_GUIDE_COMPLETE=${shell}_source "\$_pyve_pg_bin" 2>/dev/null)"
+fi
+unset _pyve_pg_bin
+$PROJECT_GUIDE_COMPLETION_CLOSE
+EOF
+)"
+    fi
 
     insert_text_before_sdkman_marker_or_append "$rc_path" "$block"
 }
