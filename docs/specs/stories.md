@@ -542,6 +542,8 @@ Separately, `pyve_runnable_version` executed `<bin> --version` **unbounded**, so
 
 *(Field-reported as [issue #70](https://github.com/pointmatic/pyve/issues/70), reproduced and root-caused on the reporter's machine before hand-off. Placed as `P.ai` — appended after `P.ah` under the existing phase, the same way `P.ag`/`P.ah` were, rather than opening a new phase heading for a one-file bugfix.)*
 
+**Interim by design.** This repairs a live breakage — the `compdef` error fires at every shell startup on the developer's own machine, where `~/.local/bin` *is* on `PATH` so only defect 2 manifests — but it is pyve tracking a protocol it does not own. Completion wiring moves upstream to project-guide in **Story P.aj**; this block is deleted when that release lands. The `PATH` half of the same "doesn't act installed" problem is **Story P.ak**. The three together are the whole problem; the release is tagged once they are resolved, not per-story.
+
 **The bug.** The completion block pyve appends to `~/.zshrc` was a silent no-op. Typing `project-guide <TAB>` fell through to filename completion, with no error to explain it. **Two independent defects**, either sufficient on its own:
 
 1. **The guard is PATH-blind.** The block led with `command -v project-guide >/dev/null 2>&1 && …`. Pyve hosts the shim at `~/.local/bin/project-guide`, and that directory only reaches `PATH` via `_self_install_update_path` ([lib/commands/self.sh](../../lib/commands/self.sh)) — called from exactly one place, `self install`. Every *other* provisioning route creates the shim and never touches `PATH`: Homebrew + `pyve self provision` ([self.sh](../../lib/commands/self.sh)), `pyve check --fix` ([lib/heal.sh](../../lib/heal.sh)), and the lazy `pyve_project_guide_ensure` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)). So on a Homebrew install the guard is false and the block evaluates nothing.
@@ -563,13 +565,98 @@ Defect 1 masks defect 2 — the eval never runs, so its error never prints. Both
 **Prevention scan.**
 
 - [x] Swept `lib/` + `pyve.sh` for other emitted-snippet or hosted-tool resolutions that trust `PATH`. The only remaining bare `command -v project-guide` is in `pyve_project_guide_available` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) — that is the *documented* bare-PATH fallback tier, correct by design, not an instance of this bug.
-- [ ] **The larger finding this fix does not close: `~/.local/bin` is never put on `PATH` outside `pyve self install`.** Completion is only the symptom the reporter noticed — on a Homebrew install the developer cannot invoke the hosted `project-guide` *at all*, yet the developer-facing convention in `project-essentials.md` quotes bare `project-guide mode <x>` commands. Either shim provisioning should own the `PATH` entry the way `self install` does (install-method-agnostic, matching `pyve_project_guide_ensure`'s stated contract), or `pyve check` should report "hosted but unreachable from your shell" — today it reports `provisioned` and is right, which is precisely why nothing surfaced it. Needs a scope decision, not a drive-by: writing `PATH` from a Homebrew-installed tool is a bigger commitment than fixing a completion block. **P-3 candidate.**
+- [x] The larger finding this fix does not close — `~/.local/bin` is never put on `PATH` outside `pyve self install` — is promoted to **Story P.ak** rather than left as a parked candidate.
 - [ ] Candidate `project-essentials` entry — **"A generated snippet is code we ship; test its effect, not its text."** Every prior test of this block asserted substring presence or `sh -n` syntax; both stayed green through a total functional failure across multiple releases. When pyve emits shell code into a user's environment, at least one test must *execute* it in the target shell and assert the observable result. This is the emitted-code corollary of the runnability pillar ([[Health checks must probe runnability, not just existence]]): text ≠ syntax ≠ effect.
 - [ ] Housekeeping: `CHANGELOG.md`'s `## [3.2.2]` heading still reads `- Unreleased` although `v3.2.2` is tagged (at `585c9f3`). Date it on the next release pass.
+- [x] Housekeeping (candidate second upstream request) — investigated and promoted to **Story P.al**. The staleness itself turned out to be benign; investigating it uncovered a materially worse defect underneath (a *false null* silently and permanently strips the Pyve guidance from `go.md`). "Cosmetic" was the wrong initial read.
 
-**Not fixed (deliberate).** Users whose rc file already carries the broken block are not retroactively repaired — `add_project_guide_completion` is sentinel-idempotent, so it no-ops on the old block. Re-wiring requires removing the sentinel block and re-running completion wiring. This matches the M.b precedent, and `pyve check --fix` is the right long-term home for detecting a stale block (P-3 candidate, folded into the `PATH` item above).
+**Not fixed (deliberate).** Users whose rc file already carries the broken block are not retroactively repaired — `add_project_guide_completion` is sentinel-idempotent, so it no-ops on the old block. Re-wiring requires removing the sentinel block and re-running completion wiring. This matches the M.b precedent. P.aj's upstream `completion install` inherits this: its spec asks that it detect and replace pyve's legacy sentinel, which is what will finally repair existing users.
 
-**Version:** v3.2.3 (patch — bugfix). Carries Story P.ah's unversioned internal refactor, which had no user-facing behavior change.
+**Version:** none — deferred. The bundled release covering P.ai + P.aj + P.ak is tagged once the whole "doesn't act installed" problem is resolved (developer's call, 2026-08-12). Carries Story P.ah's unversioned internal refactor.
+
+---
+
+### Story P.aj: Upstream change request — `project-guide` owns its own shell completion (`completion` command group) [Done]
+
+*(Cross-repo coordination per the essentials rule: request, don't work around. Locus decided with the developer 2026-08-12 after P.ai's root cause showed both defects were properties of Click's generated script, not of pyve.)*
+
+**Why upstream.** pyve hand-rolls Click's completion protocol — it hardcodes `_PROJECT_GUIDE_COMPLETE=zsh_source`, and to work it must also know that the generated script ends in `compdef`, that `compdef` requires `compinit`, and that the output must be eval'd rather than autoloaded. Every one of those is a fact about **project-guide's** generator, not about pyve. Both P.ai defects fell out of pyve modelling a protocol it does not own, and project-guide ships no `completion` command at all (confirmed against v2.18.1's `--help`) — unusual for a Click app, where `gh completion` / `rustup completions` / `poetry completions` are the convention.
+
+**Tasks.**
+
+- [x] Draft the self-contained change-request spec at [project-guide-requests/shell-completion-ownership.md](project-guide-requests/shell-completion-ownership.md): problem statement with the pyve#70 field evidence and the "doesn't act installed" framing; the proposed `completion install|uninstall|show|status` group; the two properties the emitted block must satisfy (no `PATH` dependence; bootstrap `compinit` rather than assume `compdef`); the `fpath`/autoload alternative; `--bin <path>` so a host tool can supply a **stable** handle; legacy-sentinel adoption; motivation; compatibility notes.
+- [x] Record the `--bin` rationale explicitly in the spec — the naive `sys.argv[0]` implementation bakes pyve's **version-keyed** toolchain path (`toolchain/<PYTHON_VERSION>/venv/bin/project-guide`) into the user's rc, which rots on a `DEFAULT_PYTHON_VERSION` bump. pyve's `~/.local/bin` shim is the stable handle because `pyve_link_project_guide_shim` re-points it with `ln -sf` on every bump.
+- [x] Scope the boundary in the spec: `PATH` reachability of `~/.local/bin` is explicitly **not** upstream's problem (pyve chose the shim location — Story P.ak owns it). The request only asks that completion not *depend* on `PATH`.
+
+**Out of scope (deliberate).** The stale `pyve_version` / `installed_version` state in `.project-guide.yml` is a separate upstream concern and is **not** folded into this spec — one spec, one change, per the `P.ag` precedent. Captured as housekeeping on P.ai.
+
+**Blocked on upstream.** The pyve-side consumption — replace `add_project_guide_completion` with `project-guide completion install --bin "$HOME/.local/bin/project-guide"`, keep `remove_project_guide_completion` to clean up legacy blocks on upgrade, drop the hardcoded `_PROJECT_GUIDE_COMPLETE` knowledge, and retire P.ai's interim block — waits for the project-guide release that ships the command, and carries a min-version guard. It is not part of this story.
+
+**Version:** none (spec artifact; the upstream change ships on project-guide's own release cycle).
+
+---
+
+### Story P.ak: A pyve-provisioned tool must be reachable from the user's shell — `~/.local/bin` and `PATH` [Done]
+
+*(The other half of "project-guide doesn't act installed after provisioning." Split from P.ai because writing `PATH` from a Homebrew-installed tool is a real design commitment, not a drive-by fix.)*
+
+**The gap.** `_self_install_update_path` ([lib/commands/self.sh](../../lib/commands/self.sh)) adds `~/.local/bin` to `PATH`, and it is called from exactly one place: `self install`. But the shim that makes project-guide invokable is created by four routes — `self install`, `self provision` ([self.sh](../../lib/commands/self.sh)), `pyve check --fix` ([lib/heal.sh](../../lib/heal.sh)), and the lazy `pyve_project_guide_ensure` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) — three of which never touch `PATH`. `pyve_project_guide_ensure` documents itself as "install-method-agnostic: works for Homebrew and source installs alike, independent of `self install`", but the reachability half of that promise only holds for the source install.
+
+**Consequence.** On a Homebrew-installed pyve, hosting is genuinely healthy — `pyve self provision --status --json` returns `{"pyve_managed":true,…,"project_guide":{"hosted":true,"runnable":true,…}}` and exits 0 — while the developer cannot invoke `project-guide` by name at all. `project-essentials.md`'s LLM-vs-developer invocation rule quotes bare `project-guide mode <x>` as the developer-facing form, so the documented workflow is unrunnable. Nothing detects this: `check` reports `provisioned`, and it is *correct* — hosted and runnable are both true. Reachability is simply not a property anything asserts.
+
+**Ownership principle (developer, 2026-08-12).** *Global, cross-repo installation of project-guide is a **Pyve construct**, so Pyve owns every particular of it.* project-guide itself lives in the ordinary world of a pip package inside a virtualenv — installable again and again, any number of times, in any number of envs. It has no concept of, and no responsibility for, there being **one** copy shared across repos. That construct — the toolchain venv, the `~/.local/bin` shim, and the shim's reachability — is Pyve's invention and therefore Pyve's to make work.
+
+This does **not** move P.aj upstream-vs-pyve boundary: project-guide still owns *how to generate and register* completion for a Click app (true of any venv install, host tool or not), while Pyve owns *which* binary, *where* it lives, and *whether it is reachable*. The `--bin` seam in [shell-completion-ownership.md](project-guide-requests/shell-completion-ownership.md) is exactly that boundary.
+
+**Design decision (developer, 2026-08-12): all three, composed.** Option 1 is the primary fix; 2 and 3 are the repair path.
+
+1. **Provisioning owns the `PATH` entry** — hoist `_self_install_update_path` out of `self install` so any route that creates the shim also ensures the entry. Clean to hoist: `TARGET_BIN_DIR` is a global ([pyve.sh](../../pyve.sh)), not self-install-scoped, and the helper is already idempotent on both the live `PATH` and its `# Added by pyve installer` marker.
+2. **`check` reports it** — a reachability probe so `check` says "hosted but not reachable from your shell" instead of a bare `provisioned`.
+3. **`check --fix` repairs it** — behind the existing plan-then-confirm heal engine, invoking the *same* helper as (1).
+
+**Why all three, and not just (1).** Option 1 alone fixes only *future* provisioning and **cannot repair the installed base**. `pyve_project_guide_ensure` fast-paths on `[[ -x "$target" ]] && return 0` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)), so on an already-hosted machine — the reporter's, and every existing user's — provisioning returns immediately and never reaches a `PATH` step. (2) makes the condition visible and (3) makes it fixable without a re-provision. Routing (3) through the same helper as (1) keeps one code path per the DRY tenet.
+
+**Tasks.**
+
+- [x] Settle the design question with the developer (above).
+- [x] Extract the `PATH`-entry wiring into a standalone, idempotent helper in [lib/toolchain_python.sh](../../lib/toolchain_python.sh) — `pyve_ensure_local_bin_on_path`, with `pyve_path_profile_file` / `pyve_local_bin_on_path` / `pyve_local_bin_path_entry_present` beside it. Idempotent on **both** the live `PATH` and the `# Added by pyve installer` marker (unchanged, so a line written by any older pyve is honored and never duplicated). `PYVE_NO_PATH_WIRING=1` opts out. `_self_install_update_path` ([lib/commands/self.sh](../../lib/commands/self.sh)) is now a thin logging wrapper over it — one implementation, four callers.
+- [x] Call it from every route that creates the shim: `self provision`, `pyve check --fix`, and `pyve_project_guide_ensure` — not only `self install`. **In `pyve_project_guide_ensure` the call sits BEFORE the presence fast path** (gated on the shim existing), which is what lets the already-hosted installed base self-repair on the next `pyve init`; behind the fast path it would never run.
+- [x] Add a **reachability** probe distinct from `hosted` / `runnable`: `pyve_project_guide_reachable`, tri-state — `0` reachable (bare `project-guide` resolves to pyve's shim), `1` unreachable (resolves to nothing), `2` shadowed (resolves to a foreign copy). The third state matters: "somebody else's project-guide wins on PATH" is a different problem from "nothing resolves". This is the existence → runnable → **reachable** rung of the runnability pillar.
+- [x] Surface it in `pyve check` ([lib/check_composer.sh](../../lib/check_composer.sh)) — `provisioned` now carries a reachability warning naming the profile file, or a shadowing warning naming the winning binary. In `self provision --status`, reachability is **additive in the `--json` payload only** (`project_guide.reachable`: `reachable`/`unreachable`/`shadowed`) plus a human-output line; the `0`/`1`/`2` **exit codes are unchanged**, because project-guide ≥ 2.15.0's readiness gate branches on them and a new code would silently change the meaning of an answer it already consumes. Verified end-to-end: `exit=0` both reachable and unreachable.
+- [x] Wire the repair into `check --fix`'s plan-then-confirm engine ([lib/heal.sh](../../lib/heal.sh)) as the non-destructive `shim-unreachable` class, invoking the **same** helper as provisioning. Only a fault when the shim exists *and* resolves — otherwise the existing hosting faults are the real story and a `PATH` entry would point at a directory pyve never populated. The `shadowed` case is **reported but never healed**: reordering a user's `PATH` is their call.
+- [x] Convergence fix found while testing: the `project-guide-dead` and `shim-dangling` repairs now ensure reachability too. A repair that *creates* a shim must also make it reachable, or `--fix` reports success and immediately raises `shim-unreachable` on the next run — two passes to converge.
+- [x] Profile-file decision documented in the helper: a **login** file (`~/.zprofile` / `~/.bash_profile`) by deliberate choice, because login files are sourced *before* the interactive rc that may reference the hosted tool, so the ordering is correct by construction. Trade-off recorded: a non-login interactive shell reads only the rc file, so a user who never starts a login shell will not pick the entry up — `pyve check` reports live-`PATH` truth either way, so the condition stays visible.
+- [x] Regression tests — new [tests/unit/test_shim_reachability.bats](../../tests/unit/test_shim_reachability.bats), 24 tests: profile-file choice; live-`PATH` vs profile-marker idempotency (including a triple call and an older-pyve line); the substring near-miss (`~/.local/binaries` must not satisfy `~/.local/bin`); the opt-out; all three probe states; **the field shape** (an already-hosted machine still gets the entry despite the fast path); no entry written when pyve hosts nothing; and the heal class + repair + post-repair idempotence. `$HOME` isolation is mandatory in this file and called out — these helpers write to a profile.
+- [x] Full unit suite green — **2324 pass, 0 fail** (2300 + 24). `shellcheck` clean on all four changed libs (`lib/commands/self.sh`'s SC2148 is pre-existing, verified against `HEAD`). Provisioning integration coverage run per the P.af.1 rule — `test_project_guide_integration.py` + `test_home_guard.py`, **29 passed**, real `~/.zprofile` unmodified.
+- [x] Adjusted `_fixture_healthy_hosting` in [tests/unit/test_check_fix.bats](../../tests/unit/test_check_fix.bats): "healthy hosting" now means hosted + runnable + **reachable**, so the fixture states reachability explicitly under the isolated `$HOME`. Five tests failed until it did — the fixture predated the third rung.
+- [ ] Re-check `project-essentials.md`'s LLM-vs-developer invocation rule now that reachability is wired — the bare `project-guide mode <x>` developer-facing form should finally be true on every install method. Deferred to the release pass, since the essentials entry is also touched by P.ai/P.aj.
+
+**Version:** none (rides the bundled release with P.ai).
+
+---
+
+### Story P.al: Upstream change request — a failed pyve detection silently and permanently strips the Pyve guidance from `go.md` [Done]
+
+*(The second upstream request, split from P.aj per the one-spec-one-change rule. Surfaced while investigating what looked like cosmetic `.project-guide.yml` staleness; the staleness was benign and something much worse sat underneath it.)*
+
+**What was actually wrong.** `project-guide init` detects pyve with a bare `subprocess.run(['pyve', '--version'])` and caches the raw stdout in `.project-guide.yml`. That cached value then gates **content**: every render site computes `pyve_installed = config.pyve_version is not None`, and `_read_pyve_essentials` returns an empty string when it is false. A single failed detection at init therefore strips the whole Pyve guidance block from `go.md` — and no render path ever re-detects, so it never comes back.
+
+**Measured on two otherwise-identical projects** (only difference: whether `pyve` was on `PATH` at init) — 675 lines vs **595**. The 80 missing lines are `### Pyve Essentials` and every subsection under it: the `pyve test` vs `pyve run pytest` rule, the two-env isolation rule, the "don't editable-install dev deps into the main venv" rule, `python` not `python3`, and the LLM-vs-developer invocation convention. Confirmed non-recovering: installing pyve afterwards and running both `project-guide update` and `project-guide mode <x>` left `pyve_version: null` and the section absent, every command exiting 0 with no warning.
+
+**Why it triggers.** Detection assumes pyve is reachable by bare name — the same failure class as P.ai's defect 1, mirrored. Two routine cases break it: a `pyve self install` layout (pyve at `~/.local/bin/pyve`, a directory whose `PATH` presence was exactly what **P.ak** just fixed), and a dev checkout driven by `./pyve.sh` (nothing puts `pyve` on `PATH`). This repo dodged it by luck — `pyve version 2.6.2` was captured when an older pyve happened to be installed.
+
+**Staleness is benign; a false null is the defect.** Because the gate is a null check rather than a version comparison, an out-of-date cached value still renders correctly. The original "cosmetic staleness" framing was wrong, and the correction is recorded here deliberately: the observation that opened the investigation was not the bug.
+
+**Tasks.**
+
+- [x] Verify empirically rather than reason from the source: two controlled `project-guide init` runs in temp dirs differing only in `PATH`, diffed by heading; then re-render both ways to prove non-recovery. Temp dirs cleaned up.
+- [x] Confirm the boundary — pyve **never reads** `.project-guide.yml`'s `pyve_version` (the `pyve_version` hits in pyve's own tree are the retired v2 `.pyve/config` key, an unrelated field). This is entirely project-guide-side state, so entirely an upstream concern.
+- [x] Draft the self-contained change-request spec at [project-guide-requests/pyve-detection-render-gate.md](project-guide-requests/pyve-detection-render-gate.md): the measured evidence; five proposed changes — (1) `--pyve-version` so the host tool supplies the fact it uniquely knows, (2) re-detect on every render instead of once at init, (3) stop deriving a capability flag from a version string, (4) warn instead of silently writing `null`, (5) store a bare version rather than raw stdout; motivation; compatibility notes.
+- [x] Keep it separate from P.aj's spec — different surface, different fix — per the `P.ag` one-spec-one-change precedent.
+
+**Blocked on upstream.** The pyve-side coordinating change for item 1 is a single flag on the `project-guide init` invocation in [lib/project_guide.sh](../../lib/project_guide.sh)'s `run_project_guide_init_in_env`, gated on a min-version check. It waits for the release that ships the flag and is not part of this story. Items 2–5 need nothing from pyve.
+
+**Version:** none (spec artifact; the upstream change ships on project-guide's own release cycle).
 
 ---
 

@@ -147,32 +147,29 @@ self_install() {
 # Private helper: append PATH entry to the active profile rc file.
 #------------------------------------------------------------
 
+# Thin logging wrapper over the shared reachability helper in
+# lib/toolchain_python.sh. The write itself lives there because three
+# other routes need it — `self provision`, the lazy
+# pyve_project_guide_ensure, and `pyve check --fix` — and a shim that
+# only `self install` makes reachable is a shim that a Homebrew install
+# hosts but cannot invoke.
 _self_install_update_path() {
     local profile_file
-    local path_line="export PATH=\"\$HOME/.local/bin:\$PATH\"  # Added by pyve installer"
+    profile_file="$(pyve_path_profile_file)"
 
-    # Determine profile file
-    if [[ -n "${ZSH_VERSION:-}" ]] || [[ "$SHELL" == *"zsh"* ]]; then
-        profile_file="$HOME/.zprofile"
-    else
-        profile_file="$HOME/.bash_profile"
-    fi
-
-    # Check if already in PATH
-    if [[ ":$PATH:" == *":$TARGET_BIN_DIR:"* ]]; then
+    if pyve_local_bin_on_path; then
         log_info "$TARGET_BIN_DIR already in PATH"
         return
     fi
-
-    # Check if line already in profile
-    if [[ -f "$profile_file" ]] && grep -qF "# Added by pyve installer" "$profile_file"; then
+    if pyve_local_bin_path_entry_present; then
         log_info "PATH already configured in $profile_file"
         return
     fi
-
-    # Add to profile
-    printf "\n%s\n" "$path_line" >> "$profile_file"
-    log_success "Added $TARGET_BIN_DIR to PATH in $profile_file"
+    if pyve_ensure_local_bin_on_path; then
+        log_success "Added $TARGET_BIN_DIR to PATH in $profile_file"
+    else
+        log_warning "Could not add $TARGET_BIN_DIR to PATH in $profile_file"
+    fi
 }
 
 #------------------------------------------------------------
@@ -389,6 +386,11 @@ _self_install_project_guide() {
         # Shared shim-link helper (lib/toolchain_python.sh).
         pyve_link_project_guide_shim "$venv_dir"
         log_info "Linked project-guide → $HOME/.local/bin/project-guide"
+        # A linked shim in a directory the shell cannot see is not an
+        # install. Same helper `self install` and `check --fix` use.
+        if pyve_ensure_local_bin_on_path && ! pyve_local_bin_on_path; then
+            log_info "Added ~/.local/bin to PATH in $(pyve_path_profile_file) — restart your shell"
+        fi
     else
         log_warning "Could not install project-guide into the toolchain (skip; re-run 'pyve self install' later)"
     fi
@@ -711,11 +713,29 @@ _json_str_or_null() {
     if [[ -z "$1" ]]; then printf 'null'; else printf '"%s"' "$1"; fi
 }
 
+# Reachability as a JSON string, deliberately ADDITIVE: it joins the
+# payload, never the exit code. The 0/1/2 contract is pinned by
+# project-guide >= 2.15.0's readiness gate, so promoting "hosted but
+# unreachable" to a new exit code would silently change the meaning of an
+# answer an existing consumer already branches on. A consumer that wants
+# reachability opts in by reading the field.
+_reachable_label() {
+    declare -F pyve_project_guide_reachable >/dev/null 2>&1 || { printf 'unknown'; return; }
+    local rc=0
+    pyve_project_guide_reachable || rc=$?
+    case "$rc" in
+        0) printf 'reachable' ;;
+        2) printf 'shadowed' ;;
+        *) printf 'unreachable' ;;
+    esac
+}
+
 _self_provision_status_json() {
     local tc_prov="$1" tc_run="$2" tc_ver="$3" pg_host="$4" pg_run="$5" pg_ver="$6" pg_shim="$7"
-    printf '{"pyve_managed":true,"toolchain":{"provisioned":%s,"runnable":%s,"version":%s},"project_guide":{"hosted":%s,"runnable":%s,"version":%s,"shim":%s}}\n' \
+    printf '{"pyve_managed":true,"toolchain":{"provisioned":%s,"runnable":%s,"version":%s},"project_guide":{"hosted":%s,"runnable":%s,"version":%s,"shim":%s,"reachable":"%s"}}\n' \
         "$tc_prov" "$tc_run" "$(_json_str_or_null "$tc_ver")" \
-        "$pg_host" "$pg_run" "$(_json_str_or_null "$pg_ver")" "$(_json_str_or_null "$pg_shim")"
+        "$pg_host" "$pg_run" "$(_json_str_or_null "$pg_ver")" "$(_json_str_or_null "$pg_shim")" \
+        "$(_reachable_label)"
 }
 
 _self_provision_status_human() {
@@ -736,6 +756,10 @@ _self_provision_status_human() {
 
     if [[ "$pg_run" == true ]]; then
         printf '  project-guide:    runnable (%s) → %s\n' "${pg_ver:-unknown}" "$pg_shim"
+        case "$(_reachable_label)" in
+            unreachable) printf '                    ⚠ not reachable from your shell (~/.local/bin not on PATH)\n' ;;
+            shadowed)    printf '                    ⚠ shadowed on PATH by another project-guide\n' ;;
+        esac
     elif [[ "$pg_host" == true ]]; then
         printf '  project-guide:    hosted but not runnable → %s\n' "$pg_shim"
     else

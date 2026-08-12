@@ -82,6 +82,10 @@ _fixture_healthy_hosting() {
     _mk_runnable "$(_venv_dir)/bin/project-guide" "project-guide 2.15.1"
     mkdir -p "$HOME/.local/bin"
     ln -sf "$(_venv_dir)/bin/project-guide" "$HOME/.local/bin/project-guide"
+    # Healthy hosting now means REACHABLE too, not just hosted+runnable —
+    # a shim in a directory the shell cannot see is the `shim-unreachable`
+    # fault. The isolated $HOME means this must be stated explicitly.
+    export PATH="$HOME/.local/bin:$PATH"
 }
 
 _fixture_dead_toolchain() {
@@ -190,6 +194,10 @@ _fixture_dangling_shim() {
         _mk_runnable "$(_venv_dir)/bin/project-guide" "project-guide 2.15.1"
         mkdir -p "$HOME/.local/bin"
         ln -sf "$(_venv_dir)/bin/project-guide" "$HOME/.local/bin/project-guide"
+        # The real verb wires reachability alongside the shim; a stub that
+        # skips it would leave the rebuilt hosting unreachable and make
+        # the idempotence assertion below fail for the wrong reason.
+        pyve_ensure_local_bin_on_path || true
         return 0
     }
     export -f self_provision _mk_runnable _venv_dir pyve_toolchain_venv_dir pyve_toolchain_root
