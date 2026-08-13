@@ -431,3 +431,30 @@ From v3.1 (Stories P.l.2–P.l.6), an `[env.<name>]` block declares **how the en
 **Why:** the field case (ml-datarefinery) needed four commands — two of them imperative — to rebuild a test env, because the declaration could not express an editable self-install and the mutex forbade layering it beside `requirements-dev.txt`. A declaration that fully describes the env collapses rebuild to one command and is the foundation Pillar-II state restore (P.n) and future heal actions build on. The v2 `[tool.pyve.testenvs.*]` surface intentionally keeps its historical pick-one rule — composition is a `pyve.toml` capability, not a v2 retrofit.
 
 **How to apply:** when adding a new setup capability to env blocks, add it as a **declarative directive** (closed vocabulary in [`lib/pyve_toml_helper.py`](../../lib/pyve_toml_helper.py)'s `KNOWN_ENV_KEYS` + a `manifest.sh` accessor + a slot in the fixed order), never as a shell-step list or an imperative flag. When adding a materializer (new backend), follow the shape: validate the whole recipe first, then realize directives in the fixed order; CLI `-r` stays a pip-layer-only override. Do not re-introduce a source mutex, and do not make `pyve env init` install anything the block doesn't declare.
+
+### Never resolve a tool you host — or that hosts you — by bare name
+
+When code needs to invoke a tool whose location the project *controls*, resolve it by the path it controls. A bare command name resolves through `PATH`, which is the weakest available signal and the one thing neither tool owns.
+
+The same defect appeared three times in one bundle, each time in code whose author had a more reliable answer sitting right there:
+
+1. **pyve → project-guide, in an emitted rc snippet.** The completion block guarded on `command -v project-guide`, but pyve hosts the shim at `~/.local/bin/project-guide` and only `pyve self install` ever put that directory on `PATH`. On a Homebrew install the guard was simply false and the block did nothing, silently, for every release it shipped in.
+2. **pyve → its own hosted shim, on disk.** Provisioning created `~/.local/bin/project-guide` by four routes and wired `PATH` in exactly one, so a perfectly hosted, perfectly runnable tool was uninvocable — and every health check correctly said `provisioned`.
+3. **project-guide → pyve, at init.** `subprocess.run(['pyve', '--version'])` failing wrote `pyve_version: null`, which gated *content*: ~80 lines of pyve workflow guidance vanished from the rendered `go.md`, permanently and without a warning.
+
+**Why:** all three failed **silently**, because a `PATH` miss is indistinguishable from "not installed" — which is a legitimate state, so nothing errors. The failure then persists: an rc block is written once, a detection result is cached once. And the fix is never more work than the bug — in each case the correct value was already known at the callsite (the shim path pyve just created; pyve's own `$VERSION` constant).
+
+**How to apply:**
+
+- **Invoking a tool you host:** use the hosted absolute path (`pyve_project_guide`, which deliberately ignores `PATH`). Keep a bare-name fallback only as an explicit last tier, for a hand-installed copy.
+- **Writing a path into a file that outlives the process** (an rc file, a cached config): bake in the **stable** handle, not today's resolved one. `~/.local/bin/project-guide` survives a `DEFAULT_PYTHON_VERSION` bump; `toolchain/<VERSION>/venv/bin/project-guide` does not. Where a downstream tool writes the path, give it a seam to be told which one (`completion install --bin`).
+- **Telling another tool a fact about yourself:** hand it over (`project-guide init --pyve-version "$VERSION"`) rather than letting it probe for you. The host always knows better than the guest.
+- **Hosting a tool at a path:** owning the path means owning its reachability. Wire `PATH` from *every* route that creates the artifact, and probe reachability as its own health rung — see [[Health checks must probe runnability, not just existence]], of which this is the third rung: existence → runnable → **reachable**.
+
+### A generated snippet is code we ship — test its effect, not its text
+
+When pyve emits shell code into a user's environment (an rc block, an `.envrc`, a prompt hook), at least one test must **execute** it in the target shell and assert the observable result.
+
+**Why:** the project-guide completion block had a full suite of tests — substring assertions (`grep -qF "command -v project-guide"`), syntax checks (`zsh -n`, `bash -n`), an SDKMan-ordering matrix, and a byte-identical add→remove round-trip. Every one of them passed, across multiple releases, while the block **registered no completion at all**. Text is not syntax; syntax is not effect. The one nominally behavioral test sourced a **zsh** block with **bash**, so it exercised the emitted code only incidentally and asserted the absence of a single string.
+
+**How to apply:** run the emitted snippet in a real shell of the right kind (`zsh -f -c 'source rc; …'`) and assert the outcome the user cares about — `$_comps[<cmd>]` for a zsh completion, `complete -p` for bash, the exported variable for an activation hook. Guard on the interpreter's availability (`command -v zsh || skip`) rather than dropping the test. Keep the text assertions as cheap regression guards for specific past bugs, but never let them stand as the *only* coverage: they cannot distinguish "written correctly" from "works."

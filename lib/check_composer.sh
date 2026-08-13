@@ -147,7 +147,24 @@ _compose_check_pyve_hosting() {
     if [[ -n "$src" ]]; then
         printf 'project-guide: managed by your project (%s)\n' "$src"
     elif pyve_project_guide_is_hosted 2>/dev/null && pyve_project_guide_runnable >/dev/null 2>&1; then
+        # Hosted AND runnable is still not the whole story: the shim lives
+        # in ~/.local/bin, and a shell that cannot see that directory
+        # cannot invoke the tool. Reporting "provisioned" alone is true and
+        # useless — it is exactly what a Homebrew install showed while
+        # `project-guide` was uninvocable. Third rung: reachability.
         printf 'project-guide hosting: provisioned\n'
+        if declare -F pyve_project_guide_reachable >/dev/null 2>&1; then
+            local reach_rc=0
+            pyve_project_guide_reachable || reach_rc=$?
+            if (( reach_rc == 1 )); then
+                printf '  ⚠ hosted but NOT reachable from your shell — ~/.local/bin is not on PATH\n'
+                printf "  → Run: pyve check --fix   (adds it to %s)\n" "$(pyve_path_profile_file)"
+            elif (( reach_rc == 2 )); then
+                printf "  ⚠ 'project-guide' resolves to %s, not the pyve shim\n" \
+                    "$(command -v project-guide 2>/dev/null)"
+                printf '  → A non-pyve copy earlier on PATH shadows the hosted one.\n'
+            fi
+        fi
         printf "  Upgrade: 'pyve self provision'  ·  Remove: 'pyve self unprovision --all'\n"
     else
         printf 'project-guide hosting: not provisioned\n'

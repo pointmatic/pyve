@@ -218,6 +218,143 @@ pyve_link_project_guide_shim() {
     ln -sf "$target" "$bin_dir/project-guide"
 }
 
+# The project-guide release that took ownership of its own shell completion
+# (the `completion` command group) and accepts pyve's version directly on
+# `init` (`--pyve-version`), removing both guesses pyve used to make on its
+# behalf. Both capabilities shipped together, so one floor covers them.
+# shellcheck disable=SC2034 # min-version floor, read in lib/project_guide.sh, lib/utils.sh, lib/commands/self.sh (cross-file)
+PROJECT_GUIDE_MIN_VERSION_HANDOFF="2.21.0"
+
+# True (0) when the pyve-HOSTED project-guide is at least <version>. Probes
+# the artifact (pyve_project_guide_runnable EXECUTES it) rather than trusting
+# a recorded number, so a broken install reads as "too old" and callers fall
+# back rather than invoking a subcommand that may not exist. Returns non-zero
+# when project-guide cannot run or reports no parseable version.
+# Memoized per process, keyed by the floor asked about. The probe EXECUTES
+# project-guide through the bounded-probe watchdog, which forks — and the
+# gate sits on the `pyve init` path, consulted once for completion wiring
+# and again for the version handoff. The hosted project-guide cannot change
+# mid-invocation, so probing more than once per process buys nothing and
+# feeds exactly the fork pressure that flakes small CI runners (the same
+# mechanism behind the watchdog's orphaned-`sleep` fix).
+#
+# Reset with pyve_project_guide_version_gate_reset when the hosted artifact
+# is deliberately swapped (tests).
+pyve_project_guide_version_gate_reset() {
+    _PYVE_PG_VER_GATE_KEY=""
+    _PYVE_PG_VER_GATE_RC=""
+}
+
+pyve_project_guide_version_at_least() {
+    local want="$1" have cmp rc=1
+    if [[ "${_PYVE_PG_VER_GATE_KEY:-}" == "$want" && -n "${_PYVE_PG_VER_GATE_RC:-}" ]]; then
+        return "$_PYVE_PG_VER_GATE_RC"
+    fi
+    if declare -F compare_versions >/dev/null 2>&1 \
+        && have="$(pyve_project_guide_runnable 2>/dev/null)" \
+        && [[ -n "$have" ]]; then
+        cmp="$(compare_versions "$have" "$want")"
+        [[ "$cmp" == "greater" || "$cmp" == "equal" ]] && rc=0
+    fi
+    _PYVE_PG_VER_GATE_KEY="$want"
+    _PYVE_PG_VER_GATE_RC="$rc"
+    return "$rc"
+}
+
+#------------------------------------------------------------
+# Shim REACHABILITY — the third rung of existence → runnable → reachable.
+#
+# Hosting a tool at ~/.local/bin only helps if the user's shell can find
+# it. That directory reaches PATH via one line in a login profile, and
+# for a long time only `pyve self install` wrote it — so a Homebrew pyve
+# hosted project-guide perfectly and left it uninvocable, while every
+# health surface correctly reported "provisioned". Reachability is a
+# distinct property from existence and runnability, and needs its own
+# probe, its own report, and its own repair.
+#
+# The single-global-install construct is Pyve's invention (the toolchain
+# venv + this shim), so its reachability is Pyve's to own — project-guide
+# is just a pip package in a venv and has no concept of there being one
+# shared copy.
+#------------------------------------------------------------
+
+# The marker comment identifying pyve's PATH line. Unchanged from the
+# original `self install` wording so a line written by any older pyve is
+# still recognized (and never duplicated).
+PYVE_PATH_MARKER="# Added by pyve installer"
+
+# The profile file that owns pyve's PATH entry. A LOGIN-shell file by
+# deliberate choice: login files are sourced before the interactive rc
+# that may reference the hosted tool, so the ordering is correct by
+# construction. Trade-off: a non-login interactive shell reads only the
+# rc file, so a user who never starts a login shell will not pick the
+# entry up — `pyve check` reports the live-PATH truth either way.
+pyve_path_profile_file() {
+    if [[ -n "${ZSH_VERSION:-}" ]] || [[ "${SHELL:-}" == *"zsh"* ]]; then
+        printf '%s' "$HOME/.zprofile"
+    else
+        printf '%s' "$HOME/.bash_profile"
+    fi
+}
+
+# True (0) when ~/.local/bin is on the CURRENT PATH — live truth, which
+# is what the user actually experiences.
+pyve_local_bin_on_path() {
+    case ":${PATH}:" in
+        *":$HOME/.local/bin:"*) return 0 ;;
+    esac
+    return 1
+}
+
+# True (0) when the profile file already carries pyve's PATH line, i.e.
+# future login shells will have it even if this one does not.
+pyve_local_bin_path_entry_present() {
+    local pf
+    pf="$(pyve_path_profile_file)"
+    [[ -f "$pf" ]] && grep -qF "$PYVE_PATH_MARKER" "$pf"
+}
+
+# Ensure ~/.local/bin reaches PATH in future shells. Idempotent on BOTH
+# the live PATH and the profile marker, so it is safe to call from every
+# provisioning route on every invocation. Returns 0 when the entry is now
+# present (written or already satisfied), 1 when the profile could not be
+# written. Opt out with PYVE_NO_PATH_WIRING=1.
+#
+# This is the ONE helper both provisioning and `pyve check --fix` call —
+# the repair is not a parallel implementation of the install path.
+pyve_ensure_local_bin_on_path() {
+    [[ "${PYVE_NO_PATH_WIRING:-0}" == "1" ]] && return 0
+    pyve_local_bin_on_path && return 0
+    pyve_local_bin_path_entry_present && return 0
+
+    local pf
+    pf="$(pyve_path_profile_file)"
+    # shellcheck disable=SC2016 # $HOME/$PATH must reach the profile file
+    # UNEXPANDED — they are evaluated when the user's shell starts, not
+    # when pyve writes the line. Baking in absolute values here would
+    # freeze another user's home / a stale PATH into the profile.
+    printf '\nexport PATH="$HOME/.local/bin:$PATH"  %s\n' "$PYVE_PATH_MARKER" >> "$pf" \
+        || return 1
+    return 0
+}
+
+# Reachability of the hosted project-guide, as a tri-state — richer than
+# a bool because "resolves to somebody else's copy" is a genuinely
+# different problem from "resolves to nothing":
+#   0 — reachable: a bare `project-guide` resolves to pyve's shim
+#   1 — unreachable: a bare `project-guide` resolves to nothing
+#   2 — shadowed: it resolves, but to a binary that is not pyve's shim
+# An explicit PYVE_PROJECT_GUIDE_BIN override is deliberate targeting, so
+# it always reads reachable.
+pyve_project_guide_reachable() {
+    [[ -n "${PYVE_PROJECT_GUIDE_BIN:-}" ]] && return 0
+    local resolved
+    resolved="$(command -v project-guide 2>/dev/null)" || return 1
+    [[ -n "$resolved" ]] || return 1
+    [[ "$resolved" == "$HOME/.local/bin/project-guide" ]] && return 0
+    return 2
+}
+
 # Idempotent, presence-gated provisioning of the pyve-hosted project-guide
 # (Story N.bh). Fast path: a stat — no-op (and no network) when the
 # toolchain venv's console script already exists. When missing: build the
@@ -236,6 +373,15 @@ pyve_project_guide_ensure() {
     local venv_dir target pip
     venv_dir="$(pyve_toolchain_venv_dir)"
     target="$venv_dir/bin/project-guide"
+    # Reachability is ensured BEFORE the presence fast path, and gated on
+    # the shim existing. Without this the already-hosted installed base
+    # could never self-repair: the fast path returns on the stat below, so
+    # a machine hosting project-guide with ~/.local/bin off PATH would
+    # skip every provisioning step forever. Gating on the shim keeps it
+    # from writing a PATH entry for a directory pyve never populated.
+    if [[ -e "$HOME/.local/bin/project-guide" ]]; then
+        pyve_ensure_local_bin_on_path || true
+    fi
     [[ -x "$target" ]] && return 0
     if declare -F pyve_toolchain_python_ensure >/dev/null 2>&1; then
         pyve_toolchain_python_ensure >/dev/null 2>&1 || return 1
@@ -244,6 +390,7 @@ pyve_project_guide_ensure() {
     [[ -x "$pip" ]] || return 1
     "$pip" install --upgrade 'project-guide>=2.15.0' >/dev/null 2>&1 || return 1
     pyve_link_project_guide_shim "$venv_dir"
+    pyve_ensure_local_bin_on_path || true
     [[ -x "$target" ]]
 }
 

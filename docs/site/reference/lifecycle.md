@@ -122,7 +122,11 @@ as an opt-out post-init hook:
 
 1. `pip install --upgrade project-guide` into the project environment
 2. `project-guide init --no-input` to create `.project-guide.yml` and `docs/project-guide/`
-3. Append a sentinel-bracketed shell completion block to `~/.zshrc` or `~/.bashrc`
+3. Wire up shell completion in `~/.zshrc` or `~/.bashrc`
+
+**Step 3 is project-guide's own job as of project-guide ≥ 2.21.0.** pyve runs `project-guide completion install --bin ~/.local/bin/project-guide` and supplies only the one thing it alone knows: which binary to bake in (the stable shim, so the wiring survives a pyve toolchain upgrade). project-guide owns the rest — for zsh it writes an `fpath` autoload file rather than anything evaluated at shell startup. Inspect it any time with `project-guide completion status`.
+
+If you already have a completion block pyve wrote itself, the next `pyve init` **migrates it**: the old block is removed and project-guide's installed in its place, without asking again — you consented once already. On project-guide releases older than 2.21.0, pyve falls back to writing its own block.
 
 **Trigger logic** (priority order, first match wins):
 

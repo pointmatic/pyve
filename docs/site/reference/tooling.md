@@ -299,7 +299,7 @@ Removes the pyve script and `lib/` modules from `~/.local/bin`, plus:
 
 - The `PATH` entry added by the installer (from `~/.zprofile` / `~/.bash_profile`)
 - The pyve prompt hook (from `~/.zshrc` / `~/.bashrc`)
-- The project-guide shell completion block (from `~/.zshrc` / `~/.bashrc`), if one was added by `pyve init --project-guide-completion`
+- The project-guide shell completion wiring, if `pyve init --project-guide-completion` added any: both a legacy pyve-written block (from `~/.zshrc` / `~/.bashrc`) and, via `project-guide completion uninstall`, project-guide's own block plus the zsh `fpath` autoload file — which lives outside any rc file and would otherwise be stranded
 
 Non-empty `~/.local/.env` is preserved (warn, don't delete).
 

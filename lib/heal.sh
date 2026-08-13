@@ -32,6 +32,15 @@
 #   shim-dangling      — ~/.local/bin/project-guide is a symlink whose
 #                        target is gone while the hosted script is
 #                        runnable. Repair: re-link (ln -sf refresh).
+#   shim-unreachable   — the shim exists and resolves, but ~/.local/bin
+#                        is on neither the live PATH nor the login
+#                        profile, so the shell cannot invoke the tool
+#                        pyve hosts. Repair: add the entry via the same
+#                        helper provisioning uses. Additive and
+#                        reversible, hence the non-destructive tier.
+#                        Only `self install` used to write this entry, so
+#                        a Homebrew pyve hosted project-guide perfectly
+#                        and left it uninvocable.
 #
 # NOT faults (deliberate non-goals):
 #   - never-provisioned hosting — optional by contract; a hint in
@@ -144,6 +153,20 @@ _heal_plan_project_guide() {
     local shim="$HOME/.local/bin/project-guide"
     if [[ -L "$shim" && ! -e "$shim" && "$hosted_pg_runnable" -eq 1 ]]; then
         printf 'shim-dangling||~/.local/bin/project-guide is a dead symlink|re-link it at the hosted console script\n'
+    fi
+
+    # Reachability: a live shim in a directory the shell cannot see. Only
+    # a fault when the shim actually EXISTS and RESOLVES — otherwise the
+    # faults above are the real story and a PATH entry would just point at
+    # a directory pyve never populated. The `shadowed` case (a foreign
+    # project-guide wins on PATH) is reported by `check` but NOT healed:
+    # reordering a user's PATH is their call, not ours.
+    if [[ -e "$shim" && "$hosted_pg_runnable" -eq 1 ]] \
+        && declare -F pyve_local_bin_on_path >/dev/null 2>&1 \
+        && ! pyve_local_bin_on_path \
+        && ! pyve_local_bin_path_entry_present; then
+        printf 'shim-unreachable||~/.local/bin holds the project-guide shim but is not on PATH|add it in %s (takes effect in new shells)\n' \
+            "$(pyve_path_profile_file)"
     fi
     return 0
 }
@@ -338,11 +361,25 @@ heal_apply() {
             [[ -x "$pip" ]] || return 1
             "$pip" install --upgrade --force-reinstall 'project-guide>=2.15.0' >/dev/null 2>&1 || return 1
             pyve_link_project_guide_shim "$venv_dir"
+            # A repair that CREATES a shim must also make it reachable,
+            # or --fix converges in two passes: it would report success,
+            # then flag the shim it just made as a new fault.
+            pyve_ensure_local_bin_on_path || true
             pyve_runnable_version "$venv_dir/bin/project-guide" >/dev/null 2>&1
             ;;
         shim-dangling)
             pyve_link_project_guide_shim "$venv_dir"
+            pyve_ensure_local_bin_on_path || true
             [[ -e "$HOME/.local/bin/project-guide" ]]
+            ;;
+        shim-unreachable)
+            # The SAME helper provisioning calls — the repair is not a
+            # parallel implementation of the install path. Succeeds when
+            # the entry is in the profile; the live PATH of the running
+            # shell cannot be changed from here, hence the restart hint
+            # in the plan text.
+            pyve_ensure_local_bin_on_path || return 1
+            pyve_local_bin_on_path || pyve_local_bin_path_entry_present
             ;;
         *)
             return 1

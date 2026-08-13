@@ -229,7 +229,7 @@ Single-file namespace per project-essentials F-9. Largest extraction so far (~45
 | `_self_install_local_env_template` | `()` | Create an empty `~/.local/.env` with `chmod 600` if it doesn't exist. No-op if the file is already present (preserves user data). |
 | `_self_uninstall_prompt_hook` | `()` | Strip the `source $PROMPT_HOOK_FILE` line from both `~/.zshrc` and `~/.bashrc` (covers users who switched shells post-install) using portable `sed -i` (macOS-vs-Linux dialect via `uname` check). Removes the prompt-hook file itself last. |
 | `_self_uninstall_clean_path` | `()` | Strip the `# Added by pyve installer` PATH line from both `~/.zprofile` and `~/.bash_profile` using portable `sed -i`. |
-| `_self_uninstall_project_guide_completion` | `()` | Remove the project-guide completion sentinel block from both `~/.zshrc` and `~/.bashrc` via the shared `remove_project_guide_completion` helper. Safe no-op when the block is absent. |
+| `_self_uninstall_project_guide_completion` | `()` | Remove pyve's legacy completion sentinel block from both `~/.zshrc` and `~/.bashrc` via `remove_project_guide_completion`, **and** run `project-guide completion uninstall` for zsh + bash when hosting is present at >= `PROJECT_GUIDE_MIN_VERSION_HANDOFF` (upstream's own block plus the zsh fpath autoload file, which lives outside any rc file). Safe no-op when either is absent. |
 
 **Renames in K.e** (audit-recommended, all callsites internal to the namespace):
 - `install_self` → `self_install`, `uninstall_self` → `self_uninstall` (matches `<namespace>_<leaf>` convention).
@@ -492,6 +492,18 @@ Resolves and provisions **Pyve's own** Python interpreter — the one that runs 
 | `pyve_toolchain_python_ensure` | `()` → 0/1 | Idempotent build/refresh of the hidden venv; 0 when present, non-zero + stderr on build failure |
 | `_pyve_toolchain_build` | `(venv_dir)` → 0/1 | Build seam (stubbable in tests) — resolves a bootstrap interpreter, `python -m venv` |
 | `_pyve_toolchain_bootstrap_python` | `(version)` → path | Prefers the version manager's **exact-version** interpreter (`asdf where` / `pyenv prefix`), else a PATH `python3`/`python` |
+
+**Shim reachability — the third rung: existence → runnable → reachable.** Hosting a tool at `~/.local/bin` only helps if the shell can see that directory. `_self_install_update_path` wrote the `PATH` entry, and it ran *only* inside `pyve self install` — so a Homebrew-installed pyve hosted project-guide perfectly and left it uninvocable, while every health surface correctly reported `provisioned`. Reachability is a distinct property from existence and runnability, with its own probe, report, and repair. The single-global-install construct (toolchain venv + shim) is **Pyve's** invention, so its reachability is Pyve's to own — project-guide is an ordinary pip package in a venv and has no concept of one shared copy.
+
+| Function | Signature | Description |
+|----------|-----------|-------------|
+| `pyve_path_profile_file` | `()` → path | `~/.zprofile` / `~/.bash_profile` — a **login** file by design: sourced before the interactive rc that may reference the hosted tool, so ordering is correct by construction. Trade-off: a non-login interactive shell reads only the rc file |
+| `pyve_local_bin_on_path` | `()` → 0/1 | Is `~/.local/bin` on the **live** `PATH` — the truth the user experiences |
+| `pyve_local_bin_path_entry_present` | `()` → 0/1 | Does the profile already carry pyve's `# Added by pyve installer` line (marker unchanged since the original `self install`, so any older pyve's line is honored and never duplicated) |
+| `pyve_ensure_local_bin_on_path` | `()` → 0/1 | Idempotent on **both** conditions above; appends the entry otherwise. `PYVE_NO_PATH_WIRING=1` opts out. **The one helper** provisioning *and* `check --fix` call — the repair is not a parallel implementation of the install path |
+| `pyve_project_guide_reachable` | `()` → 0/1/2 | Tri-state: `0` resolves to pyve's shim, `1` resolves to nothing, `2` **shadowed** — resolves to a non-pyve copy earlier on `PATH`. An explicit `PYVE_PROJECT_GUIDE_BIN` always reads reachable |
+
+In `pyve_project_guide_ensure` the reachability call sits **before** the presence fast path (gated on the shim existing). Behind the fast path it would never run on an already-hosted machine — which is why wiring provisioning alone could not repair the existing installed base. Consumers: `pyve check` (`lib/check_composer.sh`), `self provision --status` (payload only — the `0`/`1`/`2` exit codes are a pinned cross-repo contract), and the `shim-unreachable` heal class (`lib/heal.sh`). The `shadowed` state is reported but never healed: reordering a user's `PATH` is their call.
 
 The three internal callsites that consume the resolver: `manifest_load` (`lib/manifest.sh`), `read_env_config` (`lib/envs.sh`), `_env_resolve_extra_packages` (`lib/commands/env.sh`). Each uses `py="$(pyve_toolchain_python 2>/dev/null)" || py="${PYVE_PYTHON:-python}"` so it stays self-sufficient when the module isn't sourced (piecemeal test subshells) while honoring the override.
 
@@ -1562,18 +1574,50 @@ Testenv creation prompt, `--bootstrap-to`, `--auto-bootstrap`, `--force`, `--env
 
 ### project-guide rc-file Sentinel
 
-The `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
+**project-guide ≥ 2.21.0 owns its own completion; pyve delegates.** `run_project_guide_orchestration`'s Step 3 routes through `_pg_completion_delegate` (`lib/project_guide.sh`), which runs:
 
 ```bash
+project-guide completion install --shell <zsh|bash> --bin "$HOME/.local/bin/project-guide"
+```
+
+Three things about that call are load-bearing:
+
+- **`--bin` is the stable `~/.local/bin` shim, never the toolchain venv console script.** The venv path is version-keyed (`toolchain/<PYTHON_VERSION>/venv/…`), so baking it into an rc file would rot on the next `DEFAULT_PYTHON_VERSION` bump — exactly the `stale` state `completion status` reports. The shim survives bumps because `pyve_link_project_guide_shim` re-points it.
+- **The version gate is `pyve_project_guide_version_at_least "$PROJECT_GUIDE_MIN_VERSION_HANDOFF"`** (`lib/toolchain_python.sh`, floor `2.21.0`). It *probes* the artifact rather than trusting a recorded number, so an unrunnable project-guide reads as "too old" and the caller falls back. It is **memoized per process** (reset seam: `pyve_project_guide_version_gate_reset`) because the probe forks and the gate is consulted twice on the `pyve init` path.
+- **Migration is not a new decision.** When pyve's legacy sentinel is present, `_pg_completion_delegate` removes it and installs upstream's *without re-prompting* — the legacy block is prior consent. pyve removes its own block because `completion install`'s safety contract reports a foreign block and never edits it.
+
+For zsh, upstream writes an **fpath autoload file** and the rc block only wires it up, so nothing is evaluated at shell startup and the `compdef`/`compinit` precondition disappears rather than being worked around. `pyve self uninstall` therefore also runs `completion uninstall` for both shells (`_self_uninstall_project_guide_completion`) — removing only pyve's legacy block would strand upstream's sentinel *and* the autoload file, which lives outside any rc file.
+
+**Below the floor** (project-guide < 2.21.0), pyve falls back to writing its own block, described next. That path is retained only for the `>=2.15.0`–`2.20.x` window pyve can still host.
+
+---
+
+The legacy fallback: the `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
+
+```zsh
 # >>> project-guide completion (added by pyve) >>>
-command -v project-guide >/dev/null 2>&1 && \
-  eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source project-guide)"
+_pyve_pg_bin="$HOME/.local/bin/project-guide"
+[ -x "$_pyve_pg_bin" ] || _pyve_pg_bin="$(command -v project-guide 2>/dev/null || true)"
+if [ -n "$_pyve_pg_bin" ]; then
+  (( $+functions[compdef] )) || { autoload -Uz compinit && compinit -i; } 2>/dev/null
+  if (( $+functions[compdef] )); then
+    eval "$(_PROJECT_GUIDE_COMPLETE=zsh_source "$_pyve_pg_bin" 2>/dev/null)"
+  fi
+fi
+unset _pyve_pg_bin
 # <<< project-guide completion <<<
 ```
 
+The bash block is the same shape without the `compdef` guard (bash's `complete` is always available) and with `bash_source`.
+
+Two properties are load-bearing, both of them defects fixed after the field found the block was a **silent no-op** on a Homebrew install:
+
+- **Resolution is by absolute hosted path first, PATH second.** The shim lives at `~/.local/bin/project-guide`. When this block was written, that directory reached `PATH` only via `_self_install_update_path` inside `pyve self install` — every other provisioning route (Homebrew + `self provision`, `heal`, the lazy `pyve_project_guide_ensure`) created the shim without touching `PATH`, so a bare `command -v project-guide` guard was false and the block evaluated nothing. Pyve's own callsites never surfaced this because `pyve_project_guide` resolves the hosted absolute path and deliberately ignores `PATH`. **Reachability is now wired by every provisioning route** (see `lib/toolchain_python.sh` § shim reachability), but the absolute-path-first resolution stays: it is correct regardless of `PATH`, and a user may still opt out with `PYVE_NO_PATH_WIRING=1`. The `command -v` tier remains as the fallback for a hand-installed, non-hosted project-guide.
+- **zsh's completion system is bootstrapped, not assumed.** The generated script ends in `compdef …`, which does not exist until `compinit` has run. A user whose startup files never run `compinit` got `command not found: compdef` — masked in practice, because the `PATH` defect meant the eval never ran at all. The block bootstraps `compinit -i` when `compdef` is absent, re-checks, and skips registration rather than erroring; when the user's own config already ran `compinit`, it is left alone.
+
 The opening sentinel comment (`# >>> project-guide completion (added by pyve) >>>`) is the source of truth for idempotent insertion and removal:
 
-- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the eval block via an unquoted heredoc (a doubled `\\` followed by a real newline produces a proper shell line continuation in the output — see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead). Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
+- **Insertion** (`add_project_guide_completion` in `lib/utils.sh`): no-op if the sentinel is already present. Builds the block via an unquoted heredoc, escaping `\$(...)` so the substitution is written literally and evaluates at shell startup rather than at block-construction time (see Story G.e for the v1.12.0 bug where a literal `\n` was emitted instead of a real newline). Emits a shell-specific block — the `compdef` guard is zsh-only. Delegates the actual rc-file insertion to `insert_text_before_sdkman_marker_or_append`. Creates the rc file if missing.
 - **SDKMan-aware insertion** (`insert_text_before_sdkman_marker_or_append` in `lib/utils.sh`, v1.13.1+, Story G.e): if the SDKMan end-of-file marker `#THIS MUST BE AT THE END OF THE FILE FOR SDKMAN TO WORK!!!` is present in the rc file, the new block is inserted *immediately above* it via awk so SDKMan retains its required last-position. Otherwise the block is appended to the end. Always emits a leading blank line before the inserted block (unless the file is empty in the SDKMan-absent case), which gives `remove_project_guide_completion` a stable preceding-blank to consume and guarantees byte-identical add → remove round-trips. The same helper is used by `install_prompt_hook` (currently in `pyve.sh`; moves alongside `init`/project-guide integration during the command-module extraction phase) so the prompt hook and the completion block share one SDKMan-aware code path.
 - **Removal** (`remove_project_guide_completion` in `lib/utils.sh`): removes only the sentinel-bracketed block plus one immediately-preceding blank line (so add → remove round-trips cleanly). Awk-based, BSD/GNU compatible.
 - **Detection** (`is_project_guide_completion_present` in `lib/utils.sh`): a single `grep -qF` against the opening sentinel.

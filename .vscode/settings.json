@@ -1,3 +1,5 @@
 {
-    "makefile.configureOnOpen": false
+    "makefile.configureOnOpen": false,
+    "claudeCode.usePythonEnvironment": false,
+    "claudeCode.preferredLocation": "sidebar"
 }
