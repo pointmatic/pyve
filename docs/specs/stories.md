@@ -49,7 +49,7 @@ A primary change that needs to be embraced is that **Pyve v2.x** was a Python vi
 - **Act 1 — UX Foundation (v3.1.0, Subphase P-1).** Make v3's declarative model *real*: a complete, explicit, single-sourced `pyve.toml`; a parameter decision-graph that ends the scattered wizard/flag/default drift; desired-vs-actual env state with restore-on-rebuild and a batch lifecycle; one consistent verb model. This is what makes the named-environments promise deliver. North-star design: [phase-p-subphase-1-ux-overhaul.md](phase-p-subphase-1-ux-overhaul.md).
 - **Act 2 — Harden & heal (v3.2.0+, Subphase P-2 and beyond).** Make environment *resolution* explainable and Pyve's managed state self-healing. **Act 1 is the substrate Act 2 stands on:** `pyve heal` can only restore toward an intent the manifest fully captures (Act 1's explicit declaration) and an operational reality it recorded (Act 1's state record) — so the UX foundation comes first.
 
-**Multi-release exception.** Phase P ships **a release per subphase** — v3.1.0 (P-1) → v3.2.0 (P-2) → v3.3.0 (P-3) → v3.4.0 (P-4) → v3.5.0 (P-5) — an explicit, documented exception to the Version Cadence "one phase = one bundled release" rule. The sequence is deliberate: each release builds on the last (the UX foundation is the substrate the hardening heals toward; the polish, plugin, and security passes follow). A subphase's stories run unversioned during its work; its final code story owns that subphase's minor bump.
+**Multi-release exception.** Phase P ships **a release per subphase** — v3.1.0 (P-1) → v3.2.0 & v3.3.0 (P-2) → v3.4.0 (P-3) → v3.5.0 (P-4) → v3.6.0 (P-5) — an explicit, documented exception to the Version Cadence "one phase = one bundled release" rule. The sequence is deliberate: each release builds on the last (the UX foundation is the substrate the hardening heals toward; the polish, plugin, and security passes follow). A subphase's stories run unversioned during its work; its final code story owns that subphase's minor bump.
 
 ---
 
@@ -83,9 +83,9 @@ Each subphase has a theme (with adhoc bug fixes as needed).
 
 - **Subphase P-1 (v3.1.0): Conceptual clarification & UX Foundation** — the keystone parameter decision-graph, an explicit single-sourced manifest, desired-vs-actual env state, batch lifecycle, and one consistent verb model. *(Declarative env setup — formerly its own subphase — is folded into P-1's Pillar II.)*
 - **Subphase P-2 (v3.2.0): Runnability probes & environment healing** — Act 2 (the four pillars above).
-- **Subphase P-3 (v3.3.0): Workflow & DX polish** — CI hygiene + developer-experience.
-- **Subphase P-4 (v3.4.0): Deeper plugin work** — plugin enrichment (TypeScript, …).
-- **Subphase P-5 (v3.5.0): Security & bootstrap hardening** — download integrity + version pinning.
+- **Subphase P-3 (v3.4.0): Workflow & DX polish** — CI hygiene + developer-experience.
+- **Subphase P-4 (v3.5.0): Deeper plugin work** — plugin enrichment (TypeScript, …).
+- **Subphase P-5 (v3.6.0): Security & bootstrap hardening** — download integrity + version pinning.
 
 Story breakdown for each subphase is drafted in its own `plan_production_phase` session when it activates (Story P.d); Subphase P-2's roster was drafted 2026-07-08. Later subphases' candidates remain parked in `## Future`.
 
@@ -660,13 +660,92 @@ This does **not** move P.aj upstream-vs-pyve boundary: project-guide still owns 
 
 ---
 
+### Story P.am: Consume `project-guide completion install` — pyve stops hand-rolling another tool's completion protocol [Done]
+
+*(Unblocks P.aj. project-guide **2.21.0** shipped the `completion` command group on PyPI; this is the pyve-side consumption.)*
+
+**What shipped upstream, verified against the real binary rather than assumed from the spec.** The group is `install | show | status | uninstall`, with `--shell auto|bash|zsh`, `--bin`, `--rc`, and a zsh `--dir`. Two things landed better than requested: **zsh uses the fpath autoload route** (the alternative floated in the spec), so nothing is evaluated at shell startup and the `compinit`/`compdef` precondition disappears rather than being worked around; and `completion status` distinguishes `absent | installed | stale | partial | damaged`, where **`stale`** is documented as "the baked path no longer resolves — the pyve toolchain-bump case."
+
+**Tasks.**
+
+- [x] Add the version gate `pyve_project_guide_version_at_least` ([lib/toolchain_python.sh](../../lib/toolchain_python.sh)) against a shared `PROJECT_GUIDE_MIN_VERSION_HANDOFF="2.21.0"` floor. It **probes** the artifact (`pyve_project_guide_runnable` executes it) rather than trusting a recorded number, so an unrunnable project-guide reads as "too old" and callers fall back instead of invoking a subcommand that may not exist.
+- [x] Delegate the wiring in [lib/project_guide.sh](../../lib/project_guide.sh): `_pg_completion_delegate` runs `project-guide completion install --shell <s> --bin <shim>`, replacing pyve's hand-written block on ≥ 2.21.0.
+- [x] Pass the **stable** `~/.local/bin` shim as `--bin`, never the toolchain venv console script. The venv path is version-keyed (`toolchain/<PYTHON_VERSION>/venv/…`), so baking it in would rot on the next `DEFAULT_PYTHON_VERSION` bump — precisely the `stale` state upstream now reports. The shim survives bumps because `pyve_link_project_guide_shim` re-points it.
+- [x] Migrate existing users: when pyve's legacy sentinel is present, remove it and install upstream's **without re-prompting** — the legacy block is prior consent, so migrating is a repair, not a new decision. pyve removes its own block because `completion install`'s safety contract *reports* a foreign block and never edits it, and the block is pyve's to clean up.
+- [x] Fix the teardown gap: `_self_uninstall_project_guide_completion` ([lib/commands/self.sh](../../lib/commands/self.sh)) now also runs `completion uninstall` for zsh + bash. Removing only pyve's legacy block would have stranded upstream's sentinel **and** the zsh autoload file, which lives outside any rc file entirely.
+- [x] 13 regression tests in [tests/unit/test_pg_handoff.bats](../../tests/unit/test_pg_handoff.bats) covering both sides of the gate, the migration path, prompt suppression, the sentinel non-collision, and `--bin` selection.
+- [x] Source `lib/version.sh` in [tests/helpers/test_helper.bash](../../tests/helpers/test_helper.bash), mirroring `pyve.sh`'s own sourcing (the `param_graph.sh` precedent). Without it the gate's `declare -F compare_versions` guard degraded silently to "too old" — **and two capability tests passed for the wrong reason** until the harness matched the runtime.
+- [x] End-to-end against the real hosted project-guide 2.21.0 in an isolated `$HOME`: legacy block removed, user content preserved, upstream block + autoload file written, and completion **registers** (`_comps[project-guide]` → `_project-guide`) with `~/.local/bin` off `PATH` and no prior `compinit` — the exact condition that broke the original block.
+- [x] Full unit suite green — **2338 pass, 0 fail**; `shellcheck` clean across all changed libs.
+- [x] Memoize the version gate per process. The probe forks (bounded-probe watchdog) and the gate sits on the `pyve init` path — consulted once for completion wiring and again for the version handoff. The hosted project-guide cannot change mid-invocation, so re-probing buys nothing. A `pyve_project_guide_version_gate_reset` seam exists for tests that deliberately swap the artifact, with a test asserting exactly one probe across three calls.
+
+**Unresolved — an intermittent full-suite flake, honestly unattributed.** `matrix/polyglot: init builds .venv + sub-path node_modules` ([tests/unit/test_composed_init_matrix.bats](../../tests/unit/test_composed_init_matrix.bats)) failed on roughly 3 of ~25 full-suite runs during this work. What is established: it passes **5/5 in isolation**, fails only under `scripts/run-unit-tests.sh`'s `bats --jobs` parallel run, and the test performs a **real Node install** — inherently load-sensitive. Clean `HEAD` showed **0 failures in 10 runs**, but that sample cannot rule out a low base rate, and the failure rate visibly tracked machine load (back-to-back suite runs). Memoizing the gate — the one plausible mechanism by which this story adds forks to the init path — did **not** change it, so the fork-pressure hypothesis is unconfirmed. This story adds one more file to the parallel pool, which raises load without being a code defect. **Not claimed as pre-existing, and not claimed as caused here.** It is exactly the contention flake P.ab.2's housekeeping anticipated ("if load flakes recur, add a serial re-run-failures backstop and/or a `bats --timing` contention survey — P-3 flaky-test triage"); this is the recurrence, and it should be triaged there rather than guessed at.
+
+**Sentinel non-collision.** Upstream's `# >>> project-guide completion >>>` is *not* a substring of pyve's legacy `# >>> project-guide completion (added by pyve) >>>` (the legacy form inserts `(added by pyve) ` before the closing `>>>`), so neither presence check ever cross-matches the other. Asserted by a test.
+
+**Deviation from P.aj's plan — the interim block is kept, not deleted.** P.aj anticipated retiring P.ai's hand-rolled block outright. It stays as the `< 2.21.0` fallback, because pyve's own hosted-install floor is still `project-guide>=2.15.0` — pyve can host 2.15.0–2.20.x, which have no `completion` command. **Open decision for the release pass:** raising that pip floor to `>=2.21.0` would let the interim block, `add_project_guide_completion`, and their tests be deleted entirely. That is a forced-upgrade choice, so it is the developer's call, not a drive-by.
+
+**Version:** none (rides the bundled release with P.ai).
+
+---
+
+### Story P.an: Consume `project-guide init --pyve-version` — supply the fact instead of being guessed at [Done]
+
+*(Unblocks P.al. Same 2.21.0 release, same version gate.)*
+
+**Shipped as spec'd**, with the resolution order `--pyve-version` flag → `PYVE_VERSION` env var → `PATH` probe. Upstream also shipped spec item 2 (re-detect on every render) — verified: a project initialized with pyve off `PATH` reads `pyve_version: null`, and a subsequent `project-guide update` re-detects it to `3.2.2` and restores the Pyve Essentials section. **The installed base now self-heals** on any `pyve update`, which downgrades P.al from a permanent failure to a transient one on its own.
+
+**Why still worth consuming.** Re-detection heals *later*; the flag makes the *first* render correct. Without it, a `pyve init` where pyve isn't on `PATH` produces a go.md missing ~80 lines of pyve workflow guidance until something triggers an update — and that window is exactly when a fresh LLM session reads the guide.
+
+**Tasks.**
+
+- [x] `_run_project_guide` ([lib/utils.sh](../../lib/utils.sh)) passes trailing args through to the subcommand; `run_project_guide_init_in_env` adds `--pyve-version "$VERSION"` when the gate passes. `update` deliberately gets nothing — it takes no such flag and re-detects on its own.
+- [x] Avoid the bash 3.2 array-splat trap: branch on the gate rather than splatting `"${extra[@]:-}"`. That form is the correct idiom for *reading* a maybe-empty array, but as an **argument splat** it expands to a single empty string, which project-guide would receive as a bogus positional arg. Covered by a test asserting the exact argv (`init --no-input --quiet`) on the fallback path.
+- [x] Both gate paths tested (flag present ≥ 2.21.0, absent below).
+
+**Version:** none (rides the bundled release with P.ai).
+
+---
+
+### Story P.ao: v3.3.0 — documentation sweep and release [Planned]
+
+**Scope.** The end-of-bundle coherence pass and release for the P.ag–P.an run: make the public docs describe the code as it now is, stage the version bump in-repo, confirm CI, and confirm the Homebrew tap picked the tag up. Owns the bundle's minor bump.
+
+**Why minor, not patch.** The bundle is not only bug fixes: it adds a reachability rung to hosting health (`pyve check` output, a new `project_guide.reachable` JSON field, a `check --fix` repair class), a `PYVE_NO_PATH_WIRING` opt-out, and delegated completion wiring. Feature-shaped ⇒ minor, per the Version Cadence rule.
+
+> **⚠ Decided before staging the bump: `v3.3.0` is displacing the subsequent subphases starting with Subphase P-3** ("Workflow & DX polish"), per the Subphases list and the phase's multi-release exception (P-1→v3.1.0, P-2→v3.2.0, P-3→v3.3.0, P-4→v3.5.0, P-5→v3.6.0). It's bolt-on to Subphase P-2. 
+>
+> **P-3 keeps its theme and shifts to v3.4.0** — this bundle takes v3.3.0 as an unplanned interleaved release, and P-4/P-5 cascade.
+>
+> A related structural drift to settle at the same time: **P.ag–P.an are physically filed under the `## Subphase P-2` heading but are not P-2-themed** (P-2 is runnability probes + healing; these are the project-guide integration boundary). Whichever option is chosen, these stories likely want to live under their own subphase heading.
+
+**Tasks.**
+
+- [ ] **Pre-flight.** Full unit suite + integration suites green; `mkdocs build --strict` clean. Note the known intermittent `matrix/polyglot` contention flake (recorded on P.am) so a red run is triaged rather than reflexively re-run.
+- [ ] **Reconcile `tech-spec.md` § "project-guide rc-file Sentinel" — it is stale again.** P.ai rewrote it to document pyve's own hardened block; P.am then moved completion ownership upstream. It must now describe the delegation (`completion install --bin <shim>`), the fpath autoload route, the legacy-block migration, and the `< 2.21.0` fallback — with the reachability helpers (`pyve_ensure_local_bin_on_path`, `pyve_project_guide_reachable`) added to the helper tables.
+- [ ] **Site docs sweep** for every new surface: the reachability line in `pyve check` and `self provision --status` (`reference/diagnostics.md`), the `project_guide.reachable` JSON field with the note that **exit codes `0`/`1`/`2` are unchanged** (the pinned cross-repo contract), the `check --fix` repair class, and the completion story — users no longer get a pyve-written rc block, and `project-guide completion status` is now the place to inspect wiring.
+- [ ] **Environment Variables table**: add `PYVE_NO_PATH_WIRING`.
+- [ ] **Record the project-guide version floor** (`>= 2.21.0` for delegated completion + the `--pyve-version` handoff) wherever pyve's project-guide dependencies are documented, alongside the existing `>= 2.2.3` / `>= 2.5.0` / `>= 2.12.0` / `>= 2.15.0` precedents.
+- [ ] **Settle the deferred decision from P.am:** raise pyve's hosted-install floor from `project-guide>=2.15.0` to `>=2.21.0`? Doing so lets `add_project_guide_completion`, the interim block, and their tests be deleted outright. It is a forced upgrade for anyone pinned lower — developer's call.
+- [ ] **Consolidate the accumulated `project-essentials.md` candidates** rather than leaving them scattered as `[ ]` items across P.ah/P.af.1/P.af.3/P.ai/P.ak/P.al/P.am. The strongest of them, and the through-line of this whole bundle: **"never resolve a tool you host — or that hosts you — by bare name."** Three separate defects were one pattern (pyve couldn't find `project-guide`; pyve hosted a tool the shell couldn't reach; project-guide couldn't find `pyve`), and in each case the looker already had a more reliable answer available. Its companion: **"a generated snippet is code we ship; test its effect, not its text."**
+- [ ] **Stage the release in-repo (the LLM's job, per Story P.ag).** Bump `VERSION` in [pyve.sh](../../pyve.sh) — the single source of truth — to `3.3.0`; update the version example in [docs/site/usage.md](../site/usage.md); retitle the CHANGELOG `## [Unreleased]` section to `## [3.3.0] - <date>`. **Also date the stale `## [3.2.2] - Unreleased` heading** (`v3.2.2` is tagged at `585c9f3`). Verify no stale `3.2.x` strings outside archives. Do **not** run `project-guide bump-version` — retired, and wrong for a bash project.
+- [ ] **Developer releases with git alone:** commit, tag `v3.3.0`, push.
+- [ ] **Confirm CI green on the tag.**
+- [ ] **Confirm the Homebrew tap filled.** The [update-homebrew workflow](../../.github/workflows/update-homebrew.yml) fires on `v*` tags and bumps `pointmatic/tap`'s `pyve` formula via `action-homebrew-bump-formula`. Verify the run succeeded and the formula moved to v3.3.0 — the v3.2.2 formula bump was still pending at P.af's post-release check, so this needs an explicit look rather than an assumption. *(Watch item: the workflow leans on `HOMEBREW_NO_REQUIRE_TAP_TRUST`, documented as removed at Homebrew 6.0 / 5.2.)*
+- [ ] **Post-release validation on a real project:** `brew upgrade` path, then the bundle's actual promise end-to-end — a Homebrew-installed pyve provisions project-guide, `~/.local/bin` lands on `PATH`, `project-guide` is invocable by bare name, and `project-guide <TAB>` completes. That is issue [#70](https://github.com/pointmatic/pyve/issues/70) closed from the user's side, which is the real acceptance test for this bundle.
+- [ ] **Close issue #70** with the resolution summary once validated.
+
+**Version:** v3.3.0 (minor) — owns the bundle's bump, subject to the slot decision above.
+
+---
+
 ## Future
 
 A parking lot of detailed candidate bodies. Each is assigned to a later subphase (P-3…P-5) — see the subphase roadmap above for the mapping. (Subphase P-2's candidates were pulled into its roster 2026-07-08; the tech-spec-table reconcile candidate remains parked as a doc-cleanup item.) When a subphase activates, its `plan_production_phase` session pulls its candidates from here and decomposes them into the working roster.
 
 ---
 
-## Subphase P-3: Workflow & DX polish (v3.3.0)
+## Subphase P-3: Workflow & DX polish (v3.4.0)
 
 **Scope.** CI hygiene and developer-experience refinements that don't fit the UX-foundation or hardening themes but raise the day-to-day quality bar: coverage reporting, flaky-test triage, per-command help ergonomics, and extending Phase L's calm-UX framing beyond the scaffold commands.
 
@@ -676,7 +755,7 @@ A parking lot of detailed candidate bodies. Each is assigned to a later subphase
 
 ---
 
-## Subphase P-4: Deeper plugin work (v3.4.0)
+## Subphase P-4: Deeper plugin work (v3.5.0)
 
 **Scope.** Enrich the plugin layer beyond the contract-proving baseline — deeper, language-aware behavior in the reference plugins, and any generalizable "language-flavor advisory" pattern future plugins inherit. Thin today; grows as plugin needs surface.
 
@@ -703,7 +782,7 @@ This also completes the arc begun in the Phase-P env-lifecycle concept ([env-lif
 
 ---
 
-## Subphase P-5: Security & bootstrap hardening (v3.5.0)
+## Subphase P-5: Security & bootstrap hardening (v3.6.0)
 
 **Scope.** The dedicated security pass deferred from the I.h audit: cryptographic integrity of the micromamba bootstrap download and deterministic version pinning. Picks up the disposition recorded with these stories (revive when a security review asks for download integrity, or a regressing `latest` makes pinning worth its upkeep). Version pinning is the higher-value of the two and the prerequisite for a hardcoded-hash table.
 

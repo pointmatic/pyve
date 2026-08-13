@@ -512,6 +512,26 @@ _self_uninstall_project_guide_completion() {
             log_success "Removed project-guide completion block from $rc_file"
         fi
     done
+
+    # Wiring project-guide now owns (>= 2.21.0): its own sentinel block plus,
+    # for zsh, an fpath autoload file that lives OUTSIDE any rc file. Removing
+    # only pyve's legacy block would strand both. `completion uninstall` is
+    # documented safe to run blind (missing file / missing block / half a zsh
+    # pair all report and exit 0), so this needs no presence check — but it
+    # does need hosting to still exist, since the uninstall runs through the
+    # very binary being torn down. Order matters: teardown of the toolchain
+    # happens after this.
+    if declare -F pyve_project_guide_is_hosted >/dev/null 2>&1 \
+        && pyve_project_guide_is_hosted \
+        && declare -F pyve_project_guide_version_at_least >/dev/null 2>&1 \
+        && pyve_project_guide_version_at_least "$PROJECT_GUIDE_MIN_VERSION_HANDOFF"; then
+        local pg shell
+        pg="$(pyve_project_guide)"
+        for shell in zsh bash; do
+            run_quiet "$pg" completion uninstall --shell "$shell" || true
+        done
+        log_success "Removed project-guide's own completion wiring (zsh + bash)"
+    fi
 }
 
 #------------------------------------------------------------

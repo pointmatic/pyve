@@ -218,6 +218,49 @@ pyve_link_project_guide_shim() {
     ln -sf "$target" "$bin_dir/project-guide"
 }
 
+# The project-guide release that took ownership of its own shell completion
+# (the `completion` command group) and accepts pyve's version directly on
+# `init` (`--pyve-version`), removing both guesses pyve used to make on its
+# behalf. Both capabilities shipped together, so one floor covers them.
+# shellcheck disable=SC2034 # min-version floor, read in lib/project_guide.sh, lib/utils.sh, lib/commands/self.sh (cross-file)
+PROJECT_GUIDE_MIN_VERSION_HANDOFF="2.21.0"
+
+# True (0) when the pyve-HOSTED project-guide is at least <version>. Probes
+# the artifact (pyve_project_guide_runnable EXECUTES it) rather than trusting
+# a recorded number, so a broken install reads as "too old" and callers fall
+# back rather than invoking a subcommand that may not exist. Returns non-zero
+# when project-guide cannot run or reports no parseable version.
+# Memoized per process, keyed by the floor asked about. The probe EXECUTES
+# project-guide through the bounded-probe watchdog, which forks — and the
+# gate sits on the `pyve init` path, consulted once for completion wiring
+# and again for the version handoff. The hosted project-guide cannot change
+# mid-invocation, so probing more than once per process buys nothing and
+# feeds exactly the fork pressure that flakes small CI runners (the same
+# mechanism behind the watchdog's orphaned-`sleep` fix).
+#
+# Reset with pyve_project_guide_version_gate_reset when the hosted artifact
+# is deliberately swapped (tests).
+pyve_project_guide_version_gate_reset() {
+    _PYVE_PG_VER_GATE_KEY=""
+    _PYVE_PG_VER_GATE_RC=""
+}
+
+pyve_project_guide_version_at_least() {
+    local want="$1" have cmp rc=1
+    if [[ "${_PYVE_PG_VER_GATE_KEY:-}" == "$want" && -n "${_PYVE_PG_VER_GATE_RC:-}" ]]; then
+        return "$_PYVE_PG_VER_GATE_RC"
+    fi
+    if declare -F compare_versions >/dev/null 2>&1 \
+        && have="$(pyve_project_guide_runnable 2>/dev/null)" \
+        && [[ -n "$have" ]]; then
+        cmp="$(compare_versions "$have" "$want")"
+        [[ "$cmp" == "greater" || "$cmp" == "equal" ]] && rc=0
+    fi
+    _PYVE_PG_VER_GATE_KEY="$want"
+    _PYVE_PG_VER_GATE_RC="$rc"
+    return "$rc"
+}
+
 #------------------------------------------------------------
 # Shim REACHABILITY — the third rung of existence → runnable → reachable.
 #

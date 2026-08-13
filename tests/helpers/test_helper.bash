@@ -27,6 +27,11 @@ setup_pyve_env() {
     # resolver defined; without it the rewired callsites hit "command not
     # found". The override path (PYVE_PYTHON) is unaffected.
     source "$PYVE_ROOT/lib/toolchain_python.sh"
+    # compare_versions, which toolchain_python.sh's min-version gate
+    # (pyve_project_guide_version_at_least) calls. pyve.sh sources it too;
+    # without it here the gate's `declare -F` guard degrades silently to
+    # "too old" and a capability test passes for the wrong reason.
+    source "$PYVE_ROOT/lib/version.sh"
     # backend_detect.sh's detect_backend_from_files now
     # delegates to the Python plugin's detect hook via plugin_dispatch.
     # Source the plugin chain before backend_detect so every existing

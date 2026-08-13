@@ -545,8 +545,11 @@ install_project_guide() {
 # runs project-guide when it is genuinely pyve-hosted. If hosting can't be
 # provisioned, skip generically (non-fatal) — never leak asdf's internal
 # "No version is set" error.
+# Trailing args after the three messages are passed through to the
+# subcommand verbatim (see run_project_guide_init_in_env's version handoff).
 _run_project_guide() {
     local sub="$1" ok_msg="$2" fail_msg="$3"
+    shift 3
     pyve_project_guide_ensure || true   # idempotent; no-op when already hosted
     if ! pyve_project_guide_is_hosted; then
         log_warning "project-guide hosting isn't set up — skipping 'project-guide $sub' (run 'pyve self provision' to enable it)"
@@ -555,7 +558,7 @@ _run_project_guide() {
     local pg
     pg="$(pyve_project_guide)"
     log_info "Running 'project-guide $sub'..."
-    if "$pg" "$sub" --no-input --quiet; then
+    if "$pg" "$sub" --no-input --quiet "$@"; then
         log_success "$ok_msg"
     else
         log_warning "$fail_msg"
@@ -563,10 +566,30 @@ _run_project_guide() {
     return 0
 }
 
+# Hand pyve's version to project-guide instead of letting it probe for one.
+#
+# project-guide renders its Pyve guidance section only when it believes pyve
+# is installed, and it used to decide that by running a bare `pyve --version`
+# on PATH. That probe fails in two routine cases — a `pyve self install`
+# layout (pyve at ~/.local/bin/pyve, a directory whose PATH presence is not
+# guaranteed) and a dev checkout driven by ./pyve.sh (never on PATH at all) —
+# and a miss silently strips ~80 lines of pyve workflow guidance from the
+# generated go.md. pyve is the one invoking project-guide and knows its own
+# version with certainty, so it supplies the fact rather than being guessed
+# at. Older project-guide releases reject the unknown flag, so it is gated.
 run_project_guide_init_in_env() {
-    _run_project_guide init \
-        "project-guide artifacts generated" \
-        "'project-guide init' failed (skip with --no-project-guide)"
+    local ok="project-guide artifacts generated"
+    local fail="'project-guide init' failed (skip with --no-project-guide)"
+    # Branch rather than splatting a possibly-empty array: "${arr[@]:-}" is
+    # the bash 3.2 idiom for READING a maybe-empty array, but as an argument
+    # splat it expands to one empty string — which project-guide would see as
+    # a bogus positional arg.
+    if declare -F pyve_project_guide_version_at_least >/dev/null 2>&1 \
+        && pyve_project_guide_version_at_least "$PROJECT_GUIDE_MIN_VERSION_HANDOFF"; then
+        _run_project_guide init "$ok" "$fail" --pyve-version "$VERSION"
+    else
+        _run_project_guide init "$ok" "$fail"
+    fi
 }
 
 # Run `project-guide update` inside the project environment to refresh the

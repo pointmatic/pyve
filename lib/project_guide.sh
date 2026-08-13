@@ -143,6 +143,13 @@ run_project_guide_orchestration() {
         rc_path="$(get_shell_rc_path "$user_shell")"
     fi
 
+    # project-guide >= 2.21.0 owns its own completion. Delegate to it, and
+    # migrate anyone still carrying pyve's hand-rolled block.
+    if _pg_completion_upstream_available; then
+        _pg_completion_delegate "$rc_path" "$user_shell" "$should_add_completion"
+        return 0
+    fi
+
     # Pre-prompt idempotency guard: already wired → note and done, no prompt.
     if [[ -n "$rc_path" ]] && is_project_guide_completion_present "$rc_path"; then
         log_info "project-guide completion already present in $rc_path"
@@ -178,6 +185,103 @@ run_project_guide_orchestration() {
     else
         log_warning "Failed to write project-guide completion to $rc_path (continuing)"
     fi
+}
+
+#------------------------------------------------------------
+# Completion wiring, delegated (project-guide >= 2.21.0)
+#
+# pyve used to hand-write a Click completion snippet into the user's rc
+# file, which meant hardcoding another tool's protocol: the
+# `_PROJECT_GUIDE_COMPLETE=<shell>_source` contract, the fact that the
+# generated zsh script ends in `compdef`, and that `compdef` presupposes
+# `compinit`. Every one of those is a property of project-guide's
+# generator, and pyve got two of them wrong in ways that failed silently.
+# project-guide now ships `completion install`, which owns all of it —
+# and for zsh takes the fpath autoload route, so nothing is evaluated at
+# shell startup and the compinit precondition disappears rather than
+# being worked around.
+#
+# pyve's remaining job is the one thing it alone knows: WHICH binary to
+# bake in.
+#------------------------------------------------------------
+
+# The sentinel project-guide writes for itself. Distinct from pyve's
+# legacy `# >>> project-guide completion (added by pyve) >>>` — neither
+# string is a substring of the other, so the two never cross-match.
+PROJECT_GUIDE_UPSTREAM_COMPLETION_OPEN="# >>> project-guide completion >>>"
+
+_pg_completion_upstream_available() {
+    declare -F pyve_project_guide_version_at_least >/dev/null 2>&1 || return 1
+    pyve_project_guide_version_at_least "$PROJECT_GUIDE_MIN_VERSION_HANDOFF"
+}
+
+# The path to bake into the completion callback. Deliberately the STABLE
+# ~/.local/bin shim, never the toolchain venv's console script: the venv
+# path is version-keyed (toolchain/<PYTHON_VERSION>/venv/...), so baking
+# it in would silently rot on the next DEFAULT_PYTHON_VERSION bump —
+# which is precisely the `stale` state `completion status` reports. The
+# shim survives bumps because pyve_link_project_guide_shim re-points it.
+_pg_completion_bin() {
+    local shim="$HOME/.local/bin/project-guide"
+    if [[ -e "$shim" ]]; then
+        printf '%s' "$shim"
+    else
+        pyve_project_guide
+    fi
+}
+
+_pg_completion_delegate() {
+    local rc_path="$1" user_shell="$2" should_add_completion="$3"
+
+    if [[ "$user_shell" == "unknown" || -z "$rc_path" ]]; then
+        log_warning "Unknown shell — skipping project-guide completion wiring."
+        log_warning "  For manual setup, run: project-guide completion install"
+        return 0
+    fi
+
+    # A legacy pyve block means the user already consented to completion
+    # once. Migrating it is a repair, not a new decision, so it does not
+    # re-prompt. pyve removes its own block rather than asking upstream to:
+    # `completion install` reports a foreign block and never edits it, and
+    # the block is pyve's to clean up.
+    local migrating=false
+    if is_project_guide_completion_present "$rc_path"; then
+        migrating=true
+        remove_project_guide_completion "$rc_path"
+        log_info "Removed pyve's legacy completion block from $rc_path"
+    fi
+
+    # Already wired by project-guide → nothing to do, and no prompt.
+    # `completion install` is itself idempotent; this guard exists so
+    # `pyve init` does not re-ask a question already answered.
+    if [[ "$migrating" != true ]] \
+        && [[ -f "$rc_path" ]] \
+        && grep -qF "$PROJECT_GUIDE_UPSTREAM_COMPLETION_OPEN" "$rc_path"; then
+        log_info "project-guide completion already installed in $rc_path"
+        return 0
+    fi
+
+    if [[ "$migrating" != true ]]; then
+        if [[ "$should_add_completion" -ne 1 ]] \
+            && ! prompt_install_project_guide_completion; then
+            return 0
+        fi
+    fi
+
+    local pg bin
+    pg="$(pyve_project_guide)"
+    bin="$(_pg_completion_bin)"
+    if run_quiet "$pg" completion install --shell "$user_shell" --bin "$bin"; then
+        if [[ "$migrating" == true ]]; then
+            log_success "Migrated project-guide completion to project-guide's own installer"
+        else
+            log_success "Installed project-guide completion ($user_shell)"
+        fi
+        log_info "  Reload your shell to pick it up."
+    else
+        log_warning "'project-guide completion install' failed (continuing)"
+    fi
+    return 0
 }
 
 # Discover the env-dependencies spec path (the `plan_envs`-authored doc
