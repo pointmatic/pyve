@@ -229,7 +229,7 @@ Single-file namespace per project-essentials F-9. Largest extraction so far (~45
 | `_self_install_local_env_template` | `()` | Create an empty `~/.local/.env` with `chmod 600` if it doesn't exist. No-op if the file is already present (preserves user data). |
 | `_self_uninstall_prompt_hook` | `()` | Strip the `source $PROMPT_HOOK_FILE` line from both `~/.zshrc` and `~/.bashrc` (covers users who switched shells post-install) using portable `sed -i` (macOS-vs-Linux dialect via `uname` check). Removes the prompt-hook file itself last. |
 | `_self_uninstall_clean_path` | `()` | Strip the `# Added by pyve installer` PATH line from both `~/.zprofile` and `~/.bash_profile` using portable `sed -i`. |
-| `_self_uninstall_project_guide_completion` | `()` | Remove the project-guide completion sentinel block from both `~/.zshrc` and `~/.bashrc` via the shared `remove_project_guide_completion` helper. Safe no-op when the block is absent. |
+| `_self_uninstall_project_guide_completion` | `()` | Remove pyve's legacy completion sentinel block from both `~/.zshrc` and `~/.bashrc` via `remove_project_guide_completion`, **and** run `project-guide completion uninstall` for zsh + bash when hosting is present at >= `PROJECT_GUIDE_MIN_VERSION_HANDOFF` (upstream's own block plus the zsh fpath autoload file, which lives outside any rc file). Safe no-op when either is absent. |
 
 **Renames in K.e** (audit-recommended, all callsites internal to the namespace):
 - `install_self` → `self_install`, `uninstall_self` → `self_uninstall` (matches `<namespace>_<leaf>` convention).
@@ -1574,7 +1574,25 @@ Testenv creation prompt, `--bootstrap-to`, `--auto-bootstrap`, `--force`, `--env
 
 ### project-guide rc-file Sentinel
 
-The `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
+**project-guide ≥ 2.21.0 owns its own completion; pyve delegates.** `run_project_guide_orchestration`'s Step 3 routes through `_pg_completion_delegate` (`lib/project_guide.sh`), which runs:
+
+```bash
+project-guide completion install --shell <zsh|bash> --bin "$HOME/.local/bin/project-guide"
+```
+
+Three things about that call are load-bearing:
+
+- **`--bin` is the stable `~/.local/bin` shim, never the toolchain venv console script.** The venv path is version-keyed (`toolchain/<PYTHON_VERSION>/venv/…`), so baking it into an rc file would rot on the next `DEFAULT_PYTHON_VERSION` bump — exactly the `stale` state `completion status` reports. The shim survives bumps because `pyve_link_project_guide_shim` re-points it.
+- **The version gate is `pyve_project_guide_version_at_least "$PROJECT_GUIDE_MIN_VERSION_HANDOFF"`** (`lib/toolchain_python.sh`, floor `2.21.0`). It *probes* the artifact rather than trusting a recorded number, so an unrunnable project-guide reads as "too old" and the caller falls back. It is **memoized per process** (reset seam: `pyve_project_guide_version_gate_reset`) because the probe forks and the gate is consulted twice on the `pyve init` path.
+- **Migration is not a new decision.** When pyve's legacy sentinel is present, `_pg_completion_delegate` removes it and installs upstream's *without re-prompting* — the legacy block is prior consent. pyve removes its own block because `completion install`'s safety contract reports a foreign block and never edits it.
+
+For zsh, upstream writes an **fpath autoload file** and the rc block only wires it up, so nothing is evaluated at shell startup and the `compdef`/`compinit` precondition disappears rather than being worked around. `pyve self uninstall` therefore also runs `completion uninstall` for both shells (`_self_uninstall_project_guide_completion`) — removing only pyve's legacy block would strand upstream's sentinel *and* the autoload file, which lives outside any rc file.
+
+**Below the floor** (project-guide < 2.21.0), pyve falls back to writing its own block, described next. That path is retained only for the `>=2.15.0`–`2.20.x` window pyve can still host.
+
+---
+
+The legacy fallback: the `pyve init --project-guide-completion` hook inserts a sentinel-bracketed eval block into the user's `~/.zshrc` or `~/.bashrc`:
 
 ```zsh
 # >>> project-guide completion (added by pyve) >>>

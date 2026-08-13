@@ -66,6 +66,36 @@ project-guide → /Users/dev/.asdf/shims/project-guide (version-manager shim)
 
 Resolution findings are diagnostic narrative: they contribute at most a *warning* and never flip the exit code to an error.
 
+### Reachability (`[pyve]`)
+
+Hosting health has three rungs, and passing the first two is not enough:
+
+| Rung | Question | Failure it catches |
+|---|---|---|
+| exists | is the artifact there? | never provisioned |
+| runnable | does executing it work? | dead shebang, dangling symlink, deleted interpreter |
+| **reachable** | can your *shell* invoke it by name? | hosted correctly, but `~/.local/bin` is not on `PATH` |
+
+pyve hosts `project-guide` in its toolchain venv and shims it into `~/.local/bin`. If that directory is not on your `PATH`, the tool is provisioned, runnable, and **still uninvocable** — `check` used to report `provisioned` and be entirely correct while `project-guide` did not work at all. It now names it:
+
+```
+project-guide hosting: provisioned
+  ⚠ hosted but NOT reachable from your shell — ~/.local/bin is not on PATH
+  → Run: pyve check --fix   (adds it to /Users/dev/.zprofile)
+```
+
+A second reachability failure is a *different* copy winning on `PATH`:
+
+```
+project-guide hosting: provisioned
+  ⚠ 'project-guide' resolves to /usr/local/bin/project-guide, not the pyve shim
+  → A non-pyve copy earlier on PATH shadows the hosted one.
+```
+
+`check --fix` repairs the first case by appending the `PATH` entry to your login profile (`~/.zprofile` / `~/.bash_profile`) — additive and reversible, and offered through the same plan-then-confirm gate as every other repair. The shadowing case is reported, never "fixed": which copy you want on `PATH` is your decision. Set `PYVE_NO_PATH_WIRING=1` to stop pyve writing the entry at all.
+
+The machine-readable form is `pyve self provision --status --json`, which carries `project_guide.reachable` as `reachable` / `unreachable` / `shadowed`. **The `0` / `1` / `2` exit codes are unchanged** — reachability is additive payload, because that contract is pinned by other tools (project-guide ≥ 2.15.0 gates its local-install warning on it). A consumer that wants reachability opts in by reading the field.
+
 ### Update hints (`[pyve]`)
 
 The `[pyve]` section (toolchain + project-guide hosting state) also surfaces **info-only** update hints — `pyve X.Y.Z is available (installed: …)` with the upgrade command for your install source (`brew upgrade pointmatic/tap/pyve` vs. `git pull && pyve self install`; project-guide → `pyve self provision`). This is `check`'s only network touch and it is strictly bounded: results cache for 24h, the probe runs only for interactive human runs (CI, piped output, and `--offline` / `PYVE_NO_NETWORK=1` all suppress it), and a network failure degrades silently — the exit code can never depend on the network.

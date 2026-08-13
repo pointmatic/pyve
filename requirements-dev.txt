@@ -1,3 +1,9 @@
 pytest
 pytest-cov
 pytest-xdist
+
+# Docs site. The release story's pre-flight runs `mkdocs build --strict`;
+# without these declared, that check is only reproducible inside the
+# deploy-docs workflow, which pip-installs them ad hoc.
+mkdocs-material
+mkdocs-git-revision-date-localized-plugin
